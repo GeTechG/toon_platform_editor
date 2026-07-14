@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":24,\"frames\":[{\"strokes\":[{\"color\":\"#000000\",\"points\":[0,0,2400,1200,4800,2400],\"width\":32},{\"color\":\"#ff3300\",\"points\":[100,100],\"width\":160}]},{\"strokes\":[{\"color\":\"#00aa55\",\"points\":[4800,0,0,2400],\"width\":16}]}],\"height\":2400,\"schema_version\":1,\"width\":4800}",
+  "sha256": "e47fde67886d79b0c9fe673cca705a006afc73ef7af5aa4a588fc3b0c50e3067"
+}

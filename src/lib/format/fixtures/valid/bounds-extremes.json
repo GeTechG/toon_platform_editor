@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "width": 16,
+  "height": 16,
+  "frame_rate": 60,
+  "frames": [
+    {
+      "strokes": [
+        { "points": [0, 0, 16, 16], "width": 1, "color": "#ffffff" }
+      ]
+    }
+  ]
+}

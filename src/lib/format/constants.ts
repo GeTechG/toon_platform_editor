@@ -1,0 +1,38 @@
+/**
+ * Format constants and editor defaults.
+ *
+ */
+
+/** Supported document schema version. */
+export const SCHEMA_VERSION = 1;
+export const CANVAS_LOGICAL_WIDTH = 600;
+export const CANVAS_LOGICAL_HEIGHT = 300;
+
+/** Fixed-point multiplier: 1 logical px = 8 document units. */
+export const FIXED_POINT_SCALE = 8;
+
+/** Default canvas size in document units (4800×2400 — fits int16). */
+export const DEFAULT_DOC_WIDTH = CANVAS_LOGICAL_WIDTH * FIXED_POINT_SCALE;
+export const DEFAULT_DOC_HEIGHT = CANVAS_LOGICAL_HEIGHT * FIXED_POINT_SCALE;
+
+/** Frame rate defaults; MVP player range is 12–24. */
+export const DEFAULT_FPS = 12;
+export const PLAYER_FPS_MIN = 12;
+export const PLAYER_FPS_MAX = 24;
+
+/** Brush: in logical canvas px. */
+export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
+export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
+export const DEFAULT_BRUSH_COLOR = '#000000';
+
+/** Canvas background color. */
+export const BACKGROUND_COLOR = '#ffffff';
+
+/** Lang simplification: tolerance in logical px. */
+export const LANG_LOOK_AHEAD = 5;
+export const LANG_TOLERANCE_LOGICAL = 10;
+/** Lang tolerance in document units. */
+export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
+
+/** Semantic limit: total number of points in a document. */
+export const MAX_TOTAL_POINTS = 1_000_000;

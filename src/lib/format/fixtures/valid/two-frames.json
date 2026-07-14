@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 24,
+  "frames": [
+    {
+      "strokes": [
+        { "points": [0, 0, 2400, 1200, 4800, 2400], "width": 32, "color": "#000000" },
+        { "points": [100, 100], "width": 160, "color": "#ff3300" }
+      ]
+    },
+    {
+      "strokes": [
+        { "points": [4800, 0, 0, 2400], "width": 16, "color": "#00aa55" }
+      ]
+    }
+  ]
+}
