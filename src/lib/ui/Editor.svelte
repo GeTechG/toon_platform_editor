@@ -3,6 +3,7 @@
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
+  import ExportGifButton from './ExportGifButton.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import { DRAFT_SAVE_DEBOUNCE_MS } from '../format/constants';
@@ -42,46 +43,123 @@
 </script>
 
 <div class="editor">
+  <div class="topbar"></div>
   <div class="stage">
     <CanvasView {editor} />
   </div>
   <div class="panel">
-    <Timeline {editor} />
-    <div class="row">
-      <BrushPanel {editor} />
-      <PlayControls {editor} />
+    <div class="controls">
+      <div class="tools t1">
+        <button disabled={editor.playing} onclick={() => editor.addFrameAfterActive()} title="Add frame after current">
+          ✚
+        </button>
+        <button disabled={editor.playing} onclick={() => editor.removeActiveFrame()} title="Delete current frame">
+          ✖
+        </button>
+      </div>
+      <div class="timeline">
+        <Timeline {editor} />
+      </div>
+      <div class="row2">
+        <PlayControls {editor} />
+        <button
+          class="onion"
+          class:on={editor.onionSkin}
+          aria-pressed={editor.onionSkin}
+          onclick={() => editor.toggleOnionSkin()}
+          title="Onion skin"
+        >
+          🧅
+        </button>
+        <ExportGifButton {editor} />
+      </div>
+      <div class="brush">
+        <BrushPanel {editor} />
+      </div>
     </div>
   </div>
 </div>
 
 <style>
+  /* Full-screen column: bars stretch edge to edge, the canvas letterboxes
+     in whatever is left between them. */
   .editor {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    gap: 0.5rem;
+    width: 100%;
+  }
+  .topbar {
+    flex: none;
+    height: 4.5rem;
+    background: #d9d9d9;
   }
   .stage {
     flex: 1;
     min-height: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
+  /* Fixed-height bottom bar, controls anchored to its bottom. */
   .panel {
+    flex: none;
+    height: 12.5rem;
+    box-sizing: border-box;
+    background: #d9d9d9;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    background: #d9d9d9;
-    border-radius: 4px;
+    justify-content: flex-end;
+    padding: 0.5rem 0.75rem;
   }
-  .row {
+  /* Rows mirror the reference: [✚✖ | timeline], [▶ 🧅 GIF],
+     [· | brush dots]. */
+  .controls {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      't1   timeline'
+      'row2 row2'
+      '.    brush';
+    gap: 0.3rem 0.6rem;
+    align-items: start;
+  }
+  .tools {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 1.25rem;
+    gap: 0.25rem;
+  }
+  .t1 {
+    grid-area: t1;
+  }
+  .timeline {
+    grid-area: timeline;
+    min-width: 0;
+  }
+  .row2 {
+    grid-area: row2;
+    display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.25rem;
+  }
+  .brush {
+    grid-area: brush;
+  }
+  .tools button,
+  .row2 > button {
+    min-width: 2.2rem;
+    min-height: 2.2rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .tools button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .onion {
+    opacity: 0.5;
+  }
+  .onion.on {
+    opacity: 1;
+    border-color: #888;
   }
 </style>

@@ -7,7 +7,7 @@
     frame,
     docWidth,
     docHeight,
-    height = 40,
+    height = 32,
   }: { frame: Frame; docWidth: number; docHeight: number; height?: number } = $props();
 
   let canvasEl: HTMLCanvasElement;

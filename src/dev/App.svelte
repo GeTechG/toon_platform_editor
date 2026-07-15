@@ -3,27 +3,17 @@
 </script>
 
 <main>
-  <h1>toon-editor <span class="dev">dev</span></h1>
   <Editor />
 </main>
 
 <style>
+  :global(body) {
+    margin: 0;
+    background: #161616;
+  }
   main {
-    max-width: 900px;
     height: 100dvh;
-    margin: 0 auto;
-    padding: 0.5rem;
     display: flex;
     flex-direction: column;
-    box-sizing: border-box;
-  }
-  h1 {
-    font-size: 1.1rem;
-    margin: 0.25rem 0 0.5rem;
-  }
-  .dev {
-    font-size: 0.7rem;
-    color: #999;
-    vertical-align: super;
   }
 </style>

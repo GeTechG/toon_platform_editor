@@ -34,13 +34,13 @@
   // onion is the same drawing, just blitted at a lower globalAlpha.
   const frameLayers = new WeakMap<Frame, LayerCache>();
 
-  // Fit inside the wrap: capped by width, by height (when known), and by the logical max.
+  // Fit inside the wrap (whose size is set by the page layout, not by the
+  // canvas itself): capped by width and, when known, by height.
   const cssWidth = $derived(
     Math.max(
       1,
       Math.min(
         wrapWidth || CANVAS_LOGICAL_WIDTH,
-        CANVAS_LOGICAL_WIDTH,
         wrapHeight > 0 ? wrapHeight * (editor.doc.width / editor.doc.height) : Infinity,
       ),
     ),
@@ -214,6 +214,7 @@
 </div>
 
 <style>
+  /* Canvas letterboxed in the middle of the stage. */
   .wrap {
     width: 100%;
     height: 100%;
@@ -224,8 +225,6 @@
   canvas {
     display: block;
     background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 4px;
     /* Page scroll/zoom must not hijack drawing. */
     touch-action: none;
     cursor: crosshair;

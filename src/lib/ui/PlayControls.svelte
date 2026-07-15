@@ -1,39 +1,9 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { exportGif } from '../export/export-gif';
   import { PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
   import { LoopPlayer } from '../player/player';
 
   let { editor }: { editor: EditorState } = $props();
-
-  let exporting = $state(false);
-  let exportProgress = $state(0);
-  let exportError = $state('');
-
-  async function downloadGif(): Promise<void> {
-    if (exporting) {
-      return;
-    }
-    exporting = true;
-    exportProgress = 0;
-    exportError = '';
-    try {
-      const bytes = await exportGif(editor.doc, (done, total) => {
-        exportProgress = Math.round((done / total) * 100);
-      });
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/gif' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'animation.gif';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    } catch (err) {
-      console.warn('GIF export failed:', err);
-      exportError = 'GIF export failed, please try again';
-    } finally {
-      exporting = false;
-    }
-  }
 
   let player: LoopPlayer | null = null;
   let rafId = 0;
@@ -85,8 +55,8 @@
 </script>
 
 <div class="controls">
-  <button class="play" onclick={toggle}>
-    {editor.playing ? '■ Stop' : '▶ Play'}
+  <button class="play" onclick={toggle} title={editor.playing ? 'Stop' : 'Play'}>
+    {editor.playing ? '■' : '▶'}
   </button>
   <label>
     fps
@@ -99,52 +69,21 @@
       disabled={editor.playing}
     />
   </label>
-  <button
-    class="onion"
-    class:on={editor.onionSkin}
-    aria-pressed={editor.onionSkin}
-    onclick={() => editor.toggleOnionSkin()}
-  >
-    🧅 Onion
-  </button>
-  <button class="gif" onclick={downloadGif} disabled={exporting}>
-    {exporting ? `${exportProgress}%` : '⬇ GIF'}
-  </button>
-  {#if exportError}
-    <span class="error" role="alert">{exportError}</span>
-  {/if}
 </div>
 
 <style>
   .controls {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
   }
-  .play,
-  .onion,
-  .gif {
-    min-height: 2rem;
-    padding: 0 0.75rem;
+  .play {
+    min-width: 3.2rem;
+    min-height: 2.2rem;
     border: 1px solid #ccc;
     border-radius: 4px;
     background: #fff;
     cursor: pointer;
-  }
-  .gif:disabled {
-    cursor: progress;
-    color: #666;
-  }
-  .error {
-    font-size: 0.85rem;
-    color: #c00;
-  }
-  .onion {
-    opacity: 0.5;
-  }
-  .onion.on {
-    opacity: 1;
-    border-color: #888;
   }
   label {
     display: flex;
@@ -154,7 +93,7 @@
     color: #666;
   }
   input {
-    width: 3.5rem;
-    min-height: 1.8rem;
+    width: 3.2rem;
+    min-height: 1.6rem;
   }
 </style>
