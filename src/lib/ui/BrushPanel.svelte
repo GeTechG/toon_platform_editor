@@ -5,9 +5,9 @@
   let { editor }: { editor: EditorState } = $props();
 
   const TOOLS: { id: Tool; icon: string; title: string }[] = [
-    { id: 'pencil', icon: '✏️', title: 'Pencil' },
-    { id: 'eraser', icon: '🧽', title: 'Eraser' },
-    { id: 'pipette', icon: '💧', title: 'Eyedropper' },
+    { id: 'pencil', icon: '✏️', title: 'Pencil (B)' },
+    { id: 'eraser', icon: '🧽', title: 'Eraser (E)' },
+    { id: 'pipette', icon: '💧', title: 'Eyedropper (P)' },
   ];
 </script>
 
@@ -27,7 +27,10 @@
       <span class="dot" style:width="{size + 2}px" style:height="{size + 2}px"></span>
     </button>
   {/each}
-  <input type="color" bind:value={editor.brushColor} title="Brush color" />
+  <span class="size" title="Brush size — +/− to adjust">{editor.brushSizeLogical}px</span>
+  {#if editor.showPalette}
+    <input type="color" bind:value={editor.brushColor} title="Brush color (M to hide)" />
+  {/if}
 </div>
 
 <style>
@@ -60,6 +63,12 @@
     height: 1.5rem;
     background: #bbb;
     margin: 0 0.5rem;
+  }
+  .size {
+    min-width: 2.75rem;
+    font-size: 0.8rem;
+    color: #555;
+    font-variant-numeric: tabular-nums;
   }
   input[type='color'] {
     width: 2.2rem;

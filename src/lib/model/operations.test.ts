@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 import { validateDocument } from '../format/validate';
-import { addFrame, addStroke, createDocument, removeFrame, setFrameRate } from './operations';
+import {
+  addFrame,
+  addStroke,
+  cloneFrame,
+  createDocument,
+  removeFrame,
+  removeLastStroke,
+  replaceFrame,
+  setFrameRate,
+} from './operations';
 
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
@@ -53,6 +62,82 @@ describe('addFrame / removeFrame', () => {
     const doc = createDocument();
     expect(() => addFrame(doc, 1)).toThrow(RangeError);
     expect(() => removeFrame(doc, -1)).toThrow(RangeError);
+  });
+});
+
+describe('replaceFrame (frame paste)', () => {
+  it('overwrites the target frame with a deep copy, in place', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, { points: [1, 2, 3, 4], width: 8, color: '#112233' });
+    addFrame(doc, 0); // blank frame at index 1 — the paste target
+    const source = cloneFrame(doc.frames[0]);
+
+    replaceFrame(doc, 1, source);
+
+    expect(doc.frames).toHaveLength(2); // no new frame — content replaced
+    expect(doc.frames[1].strokes).toHaveLength(1);
+    expect(doc.frames[1].strokes[0].points).toEqual([1, 2, 3, 4]);
+    // Deep copy: mutating the source (or the original) must not touch the paste.
+    source.strokes[0].points[0] = 999;
+    doc.frames[0].strokes[0].points[1] = 999;
+    expect(doc.frames[1].strokes[0].points).toEqual([1, 2, 3, 4]);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('replaces existing strokes rather than appending them', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, { points: [1, 2], width: 8, color: '#000000' });
+    addFrame(doc, 0);
+    addStroke(doc, 1, { points: [5, 6], width: 8, color: '#ff0000' });
+    addStroke(doc, 1, { points: [7, 8], width: 8, color: '#00ff00' });
+
+    replaceFrame(doc, 1, doc.frames[0]); // paste frame 0 onto frame 1
+
+    expect(doc.frames[1].strokes.map((s) => s.color)).toEqual(['#000000']);
+  });
+
+  it('gives the pasted frame a fresh object identity', () => {
+    const doc = createDocument();
+    addFrame(doc, 0);
+    const before = doc.frames[1];
+    replaceFrame(doc, 1, doc.frames[0]);
+    expect(doc.frames[1]).not.toBe(before);
+  });
+
+  it('rejects an out-of-range index', () => {
+    const doc = createDocument();
+    expect(() => replaceFrame(doc, 1, doc.frames[0])).toThrow(RangeError);
+  });
+
+  it('rejects a paste that would exceed the document-wide point limit', () => {
+    const doc = createDocument();
+    const big = Array.from({ length: 65536 }, (_, i) => i % 2); // 32768 points
+    // Fill frames with big strokes up to just under the point ceiling; last frame stays empty.
+    for (let f = 0; doc.frames.length * 32768 <= 1_000_000; f++) {
+      addStroke(doc, f, { points: big, width: 8, color: '#000000' });
+      addFrame(doc, f);
+    }
+    // Pasting a full big-stroke frame onto the empty last frame overflows the ceiling.
+    expect(() => replaceFrame(doc, doc.frames.length - 1, doc.frames[0])).toThrow(RangeError);
+  });
+});
+
+describe('removeLastStroke (per-stroke undo)', () => {
+  it('pops the last stroke and reports whether one was removed', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, { points: [1, 2], width: 8, color: '#000000' });
+    addStroke(doc, 0, { points: [3, 4], width: 8, color: '#ff0000' });
+
+    expect(removeLastStroke(doc, 0)).toBe(true);
+    expect(doc.frames[0].strokes.map((s) => s.color)).toEqual(['#000000']);
+    expect(removeLastStroke(doc, 0)).toBe(true);
+    expect(doc.frames[0].strokes).toHaveLength(0);
+    expect(removeLastStroke(doc, 0)).toBe(false);
+  });
+
+  it('rejects an out-of-range index', () => {
+    const doc = createDocument();
+    expect(() => removeLastStroke(doc, 1)).toThrow(RangeError);
   });
 });
 

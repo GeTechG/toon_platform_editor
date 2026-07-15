@@ -3,9 +3,23 @@
  * Document mutations go through model operations only.
  */
 
-import type { ToonDocument } from '../format/types';
-import { DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_SIZE_LOGICAL, MAX_FRAMES } from '../format/constants';
-import { addFrame, createDocument, removeFrame, setFrameRate } from '../model/operations';
+import type { Frame, ToonDocument } from '../format/types';
+import {
+  DEFAULT_BRUSH_COLOR,
+  DEFAULT_BRUSH_SIZE_LOGICAL,
+  MAX_BRUSH_SIZE_LOGICAL,
+  MAX_FRAMES,
+  MIN_BRUSH_SIZE_LOGICAL,
+} from '../format/constants';
+import {
+  addFrame,
+  cloneFrame,
+  createDocument,
+  removeFrame,
+  removeLastStroke,
+  replaceFrame,
+  setFrameRate,
+} from '../model/operations';
 import { activeFrameAfterRemove, clampPlayerFps, onionSkinVisible } from './frame-selection';
 
 export type Tool = 'pencil' | 'eraser' | 'pipette';
@@ -21,6 +35,10 @@ export class EditorState {
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
+  /** Clipboard for frame copy/paste (deep-copied on copy). */
+  copiedFrame = $state<Frame | null>(null);
+  /** Whether the color palette (picker) is shown; toggled with the M hotkey. */
+  showPalette = $state(true);
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
 
@@ -73,5 +91,51 @@ export class EditorState {
   setFps(value: number): void {
     setFrameRate(this.doc, clampPlayerFps(value));
     this.touched = true;
+  }
+
+  /** Copies the active frame's strokes to the clipboard (deep copy). */
+  copyActiveFrame(): void {
+    const frame = this.doc.frames[this.activeFrame];
+    if (frame) {
+      this.copiedFrame = cloneFrame(frame);
+    }
+  }
+
+  /** Pastes the clipboard strokes onto the active frame, replacing its contents. */
+  pasteFrame(): void {
+    if (this.playing || !this.copiedFrame) {
+      return;
+    }
+    try {
+      replaceFrame(this.doc, this.activeFrame, this.copiedFrame);
+      this.touched = true;
+    } catch (err) {
+      // At the document point limit — drop the paste instead of throwing.
+      console.warn('paste rejected:', err);
+    }
+  }
+
+  /** Undo: drops the last stroke of the active frame (per-stroke, no redo). */
+  undo(): void {
+    if (this.playing) {
+      return;
+    }
+    if (removeLastStroke(this.doc, this.activeFrame)) {
+      this.touched = true;
+    }
+  }
+
+  /** Grows the brush by 1 logical px, up to the maximum. */
+  increaseBrushSize(): void {
+    this.brushSizeLogical = Math.min(MAX_BRUSH_SIZE_LOGICAL, this.brushSizeLogical + 1);
+  }
+
+  /** Shrinks the brush by 1 logical px, down to the minimum. */
+  decreaseBrushSize(): void {
+    this.brushSizeLogical = Math.max(MIN_BRUSH_SIZE_LOGICAL, this.brushSizeLogical - 1);
+  }
+
+  togglePalette(): void {
+    this.showPalette = !this.showPalette;
   }
 }

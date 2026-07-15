@@ -14,6 +14,80 @@
   const editor = new EditorState();
   const scheduleSave = debounce((doc: unknown) => void saveDraft(doc), DRAFT_SAVE_DEBOUNCE_MS);
 
+  // Root element, so F can request fullscreen on the whole editor.
+  let editorEl: HTMLDivElement;
+
+  function toggleFullscreen(): void {
+    if (!document.fullscreenEnabled) {
+      return;
+    }
+    const request = document.fullscreenElement
+      ? document.exitFullscreen()
+      : editorEl.requestFullscreen();
+    void request.catch(() => {});
+  }
+
+  // Editor hotkeys, matching the reference editors: bare single keys, ignored
+  // while typing in a form field or when a browser/OS modifier is held.
+  function onKeydown(e: KeyboardEvent): void {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      return;
+    }
+    const target = e.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) {
+      return;
+    }
+
+    let handled = true;
+    switch (e.key) {
+      case '+':
+      case '=':
+        editor.increaseBrushSize();
+        break;
+      case '-':
+      case '_':
+        editor.decreaseBrushSize();
+        break;
+      case 'b':
+      case 'B':
+        editor.tool = 'pencil';
+        break;
+      case 'e':
+      case 'E':
+        editor.tool = 'eraser';
+        break;
+      case 'p':
+      case 'P':
+        editor.tool = 'pipette';
+        break;
+      case 'c':
+      case 'C':
+        editor.copyActiveFrame();
+        break;
+      case 'v':
+      case 'V':
+        editor.pasteFrame();
+        break;
+      case 'z':
+      case 'Z':
+        editor.undo();
+        break;
+      case 'm':
+      case 'M':
+        editor.togglePalette();
+        break;
+      case 'f':
+      case 'F':
+        toggleFullscreen();
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) {
+      e.preventDefault();
+    }
+  }
+
   // Autosave after the first edit: track the change signals (fps, frame
   // count, per-frame stroke count — strokes are append-only), snapshot the
   // document to a plain object, and persist it debounced. Skipping the
@@ -42,7 +116,9 @@
   });
 </script>
 
-<div class="editor">
+<svelte:window onkeydown={onKeydown} />
+
+<div class="editor" bind:this={editorEl}>
   <div class="topbar"></div>
   <div class="stage">
     <CanvasView {editor} />

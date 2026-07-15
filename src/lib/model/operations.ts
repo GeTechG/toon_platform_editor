@@ -69,6 +69,38 @@ export function removeFrame(doc: ToonDocument, index: number): void {
   doc.frames.splice(index, 1);
 }
 
+/**
+ * Overwrites the frame at `index` with a deep copy of `frame` — the frame
+ * paste: the copied strokes replace whatever the selected frame held. The
+ * clone gives the frame a fresh identity (so render caches keyed on it
+ * refresh) and keeps the document from sharing stroke arrays with the
+ * caller's clipboard.
+ */
+export function replaceFrame(doc: ToonDocument, index: number, frame: Frame): void {
+  assertFrameIndex(doc, index);
+  const clone = cloneFrame(frame);
+  const outgoing = doc.frames[index].strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
+  const incoming = clone.strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
+  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
+    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+  }
+  doc.frames[index] = clone;
+}
+
+/**
+ * Removes the last stroke of a frame (per-stroke undo). Returns whether one
+ * was removed — false on an already-empty frame.
+ */
+export function removeLastStroke(doc: ToonDocument, frameIndex: number): boolean {
+  assertFrameIndex(doc, frameIndex);
+  return doc.frames[frameIndex].strokes.pop() !== undefined;
+}
+
+/** Deep-copies a frame and its strokes' point arrays. */
+export function cloneFrame(frame: Frame): Frame {
+  return { strokes: frame.strokes.map((s) => ({ ...s, points: s.points.slice() })) };
+}
+
 /** Appends a committed (already quantized) stroke to a frame. */
 export function addStroke(doc: ToonDocument, frameIndex: number, stroke: Stroke): void {
   assertFrameIndex(doc, frameIndex);

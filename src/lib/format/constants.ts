@@ -24,6 +24,9 @@ export const PLAYER_FPS_MAX = 24;
 export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
 export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
 export const DEFAULT_BRUSH_COLOR = '#000000';
+/** Bounds for the +/- brush-size nudge (logical canvas px, 1-unit steps). */
+export const MIN_BRUSH_SIZE_LOGICAL = 1;
+export const MAX_BRUSH_SIZE_LOGICAL = 200;
 
 /** Canvas background color. */
 export const BACKGROUND_COLOR = '#ffffff';
