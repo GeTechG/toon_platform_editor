@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bunx --bun vite",
+    "bench": "bunx --bun vite --open /bench.html",
     "build": "bunx --bun vite build",
     "preview": "bunx --bun vite preview",
     "test": "bun test src",

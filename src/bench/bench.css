@@ -1,0 +1,36 @@
+body {
+  margin: 0;
+  padding: 1rem;
+  font: 14px/1.5 system-ui, sans-serif;
+  color: #222;
+}
+.bench-status {
+  font-weight: 600;
+}
+.bench-canvas {
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.bench-table {
+  border-collapse: collapse;
+  margin-top: 1rem;
+  min-width: 32rem;
+}
+.bench-table th,
+.bench-table td {
+  border: 1px solid #ddd;
+  padding: 4px 10px;
+  text-align: left;
+}
+.bench-table tr[data-verdict='PASS'] td:last-child {
+  color: #1a7f37;
+  font-weight: 700;
+}
+.bench-table tr[data-verdict='FAIL'] td:last-child {
+  color: #cf222e;
+  font-weight: 700;
+}
+.bench-table tr[data-verdict='SKIP'] td:last-child {
+  color: #9a6700;
+  font-weight: 700;
+}
