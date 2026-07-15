@@ -28,6 +28,16 @@ export const DEFAULT_BRUSH_COLOR = '#000000';
 /** Canvas background color. */
 export const BACKGROUND_COLOR = '#ffffff';
 
+/**
+ * Onion-skin depth: neighbor opacities by distance from the active frame,
+ * nearest first. Two levels of real-color ghosting (0.3 then 0.1), applied
+ * to both previous and next frames — the classic frame-by-frame light table.
+ */
+export const ONION_SKIN_ALPHAS = [0.3, 0.1] as const;
+
+/** Local-draft autosave debounce (ms). */
+export const DRAFT_SAVE_DEBOUNCE_MS = 500;
+
 /** Lang simplification: tolerance in logical px. */
 export const LANG_LOOK_AHEAD = 5;
 export const LANG_TOLERANCE_LOGICAL = 10;

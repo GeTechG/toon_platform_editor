@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { canonicalize } from '../format/canonical';
 import type { Frame, ToonDocument } from '../format/types';
-import { Canvas2DFrameRenderer, renderRawPolyline, type Canvas2DLike } from './canvas2d';
+import {
+  Canvas2DFrameRenderer,
+  renderRawPolyline,
+  renderStrokesLayer,
+  type Canvas2DLike,
+} from './canvas2d';
 
 /** Recording context: journals every command and property assignment. */
 class RecordingCtx implements Canvas2DLike {
@@ -142,6 +147,26 @@ describe('Canvas2DFrameRenderer', () => {
     const reloaded = JSON.parse(canonicalize(doc)) as ToonDocument;
     const after = renderToLog(reloaded.frames[0]);
     expect(after).toEqual(before);
+  });
+});
+
+describe('renderStrokesLayer (composited layer)', () => {
+  it('does not clear a background (transparent layer for stacking)', () => {
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(sampleDoc().frames[0], ctx, viewport);
+    // No full-canvas background fill — only the doc transform + strokes.
+    expect(ctx.log).not.toContain('fillRect(0,0,1200,600)');
+    expect(ctx.log[0]).toBe('setTransform(0.25,0,0,0.25,0,0)');
+  });
+
+  it('tint overrides every stroke color (onion-skin neighbor)', () => {
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(sampleDoc().frames[0], ctx, viewport, '#ff3b30');
+    const log = ctx.log.join('\n');
+    expect(log).toContain('strokeStyle=#ff3b30');
+    expect(log).toContain('fillStyle=#ff3b30'); // the dot too
+    expect(log).not.toContain('#00aa55'); // original stroke colors gone
+    expect(log).not.toContain('#000000');
   });
 });
 

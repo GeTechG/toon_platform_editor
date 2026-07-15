@@ -69,6 +69,14 @@
       disabled={editor.playing}
     />
   </label>
+  <button
+    class="onion"
+    class:on={editor.onionSkin}
+    aria-pressed={editor.onionSkin}
+    onclick={() => editor.toggleOnionSkin()}
+  >
+    🧅 Onion
+  </button>
 </div>
 
 <style>
@@ -77,13 +85,21 @@
     align-items: center;
     gap: 0.5rem;
   }
-  .play {
+  .play,
+  .onion {
     min-height: 2rem;
     padding: 0 0.75rem;
     border: 1px solid #ccc;
     border-radius: 4px;
     background: #fff;
     cursor: pointer;
+  }
+  .onion {
+    opacity: 0.5;
+  }
+  .onion.on {
+    opacity: 1;
+    border-color: #888;
   }
   label {
     display: flex;

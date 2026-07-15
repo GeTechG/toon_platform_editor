@@ -69,6 +69,25 @@ export function renderRawPolyline(
   drawStrokePath(target, points, width, color, false);
 }
 
+/**
+ * Renders a frame's strokes onto a transparent layer (no background
+ * clear) so it can be composited: the caller paints the background once
+ * and stacks layers. `tint` overrides every stroke color — used for the
+ * onion-skin neighbor layers, keeping tint at composition, not in the
+ * frame data. Same stroke path as the FrameRenderer, minus the fill.
+ */
+export function renderStrokesLayer(
+  frame: Frame,
+  target: Canvas2DLike,
+  viewport: Viewport,
+  tint?: string,
+): void {
+  applyDocTransform(target, viewport);
+  for (const stroke of frame.strokes) {
+    drawStrokePath(target, stroke.points, stroke.width, tint ?? stroke.color, true);
+  }
+}
+
 function clearToBackground(target: Canvas2DLike): void {
   target.setTransform(1, 0, 0, 1, 0, 0);
   target.fillStyle = BACKGROUND_COLOR;
