@@ -8,6 +8,12 @@ import {
   DEFAULT_DOC_HEIGHT,
   DEFAULT_DOC_WIDTH,
   DEFAULT_FPS,
+  MAX_DOC_DIMENSION,
+  MAX_FRAMES,
+  MAX_STROKE_COORDS,
+  MAX_STROKE_WIDTH,
+  MAX_STROKES_PER_FRAME,
+  MAX_TOTAL_POINTS,
   SCHEMA_VERSION,
 } from '../format/constants';
 import type { Frame, Stroke, ToonDocument } from '../format/types';
@@ -22,11 +28,11 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
   const width = options.width ?? DEFAULT_DOC_WIDTH;
   const height = options.height ?? DEFAULT_DOC_HEIGHT;
   const frameRate = options.frameRate ?? DEFAULT_FPS;
-  if (!Number.isInteger(width) || width < 1) {
-    throw new RangeError(`canvas width must be an integer ≥ 1, got ${width}`);
+  if (!Number.isInteger(width) || width < 1 || width > MAX_DOC_DIMENSION) {
+    throw new RangeError(`canvas width must be an integer in 1..${MAX_DOC_DIMENSION}, got ${width}`);
   }
-  if (!Number.isInteger(height) || height < 1) {
-    throw new RangeError(`canvas height must be an integer ≥ 1, got ${height}`);
+  if (!Number.isInteger(height) || height < 1 || height > MAX_DOC_DIMENSION) {
+    throw new RangeError(`canvas height must be an integer in 1..${MAX_DOC_DIMENSION}, got ${height}`);
   }
   assertFrameRate(frameRate);
   return {
@@ -41,6 +47,9 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
 /** Inserts an empty frame after afterIndex; returns the new frame's index. */
 export function addFrame(doc: ToonDocument, afterIndex: number): number {
   assertFrameIndex(doc, afterIndex);
+  if (doc.frames.length >= MAX_FRAMES) {
+    throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
+  }
   doc.frames.splice(afterIndex + 1, 0, emptyFrame());
   return afterIndex + 1;
 }
@@ -64,6 +73,15 @@ export function addStroke(doc: ToonDocument, frameIndex: number, stroke: Stroke)
   if (stroke.points.length < 2 || stroke.points.length % 2 !== 0) {
     throw new RangeError(`stroke must have an even coordinate count ≥ 2, got ${stroke.points.length}`);
   }
+  if (stroke.points.length > MAX_STROKE_COORDS) {
+    throw new RangeError(`stroke has ${stroke.points.length} coordinates — over the limit of ${MAX_STROKE_COORDS}`);
+  }
+  if (doc.frames[frameIndex].strokes.length >= MAX_STROKES_PER_FRAME) {
+    throw new RangeError(`frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+  }
+  if (totalPoints(doc) + stroke.points.length / 2 > MAX_TOTAL_POINTS) {
+    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+  }
   stroke.points.forEach((coord, i) => {
     if (!Number.isInteger(coord)) {
       throw new RangeError(`coordinate points[${i}] must be an integer (quantized at commit), got ${coord}`);
@@ -73,8 +91,8 @@ export function addStroke(doc: ToonDocument, frameIndex: number, stroke: Stroke)
       throw new RangeError(`coordinate points[${i}] = ${coord} is outside the canvas 0..${limit}`);
     }
   });
-  if (!Number.isInteger(stroke.width) || stroke.width < 1) {
-    throw new RangeError(`stroke width must be an integer ≥ 1, got ${stroke.width}`);
+  if (!Number.isInteger(stroke.width) || stroke.width < 1 || stroke.width > MAX_STROKE_WIDTH) {
+    throw new RangeError(`stroke width must be an integer in 1..${MAX_STROKE_WIDTH}, got ${stroke.width}`);
   }
   if (!/^#[0-9a-f]{6}$/.test(stroke.color)) {
     throw new RangeError(`color must be lowercase #rrggbb, got ${stroke.color}`);
@@ -90,6 +108,17 @@ export function setFrameRate(doc: ToonDocument, fps: number): void {
 
 function emptyFrame(): Frame {
   return { strokes: [] };
+}
+
+// O(strokes) scan per commit; keep a running counter if it ever shows up in profiles.
+function totalPoints(doc: ToonDocument): number {
+  let total = 0;
+  for (const frame of doc.frames) {
+    for (const stroke of frame.strokes) {
+      total += stroke.points.length / 2;
+    }
+  }
+  return total;
 }
 
 function assertFrameIndex(doc: ToonDocument, index: number): void {

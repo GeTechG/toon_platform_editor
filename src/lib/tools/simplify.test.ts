@@ -40,3 +40,11 @@ describe('simplifyLang', () => {
     expect(out).toEqual([0, 0, 100, 0, 100, 100]);
   });
 });
+
+describe('simplifyLang parameter validation', () => {
+  it('rejects a non-positive or fractional lookAhead instead of looping forever', () => {
+    expect(() => simplifyLang([0, 0, 1, 1, 2, 2], 0, 1)).toThrow(RangeError);
+    expect(() => simplifyLang([0, 0, 1, 1, 2, 2], -1, 1)).toThrow(RangeError);
+    expect(() => simplifyLang([0, 0, 1, 1, 2, 2], 2.5, 1)).toThrow(RangeError);
+  });
+});

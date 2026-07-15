@@ -3,7 +3,7 @@
  * Document mutations go through model operations only.
  */
 
-import { DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import { DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_SIZE_LOGICAL, MAX_FRAMES } from '../format/constants';
 import { addFrame, createDocument, removeFrame, setFrameRate } from '../model/operations';
 import { activeFrameAfterRemove, clampPlayerFps } from './frame-selection';
 
@@ -29,7 +29,7 @@ export class EditorState {
   }
 
   addFrameAfterActive(): void {
-    if (this.playing) {
+    if (this.playing || this.doc.frames.length >= MAX_FRAMES) {
       return;
     }
     this.activeFrame = addFrame(this.doc, this.activeFrame);

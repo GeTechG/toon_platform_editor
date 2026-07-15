@@ -15,6 +15,9 @@ export function simplifyLang(
   lookAhead: number,
   tolerance: number,
 ): number[] {
+  if (!Number.isInteger(lookAhead) || lookAhead < 1) {
+    throw new RangeError(`lookAhead must be an integer ≥ 1, got ${lookAhead}`);
+  }
   const count = points.length / 2;
   if (count <= 2) {
     return points.slice() as number[];

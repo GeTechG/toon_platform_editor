@@ -94,3 +94,72 @@ describe('setFrameRate', () => {
     expect(() => setFrameRate(doc, 61)).toThrow(RangeError);
   });
 });
+
+describe('schema limits', () => {
+  it('constants match toon-v1.schema.json', async () => {
+    const [{ default: schema }, limits] = await Promise.all([
+      import('../format/schema/toon-v1.schema.json'),
+      import('../format/constants'),
+    ]);
+    expect(limits.MAX_DOC_DIMENSION).toBe(schema.properties.width.maximum);
+    expect(limits.MAX_DOC_DIMENSION).toBe(schema.properties.height.maximum);
+    expect(limits.MAX_FRAMES).toBe(schema.properties.frames.maxItems);
+    expect(limits.MAX_STROKES_PER_FRAME).toBe(schema.$defs.frame.properties.strokes.maxItems);
+    expect(limits.MAX_STROKE_COORDS).toBe(schema.$defs.stroke.properties.points.maxItems);
+    expect(limits.MAX_STROKE_WIDTH).toBe(schema.$defs.stroke.properties.width.maximum);
+  });
+
+  it('createDocument rejects dimensions over the schema maximum', () => {
+    expect(() => createDocument({ width: 65536 })).toThrow(RangeError);
+    expect(() => createDocument({ height: 65536 })).toThrow(RangeError);
+    expect(validateDocument(createDocument({ width: 65535, height: 65535 })).ok).toBe(true);
+  });
+
+  it('addFrame stops at the frame limit', () => {
+    const doc = createDocument();
+    for (let i = 1; i < 4096; i++) {
+      addFrame(doc, 0);
+    }
+    expect(() => addFrame(doc, 0)).toThrow(RangeError);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('addStroke rejects strokes over the width and coordinate-count limits', () => {
+    const doc = createDocument();
+    expect(() => addStroke(doc, 0, { points: [1, 2], width: 4801, color: '#000000' })).toThrow(
+      RangeError,
+    );
+    const tooMany = Array.from({ length: 65538 }, (_, i) => i % 2);
+    expect(() => addStroke(doc, 0, { points: tooMany, width: 8, color: '#000000' })).toThrow(
+      RangeError,
+    );
+    const atLimit = Array.from({ length: 65536 }, (_, i) => i % 2);
+    addStroke(doc, 0, { points: atLimit, width: 4800, color: '#000000' });
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('addStroke stops at the per-frame stroke limit', () => {
+    const doc = createDocument();
+    for (let i = 0; i < 16384; i++) {
+      doc.frames[0].strokes.push({ points: [1, 2], width: 8, color: '#000000' });
+    }
+    expect(() => addStroke(doc, 0, { points: [1, 2], width: 8, color: '#000000' })).toThrow(
+      RangeError,
+    );
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('addStroke stops at the document-wide point limit', () => {
+    const doc = createDocument();
+    const big = Array.from({ length: 65536 }, (_, i) => i % 2); // 32768 points
+    for (let f = 0; doc.frames.length * 32768 <= 1_000_000; f++) {
+      addStroke(doc, f, { points: big, width: 8, color: '#000000' });
+      addFrame(doc, f);
+    }
+    const last = doc.frames.length - 1;
+    expect(() => addStroke(doc, last, { points: big, width: 8, color: '#000000' })).toThrow(
+      RangeError,
+    );
+    addStroke(doc, last, { points: [1, 2], width: 8, color: '#000000' });
+  });
+});

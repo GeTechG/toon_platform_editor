@@ -111,3 +111,21 @@ describe('StrokeBuilder', () => {
     ]);
   });
 });
+
+describe('oversized stroke truncation', () => {
+  it('caps the coordinate count while preserving the actual endpoint', () => {
+    const builder = new StrokeBuilder({ width: 8, color: '#000000' });
+    // Zigzag that survives Lang simplification (amplitude >> tolerance).
+    for (let i = 0; i < 40000; i++) {
+      builder.addPoint(i * 0.1, i % 2 === 0 ? 0 : 2400);
+    }
+    const stroke = builder.commit(4800, 2400);
+    expect(stroke.points.length).toBeLessThanOrEqual(65536);
+    expect(stroke.points.length % 2).toBe(0);
+    expect(stroke.points[0]).toBe(0);
+    expect(stroke.points[1]).toBe(0);
+    // Last raw point: x = 39999 * 0.1 → 4000, y = 2400.
+    expect(stroke.points[stroke.points.length - 2]).toBe(4000);
+    expect(stroke.points[stroke.points.length - 1]).toBe(2400);
+  });
+});

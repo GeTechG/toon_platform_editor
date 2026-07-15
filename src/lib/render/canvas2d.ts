@@ -28,6 +28,18 @@ export interface Canvas2DLike extends PathSink {
   fill(): void;
 }
 
+/** Minimal target for blitting a cached layer (identity transform). */
+export interface BlitTarget {
+  setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
+  drawImage(image: CanvasImageSource, dx: number, dy: number): void;
+}
+
+/** Copies a cached committed-frame layer onto the visible canvas 1:1. */
+export function blitLayer(source: CanvasImageSource, target: BlitTarget): void {
+  target.setTransform(1, 0, 0, 1, 0, 0);
+  target.drawImage(source, 0, 0);
+}
+
 export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
   render(frame: Frame, target: Canvas2DLike, viewport: Viewport): void {
     clearToBackground(target);

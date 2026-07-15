@@ -8,6 +8,7 @@ import {
   FIXED_POINT_SCALE,
   LANG_LOOK_AHEAD,
   LANG_TOLERANCE_DOC,
+  MAX_STROKE_COORDS,
 } from '../format/constants';
 import type { Stroke } from '../format/types';
 import { simplifyLang } from './simplify';
@@ -66,6 +67,22 @@ export class StrokeBuilder {
         continue;
       }
       quantized.push(x, y);
+    }
+    // A single stroke over the format limit (~33k retained points) is
+    // truncated rather than surfaced — takes many minutes of continuous drawing
+    // to hit. The actual endpoint replaces the cut tail: first/last points are
+    // always preserved.
+    if (quantized.length > MAX_STROKE_COORDS) {
+      quantized.length = MAX_STROKE_COORDS;
+      const n = quantized.length;
+      const lastX = clampInt(simplified[simplified.length - 2], docWidth);
+      const lastY = clampInt(simplified[simplified.length - 1], docHeight);
+      if (n >= 4 && quantized[n - 4] === lastX && quantized[n - 3] === lastY) {
+        quantized.length = n - 2;
+      } else {
+        quantized[n - 2] = lastX;
+        quantized[n - 1] = lastY;
+      }
     }
     return { points: quantized, width: this.brush.width, color: this.brush.color };
   }

@@ -36,3 +36,11 @@ export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
 
 /** Semantic limit: total number of points in a document. */
 export const MAX_TOTAL_POINTS = 1_000_000;
+
+/** Schema limits — keep in sync with toon-v1.schema.json (asserted in tests). */
+export const MAX_DOC_DIMENSION = 65535;
+export const MAX_FRAMES = 4096;
+export const MAX_STROKES_PER_FRAME = 16384;
+/** Maximum coordinate count (x,y flat) per stroke. */
+export const MAX_STROKE_COORDS = 65536;
+export const MAX_STROKE_WIDTH = 4800;
