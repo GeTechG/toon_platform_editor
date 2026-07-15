@@ -25,6 +25,7 @@
 
   let canvasEl: HTMLCanvasElement;
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
+  let wrapHeight = $state(0);
   let builder: StrokeBuilder | null = null;
   let rafPending = false;
   // One transparent, real-color strokes layer per frame (keyed by frame
@@ -33,7 +34,17 @@
   // onion is the same drawing, just blitted at a lower globalAlpha.
   const frameLayers = new WeakMap<Frame, LayerCache>();
 
-  const cssWidth = $derived(Math.max(1, Math.min(wrapWidth || CANVAS_LOGICAL_WIDTH, CANVAS_LOGICAL_WIDTH)));
+  // Fit inside the wrap: capped by width, by height (when known), and by the logical max.
+  const cssWidth = $derived(
+    Math.max(
+      1,
+      Math.min(
+        wrapWidth || CANVAS_LOGICAL_WIDTH,
+        CANVAS_LOGICAL_WIDTH,
+        wrapHeight > 0 ? wrapHeight * (editor.doc.width / editor.doc.height) : Infinity,
+      ),
+    ),
+  );
   const cssHeight = $derived(cssWidth * (editor.doc.height / editor.doc.width));
 
   /** Cached transparent layer with the frame's strokes in their real colors. */
@@ -190,7 +201,7 @@
   }
 </script>
 
-<div class="wrap" bind:clientWidth={wrapWidth}>
+<div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
   <canvas
     bind:this={canvasEl}
     style:width="{cssWidth}px"
@@ -205,6 +216,10 @@
 <style>
   .wrap {
     width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   canvas {
     display: block;

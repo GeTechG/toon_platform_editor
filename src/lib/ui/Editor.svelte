@@ -42,24 +42,46 @@
 </script>
 
 <div class="editor">
-  <CanvasView {editor} />
-  <div class="panels">
-    <BrushPanel {editor} />
-    <PlayControls {editor} />
+  <div class="stage">
+    <CanvasView {editor} />
   </div>
-  <Timeline {editor} />
+  <div class="panel">
+    <Timeline {editor} />
+    <div class="row">
+      <BrushPanel {editor} />
+      <PlayControls {editor} />
+    </div>
+  </div>
 </div>
 
 <style>
   .editor {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
     gap: 0.5rem;
   }
-  .panels {
+  .stage {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #d9d9d9;
+    border-radius: 4px;
+  }
+  .row {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem 1.25rem;
     align-items: center;
+    justify-content: space-between;
   }
 </style>

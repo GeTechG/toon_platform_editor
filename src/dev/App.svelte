@@ -9,9 +9,13 @@
 
 <style>
   main {
-    max-width: 640px;
+    max-width: 900px;
+    height: 100dvh;
     margin: 0 auto;
     padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
   }
   h1 {
     font-size: 1.1rem;
