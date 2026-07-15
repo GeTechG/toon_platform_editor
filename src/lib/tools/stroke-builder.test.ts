@@ -29,6 +29,15 @@ describe('StrokeBuilder', () => {
     expect(b.rawPoints).toEqual([1.5, 2.5, 3, 4, 1.5, 2.5]);
   });
 
+  it('carries the erase flag onto the committed stroke, and omits it otherwise', () => {
+    const eraser = new StrokeBuilder({ width: 32, color: '#000000', erase: true });
+    eraser.addPoint(1, 2);
+    expect(eraser.commit().erase).toBe(true);
+    const pen = new StrokeBuilder({ width: 32, color: '#000000' });
+    pen.addPoint(1, 2);
+    expect('erase' in pen.commit()).toBe(false);
+  });
+
   it('commit yields integer coordinates and keeps off-canvas points unclamped', () => {
     const b = new StrokeBuilder({ width: 32, color: '#000000' });
     b.addPoint(-15.7, 0.4);

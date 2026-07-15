@@ -16,6 +16,8 @@ export interface Stroke {
   width: number;
   /** Color `#rrggbb`, lowercase. */
   color: string;
+  /** When true, the stroke erases layer alpha (destination-out); color is ignored. */
+  erase?: true;
 }
 
 export interface Frame {

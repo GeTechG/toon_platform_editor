@@ -5,7 +5,7 @@
  * fresh work with a slow async load). Kept pure and rune-free for tests.
  */
 
-import { validateDocument } from '../format/validate';
+import { migrateLegacyEraser, validateDocument } from '../format/validate';
 import type { ToonDocument } from '../format/types';
 
 /** The document to restore, or null to keep the fresh document. */
@@ -13,5 +13,5 @@ export function decideRestore(raw: unknown, touched: boolean): ToonDocument | nu
   if (raw == null || touched) {
     return null;
   }
-  return validateDocument(raw).ok ? (raw as ToonDocument) : null;
+  return validateDocument(raw).ok ? migrateLegacyEraser(raw as ToonDocument) : null;
 }

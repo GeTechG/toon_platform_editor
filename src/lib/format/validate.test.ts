@@ -85,6 +85,14 @@ describe('validateDocument', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('accepts an eraser stroke (erase: true) and rejects erase: false', () => {
+    const doc = validDoc() as { frames: { strokes: { erase?: unknown }[] }[] };
+    doc.frames[0].strokes[0].erase = true;
+    expect(validateDocument(doc)).toEqual({ ok: true, issues: [] });
+    doc.frames[0].strokes[0].erase = false;
+    expect(validateDocument(doc).ok).toBe(false);
+  });
+
   it('rejects extra and missing properties (schema)', () => {
     const extra = { ...(validDoc() as object), layers: [] };
     expect(validateDocument(extra).ok).toBe(false);
@@ -100,6 +108,18 @@ describe('loadDocument', () => {
   it('returns a typed document for valid JSON', () => {
     const doc = loadDocument(validDoc());
     expect(doc.frames).toHaveLength(1);
+  });
+
+  it('migrates a legacy white stroke (#ffffff, no flag) to an eraser stroke', () => {
+    const legacy = validDoc() as { frames: { strokes: { color: string; erase?: true }[] }[] };
+    legacy.frames[0].strokes[0].color = '#ffffff';
+    const doc = loadDocument(legacy);
+    expect(doc.frames[0].strokes[0].erase).toBe(true);
+  });
+
+  it('leaves non-white strokes untouched (no erase flag added)', () => {
+    const doc = loadDocument(validDoc());
+    expect('erase' in doc.frames[0].strokes[0]).toBe(false);
   });
 
   it('throws FormatError with the issue list for invalid input', () => {

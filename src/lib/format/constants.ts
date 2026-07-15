@@ -32,14 +32,6 @@ export const MAX_BRUSH_SIZE_LOGICAL = 200;
 export const BACKGROUND_COLOR = '#ffffff';
 
 /**
- * Format-reserved eraser marker: a stroke with this color erases layer
- * alpha (destination-out) instead of painting. White is unreachable as a
- * drawing color by construction — on the opaque white background the two
- * are indistinguishable anyway.
- */
-export const ERASER_COLOR = '#ffffff';
-
-/**
  * Onion-skin depth: neighbor opacities by distance from the active frame,
  * nearest first. Two levels of real-color ghosting (0.3 then 0.1), applied
  * to both previous and next frames — the classic frame-by-frame light table.

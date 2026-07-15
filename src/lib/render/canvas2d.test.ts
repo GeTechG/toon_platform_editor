@@ -176,10 +176,10 @@ describe('renderStrokesLayer (composited layer)', () => {
     expect(log).not.toContain('#000000');
   });
 
-  it('eraser strokes (#ffffff) erase via destination-out, then restore source-over', () => {
+  it('eraser strokes (erase flag) erase via destination-out, then restore source-over', () => {
     const frame: Frame = {
       strokes: [
-        { points: [0, 0, 100, 100, 200, 200], width: 32, color: '#ffffff' },
+        { points: [0, 0, 100, 100, 200, 200], width: 32, color: '#123456', erase: true },
         { points: [0, 0, 50, 50, 100, 0], width: 16, color: '#000000' },
       ],
     };
@@ -193,9 +193,20 @@ describe('renderStrokesLayer (composited layer)', () => {
     expect(pen).toBeGreaterThan(back); // the pen stroke draws normally after
   });
 
-  it('tint does not repaint eraser strokes — they still erase', () => {
+  it('a white stroke without the erase flag paints (source-over), not erases', () => {
     const frame: Frame = {
       strokes: [{ points: [0, 0, 100, 100, 200, 200], width: 32, color: '#ffffff' }],
+    };
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(frame, ctx, viewport);
+    const log = ctx.log.join('\n');
+    expect(log).not.toContain('globalCompositeOperation=destination-out');
+    expect(log).toContain('strokeStyle=#ffffff');
+  });
+
+  it('tint does not repaint eraser strokes — they still erase', () => {
+    const frame: Frame = {
+      strokes: [{ points: [0, 0, 100, 100, 200, 200], width: 32, color: '#123456', erase: true }],
     };
     const ctx = new RecordingCtx();
     renderStrokesLayer(frame, ctx, viewport, '#ff3b30');

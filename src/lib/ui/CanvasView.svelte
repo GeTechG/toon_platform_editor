@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, ERASER_COLOR, ONION_SKIN_ALPHAS } from '../format/constants';
+  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, ONION_SKIN_ALPHAS } from '../format/constants';
   import type { Frame } from '../format/types';
   import { addStroke } from '../model/operations';
   import type { Viewport } from '../render/contract';
@@ -114,7 +114,7 @@
 
     // Active frame over onion (fully opaque), then the live stroke.
     const layer = frameLayer(frame, pxWidth, pxHeight, viewport);
-    if (builder && builder.brush.color === ERASER_COLOR) {
+    if (builder && builder.brush.erase) {
       scratchEl ??= document.createElement('canvas');
       if (scratchEl.width !== pxWidth || scratchEl.height !== pxHeight) {
         scratchEl.width = pxWidth;
@@ -199,7 +199,8 @@
     canvasEl.setPointerCapture(e.pointerId);
     builder = new StrokeBuilder({
       width: brushWidthDoc(editor.brushSizeLogical),
-      color: editor.tool === 'eraser' ? ERASER_COLOR : editor.brushColor,
+      color: editor.brushColor,
+      erase: editor.tool === 'eraser',
     });
     const [x, y] = toDocUnits(e);
     builder.addPoint(x, y);

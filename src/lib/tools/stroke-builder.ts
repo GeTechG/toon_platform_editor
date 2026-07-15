@@ -20,6 +20,8 @@ export interface BrushSettings {
   width: number;
   /** Color `#rrggbb`, lowercase. */
   color: string;
+  /** When true, the stroke erases instead of painting. */
+  erase?: boolean;
 }
 
 /** Brush width in document units from the logical size (canvas px). */
@@ -33,7 +35,7 @@ export class StrokeBuilder {
 
   /** Brush attributes are fixed at stroke start (copied). */
   constructor(brush: BrushSettings) {
-    this.brush = { width: brush.width, color: brush.color.toLowerCase() };
+    this.brush = { width: brush.width, color: brush.color.toLowerCase(), erase: brush.erase };
   }
 
   /** Raw points for the live preview (float document units). */
@@ -87,7 +89,11 @@ export class StrokeBuilder {
         quantized[n - 1] = lastY;
       }
     }
-    return { points: quantized, width: this.brush.width, color: this.brush.color };
+    const stroke: Stroke = { points: quantized, width: this.brush.width, color: this.brush.color };
+    if (this.brush.erase) {
+      stroke.erase = true;
+    }
+    return stroke;
   }
 }
 

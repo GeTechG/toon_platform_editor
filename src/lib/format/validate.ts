@@ -76,7 +76,23 @@ export function loadDocument(data: unknown): ToonDocument {
   if (!result.ok) {
     throw new FormatError(result.issues);
   }
-  return data as ToonDocument;
+  return migrateLegacyEraser(data as ToonDocument);
+}
+
+/**
+ * Pre-flag documents encoded the eraser as a white (#ffffff) stroke; white was
+ * unreachable as a paint color then, so any such stroke was an erase. Convert
+ * them to the erase flag in place so old drafts keep erasing.
+ */
+export function migrateLegacyEraser(doc: ToonDocument): ToonDocument {
+  for (const frame of doc.frames) {
+    for (const stroke of frame.strokes) {
+      if (!stroke.erase && stroke.color === '#ffffff') {
+        stroke.erase = true;
+      }
+    }
+  }
+  return doc;
 }
 
 function failure(category: ValidationCategory, path: string, message: string): ValidationResult {
