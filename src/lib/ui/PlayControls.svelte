@@ -1,9 +1,39 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
+  import { exportGif } from '../export/export-gif';
   import { PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
   import { LoopPlayer } from '../player/player';
 
   let { editor }: { editor: EditorState } = $props();
+
+  let exporting = $state(false);
+  let exportProgress = $state(0);
+  let exportError = $state('');
+
+  async function downloadGif(): Promise<void> {
+    if (exporting) {
+      return;
+    }
+    exporting = true;
+    exportProgress = 0;
+    exportError = '';
+    try {
+      const bytes = await exportGif(editor.doc, (done, total) => {
+        exportProgress = Math.round((done / total) * 100);
+      });
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/gif' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'animation.gif';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (err) {
+      console.warn('GIF export failed:', err);
+      exportError = 'GIF export failed, please try again';
+    } finally {
+      exporting = false;
+    }
+  }
 
   let player: LoopPlayer | null = null;
   let rafId = 0;
@@ -77,6 +107,12 @@
   >
     🧅 Onion
   </button>
+  <button class="gif" onclick={downloadGif} disabled={exporting}>
+    {exporting ? `${exportProgress}%` : '⬇ GIF'}
+  </button>
+  {#if exportError}
+    <span class="error" role="alert">{exportError}</span>
+  {/if}
 </div>
 
 <style>
@@ -86,13 +122,22 @@
     gap: 0.5rem;
   }
   .play,
-  .onion {
+  .onion,
+  .gif {
     min-height: 2rem;
     padding: 0 0.75rem;
     border: 1px solid #ccc;
     border-radius: 4px;
     background: #fff;
     cursor: pointer;
+  }
+  .gif:disabled {
+    cursor: progress;
+    color: #666;
+  }
+  .error {
+    font-size: 0.85rem;
+    color: #c00;
   }
   .onion {
     opacity: 0.5;
