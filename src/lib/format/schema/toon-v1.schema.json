@@ -7,8 +7,8 @@
   "required": ["schema_version", "width", "height", "frame_rate", "frames"],
   "properties": {
     "schema_version": { "const": 1 },
-    "width": { "type": "integer", "minimum": 1, "maximum": 65535 },
-    "height": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "width": { "type": "integer", "minimum": 1, "maximum": 32767 },
+    "height": { "type": "integer", "minimum": 1, "maximum": 32767 },
     "frame_rate": { "type": "integer", "minimum": 1, "maximum": 60 },
     "frames": {
       "type": "array",
@@ -39,7 +39,7 @@
           "type": "array",
           "minItems": 2,
           "maxItems": 65536,
-          "items": { "type": "integer", "minimum": 0, "maximum": 65535 }
+          "items": { "type": "integer", "minimum": -32768, "maximum": 32767 }
         },
         "width": { "type": "integer", "minimum": 1, "maximum": 4800 },
         "color": { "type": "string", "pattern": "^#[0-9a-f]{6}$" }

@@ -100,24 +100,15 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
       }
       totalPoints += stroke.points.length / 2;
       stroke.points.forEach((coord, i) => {
-        // The schema already enforces integers for JSON input;
-        // Number.isInteger guards documents built in memory,
-        // bypassing the operations module.
+        // The schema enforces integers and the int16 range for JSON
+        // input; Number.isInteger guards NaN in documents built in
+        // memory, bypassing the operations module. Points may lie
+        // outside the canvas: strokes can leave it and come back.
         if (!Number.isInteger(coord)) {
           issues.push({
             category: 'semantic',
             path: `${base}/points/${i}`,
             message: `coordinate must be an integer, got ${coord}`,
-          });
-          return;
-        }
-        const limit = i % 2 === 0 ? doc.width : doc.height;
-        const axis = i % 2 === 0 ? 'x' : 'y';
-        if (coord < 0 || coord > limit) {
-          issues.push({
-            category: 'semantic',
-            path: `${base}/points/${i}`,
-            message: `${axis} = ${coord} is outside the canvas 0..${limit}`,
           });
         }
       });

@@ -1,7 +1,9 @@
 /**
  * Stroke smoothing: quadratic Béziers through midpoints — the control
  * point is the stored point, the segment end is the midpoint towards
- * the next one. Deterministic over quantized points.
+ * the next one. The final segment curves straight into the last point
+ * (control = second-to-last point), matching the reference editor.
+ * Deterministic over quantized points.
  */
 
 /** Minimal path-command sink (subset of CanvasRenderingContext2D). */
@@ -29,12 +31,17 @@ export function emitSmoothedPath(points: readonly number[], sink: PathSink): voi
     sink.lineTo(points[2], points[3]);
     return;
   }
-  for (let i = 1; i < count - 1; i++) {
+  for (let i = 1; i < count - 2; i++) {
     const cx = points[2 * i];
     const cy = points[2 * i + 1];
     const nx = points[2 * (i + 1)];
     const ny = points[2 * (i + 1) + 1];
     sink.quadraticCurveTo(cx, cy, (cx + nx) / 2, (cy + ny) / 2);
   }
-  sink.lineTo(points[2 * (count - 1)], points[2 * (count - 1) + 1]);
+  sink.quadraticCurveTo(
+    points[2 * (count - 2)],
+    points[2 * (count - 2) + 1],
+    points[2 * (count - 1)],
+    points[2 * (count - 1) + 1],
+  );
 }

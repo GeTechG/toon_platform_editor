@@ -9,6 +9,8 @@ import {
   LANG_LOOK_AHEAD,
   LANG_TOLERANCE_DOC,
   MAX_STROKE_COORDS,
+  STROKE_COORD_MAX,
+  STROKE_COORD_MIN,
 } from '../format/constants';
 import type { Stroke } from '../format/types';
 import { simplifyLang } from './simplify';
@@ -50,18 +52,19 @@ export class StrokeBuilder {
 
   /**
    * Commit: Lang simplification → quantization (round + clamp to the
-   * canvas bounds) → collapsing duplicates introduced by quantization.
-   * Quantized points are canonical; there is no re-quantization.
+   * int16 storage range; points may lie outside the canvas) →
+   * collapsing duplicates introduced by quantization. Quantized points
+   * are canonical; there is no re-quantization.
    */
-  commit(docWidth: number, docHeight: number): Stroke {
+  commit(): Stroke {
     if (this.#points.length === 0) {
       throw new Error('cannot commit an empty stroke');
     }
     const simplified = simplifyLang(this.#points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC);
     const quantized: number[] = [];
     for (let i = 0; i < simplified.length; i += 2) {
-      const x = clampInt(simplified[i], docWidth);
-      const y = clampInt(simplified[i + 1], docHeight);
+      const x = clampInt(simplified[i]);
+      const y = clampInt(simplified[i + 1]);
       const n = quantized.length;
       if (n >= 2 && quantized[n - 2] === x && quantized[n - 1] === y) {
         continue;
@@ -75,8 +78,8 @@ export class StrokeBuilder {
     if (quantized.length > MAX_STROKE_COORDS) {
       quantized.length = MAX_STROKE_COORDS;
       const n = quantized.length;
-      const lastX = clampInt(simplified[simplified.length - 2], docWidth);
-      const lastY = clampInt(simplified[simplified.length - 1], docHeight);
+      const lastX = clampInt(simplified[simplified.length - 2]);
+      const lastY = clampInt(simplified[simplified.length - 1]);
       if (n >= 4 && quantized[n - 4] === lastX && quantized[n - 3] === lastY) {
         quantized.length = n - 2;
       } else {
@@ -88,6 +91,6 @@ export class StrokeBuilder {
   }
 }
 
-function clampInt(value: number, max: number): number {
-  return Math.min(max, Math.max(0, Math.round(value)));
+function clampInt(value: number): number {
+  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, Math.round(value)));
 }

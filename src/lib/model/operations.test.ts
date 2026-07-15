@@ -71,12 +71,20 @@ describe('addStroke', () => {
     );
   });
 
-  it('rejects odd coordinate counts, out-of-canvas points and bad attributes', () => {
+  it('rejects odd coordinate counts, out-of-int16 points and bad attributes', () => {
     const doc = createDocument();
     expect(() => addStroke(doc, 0, { points: [1, 2, 3], width: 8, color: '#000000' })).toThrow();
-    expect(() => addStroke(doc, 0, { points: [4801, 0], width: 8, color: '#000000' })).toThrow();
+    expect(() => addStroke(doc, 0, { points: [40000, 0], width: 8, color: '#000000' })).toThrow();
     expect(() => addStroke(doc, 0, { points: [1, 2], width: 0, color: '#000000' })).toThrow();
     expect(() => addStroke(doc, 0, { points: [1, 2], width: 8, color: '#FF0000' })).toThrow();
+  });
+
+  it('accepts off-canvas points (a stroke can leave the canvas)', () => {
+    const doc = createDocument();
+    expect(() =>
+      addStroke(doc, 0, { points: [-320, -80, 5200, 2560], width: 8, color: '#000000' }),
+    ).not.toThrow();
+    expect(validateDocument(doc).ok).toBe(true);
   });
 });
 
@@ -110,9 +118,9 @@ describe('schema limits', () => {
   });
 
   it('createDocument rejects dimensions over the schema maximum', () => {
-    expect(() => createDocument({ width: 65536 })).toThrow(RangeError);
-    expect(() => createDocument({ height: 65536 })).toThrow(RangeError);
-    expect(validateDocument(createDocument({ width: 65535, height: 65535 })).ok).toBe(true);
+    expect(() => createDocument({ width: 32768 })).toThrow(RangeError);
+    expect(() => createDocument({ height: 32768 })).toThrow(RangeError);
+    expect(validateDocument(createDocument({ width: 32767, height: 32767 })).ok).toBe(true);
   });
 
   it('addFrame stops at the frame limit', () => {

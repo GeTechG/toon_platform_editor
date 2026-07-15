@@ -15,6 +15,8 @@ import {
   MAX_STROKES_PER_FRAME,
   MAX_TOTAL_POINTS,
   SCHEMA_VERSION,
+  STROKE_COORD_MAX,
+  STROKE_COORD_MIN,
 } from '../format/constants';
 import type { Frame, Stroke, ToonDocument } from '../format/types';
 
@@ -86,9 +88,12 @@ export function addStroke(doc: ToonDocument, frameIndex: number, stroke: Stroke)
     if (!Number.isInteger(coord)) {
       throw new RangeError(`coordinate points[${i}] must be an integer (quantized at commit), got ${coord}`);
     }
-    const limit = i % 2 === 0 ? doc.width : doc.height;
-    if (coord < 0 || coord > limit) {
-      throw new RangeError(`coordinate points[${i}] = ${coord} is outside the canvas 0..${limit}`);
+    // Off-canvas points are allowed (a stroke can leave the canvas);
+    // only the int16 storage range is enforced.
+    if (coord < STROKE_COORD_MIN || coord > STROKE_COORD_MAX) {
+      throw new RangeError(
+        `coordinate points[${i}] = ${coord} is outside int16 ${STROKE_COORD_MIN}..${STROKE_COORD_MAX}`,
+      );
     }
   });
   if (!Number.isInteger(stroke.width) || stroke.width < 1 || stroke.width > MAX_STROKE_WIDTH) {

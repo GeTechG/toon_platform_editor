@@ -38,7 +38,13 @@ export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
 export const MAX_TOTAL_POINTS = 1_000_000;
 
 /** Schema limits — keep in sync with toon-v1.schema.json (asserted in tests). */
-export const MAX_DOC_DIMENSION = 65535;
+export const MAX_DOC_DIMENSION = 32767;
+/**
+ * Stroke coordinates are int16 and may lie outside the canvas: a stroke
+ * can leave the canvas and come back (the renderer clips visually).
+ */
+export const STROKE_COORD_MIN = -32768;
+export const STROKE_COORD_MAX = 32767;
 export const MAX_FRAMES = 4096;
 export const MAX_STROKES_PER_FRAME = 16384;
 /** Maximum coordinate count (x,y flat) per stroke. */

@@ -4,6 +4,6 @@
   "height": 2400,
   "frame_rate": 12,
   "frames": [
-    { "strokes": [{ "points": [0, 0, 4801, 100], "width": 32, "color": "#000000" }] }
+    { "strokes": [{ "points": [0, 0, 40000, 100], "width": 32, "color": "#000000" }] }
   ]
 }

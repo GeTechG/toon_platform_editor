@@ -33,6 +33,12 @@ describe('simplifyLang', () => {
     expect(out.slice(-2)).toEqual([500, 50 + (100 % 3)]);
   });
 
+  it('drops an overshoot along the stroke direction (deviation is measured to the line, not the segment)', () => {
+    // (40,0) lies on the line through (0,0)→(20,0) even though it is far
+    // beyond the chord — the reference metric drops it.
+    expect(simplifyLang([0, 0, 10, 0, 40, 0, 20, 0], 5, 10)).toEqual([0, 0, 20, 0]);
+  });
+
   it('keeps corners: the corner point survives', () => {
     // L-shaped line: horizontal to (100,0), then vertical to (100,100).
     const points = [0, 0, 25, 0, 50, 0, 75, 0, 100, 0, 100, 25, 100, 50, 100, 75, 100, 100];

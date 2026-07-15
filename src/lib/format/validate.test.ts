@@ -48,14 +48,23 @@ describe('validateDocument', () => {
     ).toBe(true);
   });
 
-  it('rejects a coordinate outside the canvas (semantic) with a path', () => {
+  it('accepts off-canvas coordinates (a stroke can leave the canvas)', () => {
     const doc = validDoc() as { frames: { strokes: { points: number[] }[] }[] };
+    doc.frames[0].strokes[0].points[0] = -500; // x < 0
     doc.frames[0].strokes[0].points[1] = 2401; // y > height
+    expect(validateDocument(doc)).toEqual({ ok: true, issues: [] });
+  });
+
+  it('rejects a coordinate outside the int16 range (schema) with a path', () => {
+    const doc = validDoc() as { frames: { strokes: { points: number[] }[] }[] };
+    doc.frames[0].strokes[0].points[1] = 40000;
     const result = validateDocument(doc);
     expect(result.ok).toBe(false);
-    expect(result.issues).toHaveLength(1);
-    expect(result.issues[0].category).toBe('semantic');
-    expect(result.issues[0].path).toBe('/frames/0/strokes/0/points/1');
+    expect(
+      result.issues.some(
+        (i) => i.category === 'schema' && i.path === '/frames/0/strokes/0/points/1',
+      ),
+    ).toBe(true);
   });
 
   it('rejects an odd coordinate count (semantic)', () => {

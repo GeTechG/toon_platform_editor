@@ -33,13 +33,16 @@ describe('emitSmoothedPath (midpoint quadratic Béziers)', () => {
     expect(emit([0, 0, 10, 20])).toEqual(['M 0 0', 'L 10 20']);
   });
 
-  it('builds curves: control = stored point, end = midpoint to the next', () => {
+  it('builds curves: control = stored point, end = midpoint to the next; final curve lands on the last point', () => {
     expect(emit([0, 0, 10, 0, 10, 10, 0, 10])).toEqual([
       'M 0 0',
       'Q 10 0 10 5',
-      'Q 10 10 5 10',
-      'L 0 10',
+      'Q 10 10 0 10',
     ]);
+  });
+
+  it('three points — a single curve from first to last', () => {
+    expect(emit([0, 0, 10, 0, 10, 10])).toEqual(['M 0 0', 'Q 10 0 10 10']);
   });
 
   it('is deterministic: same input — same commands', () => {

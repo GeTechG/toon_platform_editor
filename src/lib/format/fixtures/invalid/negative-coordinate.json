@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "width": 4800,
-  "height": 2400,
-  "frame_rate": 12,
-  "frames": [
-    { "strokes": [{ "points": [-8, 0, 100, 100], "width": 32, "color": "#000000" }] }
-  ]
-}

@@ -110,11 +110,11 @@
     if (!builder || !e.isPrimary) {
       return;
     }
-    const coalesced = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
-    for (const event of coalesced.length > 0 ? coalesced : [e]) {
-      const [x, y] = toDocUnits(event);
-      builder.addPoint(x, y);
-    }
+    // One point per event (~60 Hz), no coalesced unpacking: the Lang
+    // window is measured in points, so sampling density defines how
+    // strongly the line simplifies — the reference samples per event.
+    const [x, y] = toDocUnits(e);
+    builder.addPoint(x, y);
     scheduleDraw();
   }
 
@@ -122,7 +122,7 @@
     if (!builder || !e.isPrimary) {
       return;
     }
-    const stroke = builder.commit(editor.doc.width, editor.doc.height);
+    const stroke = builder.commit();
     builder = null;
     try {
       addStroke(editor.doc, editor.activeFrame, stroke);
