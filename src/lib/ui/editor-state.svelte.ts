@@ -8,7 +8,10 @@ import { DEFAULT_BRUSH_COLOR, DEFAULT_BRUSH_SIZE_LOGICAL, MAX_FRAMES } from '../
 import { addFrame, createDocument, removeFrame, setFrameRate } from '../model/operations';
 import { activeFrameAfterRemove, clampPlayerFps, onionSkinVisible } from './frame-selection';
 
+export type Tool = 'pencil' | 'eraser' | 'pipette';
+
 export class EditorState {
+  tool = $state<Tool>('pencil');
   doc = $state(createDocument());
   activeFrame = $state(0);
   playing = $state(false);

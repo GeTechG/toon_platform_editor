@@ -14,6 +14,13 @@ class RecordingCtx implements Canvas2DLike {
   canvas = { width: 1200, height: 600 };
   #props: Record<string, unknown> = {};
 
+  get globalCompositeOperation(): GlobalCompositeOperation {
+    return (this.#props.globalCompositeOperation as GlobalCompositeOperation) ?? 'source-over';
+  }
+  set globalCompositeOperation(v: GlobalCompositeOperation) {
+    this.#props.globalCompositeOperation = v;
+    this.log.push(`globalCompositeOperation=${v}`);
+  }
   get lineWidth(): number {
     return this.#props.lineWidth as number;
   }
@@ -167,6 +174,34 @@ describe('renderStrokesLayer (composited layer)', () => {
     expect(log).toContain('fillStyle=#ff3b30'); // the dot too
     expect(log).not.toContain('#00aa55'); // original stroke colors gone
     expect(log).not.toContain('#000000');
+  });
+
+  it('eraser strokes (#ffffff) erase via destination-out, then restore source-over', () => {
+    const frame: Frame = {
+      strokes: [
+        { points: [0, 0, 100, 100, 200, 200], width: 32, color: '#ffffff' },
+        { points: [0, 0, 50, 50, 100, 0], width: 16, color: '#000000' },
+      ],
+    };
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(frame, ctx, viewport);
+    const out = ctx.log.indexOf('globalCompositeOperation=destination-out');
+    const back = ctx.log.indexOf('globalCompositeOperation=source-over');
+    const pen = ctx.log.indexOf('strokeStyle=#000000');
+    expect(out).toBeGreaterThan(-1);
+    expect(back).toBeGreaterThan(out); // erase scoped to the eraser stroke
+    expect(pen).toBeGreaterThan(back); // the pen stroke draws normally after
+  });
+
+  it('tint does not repaint eraser strokes — they still erase', () => {
+    const frame: Frame = {
+      strokes: [{ points: [0, 0, 100, 100, 200, 200], width: 32, color: '#ffffff' }],
+    };
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(frame, ctx, viewport, '#ff3b30');
+    const log = ctx.log.join('\n');
+    expect(log).toContain('globalCompositeOperation=destination-out');
+    expect(log).not.toContain('strokeStyle=#ff3b30');
   });
 });
 

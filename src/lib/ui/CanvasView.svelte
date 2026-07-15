@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, ONION_SKIN_ALPHAS } from '../format/constants';
+  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, ERASER_COLOR, ONION_SKIN_ALPHAS } from '../format/constants';
   import type { Frame } from '../format/types';
   import { addStroke } from '../model/operations';
   import type { Viewport } from '../render/contract';
@@ -27,6 +27,9 @@
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
   let wrapHeight = $state(0);
   let builder: StrokeBuilder | null = null;
+  // Scratch canvas for the live eraser preview: the erase must punch only
+  // the active frame's layer, so layer + live stroke composite offscreen.
+  let scratchEl: HTMLCanvasElement | null = null;
   let rafPending = false;
   // One transparent, real-color strokes layer per frame (keyed by frame
   // identity), re-rendered only when its stroke count or the pixel size
@@ -110,9 +113,26 @@
     }
 
     // Active frame over onion (fully opaque), then the live stroke.
-    blitLayer(frameLayer(frame, pxWidth, pxHeight, viewport), ctx);
-    if (builder) {
-      renderRawPolyline(builder.rawPoints, builder.brush.width, builder.brush.color, ctx, viewport);
+    const layer = frameLayer(frame, pxWidth, pxHeight, viewport);
+    if (builder && builder.brush.color === ERASER_COLOR) {
+      scratchEl ??= document.createElement('canvas');
+      if (scratchEl.width !== pxWidth || scratchEl.height !== pxHeight) {
+        scratchEl.width = pxWidth;
+        scratchEl.height = pxHeight;
+      }
+      const sctx = scratchEl.getContext('2d') as unknown as ViewCtx;
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(0, 0, pxWidth, pxHeight);
+      sctx.drawImage(layer, 0, 0);
+      sctx.globalCompositeOperation = 'destination-out';
+      renderRawPolyline(builder.rawPoints, builder.brush.width, builder.brush.color, sctx, viewport);
+      sctx.globalCompositeOperation = 'source-over';
+      blitLayer(scratchEl, ctx);
+    } else {
+      blitLayer(layer, ctx);
+      if (builder) {
+        renderRawPolyline(builder.rawPoints, builder.brush.width, builder.brush.color, ctx, viewport);
+      }
     }
   }
 
@@ -150,14 +170,36 @@
     return [x, y];
   }
 
+  /** Color of the active frame at the pointer, from its strokes-only layer (onion/live stroke excluded). */
+  function pickColor(e: PointerEvent): string {
+    const frame = editor.doc.frames[editor.activeFrame];
+    const rect = canvasEl.getBoundingClientRect();
+    const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * canvasEl.width)));
+    const py = Math.min(canvasEl.height - 1, Math.max(0, Math.floor(((e.clientY - rect.top) / rect.height) * canvasEl.height)));
+    const viewport = { scale: cssWidth / editor.doc.width, dpr: window.devicePixelRatio || 1 };
+    const layer = frameLayer(frame, canvasEl.width, canvasEl.height, viewport);
+    const [r, g, b, a] = layer.getContext('2d')!.getImageData(px, py, 1, 1).data;
+    if (a === 0) {
+      return BACKGROUND_COLOR;
+    }
+    return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+  }
+
   function onPointerDown(e: PointerEvent): void {
     if (editor.playing || !e.isPrimary || builder) {
+      return;
+    }
+    if (editor.tool === 'pipette') {
+      const picked = pickColor(e);
+      editor.brushColor = picked;
+      // Picking emptiness/background arms the eraser, a color arms the pencil.
+      editor.tool = picked === BACKGROUND_COLOR ? 'eraser' : 'pencil';
       return;
     }
     canvasEl.setPointerCapture(e.pointerId);
     builder = new StrokeBuilder({
       width: brushWidthDoc(editor.brushSizeLogical),
-      color: editor.brushColor,
+      color: editor.tool === 'eraser' ? ERASER_COLOR : editor.brushColor,
     });
     const [x, y] = toDocUnits(e);
     builder.addPoint(x, y);

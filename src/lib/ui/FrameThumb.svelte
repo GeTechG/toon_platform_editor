@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { BACKGROUND_COLOR } from '../format/constants';
   import type { Frame } from '../format/types';
-  import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
+  import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 
   let {
     frame,
@@ -12,6 +11,7 @@
 
   let canvasEl: HTMLCanvasElement;
 
+  const renderer = new Canvas2DFrameRenderer();
   const cssWidth = $derived(Math.round(height * (docWidth / docHeight)));
 
   $effect(() => {
@@ -24,10 +24,9 @@
     canvasEl.width = Math.max(1, Math.round(cssWidth * dpr));
     canvasEl.height = Math.max(1, Math.round(height * dpr));
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
-    renderStrokesLayer(frame, ctx, { scale: cssWidth / docWidth, dpr });
+    // Opaque render (background + strokes): eraser strokes must not punch
+    // through the thumb's background, so no transparent-layer path here.
+    renderer.render(frame, ctx, { scale: cssWidth / docWidth, dpr });
   });
 </script>
 

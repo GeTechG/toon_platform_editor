@@ -1,11 +1,23 @@
 <script lang="ts">
-  import type { EditorState } from './editor-state.svelte';
+  import type { EditorState, Tool } from './editor-state.svelte';
   import { BRUSH_SIZES_LOGICAL } from '../format/constants';
 
   let { editor }: { editor: EditorState } = $props();
+
+  const TOOLS: { id: Tool; icon: string; title: string }[] = [
+    { id: 'pencil', icon: '✏️', title: 'Pencil' },
+    { id: 'eraser', icon: '🧽', title: 'Eraser' },
+    { id: 'pipette', icon: '💧', title: 'Eyedropper' },
+  ];
 </script>
 
 <div class="brush">
+  {#each TOOLS as t (t.id)}
+    <button class:active={editor.tool === t.id} onclick={() => (editor.tool = t.id)} title={t.title}>
+      {t.icon}
+    </button>
+  {/each}
+  <span class="sep"></span>
   {#each BRUSH_SIZES_LOGICAL as size (size)}
     <button
       class:active={editor.brushSizeLogical === size}
@@ -42,6 +54,12 @@
   .dot {
     background: #111;
     border-radius: 50%;
+  }
+  .sep {
+    width: 1px;
+    height: 1.5rem;
+    background: #bbb;
+    margin: 0 0.5rem;
   }
   input[type='color'] {
     width: 2.2rem;

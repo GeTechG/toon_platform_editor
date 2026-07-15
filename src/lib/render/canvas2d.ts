@@ -3,7 +3,7 @@
  * The only place where editor code talks to the Canvas API.
  */
 
-import { BACKGROUND_COLOR } from '../format/constants';
+import { BACKGROUND_COLOR, ERASER_COLOR } from '../format/constants';
 import type { Frame } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitSmoothedPath, type PathSink } from './smoothing';
@@ -15,6 +15,7 @@ import { emitSmoothedPath, type PathSink } from './smoothing';
  */
 export interface Canvas2DLike extends PathSink {
   readonly canvas: { width: number; height: number };
+  globalCompositeOperation: GlobalCompositeOperation;
   lineWidth: number;
   strokeStyle: string;
   fillStyle: string;
@@ -45,6 +46,8 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     clearToBackground(target);
     applyDocTransform(target, viewport);
     for (const stroke of frame.strokes) {
+      // Opaque render: eraser strokes need no branch — ERASER_COLOR equals
+      // the background, so painting it is the same as erasing to it.
       drawStrokePath(target, stroke.points, stroke.width, stroke.color, true);
     }
   }
@@ -75,6 +78,8 @@ export function renderRawPolyline(
  * and stacks layers. `tint` overrides every stroke color — used for the
  * onion-skin neighbor layers, keeping tint at composition, not in the
  * frame data. Same stroke path as the FrameRenderer, minus the fill.
+ * Eraser strokes (ERASER_COLOR) erase the layer's alpha via
+ * destination-out — tint does not apply to them.
  */
 export function renderStrokesLayer(
   frame: Frame,
@@ -84,7 +89,14 @@ export function renderStrokesLayer(
 ): void {
   applyDocTransform(target, viewport);
   for (const stroke of frame.strokes) {
-    drawStrokePath(target, stroke.points, stroke.width, tint ?? stroke.color, true);
+    const erase = stroke.color === ERASER_COLOR;
+    if (erase) {
+      target.globalCompositeOperation = 'destination-out';
+    }
+    drawStrokePath(target, stroke.points, stroke.width, erase ? stroke.color : (tint ?? stroke.color), true);
+    if (erase) {
+      target.globalCompositeOperation = 'source-over';
+    }
   }
 }
 
