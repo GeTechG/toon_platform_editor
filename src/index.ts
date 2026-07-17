@@ -6,3 +6,7 @@
 // The standalone dev wrapper in src/dev/ is independent of this file and keeps
 // running on its own (`bun run dev`).
 export { default as Editor } from './lib/ui/Editor.svelte';
+
+// Read-only looping viewer for a document (the platform's public share page).
+export { default as Player } from './lib/player/Player.svelte';
+export type { ToonDocument } from './lib/format/types';

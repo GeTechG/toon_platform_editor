@@ -10,6 +10,13 @@
   import { debounce } from '../draft/debounce';
   import { decideRestore } from '../draft/restore';
   import { loadDraft, saveDraft } from '../draft/store';
+  import type { ToonDocument } from '../format/types';
+
+  // Optional publish hook. When a host app provides it, a Publish button appears
+  // and hands the host a plain snapshot of the current document; the editor
+  // itself stays unaware of what publishing means (no network, no platform
+  // coupling).
+  let { onPublish }: { onPublish?: (doc: ToonDocument) => void } = $props();
 
   const editor = new EditorState();
   const scheduleSave = debounce((doc: unknown) => void saveDraft(doc), DRAFT_SAVE_DEBOUNCE_MS);
@@ -148,6 +155,15 @@
           🧅
         </button>
         <ExportGifButton {editor} />
+        {#if onPublish}
+          <button
+            class="publish"
+            onclick={() => onPublish?.($state.snapshot(editor.doc))}
+            title="Publish"
+          >
+            Publish
+          </button>
+        {/if}
       </div>
       <div class="brush">
         <BrushPanel {editor} />
@@ -237,5 +253,10 @@
   .onion.on {
     opacity: 1;
     border-color: #888;
+  }
+  .publish {
+    padding: 0 0.7rem;
+    font-weight: 600;
+    width: auto;
   }
 </style>
