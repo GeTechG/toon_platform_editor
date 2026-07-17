@@ -10,3 +10,6 @@ export { default as Editor } from './lib/ui/Editor.svelte';
 // Read-only looping viewer for a document (the platform's public share page).
 export { default as Player } from './lib/player/Player.svelte';
 export type { ToonDocument } from './lib/format/types';
+
+// Animated-WebP gallery preview built from a document at publish time.
+export { buildPreview } from './lib/export/preview-webp';
