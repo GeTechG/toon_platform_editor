@@ -11,7 +11,21 @@
   import { debounce } from '../draft/debounce';
   import { decideRestore } from '../draft/restore';
   import { loadDraft, saveDraft } from '../draft/store';
+  import { FEATURE_LABELS, FEATURE_ORDER, PRESETS } from './presets';
+  import type { FeatureKey } from './presets';
+  import type { IconName } from './Icon.svelte';
   import type { ToonDocument } from '../format/types';
+
+  // Icon per toggle where one maps cleanly — makes each row recognizable at a
+  // glance; the rest fall back to their label alone.
+  const FEATURE_ICONS: Partial<Record<FeatureKey, IconName>> = {
+    addFrame: 'plus',
+    deleteFrame: 'x',
+    play: 'play',
+    export: 'download',
+    tools: 'pencil',
+    onionSkin: 'onion',
+  };
 
   // Optional publish hook. When a host app provides it, a Publish button appears
   // and hands the host a plain snapshot of the current document; the editor
@@ -123,9 +137,17 @@
     }
   });
 
-  // Settings popover (opens above the ⚙ key): holds the controls the reference
-  // bar has no room for — onion skin, playback fps, fullscreen.
+  // Settings popover (opens above the ⚙ key): holds the everyday controls the
+  // reference bar has no room for — onion skin, playback fps, fullscreen.
   let settingsOpen = $state(false);
+  // Customization sheet: which buttons the toolbar shows, and the active preset.
+  // A set-once concern, so it lives in its own roomy sheet, not the quick popover.
+  let customizeOpen = $state(false);
+
+  function openCustomize(): void {
+    settingsOpen = false;
+    customizeOpen = true;
+  }
 
   function onFpsChange(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
@@ -144,31 +166,69 @@
     <div class="toolbar">
       <!-- Row A — frames: add / delete anchor the timeline strip. -->
       <div class="row frames">
-        <button
-          class="key icon"
-          disabled={editor.playing}
-          onclick={() => editor.addFrameAfterActive()}
-          title="Add frame after current"
-        >
-          <Icon name="plus" />
-        </button>
-        <button
-          class="key icon"
-          disabled={editor.playing}
-          onclick={() => editor.removeActiveFrame()}
-          title="Delete current frame"
-        >
-          <Icon name="x" />
-        </button>
-        <div class="timeline">
-          <Timeline {editor} />
-        </div>
+        {#if editor.features.addFrame}
+          <button
+            class="key icon"
+            disabled={editor.playing}
+            onclick={() => editor.addFrameAfterActive()}
+            title="Add frame after current"
+          >
+            <Icon name="plus" />
+          </button>
+        {/if}
+        {#if editor.features.deleteFrame}
+          <button
+            class="key icon"
+            disabled={editor.playing}
+            onclick={() => editor.removeActiveFrame()}
+            title="Delete current frame"
+          >
+            <Icon name="x" />
+          </button>
+        {/if}
+        {#if editor.features.timeline}
+          <div class="timeline">
+            <Timeline {editor} />
+          </div>
+        {/if}
       </div>
 
       <!-- Row B — transport & output: play at left like the reference,
            settings / export next to it, publish anchored right. -->
       <div class="row transport">
-        <PlayControls {editor} />
+        {#if editor.features.play}
+          <PlayControls {editor} />
+        {/if}
+        {#if editor.features.onionSkin}
+          <button
+            class="key icon"
+            class:active={editor.onionSkin}
+            aria-pressed={editor.onionSkin}
+            onclick={() => editor.toggleOnionSkin()}
+            title={editor.onionSkin ? 'Onion skin on' : 'Onion skin off'}
+          >
+            <Icon name="onion" />
+          </button>
+        {/if}
+        {#if editor.features.export}
+          <ExportGifButton {editor} />
+        {/if}
+        {#if onPublish}
+          <button
+            class="key primary icon publish"
+            onclick={() => onPublish?.($state.snapshot(editor.doc))}
+            title="Publish"
+            aria-label="Publish"
+          >
+            <Icon name="send" />
+          </button>
+        {/if}
+      </div>
+
+      <!-- Row C — drawing: tools · sizes · color, with settings anchored in the
+           otherwise-empty bottom-right corner. -->
+      <div class="row draw">
+        <BrushPanel {editor} />
         <div class="settings">
           <button
             class="key icon"
@@ -183,10 +243,6 @@
           {#if settingsOpen}
             <button class="backdrop" aria-label="Close settings" onclick={() => (settingsOpen = false)}></button>
             <div class="popover" role="dialog" aria-label="Settings">
-              <label class="opt">
-                <span class="opt-label"><Icon name="onion" size={18} /> Onion skin</span>
-                <input type="checkbox" checked={editor.onionSkin} onchange={() => editor.toggleOnionSkin()} />
-              </label>
               <label class="opt">
                 <span class="opt-label">Frame rate</span>
                 <span class="fps">
@@ -207,28 +263,78 @@
                   <kbd>F</kbd>
                 </button>
               {/if}
+
+              <!-- The gear is never hideable, so customization is always reachable. -->
+              <hr class="divider" />
+              <button class="opt opt-btn" onclick={openCustomize}>
+                <span class="opt-label"><Icon name="gear" size={18} /> Customize toolbar…</span>
+                <Icon name="chevron-right" size={16} />
+              </button>
             </div>
           {/if}
         </div>
-        <ExportGifButton {editor} />
-        {#if onPublish}
-          <button
-            class="key primary icon publish"
-            onclick={() => onPublish?.($state.snapshot(editor.doc))}
-            title="Publish"
-            aria-label="Publish"
-          >
-            <Icon name="send" />
-          </button>
-        {/if}
-      </div>
-
-      <!-- Row C — drawing: tools · sizes · color. -->
-      <div class="row draw">
-        <BrushPanel {editor} />
       </div>
     </div>
   </div>
+
+  <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
+  {#if customizeOpen}
+    <div
+      class="sheet-backdrop"
+      role="button"
+      tabindex="-1"
+      aria-label="Close customization"
+      onclick={() => (customizeOpen = false)}
+      onkeydown={(e) => e.key === 'Escape' && (customizeOpen = false)}
+    ></div>
+    <div class="sheet" role="dialog" aria-label="Customize toolbar" aria-modal="true">
+      <header class="sheet-head">
+        <h2>Customize toolbar</h2>
+        <button class="key icon" onclick={() => (customizeOpen = false)} aria-label="Close">
+          <Icon name="x" />
+        </button>
+      </header>
+
+      <div class="sheet-body">
+        <p class="sheet-hint">Preset</p>
+        <div class="presets" role="group" aria-label="Preset">
+          {#each PRESETS as p (p.id)}
+            <button
+              class="preset-chip"
+              class:active={editor.preset === p.id}
+              aria-pressed={editor.preset === p.id}
+              onclick={() => editor.applyPreset(p.id)}
+            >
+              {p.label}
+            </button>
+          {/each}
+        </div>
+
+        <p class="sheet-hint">Buttons</p>
+        <div class="toggles">
+          {#each FEATURE_ORDER as key (key)}
+            <label class="toggle">
+              <span class="toggle-label">
+                {#if FEATURE_ICONS[key]}<Icon name={FEATURE_ICONS[key]} size={18} />{/if}
+                {FEATURE_LABELS[key]}
+              </span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={editor.features[key]}
+                onchange={() => editor.toggleFeature(key)}
+              />
+            </label>
+          {/each}
+        </div>
+      </div>
+
+      <footer class="sheet-foot">
+        <button class="key" onclick={() => editor.resetFeatures()}>Reset to preset</button>
+        <button class="key primary" onclick={() => (customizeOpen = false)}>Done</button>
+      </footer>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -295,6 +401,8 @@
   .settings {
     position: relative;
     display: flex;
+    /* Anchor to the empty bottom-right corner of the draw row. */
+    margin-left: auto;
   }
   /* Full-screen catcher so a click anywhere dismisses the popover. */
   .backdrop {
@@ -308,7 +416,7 @@
   .popover {
     position: absolute;
     bottom: calc(100% + 0.4rem);
-    left: 0;
+    right: 0;
     z-index: 2;
     display: flex;
     flex-direction: column;
@@ -359,6 +467,12 @@
     font: inherit;
     font-variant-numeric: tabular-nums;
   }
+  .divider {
+    height: 1px;
+    margin: 0.3rem 0.1rem;
+    border: none;
+    background: var(--hairline);
+  }
   .opt kbd {
     padding: 0.05rem 0.4rem;
     border: 1px solid var(--hairline);
@@ -369,9 +483,139 @@
     color: var(--ink-2);
   }
 
+  /* ---- Customization sheet ---- */
+  .sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    border: none;
+    background: rgba(11, 12, 16, 0.42);
+  }
+  /* Bottom sheet on mobile, centered card on wider screens. */
+  .sheet {
+    position: fixed;
+    z-index: 11;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 85dvh;
+    background: var(--canvas);
+    border-top-left-radius: var(--r-md);
+    border-top-right-radius: var(--r-md);
+    box-shadow: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);
+  }
+  @media (min-width: 40rem) {
+    .sheet {
+      left: 50%;
+      right: auto;
+      bottom: auto;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(24rem, calc(100vw - 2rem));
+      border-radius: var(--r-md);
+    }
+  }
+  .sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.9rem 1rem 0.6rem;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .sheet-head h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .sheet-body {
+    overflow-y: auto;
+    padding: 0.4rem 1rem 0.6rem;
+  }
+  .sheet-hint {
+    margin: 0.7rem 0 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .presets {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .preset-chip {
+    flex: 1;
+    height: var(--key-h);
+    padding: 0 0.5rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .preset-chip:hover {
+    background: var(--sky);
+  }
+  .preset-chip.active {
+    background: var(--electric);
+    border-color: transparent;
+    color: var(--canvas);
+  }
+  .preset-chip:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+  /* One row per button, whole row is the tap target. */
+  .toggles {
+    display: flex;
+    flex-direction: column;
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.9rem;
+    padding: 0 0.3rem;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+  }
+  .toggle:hover {
+    background: var(--sky);
+  }
+  .toggle + .toggle {
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.95rem;
+  }
+  /* Bigger, brand-colored checkboxes — comfortable touch targets. */
+  .toggle input {
+    width: 1.3rem;
+    height: 1.3rem;
+    accent-color: var(--electric);
+    cursor: pointer;
+  }
+  .sheet-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.7rem 1rem;
+    padding-bottom: max(0.7rem, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--hairline);
+  }
+
   /* ---- Shared button vocabulary (global so child components inherit it) ---- */
   /* Ghost key: quiet toolbar action on canvas, 1px hairline, small press. */
-  .toolbar :global(.key) {
+  .editor :global(.key) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -392,25 +636,25 @@
       background 0.15s ease,
       border-color 0.15s ease;
   }
-  .toolbar :global(.key.icon) {
+  .editor :global(.key.icon) {
     padding: 0;
   }
-  .toolbar :global(.key:hover:not(:disabled)) {
+  .editor :global(.key:hover:not(:disabled)) {
     background: var(--sky);
     border-color: var(--electric);
   }
-  .toolbar :global(.key:active:not(:disabled)) {
+  .editor :global(.key:active:not(:disabled)) {
     transform: translateY(1px);
   }
-  .toolbar :global(.key:focus-visible) {
+  .editor :global(.key:focus-visible) {
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }
-  .toolbar :global(.key:disabled) {
+  .editor :global(.key:disabled) {
     opacity: 0.4;
     cursor: default;
   }
-  .toolbar :global(.key.active) {
+  .editor :global(.key.active) {
     background: var(--ghost-2);
     border-color: var(--electric);
     color: var(--electric);
@@ -418,25 +662,25 @@
   /* Primary key: the one positive "ship" action — electric physical key. */
   /* Primary shares the exact key footprint — set apart by electric fill, not
      size or a protruding shadow. */
-  .toolbar :global(.key.primary) {
+  .editor :global(.key.primary) {
     padding: 0 0.9rem;
     border-color: transparent;
     background: var(--electric);
     color: var(--canvas);
   }
-  .toolbar :global(.key.primary.icon) {
+  .editor :global(.key.primary.icon) {
     padding: 0;
   }
-  .toolbar :global(.key.primary:hover:not(:disabled)) {
+  .editor :global(.key.primary:hover:not(:disabled)) {
     background: var(--electric-dark);
     border-color: transparent;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .toolbar :global(.key) {
+    .editor :global(.key) {
       transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .toolbar :global(.key:active:not(:disabled)) {
+    .editor :global(.key:active:not(:disabled)) {
       transform: none;
     }
   }

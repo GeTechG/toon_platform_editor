@@ -21,6 +21,14 @@ import {
   setFrameRate,
 } from '../model/operations';
 import { activeFrameAfterRemove, clampPlayerFps, onionSkinVisible } from './frame-selection';
+import {
+  DEFAULT_PRESET,
+  loadUiConfig,
+  presetFeatures,
+  saveUiConfig,
+  type FeatureKey,
+  type Features,
+} from './presets';
 
 export type Tool = 'pencil' | 'eraser' | 'pipette';
 
@@ -41,6 +49,36 @@ export class EditorState {
   showPalette = $state(true);
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
+
+  /** Active UI preset id and the per-button visibility map (persisted). */
+  preset = $state(DEFAULT_PRESET);
+  features = $state<Features>(presetFeatures(DEFAULT_PRESET));
+
+  constructor() {
+    const saved = loadUiConfig();
+    if (saved) {
+      this.preset = saved.preset;
+      this.features = saved.features;
+    }
+  }
+
+  /** Switch to a preset, resetting all button visibility to its defaults. */
+  applyPreset(id: string): void {
+    this.preset = id;
+    this.features = presetFeatures(id);
+    saveUiConfig({ preset: this.preset, features: this.features });
+  }
+
+  /** Toggle one button's visibility, keeping the current preset id. */
+  toggleFeature(key: FeatureKey): void {
+    this.features = { ...this.features, [key]: !this.features[key] };
+    saveUiConfig({ preset: this.preset, features: this.features });
+  }
+
+  /** Reset button visibility back to the active preset's defaults. */
+  resetFeatures(): void {
+    this.applyPreset(this.preset);
+  }
 
   /** The frame that should currently be on the canvas. */
   get displayedFrame(): number {

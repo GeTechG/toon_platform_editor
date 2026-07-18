@@ -14,38 +14,44 @@
 </script>
 
 <div class="brush">
-  <div class="tools">
-    {#each TOOLS as t (t.id)}
-      <button
-        class="key icon"
-        class:active={editor.tool === t.id}
-        aria-pressed={editor.tool === t.id}
-        onclick={() => (editor.tool = t.id)}
-        title={t.title}
-      >
-        <Icon name={t.icon} />
-      </button>
-    {/each}
-  </div>
+  {#if editor.features.tools}
+    <div class="tools">
+      {#each TOOLS as t (t.id)}
+        <button
+          class="key icon"
+          class:active={editor.tool === t.id}
+          aria-pressed={editor.tool === t.id}
+          onclick={() => (editor.tool = t.id)}
+          title={t.title}
+        >
+          <Icon name={t.icon} />
+        </button>
+      {/each}
+    </div>
+  {/if}
 
-  <span class="sep"></span>
+  {#if editor.features.tools && editor.features.sizes}
+    <span class="sep"></span>
+  {/if}
 
-  <div class="sizes">
-    {#each BRUSH_SIZES_LOGICAL as size (size)}
-      <button
-        class="size-btn"
-        class:active={editor.brushSizeLogical === size}
-        aria-pressed={editor.brushSizeLogical === size}
-        onclick={() => (editor.brushSizeLogical = size)}
-        title="Thickness {size}"
-      >
-        <span class="dot" style:width="{Math.min(size + 2, 22)}px" style:height="{Math.min(size + 2, 22)}px"></span>
-      </button>
-    {/each}
-  </div>
-  <span class="size" title="Brush size — +/− to adjust">{editor.brushSizeLogical}px</span>
+  {#if editor.features.sizes}
+    <div class="sizes">
+      {#each BRUSH_SIZES_LOGICAL as size (size)}
+        <button
+          class="size-btn"
+          class:active={editor.brushSizeLogical === size}
+          aria-pressed={editor.brushSizeLogical === size}
+          onclick={() => (editor.brushSizeLogical = size)}
+          title="Thickness {size}"
+        >
+          <span class="dot" style:width="{Math.min(size + 2, 22)}px" style:height="{Math.min(size + 2, 22)}px"></span>
+        </button>
+      {/each}
+    </div>
+    <span class="size" title="Brush size — +/− to adjust">{editor.brushSizeLogical}px</span>
+  {/if}
 
-  {#if editor.showPalette}
+  {#if editor.features.color && editor.showPalette}
     <label class="color" title="Brush color (M to hide)" style:--swatch={editor.brushColor}>
       <input type="color" bind:value={editor.brushColor} />
     </label>
