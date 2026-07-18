@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
   import { LoopPlayer } from '../player/player';
+  import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -45,55 +45,32 @@
     }
   }
 
-  function onFpsChange(e: Event): void {
-    const input = e.currentTarget as HTMLInputElement;
-    editor.setFps(Number(input.value));
-    input.value = String(editor.doc.frame_rate);
-  }
-
   $effect(() => () => cancelAnimationFrame(rafId));
 </script>
 
-<div class="controls">
-  <button class="play" onclick={toggle} title={editor.playing ? 'Stop' : 'Play'}>
-    {editor.playing ? '■' : '▶'}
-  </button>
-  <label>
-    fps
-    <input
-      type="number"
-      min={PLAYER_FPS_MIN}
-      max={PLAYER_FPS_MAX}
-      value={editor.doc.frame_rate}
-      onchange={onFpsChange}
-      disabled={editor.playing}
-    />
-  </label>
-</div>
+<button
+  class="key play"
+  class:playing={editor.playing}
+  onclick={toggle}
+  title={editor.playing ? 'Stop preview' : 'Play preview'}
+  aria-label={editor.playing ? 'Stop preview' : 'Play preview'}
+>
+  <Icon name={editor.playing ? 'stop' : 'play'} size={22} />
+</button>
 
 <style>
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
+  /* Play leads the transport row like the reference ▶: wider than an icon
+     key, and flips to a filled electric key while previewing. */
   .play {
-    min-width: 3.2rem;
-    min-height: 2.2rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: #fff;
-    cursor: pointer;
+    min-width: 3.4rem;
   }
-  label {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.85rem;
-    color: #666;
+  .play.playing {
+    background: var(--electric);
+    border-color: transparent;
+    color: var(--canvas);
   }
-  input {
-    width: 3.2rem;
-    min-height: 1.6rem;
+  .play.playing:hover {
+    background: var(--electric);
+    border-color: transparent;
   }
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
   import { exportGif } from '../export/export-gif';
+  import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -34,28 +35,38 @@
   }
 </script>
 
-<button onclick={downloadGif} disabled={exporting} title="Download GIF">
-  {exporting ? `${exportProgress}%` : 'GIF'}
+<button
+  class="key icon"
+  onclick={downloadGif}
+  disabled={exporting}
+  title="Export animated GIF"
+  aria-label="Export animated GIF"
+>
+  {#if exporting}
+    <span class="progress">{exportProgress}%</span>
+  {:else}
+    <Icon name="download" />
+  {/if}
 </button>
 {#if exportError}
   <span class="error" role="alert">{exportError}</span>
 {/if}
 
 <style>
-  button {
-    min-width: 2.2rem;
-    min-height: 2.2rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: #fff;
-    cursor: pointer;
-  }
-  button:disabled {
+  .key:disabled {
     cursor: progress;
-    color: #666;
+    opacity: 1;
+    color: var(--ink-2);
   }
+  .progress {
+    padding: 0 0.35rem;
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+  }
+  /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */
   .error {
-    font-size: 0.85rem;
-    color: #c00;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink);
   }
 </style>
