@@ -27,7 +27,7 @@ export function rasterizeDocument(doc: ToonDocument): ExportRequest['frames'] {
   const renderer = new Canvas2DFrameRenderer();
   const viewport = { scale: 1 / FIXED_POINT_SCALE, dpr: 1 };
   return doc.frames.map((frame) => {
-    renderer.render(frame, ctx as unknown as Canvas2DLike, viewport);
+    renderer.render(frame, doc.tools, ctx as unknown as Canvas2DLike, viewport);
     return { data: ctx.getImageData(0, 0, width, height).data.buffer as ArrayBuffer, width, height };
   });
 }

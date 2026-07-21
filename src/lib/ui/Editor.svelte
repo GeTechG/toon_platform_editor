@@ -310,6 +310,31 @@
           {/each}
         </div>
 
+        {#if editor.preset === 'toonio'}
+          <div class="tonio-preset-settings" aria-label="Настройки линии Tonio">
+            <label class="number-setting">
+              <span>Сглаживание</span>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={editor.tonioSmooth}
+                oninput={(event) => editor.setTonioSmooth(event.currentTarget.valueAsNumber)}
+              />
+            </label>
+            <label class="number-setting">
+              <span>Мин. расстояние</span>
+              <input
+                type="number"
+                min="0"
+                max="30"
+                value={editor.tonioMinDistance}
+                oninput={(event) => editor.setTonioMinDistance(event.currentTarget.valueAsNumber)}
+              />
+            </label>
+          </div>
+        {/if}
+
         <p class="sheet-hint">Buttons</p>
         <div class="toggles">
           {#each FEATURE_ORDER as key (key)}
@@ -567,6 +592,35 @@
     color: var(--canvas);
   }
   .preset-chip:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+  .tonio-preset-settings {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.55rem;
+    margin-top: 0.65rem;
+  }
+  .number-setting {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--ink-2);
+    font-size: 0.74rem;
+    font-weight: 700;
+  }
+  .number-setting input {
+    width: 100%;
+    min-height: 2.75rem;
+    box-sizing: border-box;
+    padding-inline: 0.55rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  .number-setting input:focus-visible {
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }

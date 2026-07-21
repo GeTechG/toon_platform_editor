@@ -6,9 +6,10 @@
  */
 
 import Ajv2020 from 'ajv/dist/2020';
-import schema from './schema/toon-v1.schema.json';
-import { MAX_TOTAL_POINTS, SCHEMA_VERSION } from './constants';
-import type { ToonDocument } from './types';
+import schemaV1 from './schema/toon-v1.schema.json';
+import schemaV2 from './schema/toon-v2.schema.json';
+import { MAX_SUPPORTED_SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
+import type { ToonDocumentV1, ToonDocumentV2 } from './types';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -25,7 +26,8 @@ export interface ValidationResult {
 }
 
 const ajv = new Ajv2020({ allErrors: true });
-const validateSchema = ajv.compile(schema);
+const validateSchemaV1 = ajv.compile(schemaV1);
+const validateSchemaV2 = ajv.compile(schemaV2);
 
 /** Document load error; carries the list of validation issues. */
 export class FormatError extends Error {
@@ -47,15 +49,16 @@ export function validateDocument(data: unknown): ValidationResult {
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return failure('schema', '/schema_version', 'schema_version must be an integer ≥ 1');
   }
-  if (version > SCHEMA_VERSION) {
+  if (version > MAX_SUPPORTED_SCHEMA_VERSION) {
     return failure(
       'unsupported-version',
       '/schema_version',
-      `version ${version} is not supported (maximum ${SCHEMA_VERSION}); update the editor`,
+      `version ${version} is not supported (maximum ${MAX_SUPPORTED_SCHEMA_VERSION}); update the editor`,
     );
   }
 
   // 2. Structure — JSON Schema.
+  const validateSchema = version === 1 ? validateSchemaV1 : validateSchemaV2;
   if (!validateSchema(data)) {
     const issues: ValidationIssue[] = (validateSchema.errors ?? []).map((err) => ({
       category: 'schema',
@@ -66,17 +69,19 @@ export function validateDocument(data: unknown): ValidationResult {
   }
 
   // 3. Semantics on top of the schema.
-  const issues = semanticIssues(data as unknown as ToonDocument);
+  const issues = semanticIssues(data as unknown as ToonDocumentV1 | ToonDocumentV2);
   return { ok: issues.length === 0, issues };
 }
 
 /** Validates and types already-parsed JSON; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocument {
+export function loadDocument(data: unknown): ToonDocumentV2 {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);
   }
-  return migrateLegacyEraser(data as ToonDocument);
+  return (data as { schema_version: number }).schema_version === 1
+    ? migrateV1ToV2(data as ToonDocumentV1)
+    : structuredClone(data as ToonDocumentV2);
 }
 
 /**
@@ -84,7 +89,7 @@ export function loadDocument(data: unknown): ToonDocument {
  * unreachable as a paint color then, so any such stroke was an erase. Convert
  * them to the erase flag in place so old drafts keep erasing.
  */
-export function migrateLegacyEraser(doc: ToonDocument): ToonDocument {
+export function migrateLegacyEraser(doc: ToonDocumentV1): ToonDocumentV1 {
   for (const frame of doc.frames) {
     for (const stroke of frame.strokes) {
       if (!stroke.erase && stroke.color === '#ffffff') {
@@ -95,11 +100,48 @@ export function migrateLegacyEraser(doc: ToonDocument): ToonDocument {
   return doc;
 }
 
+/** Deterministically upgrades inline v1 stroke attributes to v2 tool references. */
+export function migrateV1ToV2(doc: ToonDocumentV1): ToonDocumentV2 {
+  const tools: ToonDocumentV2['tools'] = [];
+  const toolIds = new Map<string, number>();
+  const frames = doc.frames.map((frame) => ({
+    strokes: frame.strokes.map((stroke) => {
+      const erase = stroke.erase === true || stroke.color === '#ffffff';
+      const descriptor = erase
+        ? { kind: 'eraser' as const, dialect: 'multator' as const, width: stroke.width }
+        : {
+            kind: 'pencil' as const,
+            dialect: 'multator' as const,
+            width: stroke.width,
+            color: stroke.color,
+          };
+      const key = descriptor.kind === 'eraser'
+        ? `eraser\u0000${descriptor.dialect}\u0000${descriptor.width}`
+        : `pencil\u0000${descriptor.dialect}\u0000${descriptor.width}\u0000${descriptor.color}`;
+      let toolId = toolIds.get(key);
+      if (toolId === undefined) {
+        toolId = tools.length;
+        tools.push(descriptor);
+        toolIds.set(key, toolId);
+      }
+      return { points: stroke.points.slice(), tool_id: toolId };
+    }),
+  }));
+  return {
+    schema_version: 2,
+    width: doc.width,
+    height: doc.height,
+    frame_rate: doc.frame_rate,
+    tools,
+    frames,
+  };
+}
+
 function failure(category: ValidationCategory, path: string, message: string): ValidationResult {
   return { ok: false, issues: [{ category, path, message }] };
 }
 
-function semanticIssues(doc: ToonDocument): ValidationIssue[] {
+function semanticIssues(doc: ToonDocumentV1 | ToonDocumentV2): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   let totalPoints = 0;
 
@@ -115,6 +157,13 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
         return;
       }
       totalPoints += stroke.points.length / 2;
+      if (doc.schema_version === 2 && 'tool_id' in stroke && stroke.tool_id >= doc.tools.length) {
+        issues.push({
+          category: 'semantic',
+          path: `${base}/tool_id`,
+          message: `tool_id ${stroke.tool_id} does not reference an existing tool`,
+        });
+      }
       stroke.points.forEach((coord, i) => {
         // The schema enforces integers and the int16 range for JSON
         // input; Number.isInteger guards NaN in documents built in

@@ -48,7 +48,7 @@
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
-    renderer.render(frame, ctx, { scale: cssWidth / doc.width, dpr });
+    renderer.render(frame, doc.tools, ctx, { scale: cssWidth / doc.width, dpr });
   }
 
   onMount(() => {

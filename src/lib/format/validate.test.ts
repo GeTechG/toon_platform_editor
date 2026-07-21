@@ -107,6 +107,10 @@ describe('validateDocument', () => {
 describe('loadDocument', () => {
   it('returns a typed document for valid JSON', () => {
     const doc = loadDocument(validDoc());
+    expect(doc.schema_version).toBe(2);
+    expect(doc.tools).toEqual([
+      { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
+    ]);
     expect(doc.frames).toHaveLength(1);
   });
 
@@ -114,18 +118,20 @@ describe('loadDocument', () => {
     const legacy = validDoc() as { frames: { strokes: { color: string; erase?: true }[] }[] };
     legacy.frames[0].strokes[0].color = '#ffffff';
     const doc = loadDocument(legacy);
-    expect(doc.frames[0].strokes[0].erase).toBe(true);
+    expect(doc.tools[doc.frames[0].strokes[0].tool_id]).toEqual({
+      kind: 'eraser', dialect: 'multator', width: 32,
+    });
   });
 
   it('leaves non-white strokes untouched (no erase flag added)', () => {
     const doc = loadDocument(validDoc());
-    expect('erase' in doc.frames[0].strokes[0]).toBe(false);
+    expect(doc.tools[doc.frames[0].strokes[0].tool_id].kind).toBe('pencil');
   });
 
   it('throws FormatError with the issue list for invalid input', () => {
-    expect(() => loadDocument({ schema_version: 2 })).toThrow(FormatError);
+    expect(() => loadDocument({ schema_version: 3 })).toThrow(FormatError);
     try {
-      loadDocument({ schema_version: 2 });
+      loadDocument({ schema_version: 3 });
     } catch (e) {
       expect((e as FormatError).issues[0].category).toBe('unsupported-version');
     }

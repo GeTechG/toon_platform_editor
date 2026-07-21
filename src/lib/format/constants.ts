@@ -5,6 +5,8 @@
 
 /** Supported document schema version. */
 export const SCHEMA_VERSION = 1;
+/** Highest schema version accepted by the loader during the v2 rollout. */
+export const MAX_SUPPORTED_SCHEMA_VERSION = 2;
 export const CANVAS_LOGICAL_WIDTH = 600;
 export const CANVAS_LOGICAL_HEIGHT = 300;
 

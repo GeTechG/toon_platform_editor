@@ -41,6 +41,7 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
     frames: cfg.frames,
     strokesPerFrame: cfg.strokesPerFrame,
     pointsPerStroke: cfg.pointsPerStroke,
+    mixedEvery: cfg.mixedEvery,
   });
   const compositor = new FrameCompositor(canvas);
 

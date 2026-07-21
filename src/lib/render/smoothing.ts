@@ -18,7 +18,7 @@ export interface PathSink {
  * Coordinates are passed through as-is — scaling is the caller's
  * transform.
  */
-export function emitSmoothedPath(points: readonly number[], sink: PathSink): void {
+export function emitMultatorPath(points: readonly number[], sink: PathSink): void {
   const count = points.length / 2;
   if (count === 0) {
     return;
@@ -44,4 +44,25 @@ export function emitSmoothedPath(points: readonly number[], sink: PathSink): voi
     points[2 * (count - 1)],
     points[2 * (count - 1) + 1],
   );
+}
+
+/** Backward-compatible name while renderer consumers migrate to dialect dispatch. */
+export const emitSmoothedPath = emitMultatorPath;
+
+/** Exact Tonio midpoint emitter; committed Tonio lines include their endpoint sentinel. */
+export function emitTonioPath(points: readonly number[], sink: PathSink): void {
+  for (let i = 2; i < points.length; i += 2) {
+    const x = points[i];
+    const y = points[i + 1];
+    let previousX = points[i - 2];
+    let previousY = points[i - 1];
+    if (previousX === x && previousY === y) {
+      previousX += 0.01;
+      previousY += 0.01;
+    }
+    sink.quadraticCurveTo(previousX, previousY, (x + previousX) / 2, (y + previousY) / 2);
+  }
+  if (points.length === 2) {
+    sink.quadraticCurveTo(points[0], points[1], points[0] + 0.01, points[1] + 0.01);
+  }
 }

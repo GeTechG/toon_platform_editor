@@ -17,6 +17,8 @@ export interface CorpusOptions {
   frames: number;
   strokesPerFrame: number;
   pointsPerStroke: number;
+  /** Every Nth stroke uses Tonio geometry; 0 keeps the corpus Multator-only. */
+  mixedEvery?: number;
 }
 
 // A few valid #rrggbb colors, cycled so the corpus exercises strokeStyle churn.
@@ -30,7 +32,15 @@ export function buildCorpus(opts: CorpusOptions): ToonDocument {
     for (let s = 0; s < opts.strokesPerFrame; s++) {
       const color = PALETTE[(f + s) % PALETTE.length];
       const stroke = syntheticStroke(doc, f, s, opts.pointsPerStroke, width, color);
-      addStroke(doc, frameIndex, stroke);
+      if (opts.mixedEvery && (f * opts.strokesPerFrame + s) % opts.mixedEvery === 0) {
+        const last = stroke.points.slice(-2);
+        addStroke(doc, frameIndex, {
+          points: [...stroke.points, ...last],
+          tool: { kind: 'pencil', dialect: 'toonio', width, color },
+        });
+      } else {
+        addStroke(doc, frameIndex, stroke);
+      }
     }
   }
   return doc;

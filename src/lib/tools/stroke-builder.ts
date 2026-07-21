@@ -12,7 +12,7 @@ import {
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from '../format/constants';
-import type { Stroke } from '../format/types';
+import type { StrokeV1 } from '../format/types';
 import { simplifyLang } from './simplify';
 
 export interface BrushSettings {
@@ -58,7 +58,7 @@ export class StrokeBuilder {
    * collapsing duplicates introduced by quantization. Quantized points
    * are canonical; there is no re-quantization.
    */
-  commit(): Stroke {
+  commit(): StrokeV1 {
     if (this.#points.length === 0) {
       throw new Error('cannot commit an empty stroke');
     }
@@ -89,7 +89,7 @@ export class StrokeBuilder {
         quantized[n - 1] = lastY;
       }
     }
-    const stroke: Stroke = { points: quantized, width: this.brush.width, color: this.brush.color };
+    const stroke: StrokeV1 = { points: quantized, width: this.brush.width, color: this.brush.color };
     if (this.brush.erase) {
       stroke.erase = true;
     }

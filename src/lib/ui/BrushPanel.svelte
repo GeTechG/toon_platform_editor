@@ -111,7 +111,7 @@
   }
   .size {
     min-width: 2.75rem;
-    font-size: 0.8rem;
+    font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
   }

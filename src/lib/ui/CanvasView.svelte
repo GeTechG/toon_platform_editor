@@ -1,18 +1,25 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, ONION_SKIN_ALPHAS } from '../format/constants';
+  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_SKIN_ALPHAS } from '../format/constants';
   import type { Frame } from '../format/types';
   import { addStroke } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
     blitLayer,
     renderRawPolyline,
+    renderResolvedPreview,
     renderStrokesLayer,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
   import { onionLayers } from './frame-selection';
-  import { StrokeBuilder, brushWidthDoc } from '../tools/stroke-builder';
+  import { brushWidthDoc } from '../tools/stroke-builder';
+  import {
+    PointerStrokeController,
+    TONIO_CANVAS_WIDTH,
+    previewStrokeSession,
+    type PointerSample,
+  } from '../tools/profiles';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -26,7 +33,17 @@
   let canvasEl: HTMLCanvasElement;
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
   let wrapHeight = $state(0);
-  let builder: StrokeBuilder | null = null;
+  let cursorX = $state(0);
+  let cursorY = $state(0);
+  let cursorVisible = $state(false);
+  const pointer = new PointerStrokeController(() => ({
+    profile: editor.drawingProfile,
+    descriptor: editor.tool === 'eraser'
+      ? { kind: 'eraser', dialect: editor.drawingProfile, width: brushWidthDoc(editor.brushSizeLogical) }
+      : { kind: 'pencil', dialect: editor.drawingProfile, width: brushWidthDoc(editor.brushSizeLogical), color: editor.brushColor },
+    tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
+    tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE),
+  }));
   // Scratch canvas for the live eraser preview: the erase must punch only
   // the active frame's layer, so layer + live stroke composite offscreen.
   let scratchEl: HTMLCanvasElement | null = null;
@@ -49,6 +66,7 @@
     ),
   );
   const cssHeight = $derived(cssWidth * (editor.doc.height / editor.doc.width));
+  const cursorDiameter = $derived(Math.max(1, editor.brushSizeLogical * cssWidth / CANVAS_LOGICAL_WIDTH));
 
   /** Cached transparent layer with the frame's strokes in their real colors. */
   function frameLayer(frame: Frame, pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement {
@@ -63,7 +81,7 @@
       cache.el.height = pxH;
       const lctx = cache.el.getContext('2d') as unknown as LayerCtx;
       lctx.clearRect(0, 0, pxW, pxH);
-      renderStrokesLayer(frame, lctx, viewport);
+      renderStrokesLayer(frame, editor.doc.tools, lctx, viewport);
       cache.strokeCount = frame.strokes.length;
       cache.w = pxW;
       cache.h = pxH;
@@ -114,7 +132,8 @@
 
     // Active frame over onion (fully opaque), then the live stroke.
     const layer = frameLayer(frame, pxWidth, pxHeight, viewport);
-    if (builder && builder.brush.erase) {
+    const session = pointer.session;
+    if (session && session.descriptor.kind === 'eraser') {
       scratchEl ??= document.createElement('canvas');
       if (scratchEl.width !== pxWidth || scratchEl.height !== pxHeight) {
         scratchEl.width = pxWidth;
@@ -125,14 +144,28 @@
       sctx.clearRect(0, 0, pxWidth, pxHeight);
       sctx.drawImage(layer, 0, 0);
       sctx.globalCompositeOperation = 'destination-out';
-      renderRawPolyline(builder.rawPoints, builder.brush.width, builder.brush.color, sctx, viewport);
+      renderSessionPreview(session, sctx, viewport, BACKGROUND_COLOR);
       sctx.globalCompositeOperation = 'source-over';
       blitLayer(scratchEl, ctx);
     } else {
       blitLayer(layer, ctx);
-      if (builder) {
-        renderRawPolyline(builder.rawPoints, builder.brush.width, builder.brush.color, ctx, viewport);
+      if (session) {
+        const color = session.descriptor.kind === 'pencil' ? session.descriptor.color : BACKGROUND_COLOR;
+        renderSessionPreview(session, ctx, viewport, color);
       }
+    }
+  }
+
+  function renderSessionPreview(
+    session: NonNullable<typeof pointer.session>,
+    target: Canvas2DLike,
+    viewport: Viewport,
+    color: string,
+  ): void {
+    if (session.profile === 'multator') {
+      renderRawPolyline(session.rawPoints, session.descriptor.width, color, target, viewport);
+    } else {
+      renderResolvedPreview(previewStrokeSession(session), session.descriptor, color, target, viewport);
     }
   }
 
@@ -186,7 +219,7 @@
   }
 
   function onPointerDown(e: PointerEvent): void {
-    if (editor.playing || !e.isPrimary || builder) {
+    if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
     if (editor.tool === 'pipette') {
@@ -197,34 +230,33 @@
       return;
     }
     canvasEl.setPointerCapture(e.pointerId);
-    builder = new StrokeBuilder({
-      width: brushWidthDoc(editor.brushSizeLogical),
-      color: editor.brushColor,
-      erase: editor.tool === 'eraser',
-    });
-    const [x, y] = toDocUnits(e);
-    builder.addPoint(x, y);
+    pointer.pointerDown(toPointerSample(e, true));
     scheduleDraw();
   }
 
   function onPointerMove(e: PointerEvent): void {
-    if (!builder || !e.isPrimary) {
+    cursorX = e.clientX;
+    cursorY = e.clientY;
+    if (!pointer.session || !e.isPrimary) {
       return;
     }
-    // One point per event (~60 Hz), no coalesced unpacking: the Lang
-    // window is measured in points, so sampling density defines how
-    // strongly the line simplifies — the reference samples per event.
-    const [x, y] = toDocUnits(e);
-    builder.addPoint(x, y);
+    // Multator keeps one point per event; Tonio unpacks its coalesced batch.
+    pointer.pointerMove(toPointerSample(e, true));
     scheduleDraw();
   }
 
   function onPointerUp(e: PointerEvent): void {
-    if (!builder || !e.isPrimary) {
+    if (!pointer.session || !e.isPrimary) {
       return;
     }
-    const stroke = builder.commit();
-    builder = null;
+    pointer.pointerUp(toPointerSample(e, true));
+    commitPendingStroke();
+    scheduleDraw();
+  }
+
+  function commitPendingStroke(): void {
+    const stroke = pointer.takeCommitted();
+    if (!stroke) return;
     try {
       addStroke(editor.doc, editor.activeFrame, stroke);
       editor.touched = true;
@@ -232,15 +264,26 @@
       // Document is at a format limit — drop the stroke instead of crashing the input handler.
       console.warn('stroke rejected:', err);
     }
-    scheduleDraw();
   }
 
   function onPointerCancel(e: PointerEvent): void {
-    if (!builder || !e.isPrimary) {
+    if (!pointer.session || !e.isPrimary) {
       return;
     }
-    builder = null;
+    pointer.pointerCancel(toPointerSample(e));
+    commitPendingStroke();
     scheduleDraw();
+  }
+
+  function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
+    const [x, y] = toDocUnits(e);
+    const coalesced = unpackCoalesced && (pointer.session?.profile ?? editor.drawingProfile) === 'toonio'
+      ? e.getCoalescedEvents?.().map((sample) => {
+          const [sampleX, sampleY] = toDocUnits(sample);
+          return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };
+        })
+      : undefined;
+    return { pointerId: e.pointerId, isPrimary: e.isPrimary, x, y, coalesced };
   }
 </script>
 
@@ -253,7 +296,25 @@
     onpointermove={onPointerMove}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
+    onpointerenter={(event) => {
+      cursorVisible = true;
+      cursorX = event.clientX;
+      cursorY = event.clientY;
+    }}
+    onpointerleave={() => (cursorVisible = false)}
+    class:custom-cursor={editor.tool !== 'pipette'}
   ></canvas>
+  {#if cursorVisible && editor.tool !== 'pipette'}
+    <span
+      class="brush-cursor"
+      class:eraser={editor.tool === 'eraser'}
+      style:left="{cursorX}px"
+      style:top="{cursorY}px"
+      style:width="{cursorDiameter}px"
+      style:height="{cursorDiameter}px"
+      aria-hidden="true"
+    ></span>
+  {/if}
 </div>
 
 <style>
@@ -274,5 +335,20 @@
     /* Page scroll/zoom must not hijack drawing. */
     touch-action: none;
     cursor: crosshair;
+  }
+  canvas.custom-cursor {
+    cursor: none;
+  }
+  .brush-cursor {
+    position: fixed;
+    z-index: 30;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--ink);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--canvas);
+    pointer-events: none;
+  }
+  .brush-cursor.eraser {
+    border-style: dashed;
   }
 </style>

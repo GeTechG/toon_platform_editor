@@ -77,18 +77,18 @@ export class FrameCompositor {
         }
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = layer.alpha;
-        ctx.drawImage(this.#frameLayer(neighbor, pxW, pxH, viewport), 0, 0);
+        ctx.drawImage(this.#frameLayer(neighbor, doc.tools, pxW, pxH, viewport), 0, 0);
       }
       ctx.globalAlpha = 1;
     }
 
-    blitLayer(this.#frameLayer(frame, pxW, pxH, viewport), ctx);
+    blitLayer(this.#frameLayer(frame, doc.tools, pxW, pxH, viewport), ctx);
     if (live && live.points.length >= 2) {
       renderRawPolyline(live.points, live.width, live.color, ctx, viewport);
     }
   }
 
-  #frameLayer(frame: Frame, pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement {
+  #frameLayer(frame: Frame, tools: ToonDocument['tools'], pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement {
     let cache = this.#layers.get(frame);
     if (!cache) {
       cache = { el: null, strokeCount: -1, w: 0, h: 0 };
@@ -100,7 +100,7 @@ export class FrameCompositor {
       cache.el.height = pxH;
       const lctx = cache.el.getContext('2d') as unknown as LayerCtx;
       lctx.clearRect(0, 0, pxW, pxH);
-      renderStrokesLayer(frame, lctx, viewport);
+      renderStrokesLayer(frame, tools, lctx, viewport);
       cache.strokeCount = frame.strokes.length;
       cache.w = pxW;
       cache.h = pxH;

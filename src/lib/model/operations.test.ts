@@ -14,7 +14,8 @@ import {
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(1);
+    expect(doc.schema_version).toBe(2);
+    expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(4800);
     expect(doc.height).toBe(2400);
     expect(doc.frame_rate).toBe(12);
@@ -70,7 +71,7 @@ describe('replaceFrame (frame paste)', () => {
     const doc = createDocument();
     addStroke(doc, 0, { points: [1, 2, 3, 4], width: 8, color: '#112233' });
     addFrame(doc, 0); // blank frame at index 1 — the paste target
-    const source = cloneFrame(doc.frames[0]);
+    const source = cloneFrame(doc, doc.frames[0]);
 
     replaceFrame(doc, 1, source);
 
@@ -91,22 +92,24 @@ describe('replaceFrame (frame paste)', () => {
     addStroke(doc, 1, { points: [5, 6], width: 8, color: '#ff0000' });
     addStroke(doc, 1, { points: [7, 8], width: 8, color: '#00ff00' });
 
-    replaceFrame(doc, 1, doc.frames[0]); // paste frame 0 onto frame 1
+    replaceFrame(doc, 1, cloneFrame(doc, doc.frames[0])); // paste frame 0 onto frame 1
 
-    expect(doc.frames[1].strokes.map((s) => s.color)).toEqual(['#000000']);
+    expect(doc.frames[1].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
+      { kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' },
+    ]);
   });
 
   it('gives the pasted frame a fresh object identity', () => {
     const doc = createDocument();
     addFrame(doc, 0);
     const before = doc.frames[1];
-    replaceFrame(doc, 1, doc.frames[0]);
+    replaceFrame(doc, 1, cloneFrame(doc, doc.frames[0]));
     expect(doc.frames[1]).not.toBe(before);
   });
 
   it('rejects an out-of-range index', () => {
     const doc = createDocument();
-    expect(() => replaceFrame(doc, 1, doc.frames[0])).toThrow(RangeError);
+    expect(() => replaceFrame(doc, 1, cloneFrame(doc, doc.frames[0]))).toThrow(RangeError);
   });
 
   it('rejects a paste that would exceed the document-wide point limit', () => {
@@ -118,7 +121,7 @@ describe('replaceFrame (frame paste)', () => {
       addFrame(doc, f);
     }
     // Pasting a full big-stroke frame onto the empty last frame overflows the ceiling.
-    expect(() => replaceFrame(doc, doc.frames.length - 1, doc.frames[0])).toThrow(RangeError);
+    expect(() => replaceFrame(doc, doc.frames.length - 1, cloneFrame(doc, doc.frames[0]))).toThrow(RangeError);
   });
 });
 
@@ -129,7 +132,9 @@ describe('removeLastStroke (per-stroke undo)', () => {
     addStroke(doc, 0, { points: [3, 4], width: 8, color: '#ff0000' });
 
     expect(removeLastStroke(doc, 0)).toBe(true);
-    expect(doc.frames[0].strokes.map((s) => s.color)).toEqual(['#000000']);
+    expect(doc.frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
+      { kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' },
+    ]);
     expect(removeLastStroke(doc, 0)).toBe(true);
     expect(doc.frames[0].strokes).toHaveLength(0);
     expect(removeLastStroke(doc, 0)).toBe(false);
@@ -146,7 +151,10 @@ describe('addStroke', () => {
     const doc = createDocument();
     addStroke(doc, 0, { points: [0, 0, 10, 10], width: 32, color: '#000000' });
     addStroke(doc, 0, { points: [20, 20], width: 16, color: '#ff0000' });
-    expect(doc.frames[0].strokes.map((s) => s.color)).toEqual(['#000000', '#ff0000']);
+    expect(doc.frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
+      { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
+      { kind: 'pencil', dialect: 'multator', width: 16, color: '#ff0000' },
+    ]);
   });
 
   it('rejects unquantized (fractional) coordinates', () => {
@@ -233,8 +241,9 @@ describe('schema limits', () => {
 
   it('addStroke stops at the per-frame stroke limit', () => {
     const doc = createDocument();
+    doc.tools.push({ kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' });
     for (let i = 0; i < 16384; i++) {
-      doc.frames[0].strokes.push({ points: [1, 2], width: 8, color: '#000000' });
+      doc.frames[0].strokes.push({ points: [1, 2], tool_id: 0 });
     }
     expect(() => addStroke(doc, 0, { points: [1, 2], width: 8, color: '#000000' })).toThrow(
       RangeError,

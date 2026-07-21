@@ -18,3 +18,11 @@ describe('buildCorpus', () => {
     expect(doc.frames[0].strokes[0].points.length).toBeGreaterThan(4);
   });
 });
+
+it('builds a valid mixed Multator/Tonio benchmark corpus', () => {
+  const doc = buildCorpus({ frames: 2, strokesPerFrame: 4, pointsPerStroke: 16, mixedEvery: 2 });
+  expect(validateDocument(doc).ok).toBe(true);
+  const dialects = doc.frames.flatMap((frame) => frame.strokes.map((stroke) => doc.tools[stroke.tool_id].dialect));
+  expect(dialects).toContain('multator');
+  expect(dialects).toContain('toonio');
+});

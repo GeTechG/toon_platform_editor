@@ -13,6 +13,8 @@ export interface BenchConfig {
   strokesPerFrame: number;
   /** Nominal raw points sampled per synthetic stroke (Lang may reduce). */
   pointsPerStroke: number;
+  /** Every Nth committed stroke uses Tonio; 0 means Multator-only. */
+  mixedEvery: number;
 
   /** input-to-paint: p95 latency must be ≤ this (ms). */
   latencyP95MaxMs: number;
@@ -39,6 +41,7 @@ export const DEFAULT_CONFIG: BenchConfig = {
   frames: 100,
   strokesPerFrame: 20,
   pointsPerStroke: 64,
+  mixedEvery: 0,
 
   latencyP95MaxMs: 32, // 2 кадра при 60 Hz
   latencyPoints: 400,

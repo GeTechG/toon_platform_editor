@@ -5,7 +5,7 @@
  * phase-2 player and GIF export.
  */
 
-import type { Frame } from '../format/types';
+import type { Frame, ToolDescriptor } from '../format/types';
 
 export interface Viewport {
   /** CSS pixels per document unit. */
@@ -16,5 +16,5 @@ export interface Viewport {
 
 /** Stateless frame renderer: a pure function of frame and viewport. */
 export interface FrameRenderer<TTarget> {
-  render(frame: Frame, target: TTarget, viewport: Viewport): void;
+  render(frame: Frame, tools: readonly ToolDescriptor[], target: TTarget, viewport: Viewport): void;
 }

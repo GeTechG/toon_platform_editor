@@ -1,13 +1,14 @@
 <script lang="ts">
-  import type { Frame } from '../format/types';
+  import type { Frame, ToolDescriptor } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 
   let {
     frame,
+    tools,
     docWidth,
     docHeight,
     height = 32,
-  }: { frame: Frame; docWidth: number; docHeight: number; height?: number } = $props();
+  }: { frame: Frame; tools: readonly ToolDescriptor[]; docWidth: number; docHeight: number; height?: number } = $props();
 
   let canvasEl: HTMLCanvasElement;
 
@@ -26,7 +27,7 @@
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
     // Opaque render (background + strokes): eraser strokes must not punch
     // through the thumb's background, so no transparent-layer path here.
-    renderer.render(frame, ctx, { scale: cssWidth / docWidth, dpr });
+    renderer.render(frame, tools, ctx, { scale: cssWidth / docWidth, dpr });
   });
 </script>
 

@@ -3,7 +3,7 @@
  * Document mutations go through model operations only.
  */
 
-import type { Frame, ToonDocument } from '../format/types';
+import type { ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_BRUSH_SIZE_LOGICAL,
@@ -19,13 +19,17 @@ import {
   removeLastStroke,
   replaceFrame,
   setFrameRate,
+  type ResolvedFrame,
 } from '../model/operations';
 import { activeFrameAfterRemove, clampPlayerFps, onionSkinVisible } from './frame-selection';
 import {
   DEFAULT_PRESET,
+  DEFAULT_DRAWING_UI_CONFIG,
   loadUiConfig,
+  presetDrawingProfile,
   presetFeatures,
   saveUiConfig,
+  type DrawingProfileId,
   type FeatureKey,
   type Features,
 } from './presets';
@@ -39,12 +43,16 @@ export class EditorState {
   playing = $state(false);
   /** Frame shown while playback is running. */
   playbackFrame = $state(0);
-  brushSizeLogical = $state(DEFAULT_BRUSH_SIZE_LOGICAL);
+  drawingProfile = $state<DrawingProfileId>('multator');
+  multatorBrushSizeLogical = $state(DEFAULT_BRUSH_SIZE_LOGICAL);
+  tonioBrushSizeLogical = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.width);
+  tonioSmooth = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.smooth);
+  tonioMinDistance = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance);
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
   /** Clipboard for frame copy/paste (deep-copied on copy). */
-  copiedFrame = $state<Frame | null>(null);
+  copiedFrame = $state<ResolvedFrame | null>(null);
   /** Whether the color palette (picker) is shown; toggled with the M hotkey. */
   showPalette = $state(true);
   /** Set once the user changes the document — gates autosave and draft restore. */
@@ -59,23 +67,52 @@ export class EditorState {
     if (saved) {
       this.preset = saved.preset;
       this.features = saved.features;
+      this.drawingProfile = saved.drawing.activeProfile;
+      this.multatorBrushSizeLogical = saved.drawing.multatorWidth;
+      this.tonioBrushSizeLogical = saved.drawing.tonio.width;
+      this.tonioSmooth = saved.drawing.tonio.smooth;
+      this.tonioMinDistance = saved.drawing.tonio.minDistance;
     }
   }
 
-  /** Switch to a preset, resetting all button visibility to its defaults. */
+  get brushSizeLogical(): number {
+    return this.drawingProfile === 'toonio' ? this.tonioBrushSizeLogical : this.multatorBrushSizeLogical;
+  }
+
+  set brushSizeLogical(value: number) {
+    if (this.drawingProfile === 'toonio') {
+      this.tonioBrushSizeLogical = Math.min(500, Math.max(1, Math.round(value)));
+    } else {
+      this.multatorBrushSizeLogical = Math.min(MAX_BRUSH_SIZE_LOGICAL, Math.max(MIN_BRUSH_SIZE_LOGICAL, Math.round(value)));
+    }
+    this.persistUiConfig();
+  }
+
+  setTonioSmooth(value: number): void {
+    this.tonioSmooth = Math.min(100, Math.max(1, Math.round(value)));
+    this.persistUiConfig();
+  }
+
+  setTonioMinDistance(value: number): void {
+    this.tonioMinDistance = Math.min(30, Math.max(0, Math.round(value)));
+    this.persistUiConfig();
+  }
+
+  /** Switch to a preset, resetting toolbar visibility and its drawing profile. */
   applyPreset(id: string): void {
     this.preset = id;
     this.features = presetFeatures(id);
-    saveUiConfig({ preset: this.preset, features: this.features });
+    this.drawingProfile = presetDrawingProfile(id);
+    this.persistUiConfig();
   }
 
   /** Toggle one button's visibility, keeping the current preset id. */
   toggleFeature(key: FeatureKey): void {
     this.features = { ...this.features, [key]: !this.features[key] };
-    saveUiConfig({ preset: this.preset, features: this.features });
+    this.persistUiConfig();
   }
 
-  /** Reset button visibility back to the active preset's defaults. */
+  /** Reset toolbar visibility and drawing profile to the active preset defaults. */
   resetFeatures(): void {
     this.applyPreset(this.preset);
   }
@@ -135,7 +172,7 @@ export class EditorState {
   copyActiveFrame(): void {
     const frame = this.doc.frames[this.activeFrame];
     if (frame) {
-      this.copiedFrame = cloneFrame(frame);
+      this.copiedFrame = cloneFrame(this.doc, frame);
     }
   }
 
@@ -175,5 +212,21 @@ export class EditorState {
 
   togglePalette(): void {
     this.showPalette = !this.showPalette;
+  }
+
+  private persistUiConfig(): void {
+    saveUiConfig({
+      preset: this.preset,
+      features: this.features,
+      drawing: {
+        activeProfile: this.drawingProfile,
+        multatorWidth: this.multatorBrushSizeLogical,
+        tonio: {
+          width: this.tonioBrushSizeLogical,
+          smooth: this.tonioSmooth,
+          minDistance: this.tonioMinDistance,
+        },
+      },
+    });
   }
 }

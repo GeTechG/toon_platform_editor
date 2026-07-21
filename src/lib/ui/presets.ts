@@ -21,10 +21,24 @@ export type FeatureKey =
   | 'onionSkin';
 
 export type Features = Record<FeatureKey, boolean>;
+export type DrawingProfileId = 'multator' | 'toonio';
+
+export interface DrawingUiConfig {
+  activeProfile: DrawingProfileId;
+  multatorWidth: number;
+  tonio: { width: number; smooth: number; minDistance: number };
+}
+
+export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
+  activeProfile: 'multator',
+  multatorWidth: 4,
+  tonio: { width: 5, smooth: 3, minDistance: 3 },
+};
 
 export interface UiConfig {
   preset: string;
   features: Features;
+  drawing: DrawingUiConfig;
 }
 
 /** Render/checkbox order for the customization list. */
@@ -65,21 +79,34 @@ const allOn = (off: Partial<Features> = {}): Features => ({
   ...off,
 });
 
-// ponytail: the multator/toonio button sets below are placeholders — one place
-// to tune. toonop (default) shows everything.
-export const PRESETS: { id: string; label: string; features: Features }[] = [
-  { id: 'toonop', label: 'Toonop', features: allOn() },
-  { id: 'multator', label: 'Multator', features: allOn({ export: false }) },
-  { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }) },
+// A preset owns both toolbar visibility and the compatibility profile used for
+// the next stroke. Toonop keeps the current Multator-compatible default.
+export const PRESETS: {
+  id: string;
+  label: string;
+  features: Features;
+  drawingProfile: DrawingProfileId;
+}[] = [
+  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator' },
+  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator' },
+  { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }), drawingProfile: 'toonio' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';
 
+function presetById(id: string) {
+  return PRESETS.find((preset) => preset.id === id)
+    ?? PRESETS.find((preset) => preset.id === DEFAULT_PRESET)!;
+}
+
 /** Feature map for a preset id, falling back to the default preset. Fresh copy. */
 export function presetFeatures(id: string): Features {
-  const preset =
-    PRESETS.find((p) => p.id === id) ?? PRESETS.find((p) => p.id === DEFAULT_PRESET)!;
-  return { ...preset.features };
+  return { ...presetById(id).features };
+}
+
+/** Drawing profile owned by a preset, falling back to the Toonop default. */
+export function presetDrawingProfile(id: string): DrawingProfileId {
+  return presetById(id).drawingProfile;
 }
 
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
@@ -96,7 +123,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   if (typeof data !== 'object' || data === null) {
     return null;
   }
-  const { preset, features } = data as Record<string, unknown>;
+  const { preset, features, drawing } = data as Record<string, unknown>;
   if (typeof preset !== 'string') {
     return null;
   }
@@ -111,7 +138,33 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
       normalized[key] = value;
     }
   }
-  return { preset, features: normalized };
+  return {
+    preset,
+    features: normalized,
+    drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),
+  };
+}
+
+function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId): DrawingUiConfig {
+  const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+  const tonio = typeof drawing.tonio === 'object' && drawing.tonio !== null
+    ? drawing.tonio as Record<string, unknown>
+    : {};
+  return {
+    activeProfile,
+    multatorWidth: clampNumber(drawing.multatorWidth, 1, 200, DEFAULT_DRAWING_UI_CONFIG.multatorWidth),
+    tonio: {
+      width: clampNumber(tonio.width, 1, 500, DEFAULT_DRAWING_UI_CONFIG.tonio.width),
+      smooth: clampNumber(tonio.smooth, 1, 100, DEFAULT_DRAWING_UI_CONFIG.tonio.smooth),
+      minDistance: clampNumber(tonio.minDistance, 0, 30, DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance),
+    },
+  };
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, Math.round(value)))
+    : fallback;
 }
 
 const STORAGE_KEY = 'toon-editor:ui';

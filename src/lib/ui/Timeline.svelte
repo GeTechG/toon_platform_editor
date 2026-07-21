@@ -54,7 +54,7 @@
         onclick={() => editor.selectFrame(i)}
         title="Frame {i + 1}"
       >
-        <FrameThumb {frame} docWidth={editor.doc.width} docHeight={editor.doc.height} />
+        <FrameThumb {frame} tools={editor.doc.tools} docWidth={editor.doc.width} docHeight={editor.doc.height} />
         <span class="num">{i + 1}</span>
       </button>
     {/each}

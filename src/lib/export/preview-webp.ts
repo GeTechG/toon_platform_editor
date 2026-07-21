@@ -42,7 +42,7 @@ export async function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayB
 
   const stills: WebpStill[] = [];
   for (let i = 0; i < count; i++) {
-    renderer.render(doc.frames[i], ctx as unknown as Canvas2DLike, viewport);
+    renderer.render(doc.frames[i], doc.tools, ctx as unknown as Canvas2DLike, viewport);
     stills.push({ data: await encodeStill(canvas), width, height });
   }
   return assembleAnimatedWebp(stills, { fps: doc.frame_rate });

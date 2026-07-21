@@ -4,9 +4,10 @@
  */
 
 import { BACKGROUND_COLOR } from '../format/constants';
-import type { Frame } from '../format/types';
+import type { Frame, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitSmoothedPath, type PathSink } from './smoothing';
+import { emitPathForTool, resolveTool } from './dispatch';
 
 /**
  * Subset of CanvasRenderingContext2D used by the renderer.
@@ -42,12 +43,13 @@ export function blitLayer(source: CanvasImageSource, target: BlitTarget): void {
 }
 
 export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
-  render(frame: Frame, target: Canvas2DLike, viewport: Viewport): void {
+  render(frame: Frame, tools: readonly ToolDescriptor[], target: Canvas2DLike, viewport: Viewport): void {
     clearToBackground(target);
     applyDocTransform(target, viewport);
     for (const stroke of frame.strokes) {
+      const tool = resolveTool(tools, stroke);
       // Opaque single layer: erasing reveals the background, so paint it.
-      drawStrokePath(target, stroke.points, stroke.width, stroke.erase ? BACKGROUND_COLOR : stroke.color, true);
+      drawResolvedStroke(target, stroke.points, tool, tool.kind === 'eraser' ? BACKGROUND_COLOR : tool.color);
     }
   }
 }
@@ -71,6 +73,19 @@ export function renderRawPolyline(
   drawStrokePath(target, points, width, color, false);
 }
 
+/** Dialect-aware live preview for prepared profile geometry. */
+export function renderResolvedPreview(
+  points: readonly number[],
+  tool: ToolDescriptor,
+  color: string,
+  target: Canvas2DLike,
+  viewport: Viewport,
+): void {
+  if (points.length < 2) return;
+  applyDocTransform(target, viewport);
+  drawResolvedStroke(target, points, tool, color);
+}
+
 /**
  * Renders a frame's strokes onto a transparent layer (no background
  * clear) so it can be composited: the caller paints the background once
@@ -82,21 +97,44 @@ export function renderRawPolyline(
  */
 export function renderStrokesLayer(
   frame: Frame,
+  tools: readonly ToolDescriptor[],
   target: Canvas2DLike,
   viewport: Viewport,
   tint?: string,
 ): void {
   applyDocTransform(target, viewport);
   for (const stroke of frame.strokes) {
-    const erase = stroke.erase === true;
+    const tool = resolveTool(tools, stroke);
+    const erase = tool.kind === 'eraser';
     if (erase) {
       target.globalCompositeOperation = 'destination-out';
     }
-    drawStrokePath(target, stroke.points, stroke.width, erase ? stroke.color : (tint ?? stroke.color), true);
+    drawResolvedStroke(target, stroke.points, tool, erase ? BACKGROUND_COLOR : (tint ?? tool.color));
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }
   }
+}
+
+function drawResolvedStroke(
+  target: Canvas2DLike,
+  points: readonly number[],
+  tool: ToolDescriptor,
+  color: string,
+): void {
+  target.beginPath();
+  if (points.length === 2 && tool.dialect === 'multator') {
+    target.fillStyle = color;
+    target.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
+    target.fill();
+    return;
+  }
+  target.lineWidth = tool.width;
+  target.strokeStyle = color;
+  target.lineCap = 'round';
+  target.lineJoin = 'round';
+  emitPathForTool(points, tool, target);
+  target.stroke();
 }
 
 function clearToBackground(target: Canvas2DLike): void {

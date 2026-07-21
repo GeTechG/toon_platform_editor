@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { canonicalize } from '../format/canonical';
-import type { Frame, ToonDocument } from '../format/types';
+import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import {
   Canvas2DFrameRenderer,
   renderRawPolyline,
@@ -86,21 +86,121 @@ class RecordingCtx implements Canvas2DLike {
   }
 }
 
+/** Small deterministic test rasterizer used only to freeze representative pixels. */
+class RasterCtx implements Canvas2DLike {
+  canvas = { width: 600, height: 300 };
+  globalCompositeOperation: GlobalCompositeOperation = 'source-over';
+  lineWidth = 1;
+  strokeStyle = '#000000';
+  fillStyle = '#000000';
+  lineCap = 'round';
+  lineJoin = 'round';
+  readonly pixels = new Uint32Array(this.canvas.width * this.canvas.height);
+  #scale = 1;
+  #path: Array<[number, number]> = [];
+  #arc: [number, number, number] | undefined;
+
+  setTransform(a: number): void {
+    this.#scale = a;
+  }
+  fillRect(x: number, y: number, width: number, height: number): void {
+    const color = rgba(this.fillStyle);
+    for (let py = Math.max(0, y); py < Math.min(this.canvas.height, y + height); py++) {
+      this.pixels.fill(color, py * this.canvas.width + Math.max(0, x), py * this.canvas.width + Math.min(this.canvas.width, x + width));
+    }
+  }
+  beginPath(): void {
+    this.#path = [];
+    this.#arc = undefined;
+  }
+  arc(x: number, y: number, radius: number): void {
+    this.#arc = [x * this.#scale, y * this.#scale, radius * this.#scale];
+  }
+  moveTo(x: number, y: number): void {
+    this.#path.push([x * this.#scale, y * this.#scale]);
+  }
+  lineTo(x: number, y: number): void {
+    this.#path.push([x * this.#scale, y * this.#scale]);
+  }
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
+    const control: [number, number] = [cpx * this.#scale, cpy * this.#scale];
+    if (this.#path.length === 0) this.#path.push(control);
+    const start = this.#path.at(-1)!;
+    const end: [number, number] = [x * this.#scale, y * this.#scale];
+    for (let step = 1; step <= 64; step++) {
+      const t = step / 64;
+      const u = 1 - t;
+      this.#path.push([
+        u * u * start[0] + 2 * u * t * control[0] + t * t * end[0],
+        u * u * start[1] + 2 * u * t * control[1] + t * t * end[1],
+      ]);
+    }
+  }
+  stroke(): void {
+    const radius = (this.lineWidth * this.#scale) / 2;
+    for (let i = 1; i < this.#path.length; i++) {
+      this.#drawSegment(this.#path[i - 1], this.#path[i], radius, rgba(this.strokeStyle));
+    }
+  }
+  fill(): void {
+    if (this.#arc) this.#drawDisc(...this.#arc, rgba(this.fillStyle));
+  }
+  signature(): string {
+    let hash = 2166136261;
+    for (const pixel of this.pixels) {
+      hash = Math.imul(hash ^ pixel, 16777619);
+    }
+    return `${this.canvas.width}x${this.canvas.height}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+  #drawSegment(from: [number, number], to: [number, number], radius: number, color: number): void {
+    const steps = Math.max(1, Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) * 2));
+    for (let step = 0; step <= steps; step++) {
+      const t = step / steps;
+      this.#drawDisc(from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t, radius, color);
+    }
+  }
+  #drawDisc(cx: number, cy: number, radius: number, color: number): void {
+    const minX = Math.max(0, Math.floor(cx - radius));
+    const maxX = Math.min(this.canvas.width - 1, Math.ceil(cx + radius));
+    const minY = Math.max(0, Math.floor(cy - radius));
+    const maxY = Math.min(this.canvas.height - 1, Math.ceil(cy + radius));
+    const radiusSquared = radius * radius;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= radiusSquared) {
+          this.pixels[y * this.canvas.width + x] = color;
+        }
+      }
+    }
+  }
+}
+
+function rgba(color: string): number {
+  const rgb = Number.parseInt(color.slice(1), 16);
+  return (0xff000000 | rgb) >>> 0;
+}
+
 const renderer = new Canvas2DFrameRenderer();
 const viewport = { scale: 0.125, dpr: 2 };
+const sampleTools: ToolDescriptor[] = [
+  { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
+  { kind: 'pencil', dialect: 'multator', width: 160, color: '#ff3300' },
+  { kind: 'pencil', dialect: 'multator', width: 16, color: '#00aa55' },
+];
 
 function sampleDoc(): ToonDocument {
   return {
-    schema_version: 1,
+    schema_version: 2,
     width: 4800,
     height: 2400,
     frame_rate: 12,
+    tools: sampleTools,
     frames: [
       {
         strokes: [
-          { points: [0, 0, 2400, 1200, 4800, 2400], width: 32, color: '#000000' },
-          { points: [100, 100], width: 160, color: '#ff3300' },
-          { points: [4800, 0, 0, 2400], width: 16, color: '#00aa55' },
+          { points: [0, 0, 2400, 1200, 4800, 2400], tool_id: 0 },
+          { points: [100, 100], tool_id: 1 },
+          { points: [4800, 0, 0, 2400], tool_id: 2 },
         ],
       },
     ],
@@ -109,7 +209,7 @@ function sampleDoc(): ToonDocument {
 
 function renderToLog(frame: Frame): string[] {
   const ctx = new RecordingCtx();
-  renderer.render(frame, ctx, viewport);
+  renderer.render(frame, sampleTools, ctx, viewport);
   return ctx.log;
 }
 
@@ -139,13 +239,50 @@ describe('Canvas2DFrameRenderer', () => {
 
   it('applies scale and dpr in the transform (document units → device px)', () => {
     const ctx = new RecordingCtx();
-    renderer.render({ strokes: [] }, ctx, { scale: 0.125, dpr: 3 });
+    renderer.render({ strokes: [] }, sampleTools, ctx, { scale: 0.125, dpr: 3 });
     expect(ctx.log).toContain('setTransform(0.375,0,0,0.375,0,0)');
   });
 
   it('is deterministic: same frame + same viewport → identical journal', () => {
     const frame = sampleDoc().frames[0];
     expect(renderToLog(frame)).toEqual(renderToLog(frame));
+  });
+
+  it('matches the frozen Multator path-command journal at viewport scale 0.125 and DPR 2', () => {
+    expect(renderToLog(sampleDoc().frames[0])).toEqual([
+      'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
+      'setTransform(0.25,0,0,0.25,0,0)', 'beginPath()', 'lineWidth=32',
+      'strokeStyle=#000000', 'lineCap=round', 'lineJoin=round', 'moveTo(0,0)',
+      'quadraticCurveTo(2400,1200,4800,2400)', 'stroke()',
+      'beginPath()', 'fillStyle=#ff3300', `arc(100,100,80,0,${Math.PI * 2})`, 'fill()',
+      'beginPath()', 'lineWidth=16', 'strokeStyle=#00aa55', 'lineCap=round',
+      'lineJoin=round', 'moveTo(4800,0)', 'lineTo(0,2400)', 'stroke()',
+    ]);
+  });
+
+  it('matches the frozen Multator pixel signature at viewport scale 0.125 and DPR 1', () => {
+    const ctx = new RasterCtx();
+    renderer.render(sampleDoc().frames[0], sampleTools, ctx, { scale: 0.125, dpr: 1 });
+    expect(ctx.signature()).toBe('600x300:bf240169');
+  });
+
+  it('matches Tonio golden commands and representative DPR 1 pixels', () => {
+    const frame: Frame = { strokes: [{ points: [80, 80, 320, 200, 320, 200], tool_id: 0 }] };
+    const tools: ToolDescriptor[] = [
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
+    ];
+    const recording = new RecordingCtx();
+    renderer.render(frame, tools, recording, { scale: 0.125, dpr: 1 });
+    expect(recording.log).toEqual([
+      'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
+      'setTransform(0.125,0,0,0.125,0,0)', 'beginPath()', 'lineWidth=40',
+      'strokeStyle=#123456', 'lineCap=round', 'lineJoin=round',
+      'quadraticCurveTo(80,80,200,140)',
+      'quadraticCurveTo(320.01,200.01,320.005,200.005)', 'stroke()',
+    ]);
+    const raster = new RasterCtx();
+    renderer.render(frame, tools, raster, { scale: 0.125, dpr: 1 });
+    expect(raster.signature()).toBe('600x300:9845e529');
   });
 
   it('save→load→render is identical to the render before saving', () => {
@@ -160,7 +297,7 @@ describe('Canvas2DFrameRenderer', () => {
 describe('renderStrokesLayer (composited layer)', () => {
   it('does not clear a background (transparent layer for stacking)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().frames[0], ctx, viewport);
+    renderStrokesLayer(sampleDoc().frames[0], sampleTools, ctx, viewport);
     // No full-canvas background fill — only the doc transform + strokes.
     expect(ctx.log).not.toContain('fillRect(0,0,1200,600)');
     expect(ctx.log[0]).toBe('setTransform(0.25,0,0,0.25,0,0)');
@@ -168,7 +305,7 @@ describe('renderStrokesLayer (composited layer)', () => {
 
   it('tint overrides every stroke color (onion-skin neighbor)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().frames[0], ctx, viewport, '#ff3b30');
+    renderStrokesLayer(sampleDoc().frames[0], sampleTools, ctx, viewport, '#ff3b30');
     const log = ctx.log.join('\n');
     expect(log).toContain('strokeStyle=#ff3b30');
     expect(log).toContain('fillStyle=#ff3b30'); // the dot too
@@ -179,12 +316,15 @@ describe('renderStrokesLayer (composited layer)', () => {
   it('eraser strokes (erase flag) erase via destination-out, then restore source-over', () => {
     const frame: Frame = {
       strokes: [
-        { points: [0, 0, 100, 100, 200, 200], width: 32, color: '#123456', erase: true },
-        { points: [0, 0, 50, 50, 100, 0], width: 16, color: '#000000' },
+        { points: [0, 0, 100, 100, 200, 200], tool_id: 0 },
+        { points: [0, 0, 50, 50, 100, 0], tool_id: 1 },
       ],
     };
     const ctx = new RecordingCtx();
-    renderStrokesLayer(frame, ctx, viewport);
+    renderStrokesLayer(frame, [
+      { kind: 'eraser', dialect: 'multator', width: 32 },
+      { kind: 'pencil', dialect: 'multator', width: 16, color: '#000000' },
+    ], ctx, viewport);
     const out = ctx.log.indexOf('globalCompositeOperation=destination-out');
     const back = ctx.log.indexOf('globalCompositeOperation=source-over');
     const pen = ctx.log.indexOf('strokeStyle=#000000');
@@ -195,10 +335,10 @@ describe('renderStrokesLayer (composited layer)', () => {
 
   it('a white stroke without the erase flag paints (source-over), not erases', () => {
     const frame: Frame = {
-      strokes: [{ points: [0, 0, 100, 100, 200, 200], width: 32, color: '#ffffff' }],
+      strokes: [{ points: [0, 0, 100, 100, 200, 200], tool_id: 0 }],
     };
     const ctx = new RecordingCtx();
-    renderStrokesLayer(frame, ctx, viewport);
+    renderStrokesLayer(frame, [{ kind: 'pencil', dialect: 'multator', width: 32, color: '#ffffff' }], ctx, viewport);
     const log = ctx.log.join('\n');
     expect(log).not.toContain('globalCompositeOperation=destination-out');
     expect(log).toContain('strokeStyle=#ffffff');
@@ -206,10 +346,10 @@ describe('renderStrokesLayer (composited layer)', () => {
 
   it('tint does not repaint eraser strokes — they still erase', () => {
     const frame: Frame = {
-      strokes: [{ points: [0, 0, 100, 100, 200, 200], width: 32, color: '#123456', erase: true }],
+      strokes: [{ points: [0, 0, 100, 100, 200, 200], tool_id: 0 }],
     };
     const ctx = new RecordingCtx();
-    renderStrokesLayer(frame, ctx, viewport, '#ff3b30');
+    renderStrokesLayer(frame, [{ kind: 'eraser', dialect: 'multator', width: 32 }], ctx, viewport, '#ff3b30');
     const log = ctx.log.join('\n');
     expect(log).toContain('globalCompositeOperation=destination-out');
     expect(log).not.toContain('strokeStyle=#ff3b30');

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { createDocument, addStroke } from '../model/operations';
 import { StrokeBuilder, brushWidthDoc } from './stroke-builder';
+import golden from './fixtures/multator-pipeline.golden.json';
 
 const W = 4800;
 const H = 2400;
@@ -20,6 +21,18 @@ describe('brushWidthDoc', () => {
 });
 
 describe('StrokeBuilder', () => {
+  for (const fixture of golden.cases) {
+    it(`matches the frozen Multator pipeline for ${fixture.name}`, () => {
+      const builder = new StrokeBuilder(golden.brush);
+      for (const [x, y] of fixture.input) {
+        builder.addPoint(x, y);
+      }
+
+      expect(builder.rawPoints).toEqual(fixture.raw);
+      expect(builder.commit()).toEqual(fixture.stroke);
+    });
+  }
+
   it('drops consecutive duplicate raw points', () => {
     const b = new StrokeBuilder({ width: 32, color: '#000000' });
     b.addPoint(1.5, 2.5);
@@ -117,7 +130,10 @@ describe('StrokeBuilder', () => {
       b.addPoint(50 + i * 100, 400 + i);
       addStroke(doc, 0, b.commit());
     });
-    expect(doc.frames[0].strokes.map((s) => [s.width, s.color])).toEqual([
+    expect(doc.frames[0].strokes.map((s) => {
+      const tool = doc.tools[s.tool_id];
+      return [tool.width, tool.kind === 'pencil' ? tool.color : undefined];
+    })).toEqual([
       [16, '#111111'],
       [48, '#22aa22'],
       [160, '#3333ff'],
