@@ -49,6 +49,10 @@
     void request.catch(() => {});
   }
 
+  // Last three typed characters, for the reference's "old" easter egg
+  // (Main.hx keyDown: charCodes 111,108,100 toggle the oldschool pen).
+  const lastThreeKeys = ['', '', ''];
+
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
@@ -58,6 +62,11 @@
     const target = e.target as HTMLElement | null;
     if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) {
       return;
+    }
+    lastThreeKeys.shift();
+    lastThreeKeys.push(e.key);
+    if (lastThreeKeys.join('') === 'old') {
+      editor.toggleOldschool();
     }
 
     let handled = true;

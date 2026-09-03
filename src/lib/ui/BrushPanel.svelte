@@ -57,6 +57,9 @@
     </div>
     <span class="size" title="Brush size — +/− to adjust">{editor.brushSizeLogical}px</span>
   {/if}
+  {#if editor.oldschool}
+    <span class="old" title="Oldschool pen — type o, l, d again to switch back">old</span>
+  {/if}
 
   {#if editor.features.color && quickPalette}
     <div class="quick" role="group" aria-label="Color (M for the full palette)">
@@ -139,6 +142,16 @@
     font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
+  }
+  /* Easter-egg badge: the oldschool pen is on. */
+  .old {
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--signal);
+    color: var(--canvas);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
   }
   /* Quick two-color palette (Multator): round swatches, electric ring when picked. */
   .quick {

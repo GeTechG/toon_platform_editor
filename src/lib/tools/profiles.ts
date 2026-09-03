@@ -1,7 +1,8 @@
 import { FIXED_POINT_SCALE } from '../format/constants';
-import type { StrokeDialect, ToolDescriptor } from '../format/types';
+import type { LineToolDescriptor, StrokeDialect } from '../format/types';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
+import { commitOldschoolStroke } from './oldschool';
 
 export interface PointerSample {
   pointerId: number;
@@ -25,21 +26,25 @@ export const TONIO_CANVAS_WIDTH = 1280;
 export interface StrokeSession {
   readonly profile: StrokeDialect;
   readonly pointerId: number;
-  readonly descriptor: ToolDescriptor;
+  /** The line tool the gesture is drawn with (an oldschool commit turns it into a contour). */
+  readonly descriptor: LineToolDescriptor;
   readonly rawPoints: number[];
   readonly tonio: Readonly<TonioSettings>;
   readonly tonioCoordinateScale: number;
   readonly multator?: StrokeBuilder;
+  /** Oldschool easter-egg pen: the Multator commit produces a filled contour. */
+  readonly oldschool: boolean;
 }
 
 export function beginStrokeSession(
   profile: StrokeDialect,
   event: PointerSample,
-  descriptor: ToolDescriptor,
+  descriptor: LineToolDescriptor,
   tonio: TonioSettings = DEFAULT_TONIO_SETTINGS,
   tonioCoordinateScale = 1,
+  oldschool = false,
 ): StrokeSession {
-  const frozenDescriptor = copyTool({ ...descriptor, dialect: profile });
+  const frozenDescriptor = copyLineTool({ ...descriptor, dialect: profile });
   if (profile === 'multator') {
     const builder = new StrokeBuilder({
       width: frozenDescriptor.width,
@@ -55,6 +60,7 @@ export function beginStrokeSession(
       tonio: { ...tonio },
       tonioCoordinateScale: 1,
       multator: builder,
+      oldschool,
     };
   }
   const session: StrokeSession = {
@@ -64,6 +70,7 @@ export function beginStrokeSession(
     rawPoints: [],
     tonio: { smooth: clampInteger(tonio.smooth, 1, 100), minDistance: clampInteger(tonio.minDistance, 0, 30) },
     tonioCoordinateScale: positiveScale(tonioCoordinateScale),
+    oldschool: false,
   };
   appendTonioEventBatch(session, event);
   return session;
@@ -91,6 +98,15 @@ export function previewStrokeSession(session: StrokeSession): readonly number[] 
 }
 
 export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
+  if (session.oldschool && session.profile === 'multator') {
+    const descriptor = session.descriptor;
+    return {
+      points: commitOldschoolStroke(session.rawPoints, descriptor.width / FIXED_POINT_SCALE),
+      tool: descriptor.kind === 'pencil'
+        ? { kind: 'contour', dialect: 'multator', color: descriptor.color }
+        : { kind: 'contour-eraser', dialect: 'multator' },
+    };
+  }
   const points = session.profile === 'multator'
     ? session.multator!.commit().points
     : tonioPrepare(
@@ -99,7 +115,7 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
         1,
         session.tonioCoordinateScale,
       );
-  return { points, tool: copyTool(session.descriptor) };
+  return { points, tool: copyLineTool(session.descriptor) };
 }
 
 export function quantizeTonioPoint(xDoc: number, yDoc: number): [number, number] {
@@ -143,9 +159,10 @@ export class PointerStrokeController {
   constructor(
     private readonly selection: () => {
       profile: StrokeDialect;
-      descriptor: ToolDescriptor;
+      descriptor: LineToolDescriptor;
       tonio?: TonioSettings;
       tonioCoordinateScale?: number;
+      oldschool?: boolean;
     },
   ) {}
 
@@ -160,6 +177,7 @@ export class PointerStrokeController {
       selected.descriptor,
       selected.tonio,
       selected.tonioCoordinateScale,
+      selected.oldschool ?? false,
     );
     return true;
   }
@@ -208,7 +226,7 @@ function appendTonioEventBatch(session: StrokeSession, event: PointerSample): vo
   }
 }
 
-function copyTool(tool: ToolDescriptor): ToolDescriptor {
+function copyLineTool(tool: LineToolDescriptor): LineToolDescriptor {
   return tool.kind === 'pencil'
     ? { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color }
     : { kind: 'eraser', dialect: tool.dialect, width: tool.width };

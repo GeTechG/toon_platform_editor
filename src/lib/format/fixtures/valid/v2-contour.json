@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 5,
+  "tools": [
+    { "kind": "contour", "dialect": "multator", "color": "#ff0000" },
+    { "kind": "contour-eraser", "dialect": "multator" }
+  ],
+  "frames": [
+    { "strokes": [
+      { "points": [0, 32, -23, 23, -32, 0, -23, -23, 0, -32, 800, -32, 823, -23, 832, 0, 823, 23, 800, 32], "tool_id": 0 },
+      { "points": [100, 100, 132, 100, 132, 132, 100, 132], "tool_id": 1 }
+    ] }
+  ]
+}

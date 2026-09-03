@@ -41,6 +41,21 @@ describe('internTool', () => {
     expect(variants.map((descriptor) => internTool!(target, descriptor))).toEqual([0, 1, 2, 3, 4]);
   });
 
+  it('interns contour descriptors (oldschool pen) by kind, dialect and color', () => {
+    const target = doc();
+    const ids = [
+      internTool!(target, { kind: 'contour', dialect: 'multator', color: '#ff0000' }),
+      internTool!(target, { kind: 'contour', dialect: 'multator', color: '#ff0000' }),
+      internTool!(target, { kind: 'contour', dialect: 'multator', color: '#000000' }),
+      internTool!(target, { kind: 'contour-eraser', dialect: 'multator' }),
+      internTool!(target, { kind: 'contour-eraser', dialect: 'multator' }),
+      internTool!(target, { kind: 'pencil', dialect: 'multator', width: 32, color: '#ff0000' }),
+    ];
+    expect(ids).toEqual([0, 0, 1, 2, 2, 3]);
+    expect(target.tools[0]).toEqual({ kind: 'contour', dialect: 'multator', color: '#ff0000' });
+    expect(target.tools[2]).toEqual({ kind: 'contour-eraser', dialect: 'multator' });
+  });
+
   it('copies a new descriptor and never mutates an existing one', () => {
     const target = doc();
     const input = { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' } as const;

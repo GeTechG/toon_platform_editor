@@ -46,6 +46,39 @@ export function emitMultatorPath(points: readonly number[], sink: PathSink): voi
   );
 }
 
+/**
+ * Closed variant (reference `multicurve(..., true)`, used for the oldschool
+ * contour): starts at the midpoint of the first segment, one quadratic per
+ * point with the next midpoint as the end, and a final quadratic through the
+ * first point back to the start. Two points degrade to a line.
+ */
+export function emitMultatorClosedPath(points: readonly number[], sink: PathSink): void {
+  const count = points.length / 2;
+  if (count === 0) {
+    return;
+  }
+  if (count === 1) {
+    sink.moveTo(points[0], points[1]);
+    return;
+  }
+  if (count === 2) {
+    sink.moveTo(points[0], points[1]);
+    sink.lineTo(points[2], points[3]);
+    return;
+  }
+  const mid = (i: number, j: number): [number, number] => [
+    (points[2 * i] + points[2 * j]) / 2,
+    (points[2 * i + 1] + points[2 * j + 1]) / 2,
+  ];
+  const start = mid(0, 1);
+  sink.moveTo(start[0], start[1]);
+  for (let i = 1; i < count; i++) {
+    const [mx, my] = mid(i, (i + 1) % count);
+    sink.quadraticCurveTo(points[2 * i], points[2 * i + 1], mx, my);
+  }
+  sink.quadraticCurveTo(points[0], points[1], start[0], start[1]);
+}
+
 /** Backward-compatible name while renderer consumers migrate to dialect dispatch. */
 export const emitSmoothedPath = emitMultatorPath;
 

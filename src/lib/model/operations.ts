@@ -41,18 +41,24 @@ export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): numbe
   if (existing !== -1) {
     return existing;
   }
-  const stored: ToolDescriptor = descriptor.kind === 'pencil'
-    ? { kind: 'pencil', dialect: descriptor.dialect, width: descriptor.width, color: descriptor.color }
-    : { kind: 'eraser', dialect: descriptor.dialect, width: descriptor.width };
-  doc.tools.push(stored);
+  doc.tools.push(copyTool(descriptor));
   return doc.tools.length - 1;
 }
 
 function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
-  return left.kind === right.kind
-    && left.dialect === right.dialect
-    && left.width === right.width
-    && (left.kind === 'eraser' || (right.kind === 'pencil' && left.color === right.color));
+  if (left.kind !== right.kind || left.dialect !== right.dialect) {
+    return false;
+  }
+  switch (left.kind) {
+    case 'pencil':
+      return right.kind === 'pencil' && left.width === right.width && left.color === right.color;
+    case 'eraser':
+      return right.kind === 'eraser' && left.width === right.width;
+    case 'contour':
+      return right.kind === 'contour' && left.color === right.color;
+    case 'contour-eraser':
+      return true;
+  }
 }
 
 export interface CreateDocumentOptions {
@@ -240,10 +246,12 @@ function isResolvedFrame(frame: ResolvedFrame | FrameV1): frame is ResolvedFrame
 }
 
 function assertTool(tool: ToolDescriptor): void {
-  if (!Number.isInteger(tool.width) || tool.width < 1 || tool.width > MAX_STROKE_WIDTH) {
-    throw new RangeError(`tool width must be an integer in 1..${MAX_STROKE_WIDTH}, got ${tool.width}`);
+  if (tool.kind === 'pencil' || tool.kind === 'eraser') {
+    if (!Number.isInteger(tool.width) || tool.width < 1 || tool.width > MAX_STROKE_WIDTH) {
+      throw new RangeError(`tool width must be an integer in 1..${MAX_STROKE_WIDTH}, got ${tool.width}`);
+    }
   }
-  if (tool.kind === 'pencil' && !/^#[0-9a-f]{6}$/.test(tool.color)) {
+  if ((tool.kind === 'pencil' || tool.kind === 'contour') && !/^#[0-9a-f]{6}$/.test(tool.color)) {
     throw new RangeError(`color must be lowercase #rrggbb, got ${tool.color}`);
   }
 }
@@ -258,10 +266,18 @@ function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): FrameV2 {
   };
 }
 
-function copyTool(tool: ToolDescriptor): ToolDescriptor {
-  return tool.kind === 'pencil'
-    ? { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color }
-    : { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+/** Plain, field-exact copy of a descriptor (drops anything a caller may have attached). */
+export function copyTool(tool: ToolDescriptor): ToolDescriptor {
+  switch (tool.kind) {
+    case 'pencil':
+      return { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color };
+    case 'eraser':
+      return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+    case 'contour':
+      return { kind: 'contour', dialect: 'multator', color: tool.color };
+    case 'contour-eraser':
+      return { kind: 'contour-eraser', dialect: 'multator' };
+  }
 }
 
 /** Sets the document frame rate (format bounds: 1..60). */

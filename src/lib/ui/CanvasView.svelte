@@ -43,6 +43,7 @@
       : { kind: 'pencil', dialect: editor.drawingProfile, width: brushWidthDoc(editor.brushSizeLogical), color: editor.brushColor },
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE),
+    oldschool: editor.oldschool,
   }));
   // Scratch canvas for the live eraser preview: the erase must punch only
   // the active frame's layer, so layer + live stroke composite offscreen.

@@ -356,6 +356,49 @@ describe('renderStrokesLayer (composited layer)', () => {
   });
 });
 
+describe('contour tools (oldschool pen)', () => {
+  const contourTools: ToolDescriptor[] = [
+    { kind: 'contour', dialect: 'multator', color: '#ff0000' },
+    { kind: 'contour-eraser', dialect: 'multator' },
+  ];
+  // A 4-point square contour: closed midpoint multicurve, filled.
+  const square = [0, 0, 80, 0, 80, 80, 0, 80];
+
+  it('fills a closed midpoint multicurve in the contour color (Frame.hx addSpline, size 0)', () => {
+    const ctx = new RecordingCtx();
+    renderer.render({ strokes: [{ points: square, tool_id: 0 }] }, contourTools, ctx, { scale: 1, dpr: 1 });
+    const from = ctx.log.indexOf('beginPath()');
+    expect(ctx.log.slice(from)).toEqual([
+      'beginPath()',
+      'fillStyle=#ff0000',
+      'moveTo(40,0)',
+      'quadraticCurveTo(80,0,80,40)',
+      'quadraticCurveTo(80,80,40,80)',
+      'quadraticCurveTo(0,80,0,40)',
+      'quadraticCurveTo(0,0,40,0)',
+      'fill()',
+    ]);
+  });
+
+  it('the opaque renderer paints a contour eraser in the background color', () => {
+    const ctx = new RecordingCtx();
+    renderer.render({ strokes: [{ points: square, tool_id: 1 }] }, contourTools, ctx, { scale: 1, dpr: 1 });
+    expect(ctx.log).toContain('fillStyle=#ffffff');
+    expect(ctx.log.at(-1)).toBe('fill()');
+  });
+
+  it('the layer renderer erases a contour eraser via destination-out', () => {
+    const ctx = new RecordingCtx();
+    renderStrokesLayer({ strokes: [{ points: square, tool_id: 1 }] }, contourTools, ctx, { scale: 1, dpr: 1 });
+    const on = ctx.log.indexOf('globalCompositeOperation=destination-out');
+    const off = ctx.log.indexOf('globalCompositeOperation=source-over');
+    const fill = ctx.log.indexOf('fill()');
+    expect(on).toBeGreaterThanOrEqual(0);
+    expect(fill).toBeGreaterThan(on);
+    expect(off).toBeGreaterThan(fill);
+  });
+});
+
 describe('renderRawPolyline (live preview)', () => {
   it('draws a raw polyline without smoothing', () => {
     const ctx = new RecordingCtx();

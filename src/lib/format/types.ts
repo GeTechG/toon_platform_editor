@@ -52,8 +52,31 @@ export interface EraserToolDescriptor {
   readonly width: number;
 }
 
+/**
+ * Oldschool pen (the reference "old" easter egg): the stroke's points are a
+ * closed contour of variable width, filled as a closed midpoint multicurve.
+ * No width — the thickness is baked into the geometry.
+ */
+export interface ContourToolDescriptor {
+  readonly kind: 'contour';
+  readonly dialect: 'multator';
+  readonly color: string;
+}
+
+export interface ContourEraserToolDescriptor {
+  readonly kind: 'contour-eraser';
+  readonly dialect: 'multator';
+}
+
+/** Tools whose points are a line of a given width (what the pointer session draws with). */
+export type LineToolDescriptor = PencilToolDescriptor | EraserToolDescriptor;
+
 /** Immutable drawing attributes shared by v2 strokes through tool_id. */
-export type ToolDescriptor = PencilToolDescriptor | EraserToolDescriptor;
+export type ToolDescriptor =
+  | PencilToolDescriptor
+  | EraserToolDescriptor
+  | ContourToolDescriptor
+  | ContourEraserToolDescriptor;
 
 export interface StrokeV2 {
   points: number[];

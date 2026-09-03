@@ -64,6 +64,12 @@ export class EditorState {
   paletteExpanded = $state(true);
   /** Bumped on frame copy/paste so the view can flash a confirmation. */
   flashTick = $state(0);
+  /**
+   * The reference "old" easter egg: typing o, l, d toggles the oldschool pen
+   * (a filled contour of variable width instead of a line). Multator line
+   * profile only; Tonio strokes ignore it.
+   */
+  oldschool = $state(false);
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
 
@@ -264,6 +270,10 @@ export class EditorState {
   /** Shrinks the brush by the profile's step (- hotkey), down to the minimum. */
   decreaseBrushSize(): void {
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, -1, this.ux);
+  }
+
+  toggleOldschool(): void {
+    this.oldschool = !this.oldschool;
   }
 
   /** M hotkey / `enablePalette` in the reference: expand or collapse the full color picker. */

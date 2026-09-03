@@ -132,7 +132,7 @@ describe('StrokeBuilder', () => {
     });
     expect(doc.frames[0].strokes.map((s) => {
       const tool = doc.tools[s.tool_id];
-      return [tool.width, tool.kind === 'pencil' ? tool.color : undefined];
+      return [tool.kind === 'pencil' ? tool.width : undefined, tool.kind === 'pencil' ? tool.color : undefined];
     })).toEqual([
       [16, '#111111'],
       [48, '#22aa22'],

@@ -7,7 +7,7 @@ import { BACKGROUND_COLOR } from '../format/constants';
 import type { Frame, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitSmoothedPath, type PathSink } from './smoothing';
-import { emitPathForTool, resolveTool } from './dispatch';
+import { emitPathForTool, isContourTool, isEraserTool, resolveTool } from './dispatch';
 
 /**
  * Subset of CanvasRenderingContext2D used by the renderer.
@@ -49,7 +49,7 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     for (const stroke of frame.strokes) {
       const tool = resolveTool(tools, stroke);
       // Opaque single layer: erasing reveals the background, so paint it.
-      drawResolvedStroke(target, stroke.points, tool, tool.kind === 'eraser' ? BACKGROUND_COLOR : tool.color);
+      drawResolvedStroke(target, stroke.points, tool, isEraserTool(tool) ? BACKGROUND_COLOR : toolColor(tool));
     }
   }
 }
@@ -105,11 +105,11 @@ export function renderStrokesLayer(
   applyDocTransform(target, viewport);
   for (const stroke of frame.strokes) {
     const tool = resolveTool(tools, stroke);
-    const erase = tool.kind === 'eraser';
+    const erase = isEraserTool(tool);
     if (erase) {
       target.globalCompositeOperation = 'destination-out';
     }
-    drawResolvedStroke(target, stroke.points, tool, erase ? BACKGROUND_COLOR : (tint ?? tool.color));
+    drawResolvedStroke(target, stroke.points, tool, erase ? BACKGROUND_COLOR : (tint ?? toolColor(tool)));
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }
@@ -123,6 +123,13 @@ function drawResolvedStroke(
   color: string,
 ): void {
   target.beginPath();
+  if (isContourTool(tool)) {
+    // Oldschool contour: the thickness is in the geometry — fill it.
+    target.fillStyle = color;
+    emitPathForTool(points, tool, target);
+    target.fill();
+    return;
+  }
   if (points.length === 2 && tool.dialect === 'multator') {
     target.fillStyle = color;
     target.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
@@ -135,6 +142,11 @@ function drawResolvedStroke(
   target.lineJoin = 'round';
   emitPathForTool(points, tool, target);
   target.stroke();
+}
+
+/** Paint color of a non-erasing tool. */
+function toolColor(tool: ToolDescriptor): string {
+  return tool.kind === 'pencil' || tool.kind === 'contour' ? tool.color : BACKGROUND_COLOR;
 }
 
 function clearToBackground(target: Canvas2DLike): void {

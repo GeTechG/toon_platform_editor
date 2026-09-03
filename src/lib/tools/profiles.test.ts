@@ -7,6 +7,41 @@ import { loadDocument } from '../format/validate';
 
 const pencil: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' };
 
+describe('oldschool pen (easter egg)', () => {
+  it('a Multator session flagged oldschool commits a filled contour descriptor', () => {
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator', descriptor: { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' }, oldschool: true,
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 800, 0));
+    controller.pointerUp(sample(1, 800, 0));
+    const stroke = controller.takeCommitted()!;
+    expect(stroke.tool).toEqual({ kind: 'contour', dialect: 'multator', color: '#ff0000' });
+    // capsule around the 100 px segment at half width 4 px: 10 points
+    expect(stroke.points).toHaveLength(20);
+    expect(stroke.points.every(Number.isInteger)).toBe(true);
+  });
+
+  it('the oldschool eraser commits a contour-eraser descriptor', () => {
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator', descriptor: { kind: 'eraser', dialect: 'multator', width: 64 }, oldschool: true,
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerUp(sample(1, 0, 0));
+    expect(controller.takeCommitted()!.tool).toEqual({ kind: 'contour-eraser', dialect: 'multator' });
+  });
+
+  it('oldschool is ignored for the Tonio profile', () => {
+    const descriptor: ToolDescriptor = { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' };
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'toonio', descriptor, tonio: { smooth: 1, minDistance: 0 }, oldschool: true,
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerUp(sample(1, 80, 0));
+    expect(controller.takeCommitted()!.tool).toEqual(descriptor);
+  });
+});
+
 describe('profile/session contract', () => {
   it('freezes profile and descriptor settings at begin', () => {
     const selected = { profile: 'multator' as const, descriptor: { ...pencil } };
