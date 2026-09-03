@@ -17,18 +17,18 @@ export const FIXED_POINT_SCALE = 8;
 export const DEFAULT_DOC_WIDTH = CANVAS_LOGICAL_WIDTH * FIXED_POINT_SCALE;
 export const DEFAULT_DOC_HEIGHT = CANVAS_LOGICAL_HEIGHT * FIXED_POINT_SCALE;
 
-/** Frame rate defaults; MVP player range is 12–24. */
+/** Frame rate defaults; player range is 5–24 (5 = the original Multator tempo). */
 export const DEFAULT_FPS = 12;
-export const PLAYER_FPS_MIN = 12;
+export const PLAYER_FPS_MIN = 5;
 export const PLAYER_FPS_MAX = 24;
 
 /** Brush: in logical canvas px. */
 export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
 export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
 export const DEFAULT_BRUSH_COLOR = '#000000';
-/** Bounds for the +/- brush-size nudge (logical canvas px, 1-unit steps). */
+/** Bounds for the +/- brush-size nudge (logical canvas px; 300 = reference cap). */
 export const MIN_BRUSH_SIZE_LOGICAL = 1;
-export const MAX_BRUSH_SIZE_LOGICAL = 200;
+export const MAX_BRUSH_SIZE_LOGICAL = 300;
 
 /** Canvas background color. */
 export const BACKGROUND_COLOR = '#ffffff';

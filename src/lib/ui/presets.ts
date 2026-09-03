@@ -9,6 +9,8 @@
  * hide the way back.
  */
 
+import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
+
 export type FeatureKey =
   | 'addFrame'
   | 'deleteFrame'
@@ -79,17 +81,20 @@ const allOn = (off: Partial<Features> = {}): Features => ({
   ...off,
 });
 
-// A preset owns both toolbar visibility and the compatibility profile used for
-// the next stroke. Toonop keeps the current Multator-compatible default.
+// A preset owns toolbar visibility, the compatibility profile used for the
+// next stroke, and the UX profile (palette, eraser rule, onion side, frame
+// and playback behavior). Toonop keeps the Multator-compatible line with the
+// editor's own UX; Multator reproduces the reference editor end to end.
 export const PRESETS: {
   id: string;
   label: string;
   features: Features;
   drawingProfile: DrawingProfileId;
+  ux: UxProfileId;
 }[] = [
-  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator' },
-  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator' },
-  { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }), drawingProfile: 'toonio' },
+  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator', ux: 'toonop' },
+  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator', ux: 'multator' },
+  { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }), drawingProfile: 'toonio', ux: 'toonop' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';
@@ -107,6 +112,11 @@ export function presetFeatures(id: string): Features {
 /** Drawing profile owned by a preset, falling back to the Toonop default. */
 export function presetDrawingProfile(id: string): DrawingProfileId {
   return presetById(id).drawingProfile;
+}
+
+/** UX profile owned by a preset, falling back to the Toonop behavior. */
+export function presetUx(id: string): UxProfile {
+  return UX_PROFILES[presetById(id).ux];
 }
 
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
@@ -152,7 +162,7 @@ function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId)
     : {};
   return {
     activeProfile,
-    multatorWidth: clampNumber(drawing.multatorWidth, 1, 200, DEFAULT_DRAWING_UI_CONFIG.multatorWidth),
+    multatorWidth: clampNumber(drawing.multatorWidth, 1, 300, DEFAULT_DRAWING_UI_CONFIG.multatorWidth),
     tonio: {
       width: clampNumber(tonio.width, 1, 500, DEFAULT_DRAWING_UI_CONFIG.tonio.width),
       smooth: clampNumber(tonio.smooth, 1, 100, DEFAULT_DRAWING_UI_CONFIG.tonio.smooth),

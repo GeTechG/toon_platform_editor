@@ -32,6 +32,17 @@
     void clientWidth;
     sync();
   });
+
+  // Keep the active frame in view (the reference list re-centers on it):
+  // after add/delete/paste/hotkeys the strip scrolls just enough to show it.
+  // Not during playback — the strip stays put while frames flip.
+  $effect(() => {
+    const index = editor.activeFrame;
+    void editor.doc.frames.length;
+    if (editor.playing || !strip) return;
+    const el = strip.children[index] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
 </script>
 
 <div class="scroller">

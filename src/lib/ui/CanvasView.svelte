@@ -67,6 +67,13 @@
   );
   const cssHeight = $derived(cssWidth * (editor.doc.height / editor.doc.width));
   const cursorDiameter = $derived(Math.max(1, editor.brushSizeLogical * cssWidth / CANVAS_LOGICAL_WIDTH));
+  // Reference cursor: a ring in the pen color with a white outline. White
+  // itself would vanish on the white canvas, so it falls back to ink.
+  const cursorColor = $derived(
+    editor.tool === 'pencil' && editor.brushColor.toLowerCase() !== BACKGROUND_COLOR
+      ? editor.brushColor
+      : 'var(--ink)',
+  );
 
   /** Cached transparent layer with the frame's strokes in their real colors. */
   function frameLayer(frame: Frame, pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement {
@@ -118,7 +125,7 @@
     // Onion-skin: previous/next neighbors under the active frame in their real
     // colors, fading with distance (farthest first so nearer frames sit on top).
     if (editor.showOnionSkin) {
-      for (const layer of onionLayers(editor.activeFrame, frames.length, ONION_SKIN_ALPHAS)) {
+      for (const layer of onionLayers(editor.activeFrame, frames.length, ONION_SKIN_ALPHAS, editor.ux.onionSides)) {
         const neighbor = frames[layer.index];
         if (neighbor.strokes.length === 0) {
           continue;
@@ -130,10 +137,14 @@
       ctx.globalAlpha = 1;
     }
 
-    // Active frame over onion (fully opaque), then the live stroke.
+    // Active frame over onion, then the live stroke. The profile's active
+    // alpha (Multator: 0.8, its containerSprite) applies to layer + live
+    // stroke together, so they composite offscreen first — the same scratch
+    // path the eraser needs to punch only the active frame's layer.
     const layer = frameLayer(frame, pxWidth, pxHeight, viewport);
     const session = pointer.session;
-    if (session && session.descriptor.kind === 'eraser') {
+    const alpha = editor.playing ? 1 : editor.ux.activeFrameAlpha;
+    if (session || alpha < 1) {
       scratchEl ??= document.createElement('canvas');
       if (scratchEl.width !== pxWidth || scratchEl.height !== pxHeight) {
         scratchEl.width = pxWidth;
@@ -143,16 +154,17 @@
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.clearRect(0, 0, pxWidth, pxHeight);
       sctx.drawImage(layer, 0, 0);
-      sctx.globalCompositeOperation = 'destination-out';
-      renderSessionPreview(session, sctx, viewport, BACKGROUND_COLOR);
-      sctx.globalCompositeOperation = 'source-over';
+      if (session) {
+        const erase = session.descriptor.kind === 'eraser';
+        sctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
+        renderSessionPreview(session, sctx, viewport, erase ? BACKGROUND_COLOR : session.descriptor.color);
+        sctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.globalAlpha = alpha;
       blitLayer(scratchEl, ctx);
+      ctx.globalAlpha = 1;
     } else {
       blitLayer(layer, ctx);
-      if (session) {
-        const color = session.descriptor.kind === 'pencil' ? session.descriptor.color : BACKGROUND_COLOR;
-        renderSessionPreview(session, ctx, viewport, color);
-      }
     }
   }
 
@@ -188,6 +200,7 @@
     void editor.displayedFrame;
     void editor.doc.frames[editor.displayedFrame]?.strokes.length;
     void editor.showOnionSkin;
+    void editor.ux;
     const active = editor.activeFrame;
     for (let distance = 1; distance <= ONION_SKIN_ALPHAS.length; distance++) {
       void editor.doc.frames[active - distance]?.strokes.length;
@@ -312,6 +325,7 @@
       style:top="{cursorY}px"
       style:width="{cursorDiameter}px"
       style:height="{cursorDiameter}px"
+      style:border-color={cursorColor}
       aria-hidden="true"
     ></span>
   {/if}

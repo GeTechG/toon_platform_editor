@@ -85,11 +85,21 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
 /** Inserts an empty frame after afterIndex; returns the new frame's index. */
 export function addFrame(doc: ToonDocument, afterIndex: number): number {
   assertFrameIndex(doc, afterIndex);
+  return insertEmptyFrame(doc, afterIndex + 1);
+}
+
+/** Inserts an empty frame in front of the frame at index (Ctrl+add); returns its index. */
+export function insertFrameBefore(doc: ToonDocument, index: number): number {
+  assertFrameIndex(doc, index);
+  return insertEmptyFrame(doc, index);
+}
+
+function insertEmptyFrame(doc: ToonDocument, at: number): number {
   if (doc.frames.length >= MAX_FRAMES) {
     throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
   }
-  doc.frames.splice(afterIndex + 1, 0, emptyFrame());
-  return afterIndex + 1;
+  doc.frames.splice(at, 0, emptyFrame());
+  return at;
 }
 
 /**

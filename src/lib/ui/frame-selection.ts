@@ -5,9 +5,25 @@
 
 import { PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
 
-/** Active frame after removing removedIndex: right neighbor or the last frame. */
-export function activeFrameAfterRemove(removedIndex: number, newFrameCount: number): number {
+/**
+ * Active frame after removing removedIndex. 'next' (default): the right
+ * neighbor, or the last frame. 'previous' (Multator): the frame before the
+ * removed one, or the first frame.
+ */
+export function activeFrameAfterRemove(
+  removedIndex: number,
+  newFrameCount: number,
+  prefer: 'next' | 'previous' = 'next',
+): number {
+  if (prefer === 'previous') {
+    return Math.max(0, Math.min(removedIndex - 1, newFrameCount - 1));
+  }
   return Math.min(removedIndex, newFrameCount - 1);
+}
+
+/** Frame playback starts from: the active frame, or the first when the profile plays from start. */
+export function playbackStartFrame(activeFrame: number, playFromStart: boolean): number {
+  return playFromStart ? 0 : activeFrame;
 }
 
 export interface OnionLayer {
@@ -19,13 +35,15 @@ export interface OnionLayer {
 
 /**
  * Onion-skin layers for the active frame: up to `alphas.length` previous and
- * next neighbors, each fainter with distance. Farthest first so nearer frames
- * composite on top; neighbors outside the document are skipped.
+ * (with sides = 'both') next neighbors, each fainter with distance. Farthest
+ * first so nearer frames composite on top; neighbors outside the document
+ * are skipped.
  */
 export function onionLayers(
   active: number,
   frameCount: number,
   alphas: readonly number[],
+  sides: 'both' | 'previous' = 'both',
 ): OnionLayer[] {
   const layers: OnionLayer[] = [];
   for (let distance = alphas.length; distance >= 1; distance--) {
@@ -35,7 +53,7 @@ export function onionLayers(
     if (prev >= 0) {
       layers.push({ index: prev, alpha });
     }
-    if (next < frameCount) {
+    if (sides === 'both' && next < frameCount) {
       layers.push({ index: next, alpha });
     }
   }
@@ -47,7 +65,7 @@ export function onionSkinVisible(enabled: boolean, playing: boolean): boolean {
   return enabled && !playing;
 }
 
-/** Clamps fps to the MVP player range (12–24). */
+/** Clamps fps to the player range (5–24). */
 export function clampPlayerFps(value: number): number {
   const fps = Math.round(value);
   if (!Number.isFinite(fps)) {

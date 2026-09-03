@@ -72,15 +72,15 @@
         break;
       case 'b':
       case 'B':
-        editor.tool = 'pencil';
+        editor.selectTool('pencil');
         break;
       case 'e':
       case 'E':
-        editor.tool = 'eraser';
+        editor.selectTool('eraser');
         break;
       case 'p':
       case 'P':
-        editor.tool = 'pipette';
+        editor.selectTool('pipette');
         break;
       case 'c':
       case 'C':
@@ -149,6 +149,25 @@
     customizeOpen = true;
   }
 
+  // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
+  // (fadeSprite). Skipped under reduced motion.
+  let flashVisible = $state(false);
+  $effect(() => {
+    if (editor.flashTick === 0) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    flashVisible = true;
+    const timer = setTimeout(() => (flashVisible = false), 50);
+    return () => clearTimeout(timer);
+  });
+
+  function onAddFrame(e: MouseEvent): void {
+    if (e.ctrlKey) {
+      editor.addFrameBeforeActive();
+    } else {
+      editor.addFrameAfterActive();
+    }
+  }
+
   function onFpsChange(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
     editor.setFps(Number(input.value));
@@ -161,6 +180,9 @@
 <div class="editor" bind:this={editorEl}>
   <div class="stage">
     <CanvasView {editor} />
+    {#if flashVisible}
+      <div class="flash" aria-hidden="true"></div>
+    {/if}
   </div>
   <div class="panel">
     <div class="toolbar">
@@ -170,8 +192,8 @@
           <button
             class="key icon"
             disabled={editor.playing}
-            onclick={() => editor.addFrameAfterActive()}
-            title="Add frame after current"
+            onclick={onAddFrame}
+            title="Add frame after current (Ctrl+click: before)"
           >
             <Icon name="plus" />
           </button>
@@ -394,11 +416,20 @@
   /* Paper worktable so the white canvas floats on brand tone, not a bare dark
      letterbox. Padding keeps the canvas off the bars. */
   .stage {
+    position: relative;
     flex: 1;
     min-height: 0;
     background: var(--paper);
     padding: clamp(0.5rem, 2.2vw, 1.25rem);
     box-sizing: border-box;
+  }
+  /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. */
+  .flash {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: rgba(204, 204, 204, 0.9);
+    pointer-events: none;
   }
   /* Bottom toolbar — the second neutral layer over the white canvas. */
   .panel {

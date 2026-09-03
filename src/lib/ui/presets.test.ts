@@ -7,7 +7,9 @@ import {
   parseUiConfig,
   presetDrawingProfile,
   presetFeatures,
+  presetUx,
 } from './presets';
+import { UX_PROFILES } from './ux-profile';
 
 test('the default preset shows every button', () => {
   const features = presetFeatures(DEFAULT_PRESET);
@@ -30,6 +32,16 @@ test('compatibility presets select their drawing profile through existing preset
   expect(PRESETS.find((preset) => preset.id === 'toonop')?.drawingProfile).toBe('multator');
   expect(PRESETS.find((preset) => preset.id === 'multator')?.drawingProfile).toBe('multator');
   expect(PRESETS.find((preset) => preset.id === 'toonio')?.drawingProfile).toBe('toonio');
+});
+
+test('each preset owns a UX profile: Multator reproduces the reference, others keep toonop', () => {
+  expect(presetUx('multator')).toBe(UX_PROFILES.multator);
+  expect(presetUx('toonop')).toBe(UX_PROFILES.toonop);
+  expect(presetUx('toonio')).toBe(UX_PROFILES.toonop);
+});
+
+test('UX profile lookup falls back to toonop for an unknown preset', () => {
+  expect(presetUx('nope')).toBe(UX_PROFILES.toonop);
 });
 
 test('preset drawing profile lookup falls back to the Toonop profile', () => {

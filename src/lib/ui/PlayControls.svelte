@@ -1,12 +1,16 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
+  import { playbackStartFrame } from './frame-selection';
   import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
   let player: LoopPlayer | null = null;
   let rafId = 0;
+  // The frame being edited when playback started — where stop returns to,
+  // whether the loop began there or (Multator) from the first frame.
+  let resumeFrame = 0;
 
   function tick(now: number): void {
     player?.tick(now);
@@ -17,13 +21,15 @@
     if (editor.playing) {
       return;
     }
+    resumeFrame = editor.activeFrame;
+    const startFrame = playbackStartFrame(editor.activeFrame, editor.ux.playFromStart);
     player = new LoopPlayer({
       frameCount: editor.doc.frames.length,
       fps: editor.doc.frame_rate,
-      startFrame: editor.activeFrame,
+      startFrame,
       onFrame: (frame) => (editor.playbackFrame = frame),
     });
-    editor.playbackFrame = editor.activeFrame;
+    editor.playbackFrame = startFrame;
     editor.playing = true;
     rafId = requestAnimationFrame(tick);
   }
@@ -31,7 +37,8 @@
   function stop(): void {
     cancelAnimationFrame(rafId);
     if (player) {
-      editor.activeFrame = player.stop();
+      player.stop();
+      editor.activeFrame = resumeFrame;
       player = null;
     }
     editor.playing = false;

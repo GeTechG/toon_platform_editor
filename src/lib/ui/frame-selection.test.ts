@@ -4,6 +4,7 @@ import {
   clampPlayerFps,
   onionLayers,
   onionSkinVisible,
+  playbackStartFrame,
 } from './frame-selection';
 
 const ALPHAS = [0.3, 0.1];
@@ -17,6 +18,26 @@ describe('activeFrameAfterRemove', () => {
   it('after removing the last frame the new last one is active', () => {
     expect(activeFrameAfterRemove(2, 2)).toBe(1);
     expect(activeFrameAfterRemove(0, 1)).toBe(0); // the only frame was cleared
+  });
+
+  it("'previous' prefers the frame before the removed one (Multator)", () => {
+    expect(activeFrameAfterRemove(2, 4, 'previous')).toBe(1);
+    expect(activeFrameAfterRemove(3, 3, 'previous')).toBe(2);
+  });
+
+  it("'previous' stays on the first frame when there is nothing before it", () => {
+    expect(activeFrameAfterRemove(0, 2, 'previous')).toBe(0);
+    expect(activeFrameAfterRemove(0, 1, 'previous')).toBe(0);
+  });
+});
+
+describe('playbackStartFrame', () => {
+  it('starts from the active frame by default', () => {
+    expect(playbackStartFrame(2, false)).toBe(2);
+  });
+
+  it('starts from the first frame when the profile plays from start', () => {
+    expect(playbackStartFrame(2, true)).toBe(0);
   });
 });
 
@@ -48,6 +69,14 @@ describe('onionLayers', () => {
     expect(onionLayers(0, 1, ALPHAS)).toEqual([]);
   });
 
+  it("'previous' shows only the frames before the active one (Multator)", () => {
+    expect(onionLayers(2, 5, ALPHAS, 'previous')).toEqual([
+      { index: 0, alpha: 0.1 },
+      { index: 1, alpha: 0.3 },
+    ]);
+    expect(onionLayers(0, 5, ALPHAS, 'previous')).toEqual([]);
+  });
+
   it('clamps to the available neighbors near an edge', () => {
     // active=1 of 3: depth-2 falls outside on both sides, only depth-1 remains.
     expect(onionLayers(1, 3, ALPHAS)).toEqual([
@@ -74,11 +103,12 @@ describe('onionSkinVisible', () => {
 
 describe('clampPlayerFps', () => {
   it('keeps fps within the 12–24 player range', () => {
-    expect(clampPlayerFps(5)).toBe(12);
+    expect(clampPlayerFps(1)).toBe(5);
+    expect(clampPlayerFps(5)).toBe(5);
     expect(clampPlayerFps(12)).toBe(12);
     expect(clampPlayerFps(18.4)).toBe(18);
     expect(clampPlayerFps(24)).toBe(24);
     expect(clampPlayerFps(60)).toBe(24);
-    expect(clampPlayerFps(Number.NaN)).toBe(12);
+    expect(clampPlayerFps(Number.NaN)).toBe(5);
   });
 });

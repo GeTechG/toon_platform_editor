@@ -11,17 +11,24 @@
     { id: 'eraser', icon: 'eraser', title: 'Eraser (E)' },
     { id: 'pipette', icon: 'pipette', title: 'Eyedropper (P)' },
   ];
+
+  // Reference (ToolPanel.hx): the pipette only exists once the palette is
+  // enabled; the collapsed Multator bar offers just black and red.
+  const tools = $derived(
+    TOOLS.filter((t) => t.id !== 'pipette' || !editor.ux.pipetteNeedsPalette || editor.paletteExpanded),
+  );
+  const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
 </script>
 
 <div class="brush">
   {#if editor.features.tools}
     <div class="tools">
-      {#each TOOLS as t (t.id)}
+      {#each tools as t (t.id)}
         <button
           class="key icon"
           class:active={editor.tool === t.id}
           aria-pressed={editor.tool === t.id}
-          onclick={() => (editor.tool = t.id)}
+          onclick={() => editor.selectTool(t.id)}
           title={t.title}
         >
           <Icon name={t.icon} />
@@ -51,9 +58,27 @@
     <span class="size" title="Brush size — +/− to adjust">{editor.brushSizeLogical}px</span>
   {/if}
 
-  {#if editor.features.color && editor.showPalette}
+  {#if editor.features.color && quickPalette}
+    <div class="quick" role="group" aria-label="Color (M for the full palette)">
+      {#each quickPalette as color (color)}
+        <button
+          class="swatch"
+          class:active={editor.brushColor === color && editor.tool !== 'eraser'}
+          aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
+          style:--swatch={color}
+          onclick={() => editor.setBrushColor(color)}
+          title="Color {color} (M for the full palette)"
+          aria-label="Color {color}"
+        ></button>
+      {/each}
+    </div>
+  {:else if editor.features.color && editor.paletteExpanded}
     <label class="color" title="Brush color (M to hide)" style:--swatch={editor.brushColor}>
-      <input type="color" bind:value={editor.brushColor} />
+      <input
+        type="color"
+        value={editor.brushColor}
+        oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
+      />
     </label>
   {/if}
 </div>
@@ -114,6 +139,34 @@
     font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
+  }
+  /* Quick two-color palette (Multator): round swatches, electric ring when picked. */
+  .quick {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .swatch {
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--hairline);
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.13s ease;
+  }
+  .swatch:hover {
+    transform: translateY(-1px);
+  }
+  .swatch.active {
+    border-color: var(--canvas);
+    box-shadow: 0 0 0 2px var(--electric);
+  }
+  .swatch:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
   }
   /* Native picker as a round brand swatch showing the live color. */
   .color {

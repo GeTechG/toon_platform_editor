@@ -5,6 +5,7 @@ import {
   addStroke,
   cloneFrame,
   createDocument,
+  insertFrameBefore,
   removeFrame,
   removeLastStroke,
   replaceFrame,
@@ -39,6 +40,22 @@ describe('addFrame / removeFrame', () => {
     expect(doc.frames).toHaveLength(2);
     expect(doc.frames[0].strokes).toHaveLength(1);
     expect(doc.frames[1].strokes).toHaveLength(0);
+  });
+
+  it('insertFrameBefore puts an empty frame in front of the given one', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, { points: [1, 2], width: 8, color: '#112233' });
+    const idx = insertFrameBefore(doc, 0);
+    expect(idx).toBe(0);
+    expect(doc.frames).toHaveLength(2);
+    expect(doc.frames[0].strokes).toHaveLength(0);
+    expect(doc.frames[1].strokes).toHaveLength(1);
+  });
+
+  it('insertFrameBefore rejects an out-of-range index and the frame cap', () => {
+    const doc = createDocument();
+    expect(() => insertFrameBefore(doc, 1)).toThrow(RangeError);
+    expect(() => insertFrameBefore(doc, -1)).toThrow(RangeError);
   });
 
   it('removes a frame when others exist', () => {
