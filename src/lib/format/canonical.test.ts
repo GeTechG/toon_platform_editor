@@ -17,11 +17,10 @@ describe('canonicalize (RFC 8785, format subset)', () => {
     expect(canonicalize(-0)).toBe('0');
   });
 
-  it('rejects values outside the subset: float, NaN, bool, null', () => {
+  it('rejects values outside the subset: float, NaN, null', () => {
     expect(() => canonicalize(1.5)).toThrow(TypeError);
     expect(() => canonicalize(Number.NaN)).toThrow(TypeError);
     expect(() => canonicalize(Number.POSITIVE_INFINITY)).toThrow(TypeError);
-    expect(() => canonicalize(true)).toThrow(TypeError);
     expect(() => canonicalize(null)).toThrow(TypeError);
     expect(() => canonicalize({ a: undefined })).toThrow(TypeError);
   });
@@ -72,5 +71,12 @@ describe('sha256Hex', () => {
     expect(await sha256Hex('abc')).toBe(
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     );
+  });
+});
+
+describe('booleans (v3 layer visibility)', () => {
+  it('serializes booleans as JSON literals', () => {
+    expect(canonicalize({ hidden: false })).toBe('{"hidden":false}');
+    expect(canonicalize({ hidden: true })).toBe('{"hidden":true}');
   });
 });

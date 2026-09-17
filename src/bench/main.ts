@@ -35,14 +35,14 @@ canvas.className = 'bench-canvas';
 
 const status = document.createElement('p');
 status.className = 'bench-status';
-status.textContent = `Running… corpus ${cfg.frames}×${cfg.strokesPerFrame}, dpr ${dpr}, canvas ${canvas.width}×${canvas.height}px`;
+status.textContent = `Running… corpus ${cfg.layers}×${cfg.frames}×${cfg.strokesPerFrame}, dpr ${dpr}, canvas ${canvas.width}×${canvas.height}px`;
 
 root.append(status, canvas);
 
 runBench(canvas, cfg)
   .then((result) => {
     window.__BENCH_RESULT__ = result;
-    status.textContent = `Overall: ${result.overall} — corpus ${result.corpus.frames} frames × ${result.corpus.strokesPerFrame} strokes (${result.corpus.totalStrokes} total), dpr ${dpr}`;
+    status.textContent = `Overall: ${result.overall} — corpus ${result.corpus.layers} layers × ${result.corpus.frames} frames × ${result.corpus.strokesPerFrame} strokes (${result.corpus.totalStrokes} total), dpr ${dpr}`;
     root.append(renderTable(result));
     root.dataset.benchState = 'done';
   })

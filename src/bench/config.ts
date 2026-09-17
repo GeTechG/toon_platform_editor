@@ -7,6 +7,8 @@
  */
 
 export interface BenchConfig {
+  /** L — layers in the synthetic corpus (1 = Multator class, 5 = Toonio class). */
+  layers: number;
   /** N — number of frames in the synthetic corpus. */
   frames: number;
   /** M — strokes committed per frame. */
@@ -37,7 +39,9 @@ export interface BenchConfig {
 }
 
 export const DEFAULT_CONFIG: BenchConfig = {
-  // Мультатор-класс: ~100 кадров, десятки штрихов на кадр.
+  // Мультатор-класс: один слой, ~100 кадров, десятки штрихов на кадр.
+  // Многослойный профиль Тунио-класса — `bench.html?layers=5`.
+  layers: 1,
   frames: 100,
   strokesPerFrame: 20,
   pointsPerStroke: 64,

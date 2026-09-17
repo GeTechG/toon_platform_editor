@@ -63,7 +63,7 @@ describe('StrokeBuilder', () => {
     expect(stroke.points.slice(-2)).toEqual([W + 100, H + 50]);
     // The model accepts the result (double-checks the invariant).
     const doc = createDocument();
-    expect(() => addStroke(doc, 0, stroke)).not.toThrow();
+    expect(() => addStroke(doc, 0, 0, stroke)).not.toThrow();
   });
 
   it('commit clamps only to the int16 storage range', () => {
@@ -128,9 +128,9 @@ describe('StrokeBuilder', () => {
       const b = new StrokeBuilder(brush);
       b.addPoint(10 + i * 100, 10);
       b.addPoint(50 + i * 100, 400 + i);
-      addStroke(doc, 0, b.commit());
+      addStroke(doc, 0, 0, b.commit());
     });
-    expect(doc.frames[0].strokes.map((s) => {
+    expect(doc.layers[0].frames[0].strokes.map((s) => {
       const tool = doc.tools[s.tool_id];
       return [tool.kind === 'pencil' ? tool.width : undefined, tool.kind === 'pencil' ? tool.color : undefined];
     })).toEqual([

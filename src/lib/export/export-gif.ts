@@ -6,6 +6,7 @@
 
 import { FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
+import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer } from '../render/canvas2d';
 import type { Canvas2DLike } from '../render/canvas2d';
 import type { ExportRequest, ExportResponse } from './worker';
@@ -26,8 +27,8 @@ export function rasterizeDocument(doc: ToonDocument): ExportRequest['frames'] {
   }
   const renderer = new Canvas2DFrameRenderer();
   const viewport = { scale: 1 / FIXED_POINT_SCALE, dpr: 1 };
-  return doc.frames.map((frame) => {
-    renderer.render(frame, doc.tools, ctx as unknown as Canvas2DLike, viewport);
+  return Array.from({ length: frameCount(doc) }, (_, index) => {
+    renderer.render(doc, index, ctx as unknown as Canvas2DLike, viewport);
     return { data: ctx.getImageData(0, 0, width, height).data.buffer as ArrayBuffer, width, height };
   });
 }

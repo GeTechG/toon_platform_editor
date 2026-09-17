@@ -28,7 +28,7 @@
 
   // Recompute reachability whenever the frame count or the strip width changes.
   $effect(() => {
-    void editor.doc.frames.length;
+    void editor.doc.layers[0].frames.length;
     void clientWidth;
     sync();
   });
@@ -38,7 +38,7 @@
   // Not during playback — the strip stays put while frames flip.
   $effect(() => {
     const index = editor.activeFrame;
-    void editor.doc.frames.length;
+    void editor.doc.layers[0].frames.length;
     if (editor.playing || !strip) return;
     const el = strip.children[index] as HTMLElement | undefined;
     el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -57,7 +57,7 @@
   </button>
 
   <div class="frames" bind:this={strip} bind:clientWidth onscroll={sync}>
-    {#each editor.doc.frames as frame, i (frame)}
+    {#each editor.doc.layers[0].frames as frame, i (frame)}
       <button
         class="frame"
         class:active={i === editor.displayedFrame}
@@ -65,7 +65,7 @@
         onclick={() => editor.selectFrame(i)}
         title="Frame {i + 1}"
       >
-        <FrameThumb {frame} tools={editor.doc.tools} docWidth={editor.doc.width} docHeight={editor.doc.height} />
+        <FrameThumb doc={editor.doc} frameIndex={i} />
         <span class="num">{i + 1}</span>
       </button>
     {/each}

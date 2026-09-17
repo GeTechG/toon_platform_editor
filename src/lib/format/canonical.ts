@@ -2,6 +2,7 @@
  * Canonical serialization per RFC 8785 (JCS) for the JSON subset used by
  * the format: objects, arrays, strings, integers.
  *
+ * Booleans (layer `hidden`) serialize as the JSON literals.
  * Floats are forbidden in the format, so the hardest part of JCS
  * (ECMAScript floating-point number serialization) is not needed: safe
  * integers serialize as String(n). Strings go through JSON.stringify
@@ -13,6 +14,9 @@
  */
 
 export function canonicalize(value: unknown): string {
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
   if (typeof value === 'string') {
     return JSON.stringify(value);
   }

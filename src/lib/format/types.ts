@@ -96,7 +96,26 @@ export interface ToonDocumentV2 {
   frames: FrameV2[];
 }
 
+/** A layer of a v3 document: named, hideable, one cell per frame. */
+export interface LayerV3 {
+  /** Hidden layers are skipped by every renderer; always present (one canonical form). */
+  hidden: boolean;
+  /** Cells in frame order; every layer of a document has the same length. */
+  frames: FrameV2[];
+}
+
+export interface ToonDocumentV3 {
+  schema_version: 3;
+  width: number;
+  height: number;
+  frame_rate: number;
+  tools: ToolDescriptor[];
+  /** Layers bottom-up: layers[0] renders first, the last one on top. */
+  layers: LayerV3[];
+}
+
 /** Current in-memory/editor model aliases. */
 export type Stroke = StrokeV2;
 export type Frame = FrameV2;
-export type ToonDocument = ToonDocumentV2;
+export type Layer = LayerV3;
+export type ToonDocument = ToonDocumentV3;

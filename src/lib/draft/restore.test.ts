@@ -5,7 +5,7 @@ import { createDocument } from '../model/operations';
 describe('decideRestore', () => {
   it('restores a valid draft when the user has not edited yet', () => {
     const doc = createDocument();
-    expect(decideRestore(doc, false)?.schema_version).toBe(2);
+    expect(decideRestore(doc, false)?.schema_version).toBe(3);
   });
 
   it('discards the draft if the user already started editing', () => {
@@ -27,13 +27,13 @@ describe('decideRestore', () => {
       frames: [{ strokes: [{ points: [10, 20, 30, 40], width: 32, color: '#ffffff' }] }],
     };
     const restored = decideRestore(draft, false);
-    const stroke = restored?.frames[0].strokes[0];
+    const stroke = restored?.layers[0].frames[0].strokes[0];
     expect(stroke && restored?.tools[stroke.tool_id]).toEqual({
       kind: 'eraser', dialect: 'multator', width: 32,
     });
   });
 
-  it('restores a valid v2 draft without changing tool references', () => {
+  it('migrates a valid v2 draft into one visible layer, tool references intact', () => {
     const draft = {
       schema_version: 2,
       width: 4800,
@@ -42,7 +42,10 @@ describe('decideRestore', () => {
       tools: [{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' }],
       frames: [{ strokes: [{ points: [10, 20], tool_id: 0 }] }],
     };
-    expect(decideRestore(draft, false)).toEqual(draft as unknown as import('../format/types').ToonDocumentV2);
+    const restored = decideRestore(draft, false);
+    expect(restored?.schema_version).toBe(3);
+    expect(restored?.tools).toEqual(draft.tools as never);
+    expect(restored?.layers).toEqual([{ hidden: false, frames: draft.frames }] as never);
   });
 
   it('returns null when there is no saved draft', () => {

@@ -9,6 +9,7 @@
  * hide the way back.
  */
 
+import type { PickSource } from './frame-selection';
 import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
 
 export type FeatureKey =
@@ -20,7 +21,8 @@ export type FeatureKey =
   | 'tools'
   | 'sizes'
   | 'color'
-  | 'onionSkin';
+  | 'onionSkin'
+  | 'layers';
 
 export type Features = Record<FeatureKey, boolean>;
 export type DrawingProfileId = 'multator' | 'toonio';
@@ -29,12 +31,15 @@ export interface DrawingUiConfig {
   activeProfile: DrawingProfileId;
   multatorWidth: number;
   tonio: { width: number; smooth: number; minDistance: number };
+  /** Where the pipette reads its color from: the visible composite or the active layer. */
+  pickSource: PickSource;
 }
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   activeProfile: 'multator',
   multatorWidth: 4,
   tonio: { width: 5, smooth: 3, minDistance: 3 },
+  pickSource: 'canvas',
 };
 
 export interface UiConfig {
@@ -54,6 +59,7 @@ export const FEATURE_ORDER: FeatureKey[] = [
   'sizes',
   'color',
   'onionSkin',
+  'layers',
 ];
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
@@ -66,6 +72,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   sizes: 'Brush sizes',
   color: 'Color',
   onionSkin: 'Onion skin',
+  layers: 'Layers',
 };
 
 const allOn = (off: Partial<Features> = {}): Features => ({
@@ -78,6 +85,7 @@ const allOn = (off: Partial<Features> = {}): Features => ({
   sizes: true,
   color: true,
   onionSkin: true,
+  layers: true,
   ...off,
 });
 
@@ -93,7 +101,7 @@ export const PRESETS: {
   ux: UxProfileId;
 }[] = [
   { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator', ux: 'toonop' },
-  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator', ux: 'multator' },
+  { id: 'multator', label: 'Multator', features: allOn({ export: false, layers: false }), drawingProfile: 'multator', ux: 'multator' },
   { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }), drawingProfile: 'toonio', ux: 'toonop' },
 ];
 
@@ -168,6 +176,7 @@ function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId)
       smooth: clampNumber(tonio.smooth, 1, 100, DEFAULT_DRAWING_UI_CONFIG.tonio.smooth),
       minDistance: clampNumber(tonio.minDistance, 0, 30, DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance),
     },
+    pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
   };
 }
 

@@ -9,6 +9,7 @@
 
 import { FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
+import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer } from '../render/canvas2d';
 import type { Canvas2DLike } from '../render/canvas2d';
 import { assembleAnimatedWebp, downscaleSize, previewFrameBudget, type WebpStill } from './webp';
@@ -38,11 +39,11 @@ export async function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayB
   const renderer = new Canvas2DFrameRenderer();
   // Player's doc-units→px mapping (1 / FIXED_POINT_SCALE) times the downscale.
   const viewport = { scale: width / logicalW / FIXED_POINT_SCALE, dpr: 1 };
-  const count = Math.min(previewFrameBudget(doc.frame_rate), doc.frames.length);
+  const count = Math.min(previewFrameBudget(doc.frame_rate), frameCount(doc));
 
   const stills: WebpStill[] = [];
   for (let i = 0; i < count; i++) {
-    renderer.render(doc.frames[i], doc.tools, ctx as unknown as Canvas2DLike, viewport);
+    renderer.render(doc, i, ctx as unknown as Canvas2DLike, viewport);
     stills.push({ data: await encodeStill(canvas), width, height });
   }
   return assembleAnimatedWebp(stills, { fps: doc.frame_rate });

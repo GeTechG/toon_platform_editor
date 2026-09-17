@@ -6,10 +6,10 @@
  */
 
 import { loadDocument, validateDocument } from '../format/validate';
-import type { ToonDocumentV2 } from '../format/types';
+import type { ToonDocument } from '../format/types';
 
 /** The document to restore, or null to keep the fresh document. */
-export function decideRestore(raw: unknown, touched: boolean): ToonDocumentV2 | null {
+export function decideRestore(raw: unknown, touched: boolean): ToonDocument | null {
   if (raw == null || touched) {
     return null;
   }

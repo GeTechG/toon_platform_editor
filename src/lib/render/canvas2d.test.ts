@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { canonicalize } from '../format/canonical';
+import { loadDocument } from '../format/validate';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import {
   Canvas2DFrameRenderer,
@@ -63,6 +64,12 @@ class RecordingCtx implements Canvas2DLike {
   fillRect(...args: number[]): void {
     this.log.push(`fillRect(${args.join(',')})`);
   }
+  clearRect(...args: number[]): void {
+    this.log.push(`clearRect(${args.join(',')})`);
+  }
+  drawImage(image: unknown, dx: number, dy: number): void {
+    this.log.push(`drawImage(${(image as { id?: string }).id ?? 'image'},${dx},${dy})`);
+  }
   beginPath(): void {
     this.log.push('beginPath()');
   }
@@ -103,6 +110,23 @@ class RasterCtx implements Canvas2DLike {
   setTransform(a: number): void {
     this.#scale = a;
   }
+  clearRect(x: number, y: number, width: number, height: number): void {
+    this.#fillArea(x, y, width, height, 0);
+  }
+  drawImage(image: unknown, _dx: number, _dy: number): void {
+    const source = (image as { pixels: Uint32Array }).pixels;
+    for (let i = 0; i < this.pixels.length; i++) {
+      // source-over for the only two alphas this rasterizer produces (0 / 255).
+      if (source[i] >>> 24) {
+        this.pixels[i] = source[i];
+      }
+    }
+  }
+  #fillArea(x: number, y: number, width: number, height: number, color: number): void {
+    for (let py = Math.max(0, y); py < Math.min(this.canvas.height, y + height); py++) {
+      this.pixels.fill(color, py * this.canvas.width + Math.max(0, x), py * this.canvas.width + Math.min(this.canvas.width, x + width));
+    }
+  }
   fillRect(x: number, y: number, width: number, height: number): void {
     const color = rgba(this.fillStyle);
     for (let py = Math.max(0, y); py < Math.min(this.canvas.height, y + height); py++) {
@@ -139,11 +163,20 @@ class RasterCtx implements Canvas2DLike {
   stroke(): void {
     const radius = (this.lineWidth * this.#scale) / 2;
     for (let i = 1; i < this.#path.length; i++) {
-      this.#drawSegment(this.#path[i - 1], this.#path[i], radius, rgba(this.strokeStyle));
+      this.#drawSegment(this.#path[i - 1], this.#path[i], radius, this.#paint(this.strokeStyle));
     }
   }
   fill(): void {
-    if (this.#arc) this.#drawDisc(...this.#arc, rgba(this.fillStyle));
+    if (this.#arc) this.#drawDisc(...this.#arc, this.#paint(this.fillStyle));
+    else if (this.#path.length > 2) {
+      for (let i = 1; i < this.#path.length; i++) {
+        this.#drawSegment(this.#path[i - 1], this.#path[i], 1, this.#paint(this.fillStyle));
+      }
+    }
+  }
+  /** destination-out clears alpha instead of painting a color. */
+  #paint(color: string): number {
+    return this.globalCompositeOperation === 'destination-out' ? 0 : rgba(color);
   }
   signature(): string {
     let hash = 2166136261;
@@ -188,34 +221,61 @@ const sampleTools: ToolDescriptor[] = [
   { kind: 'pencil', dialect: 'multator', width: 16, color: '#00aa55' },
 ];
 
-function sampleDoc(): ToonDocument {
+function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 2,
+    schema_version: 3,
     width: 4800,
     height: 2400,
     frame_rate: 12,
-    tools: sampleTools,
-    frames: [
-      {
-        strokes: [
-          { points: [0, 0, 2400, 1200, 4800, 2400], tool_id: 0 },
-          { points: [100, 100], tool_id: 1 },
-          { points: [4800, 0, 0, 2400], tool_id: 2 },
-        ],
-      },
-    ],
+    tools,
+    layers: layers.map((frames) => ({ hidden: false, frames })),
   };
 }
 
-function renderToLog(frame: Frame): string[] {
+function sampleDoc(): ToonDocument {
+  return docOf(sampleTools, [
+    {
+      strokes: [
+        { points: [0, 0, 2400, 1200, 4800, 2400], tool_id: 0 },
+        { points: [100, 100], tool_id: 1 },
+        { points: [4800, 0, 0, 2400], tool_id: 2 },
+      ],
+    },
+  ]);
+}
+
+/** Recording renderer whose scratch layers are recording contexts too. */
+function recordingRenderer(scratchLog?: string[]): Canvas2DFrameRenderer {
+  return new Canvas2DFrameRenderer(() => {
+    const ctx = new RecordingCtx();
+    if (scratchLog) ctx.log = scratchLog;
+    return { ctx, image: { id: 'scratch' } as unknown as CanvasImageSource };
+  });
+}
+
+/** Rasterizing renderer: the scratch is a RasterCtx, blitted by drawImage. */
+function rasterRenderer(): Canvas2DFrameRenderer {
+  return new Canvas2DFrameRenderer(() => {
+    const ctx = new RasterCtx();
+    return { ctx, image: ctx as unknown as CanvasImageSource };
+  });
+}
+
+function rasterSignature(doc: ToonDocument, frameIndex = 0): string {
+  const ctx = new RasterCtx();
+  rasterRenderer().render(doc, frameIndex, ctx, { scale: 0.125, dpr: 1 });
+  return ctx.signature();
+}
+
+function renderToLog(doc: ToonDocument, frameIndex = 0): string[] {
   const ctx = new RecordingCtx();
-  renderer.render(frame, sampleTools, ctx, viewport);
+  renderer.render(doc, frameIndex, ctx, viewport);
   return ctx.log;
 }
 
 describe('Canvas2DFrameRenderer', () => {
   it('empty frame: clears the background, no strokes, no errors', () => {
-    const log = renderToLog({ strokes: [] });
+    const log = renderToLog(docOf(sampleTools, [{ strokes: [] }]));
     expect(log).toEqual([
       'setTransform(1,0,0,1,0,0)',
       'fillStyle=#ffffff',
@@ -225,7 +285,7 @@ describe('Canvas2DFrameRenderer', () => {
   });
 
   it('draws strokes in order with their attributes', () => {
-    const log = renderToLog(sampleDoc().frames[0]).join('\n');
+    const log = renderToLog(sampleDoc()).join('\n');
     const black = log.indexOf('strokeStyle=#000000');
     const red = log.indexOf('fillStyle=#ff3300'); // dot → fill
     const green = log.indexOf('strokeStyle=#00aa55');
@@ -239,17 +299,17 @@ describe('Canvas2DFrameRenderer', () => {
 
   it('applies scale and dpr in the transform (document units → device px)', () => {
     const ctx = new RecordingCtx();
-    renderer.render({ strokes: [] }, sampleTools, ctx, { scale: 0.125, dpr: 3 });
+    renderer.render(docOf(sampleTools, [{ strokes: [] }]), 0, ctx, { scale: 0.125, dpr: 3 });
     expect(ctx.log).toContain('setTransform(0.375,0,0,0.375,0,0)');
   });
 
   it('is deterministic: same frame + same viewport → identical journal', () => {
-    const frame = sampleDoc().frames[0];
-    expect(renderToLog(frame)).toEqual(renderToLog(frame));
+    const doc = sampleDoc();
+    expect(renderToLog(doc)).toEqual(renderToLog(doc));
   });
 
   it('matches the frozen Multator path-command journal at viewport scale 0.125 and DPR 2', () => {
-    expect(renderToLog(sampleDoc().frames[0])).toEqual([
+    expect(renderToLog(sampleDoc())).toEqual([
       'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
       'setTransform(0.25,0,0,0.25,0,0)', 'beginPath()', 'lineWidth=32',
       'strokeStyle=#000000', 'lineCap=round', 'lineJoin=round', 'moveTo(0,0)',
@@ -262,7 +322,7 @@ describe('Canvas2DFrameRenderer', () => {
 
   it('matches the frozen Multator pixel signature at viewport scale 0.125 and DPR 1', () => {
     const ctx = new RasterCtx();
-    renderer.render(sampleDoc().frames[0], sampleTools, ctx, { scale: 0.125, dpr: 1 });
+    renderer.render(sampleDoc(), 0, ctx, { scale: 0.125, dpr: 1 });
     expect(ctx.signature()).toBe('600x300:bf240169');
   });
 
@@ -272,7 +332,7 @@ describe('Canvas2DFrameRenderer', () => {
       { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
     ];
     const recording = new RecordingCtx();
-    renderer.render(frame, tools, recording, { scale: 0.125, dpr: 1 });
+    renderer.render(docOf(tools, [frame]), 0, recording, { scale: 0.125, dpr: 1 });
     expect(recording.log).toEqual([
       'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
       'setTransform(0.125,0,0,0.125,0,0)', 'beginPath()', 'lineWidth=40',
@@ -281,23 +341,133 @@ describe('Canvas2DFrameRenderer', () => {
       'quadraticCurveTo(320.01,200.01,320.005,200.005)', 'stroke()',
     ]);
     const raster = new RasterCtx();
-    renderer.render(frame, tools, raster, { scale: 0.125, dpr: 1 });
+    renderer.render(docOf(tools, [frame]), 0, raster, { scale: 0.125, dpr: 1 });
     expect(raster.signature()).toBe('600x300:9845e529');
   });
 
   it('save→load→render is identical to the render before saving', () => {
     const doc = sampleDoc();
-    const before = renderToLog(doc.frames[0]);
+    const before = renderToLog(doc);
     const reloaded = JSON.parse(canonicalize(doc)) as ToonDocument;
-    const after = renderToLog(reloaded.frames[0]);
+    const after = renderToLog(reloaded);
     expect(after).toEqual(before);
+  });
+});
+
+describe('layer composition', () => {
+  const black: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' };
+  const red: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 400, color: '#ff0000' };
+  const eraser: ToolDescriptor = { kind: 'eraser', dialect: 'multator', width: 400 };
+  const contourEraser: ToolDescriptor = { kind: 'contour-eraser', dialect: 'multator' };
+  const tools = [black, red, eraser, contourEraser];
+  const wide = [0, 1200, 4800, 1200];
+
+  function twoLayers(upper: Frame): ToonDocument {
+    return docOf(tools, [{ strokes: [{ points: wide, tool_id: 1 }] }], [upper]);
+  }
+
+  it('draws the background once and blits every visible layer bottom-up', () => {
+    const ctx = new RecordingCtx();
+    const scratch: string[] = [];
+    recordingRenderer(scratch).render(twoLayers({ strokes: [{ points: wide, tool_id: 0 }] }), 0, ctx, viewport);
+    expect(ctx.log.slice(0, 3)).toEqual([
+      'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
+    ]);
+    expect(ctx.log.filter((line) => line.startsWith('drawImage'))).toEqual([
+      'drawImage(scratch,0,0)', 'drawImage(scratch,0,0)',
+    ]);
+    // The scratch is cleared before each layer and never painted with a background.
+    expect(scratch.filter((line) => line.startsWith('clearRect'))).toHaveLength(2);
+    expect(scratch).not.toContain('fillRect(0,0,1200,600)');
+    // Layers are rasterized bottom-up: the red fill before the black line.
+    expect(scratch.indexOf('strokeStyle=#ff0000')).toBeLessThan(scratch.indexOf('strokeStyle=#000000'));
+  });
+
+  it('an eraser on the upper layer does not cut the layer below', () => {
+    const erased = rasterSignature(twoLayers({ strokes: [{ points: wide, tool_id: 2 }] }));
+    const lowerOnly = rasterSignature(docOf(tools, [{ strokes: [{ points: wide, tool_id: 1 }] }]));
+    expect(erased).toBe(lowerOnly);
+  });
+
+  it('a contour-eraser on the upper layer does not cut the layer below', () => {
+    const contour = { points: [0, 1000, 4800, 1000, 4800, 1400, 0, 1400], tool_id: 3 };
+    const erased = rasterSignature(twoLayers({ strokes: [contour] }));
+    const lowerOnly = rasterSignature(docOf(tools, [{ strokes: [{ points: wide, tool_id: 1 }] }]));
+    expect(erased).toBe(lowerOnly);
+  });
+
+  it('a hidden layer renders exactly like a document without it', () => {
+    const doc = twoLayers({ strokes: [{ points: wide, tool_id: 0 }] });
+    doc.layers[1].hidden = true;
+    expect(rasterSignature(doc)).toBe(
+      rasterSignature(docOf(tools, [{ strokes: [{ points: wide, tool_id: 1 }] }])),
+    );
+  });
+
+  it('renders the requested frame index across layers', () => {
+    const doc = docOf(
+      tools,
+      [{ strokes: [] }, { strokes: [{ points: wide, tool_id: 1 }] }],
+      [{ strokes: [] }, { strokes: [] }],
+    );
+    expect(rasterSignature(doc, 1)).not.toBe(rasterSignature(doc, 0));
+  });
+});
+
+describe('single-layer fast path', () => {
+  it('draws straight into the target, without a scratch layer', () => {
+    const ctx = new RecordingCtx();
+    const scratch: string[] = [];
+    recordingRenderer(scratch).render(sampleDoc(), 0, ctx, viewport);
+    expect(scratch).toEqual([]);
+    expect(ctx.log.some((line) => line.startsWith('drawImage'))).toBe(false);
+  });
+
+  it('is pixel-identical to the composited path', () => {
+    const doc = sampleDoc();
+    const fast = new RasterCtx();
+    rasterRenderer().render(doc, 0, fast, { scale: 0.125, dpr: 1 });
+
+    // Same content, forced through the composite path by a second, empty layer.
+    const composited = structuredClone(doc);
+    composited.layers.push({ hidden: false, frames: [{ strokes: [] }] });
+    const slow = new RasterCtx();
+    rasterRenderer().render(composited, 0, slow, { scale: 0.125, dpr: 1 });
+
+    expect(fast.signature()).toBe(slow.signature());
+  });
+
+  it('a frame with erasers takes the composited path', () => {
+    const tools: ToolDescriptor[] = [
+      { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
+      { kind: 'eraser', dialect: 'multator', width: 400 },
+    ];
+    const ctx = new RecordingCtx();
+    const scratch: string[] = [];
+    recordingRenderer(scratch).render(
+      docOf(tools, [{ strokes: [{ points: [0, 0, 4800, 2400], tool_id: 0 }, { points: [0, 1200, 4800, 1200], tool_id: 1 }] }]),
+      0, ctx, viewport,
+    );
+    expect(scratch.length).toBeGreaterThan(0);
+    expect(ctx.log).toContain('drawImage(scratch,0,0)');
+  });
+
+  it('a migrated v2 document renders exactly as it did before migration', () => {
+    const v2 = {
+      schema_version: 2, width: 4800, height: 2400, frame_rate: 12,
+      tools: sampleTools,
+      frames: sampleDoc().layers[0].frames,
+    };
+    const migrated = loadDocument(v2);
+    expect(renderToLog(migrated)).toEqual(renderToLog(sampleDoc()));
+    expect(rasterSignature(migrated)).toBe(rasterSignature(sampleDoc()));
   });
 });
 
 describe('renderStrokesLayer (composited layer)', () => {
   it('does not clear a background (transparent layer for stacking)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().frames[0], sampleTools, ctx, viewport);
+    renderStrokesLayer(sampleDoc().layers[0].frames[0], sampleTools, ctx, viewport);
     // No full-canvas background fill — only the doc transform + strokes.
     expect(ctx.log).not.toContain('fillRect(0,0,1200,600)');
     expect(ctx.log[0]).toBe('setTransform(0.25,0,0,0.25,0,0)');
@@ -305,7 +475,7 @@ describe('renderStrokesLayer (composited layer)', () => {
 
   it('tint overrides every stroke color (onion-skin neighbor)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().frames[0], sampleTools, ctx, viewport, '#ff3b30');
+    renderStrokesLayer(sampleDoc().layers[0].frames[0], sampleTools, ctx, viewport, '#ff3b30');
     const log = ctx.log.join('\n');
     expect(log).toContain('strokeStyle=#ff3b30');
     expect(log).toContain('fillStyle=#ff3b30'); // the dot too
@@ -323,11 +493,11 @@ describe('renderStrokesLayer (composited layer)', () => {
     const ctx = new RecordingCtx();
     renderStrokesLayer(frame, [
       { kind: 'eraser', dialect: 'multator', width: 32 },
-      { kind: 'pencil', dialect: 'multator', width: 16, color: '#000000' },
+      { kind: 'pencil', dialect: 'multator', width: 16, color: '#00aa55' },
     ], ctx, viewport);
     const out = ctx.log.indexOf('globalCompositeOperation=destination-out');
     const back = ctx.log.indexOf('globalCompositeOperation=source-over');
-    const pen = ctx.log.indexOf('strokeStyle=#000000');
+    const pen = ctx.log.indexOf('strokeStyle=#00aa55');
     expect(out).toBeGreaterThan(-1);
     expect(back).toBeGreaterThan(out); // erase scoped to the eraser stroke
     expect(pen).toBeGreaterThan(back); // the pen stroke draws normally after
@@ -366,7 +536,7 @@ describe('contour tools (oldschool pen)', () => {
 
   it('fills a closed midpoint multicurve in the contour color (Frame.hx addSpline, size 0)', () => {
     const ctx = new RecordingCtx();
-    renderer.render({ strokes: [{ points: square, tool_id: 0 }] }, contourTools, ctx, { scale: 1, dpr: 1 });
+    renderer.render(docOf(contourTools, [{ strokes: [{ points: square, tool_id: 0 }] }]), 0, ctx, { scale: 1, dpr: 1 });
     const from = ctx.log.indexOf('beginPath()');
     expect(ctx.log.slice(from)).toEqual([
       'beginPath()',
@@ -380,11 +550,16 @@ describe('contour tools (oldschool pen)', () => {
     ]);
   });
 
-  it('the opaque renderer paints a contour eraser in the background color', () => {
+  it('a contour eraser erases alpha in every consumer — never paints the background', () => {
     const ctx = new RecordingCtx();
-    renderer.render({ strokes: [{ points: square, tool_id: 1 }] }, contourTools, ctx, { scale: 1, dpr: 1 });
-    expect(ctx.log).toContain('fillStyle=#ffffff');
-    expect(ctx.log.at(-1)).toBe('fill()');
+    const scratch: string[] = [];
+    recordingRenderer(scratch).render(
+      docOf(contourTools, [{ strokes: [{ points: square, tool_id: 1 }] }]),
+      0, ctx, { scale: 1, dpr: 1 },
+    );
+    expect(scratch).toContain('globalCompositeOperation=destination-out');
+    // The background is painted once on the target, never as an eraser stroke.
+    expect(scratch).not.toContain('fillStyle=#ffffff');
   });
 
   it('the layer renderer erases a contour eraser via destination-out', () => {

@@ -37,6 +37,22 @@
     </div>
   {/if}
 
+  {#if editor.tool === 'pipette'}
+    <div class="pick-source" role="group" aria-label="Источник пипетки">
+      {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
+        <button
+          class="key"
+          class:active={editor.pickSource === source}
+          aria-pressed={editor.pickSource === source}
+          onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
+          title={source === 'canvas'
+            ? 'Брать цвет с видимого холста (Alt — только активный слой)'
+            : 'Брать цвет только с активного слоя'}
+        >{label}</button>
+      {/each}
+    </div>
+  {/if}
+
   {#if editor.features.tools && editor.features.sizes}
     <span class="sep"></span>
   {/if}
@@ -99,6 +115,14 @@
     display: flex;
     align-items: center;
     gap: 0.3rem;
+  }
+  .pick-source {
+    display: flex;
+    gap: 4px;
+  }
+  .pick-source .key {
+    padding: 0 10px;
+    font-size: 13px;
   }
   .sep {
     width: 1px;

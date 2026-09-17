@@ -57,6 +57,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
       activeProfile: 'multator' as const,
       multatorWidth: 10,
       tonio: { width: 5, smooth: 3, minDistance: 3 },
+      pickSource: 'layer' as const,
     },
   };
   expect(parseUiConfig(JSON.stringify(config))).toEqual(config);
@@ -90,6 +91,7 @@ test('drawing profile settings are clamped to supported ranges', () => {
     activeProfile: 'multator',
     multatorWidth: 1,
     tonio: { width: 500, smooth: 1, minDistance: 30 },
+    pickSource: 'canvas',
   });
 });
 
@@ -109,4 +111,40 @@ test('parseUiConfig normalizes missing/unknown keys against the preset base', ()
   expect(parsed?.features.tools).toBe(false); // kept
   expect(parsed?.features.play).toBe(true); // missing → filled from preset
   expect('bogus' in (parsed?.features ?? {})).toBe(false); // unknown → dropped
+});
+
+test('the layers panel is on in Toonop and Toonio, off in Multator', () => {
+  expect(presetFeatures('toonop').layers).toBe(true);
+  expect(presetFeatures('toonio').layers).toBe(true);
+  expect(presetFeatures('multator').layers).toBe(false);
+  expect(FEATURE_ORDER).toContain('layers');
+});
+
+test('a saved config from before the layers feature takes the preset default', () => {
+  const legacy = JSON.stringify({
+    preset: 'toonop',
+    features: { tools: false, play: true },
+  });
+  expect(parseUiConfig(legacy)?.features.layers).toBe(true);
+  const legacyMultator = JSON.stringify({ preset: 'multator', features: { tools: false } });
+  expect(parseUiConfig(legacyMultator)?.features.layers).toBe(false);
+});
+
+test('the pipette source is part of the drawing config and defaults to the canvas', () => {
+  expect(DEFAULT_DRAWING_UI_CONFIG.pickSource).toBe('canvas');
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    features: presetFeatures('toonop'),
+    drawing: { pickSource: 'layer' },
+  }));
+  expect(parsed?.drawing.pickSource).toBe('layer');
+});
+
+test('an unknown pipette source falls back to the canvas', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    features: presetFeatures('toonop'),
+    drawing: { pickSource: 'nonsense' },
+  }));
+  expect(parsed?.drawing.pickSource).toBe('canvas');
 });

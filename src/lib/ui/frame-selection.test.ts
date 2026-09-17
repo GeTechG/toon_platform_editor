@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
   activeFrameAfterRemove,
+  activeLayerAfterMove,
+  activeLayerAfterRemove,
   clampPlayerFps,
+  dragTargetIndex,
+  pickSource,
   onionLayers,
   onionSkinVisible,
   playbackStartFrame,
@@ -110,5 +114,72 @@ describe('clampPlayerFps', () => {
     expect(clampPlayerFps(24)).toBe(24);
     expect(clampPlayerFps(60)).toBe(24);
     expect(clampPlayerFps(Number.NaN)).toBe(5);
+  });
+});
+
+describe('activeLayerAfterRemove', () => {
+  it('keeps the position when the removed layer was the active one', () => {
+    // [0 1 2], remove 1 → the layer above takes position 1 and stays active
+    expect(activeLayerAfterRemove(1, 1, 2)).toBe(1);
+  });
+
+  it('falls back to the lower neighbor when the top layer was removed', () => {
+    expect(activeLayerAfterRemove(2, 2, 2)).toBe(1);
+  });
+
+  it('shifts down when a layer below the active one was removed', () => {
+    expect(activeLayerAfterRemove(2, 0, 2)).toBe(1);
+  });
+
+  it('is unchanged when a layer above the active one was removed', () => {
+    expect(activeLayerAfterRemove(0, 2, 2)).toBe(0);
+  });
+});
+
+describe('activeLayerAfterMove', () => {
+  it('follows the moved layer', () => {
+    expect(activeLayerAfterMove(0, 0, 2)).toBe(2);
+    expect(activeLayerAfterMove(2, 2, 0)).toBe(0);
+  });
+
+  it('tracks the layers the move shifts past', () => {
+    expect(activeLayerAfterMove(1, 0, 2)).toBe(0);
+    expect(activeLayerAfterMove(2, 0, 2)).toBe(1);
+    expect(activeLayerAfterMove(0, 2, 0)).toBe(1);
+  });
+
+  it('leaves layers outside the moved range alone', () => {
+    expect(activeLayerAfterMove(3, 0, 2)).toBe(3);
+    expect(activeLayerAfterMove(0, 1, 2)).toBe(0);
+  });
+});
+
+describe('dragTargetIndex', () => {
+  it('converts pointer travel into whole rows', () => {
+    expect(dragTargetIndex(1, 0, 40, 4)).toBe(1);
+    expect(dragTargetIndex(1, 41, 40, 4)).toBe(2);
+    expect(dragTargetIndex(1, -41, 40, 4)).toBe(0);
+  });
+
+  it('rounds to the nearest row', () => {
+    expect(dragTargetIndex(0, 19, 40, 4)).toBe(0);
+    expect(dragTargetIndex(0, 21, 40, 4)).toBe(1);
+  });
+
+  it('clamps to the list bounds', () => {
+    expect(dragTargetIndex(3, 400, 40, 4)).toBe(3);
+    expect(dragTargetIndex(0, -400, 40, 4)).toBe(0);
+  });
+});
+
+describe('pickSource', () => {
+  it('uses the configured source', () => {
+    expect(pickSource('canvas', false)).toBe('canvas');
+    expect(pickSource('layer', false)).toBe('layer');
+  });
+
+  it('Alt takes the active layer for this click only', () => {
+    expect(pickSource('canvas', true)).toBe('layer');
+    expect(pickSource('layer', true)).toBe('layer');
   });
 });

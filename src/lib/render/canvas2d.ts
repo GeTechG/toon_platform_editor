@@ -4,7 +4,7 @@
  */
 
 import { BACKGROUND_COLOR } from '../format/constants';
-import type { Frame, ToolDescriptor } from '../format/types';
+import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitSmoothedPath, type PathSink } from './smoothing';
 import { emitPathForTool, isContourTool, isEraserTool, resolveTool } from './dispatch';
@@ -24,6 +24,8 @@ export interface Canvas2DLike extends PathSink {
   lineJoin: string;
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
   fillRect(x: number, y: number, w: number, h: number): void;
+  clearRect(x: number, y: number, w: number, h: number): void;
+  drawImage(image: CanvasImageSource, dx: number, dy: number): void;
   beginPath(): void;
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
   stroke(): void;
@@ -42,16 +44,81 @@ export function blitLayer(source: CanvasImageSource, target: BlitTarget): void {
   target.drawImage(source, 0, 0);
 }
 
+/** A transparent off-screen buffer one layer is rasterized into before being blitted. */
+export interface ScratchLayer {
+  ctx: Canvas2DLike;
+  image: CanvasImageSource;
+}
+
+export type ScratchFactory = (width: number, height: number) => ScratchLayer;
+
+function domScratch(width: number, height: number): ScratchLayer {
+  const canvas =
+    typeof OffscreenCanvas !== 'undefined'
+      ? new OffscreenCanvas(width, height)
+      : Object.assign(document.createElement('canvas'), { width, height });
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('2D context unavailable for the layer scratch buffer');
+  }
+  return { ctx: ctx as unknown as Canvas2DLike, image: canvas as unknown as CanvasImageSource };
+}
+
+/**
+ * Renders a frame of the document as the composite of its visible layers,
+ * bottom-up. Each layer is rasterized into a transparent scratch buffer, so an
+ * eraser only cuts the alpha of its own layer, and blitted onto the target.
+ * The renderer owns one scratch buffer, created lazily and reused.
+ */
 export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
-  render(frame: Frame, tools: readonly ToolDescriptor[], target: Canvas2DLike, viewport: Viewport): void {
+  readonly #createScratch: ScratchFactory;
+  #scratch: ScratchLayer | undefined;
+  #scratchSize = { width: 0, height: 0 };
+
+  constructor(createScratch: ScratchFactory = domScratch) {
+    this.#createScratch = createScratch;
+  }
+
+  render(doc: ToonDocument, frameIndex: number, target: Canvas2DLike, viewport: Viewport): void {
     clearToBackground(target);
-    applyDocTransform(target, viewport);
-    for (const stroke of frame.strokes) {
-      const tool = resolveTool(tools, stroke);
-      // Opaque single layer: erasing reveals the background, so paint it.
-      drawResolvedStroke(target, stroke.points, tool, isEraserTool(tool) ? BACKGROUND_COLOR : toolColor(tool));
+    const cells: Frame[] = [];
+    for (const layer of doc.layers) {
+      const cell = layer.frames[frameIndex];
+      if (!layer.hidden && cell) {
+        cells.push(cell);
+      }
+    }
+    // Nothing can bleed between layers when there is only one and it does not
+    // erase — draw it straight into the target (identical result, no buffer).
+    if (cells.length <= 1 && !cells.some((cell) => hasEraser(cell, doc.tools))) {
+      if (cells.length === 1) {
+        renderStrokesLayer(cells[0], doc.tools, target, viewport);
+      } else {
+        applyDocTransform(target, viewport);
+      }
+      return;
+    }
+    const { width, height } = target.canvas;
+    const scratch = this.#ensureScratch(width, height);
+    for (const cell of cells) {
+      scratch.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      scratch.ctx.clearRect(0, 0, width, height);
+      renderStrokesLayer(cell, doc.tools, scratch.ctx, viewport);
+      blitLayer(scratch.image, target);
     }
   }
+
+  #ensureScratch(width: number, height: number): ScratchLayer {
+    if (!this.#scratch || this.#scratchSize.width !== width || this.#scratchSize.height !== height) {
+      this.#scratch = this.#createScratch(width, height);
+      this.#scratchSize = { width, height };
+    }
+    return this.#scratch;
+  }
+}
+
+function hasEraser(frame: Frame, tools: readonly ToolDescriptor[]): boolean {
+  return frame.strokes.some((stroke) => isEraserTool(resolveTool(tools, stroke)));
 }
 
 /**
@@ -109,7 +176,7 @@ export function renderStrokesLayer(
     if (erase) {
       target.globalCompositeOperation = 'destination-out';
     }
-    drawResolvedStroke(target, stroke.points, tool, erase ? BACKGROUND_COLOR : (tint ?? toolColor(tool)));
+    drawResolvedStroke(target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)));
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }
@@ -144,9 +211,17 @@ function drawResolvedStroke(
   target.stroke();
 }
 
+/**
+ * Erasers cut alpha through destination-out, so their color never reaches a
+ * pixel — this placeholder exists only because the path API needs one. It is
+ * deliberately not the background color: nothing paints the background over
+ * a layer any more.
+ */
+const ERASE_PAINT = '#000000';
+
 /** Paint color of a non-erasing tool. */
 function toolColor(tool: ToolDescriptor): string {
-  return tool.kind === 'pencil' || tool.kind === 'contour' ? tool.color : BACKGROUND_COLOR;
+  return tool.kind === 'pencil' || tool.kind === 'contour' ? tool.color : ERASE_PAINT;
 }
 
 function clearToBackground(target: Canvas2DLike): void {

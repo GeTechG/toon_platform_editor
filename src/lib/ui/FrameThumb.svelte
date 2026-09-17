@@ -1,23 +1,25 @@
 <script lang="ts">
-  import type { Frame, ToolDescriptor } from '../format/types';
+  import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 
   let {
-    frame,
-    tools,
-    docWidth,
-    docHeight,
+    doc,
+    frameIndex,
     height = 32,
-  }: { frame: Frame; tools: readonly ToolDescriptor[]; docWidth: number; docHeight: number; height?: number } = $props();
+  }: { doc: ToonDocument; frameIndex: number; height?: number } = $props();
 
   let canvasEl: HTMLCanvasElement;
 
   const renderer = new Canvas2DFrameRenderer();
-  const cssWidth = $derived(Math.round(height * (docWidth / docHeight)));
+  const cssWidth = $derived(Math.round(height * (doc.width / doc.height)));
 
   $effect(() => {
-    // Redraw when strokes are added/removed or the thumb size changes.
-    void frame.strokes.length;
+    // Redraw when the cells, the layer order or a layer's visibility change.
+    void doc.layers.length;
+    for (const layer of doc.layers) {
+      void layer.hidden;
+      void layer.frames[frameIndex]?.strokes.length;
+    }
     if (!canvasEl) {
       return;
     }
@@ -25,9 +27,7 @@
     canvasEl.width = Math.max(1, Math.round(cssWidth * dpr));
     canvasEl.height = Math.max(1, Math.round(height * dpr));
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
-    // Opaque render (background + strokes): eraser strokes must not punch
-    // through the thumb's background, so no transparent-layer path here.
-    renderer.render(frame, tools, ctx, { scale: cssWidth / docWidth, dpr });
+    renderer.render(doc, frameIndex, ctx, { scale: cssWidth / doc.width, dpr });
   });
 </script>
 

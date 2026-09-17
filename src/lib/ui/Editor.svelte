@@ -4,6 +4,7 @@
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
   import ExportGifButton from './ExportGifButton.svelte';
+  import LayersPanel from './LayersPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import Icon from './Icon.svelte';
@@ -38,6 +39,7 @@
 
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
+  let layersOpen = $state(false);
 
   function toggleFullscreen(): void {
     if (!document.fullscreenEnabled) {
@@ -129,9 +131,13 @@
     }
     const doc = editor.doc;
     void doc.frame_rate;
-    void doc.frames.length;
-    for (const frame of doc.frames) {
-      void frame.strokes.length;
+    void doc.layers.length;
+    for (const layer of doc.layers) {
+      void layer.hidden;
+      void layer.frames.length;
+      for (const cell of layer.frames) {
+        void cell.strokes.length;
+      }
     }
     scheduleSave($state.snapshot(doc));
     return () => scheduleSave.cancel();
@@ -240,6 +246,24 @@
           >
             <Icon name="onion" />
           </button>
+        {/if}
+        {#if editor.features.layers}
+          <div class="layers">
+            <button
+              class="key icon"
+              class:active={layersOpen}
+              aria-expanded={layersOpen}
+              aria-haspopup="dialog"
+              onclick={() => (layersOpen = !layersOpen)}
+              title="Слои"
+              aria-label="Слои"
+            >
+              <Icon name="layers" />
+            </button>
+            {#if layersOpen}
+              <LayersPanel {editor} onClose={() => (layersOpen = false)} />
+            {/if}
+          </div>
         {/if}
         {#if editor.features.export}
           <ExportGifButton {editor} />
@@ -477,6 +501,9 @@
     border: none;
     background: transparent;
     cursor: default;
+  }
+  .layers {
+    position: relative;
   }
   .popover {
     position: absolute;

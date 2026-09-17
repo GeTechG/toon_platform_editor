@@ -10,6 +10,7 @@ import {
   DEFAULT_FPS,
   MAX_DOC_DIMENSION,
   MAX_FRAMES,
+  MAX_LAYERS,
   MAX_STROKE_COORDS,
   MAX_STROKE_WIDTH,
   MAX_STROKES_PER_FRAME,
@@ -34,6 +35,9 @@ export interface ResolvedStroke {
 export interface ResolvedFrame {
   strokes: ResolvedStroke[];
 }
+
+/** One frame across every layer, bottom-up — what copy/paste moves around. */
+export type ResolvedColumn = ResolvedFrame[];
 
 /** Returns the stable index of an immutable, structurally equal v2 tool descriptor. */
 export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): number {
@@ -79,13 +83,25 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
   }
   assertFrameRate(frameRate);
   return {
-    schema_version: 2,
+    schema_version: 3,
     width,
     height,
     frame_rate: frameRate,
     tools: [],
-    frames: [emptyFrame()],
+    layers: [{ hidden: false, frames: [emptyFrame()] }],
   };
+}
+
+/** Number of frames — the same in every layer (a format invariant). */
+export function frameCount(doc: ToonDocument): number {
+  return doc.layers[0].frames.length;
+}
+
+/** The cell of a layer at a frame. */
+function cell(doc: ToonDocument, layerIndex: number, frameIndex: number): Frame {
+  assertLayerIndex(doc, layerIndex);
+  assertFrameIndex(doc, frameIndex);
+  return doc.layers[layerIndex].frames[frameIndex];
 }
 
 /** Inserts an empty frame after afterIndex; returns the new frame's index. */
@@ -101,59 +117,119 @@ export function insertFrameBefore(doc: ToonDocument, index: number): number {
 }
 
 function insertEmptyFrame(doc: ToonDocument, at: number): number {
-  if (doc.frames.length >= MAX_FRAMES) {
+  if (frameCount(doc) >= MAX_FRAMES) {
     throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
   }
-  doc.frames.splice(at, 0, emptyFrame());
+  for (const layer of doc.layers) {
+    layer.frames.splice(at, 0, emptyFrame());
+  }
   return at;
 }
 
 /**
- * Removes a frame. A document always keeps at least one frame:
- * removing the last remaining frame clears it instead.
+ * Removes a frame from every layer. A document always keeps at least one
+ * frame: removing the last remaining one clears its cells instead, so the
+ * layers themselves survive.
  */
 export function removeFrame(doc: ToonDocument, index: number): void {
   assertFrameIndex(doc, index);
-  if (doc.frames.length === 1) {
-    doc.frames[0].strokes.length = 0;
+  const last = frameCount(doc) === 1;
+  for (const layer of doc.layers) {
+    if (last) {
+      layer.frames[0].strokes.length = 0;
+    } else {
+      layer.frames.splice(index, 1);
+    }
+  }
+}
+
+/** Inserts an empty layer above `belowIndex`; returns the new layer's index. */
+export function addLayer(doc: ToonDocument, belowIndex: number): number {
+  assertLayerIndex(doc, belowIndex);
+  if (doc.layers.length >= MAX_LAYERS) {
+    throw new RangeError(`document already has the maximum of ${MAX_LAYERS} layers`);
+  }
+  const at = belowIndex + 1;
+  const frames = Array.from({ length: frameCount(doc) }, emptyFrame);
+  doc.layers.splice(at, 0, { hidden: false, frames });
+  return at;
+}
+
+/** Removes a layer; the last remaining layer cannot be removed. */
+export function removeLayer(doc: ToonDocument, index: number): void {
+  assertLayerIndex(doc, index);
+  if (doc.layers.length === 1) {
+    throw new RangeError('a document must keep at least one layer');
+  }
+  doc.layers.splice(index, 1);
+}
+
+/** Moves a layer to another position, shifting the rest. */
+export function moveLayer(doc: ToonDocument, from: number, to: number): void {
+  assertLayerIndex(doc, from);
+  assertLayerIndex(doc, to);
+  if (from === to) {
     return;
   }
-  doc.frames.splice(index, 1);
+  const [layer] = doc.layers.splice(from, 1);
+  doc.layers.splice(to, 0, layer);
+}
+
+/** Shows or hides a layer (a document change: `hidden` is stored). */
+export function setLayerHidden(doc: ToonDocument, index: number, hidden: boolean): void {
+  assertLayerIndex(doc, index);
+  doc.layers[index].hidden = hidden;
 }
 
 /**
- * Overwrites the frame at `index` with a deep copy of `frame` — the frame
- * paste: the copied strokes replace whatever the selected frame held. The
- * clone gives the frame a fresh identity (so render caches keyed on it
- * refresh) and keeps the document from sharing stroke arrays with the
- * caller's clipboard.
+ * Overwrites the frame at `index` in every layer with a deep copy of the
+ * column — the frame paste. Cell `i` of the buffer goes to layer `i`; layers
+ * the buffer has no cell for are cleared, surplus cells are ignored (the
+ * source document may have had a different number of layers). Limits are
+ * checked before any mutation, so an oversized paste changes nothing.
  */
-export function replaceFrame(doc: ToonDocument, index: number, frame: ResolvedFrame | FrameV1): void;
-export function replaceFrame(
-  doc: ToonDocument,
-  index: number,
-  frame: ResolvedFrame | FrameV1,
-): void {
+export function replaceColumn(doc: ToonDocument, index: number, column: ResolvedColumn): void {
   assertFrameIndex(doc, index);
-  const outgoing = doc.frames[index].strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
-  const incoming = frame.strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
+  const width = Math.min(doc.layers.length, column.length);
+  let outgoing = 0;
+  let incoming = 0;
+  for (let l = 0; l < doc.layers.length; l++) {
+    outgoing += pointCount(doc.layers[l].frames[index].strokes);
+    if (l < width) {
+      incoming += pointCount(column[l].strokes);
+      if (column[l].strokes.length > MAX_STROKES_PER_FRAME) {
+        throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+      }
+    }
+  }
   if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
     throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
-  if (frame.strokes.length > MAX_STROKES_PER_FRAME) {
-    throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+  for (let l = 0; l < doc.layers.length; l++) {
+    doc.layers[l].frames[index] = l < width ? resolvedFrameToV2(doc, column[l]) : emptyFrame();
   }
-  const resolved = isResolvedFrame(frame) ? frame : resolveLegacyFrame(frame);
-  doc.frames[index] = resolvedFrameToV2(doc, resolved);
+}
+
+function pointCount(strokes: { points: number[] }[]): number {
+  return strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
 }
 
 /**
  * Removes the last stroke of a frame (per-stroke undo). Returns whether one
  * was removed — false on an already-empty frame.
  */
-export function removeLastStroke(doc: ToonDocument, frameIndex: number): boolean {
+export function removeLastStroke(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+): boolean {
+  return cell(doc, layerIndex, frameIndex).strokes.pop() !== undefined;
+}
+
+/** Deep-copies the cell of every layer at `frameIndex`, bottom-up. */
+export function cloneColumn(doc: ToonDocument, frameIndex: number): ResolvedColumn {
   assertFrameIndex(doc, frameIndex);
-  return doc.frames[frameIndex].strokes.pop() !== undefined;
+  return doc.layers.map((layer) => cloneFrame(doc, layer.frames[frameIndex]));
 }
 
 /** Deep-copies a frame and its strokes' point arrays. */
@@ -174,16 +250,16 @@ export function cloneFrame(frameOrDoc: FrameV1 | ToonDocument, maybeFrame?: Fram
   return { strokes: frame.strokes.map((s) => ({ ...s, points: s.points.slice() })) };
 }
 
-/** Appends a committed (already quantized) stroke to a frame. */
-export function addStroke(doc: ToonDocument, frameIndex: number, stroke: ResolvedStroke | StrokeV1): void;
+/** Appends a committed (already quantized) stroke to the cell of a layer. */
 export function addStroke(
   doc: ToonDocument,
+  layerIndex: number,
   frameIndex: number,
   stroke: ResolvedStroke | StrokeV1,
 ): void {
-  assertFrameIndex(doc, frameIndex);
+  const target = cell(doc, layerIndex, frameIndex);
   assertStrokePoints(stroke.points);
-  if (doc.frames[frameIndex].strokes.length >= MAX_STROKES_PER_FRAME) {
+  if (target.strokes.length >= MAX_STROKES_PER_FRAME) {
     throw new RangeError(`frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
   if (totalPoints(doc) + stroke.points.length / 2 > MAX_TOTAL_POINTS) {
@@ -191,7 +267,7 @@ export function addStroke(
   }
   const resolved = 'tool' in stroke ? stroke : resolveLegacyStroke(stroke);
   assertTool(resolved.tool);
-  doc.frames[frameIndex].strokes.push({
+  target.strokes.push({
     points: resolved.points.slice(),
     tool_id: internTool(doc, resolved.tool),
   });
@@ -237,13 +313,7 @@ function resolveLegacyStroke(stroke: StrokeV1): ResolvedStroke {
   };
 }
 
-function resolveLegacyFrame(frame: FrameV1): ResolvedFrame {
-  return { strokes: frame.strokes.map(resolveLegacyStroke) };
-}
 
-function isResolvedFrame(frame: ResolvedFrame | FrameV1): frame is ResolvedFrame {
-  return frame.strokes.length === 0 || 'tool' in frame.strokes[0];
-}
 
 function assertTool(tool: ToolDescriptor): void {
   if (tool.kind === 'pencil' || tool.kind === 'eraser') {
@@ -293,17 +363,23 @@ function emptyFrame(): Frame {
 // O(strokes) scan per commit; keep a running counter if it ever shows up in profiles.
 function totalPoints(doc: ToonDocument): number {
   let total = 0;
-  for (const frame of doc.frames) {
-    for (const stroke of frame.strokes) {
-      total += stroke.points.length / 2;
+  for (const layer of doc.layers) {
+    for (const frame of layer.frames) {
+      total += pointCount(frame.strokes);
     }
   }
   return total;
 }
 
 function assertFrameIndex(doc: ToonDocument, index: number): void {
-  if (!Number.isInteger(index) || index < 0 || index >= doc.frames.length) {
-    throw new RangeError(`frame index ${index} is out of range 0..${doc.frames.length - 1}`);
+  if (!Number.isInteger(index) || index < 0 || index >= frameCount(doc)) {
+    throw new RangeError(`frame index ${index} is out of range 0..${frameCount(doc) - 1}`);
+  }
+}
+
+function assertLayerIndex(doc: ToonDocument, index: number): void {
+  if (!Number.isInteger(index) || index < 0 || index >= doc.layers.length) {
+    throw new RangeError(`layer index ${index} is out of range 0..${doc.layers.length - 1}`);
   }
 }
 

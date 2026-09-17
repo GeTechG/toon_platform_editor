@@ -1,5 +1,5 @@
 /**
- * Synthetic benchmark corpus: N frames × M strokes, built through the real
+ * Synthetic benchmark corpus: L layers × N frames × M strokes, built through the real
  * model path (StrokeBuilder → addStroke) so strokes pass the same Lang
  * simplification, quantization and format validation as user-drawn ones.
  *
@@ -10,10 +10,12 @@
 
 import { DEFAULT_BRUSH_SIZE_LOGICAL } from '../lib/format/constants';
 import type { ToonDocument } from '../lib/format/types';
-import { addFrame, addStroke, createDocument } from '../lib/model/operations';
+import { addFrame, addLayer, addStroke, createDocument } from '../lib/model/operations';
 import { StrokeBuilder, brushWidthDoc } from '../lib/tools/stroke-builder';
 
 export interface CorpusOptions {
+  /** L — layers in the corpus. Default 1 (Multator class); 5 is the Toonio profile. */
+  layers?: number;
   frames: number;
   strokesPerFrame: number;
   pointsPerStroke: number;
@@ -26,20 +28,29 @@ const PALETTE = ['#000000', '#3355cc', '#cc3355', '#22aa44', '#aa7711'];
 
 export function buildCorpus(opts: CorpusOptions): ToonDocument {
   const doc = createDocument();
+  const layerCount = opts.layers ?? 1;
   const width = brushWidthDoc(DEFAULT_BRUSH_SIZE_LOGICAL);
   for (let f = 0; f < opts.frames; f++) {
-    const frameIndex = f === 0 ? 0 : addFrame(doc, f - 1);
-    for (let s = 0; s < opts.strokesPerFrame; s++) {
-      const color = PALETTE[(f + s) % PALETTE.length];
-      const stroke = syntheticStroke(doc, f, s, opts.pointsPerStroke, width, color);
-      if (opts.mixedEvery && (f * opts.strokesPerFrame + s) % opts.mixedEvery === 0) {
-        const last = stroke.points.slice(-2);
-        addStroke(doc, frameIndex, {
-          points: [...stroke.points, ...last],
-          tool: { kind: 'pencil', dialect: 'toonio', width, color },
-        });
-      } else {
-        addStroke(doc, frameIndex, stroke);
+    if (f > 0) addFrame(doc, f - 1);
+  }
+  for (let l = 1; l < layerCount; l++) {
+    addLayer(doc, l - 1);
+  }
+  for (let l = 0; l < layerCount; l++) {
+    for (let f = 0; f < opts.frames; f++) {
+      for (let s = 0; s < opts.strokesPerFrame; s++) {
+        const color = PALETTE[(f + s + l) % PALETTE.length];
+        // Seeded by layer too, so layers do not draw identical geometry.
+        const stroke = syntheticStroke(doc, f + l * opts.frames, s, opts.pointsPerStroke, width, color);
+        if (opts.mixedEvery && (f * opts.strokesPerFrame + s) % opts.mixedEvery === 0) {
+          const last = stroke.points.slice(-2);
+          addStroke(doc, l, f, {
+            points: [...stroke.points, ...last],
+            tool: { kind: 'pencil', dialect: 'toonio', width, color },
+          });
+        } else {
+          addStroke(doc, l, f, stroke);
+        }
       }
     }
   }

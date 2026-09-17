@@ -73,3 +73,58 @@ export function clampPlayerFps(value: number): number {
   }
   return Math.min(PLAYER_FPS_MAX, Math.max(PLAYER_FPS_MIN, fps));
 }
+
+/**
+ * Active layer after removing `removed`. The layer that slides into the freed
+ * position stays active; when the top layer went, the one below it does.
+ */
+export function activeLayerAfterRemove(
+  active: number,
+  removed: number,
+  newLayerCount: number,
+): number {
+  if (active > removed) {
+    return active - 1;
+  }
+  return active < removed ? active : Math.min(removed, newLayerCount - 1);
+}
+
+/**
+ * Active layer after moving `from` to `to` — the moved layer keeps the
+ * selection, and the layers it passed shift by one.
+ */
+export function activeLayerAfterMove(active: number, from: number, to: number): number {
+  if (active === from) {
+    return to;
+  }
+  let index = active;
+  if (index > from) {
+    index -= 1;
+  }
+  if (index >= to) {
+    index += 1;
+  }
+  return index;
+}
+
+/**
+ * Target row of a layer drag: rows have a fixed height, so pointer travel is
+ * whole rows from where the drag started, clamped to the list.
+ */
+export function dragTargetIndex(
+  from: number,
+  dy: number,
+  rowHeight: number,
+  count: number,
+): number {
+  const target = from + Math.round(dy / rowHeight);
+  return Math.min(count - 1, Math.max(0, target));
+}
+
+/** Color-picker source: the visible composite, or the active layer alone. */
+export type PickSource = 'canvas' | 'layer';
+
+/** Alt takes the active layer for one click without changing the setting. */
+export function pickSource(setting: PickSource, altKey: boolean): PickSource {
+  return altKey ? 'layer' : setting;
+}

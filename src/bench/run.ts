@@ -10,6 +10,7 @@ import { LoopPlayer } from '../lib/player/player';
 import { brushWidthDoc } from '../lib/tools/stroke-builder';
 import type { BenchConfig } from './config';
 import { FrameCompositor, type LiveStroke } from './compose';
+import { frameCount } from '../lib/model/operations';
 import { buildCorpus, syntheticRawPoints } from './corpus';
 import { frameTiming, heapGrowthBytes, percentile, type HeapSample } from './metrics';
 
@@ -24,7 +25,7 @@ export interface MetricResult {
 
 export interface BenchResult {
   config: BenchConfig;
-  corpus: { frames: number; strokesPerFrame: number; totalStrokes: number };
+  corpus: { layers: number; frames: number; strokesPerFrame: number; totalStrokes: number };
   metrics: MetricResult[];
   overall: 'PASS' | 'FAIL';
 }
@@ -38,6 +39,7 @@ function usedHeap(): number | null {
 
 export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Promise<BenchResult> {
   const doc = buildCorpus({
+    layers: cfg.layers,
     frames: cfg.frames,
     strokesPerFrame: cfg.strokesPerFrame,
     pointsPerStroke: cfg.pointsPerStroke,
@@ -84,9 +86,13 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
   return {
     config: cfg,
     corpus: {
-      frames: doc.frames.length,
+      layers: doc.layers.length,
+      frames: frameCount(doc),
       strokesPerFrame: cfg.strokesPerFrame,
-      totalStrokes: doc.frames.reduce((n, f) => n + f.strokes.length, 0),
+      totalStrokes: doc.layers.reduce(
+        (n, layer) => n + layer.frames.reduce((m, cell) => m + cell.strokes.length, 0),
+        0,
+      ),
     },
     metrics,
     overall: metrics.some((m) => m.verdict === 'FAIL') ? 'FAIL' : 'PASS',
@@ -133,7 +139,7 @@ async function probePlayback(
   doc: ToonDocument,
   cfg: BenchConfig,
 ): Promise<{ intervals: number[]; heap: HeapSample[] }> {
-  for (let f = 0; f < doc.frames.length; f++) {
+  for (let f = 0; f < frameCount(doc); f++) {
     compositor.compose(doc, f, f, false, null);
   }
 
@@ -141,7 +147,7 @@ async function probePlayback(
   const heap: HeapSample[] = [];
   const start = performance.now();
   const player = new LoopPlayer({
-    frameCount: doc.frames.length,
+    frameCount: frameCount(doc),
     fps: cfg.targetFps,
     startFrame: 0,
     onFrame: (idx) => {

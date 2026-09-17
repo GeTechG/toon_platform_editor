@@ -169,10 +169,12 @@ it('round-trips Multator → Tonio → Multator references in one frame', () => 
     const session = profiles.beginStrokeSession(profile, sample(1, x, 0), descriptor, { smooth: 1, minDistance: 0 });
     profiles.appendStrokeEvent(session, sample(1, x + 40, 40));
     if (profile === 'toonio') profiles.finishStrokeEvent(session, sample(1, x + 48, 48));
-    addStroke(doc, 0, profiles.commitStrokeSession(session));
+    addStroke(doc, 0, 0, profiles.commitStrokeSession(session));
   }
   const reloaded = loadDocument(JSON.parse(canonicalize(doc)));
-  expect(reloaded.frames[0].strokes.map((stroke) => reloaded.tools[stroke.tool_id].dialect)).toEqual([
+  expect(
+    reloaded.layers[0].frames[0].strokes.map((stroke) => reloaded.tools[stroke.tool_id].dialect),
+  ).toEqual([
     'multator', 'toonio', 'multator',
   ]);
   expect(reloaded).toEqual(doc);

@@ -1,0 +1,336 @@
+{
+  "schema_version": 3,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [
+    {
+      "kind": "pencil",
+      "dialect": "multator",
+      "width": 8,
+      "color": "#112233"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                10,
+                10
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                20,
+                20
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                30,
+                30
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                40,
+                40
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                50,
+                50
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                60,
+                60
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                70,
+                70
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                80,
+                80
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                90,
+                90
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                100,
+                100
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                110,
+                110
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                120,
+                120
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                130,
+                130
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                140,
+                140
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                150,
+                150
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                160,
+                160
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                170,
+                170
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                180,
+                180
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                190,
+                190
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

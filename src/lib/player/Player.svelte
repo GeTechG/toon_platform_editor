@@ -7,6 +7,7 @@
   import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
+  import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
 
   let { doc }: { doc: ToonDocument } = $props();
@@ -43,17 +44,16 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    const frame = doc.frames[current];
-    if (!frame) {
+    if (current >= frameCount(doc)) {
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
-    renderer.render(frame, doc.tools, ctx, { scale: cssWidth / doc.width, dpr });
+    renderer.render(doc, current, ctx, { scale: cssWidth / doc.width, dpr });
   }
 
   onMount(() => {
     const player = new LoopPlayer({
-      frameCount: doc.frames.length,
+      frameCount: frameCount(doc),
       fps: doc.frame_rate,
       startFrame: 0,
       onFrame: (index) => {

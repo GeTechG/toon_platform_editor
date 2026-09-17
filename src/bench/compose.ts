@@ -11,9 +11,11 @@
  */
 
 import { BACKGROUND_COLOR, ONION_SKIN_ALPHAS } from '../lib/format/constants';
-import type { Frame, ToonDocument } from '../lib/format/types';
+import type { ToonDocument } from '../lib/format/types';
+import { frameCount } from '../lib/model/operations';
 import {
   blitLayer,
+  Canvas2DFrameRenderer,
   renderRawPolyline,
   renderStrokesLayer,
   type Canvas2DLike,
@@ -27,17 +29,12 @@ export interface LiveStroke {
   color: string;
 }
 
-interface LayerCache {
-  el: HTMLCanvasElement | null;
-  strokeCount: number;
-  w: number;
-  h: number;
-}
-
 export class FrameCompositor {
   readonly #canvas: HTMLCanvasElement;
   readonly #ctx: CanvasRenderingContext2D;
-  readonly #layers = new WeakMap<Frame, LayerCache>();
+  readonly #renderer = new Canvas2DFrameRenderer();
+  /** Onion neighbors of the active layer, same bounded cache as the editor. */
+  readonly #onion = new Map<string, HTMLCanvasElement>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.#canvas = canvas;
@@ -60,52 +57,82 @@ export class FrameCompositor {
     const pxH = this.#canvas.height;
     // dpr folded into the pixel count: k = scale × dpr = pxW / doc.width.
     const viewport: Viewport = { scale: pxW / doc.width, dpr: 1 };
-    const frame = doc.frames[displayedFrame];
-    if (!frame) {
+    if (!doc.layers[0]?.frames[displayedFrame]) {
       return;
     }
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, pxW, pxH);
-
     if (showOnionSkin) {
-      for (const layer of onionLayers(activeFrame, doc.frames.length, ONION_SKIN_ALPHAS)) {
-        const neighbor = doc.frames[layer.index];
-        if (neighbor.strokes.length === 0) {
+      // Onion first, then the frame composite over it (same order as the editor).
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = BACKGROUND_COLOR;
+      ctx.fillRect(0, 0, pxW, pxH);
+      for (const layer of onionLayers(activeFrame, frameCount(doc), ONION_SKIN_ALPHAS)) {
+        const el = this.#onionCell(doc, layer.index, pxW, pxH, viewport);
+        if (!el) {
           continue;
         }
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = layer.alpha;
-        ctx.drawImage(this.#frameLayer(neighbor, doc.tools, pxW, pxH, viewport), 0, 0);
+        ctx.drawImage(el, 0, 0);
       }
       ctx.globalAlpha = 1;
+      const composite = this.#frameComposite(doc, displayedFrame, pxW, pxH, viewport);
+      blitLayer(composite, ctx);
+    } else {
+      this.#renderer.render(doc, displayedFrame, ctx, viewport);
     }
 
-    blitLayer(this.#frameLayer(frame, doc.tools, pxW, pxH, viewport), ctx);
     if (live && live.points.length >= 2) {
       renderRawPolyline(live.points, live.width, live.color, ctx, viewport);
     }
   }
 
-  #frameLayer(frame: Frame, tools: ToonDocument['tools'], pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement {
-    let cache = this.#layers.get(frame);
-    if (!cache) {
-      cache = { el: null, strokeCount: -1, w: 0, h: 0 };
-      this.#layers.set(frame, cache);
+  /** The visible composite of a frame, rendered off-screen so onion stays under it. */
+  #frameComposite(
+    doc: ToonDocument,
+    frame: number,
+    pxW: number,
+    pxH: number,
+    viewport: Viewport,
+  ): HTMLCanvasElement {
+    this.#compositeEl ??= document.createElement('canvas');
+    const el = this.#compositeEl;
+    if (el.width !== pxW) el.width = pxW;
+    if (el.height !== pxH) el.height = pxH;
+    this.#renderer.render(doc, frame, el.getContext('2d') as unknown as Canvas2DLike, viewport);
+    return el;
+  }
+
+  #compositeEl: HTMLCanvasElement | null = null;
+
+  /** Neighbor cell of layer 0 — the active layer in every bench run. */
+  #onionCell(
+    doc: ToonDocument,
+    frame: number,
+    pxW: number,
+    pxH: number,
+    viewport: Viewport,
+  ): HTMLCanvasElement | null {
+    const cell = doc.layers[0]?.frames[frame];
+    if (!cell || cell.strokes.length === 0) {
+      return null;
     }
-    if (!cache.el || cache.strokeCount !== frame.strokes.length || cache.w !== pxW || cache.h !== pxH) {
-      cache.el ??= document.createElement('canvas');
-      cache.el.width = pxW;
-      cache.el.height = pxH;
-      const lctx = cache.el.getContext('2d') as unknown as LayerCtx;
-      lctx.clearRect(0, 0, pxW, pxH);
-      renderStrokesLayer(frame, tools, lctx, viewport);
-      cache.strokeCount = frame.strokes.length;
-      cache.w = pxW;
-      cache.h = pxH;
+    const key = `${frame}:${cell.strokes.length}:${pxW}x${pxH}`;
+    const cached = this.#onion.get(key);
+    if (cached) {
+      return cached;
     }
-    return cache.el;
+    const el = document.createElement('canvas');
+    el.width = pxW;
+    el.height = pxH;
+    const lctx = el.getContext('2d') as unknown as LayerCtx;
+    lctx.clearRect(0, 0, pxW, pxH);
+    renderStrokesLayer(cell, doc.tools, lctx, viewport);
+    this.#onion.set(key, el);
+    while (this.#onion.size > ONION_SKIN_ALPHAS.length * 2) {
+      this.#onion.delete(this.#onion.keys().next().value as string);
+    }
+    return el;
   }
 }
 

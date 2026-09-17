@@ -5,7 +5,7 @@
  * phase-2 player and GIF export.
  */
 
-import type { Frame, ToolDescriptor } from '../format/types';
+import type { ToonDocument } from '../format/types';
 
 export interface Viewport {
   /** CSS pixels per document unit. */
@@ -14,7 +14,11 @@ export interface Viewport {
   dpr: number;
 }
 
-/** Stateless frame renderer: a pure function of frame and viewport. */
+/**
+ * Frame renderer: a frame of the document is the composite of the cells of
+ * its visible layers, so the renderer takes the document and a frame index —
+ * not a single cell. Deterministic for a given document, index and viewport.
+ */
 export interface FrameRenderer<TTarget> {
-  render(frame: Frame, tools: readonly ToolDescriptor[], target: TTarget, viewport: Viewport): void;
+  render(doc: ToonDocument, frameIndex: number, target: TTarget, viewport: Viewport): void;
 }

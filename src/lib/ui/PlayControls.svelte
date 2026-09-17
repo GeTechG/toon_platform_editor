@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { frameCount } from '../model/operations';
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
   import { playbackStartFrame } from './frame-selection';
@@ -24,7 +25,7 @@
     resumeFrame = editor.activeFrame;
     const startFrame = playbackStartFrame(editor.activeFrame, editor.ux.playFromStart);
     player = new LoopPlayer({
-      frameCount: editor.doc.frames.length,
+      frameCount: frameCount(editor.doc),
       fps: editor.doc.frame_rate,
       startFrame,
       onFrame: (frame) => (editor.playbackFrame = frame),

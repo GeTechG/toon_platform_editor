@@ -9,20 +9,33 @@ import {
   DEFAULT_BRUSH_SIZE_LOGICAL,
   MAX_BRUSH_SIZE_LOGICAL,
   MAX_FRAMES,
+  MAX_LAYERS,
   MIN_BRUSH_SIZE_LOGICAL,
 } from '../format/constants';
 import {
   addFrame,
-  cloneFrame,
+  addLayer,
+  cloneColumn,
   createDocument,
+  frameCount,
   insertFrameBefore,
+  moveLayer,
   removeFrame,
   removeLastStroke,
-  replaceFrame,
+  removeLayer,
+  replaceColumn,
   setFrameRate,
-  type ResolvedFrame,
+  setLayerHidden,
+  type ResolvedColumn,
 } from '../model/operations';
-import { activeFrameAfterRemove, clampPlayerFps, onionSkinVisible } from './frame-selection';
+import {
+  activeFrameAfterRemove,
+  activeLayerAfterMove,
+  activeLayerAfterRemove,
+  clampPlayerFps,
+  onionSkinVisible,
+  type PickSource,
+} from './frame-selection';
 import { nudgeBrushSize, resolveToolSelection, toolAfterColorChange, type UxProfile } from './ux-profile';
 import {
   DEFAULT_PRESET,
@@ -43,6 +56,8 @@ export class EditorState {
   tool = $state<Tool>('pencil');
   doc = $state(createDocument());
   activeFrame = $state(0);
+  /** Layer the next stroke goes into; UI state, not part of the document. */
+  activeLayer = $state(0);
   playing = $state(false);
   /** Frame shown while playback is running. */
   playbackFrame = $state(0);
@@ -54,8 +69,10 @@ export class EditorState {
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
-  /** Clipboard for frame copy/paste (deep-copied on copy). */
-  copiedFrame = $state<ResolvedFrame | null>(null);
+  /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
+  copiedColumn = $state<ResolvedColumn | null>(null);
+  /** Where the pipette reads from; Alt overrides it for one click. */
+  pickSource = $state<PickSource>(DEFAULT_DRAWING_UI_CONFIG.pickSource);
   /**
    * Whether the full color picker is expanded (M hotkey). With a quick
    * palette (Multator) the collapsed state shows its two swatches; without
@@ -87,6 +104,7 @@ export class EditorState {
       this.tonioBrushSizeLogical = saved.drawing.tonio.width;
       this.tonioSmooth = saved.drawing.tonio.smooth;
       this.tonioMinDistance = saved.drawing.tonio.minDistance;
+      this.pickSource = saved.drawing.pickSource;
     }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -128,6 +146,7 @@ export class EditorState {
   applyPreset(id: string): void {
     this.preset = id;
     this.features = presetFeatures(id);
+    this.ensureActiveLayerVisible();
     this.drawingProfile = presetDrawingProfile(id);
     this.paletteExpanded = this.ux.quickPalette === null;
     if (!this.touched) {
@@ -160,6 +179,87 @@ export class EditorState {
   /** Toggle one button's visibility, keeping the current preset id. */
   toggleFeature(key: FeatureKey): void {
     this.features = { ...this.features, [key]: !this.features[key] };
+    this.ensureActiveLayerVisible();
+    this.persistUiConfig();
+  }
+
+  /**
+   * With the layers panel gone the user has no way to unhide a layer, so a
+   * hidden active layer would be a dead canvas — make it visible again. The
+   * other hidden layers stay hidden; this is a document change.
+   */
+  ensureActiveLayerVisible(): void {
+    if (this.features.layers) {
+      return;
+    }
+    const layer = this.doc.layers[this.activeLayer];
+    if (layer?.hidden) {
+      setLayerHidden(this.doc, this.activeLayer, false);
+      this.touched = true;
+    }
+  }
+
+  /** The layer the next stroke goes into, or undefined while the document is swapped. */
+  get activeLayerHidden(): boolean {
+    return this.doc.layers[this.activeLayer]?.hidden ?? false;
+  }
+
+  selectLayer(index: number): void {
+    if (index >= 0 && index < this.doc.layers.length) {
+      this.activeLayer = index;
+    }
+  }
+
+  /** Adds an empty layer above the active one; it becomes active. */
+  addLayerAboveActive(): void {
+    if (this.playing || this.doc.layers.length >= MAX_LAYERS) {
+      return;
+    }
+    this.activeLayer = addLayer(this.doc, this.activeLayer);
+    this.touched = true;
+  }
+
+  /** Whether a layer holds any stroke — the panel asks before deleting one that does. */
+  layerHasStrokes(index: number): boolean {
+    return this.doc.layers[index]?.frames.some((cell) => cell.strokes.length > 0) ?? false;
+  }
+
+  removeActiveLayer(): void {
+    if (this.playing || this.doc.layers.length <= 1) {
+      return;
+    }
+    const removed = this.activeLayer;
+    removeLayer(this.doc, removed);
+    this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
+    this.touched = true;
+  }
+
+  /**
+   * Moves a layer; the moved layer keeps the selection. Unlike the frame
+   * operations this is allowed during playback: it changes no frame index,
+   * only what the composite shows — and a drag cancelled after playback
+   * started must be able to put the layer back.
+   */
+  moveLayerTo(from: number, to: number): void {
+    if (from === to || to < 0 || to >= this.doc.layers.length) {
+      return;
+    }
+    moveLayer(this.doc, from, to);
+    this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
+    this.touched = true;
+  }
+
+  toggleLayerHidden(index: number): void {
+    const layer = this.doc.layers[index];
+    if (!layer) {
+      return;
+    }
+    setLayerHidden(this.doc, index, !layer.hidden);
+    this.touched = true;
+  }
+
+  setPickSource(source: PickSource): void {
+    this.pickSource = source;
     this.persistUiConfig();
   }
 
@@ -186,19 +286,20 @@ export class EditorState {
   replaceDoc(doc: ToonDocument): void {
     this.doc = doc;
     this.activeFrame = 0;
+    this.activeLayer = 0;
     this.playing = false;
     this.playbackFrame = 0;
   }
 
   selectFrame(index: number): void {
-    if (this.playing || index < 0 || index >= this.doc.frames.length) {
+    if (this.playing || index < 0 || index >= frameCount(this.doc)) {
       return;
     }
     this.activeFrame = index;
   }
 
   addFrameAfterActive(): void {
-    if (this.playing || this.doc.frames.length >= MAX_FRAMES) {
+    if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
       return;
     }
     this.activeFrame = addFrame(this.doc, this.activeFrame);
@@ -207,7 +308,7 @@ export class EditorState {
 
   /** Ctrl+add in the reference: a new empty frame in front of the current one. */
   addFrameBeforeActive(): void {
-    if (this.playing || this.doc.frames.length >= MAX_FRAMES) {
+    if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
       return;
     }
     this.activeFrame = insertFrameBefore(this.doc, this.activeFrame);
@@ -219,7 +320,7 @@ export class EditorState {
       return;
     }
     removeFrame(this.doc, this.activeFrame);
-    this.activeFrame = activeFrameAfterRemove(this.activeFrame, this.doc.frames.length, this.ux.afterRemove);
+    this.activeFrame = activeFrameAfterRemove(this.activeFrame, frameCount(this.doc), this.ux.afterRemove);
     this.touched = true;
   }
 
@@ -228,22 +329,19 @@ export class EditorState {
     this.touched = true;
   }
 
-  /** Copies the active frame's strokes to the clipboard (deep copy). */
+  /** Copies the active frame across every layer to the clipboard (deep copy). */
   copyActiveFrame(): void {
-    const frame = this.doc.frames[this.activeFrame];
-    if (frame) {
-      this.copiedFrame = cloneFrame(this.doc, frame);
-      this.flashTick++;
-    }
+    this.copiedColumn = cloneColumn(this.doc, this.activeFrame);
+    this.flashTick++;
   }
 
-  /** Pastes the clipboard strokes onto the active frame, replacing its contents. */
+  /** Pastes the clipboard column onto the active frame, replacing every layer's cell. */
   pasteFrame(): void {
-    if (this.playing || !this.copiedFrame) {
+    if (this.playing || !this.copiedColumn) {
       return;
     }
     try {
-      replaceFrame(this.doc, this.activeFrame, this.copiedFrame);
+      replaceColumn(this.doc, this.activeFrame, this.copiedColumn);
       this.touched = true;
       this.flashTick++;
     } catch (err) {
@@ -252,12 +350,12 @@ export class EditorState {
     }
   }
 
-  /** Undo: drops the last stroke of the active frame (per-stroke, no redo). */
+  /** Undo: drops the last stroke of the active layer's cell (per-stroke, no redo). */
   undo(): void {
     if (this.playing) {
       return;
     }
-    if (removeLastStroke(this.doc, this.activeFrame)) {
+    if (removeLastStroke(this.doc, this.activeLayer, this.activeFrame)) {
       this.touched = true;
     }
   }
@@ -297,6 +395,7 @@ export class EditorState {
           smooth: this.tonioSmooth,
           minDistance: this.tonioMinDistance,
         },
+        pickSource: this.pickSource,
       },
     });
   }

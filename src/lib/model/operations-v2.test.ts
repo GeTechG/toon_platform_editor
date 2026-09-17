@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'bun:test';
-import type { ToonDocumentV2, ToolDescriptor } from '../format/types';
+import type { ToonDocument, ToolDescriptor } from '../format/types';
 import * as operations from './operations';
 
-type InternTool = (doc: ToonDocumentV2, descriptor: ToolDescriptor) => number;
+type InternTool = (doc: ToonDocument, descriptor: ToolDescriptor) => number;
 const internTool = (operations as unknown as { internTool?: InternTool }).internTool;
 
-function doc(): ToonDocumentV2 {
+function doc(): ToonDocument {
   return {
-    schema_version: 2,
+    schema_version: 3,
     width: 4800,
     height: 2400,
     frame_rate: 12,
     tools: [],
-    frames: [{ strokes: [] }],
+    layers: [{ hidden: false, frames: [{ strokes: [] }] }],
   };
 }
 
@@ -72,35 +72,35 @@ describe('internTool', () => {
 describe('v2 resolved document operations', () => {
   it('addStroke interns a resolved descriptor instead of accepting a raw foreign index', () => {
     const target = doc();
-    operations.addStroke(target, 0, {
+    operations.addStroke(target, 0, 0, {
       points: [1, 2, 3, 4],
       tool: { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
     });
     expect(target.tools).toEqual([
       { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
     ]);
-    expect(target.frames[0].strokes).toEqual([{ points: [1, 2, 3, 4], tool_id: 0 }]);
+    expect(target.layers[0].frames[0].strokes).toEqual([{ points: [1, 2, 3, 4], tool_id: 0 }]);
   });
 
   it('clone/copy/paste carries resolved descriptors between documents', () => {
     const source = doc();
-    operations.addStroke(source, 0, {
+    operations.addStroke(source, 0, 0, {
       points: [10, 20],
       tool: { kind: 'eraser', dialect: 'multator', width: 64 },
     });
-    const copied = operations.cloneFrame(source, source.frames[0]);
+    const copied = operations.cloneColumn(source, 0);
 
     const target = doc();
     target.tools.push({ kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' });
-    operations.replaceFrame(target, 0, copied);
+    operations.replaceColumn(target, 0, copied);
 
-    expect(target.frames[0].strokes).toEqual([{ points: [10, 20], tool_id: 1 }]);
+    expect(target.layers[0].frames[0].strokes).toEqual([{ points: [10, 20], tool_id: 1 }]);
     expect(target.tools[1]).toEqual({ kind: 'eraser', dialect: 'multator', width: 64 });
   });
 
   it('counts v2 points for document limits through resolved strokes', () => {
     const target = doc();
-    expect(() => operations.addStroke(target, 0, {
+    expect(() => operations.addStroke(target, 0, 0, {
       points: [1, 2, 3],
       tool: { kind: 'eraser', dialect: 'multator', width: 8 },
     })).toThrow(RangeError);

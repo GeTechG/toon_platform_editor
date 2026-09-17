@@ -15,6 +15,7 @@
     | 'play'
     | 'stop'
     | 'onion'
+    | 'layers'
     | 'chevron-left'
     | 'chevron-right';
 
@@ -33,6 +34,7 @@
     play: 'M7 4l13 8-13 8V4Z',
     stop: 'M6 6h12v12H6Z',
     onion: 'M12 3l9 5-9 5-9-5 9-5ZM3 13l9 5 9-5',
+    layers: 'M4 7h11v11H4zM8 4h11v11',
     'chevron-left': 'M15 6l-6 6 6 6',
     'chevron-right': 'M9 6l6 6-6 6',
   };

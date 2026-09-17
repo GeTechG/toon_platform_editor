@@ -3,10 +3,10 @@
  *
  */
 
-/** Supported document schema version. */
-export const SCHEMA_VERSION = 1;
-/** Highest schema version accepted by the loader during the v2 rollout. */
-export const MAX_SUPPORTED_SCHEMA_VERSION = 2;
+/** Version the editor writes; older ones are migrated on load. */
+export const SCHEMA_VERSION = 3;
+/** Highest schema version the loader accepts. */
+export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 export const CANVAS_LOGICAL_WIDTH = 600;
 export const CANVAS_LOGICAL_HEIGHT = 300;
 
@@ -61,6 +61,8 @@ export const MAX_DOC_DIMENSION = 32767;
 export const STROKE_COORD_MIN = -32768;
 export const STROKE_COORD_MAX = 32767;
 export const MAX_FRAMES = 4096;
+/** Layers per document (v3); the Toonio reference caps at the same number. */
+export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
 /** Maximum coordinate count (x,y flat) per stroke. */
 export const MAX_STROKE_COORDS = 65536;
