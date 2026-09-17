@@ -418,7 +418,7 @@
 </div>
 
 <style>
-  /* toonop tokens (DESIGN.md): чернила / бумага / холст / электрик / сигнал.
+  /* toonop tokens (DESIGN.md): ink / paper / canvas / electric / signal.
      Defined on the root so every child component inherits them through the
      DOM — scoped styles still resolve `var(--…)` at runtime. */
   .editor {

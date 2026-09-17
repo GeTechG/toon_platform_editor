@@ -500,7 +500,7 @@
   canvas {
     display: block;
     background: var(--canvas, #fff);
-    /* Defined "кадр" on the paper worktable: hairline edge + soft plate shadow. */
+    /* A defined frame on the paper worktable: hairline edge + soft plate shadow. */
     border: 1px solid var(--hairline, #0b0c1024);
     box-shadow: 0 10px 30px -14px rgba(15, 23, 60, 0.35);
     /* Page scroll/zoom must not hijack drawing. */

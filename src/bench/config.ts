@@ -39,15 +39,15 @@ export interface BenchConfig {
 }
 
 export const DEFAULT_CONFIG: BenchConfig = {
-  // Мультатор-класс: один слой, ~100 кадров, десятки штрихов на кадр.
-  // Многослойный профиль Тунио-класса — `bench.html?layers=5`.
+  // Multator class: one layer, ~100 frames, dozens of strokes per frame.
+  // The multi-layer Toonio-class profile is `bench.html?layers=5`.
   layers: 1,
   frames: 100,
   strokesPerFrame: 20,
   pointsPerStroke: 64,
   mixedEvery: 0,
 
-  latencyP95MaxMs: 32, // 2 кадра при 60 Hz
+  latencyP95MaxMs: 32, // 2 frames at 60 Hz
   latencyPoints: 400,
 
   targetFps: 24,
@@ -55,8 +55,8 @@ export const DEFAULT_CONFIG: BenchConfig = {
   minOnTimeFraction: 0.95,
   playbackMs: 5000,
 
-  // 8 MB за окно замера — эмпирический старт; калибруется на реальном
-  // 2 ГБ Android (см. tasks 5.2). Оставлен как knob.
+  // 8 MB per measurement window is an empirical start; calibrate it on a real
+  // 2 GB Android device (see tasks 5.2). Left as a knob.
   heapGrowthMaxBytes: 8 * 1024 * 1024,
   heapWarmupMs: 1000,
 };

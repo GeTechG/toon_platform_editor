@@ -1,6 +1,6 @@
 <script lang="ts" module>
   // One ink-line icon vocabulary for the whole editor: monochrome, 2px stroke,
-  // round caps — the same "чернильная линия" the editor draws with. Paths are
+  // round caps — the same ink line the editor draws with. Paths are
   // on a 24-unit grid. `FILLED` names render as solid shapes (play/stop
   // triangles read wrong as outlines).
   export type IconName =
