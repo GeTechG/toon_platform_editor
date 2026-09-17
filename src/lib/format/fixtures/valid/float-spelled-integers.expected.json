@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[100,0,132,132],\"tool_id\":0}]},{\"strokes\":[]}],\"hidden\":false}],\"schema_version\":3,\"tools\":[{\"color\":\"#123456\",\"dialect\":\"multator\",\"kind\":\"pencil\",\"width\":32}],\"width\":4800}",
+  "sha256": "c79e84d954828bd79ec381677b7b522f0e0d0b5bc641e0ecda140e38c65b6c00"
+}

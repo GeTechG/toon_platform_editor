@@ -256,15 +256,10 @@ describe('loadDocument: version chain', () => {
 });
 
 describe('cross-language parity: number spelling', () => {
-  it('JSON.parse erases the difference between 1e2 and 100, so the TS gate cannot see it', () => {
-    // Both spellings are the same JSON number, so this gate is right to accept
-    // them. The server currently rejects the float-spelled one — a known
-    // divergence whose root cause is the Rust canonicalizer printing `100.0`
-    // instead of `100`; it is fixed separately (see the Rust-side
-    // known_gap_float_spelled_integers_do_not_canonicalize_like_the_editor).
+  it('accepts an integer spelled as a float — JSON.parse erases the difference', () => {
+    // `1e2` and `100` are the same JSON number, so both spellings are valid.
     const doc = JSON.parse('{"schema_version":3,"width":1e2,"height":2400,"frame_rate":12,"tools":[],"layers":[{"hidden":false,"frames":[{"strokes":[]}]}]}');
     expect(Number.isInteger(doc.width)).toBe(true);
-    expect(JSON.stringify(doc.width)).toBe('100');
     expect(validateDocument(doc).ok).toBe(true);
   });
 });

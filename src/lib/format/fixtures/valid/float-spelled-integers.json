@@ -1,0 +1,15 @@
+{
+  "schema_version": 3,
+  "width": 4.8e3,
+  "height": 2400.0,
+  "frame_rate": 1.2e1,
+  "tools": [
+    { "kind": "pencil", "dialect": "multator", "width": 3.2e1, "color": "#123456" }
+  ],
+  "layers": [
+    { "hidden": false, "frames": [
+      { "strokes": [{ "points": [1e2, -0.0, 132.0, 1.32e2], "tool_id": 0.0 }] },
+      { "strokes": [] }
+    ] }
+  ]
+}
