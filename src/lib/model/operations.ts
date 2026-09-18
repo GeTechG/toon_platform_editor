@@ -485,11 +485,16 @@ function writeCells(
   const written: { layer: number; frame: number; strokes: Stroke[] }[] = [];
   let outgoing = 0;
   let incoming = 0;
-  for (let l = 0; l < target.layers.length && l < buffer.length; l++) {
-    for (let f = 0; f < target.frames.length && f < buffer[l].length; f++) {
-      const layer = target.layers[l];
+  // Both lists are bottom-up, and the block is anchored by its *top* layer, so
+  // the layers pair from the end: a target with fewer rows than the buffer
+  // keeps the buffer's top rows and drops what would fall off the bottom.
+  for (let i = 0; i < target.layers.length && i < buffer.length; i++) {
+    const t = target.layers.length - 1 - i;
+    const source = buffer[buffer.length - 1 - i];
+    const layer = target.layers[t];
+    for (let f = 0; f < target.frames.length && f < source.length; f++) {
       const frame = target.frames[f];
-      const next = resolvedFrameToV2(doc, combine(before[l][f], buffer[l][f]));
+      const next = resolvedFrameToV2(doc, combine(before[t][f], source[f]));
       if (next.strokes.length > MAX_STROKES_PER_FRAME) {
         throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }

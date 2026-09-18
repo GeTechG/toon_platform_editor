@@ -201,10 +201,16 @@ export function toggleLayerInSelection(selection: CellSelection, layer: number):
   return layers.length === 0 ? selection : { frames: selection.frames, layers };
 }
 
-/** Where a copied block lands from the active cell, cut off at the document edges. */
+/**
+ * Where a copied block lands: it hangs from the active cell, which takes the
+ * buffer's first frame and its *top* layer. Frames run forward, layers run
+ * downward — they are stored bottom-up and shown top-down, so the rows under
+ * the one you dropped on are the lower indices. Whatever runs off the end of
+ * the document is cut.
+ */
 export function pasteTarget(buffer: CellBounds, active: Cell, bounds: CellBounds): CellSelection {
   return {
     frames: span(active.frame, active.frame + buffer.frames - 1, bounds.frames),
-    layers: span(active.layer, active.layer + buffer.layers - 1, bounds.layers),
+    layers: span(active.layer, active.layer - buffer.layers + 1, bounds.layers),
   };
 }

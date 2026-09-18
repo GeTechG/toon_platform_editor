@@ -276,17 +276,26 @@ describe('toggleLayerInSelection', () => {
 describe('pasteTarget', () => {
   const BOUNDS = { frames: 6, layers: 3 };
 
-  it('lands the buffer shape with the active cell at its corner', () => {
-    expect(pasteTarget({ frames: 3, layers: 2 }, { frame: 1, layer: 0 }, BOUNDS)).toEqual({
+  it('hangs the block from the active cell: frames forward, layers downward', () => {
+    // Layers are stored bottom-up and shown top-down, so a block dropped on a
+    // row fills that row and the rows *under* it — lower indices.
+    expect(pasteTarget({ frames: 3, layers: 2 }, { frame: 1, layer: 2 }, BOUNDS)).toEqual({
       frames: [1, 2, 3],
-      layers: [0, 1],
+      layers: [1, 2],
     });
   });
 
-  it('clips what runs past the last frame and the top layer', () => {
-    expect(pasteTarget({ frames: 4, layers: 3 }, { frame: 4, layer: 2 }, BOUNDS)).toEqual({
+  it('clips what runs past the last frame and the bottom layer', () => {
+    expect(pasteTarget({ frames: 4, layers: 3 }, { frame: 4, layer: 0 }, BOUNDS)).toEqual({
       frames: [4, 5],
-      layers: [2],
+      layers: [0],
+    });
+  });
+
+  it('a one-cell buffer lands on the active cell alone', () => {
+    expect(pasteTarget({ frames: 1, layers: 1 }, { frame: 3, layer: 1 }, BOUNDS)).toEqual({
+      frames: [3],
+      layers: [1],
     });
   });
 });

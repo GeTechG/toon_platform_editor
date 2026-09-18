@@ -530,11 +530,22 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
     expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0]]);
   });
 
-  it('a target smaller than the buffer takes the cells that fit', () => {
+  it('the block hangs from the top: the buffer keeps its layer order under the target top', () => {
+    const doc = grid();
+    // The whole two-layer column of frame 0, dropped so its top row lands on
+    // layer 1 — the target's top — and its bottom row on layer 0.
+    const buffer = copyCells(doc, { frames: [0], layers: [0, 1] });
+    replaceCells(doc, { frames: [2], layers: [0, 1] }, buffer);
+    expect(at(doc, 1, 2)).toEqual([[8, 0]]);
+    expect(at(doc, 0, 2)).toEqual([[0, 0]]);
+  });
+
+  it('a target shorter than the buffer keeps the buffer top and drops its bottom', () => {
     const doc = grid();
     const buffer = copyCells(doc, { frames: [0, 1, 2], layers: [0, 1] });
     replaceCells(doc, { frames: [2], layers: [1] }, buffer);
-    expect(at(doc, 1, 2)).toEqual([[0, 0]]);
+    // Layer 1 of the buffer is its top row, frame 0 its first — the corner.
+    expect(at(doc, 1, 2)).toEqual([[8, 0]]);
   });
 
   it('a non-contiguous layer selection copies and pastes only those layers', () => {
