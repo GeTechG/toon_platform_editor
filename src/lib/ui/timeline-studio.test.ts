@@ -72,6 +72,23 @@ describe('bottom panel divider', () => {
     expect(editorUi).toContain('0.75');
   });
 
+  it('is as wide a target as the reference resizer, straddling the panel edge', () => {
+    // Reference #resizer: position absolute, top -8px, height 16px — half of
+    // it hangs over the canvas, so the grab area is not the 1px border.
+    const resizer = editorUi.match(/\.resizer \{[^}]*\}/)?.[0] ?? '';
+    expect(resizer).toContain('position: absolute');
+    expect(resizer).toContain('top: -8px');
+    expect(resizer).toContain('height: 16px');
+  });
+
+  it('drags without painting the interface blue', () => {
+    // Reference .draw carries user-select: none, so a resize never selects
+    // labels; the fields you do type in keep their selection.
+    const editorRule = editorUi.match(/\n  \.editor \{[^}]*\}/)?.[0] ?? '';
+    expect(editorRule).toContain('user-select: none');
+    expect(editorUi).toMatch(/\.editor input \{[^}]*user-select: text/s);
+  });
+
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.

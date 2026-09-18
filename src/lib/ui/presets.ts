@@ -38,11 +38,12 @@ export interface DrawingUiConfig {
 }
 
 /**
- * Bottom-panel divider range. The floor leaves room for the transport row
- * plus one layer row of timeline; the ceiling is also capped at 75vh where it
- * is used.
+ * Bottom-panel divider range. The floor is the panel's chrome (transport row
+ * 44 + row gap 9 + padding 10) plus a timeline showing one layer: its 32px
+ * frame-number header, one 44px row and the two borders. The ceiling is also
+ * capped at 75vh where it is used.
  */
-export const PANEL_HEIGHT_MIN = 190;
+export const PANEL_HEIGHT_MIN = 151;
 export const PANEL_HEIGHT_MAX = 2000;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {

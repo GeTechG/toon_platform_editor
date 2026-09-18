@@ -514,7 +514,7 @@
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
-        class="divider"
+        class="resizer"
         role="separator"
         aria-label="Высота нижней панели"
         aria-orientation="horizontal"
@@ -969,6 +969,16 @@
     width: 100%;
     color: var(--ink);
     font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* Reference .draw: nothing here is prose, so a drag across the chrome —
+       the panel resizer above all — never leaves a blue smear behind. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* The fields you do type in keep their selection. */
+  .editor input {
+    user-select: text;
+    -webkit-user-select: text;
   }
   /* Paper worktable so the white canvas floats on brand tone, not a bare dark
      letterbox. Padding keeps the canvas off the bars. */
@@ -997,21 +1007,26 @@
     padding: 0.6rem 0.9rem;
   }
   .studio .panel {
+    position: relative;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding-top: 0;
   }
-  .divider {
-    flex: none;
-    height: 10px;
-    margin: 0 -0.9rem;
+  /* Reference #resizer: a 16px band straddling the panel's top edge, so the
+     grab target is not the 1px border. (`.divider` is taken — it is the hair
+     rule inside the settings popover.) */
+  .resizer {
+    position: absolute;
+    top: -8px;
+    left: 0;
+    width: 100%;
+    height: 16px;
     cursor: ns-resize;
     touch-action: none;
     background:
       linear-gradient(var(--hairline), var(--hairline)) center / 3rem 2px no-repeat;
   }
-  .divider:focus-visible {
+  .resizer:focus-visible {
     outline: 2px solid var(--electric, #2f5bff);
     outline-offset: -2px;
   }
@@ -1187,7 +1202,7 @@
       height: auto !important;
       padding-top: 0.4rem;
     }
-    .divider {
+    .resizer {
       display: none;
     }
     .studio .toolbar,
