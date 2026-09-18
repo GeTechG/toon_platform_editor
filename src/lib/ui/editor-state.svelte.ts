@@ -368,11 +368,6 @@ export class EditorState {
     this.touched = false;
   }
 
-  /** A clean sheet: nothing to autosave until the first edit. */
-  newDocument(): void {
-    this.openDraft(createDocument({ frameRate: this.ux.defaultFps }));
-  }
-
   /**
    * Opens an imported document: like a loaded draft, but it *is* an edit —
    * the local draft must keep it, so the document counts as touched.

@@ -216,13 +216,6 @@
     await refreshDrafts();
   }
 
-  /** Leaves the list on an empty sheet; the next edit starts its own draft. */
-  function startFresh(): void {
-    editor.newDocument();
-    draftId = null;
-    draftsOpen = false;
-  }
-
   const PLURAL = new Intl.PluralRules('ru');
   function plural(n: number, one: string, few: string, many: string): string {
     const form = PLURAL.select(n);
@@ -591,7 +584,6 @@
       </div>
 
       <footer class="sheet-foot">
-        <button class="key" onclick={startFresh}>Чистый лист</button>
         <button class="key primary" onclick={() => (draftsOpen = false)}>Закрыть</button>
       </footer>
     </div>
