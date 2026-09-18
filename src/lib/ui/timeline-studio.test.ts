@@ -13,6 +13,15 @@ describe('one layer list, two placements', () => {
     expect(rows).toContain('editor.removeActiveLayer()');
   });
 
+  it('every control the reference puts in a row is in the row, not a footer', () => {
+    // Reference row: eye · name · ⇕ · ×, with «+ Слой» heading the column.
+    expect(rows).toContain('Удалить слой');
+    expect(rows).toContain('class="add-layer"');
+    expect(rows).not.toContain('<footer>');
+    // Deleting acts on the row you pressed, not on whichever layer was active.
+    expect(rows).toContain('removeLayer(layerIndex)');
+  });
+
   it('the popup is chrome around those rows, and the studio timeline uses the same ones', () => {
     expect(panel).toContain('<LayerRows');
     expect(panel).not.toContain('editor.moveLayerTo(');
@@ -83,5 +92,18 @@ describe('copy, paste and merge on the studio transport', () => {
   it('Shift with the arrows extends the selection instead of moving the cell', () => {
     expect(editorUi).toContain("editor.selectCell(");
     expect(editorUi).toContain("'range'");
+  });
+});
+
+
+describe('frame buttons follow the reference bar', () => {
+  it('add and delete frame sit on the studio transport, not beside the timeline', () => {
+    // Reference: ⏮ ⏴ ▶ ⏵ ⏭ + × 👻 fps … — the frame keys are part of the bar.
+    const transport = editorUi.slice(
+      editorUi.indexOf('aria-label="Просмотр и экспорт"'),
+      editorUi.indexOf('aria-label="Кисть"'),
+    );
+    expect(transport).toContain('onAddFrame');
+    expect(transport).toContain('editor.removeActiveFrame()');
   });
 });

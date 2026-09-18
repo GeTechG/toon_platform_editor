@@ -1,5 +1,6 @@
 <script lang="ts">
-  // The layer list itself — rows plus the add/remove/reorder footer. The
+  // The layer list itself, in the reference's shape: an «+ Слой» header over
+  // rows of eye · name · ⇕ · ×, every control acting on its own row. The
   // popup panel (bar layout) and the studio timeline column both render this,
   // so the two forms cannot drift apart. Layers are stored bottom-up and
   // shown top-down (topmost row first) — the order you see on the canvas.
@@ -31,8 +32,6 @@
   );
   const canAdd = $derived(editor.doc.layers.length < MAX_LAYERS);
   const canRemove = $derived(editor.doc.layers.length > 1);
-  const canMoveUp = $derived(editor.activeLayer < editor.doc.layers.length - 1);
-  const canMoveDown = $derived(editor.activeLayer > 0);
 
   /** Row number shown to the user: 1 for the topmost layer. */
   function rowNumber(layerIndex: number): number {
@@ -52,14 +51,15 @@
     announce(to);
   }
 
-  function removeLayer(): void {
+  function removeLayer(layerIndex: number): void {
     if (!canRemove) {
       return;
     }
     // Deleting a layer is not undoable, so a layer with strokes asks first.
-    if (editor.layerHasStrokes(editor.activeLayer) && !confirm('Удалить слой со штрихами?')) {
+    if (editor.layerHasStrokes(layerIndex) && !confirm('Удалить слой со штрихами?')) {
       return;
     }
+    editor.selectLayer(layerIndex);
     editor.removeActiveLayer();
   }
 
@@ -208,6 +208,17 @@
 
 <svelte:window onkeydown={onPanelKeydown} />
 
+<div class="head">
+  <button
+    class="add-layer"
+    disabled={!canAdd}
+    onclick={() => editor.addLayerAboveActive()}
+    title="Добавить слой (Shift+A)"
+  >
+    <Icon name="plus" size={16} /> Слой
+  </button>
+</div>
+
 <div class="list" bind:this={listEl} role="listbox" aria-label="Слои" tabindex="-1">
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
       <div
@@ -244,29 +255,30 @@
         <span
           class="handle"
           role="presentation"
-          title="Перетащить слой"
+          title="Перетащить слой (Alt+↑ / Alt+↓)"
           onpointerdown={(e) => onHandleDown(e, layerIndex)}
           onpointermove={onHandleMove}
           onpointerup={endDrag}
           onpointercancel={cancelDrag}
-        >≡</span>
+        >⇕</span>
+
+        <button
+          class="kill"
+          disabled={!canRemove}
+          aria-label="Удалить слой {rowNumber(layerIndex)}"
+          title="Удалить слой"
+          onclick={(e) => {
+            e.stopPropagation();
+            removeLayer(layerIndex);
+          }}
+        >
+          <Icon name="x" size={14} />
+        </button>
       </div>
-    {/each}
-  </div>
+  {/each}
+</div>
 
-  <footer>
-    <button class="key icon" disabled={!canAdd} onclick={() => editor.addLayerAboveActive()} title="Добавить слой" aria-label="Добавить слой">
-      <Icon name="plus" />
-    </button>
-    <button class="key icon" disabled={!canRemove} onclick={removeLayer} title="Удалить слой" aria-label="Удалить слой">
-      <Icon name="x" />
-    </button>
-    <span class="sep"></span>
-    <button class="key icon" disabled={!canMoveUp} onclick={() => moveBy(editor.activeLayer, 1)} title="Выше" aria-label="Переместить слой выше">↑</button>
-    <button class="key icon" disabled={!canMoveDown} onclick={() => moveBy(editor.activeLayer, -1)} title="Ниже" aria-label="Переместить слой ниже">↓</button>
-  </footer>
-
-  <p class="sr-only" role="status" aria-live="polite">{announcement}</p>
+<p class="sr-only" role="status" aria-live="polite">{announcement}</p>
 
 <style>
   .list {
@@ -322,22 +334,54 @@
   .handle {
     display: grid;
     place-items: center;
-    width: 44px;
+    width: 30px;
     height: 44px;
     touch-action: none;
     cursor: grab;
     user-select: none;
     color: var(--ink-muted, #6b7280);
   }
-  footer {
+  .head {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.4rem;
-    border-top: 1px solid var(--hairline);
+    flex: none;
+    height: 32px;
+    padding: 0 0.3rem;
+    border-bottom: 1px solid var(--hairline);
   }
-  footer .sep {
-    flex: 1;
+  .add-layer {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 26px;
+    padding: 0 0.4rem;
+    border: 0;
+    border-radius: var(--r-sm, 6px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .add-layer:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .kill {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex: none;
+    border: 0;
+    border-radius: var(--r-sm, 6px);
+    background: transparent;
+    color: var(--ink-muted, #6b7280);
+    cursor: pointer;
+  }
+  .kill:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
   .sr-only {
     position: absolute;

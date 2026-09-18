@@ -471,7 +471,7 @@
         {#if !studio}
           {@render history()}
         {/if}
-        {#if editor.features.addFrame}
+        {#if editor.features.addFrame && !studio}
           <button
             class="key"
             disabled={editor.playing}
@@ -482,7 +482,7 @@
             <Icon name="plus" />
           </button>
         {/if}
-        {#if editor.features.deleteFrame}
+        {#if editor.features.deleteFrame && !studio}
           <button
             class="key"
             disabled={editor.playing}
@@ -537,6 +537,30 @@
             title="На последний кадр"
             aria-label="На последний кадр"
           >⏭</button>
+          <!-- The reference puts add/delete frame on the bar itself, right
+               after the transport keys, not beside the strip. -->
+          {#if editor.features.addFrame}
+            <button
+              class="key"
+              disabled={editor.playing}
+              onclick={onAddFrame}
+              title="Добавить кадр после текущего (Ctrl+клик — перед)"
+              aria-label="Добавить кадр"
+            >
+              <Icon name="plus" />
+            </button>
+          {/if}
+          {#if editor.features.deleteFrame}
+            <button
+              class="key"
+              disabled={editor.playing}
+              onclick={() => editor.removeActiveFrame()}
+              title="Удалить текущий кадр"
+              aria-label="Удалить кадр"
+            >
+              <Icon name="trash" />
+            </button>
+          {/if}
         {/if}
         {#if editor.features.onionSkin}
           <button

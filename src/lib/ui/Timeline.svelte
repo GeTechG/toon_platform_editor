@@ -143,7 +143,6 @@
 
     <div class="body">
       <div class="layer-col">
-        <div class="head-spacer" aria-hidden="true"></div>
         <LayerRows {editor} compact />
       </div>
 
@@ -312,11 +311,6 @@
     min-height: 0;
     border-right: 1px solid var(--hairline);
   }
-  .head-spacer {
-    flex: none;
-    height: 18px;
-    border-bottom: 1px solid var(--hairline);
-  }
   .grid {
     flex: 1;
     min-width: 0;
@@ -326,7 +320,7 @@
   .head {
     display: flex;
     gap: 2px;
-    height: 18px;
+    height: 32px;
     padding: 0 2px;
     border-bottom: 1px solid var(--hairline);
     position: sticky;
@@ -339,7 +333,7 @@
     width: 46px;
     text-align: center;
     font-size: 0.6rem;
-    line-height: 18px;
+    line-height: 32px;
     font-variant-numeric: tabular-nums;
     color: var(--ink-muted, #6b7280);
   }
