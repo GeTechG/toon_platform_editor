@@ -2,14 +2,13 @@
   // Two shapes, one component. The `bar` layout keeps the single strip of
   // frames the editor always had; the `studio` layout is the reference
   // toonio.ru timeline (`Timeline` in toonio.bundle.js:8645): the shared layer
-  // list on the left, a layer-by-frame grid of cell thumbnails on the right,
-  // and a divider that sets the whole thing's height.
+  // list on the left and a layer-by-frame grid of cell thumbnails on the
+  // right, filling whatever height the resizable bottom panel gives it.
   import type { EditorState } from './editor-state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
-  import { TIMELINE_HEIGHT_MIN } from './presets';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -76,71 +75,11 @@
     editor.selectCell(frame, layer, mode);
   }
 
-  // --- Height divider -------------------------------------------------------
-  let viewportHeight = $state(0);
-  /** The stored height, never more than three quarters of the viewport. */
-  const height = $derived(
-    Math.min(editor.timelineHeight, Math.round((viewportHeight || 800) * 0.75)),
-  );
-  /** Keyboard step for the divider, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
-  const HEIGHT_STEP = 22;
-
-  let resize: { pointerId: number; startY: number; startHeight: number } | null = null;
-
-  function onDividerDown(e: PointerEvent): void {
-    if (!e.isPrimary) return;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    resize = { pointerId: e.pointerId, startY: e.clientY, startHeight: height };
-  }
-
-  function onDividerMove(e: PointerEvent): void {
-    if (!resize || e.pointerId !== resize.pointerId) return;
-    // The timeline sits at the bottom, so dragging up makes it taller.
-    editor.setTimelineHeight(resize.startHeight + (resize.startY - e.clientY));
-  }
-
-  function onDividerUp(e: PointerEvent): void {
-    if (resize && e.pointerId === resize.pointerId) resize = null;
-  }
-
-  function onDividerKey(e: KeyboardEvent): void {
-    switch (e.key) {
-      case 'ArrowUp':
-        e.preventDefault();
-        editor.setTimelineHeight(height + HEIGHT_STEP);
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        editor.setTimelineHeight(height - HEIGHT_STEP);
-        break;
-    }
-  }
 </script>
 
-<svelte:window bind:innerHeight={viewportHeight} />
-
 {#if studio}
-  <div class="studio" style="height: {height}px">
-    <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
-         svelte-check's non-interactive rules do not model. -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-      class="divider"
-      role="separator"
-      aria-label="Высота ленты"
-      aria-orientation="horizontal"
-      aria-valuenow={height}
-      aria-valuemin={TIMELINE_HEIGHT_MIN}
-      tabindex="0"
-      onpointerdown={onDividerDown}
-      onpointermove={onDividerMove}
-      onpointerup={onDividerUp}
-      onpointercancel={onDividerUp}
-      onkeydown={onDividerKey}
-      title="Высота ленты (↑ / ↓)"
-    ></div>
-
+  <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
+  <div class="studio">
     <div class="body">
       <div class="layer-col">
         <LayerRows {editor} compact />
@@ -280,19 +219,8 @@
   .studio {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-height: 0;
-  }
-  .divider {
-    flex: none;
-    height: 8px;
-    cursor: ns-resize;
-    touch-action: none;
-    background:
-      linear-gradient(var(--hairline), var(--hairline)) center / 3rem 2px no-repeat;
-  }
-  .divider:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
-    outline-offset: -2px;
   }
   .body {
     display: flex;

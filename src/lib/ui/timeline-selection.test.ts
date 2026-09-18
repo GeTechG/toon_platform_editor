@@ -63,11 +63,11 @@ describe('copy, paste and merge of a selection', () => {
   });
 });
 
-describe('timeline height', () => {
+describe('bottom panel height', () => {
   it('is state, clamped to the divider range and persisted', () => {
-    expect(state).toContain('timelineHeight = $state');
-    expect(member(state, 'setTimelineHeight')).toContain('TIMELINE_HEIGHT_MIN');
-    expect(member(state, 'setTimelineHeight')).toContain('TIMELINE_HEIGHT_MAX');
-    expect(member(state, 'persistUiConfig')).toContain('timelineHeight: this.timelineHeight');
+    expect(state).toContain('panelHeight = $state');
+    expect(member(state, 'setPanelHeight')).toContain('PANEL_HEIGHT_MIN');
+    expect(member(state, 'setPanelHeight')).toContain('PANEL_HEIGHT_MAX');
+    expect(state).toContain('panelHeight: this.panelHeight');
   });
 });

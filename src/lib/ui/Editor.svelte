@@ -16,7 +16,7 @@
   import { draftEntries } from '../draft/restore';
   import { deleteDraft, listDrafts, newDraftId, saveDraft } from '../draft/store';
   import FrameThumb from './FrameThumb.svelte';
-  import { FEATURE_LABELS, FEATURE_ORDER, PRESETS } from './presets';
+  import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_MIN, PRESETS } from './presets';
   import type { FeatureKey } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { IconName } from './Icon.svelte';
@@ -70,6 +70,46 @@
   // Last three typed characters, for the reference's "old" easter egg
   // (Main.hx keyDown: charCodes 111,108,100 toggle the oldschool pen).
   const lastThreeKeys = ['', '', ''];
+
+  // --- Bottom panel divider ------------------------------------------------
+  // The studio bar is resizable from its top edge, and the timeline is the row
+  // that grows with it — dragging down gives the grid more layers and frames.
+  let viewportHeight = $state(0);
+  /** The stored panel height, never more than three quarters of the viewport. */
+  const panelHeight = $derived(
+    Math.min(editor.panelHeight, Math.round((viewportHeight || 800) * 0.75)),
+  );
+  /** Keyboard step for the divider, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
+  const PANEL_STEP = 22;
+  let resize: { pointerId: number; startY: number; startHeight: number } | null = null;
+
+  function onDividerDown(e: PointerEvent): void {
+    if (!e.isPrimary) return;
+    resize = { pointerId: e.pointerId, startY: e.clientY, startHeight: panelHeight };
+  }
+
+  function onDividerMove(e: PointerEvent): void {
+    if (!resize || e.pointerId !== resize.pointerId) return;
+    // The panel sits at the bottom, so dragging up makes it taller.
+    editor.setPanelHeight(resize.startHeight + (resize.startY - e.clientY));
+  }
+
+  function onDividerUp(e: PointerEvent): void {
+    if (resize && e.pointerId === resize.pointerId) resize = null;
+  }
+
+  function onDividerKey(e: KeyboardEvent): void {
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault();
+        editor.setPanelHeight(panelHeight + PANEL_STEP);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        editor.setPanelHeight(panelHeight - PANEL_STEP);
+        break;
+    }
+  }
 
   /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
   function moveOrExtend(shift: boolean, frame: number, layer: number): void {
@@ -380,7 +420,11 @@
 <!-- A file dropped anywhere would otherwise navigate the page away from the
      unsaved drawing, so the window takes the drop and opens it instead. -->
 <svelte:window
+  bind:innerHeight={viewportHeight}
   onkeydown={onKeydown}
+  onpointermove={onDividerMove}
+  onpointerup={onDividerUp}
+  onpointercancel={onDividerUp}
   ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
   ondrop={(e) => {
     const file = e.dataTransfer?.files?.[0];
@@ -463,7 +507,25 @@
       <BrushPanel {editor} />
     </aside>
   {/if}
-  <div class="panel">
+  <div class="panel" style={studio ? `height: ${panelHeight}px` : undefined}>
+    {#if studio}
+      <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
+           svelte-check's non-interactive rules do not model. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="divider"
+        role="separator"
+        aria-label="Высота нижней панели"
+        aria-orientation="horizontal"
+        aria-valuenow={panelHeight}
+        aria-valuemin={PANEL_HEIGHT_MIN}
+        tabindex="0"
+        onpointerdown={onDividerDown}
+        onkeydown={onDividerKey}
+        title="Высота нижней панели (↑ / ↓)"
+      ></div>
+    {/if}
     <div class="toolbar">
       <!-- Row A — frames: taking a stroke back comes first, then add / delete
            anchoring the timeline strip. -->
@@ -934,10 +996,42 @@
     border-top: 1px solid var(--hairline);
     padding: 0.6rem 0.9rem;
   }
+  .studio .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding-top: 0;
+  }
+  .divider {
+    flex: none;
+    height: 10px;
+    margin: 0 -0.9rem;
+    cursor: ns-resize;
+    touch-action: none;
+    background:
+      linear-gradient(var(--hairline), var(--hairline)) center / 3rem 2px no-repeat;
+  }
+  .divider:focus-visible {
+    outline: 2px solid var(--electric, #2f5bff);
+    outline-offset: -2px;
+  }
   .toolbar {
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
+  }
+  /* The timeline is the row that takes the height the divider hands out. */
+  .studio .toolbar {
+    flex: 1;
+    min-height: 0;
+  }
+  .studio .row.frames {
+    flex: 1;
+    min-height: 0;
+  }
+  .studio .timeline {
+    height: 100%;
+    min-height: 0;
   }
   .row {
     display: flex;
@@ -1087,14 +1181,24 @@
       display: none;
     }
     /* A height dragged out on a desktop must not swallow the canvas here: the
-       phone sizes the timeline to its rows instead, and the divider that sets
-       that height goes away with it. */
-    .studio .timeline :global(.studio) {
+       phone sizes the panel to its contents instead, the timeline to its rows,
+       and the divider that sets that height goes away with them. */
+    .studio .panel {
       height: auto !important;
-      max-height: 40vh;
+      padding-top: 0.4rem;
     }
-    .studio .timeline :global([role='separator']) {
+    .divider {
       display: none;
+    }
+    .studio .toolbar,
+    .studio .row.frames,
+    .studio .timeline {
+      flex: none;
+      height: auto;
+    }
+    .studio .timeline :global(.studio) {
+      height: auto;
+      max-height: 40vh;
     }
     /* Transport and output do not fit one 390px line — they wrap instead of
        pushing the page into a horizontal scroll. */

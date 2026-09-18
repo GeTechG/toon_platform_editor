@@ -85,8 +85,8 @@ import {
   presetFeatures,
   presetUx,
   saveUiConfig,
-  TIMELINE_HEIGHT_MAX,
-  TIMELINE_HEIGHT_MIN,
+  PANEL_HEIGHT_MAX,
+  PANEL_HEIGHT_MIN,
   type DrawingProfileId,
   type FeatureKey,
   type Features,
@@ -160,8 +160,11 @@ export class EditorState {
   copiedCells = $state<CellBuffer | null>(null);
   /** Where the buffer was taken from — the timeline marks those cells. */
   copiedFrom = $state<CellSelection | null>(null);
-  /** Studio timeline height in CSS px (persisted), set by dragging its divider. */
-  timelineHeight = $state(DEFAULT_DRAWING_UI_CONFIG.timelineHeight);
+  /**
+   * Studio bottom-panel height in CSS px (persisted), set by dragging the
+   * divider on its top edge. The timeline is the row that grows with it.
+   */
+  panelHeight = $state(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
   /** Where the pipette reads from; Alt overrides it for one click. */
   pickSource = $state<PickSource>(DEFAULT_DRAWING_UI_CONFIG.pickSource);
   /**
@@ -196,7 +199,7 @@ export class EditorState {
       this.tonioSmooth = saved.drawing.tonio.smooth;
       this.tonioMinDistance = saved.drawing.tonio.minDistance;
       this.pickSource = saved.drawing.pickSource;
-      this.timelineHeight = saved.drawing.timelineHeight;
+      this.panelHeight = saved.drawing.panelHeight;
     }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -635,8 +638,8 @@ export class EditorState {
     this.flashTick++;
   }
 
-  setTimelineHeight(px: number): void {
-    this.timelineHeight = Math.min(TIMELINE_HEIGHT_MAX, Math.max(TIMELINE_HEIGHT_MIN, Math.round(px)));
+  setPanelHeight(px: number): void {
+    this.panelHeight = Math.min(PANEL_HEIGHT_MAX, Math.max(PANEL_HEIGHT_MIN, Math.round(px)));
     this.persistUiConfig();
   }
 
@@ -824,7 +827,7 @@ export class EditorState {
           minDistance: this.tonioMinDistance,
         },
         pickSource: this.pickSource,
-        timelineHeight: this.timelineHeight,
+        panelHeight: this.panelHeight,
       },
     });
   }

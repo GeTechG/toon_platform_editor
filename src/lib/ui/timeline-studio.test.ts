@@ -60,16 +60,25 @@ describe('studio timeline grid', () => {
   });
 });
 
-describe('timeline height divider', () => {
-  it('drags to resize and answers the arrows for keyboard users', () => {
-    expect(timeline).toContain('role="separator"');
-    expect(timeline).toContain('editor.setTimelineHeight(');
-    expect(timeline).toContain('onpointermove');
-    expect(timeline).toContain("case 'ArrowUp'");
+describe('bottom panel divider', () => {
+  it('the divider sits on the panel, dragging and answering the arrows', () => {
+    expect(editorUi).toContain('role="separator"');
+    expect(editorUi).toContain('editor.setPanelHeight(');
+    expect(editorUi).toContain('onpointermove={onDividerMove}');
+    expect(editorUi).toContain("case 'ArrowUp'");
   });
 
   it('never grows past three quarters of the viewport', () => {
-    expect(timeline).toContain('0.75');
+    expect(editorUi).toContain('0.75');
+  });
+
+  it('the panel owns the height and the timeline takes what is left of it', () => {
+    // The whole bar resizes; the timeline is the row that grows with it, so
+    // the grid gains rows and frames instead of the buttons drifting apart.
+    expect(editorUi).toContain('class="panel" style={studio ?');
+    expect(editorUi).toContain('${panelHeight}px');
+    expect(timeline).not.toContain('editor.timelineHeight');
+    expect(timeline).toContain('height: 100%');
   });
 });
 
