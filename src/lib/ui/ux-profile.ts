@@ -25,7 +25,13 @@ export type SelectableTool =
   | 'pipette'
   | 'feather'
   | 'pixel'
-  | 'mega-eraser';
+  | 'mega-eraser'
+  /** Hand: drags the canvas under a zoom window (reference `Drag`). */
+  | 'drag'
+  /** Lasso: selects strokes and opens the transform window (reference `Lasso`). */
+  | 'lasso'
+  /** Distort: drags the four corners of the selection box (reference `Distort`). */
+  | 'distort';
 
 const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];
 /** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, PIXEL, plus the picker. */
@@ -36,6 +42,9 @@ const TONIO_TOOLS: readonly SelectableTool[] = [
   'pixel',
   'mega-eraser',
   'pipette',
+  'drag',
+  'lasso',
+  'distort',
 ];
 
 /** Tonio's brush ceiling (editor.html slider max). */

@@ -16,6 +16,9 @@
       label: 'Мега-ластик',
     },
     pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка' },
+    drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука' },
+    lasso: { icon: 'lasso', title: 'Лассо (Q) — выделить и трансформировать', label: 'Лассо' },
+    distort: { icon: 'distort', title: 'Искажение (~) — тянуть углы выделения', label: 'Искажение' },
   };
 
   // The preset owns the toolset; the pipette additionally only exists once the

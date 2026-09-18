@@ -34,6 +34,9 @@ import {
   replaceCells,
   replaceColumn,
   replaceStrokes,
+  mirrorCell,
+  distortStrokes,
+  transformStrokes,
   setFrameRate,
   setLayerHidden,
   type CellBuffer,
@@ -70,6 +73,33 @@ import {
 } from './color-palette';
 import { IDENTITY_VIEW, zoomAt, type Viewport2D } from './viewport';
 import { eraseStrokes } from '../tools/mega-eraser';
+import type { TransformSession } from '../tools/lasso';
+import {
+  EMPTY_TRANSFORM,
+  boxCorners,
+  nudged,
+  selectStrokes,
+  selectionBounds,
+  sessionMatrix,
+  sessionWidthScale,
+} from '../tools/lasso';
+import type { Box } from '../model/geom';
+import { applyMatrix, bilinearWarp } from '../model/geom';
+
+/** An open transform: what the lasso picked and how far it has been moved. */
+export interface TransformState {
+  /** Indices into the active cell's stroke list. */
+  indices: number[];
+  /** Bounds of the selection when it was made — the frame the handles sit on. */
+  box: Box;
+  session: TransformSession;
+  /** Dragged corners while distorting; null while the session is affine. */
+  quad: number[] | null;
+  widthWithScale: boolean;
+  /** Steps inside the session, oldest first — the window's own undo. */
+  past: { session: TransformSession; quad: number[] | null }[];
+  future: { session: TransformSession; quad: number[] | null }[];
+}
 import {
   nudgeBrushSize,
   resolveToolSelection,
@@ -100,6 +130,12 @@ export type Tool = SelectableTool;
  * a 2 GB phone, not a workstation.
  */
 export const UNDO_HISTORY_LIMIT = 50;
+/**
+ * Steps kept inside one transform session. A drag writes one per pointermove,
+ * so this is a ring, not a full history — enough to walk back out of a bad
+ * rotation, bounded so a long drag cannot grow without end.
+ */
+const TRANSFORM_HISTORY_LIMIT = 100;
 
 /** One cell of a block edit, as it was before the edit ran. */
 interface CellSnapshot {
@@ -115,6 +151,16 @@ interface CellSnapshot {
 
 export class EditorState {
   tool = $state<Tool>('pencil');
+  /** The open lasso/distort session; null when nothing is selected. */
+  transform = $state<TransformState | null>(null);
+  /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
+  transformWidthWithScale = $state(false);
+  /**
+   * Reference "paranoid mode": instead of applying an unfinished transform on
+   * the way out, block the move until it is applied or dropped. Bound to the
+   * settings sheet once that change lands.
+   */
+  transformLock = $state(false);
   doc = $state(createDocument());
   activeFrame = $state(0);
   /** Layer the next stroke goes into; UI state, not part of the document. */
@@ -260,7 +306,13 @@ export class EditorState {
    */
   selectTool(tool: Tool): void {
     const resolved = resolveToolSelection(tool, this.brushColor, this.ux, this.paletteExpanded);
-    if (resolved) {
+    // The distort tool works on the selection the lasso just made, so it is
+    // the one switch that does not close an open transform.
+    if (resolved === 'distort' && this.transform) {
+      this.tool = resolved;
+      return;
+    }
+    if (resolved && this.leaveTransform()) {
       this.tool = resolved;
     }
   }
@@ -372,7 +424,7 @@ export class EditorState {
   }
 
   selectLayer(index: number): void {
-    if (index >= 0 && index < this.doc.layers.length) {
+    if (index >= 0 && index < this.doc.layers.length && this.leaveTransform()) {
       this.activeLayer = index;
       this.selection = { frames: [this.activeFrame], layers: [index] };
     }
@@ -390,7 +442,7 @@ export class EditorState {
    * where it is.
    */
   selectCell(frame: number, layer: number, mode: 'set' | 'range' | 'toggle' = 'set'): void {
-    if (this.playing) {
+    if (this.playing || !this.leaveTransform()) {
       return;
     }
     if (mode === 'range') {
@@ -534,7 +586,7 @@ export class EditorState {
   }
 
   selectFrame(index: number): void {
-    if (this.playing || index < 0 || index >= frameCount(this.doc)) {
+    if (this.playing || index < 0 || index >= frameCount(this.doc) || !this.leaveTransform()) {
       return;
     }
     this.activeFrame = index;
@@ -789,6 +841,230 @@ export class EditorState {
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
     replaceStrokes(this.doc, this.activeLayer, this.activeFrame, after);
     this.pushEdit(snapshots);
+  }
+
+  /**
+   * H / Shift+H with nothing selected: reflects the whole active cell about
+   * the canvas centre. One snapshot, so one undo step.
+   */
+  mirrorActiveCell(axis: 'horizontal' | 'vertical'): void {
+    const cell = this.activeCell;
+    if (this.playing || !cell || this.activeLayerHidden || cell.strokes.length === 0) {
+      return;
+    }
+    const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
+    mirrorCell(this.doc, this.activeLayer, this.activeFrame, axis);
+    this.pushEdit(snapshots);
+  }
+
+  /**
+   * Writes a finished transform session into the document: `map` runs the
+   * operation (affine or distort) against the active cell, between the
+   * snapshot and the undo entry, so Enter is one step and Esc is none.
+   */
+  applyTransform(map: (doc: ToonDocument, layer: number, frame: number) => void): void {
+    const cell = this.activeCell;
+    if (this.playing || !cell || this.activeLayerHidden) {
+      return;
+    }
+    const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
+    map(this.doc, this.activeLayer, this.activeFrame);
+    this.pushEdit(snapshots);
+  }
+
+  /**
+   * Lasso: selects the strokes the polygon touches and opens a transform over
+   * them. An empty selection leaves the document alone and nothing open.
+   */
+  beginTransform(polygon: readonly number[]): void {
+    const cell = this.activeCell;
+    if (this.playing || !cell || this.activeLayerHidden) {
+      return;
+    }
+    const indices = selectStrokes(cell.strokes, polygon);
+    const box = selectionBounds(cell.strokes, indices);
+    if (!box) {
+      this.transform = null;
+      return;
+    }
+    this.transform = {
+      indices,
+      box,
+      session: { ...EMPTY_TRANSFORM },
+      quad: null,
+      widthWithScale: this.transformWidthWithScale,
+      past: [],
+      future: [],
+    };
+  }
+
+  /**
+   * Replaces the accumulated transform — what the fields, the handles and the
+   * hotkeys all write, so it is also the one place a session step is recorded.
+   */
+  setTransform(session: TransformSession): void {
+    const open = this.transform;
+    if (!open) {
+      return;
+    }
+    this.transform = {
+      ...open,
+      session,
+      quad: null,
+      past: [...open.past, { session: open.session, quad: open.quad }].slice(-TRANSFORM_HISTORY_LIMIT),
+      future: [],
+    };
+  }
+
+  get canUndoTransform(): boolean {
+    return (this.transform?.past.length ?? 0) > 0;
+  }
+
+  get canRedoTransform(): boolean {
+    return (this.transform?.future.length ?? 0) > 0;
+  }
+
+  /** One step back inside the open session; the document is not touched. */
+  undoTransform(): void {
+    const open = this.transform;
+    const step = open?.past[open.past.length - 1];
+    if (!open || !step) {
+      return;
+    }
+    this.transform = {
+      ...open,
+      session: step.session,
+      quad: step.quad,
+      past: open.past.slice(0, -1),
+      future: [...open.future, { session: open.session, quad: open.quad }],
+    };
+  }
+
+  redoTransform(): void {
+    const open = this.transform;
+    const step = open?.future[open.future.length - 1];
+    if (!open || !step) {
+      return;
+    }
+    this.transform = {
+      ...open,
+      session: step.session,
+      quad: step.quad,
+      past: [...open.past, { session: open.session, quad: open.quad }],
+      future: open.future.slice(0, -1),
+    };
+  }
+
+  /** One keyboard step: arrows move, Q/W turn, +/- scale. */
+  nudgeTransform(
+    what: 'move' | 'rotate' | 'scale',
+    dir: 1 | -1,
+    shift: boolean,
+    axis: 'x' | 'y' = 'x',
+  ): void {
+    if (this.transform) {
+      this.setTransform(nudged(this.transform.session, what, dir, shift, axis));
+    }
+  }
+
+  /** H / Shift+H inside a transform: mirrors the selection, not the cell. */
+  mirrorTransform(axis: 'horizontal' | 'vertical'): void {
+    const open = this.transform;
+    if (!open) {
+      return;
+    }
+    const { session } = open;
+    this.setTransform(axis === 'horizontal'
+      ? { ...session, scaleX: -session.scaleX }
+      : { ...session, scaleY: -session.scaleY });
+  }
+
+  /** Distort: the dragged quad replaces the affine part of the session. */
+  setTransformQuad(quad: readonly number[]): void {
+    const open = this.transform;
+    if (!open) {
+      return;
+    }
+    this.transform = {
+      ...open,
+      quad: quad.slice(),
+      session: { ...EMPTY_TRANSFORM },
+      past: [...open.past, { session: open.session, quad: open.quad }].slice(-TRANSFORM_HISTORY_LIMIT),
+      future: [],
+    };
+  }
+
+  /** "Change width with scale" — remembered for the next selection too. */
+  setTransformWidthWithScale(on: boolean): void {
+    this.transformWidthWithScale = on;
+    if (this.transform) {
+      this.transform = { ...this.transform, widthWithScale: on };
+    }
+  }
+
+  /** The four corners the distort tool drags: the dragged quad, or the box. */
+  get transformQuad(): number[] {
+    const open = this.transform;
+    if (!open) {
+      return [];
+    }
+    return open.quad ?? boxCorners(open.box);
+  }
+
+  /** Where a selected point sits right now — what the overlay and preview draw. */
+  transformPoint(x: number, y: number): [number, number] {
+    const open = this.transform;
+    if (!open) {
+      return [x, y];
+    }
+    if (open.quad) {
+      return bilinearWarp(x, y, open.box, open.quad);
+    }
+    return applyMatrix(sessionMatrix(open.session, open.box), x, y);
+  }
+
+  /** Enter / "apply": writes the open transform as one undo step and closes it. */
+  commitTransform(): void {
+    const open = this.transform;
+    if (!open) {
+      return;
+    }
+    this.transform = null;
+    if (open.quad) {
+      this.applyTransform((doc, layer, frame) =>
+        distortStrokes(doc, layer, frame, open.indices, open.box, open.quad!));
+      return;
+    }
+    const { session } = open;
+    if (session.dx === 0 && session.dy === 0 && session.rotate === 0
+      && session.scaleX === 1 && session.scaleY === 1) {
+      return;
+    }
+    const widthScale = open.widthWithScale ? sessionWidthScale(session) : 1;
+    this.applyTransform((doc, layer, frame) =>
+      transformStrokes(doc, layer, frame, open.indices, sessionMatrix(session, open.box), widthScale));
+  }
+
+  /**
+   * Called before anything that would take the user off the open transform —
+   * a frame, a layer or a tool change. The reference applies the transform
+   * (`ApplyTransformFast`); with the lock on it refuses the move instead, and
+   * returns false so the caller does nothing.
+   */
+  leaveTransform(): boolean {
+    if (!this.transform) {
+      return true;
+    }
+    if (this.transformLock) {
+      return false;
+    }
+    this.commitTransform();
+    return true;
+  }
+
+  /** Esc / "cancel": drops the session, leaving no undo entry behind. */
+  cancelTransform(): void {
+    this.transform = null;
   }
 
   /** Grows the brush by the profile's step (+ hotkey), up to its maximum. */

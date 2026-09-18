@@ -4,6 +4,8 @@
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
   import ToolsPanel from './ToolsPanel.svelte';
+  import TransformMenu from './TransformMenu.svelte';
+  import ScaleMenu from './ScaleMenu.svelte';
   import ExportGifButton from './ExportGifButton.svelte';
   import LayersPanel from './LayersPanel.svelte';
   import Timeline from './Timeline.svelte';
@@ -138,6 +140,63 @@
     if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) {
       return;
     }
+    // An open transform owns the arrows, Q/W, +/- and Enter/Esc. Without one
+    // those keys stay frame navigation and brush size, so this branch has to
+    // come before the main switch.
+    if (editor.transform) {
+      let taken = true;
+      switch (e.key) {
+        case 'Enter':
+          editor.commitTransform();
+          break;
+        case 'Escape':
+          editor.cancelTransform();
+          break;
+        case 'ArrowLeft':
+          editor.nudgeTransform('move', -1, e.shiftKey, 'x');
+          break;
+        case 'ArrowRight':
+          editor.nudgeTransform('move', 1, e.shiftKey, 'x');
+          break;
+        case 'ArrowUp':
+          editor.nudgeTransform('move', -1, e.shiftKey, 'y');
+          break;
+        case 'ArrowDown':
+          editor.nudgeTransform('move', 1, e.shiftKey, 'y');
+          break;
+        // Reference: Q and W turn the selection while it is live; outside a
+        // transform Q is one of the two keys that pick the lasso up.
+        case 'q':
+        case 'Q':
+          editor.nudgeTransform('rotate', -1, e.shiftKey);
+          break;
+        case 'w':
+        case 'W':
+          editor.nudgeTransform('rotate', 1, e.shiftKey);
+          break;
+        case '+':
+        case '=':
+          editor.nudgeTransform('scale', 1, e.shiftKey);
+          break;
+        case '-':
+        case '_':
+          editor.nudgeTransform('scale', -1, e.shiftKey);
+          break;
+        case 'h':
+          editor.mirrorTransform('horizontal');
+          break;
+        case 'H':
+          editor.mirrorTransform('vertical');
+          break;
+        default:
+          taken = false;
+      }
+      if (taken) {
+        e.preventDefault();
+        return;
+      }
+    }
+
     lastThreeKeys.shift();
     lastThreeKeys.push(e.key);
     if (lastThreeKeys.join('') === 'old') {
@@ -165,6 +224,32 @@
       case 'p':
       case 'P':
         editor.selectTool('pipette');
+        break;
+      // Reference transform tools: D or O is the hand, Q or S the lasso,
+      // `~` the distort. Unavailable under a preset that has no such button —
+      // selectTool drops what the profile does not offer.
+      case 'd':
+      case 'D':
+      case 'o':
+      case 'O':
+        editor.selectTool('drag');
+        break;
+      case 'q':
+      case 'Q':
+      case 's':
+      case 'S':
+        editor.selectTool('lasso');
+        break;
+      case '~':
+      case '`':
+        editor.selectTool('distort');
+        break;
+      // Reference Mirror: with nothing selected H flips the whole cell.
+      case 'h':
+        editor.mirrorActiveCell('horizontal');
+        break;
+      case 'H':
+        editor.mirrorActiveCell('vertical');
         break;
       // The studio clipboard is the timeline selection (cells × layers); the
       // bar has no selection, so there C/V stay whole-frame copy and paste.
@@ -475,6 +560,14 @@
   {#if studio}
     <aside class="left" aria-label="Инструменты и история">
       <ToolsPanel {editor} />
+      <!-- The two tool windows of the reference: the transform fields while a
+           selection is live, the zoom window while the hand is up. -->
+      {#if editor.transform}
+        <TransformMenu {editor} />
+      {/if}
+      {#if editor.tool === 'drag'}
+        <ScaleMenu {editor} />
+      {/if}
       <div class="history">
         {@render history()}
         {#if document.fullscreenEnabled}

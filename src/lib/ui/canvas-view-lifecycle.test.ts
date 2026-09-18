@@ -105,3 +105,43 @@ describe('layer-aware canvas contract', () => {
     expect(pick).toContain('BACKGROUND_COLOR');
   });
 });
+
+describe('transform tools on the canvas', () => {
+  it('the hand pans instead of drawing, alongside the middle button and space', () => {
+    expect(handler('startNavigation')).toContain("editor.tool === 'drag'");
+  });
+
+  it('the lasso traces a polygon and hands it to the state on pointerup', () => {
+    expect(handler('onPointerDown')).toContain("editor.tool === 'lasso'");
+    expect(handler('onPointerMove')).toContain('lassoPolygon');
+    expect(handler('onPointerUp')).toContain('editor.beginTransform(lassoPolygon)');
+  });
+
+  it('a live transform takes the drag before the pencil does', () => {
+    const down = handler('onPointerDown');
+    expect(down.indexOf('editor.transform')).toBeGreaterThan(-1);
+    expect(down.indexOf('editor.transform')).toBeLessThan(down.indexOf('pointer.pointerDown'));
+  });
+
+  it('grabbing a corner distorts under ~ and scales under the lasso', () => {
+    const down = handler('onPointerDown');
+    expect(down).toContain('cornerAt(');
+    expect(handler('onPointerMove')).toContain('dragTransform(e)');
+    const drag = handler('dragTransform');
+    expect(drag).toContain('editor.setTransformQuad(');
+    expect(drag).toContain('editor.setTransform(');
+  });
+
+  it('draws the selection moved, not doubled: the stack leaves the selected strokes out', () => {
+    // Otherwise the originals stay under the preview and every drag smears.
+    expect(handler('rebuildStack')).toContain('editor.transform');
+    expect(source).toContain('editor.transformPoint(');
+  });
+
+  it('shows the polygon, the frame and its handles as an overlay over the canvas', () => {
+    expect(source).toContain('class="overlay"');
+    // Purely visual: every gesture is read off the canvas itself, so touch
+    // and pointer capture keep working.
+    expect(source).toContain('pointer-events: none');
+  });
+});

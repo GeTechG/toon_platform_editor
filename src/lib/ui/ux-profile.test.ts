@@ -60,7 +60,10 @@ describe('UX_PROFILES', () => {
   });
 
   it('offers the Tonio toolset only under Toonio', () => {
-    expect(toonio.tools).toEqual(['pencil', 'eraser', 'feather', 'pixel', 'mega-eraser', 'pipette']);
+    expect(toonio.tools).toEqual([
+      'pencil', 'eraser', 'feather', 'pixel', 'mega-eraser', 'pipette',
+      'drag', 'lasso', 'distort',
+    ]);
     expect(multator.tools).toEqual(['pencil', 'eraser', 'pipette']);
     expect(toonop.tools).toEqual(['pencil', 'eraser', 'pipette']);
   });
@@ -130,5 +133,26 @@ describe('toolAfterColorChange', () => {
   it('toonop: choosing a color never changes the tool', () => {
     expect(toolAfterColorChange('#ffffff', toonop)).toBeNull();
     expect(toolAfterColorChange('#ff0000', toonop)).toBeNull();
+  });
+});
+
+describe('transform tools', () => {
+  it('toonio offers the hand, lasso and distort the reference has', () => {
+    expect(toonio.tools).toContain('drag');
+    expect(toonio.tools).toContain('lasso');
+    expect(toonio.tools).toContain('distort');
+  });
+
+  it('the other presets keep their own toolsets', () => {
+    for (const ux of [toonop, multator]) {
+      expect(ux.tools).not.toContain('lasso');
+      expect(ux.tools).not.toContain('distort');
+      expect(ux.tools).not.toContain('drag');
+    }
+  });
+
+  it('asking for a transform tool the preset has no button for is refused', () => {
+    expect(resolveToolSelection('lasso', '#000000', toonop)).toBeNull();
+    expect(resolveToolSelection('lasso', '#000000', toonio)).toBe('lasso');
   });
 });

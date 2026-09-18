@@ -28,6 +28,8 @@ import type {
   ToonDocument,
   ToolDescriptor,
 } from '../format/types';
+import type { Box, Matrix } from './geom';
+import { applyMatrix, bilinearWarp, clampCoord, transformMatrix } from './geom';
 
 export interface ResolvedStroke {
   points: number[];
@@ -510,4 +512,85 @@ function writeCells(
     doc.layers[layer].frames[frame] = { strokes };
   }
   return before;
+}
+
+/**
+ * Rewrites the points of a cell's strokes through `map`, upholding the same
+ * invariants a fresh stroke gets: whole coordinates inside int16. `indices`
+ * picks the strokes (null = the whole cell); `widthScale` re-interns the tool
+ * at a scaled width, which is what the transform window's "change width with
+ * scale" checkbox asks for.
+ *
+ * Nothing is recorded for undo here — like the mega eraser, the caller
+ * snapshots the cell first, so a transform is one ordinary undo step.
+ */
+function mapStrokes(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+  indices: readonly number[] | null,
+  map: (x: number, y: number) => [number, number],
+  widthScale = 1,
+): void {
+  const target = cell(doc, layerIndex, frameIndex);
+  const chosen = indices ?? target.strokes.map((_, i) => i);
+  for (const index of chosen) {
+    const stroke = target.strokes[index];
+    if (!stroke) {
+      continue;
+    }
+    const points = stroke.points;
+    for (let i = 0; i < points.length; i += 2) {
+      const [x, y] = map(points[i], points[i + 1]);
+      points[i] = clampCoord(x);
+      points[i + 1] = clampCoord(y);
+    }
+    if (widthScale !== 1) {
+      stroke.tool_id = internTool(doc, scaleToolWidth(doc.tools[stroke.tool_id], widthScale));
+    }
+  }
+}
+
+/** The same descriptor with its width scaled into the format's 1..MAX range. */
+function scaleToolWidth(tool: ToolDescriptor, scale: number): ToolDescriptor {
+  const copy = copyTool(tool);
+  if (!('width' in copy)) {
+    return copy;
+  }
+  return { ...copy, width: Math.min(MAX_STROKE_WIDTH, Math.max(1, Math.round(copy.width * scale))) };
+}
+
+/** Applies an affine transform to the chosen strokes of a cell (null = all). */
+export function transformStrokes(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+  indices: readonly number[] | null,
+  matrix: Matrix,
+  widthScale = 1,
+): void {
+  mapStrokes(doc, layerIndex, frameIndex, indices, (x, y) => applyMatrix(matrix, x, y), widthScale);
+}
+
+/** H / Shift+H: reflects a whole cell about the canvas centre. */
+export function mirrorCell(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+  axis: 'horizontal' | 'vertical',
+): void {
+  const flip = axis === 'horizontal' ? { scaleX: -1 } : { scaleY: -1 };
+  transformStrokes(doc, layerIndex, frameIndex, null, transformMatrix(flip, doc.width / 2, doc.height / 2));
+}
+
+/** Reprojects the chosen strokes from the selection box into a dragged quad. */
+export function distortStrokes(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+  indices: readonly number[] | null,
+  box: Box,
+  quad: readonly number[],
+): void {
+  mapStrokes(doc, layerIndex, frameIndex, indices, (x, y) => bilinearWarp(x, y, box, quad));
 }

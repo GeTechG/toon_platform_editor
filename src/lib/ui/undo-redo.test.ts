@@ -81,3 +81,59 @@ describe('editor toolbar and hotkeys', () => {
     expect(editorUi).toContain('disabled={!editor.canRedo}');
   });
 });
+
+describe('transform edits go on the same undo stack', () => {
+  it('mirroring a cell snapshots it first, so one H is one undo step', () => {
+    const mirror = member(state, 'mirrorActiveCell');
+    expect(mirror).toContain('this.snapshotCells(');
+    expect(mirror).toContain('mirrorCell(');
+    expect(mirror).toContain('this.pushEdit(');
+  });
+
+  it('applying a transform snapshots every cell it writes', () => {
+    const apply = member(state, 'applyTransform');
+    expect(apply).toContain('this.snapshotCells(');
+    expect(apply).toContain('this.pushEdit(');
+  });
+
+  it('refuses to edit while playing or on a hidden layer, like the mega eraser', () => {
+    for (const name of ['mirrorActiveCell', 'applyTransform']) {
+      expect(member(state, name)).toContain('this.playing');
+      expect(member(state, name)).toContain('this.activeLayerHidden');
+    }
+  });
+});
+
+describe('transform hotkeys', () => {
+  it('binds the reference tool keys: D/O hand, Q/S lasso, ~ distort', () => {
+    expect(editorUi).toContain("case 'd':");
+    expect(editorUi).toContain("case 'o':");
+    expect(editorUi).toContain("editor.selectTool('drag')");
+    expect(editorUi).toContain("case 's':");
+    expect(editorUi).toContain("editor.selectTool('lasso')");
+    expect(editorUi).toContain("case '~':");
+    expect(editorUi).toContain("editor.selectTool('distort')");
+  });
+
+  it('H mirrors the cell horizontally and Shift+H vertically', () => {
+    expect(editorUi).toContain("editor.mirrorActiveCell('horizontal')");
+    expect(editorUi).toContain("editor.mirrorActiveCell('vertical')");
+  });
+
+  it('Enter applies the open transform and Escape drops it', () => {
+    expect(editorUi).toContain("case 'Enter':");
+    expect(editorUi).toContain('editor.commitTransform()');
+    expect(editorUi).toContain("case 'Escape':");
+    expect(editorUi).toContain('editor.cancelTransform()');
+  });
+
+  it('routes the arrows, Q/W and +/- to the transform while one is open', () => {
+    // A live transform owns these keys; without one they stay frame
+    // navigation and brush size, so the branch has to come first.
+    const handler = editorUi.slice(editorUi.indexOf('function onKeydown'));
+    const transformBranch = handler.indexOf('editor.transform');
+    const brushBranch = handler.indexOf('editor.increaseBrushSize');
+    expect(transformBranch).toBeGreaterThan(-1);
+    expect(transformBranch).toBeLessThan(brushBranch);
+  });
+});

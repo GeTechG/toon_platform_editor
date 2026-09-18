@@ -13,6 +13,7 @@
     type Canvas2DLike,
   } from '../render/canvas2d';
   import { pickSource } from './frame-selection';
+  import { boxCorners, cornerAt, movedCorner } from '../tools/lasso';
   import { ZOOM_STEP, clampPan, toDocument, zoomAt } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
@@ -46,7 +47,15 @@
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
-  let megaPointerId = -1;
+  /** Pointer owning the mega-eraser or lasso gesture — only one runs at a time. */
+  let gesturePointerId = -1;
+  /** Lasso polygon being traced, in document units; null when idle. */
+  let lassoPolygon = $state<number[] | null>(null);
+  /**
+   * Drag inside an open transform: which corner is held (null = the body, so
+   * the drag moves the selection) and where it started, in document units.
+   */
+  let grab: { pointerId: number; corner: number | null; x: number; y: number } | null = null;
   let lastPickPreview = 0;
   const PIPETTE_THROTTLE_MS = 100;
   /** Transient message over the canvas (e.g. drawing into a hidden layer). */
@@ -176,7 +185,14 @@
     activeEl = buffer(activeEl, pxW, pxH);
     paintStack(belowEl, below, pxW, pxH, viewport);
     paintStack(aboveEl, above, pxW, pxH, viewport);
-    const activeCell = layers[editor.activeLayer]?.frames[frame];
+    let activeCell = layers[editor.activeLayer]?.frames[frame];
+    // While a transform is open its strokes are drawn moved, on top — so they
+    // must not also sit here in their old place, or every drag smears.
+    const open = editor.transform;
+    if (activeCell && open) {
+      const held = new Set(open.indices);
+      activeCell = { strokes: activeCell.strokes.filter((_, i) => !held.has(i)) };
+    }
     paintStack(activeEl, activeCell && !layers[editor.activeLayer].hidden ? [activeCell] : [], pxW, pxH, viewport);
   }
 
@@ -222,6 +238,10 @@
   const canvasLabel = $derived(
     `Холст: кадр ${editor.displayedFrame + 1} из ${frameCount(editor.doc)}` +
       (editor.doc.layers.length > 1 ? `, слой ${editor.activeLayer + 1}` : ''),
+  );
+  /** Grab radius for the handles, in document units — 12 CSS px at this zoom. */
+  const handleRadius = $derived(
+    (12 * editor.doc.width) / Math.max(1, cssWidth * editor.view.zoom),
   );
   const cursorDiameter = $derived(
     Math.max(1, (editor.brushSizeLogical * cssWidth * editor.view.zoom) / CANVAS_LOGICAL_WIDTH),
@@ -328,6 +348,18 @@
       activeWithLive = liveEl;
     }
 
+    // The selection as it stands right now, over the layer it was cut out of.
+    const transformed = transformPreviewCell();
+    if (transformed) {
+      liveEl = buffer(liveEl, pxWidth, pxHeight);
+      const lctx = liveEl.getContext('2d') as unknown as ViewCtx;
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.clearRect(0, 0, pxWidth, pxHeight);
+      lctx.drawImage(activeEl!, 0, 0);
+      renderStrokesLayer(transformed, editor.doc.tools, lctx, viewport);
+      activeWithLive = liveEl;
+    }
+
     // The profile's active alpha (Multator: 0.8, its containerSprite) applies
     // to the whole current frame, so the stack composites offscreen first.
     const alpha = editor.playing ? 1 : editor.ux.activeFrameAlpha;
@@ -347,6 +379,90 @@
       blitLayer(activeWithLive, ctx);
       blitLayer(aboveEl!, ctx);
     }
+  }
+
+  /** The selected strokes at their current transform; null when none is open. */
+  function transformPreviewCell(): Frame | null {
+    const open = editor.transform;
+    const cell = editor.activeCell;
+    if (!open || !cell) {
+      return null;
+    }
+    return {
+      strokes: open.indices.flatMap((index) => {
+        const stroke = cell.strokes[index];
+        if (!stroke) {
+          return [];
+        }
+        const points = stroke.points.slice();
+        for (let i = 0; i < points.length; i += 2) {
+          const [x, y] = editor.transformPoint(points[i], points[i + 1]);
+          points[i] = x;
+          points[i + 1] = y;
+        }
+        return [{ points, tool_id: stroke.tool_id }];
+      }),
+    };
+  }
+
+  /** The four handles where they are drawn now — box corners run through the session. */
+  const displayedQuad = $derived.by(() => {
+    const open = editor.transform;
+    if (!open) {
+      return null;
+    }
+    const source = boxCorners(open.box);
+    const out: number[] = [];
+    for (let i = 0; i < source.length; i += 2) {
+      out.push(...editor.transformPoint(source[i], source[i + 1]));
+    }
+    return out;
+  });
+
+  /** Document units → CSS pixels inside the canvas element (the overlay's frame). */
+  function toScreen(x: number, y: number): [number, number] {
+    return [
+      editor.view.panX + (x / editor.doc.width) * cssWidth * editor.view.zoom,
+      editor.view.panY + (y / editor.doc.height) * cssHeight * editor.view.zoom,
+    ];
+  }
+
+  /** Flat document polygon → an SVG `points` string in CSS pixels. */
+  function screenPoints(polygon: readonly number[]): string {
+    const out: string[] = [];
+    for (let i = 0; i < polygon.length; i += 2) {
+      out.push(toScreen(polygon[i], polygon[i + 1]).join(','));
+    }
+    return out.join(' ');
+  }
+
+  /**
+   * Scale that puts `corner` under the pointer. The pointer is un-rotated and
+   * un-translated first, so dragging a handle on a turned selection still
+   * scales along the selection's own axes.
+   */
+  function scaleFromCorner(
+    open: NonNullable<typeof editor.transform>,
+    corner: number,
+    x: number,
+    y: number,
+  ) {
+    const cx = open.box.x + open.box.width / 2;
+    const cy = open.box.y + open.box.height / 2;
+    const angle = (-open.session.rotate * Math.PI) / 180;
+    const dx = x - open.session.dx - cx;
+    const dy = y - open.session.dy - cy;
+    const ux = dx * Math.cos(angle) - dy * Math.sin(angle);
+    const uy = dx * Math.sin(angle) + dy * Math.cos(angle);
+    const source = boxCorners(open.box);
+    const rx = source[corner * 2] - cx;
+    const ry = source[corner * 2 + 1] - cy;
+    // A selection with no extent on an axis cannot be scaled along it.
+    return {
+      ...open.session,
+      scaleX: Math.abs(rx) < 1 ? open.session.scaleX : ux / rx,
+      scaleY: Math.abs(ry) < 1 ? open.session.scaleY : uy / ry,
+    };
   }
 
   function renderSessionPreview(
@@ -389,6 +505,7 @@
     void editor.showOnionSkin;
     void editor.ux;
     void editor.view;
+    void editor.transform;
     const frame = editor.displayedFrame;
     for (const layer of editor.doc.layers) {
       void layer.hidden;
@@ -455,7 +572,8 @@
       }
       return touches.size > 1;
     }
-    if (e.button === 1 || spaceHeld) {
+    // The hand is the tool whose whole job is this gesture (reference `Drag`).
+    if (e.button === 1 || spaceHeld || editor.tool === 'drag') {
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       canvasEl.setPointerCapture(e.pointerId);
       return true;
@@ -504,6 +622,32 @@
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
+    // A live transform owns the canvas: a handle scales or distorts, anywhere
+    // else moves. It comes before every drawing tool.
+    if (editor.transform) {
+      const [x, y] = toDocUnits(e);
+      grab = {
+        pointerId: e.pointerId,
+        corner: cornerAt(displayedQuad ?? [], x, y, handleRadius),
+        x,
+        y,
+      };
+      canvasEl.setPointerCapture(e.pointerId);
+      return;
+    }
+    // Lasso and distort both start by tracing the selection polygon.
+    if (editor.tool === 'lasso' || editor.tool === 'distort') {
+      if (editor.activeLayerHidden) {
+        showHint(HIDDEN_LAYER_HINT);
+        return;
+      }
+      const [x, y] = toDocUnits(e);
+      lassoPolygon = [x, y];
+      canvasEl.setPointerCapture(e.pointerId);
+      gesturePointerId = e.pointerId;
+      scheduleDraw();
+      return;
+    }
     if (editor.tool === 'pipette') {
       const picked = pickColor(e);
       // Picking emptiness/background arms the eraser (reference: alpha ≠ 255 → eraser).
@@ -528,7 +672,7 @@
       const [x, y] = toDocUnits(e);
       megaGesture = [Math.round(x), Math.round(y)];
       canvasEl.setPointerCapture(e.pointerId);
-      megaPointerId = e.pointerId;
+      gesturePointerId = e.pointerId;
       scheduleDraw();
       return;
     }
@@ -551,10 +695,20 @@
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       return;
     }
-    if (megaGesture && e.pointerId === megaPointerId) {
+    if (megaGesture && e.pointerId === gesturePointerId) {
       const [x, y] = toDocUnits(e);
       megaGesture.push(Math.round(x), Math.round(y));
       scheduleDraw();
+      return;
+    }
+    if (lassoPolygon && e.pointerId === gesturePointerId) {
+      const [x, y] = toDocUnits(e);
+      lassoPolygon.push(x, y);
+      scheduleDraw();
+      return;
+    }
+    if (grab && e.pointerId === grab.pointerId) {
+      dragTransform(e);
       return;
     }
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
@@ -604,10 +758,21 @@
     if (endNavigation(e)) {
       return;
     }
-    if (megaGesture && e.pointerId === megaPointerId) {
+    if (grab && e.pointerId === grab.pointerId) {
+      grab = null;
+      return;
+    }
+    if (lassoPolygon && e.pointerId === gesturePointerId) {
+      editor.beginTransform(lassoPolygon);
+      lassoPolygon = null;
+      gesturePointerId = -1;
+      scheduleDraw();
+      return;
+    }
+    if (megaGesture && e.pointerId === gesturePointerId) {
       editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
       megaGesture = null;
-      megaPointerId = -1;
+      gesturePointerId = -1;
       stackDirty = true;
       scheduleDraw();
       return;
@@ -618,6 +783,36 @@
     pointer.pointerUp(toPointerSample(e, true));
     commitPendingStroke();
     scheduleDraw();
+  }
+
+  /** One pointermove inside a live transform: handle scales/distorts, body moves. */
+  function dragTransform(e: PointerEvent): void {
+    const open = editor.transform;
+    if (!open || !grab) {
+      return;
+    }
+    const [x, y] = toDocUnits(e);
+    if (grab.corner !== null && editor.tool === 'distort') {
+      editor.setTransformQuad(movedCorner(editor.transformQuad, grab.corner, x, y));
+    } else if (grab.corner !== null) {
+      editor.setTransform(scaleFromCorner(open, grab.corner, x, y));
+    } else if (open.quad) {
+      // A distorted selection has no affine session left to move — the four
+      // corners travel together instead.
+      const moved = open.quad.slice();
+      for (let i = 0; i < moved.length; i += 2) {
+        moved[i] += x - grab.x;
+        moved[i + 1] += y - grab.y;
+      }
+      editor.setTransformQuad(moved);
+    } else {
+      editor.setTransform({
+        ...open.session,
+        dx: open.session.dx + (x - grab.x),
+        dy: open.session.dy + (y - grab.y),
+      });
+    }
+    grab = { ...grab, x, y };
   }
 
   function commitPendingStroke(): void {
@@ -637,6 +832,19 @@
 
   function onPointerCancel(e: PointerEvent): void {
     if (endNavigation(e)) {
+      return;
+    }
+    // A cancelled pointer must not leave a half-drawn polygon or a held
+    // handle behind: both would keep reacting to the next move.
+    if (grab && e.pointerId === grab.pointerId) {
+      grab = null;
+      return;
+    }
+    if (e.pointerId === gesturePointerId) {
+      megaGesture = null;
+      lassoPolygon = null;
+      gesturePointerId = -1;
+      scheduleDraw();
       return;
     }
     if (!pointer.session || !e.isPrimary) {
@@ -705,6 +913,28 @@
     }}
     class:custom-cursor={editor.tool !== 'pipette'}
   ></canvas>
+  <!-- Selection chrome. Purely visual: every gesture is read off the canvas
+       itself, so pointer capture, touch and the keyboard path stay intact. -->
+  {#if lassoPolygon || displayedQuad}
+    <svg
+      class="overlay"
+      width={cssWidth}
+      height={cssHeight}
+      viewBox="0 0 {cssWidth} {cssHeight}"
+      aria-hidden="true"
+    >
+      {#if lassoPolygon}
+        <polygon class="lasso" points={screenPoints(lassoPolygon)} />
+      {/if}
+      {#if displayedQuad}
+        <polygon class="frame" points={screenPoints(displayedQuad)} />
+        {#each [0, 1, 2, 3] as corner (corner)}
+          {@const [hx, hy] = toScreen(displayedQuad[corner * 2], displayedQuad[corner * 2 + 1])}
+          <rect class="handle" x={hx - 5} y={hy - 5} width="10" height="10" />
+        {/each}
+      {/if}
+    </svg>
+  {/if}
   {#if hint}
     <p class="hint" role="status" aria-live="polite">{hint}</p>
   {/if}
@@ -755,6 +985,31 @@
   }
   canvas.custom-cursor {
     cursor: none;
+  }
+  .overlay {
+    position: absolute;
+    /* The canvas is centred in the wrap; the overlay sits exactly on it. */
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .overlay .lasso {
+    fill: color-mix(in srgb, var(--electric, #2f6fed) 12%, transparent);
+    stroke: var(--electric, #2f6fed);
+    stroke-width: 1;
+    stroke-dasharray: 4 3;
+  }
+  .overlay .frame {
+    fill: none;
+    stroke: var(--electric, #2f6fed);
+    stroke-width: 1;
+    stroke-dasharray: 5 3;
+  }
+  .overlay .handle {
+    fill: var(--canvas, #fff);
+    stroke: var(--electric, #2f6fed);
+    stroke-width: 2;
   }
   .brush-cursor {
     position: fixed;

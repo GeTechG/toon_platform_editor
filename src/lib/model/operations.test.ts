@@ -18,7 +18,11 @@ import {
   setFrameRate,
   setLayerHidden,
   replaceStrokes,
+  transformStrokes,
+  mirrorCell,
+  distortStrokes,
 } from './operations';
+import { transformMatrix } from './geom';
 
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
@@ -561,5 +565,129 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
     const doc = grid();
     expect(() => copyCells(doc, { frames: [3], layers: [0] })).toThrow(RangeError);
     expect(() => copyCells(doc, { frames: [0], layers: [9] })).toThrow(RangeError);
+  });
+});
+
+describe('transformStrokes', () => {
+  const cell = (doc: ReturnType<typeof createDocument>) => doc.layers[0].frames[0];
+
+  function withStrokes(...widths: number[]) {
+    const doc = createDocument({ width: 100, height: 100 });
+    widths.forEach((width, i) => {
+      addStroke(doc, 0, 0, {
+        points: [10 + i, 20 + i, 30 + i, 40 + i],
+        tool: { kind: 'pencil', dialect: 'toonio', width, color: '#000000' },
+      });
+    });
+    return doc;
+  }
+
+  it('moves only the named strokes', () => {
+    const doc = withStrokes(5, 5);
+    transformStrokes(doc, 0, 0, [1], transformMatrix({ dx: 7, dy: -3 }, 50, 50));
+    expect(cell(doc).strokes[0].points).toEqual([10, 20, 30, 40]);
+    expect(cell(doc).strokes[1].points).toEqual([18, 18, 38, 38]);
+  });
+
+  it('a null index list transforms the whole cell', () => {
+    const doc = withStrokes(5, 5);
+    transformStrokes(doc, 0, 0, null, transformMatrix({ dx: 1, dy: 1 }, 50, 50));
+    expect(cell(doc).strokes[0].points).toEqual([11, 21, 31, 41]);
+    expect(cell(doc).strokes[1].points).toEqual([12, 22, 32, 42]);
+  });
+
+  it('leaves whole coordinates inside the stored range', () => {
+    const doc = withStrokes(5);
+    transformStrokes(doc, 0, 0, null, transformMatrix({ rotate: 33, scaleX: 1e6 }, 50, 50));
+    for (const coord of cell(doc).strokes[0].points) {
+      expect(Number.isInteger(coord)).toBe(true);
+      expect(coord).toBeGreaterThanOrEqual(-32768);
+      expect(coord).toBeLessThanOrEqual(32767);
+    }
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('scales the tool width when asked, and keeps the descriptor otherwise', () => {
+    const doc = withStrokes(5);
+    transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 2, scaleY: 2 }, 50, 50), 2);
+    const tool = doc.tools[cell(doc).strokes[0].tool_id];
+    expect(tool).toMatchObject({ kind: 'pencil', width: 10, color: '#000000' });
+  });
+
+  it('a width scale of 1 reuses the tool it already had', () => {
+    const doc = withStrokes(5);
+    const before = cell(doc).strokes[0].tool_id;
+    transformStrokes(doc, 0, 0, null, transformMatrix({ dx: 5 }, 50, 50), 1);
+    expect(cell(doc).strokes[0].tool_id).toBe(before);
+    expect(doc.tools).toHaveLength(1);
+  });
+
+  it('clamps a scaled width to the format range instead of writing an invalid tool', () => {
+    const doc = withStrokes(5);
+    transformStrokes(doc, 0, 0, null, transformMatrix({}, 50, 50), 1e6);
+    expect(doc.tools[cell(doc).strokes[0].tool_id]).toMatchObject({ width: 4800 });
+    transformStrokes(doc, 0, 0, null, transformMatrix({}, 50, 50), 1e-6);
+    expect(doc.tools[cell(doc).strokes[0].tool_id]).toMatchObject({ width: 1 });
+  });
+
+  it('ignores an index that is not in the cell', () => {
+    const doc = withStrokes(5);
+    transformStrokes(doc, 0, 0, [4], transformMatrix({ dx: 9 }, 50, 50));
+    expect(cell(doc).strokes[0].points).toEqual([10, 20, 30, 40]);
+  });
+});
+
+describe('mirrorCell', () => {
+  function oneStroke() {
+    const doc = createDocument({ width: 100, height: 100 });
+    addStroke(doc, 0, 0, {
+      points: [10, 20, 30, 40],
+      tool: { kind: 'pencil', dialect: 'toonio', width: 5, color: '#000000' },
+    });
+    return doc;
+  }
+
+  it('flips horizontally about the canvas centre', () => {
+    const doc = oneStroke();
+    mirrorCell(doc, 0, 0, 'horizontal');
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([90, 20, 70, 40]);
+  });
+
+  it('flips vertically about the canvas centre', () => {
+    const doc = oneStroke();
+    mirrorCell(doc, 0, 0, 'vertical');
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([10, 80, 30, 60]);
+  });
+
+  it('mirroring twice is the identity', () => {
+    const doc = oneStroke();
+    mirrorCell(doc, 0, 0, 'horizontal');
+    mirrorCell(doc, 0, 0, 'horizontal');
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([10, 20, 30, 40]);
+  });
+});
+
+describe('distortStrokes', () => {
+  const box = { x: 0, y: 0, width: 100, height: 100 };
+
+  function corners() {
+    const doc = createDocument({ width: 100, height: 100 });
+    addStroke(doc, 0, 0, {
+      points: [0, 0, 100, 100],
+      tool: { kind: 'pencil', dialect: 'toonio', width: 5, color: '#000000' },
+    });
+    return doc;
+  }
+
+  it('drags the points at a moved corner and leaves the opposite one', () => {
+    const doc = corners();
+    distortStrokes(doc, 0, 0, null, box, [0, 0, 100, 0, 100, 150, 0, 100]);
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 100, 150]);
+  });
+
+  it('an unmoved quad is a no-op', () => {
+    const doc = corners();
+    distortStrokes(doc, 0, 0, null, box, [0, 0, 100, 0, 100, 100, 0, 100]);
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 100, 100]);
   });
 });

@@ -31,7 +31,10 @@
     | 'paste'
     | 'merge'
     | 'expand'
-    | 'drafts';
+    | 'drafts'
+    | 'hand'
+    | 'lasso'
+    | 'distort';
 
   const PATHS: Record<IconName, string> = {
     plus: 'M12 3v18M3 12h18',
@@ -51,6 +54,12 @@
     pixel: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
     // The eraser silhouette cutting a line in two.
     'mega-eraser': 'M3 12h4M17 12h4M8.5 5.5h7v13h-7z',
+    // An open hand: the tool that drags the canvas about.
+    hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 12V4.5a1.5 1.5 0 0 1 3 0V12M14 12V6.5a1.5 1.5 0 0 1 3 0V13M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a1.5 1.5 0 0 1 2.6-1.5L8 15',
+    // A dashed loop closing on itself, the way a lasso is drawn.
+    lasso: 'M12 4c5 0 9 2.5 9 5.5S17 15 12 15s-9-2.5-9-5.5S7 4 12 4ZM8 14.5c-.7 1.5-.5 3 .7 3.9M9.5 20.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z',
+    // A square with one corner pulled out of place.
+    distort: 'M4 4h12l4 16H4zM4 4v16M16 4l4 16',
     gear: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z',
     download: 'M12 3v12M7 10l5 5 5-5M5 20h14',
     send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z',
