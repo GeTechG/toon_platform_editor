@@ -18,7 +18,7 @@
   import { deleteDraft, listDrafts, newDraftId, saveDraft, setDraftAudio } from '../draft/store';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
-  import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_MIN, PRESETS } from './presets';
+  import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, PRESETS } from './presets';
   import type { FeatureKey } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { IconName } from './Icon.svelte';
@@ -80,9 +80,15 @@
   // The studio bar is resizable from its top edge, and the timeline is the row
   // that grows with it — dragging down gives the grid more layers and frames.
   let viewportHeight = $state(0);
+  /**
+   * The floor grows with a soundtrack: the strip and the wave lane are part of
+   * the timeline, so a panel sitting at its minimum has to make room for them
+   * rather than push the layer rows out of view.
+   */
+  const panelFloor = $derived(PANEL_HEIGHT_MIN + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0));
   /** The stored panel height, never more than three quarters of the viewport. */
   const panelHeight = $derived(
-    Math.min(editor.panelHeight, Math.round((viewportHeight || 800) * 0.75)),
+    Math.max(panelFloor, Math.min(editor.panelHeight, Math.round((viewportHeight || 800) * 0.75))),
   );
   /** Keyboard step for the divider, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const PANEL_STEP = 22;
@@ -417,6 +423,11 @@
   // 10 MB blob and attaching a track never waits for the autosave clock.
   $effect(() => {
     const { blob, name, author } = editor.audio;
+    // An editor that was opened and not touched has no session to write to:
+    // minting an id here would leave an empty record behind on every visit.
+    if (!blob && draftId === null) {
+      return;
+    }
     draftId ??= newDraftId();
     void setDraftAudio(draftId, blob ? { blob, name, author } : null);
   });
@@ -724,7 +735,7 @@
         aria-label="Высота нижней панели"
         aria-orientation="horizontal"
         aria-valuenow={panelHeight}
-        aria-valuemin={PANEL_HEIGHT_MIN}
+        aria-valuemin={panelFloor}
         tabindex="0"
         onpointerdown={onDividerDown}
         onkeydown={onDividerKey}

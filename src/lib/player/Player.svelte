@@ -90,6 +90,7 @@
     }
     const element = new Audio(audioSrc);
     element.loop = true;
+    element.preload = 'auto';
     audio = element;
     return () => {
       element.pause();
@@ -116,7 +117,11 @@
     if (sound) {
       sound.currentTime = (untrack(() => current) % frameCount(view)) / view.frame_rate;
       void sound.play().catch(() => {
-        // Autoplay with sound is commonly blocked; the picture plays on.
+        // Every browser refuses to start sound the visitor did not ask for.
+        // Playing the picture silently would look like a mute animation and
+        // leave no way to discover the sound, so the whole thing stops here
+        // and the play key comes back — one press then starts both together.
+        playing = false;
       });
     }
     let raf = requestAnimationFrame(function tick(now: number) {

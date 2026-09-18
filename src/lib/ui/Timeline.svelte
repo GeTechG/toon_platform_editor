@@ -99,14 +99,30 @@
       editor.audio.clear();
     }
   }
+
+  /** `м:сс` — the only shape a length under an hour needs. */
+  function clock(seconds: number): string {
+    const whole = Math.max(0, Math.round(seconds));
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+  }
+
+  const filmSeconds = $derived(frames.length / editor.doc.frame_rate);
+  // One bar per frame means the strip only ever shows the part of the track
+  // the animation is long enough to reach. Saying both lengths out loud is
+  // what keeps a flat lane from reading as a broken waveform.
+  const trackOutruns = $derived(editor.audio.duration - filmSeconds > 1);
 </script>
 
 {#snippet wave(cellWidth: number)}
   {#if editor.audio.hasTrack}
-    <!-- Decoration: the track's name and controls carry the meaning. -->
+    <!-- Decoration: the track's name, length and controls carry the meaning.
+         The lane is drawn even where the track is silent, so an empty stretch
+         reads as "quiet here" rather than as a missing waveform. -->
     <div class="wave" aria-hidden="true">
       {#each frames as _, i (i)}
-        <span class="bar" style:width="{cellWidth}px"><span style:height="{Math.round((peaks[i] ?? 0) * 100)}%"></span></span>
+        <span class="bar" style:width="{cellWidth}px">
+          <span style:height="{Math.max(6, Math.round((peaks[i] ?? 0) * 100))}%"></span>
+        </span>
       {/each}
     </div>
   {/if}
@@ -130,11 +146,22 @@
       <Icon name="note" size={18} />
     </button>
     {#if editor.audio.hasTrack}
-      <input class="meta" bind:value={editor.audio.name} placeholder="Название" aria-label="Название трека" />
-      <input class="meta" bind:value={editor.audio.author} placeholder="Автор" aria-label="Автор трека" />
+      <!-- The credits are metadata, not a form to fill in: they read as text
+           until the pointer or the keyboard arrives, and they never grow wider
+           than a title needs — two fields stretched across a studio-width
+           panel was the whole problem. -->
+      <span class="credits">
+        <input class="meta" bind:value={editor.audio.name} placeholder="Без названия" aria-label="Название трека" />
+        <input class="meta by" bind:value={editor.audio.author} placeholder="автор" aria-label="Автор трека" />
+      </span>
+      <span class="len lengths" title={trackOutruns ? 'Трек длиннее мультика — на ленте видно только его начало' : 'Длина мультика и трека'}>
+        {clock(filmSeconds)}<span class="of">/</span>{clock(editor.audio.duration)}
+      </span>
       <button class="key icon" onclick={removeTrack} title="Убрать звук" aria-label="Убрать звук">
         <Icon name="trash" size={16} />
       </button>
+    {:else}
+      <span class="len">Звук: mp3, ogg или wav</span>
     {/if}
     {#if editor.audio.error}
       <span class="audio-error" role="alert">{editor.audio.error}</span>
@@ -190,6 +217,10 @@
     {@render trackControls()}
   </div>
 {:else}
+  <!-- One flex item, not two: the bar layout drops the timeline into a row
+       beside undo/add/delete, so the strip and its track row have to travel
+       together as a single column. -->
+  <div class="bar-layout">
   <div class="scroller">
     <button
       class="key icon arrow"
@@ -232,9 +263,16 @@
     </button>
   </div>
   {@render trackControls()}
+  </div>
 {/if}
 
 <style>
+  .bar-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
   .scroller {
     display: flex;
     align-items: stretch;
@@ -398,13 +436,18 @@
   }
   /* --- Soundtrack --------------------------------------------------------- */
   /* One bar per frame, aligned to the strip above it, so the wave reads as
-     "this much sound happens on this frame" without a second ruler. */
+     "this much sound happens on this frame" without a second ruler. The lane
+     itself is drawn, not just the bars: a quiet passage has to look like
+     quiet, not like a track that failed to load. */
   .wave {
     display: flex;
     gap: 2px;
-    height: 18px;
-    padding: 0 2px;
+    height: 20px;
+    margin-top: 2px;
+    padding: 2px;
     align-items: flex-end;
+    background: color-mix(in srgb, var(--electric, #2f5bff) 7%, transparent);
+    border-radius: var(--r-sm, 5px);
   }
   .bar {
     flex: none;
@@ -414,33 +457,76 @@
   }
   .bar > span {
     width: 100%;
-    min-height: 1px;
     background: var(--electric, #2f5bff);
-    opacity: 0.55;
+    opacity: 0.6;
     border-radius: 1px;
   }
+
+  /* The track strip: a note key, the credits, the two lengths, the bin. It
+     sits at its natural width — nothing here stretches to fill a panel. */
   .audio {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding-top: 0.3rem;
+    gap: 0.35rem;
+    padding-top: 0.35rem;
     min-width: 0;
   }
+  .credits {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  /* Reads as text, becomes a field on hover or focus: the credits are two
+     words about the track, not a form standing open beside the timeline. */
   .meta {
     min-width: 0;
-    flex: 1 1 6rem;
+    width: 9rem;
+    max-width: 22vw;
     height: var(--key-h);
-    padding: 0 0.4rem;
+    padding: 0 0.35rem;
     font: inherit;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
+    font-weight: 600;
     color: var(--ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm, 5px);
+    text-overflow: ellipsis;
+  }
+  .meta.by {
+    width: 7rem;
+    font-weight: 400;
+    color: var(--ink-2, #555);
+  }
+  .meta:hover {
+    border-color: var(--hairline);
+  }
+  .meta:focus {
     background: var(--canvas);
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
+    border-color: var(--electric, #2f5bff);
+    outline: none;
+  }
+  .len {
+    flex: none;
+    font-size: 0.78rem;
+    color: var(--ink-2, #555);
+    white-space: nowrap;
+  }
+  /* Not `.tnum`: app.css styles that name globally and the editor is embedded
+     in it (see the class-collision test in apps/web). */
+  .lengths {
+    font-variant-numeric: tabular-nums;
+  }
+  .of {
+    padding: 0 0.15rem;
+    opacity: 0.55;
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */
   .audio-error {
-    font-size: 0.82rem;
+    min-width: 0;
+    font-size: 0.8rem;
     font-weight: 600;
     color: var(--ink);
   }

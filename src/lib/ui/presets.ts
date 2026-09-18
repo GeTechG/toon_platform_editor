@@ -44,6 +44,12 @@ export interface DrawingUiConfig {
  * capped at 75vh where it is used.
  */
 export const PANEL_HEIGHT_MIN = 151;
+/**
+ * What a soundtrack adds to that floor: the track strip (a key row plus its
+ * top padding) and the wave lane under the cells. Without it, attaching a
+ * track at the floor squeezes the layer rows and the wave out of the panel.
+ */
+export const PANEL_HEIGHT_AUDIO = 66;
 export const PANEL_HEIGHT_MAX = 2000;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {

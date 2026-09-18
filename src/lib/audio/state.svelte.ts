@@ -94,7 +94,18 @@ export class AudioTrackState {
     this.name = name;
     this.author = author;
     this.#url = URL.createObjectURL(blob);
-    this.#element = new Audio(this.#url);
+    const element = new Audio(this.#url);
+    // Fetch it now rather than on the first press: a preview started against
+    // an element that has not loaded yet plays nothing and says nothing.
+    element.preload = 'auto';
+    // `decodeAudioData` and the media element are different decoders — a file
+    // the envelope was built from can still be one this browser will not
+    // play. Silence with no explanation is the worst outcome, so it is named.
+    element.onerror = () => {
+      this.error = 'Этот звук браузер не проигрывает — попробуй mp3';
+    };
+    element.load();
+    this.#element = element;
   }
 
   /** Drops the track and everything it holds. */
@@ -126,11 +137,19 @@ export class AudioTrackState {
       return;
     }
     const at = timeForFrame(frame, fps);
-    if (at >= this.duration) {
+    // Past the end of the track the animation plays on in silence, as the
+    // reference does. An unknown duration is not a reason to stay quiet.
+    if (this.duration > 0 && at >= this.duration) {
       return;
     }
     this.#element.currentTime = at;
-    void this.#element.play().catch((err) => console.warn('audio playback failed:', err));
+    void this.#element.play().catch((err) => {
+      // A refused play is the one failure the person can act on — browsers
+      // block sound until the page has been interacted with. Saying so beats
+      // a console line nobody reads.
+      console.warn('audio playback failed:', err);
+      this.error = 'Браузер не дал включить звук — нажми «Проиграть» ещё раз';
+    });
   }
 
   stop(): void {
