@@ -42,12 +42,20 @@
       }
     }}
   >
+    <!-- Label and field are siblings in the grid rather than a wrapping
+         <label display:contents>, which older browsers drop out of the
+         accessibility tree along with the association it carries. -->
     <div class="fields">
-      <label>X<input type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.value)} /></label>
-      <label>Y<input type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.value)} /></label>
-      <label>Поворот<input type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.value)} /></label>
-      <label>Масштаб X<input type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', String(Number(e.currentTarget.value) / 100))} /></label>
-      <label>Масштаб Y<input type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', String(Number(e.currentTarget.value) / 100))} /></label>
+      <label for="tf-dx">X</label>
+      <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.value)} />
+      <label for="tf-dy">Y</label>
+      <input id="tf-dy" type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.value)} />
+      <label for="tf-rotate">Поворот</label>
+      <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.value)} />
+      <label for="tf-scale-x">Масштаб X</label>
+      <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', String(Number(e.currentTarget.value) / 100))} />
+      <label for="tf-scale-y">Масштаб Y</label>
+      <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', String(Number(e.currentTarget.value) / 100))} />
     </div>
 
     <div class="row">
@@ -84,18 +92,20 @@
     background: var(--canvas, #fff);
     font-size: 13px;
   }
+  /* Label beside its field, not above it: the window is 13rem, and stacked
+     labels wrapped "Масштаб X" onto two lines. */
   .fields {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.35rem;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
   }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .fields label {
+    white-space: nowrap;
   }
   input[type='number'] {
     width: 100%;
+    min-width: 0;
     min-height: 32px;
     padding: 0 6px;
     border: 1px solid var(--hairline, #0b0c1024);
@@ -114,8 +124,9 @@
     min-height: 32px;
   }
   .check {
-    flex-direction: row;
+    display: flex;
     align-items: center;
     gap: 0.4rem;
+    line-height: 1.25;
   }
 </style>

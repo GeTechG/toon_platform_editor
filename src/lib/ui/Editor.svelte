@@ -560,14 +560,6 @@
   {#if studio}
     <aside class="left" aria-label="Инструменты и история">
       <ToolsPanel {editor} />
-      <!-- The two tool windows of the reference: the transform fields while a
-           selection is live, the zoom window while the hand is up. -->
-      {#if editor.transform}
-        <TransformMenu {editor} />
-      {/if}
-      {#if editor.tool === 'drag'}
-        <ScaleMenu {editor} />
-      {/if}
       <div class="history">
         {@render history()}
         {#if document.fullscreenEnabled}
@@ -583,6 +575,19 @@
   {/if}
   <div class="stage">
     <CanvasView {editor} />
+    <!-- The reference's two floating tool windows: the transform fields while
+         a selection is live, the zoom window while the hand is up. They sit
+         over the canvas, not in the tool rail, which is only 8.4rem wide. -->
+    {#if editor.transform || editor.tool === 'drag'}
+      <div class="tool-windows">
+        {#if editor.transform}
+          <TransformMenu {editor} />
+        {/if}
+        {#if editor.tool === 'drag'}
+          <ScaleMenu {editor} />
+        {/if}
+      </div>
+    {/if}
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
     {/if}
@@ -1082,6 +1087,31 @@
     background: var(--paper);
     padding: clamp(0.5rem, 2.2vw, 1.25rem);
     box-sizing: border-box;
+  }
+  .tool-windows {
+    position: absolute;
+    left: clamp(0.5rem, 2.2vw, 1.25rem);
+    top: clamp(0.5rem, 2.2vw, 1.25rem);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 13rem;
+    max-height: calc(100% - 2 * clamp(0.5rem, 2.2vw, 1.25rem));
+    overflow-y: auto;
+    /* Lifted off the paper the way a window is, not painted onto it. */
+    filter: drop-shadow(0 10px 24px rgba(15, 23, 60, 0.18));
+  }
+  /* On a phone the stage is short — a floating window would cover the drawing,
+     so the windows sit under the canvas and span the width. */
+  @media (max-width: 40rem) {
+    .tool-windows {
+      position: static;
+      width: auto;
+      max-height: none;
+      margin-top: 0.5rem;
+      filter: none;
+    }
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. */
   .flash {

@@ -72,3 +72,21 @@ describe('leaving an open transform', () => {
     expect(leave).toContain('return false');
   });
 });
+
+describe('where the tool windows live', () => {
+  it('floats them over the stage, not in the 8.4rem tool rail', () => {
+    // The rail is two 44px columns wide; number fields, four mirror/step
+    // buttons and Apply/Cancel do not fit in it at any font size.
+    const stage = editorUi.match(/<div class="stage">[^]*?\n  <\/div>/)?.[0] ?? '';
+    expect(stage).toContain('TransformMenu');
+    expect(stage).toContain('ScaleMenu');
+    const rail = editorUi.match(/<aside class="left"[^]*?<\/aside>/)?.[0] ?? '';
+    expect(rail).not.toContain('TransformMenu');
+    expect(rail).not.toContain('ScaleMenu');
+    expect(editorUi).toContain('.tool-windows');
+  });
+
+  it('gives each field its label on the same line, so nothing wraps', () => {
+    expect(menu).toContain('grid-template-columns: auto 1fr');
+  });
+});
