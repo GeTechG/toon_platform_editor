@@ -9,7 +9,10 @@ import {
   onionHistoryLayers,
   onionLayers,
   onionSkinVisible,
+  pasteTarget,
   playbackStartFrame,
+  rangeSelection,
+  toggleLayerInSelection,
 } from './frame-selection';
 
 const ALPHAS = [0.3, 0.1];
@@ -213,5 +216,77 @@ describe('pickSource', () => {
   it('Alt takes the active layer for this click only', () => {
     expect(pickSource('canvas', true)).toBe('layer');
     expect(pickSource('layer', true)).toBe('layer');
+  });
+});
+
+
+describe('rangeSelection', () => {
+  const BOUNDS = { frames: 8, layers: 4 };
+
+  it('spans every frame and layer between the anchor and the target', () => {
+    expect(rangeSelection({ frame: 1, layer: 0 }, { frame: 4, layer: 2 }, BOUNDS)).toEqual({
+      frames: [1, 2, 3, 4],
+      layers: [0, 1, 2],
+    });
+  });
+
+  it('reads the same in either direction', () => {
+    expect(rangeSelection({ frame: 4, layer: 2 }, { frame: 1, layer: 0 }, BOUNDS)).toEqual({
+      frames: [1, 2, 3, 4],
+      layers: [0, 1, 2],
+    });
+  });
+
+  it('a target outside the document is clamped to its edge', () => {
+    expect(rangeSelection({ frame: 6, layer: 3 }, { frame: 99, layer: 99 }, BOUNDS)).toEqual({
+      frames: [6, 7],
+      layers: [3],
+    });
+    expect(rangeSelection({ frame: 1, layer: 1 }, { frame: -5, layer: -5 }, BOUNDS)).toEqual({
+      frames: [0, 1],
+      layers: [0, 1],
+    });
+  });
+
+  it('the anchor alone is a one-cell selection', () => {
+    expect(rangeSelection({ frame: 2, layer: 1 }, { frame: 2, layer: 1 }, BOUNDS)).toEqual({
+      frames: [2],
+      layers: [1],
+    });
+  });
+});
+
+describe('toggleLayerInSelection', () => {
+  it('adds a layer, keeping the list ascending', () => {
+    const selection = { frames: [3], layers: [2] };
+    expect(toggleLayerInSelection(selection, 0)).toEqual({ frames: [3], layers: [0, 2] });
+  });
+
+  it('removes a layer that was in the selection', () => {
+    const selection = { frames: [3], layers: [0, 1, 2] };
+    expect(toggleLayerInSelection(selection, 1)).toEqual({ frames: [3], layers: [0, 2] });
+  });
+
+  it('refuses to empty the selection', () => {
+    const selection = { frames: [3], layers: [1] };
+    expect(toggleLayerInSelection(selection, 1)).toEqual({ frames: [3], layers: [1] });
+  });
+});
+
+describe('pasteTarget', () => {
+  const BOUNDS = { frames: 6, layers: 3 };
+
+  it('lands the buffer shape with the active cell at its corner', () => {
+    expect(pasteTarget({ frames: 3, layers: 2 }, { frame: 1, layer: 0 }, BOUNDS)).toEqual({
+      frames: [1, 2, 3],
+      layers: [0, 1],
+    });
+  });
+
+  it('clips what runs past the last frame and the top layer', () => {
+    expect(pasteTarget({ frames: 4, layers: 3 }, { frame: 4, layer: 2 }, BOUNDS)).toEqual({
+      frames: [4, 5],
+      layers: [2],
+    });
   });
 });

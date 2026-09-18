@@ -5,6 +5,8 @@ import {
   FEATURE_ORDER,
   PRESETS,
   parseUiConfig,
+  TIMELINE_HEIGHT_MAX,
+  TIMELINE_HEIGHT_MIN,
   presetDrawingProfile,
   presetFeatures,
   presetUx,
@@ -58,6 +60,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
       multatorWidth: 10,
       tonio: { width: 5, smooth: 3, minDistance: 3 },
       pickSource: 'layer' as const,
+      timelineHeight: 200,
     },
   };
   expect(parseUiConfig(JSON.stringify(config))).toEqual(config);
@@ -92,6 +95,7 @@ test('drawing profile settings are clamped to supported ranges', () => {
     multatorWidth: 1,
     tonio: { width: 500, smooth: 1, minDistance: 30 },
     pickSource: 'canvas',
+    timelineHeight: TIMELINE_HEIGHT_MIN,
   });
 });
 
@@ -149,4 +153,18 @@ test('an unknown pipette source falls back to the canvas', () => {
     drawing: { pickSource: 'nonsense' },
   }));
   expect(parsed?.drawing.pickSource).toBe('canvas');
+});
+
+
+test('timeline height is clamped to the draggable range and falls back when absent', () => {
+  const stored = (timelineHeight: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: { activeProfile: 'toonio', tonio: {}, timelineHeight },
+  }))?.drawing.timelineHeight;
+
+  expect(stored(300)).toBe(300);
+  expect(stored(10)).toBe(TIMELINE_HEIGHT_MIN);
+  expect(stored(9999)).toBe(TIMELINE_HEIGHT_MAX);
+  expect(stored('tall')).toBe(DEFAULT_DRAWING_UI_CONFIG.timelineHeight);
 });

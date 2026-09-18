@@ -153,3 +153,58 @@ export type PickSource = 'canvas' | 'layer';
 export function pickSource(setting: PickSource, altKey: boolean): PickSource {
   return altKey ? 'layer' : setting;
 }
+
+/** A timeline cell: one layer's slot in one frame. */
+export interface Cell {
+  readonly frame: number;
+  readonly layer: number;
+}
+
+/** How far the document reaches, in cells. */
+export interface CellBounds {
+  readonly frames: number;
+  readonly layers: number;
+}
+
+/**
+ * Selected cells as the cross product of a frame list and a layer list. A
+ * Shift range fills both contiguously; Ctrl leaves gaps in the layers.
+ */
+export interface CellSelection {
+  readonly frames: readonly number[];
+  readonly layers: readonly number[];
+}
+
+function span(a: number, b: number, limit: number): number[] {
+  const lo = Math.max(0, Math.min(a, b));
+  const hi = Math.min(limit - 1, Math.max(a, b));
+  const out: number[] = [];
+  for (let i = lo; i <= hi; i++) {
+    out.push(i);
+  }
+  return out;
+}
+
+/** The rectangle of cells between the anchor and the target, clamped to the document. */
+export function rangeSelection(anchor: Cell, target: Cell, bounds: CellBounds): CellSelection {
+  return {
+    frames: span(anchor.frame, target.frame, bounds.frames),
+    layers: span(anchor.layer, target.layer, bounds.layers),
+  };
+}
+
+/** Ctrl+click: the layer joins or leaves the selection, which never empties. */
+export function toggleLayerInSelection(selection: CellSelection, layer: number): CellSelection {
+  const layers = selection.layers.includes(layer)
+    ? selection.layers.filter((index) => index !== layer)
+    : [...selection.layers, layer].sort((a, b) => a - b);
+  return layers.length === 0 ? selection : { frames: selection.frames, layers };
+}
+
+/** Where a copied block lands from the active cell, cut off at the document edges. */
+export function pasteTarget(buffer: CellBounds, active: Cell, bounds: CellBounds): CellSelection {
+  return {
+    frames: span(active.frame, active.frame + buffer.frames - 1, bounds.frames),
+    layers: span(active.layer, active.layer + buffer.layers - 1, bounds.layers),
+  };
+}

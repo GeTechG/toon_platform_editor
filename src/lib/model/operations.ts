@@ -439,3 +439,70 @@ function assertFrameRate(fps: number): void {
     throw new RangeError(`frame_rate must be an integer in 1..60, got ${fps}`);
   }
 }
+
+/** A rectangle of timeline cells, as index lists — the layers may have gaps (Ctrl+click). */
+export interface CellRange {
+  readonly frames: readonly number[];
+  readonly layers: readonly number[];
+}
+
+/**
+ * A copied block of cells, `[layer offset][frame offset]`. Strokes carry
+ * resolved tools, so the block survives a document whose tool table differs.
+ */
+export type CellBuffer = ResolvedFrame[][];
+
+/** Deep-copies the selected block for the timeline clipboard. */
+export function copyCells(doc: ToonDocument, range: CellRange): CellBuffer {
+  return range.layers.map((layerIndex) =>
+    range.frames.map((frameIndex) => cloneFrame(doc, cell(doc, layerIndex, frameIndex))));
+}
+
+/**
+ * Writes the buffer into the target cells and returns what they held, ready
+ * to be the undo snapshot. The target is the authority on shape: a buffer
+ * that runs past it is cut off, and cells the buffer does not reach are left
+ * alone.
+ */
+export function replaceCells(doc: ToonDocument, target: CellRange, buffer: CellBuffer): CellBuffer {
+  return writeCells(doc, target, buffer, (_, incoming) => incoming);
+}
+
+/** Like `replaceCells`, but the buffer's strokes land on top of the cell's own. */
+export function mergeCells(doc: ToonDocument, target: CellRange, buffer: CellBuffer): CellBuffer {
+  return writeCells(doc, target, buffer, (existing, incoming) => ({
+    strokes: [...existing.strokes, ...incoming.strokes],
+  }));
+}
+
+function writeCells(
+  doc: ToonDocument,
+  target: CellRange,
+  buffer: CellBuffer,
+  combine: (existing: ResolvedFrame, incoming: ResolvedFrame) => ResolvedFrame,
+): CellBuffer {
+  const before = copyCells(doc, target);
+  const written: { layer: number; frame: number; strokes: Stroke[] }[] = [];
+  let outgoing = 0;
+  let incoming = 0;
+  for (let l = 0; l < target.layers.length && l < buffer.length; l++) {
+    for (let f = 0; f < target.frames.length && f < buffer[l].length; f++) {
+      const layer = target.layers[l];
+      const frame = target.frames[f];
+      const next = resolvedFrameToV2(doc, combine(before[l][f], buffer[l][f]));
+      if (next.strokes.length > MAX_STROKES_PER_FRAME) {
+        throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+      }
+      outgoing += pointCount(doc.layers[layer].frames[frame].strokes);
+      incoming += pointCount(next.strokes);
+      written.push({ layer, frame, strokes: next.strokes });
+    }
+  }
+  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
+    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+  }
+  for (const { layer, frame, strokes } of written) {
+    doc.layers[layer].frames[frame] = { strokes };
+  }
+  return before;
+}

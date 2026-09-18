@@ -22,17 +22,22 @@ import {
   addLayer,
   addStroke,
   cloneColumn,
+  copyCells,
   createDocument,
   frameCount,
   insertFrameBefore,
+  mergeCells,
   moveLayer,
   removeFrame,
   removeLastStroke,
   removeLayer,
+  replaceCells,
   replaceColumn,
   replaceStrokes,
   setFrameRate,
   setLayerHidden,
+  type CellBuffer,
+  type CellRange,
   type ResolvedColumn,
   type ResolvedStroke,
 } from '../model/operations';
@@ -44,6 +49,10 @@ import {
   onionHistoryLayers,
   onionLayers,
   onionSkinVisible,
+  pasteTarget,
+  rangeSelection,
+  toggleLayerInSelection,
+  type CellSelection,
   type OnionLayer,
   type PickSource,
 } from './frame-selection';
@@ -76,6 +85,8 @@ import {
   presetFeatures,
   presetUx,
   saveUiConfig,
+  TIMELINE_HEIGHT_MAX,
+  TIMELINE_HEIGHT_MIN,
   type DrawingProfileId,
   type FeatureKey,
   type Features,
@@ -89,6 +100,18 @@ export type Tool = SelectableTool;
  * a 2 GB phone, not a workstation.
  */
 export const UNDO_HISTORY_LIMIT = 50;
+
+/** One cell of a block edit, as it was before the edit ran. */
+interface CellSnapshot {
+  /** The cell object the edit produced — identity is how undo knows it is untouched. */
+  cell: Frame;
+  layer: number;
+  frame: number;
+  /** What the cell held before. Tool ids stay valid: the tool table only grows. */
+  strokes: Stroke[];
+  /** Stroke count the edit left behind. */
+  after: number;
+}
 
 export class EditorState {
   tool = $state<Tool>('pencil');
@@ -120,16 +143,25 @@ export class EditorState {
   /** Canvas size in CSS px, kept current by CanvasView — zoom clamps against it. */
   viewSize = $state({ width: CANVAS_LOGICAL_WIDTH, height: CANVAS_LOGICAL_HEIGHT });
   /**
-   * Cell contents captured before a mega-eraser cut, newest last. `after` is
-   * the stroke count the cut left behind, so a stroke drawn on top of the cut
-   * is undone first and the snapshot only comes back when the cell is in the
-   * state the cut produced.
+   * Cell contents captured before a block edit — a mega-eraser cut, a paste,
+   * a merge — newest last, one entry per undoable operation. `after` is the
+   * stroke count the edit left behind, so a stroke drawn on top is undone
+   * first and the snapshot only comes back when the cells are in the state
+   * the edit produced.
    */
-  erases = $state<{ cell: Frame; strokes: Stroke[]; after: number }[]>([]);
+  edits = $state<CellSnapshot[][]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
   undone = $state<{ cell: Frame; stroke: Stroke }[]>([]);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
   copiedColumn = $state<ResolvedColumn | null>(null);
+  /** Timeline cells the user has selected; a plain click leaves one. */
+  selection = $state<CellSelection>({ frames: [0], layers: [0] });
+  /** Clipboard for the timeline block copy/paste, deep-copied on copy. */
+  copiedCells = $state<CellBuffer | null>(null);
+  /** Where the buffer was taken from — the timeline marks those cells. */
+  copiedFrom = $state<CellSelection | null>(null);
+  /** Studio timeline height in CSS px (persisted), set by dragging its divider. */
+  timelineHeight = $state(DEFAULT_DRAWING_UI_CONFIG.timelineHeight);
   /** Where the pipette reads from; Alt overrides it for one click. */
   pickSource = $state<PickSource>(DEFAULT_DRAWING_UI_CONFIG.pickSource);
   /**
@@ -164,6 +196,7 @@ export class EditorState {
       this.tonioSmooth = saved.drawing.tonio.smooth;
       this.tonioMinDistance = saved.drawing.tonio.minDistance;
       this.pickSource = saved.drawing.pickSource;
+      this.timelineHeight = saved.drawing.timelineHeight;
     }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -338,7 +371,39 @@ export class EditorState {
   selectLayer(index: number): void {
     if (index >= 0 && index < this.doc.layers.length) {
       this.activeLayer = index;
+      this.selection = { frames: [this.activeFrame], layers: [index] };
     }
+  }
+
+  /** How far the document reaches, in timeline cells. */
+  get cellBounds(): { frames: number; layers: number } {
+    return { frames: frameCount(this.doc), layers: this.doc.layers.length };
+  }
+
+  /**
+   * A timeline cell click. 'set' moves the active cell and collapses the
+   * selection onto it; 'range' (Shift) spans from the active cell to this
+   * one; 'toggle' (Ctrl) adds or removes this layer, leaving the active cell
+   * where it is.
+   */
+  selectCell(frame: number, layer: number, mode: 'set' | 'range' | 'toggle' = 'set'): void {
+    if (this.playing) {
+      return;
+    }
+    if (mode === 'range') {
+      this.selection = rangeSelection(
+        { frame: this.activeFrame, layer: this.activeLayer },
+        { frame, layer },
+        this.cellBounds,
+      );
+      return;
+    }
+    if (mode === 'toggle') {
+      this.selection = toggleLayerInSelection(this.selection, layer);
+      return;
+    }
+    this.selectFrame(frame);
+    this.selectLayer(layer);
   }
 
   /** Adds an empty layer above the active one; it becomes active. */
@@ -433,7 +498,7 @@ export class EditorState {
   openDraft(doc: ToonDocument): void {
     this.replaceDoc(doc);
     this.visitedFrames = [0];
-    this.erases = [];
+    this.edits = [];
     this.touched = false;
   }
 
@@ -460,6 +525,9 @@ export class EditorState {
     this.playing = false;
     this.playbackFrame = 0;
     this.undone = [];
+    this.selection = { frames: [0], layers: [0] };
+    this.copiedCells = null;
+    this.copiedFrom = null;
   }
 
   selectFrame(index: number): void {
@@ -467,6 +535,7 @@ export class EditorState {
       return;
     }
     this.activeFrame = index;
+    this.selection = { frames: [index], layers: [this.activeLayer] };
     this.visitedFrames = [...this.visitedFrames, index].slice(-ONION_HISTORY_LENGTH);
   }
 
@@ -522,22 +591,115 @@ export class EditorState {
     }
   }
 
+  /** Copies every selected cell to the timeline clipboard (deep copy). */
+  copySelection(): void {
+    this.copiedCells = copyCells(this.doc, this.selection);
+    this.copiedFrom = this.selection;
+    this.flashTick++;
+  }
+
+  get canPasteCells(): boolean {
+    return !this.playing && this.copiedCells !== null;
+  }
+
+  /** V: the buffer replaces the cells it lands on. */
+  pasteSelection(): void {
+    this.applyCopiedCells(replaceCells);
+  }
+
+  /** M: the buffer's strokes land on top of what the cells already hold. */
+  mergeSelection(): void {
+    this.applyCopiedCells(mergeCells);
+  }
+
+  private applyCopiedCells(write: typeof replaceCells): void {
+    const buffer = this.copiedCells;
+    if (!this.canPasteCells || !buffer) {
+      return;
+    }
+    const target = pasteTarget(
+      { frames: buffer[0]?.length ?? 0, layers: buffer.length },
+      { frame: this.activeFrame, layer: this.activeLayer },
+      this.cellBounds,
+    );
+    const snapshots = this.snapshotCells(target);
+    try {
+      write(this.doc, target, buffer);
+    } catch (err) {
+      // At the document point limit — drop the write instead of throwing.
+      console.warn('timeline paste rejected:', err);
+      return;
+    }
+    this.pushEdit(snapshots);
+    this.selection = target;
+    this.flashTick++;
+  }
+
+  setTimelineHeight(px: number): void {
+    this.timelineHeight = Math.min(TIMELINE_HEIGHT_MAX, Math.max(TIMELINE_HEIGHT_MIN, Math.round(px)));
+    this.persistUiConfig();
+  }
+
+  /** Cell contents as they are now, to be pushed once the edit has run. */
+  private snapshotCells(target: CellRange): CellSnapshot[] {
+    const snapshots: CellSnapshot[] = [];
+    for (const layer of target.layers) {
+      for (const frame of target.frames) {
+        const cell = this.doc.layers[layer].frames[frame];
+        snapshots.push({
+          cell,
+          layer,
+          frame,
+          strokes: cell.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id })),
+          after: 0,
+        });
+      }
+    }
+    return snapshots;
+  }
+
+  /**
+   * Files a finished block edit as one undo step. The written cells are fresh
+   * objects, so the snapshot takes them (and their stroke counts) after the
+   * write — that pair is what tells undo the cells are untouched since.
+   */
+  private pushEdit(snapshots: CellSnapshot[]): void {
+    for (const snapshot of snapshots) {
+      snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
+      snapshot.after = snapshot.cell.strokes.length;
+    }
+    this.edits.push(snapshots);
+    if (this.edits.length > UNDO_HISTORY_LIMIT) {
+      this.edits.shift();
+    }
+    this.undone = [];
+    this.touched = true;
+  }
+
   /** The cell the next stroke goes into — undo and redo both work on it. */
   get activeCell(): Frame | undefined {
     return this.doc.layers[this.activeLayer]?.frames[this.activeFrame];
   }
 
-  /** The mega-eraser cut undo would put back, if the cell is still as it left it. */
-  get restorableErase(): { cell: Frame; strokes: Stroke[]; after: number } | undefined {
-    const top = this.erases[this.erases.length - 1];
-    return top !== undefined && top.cell === this.activeCell && top.after === this.activeCell?.strokes.length
-      ? top
-      : undefined;
+  /**
+   * The block edit undo would put back, if every cell it wrote is still as it
+   * left it and the user is standing on one of them.
+   */
+  get restorableEdit(): CellSnapshot[] | undefined {
+    const top = this.edits[this.edits.length - 1];
+    if (!top) {
+      return undefined;
+    }
+    const intact = top.every((s) => {
+      const cell = this.doc.layers[s.layer]?.frames[s.frame];
+      return cell === s.cell && cell.strokes.length === s.after;
+    });
+    return intact && top.some((s) => s.cell === this.activeCell) ? top : undefined;
   }
 
   get canUndo(): boolean {
     return !this.playing
-      && ((this.activeCell?.strokes.length ?? 0) > 0 || this.restorableErase !== undefined);
+      && ((this.activeCell?.strokes.length ?? 0) > 0 || this.restorableEdit !== undefined);
   }
 
   /**
@@ -556,12 +718,14 @@ export class EditorState {
     if (!this.canUndo) {
       return;
     }
-    // ponytail: a mega-eraser cut is undoable but not redoable — restoring it
+    // ponytail: a block edit is undoable but not redoable — restoring it
     // retires the redo stack. Give it a redo entry if anyone asks for one.
-    const erase = this.restorableErase;
-    if (erase) {
-      this.erases.pop();
-      replaceStrokes(this.doc, this.activeLayer, this.activeFrame, erase.strokes);
+    const edit = this.restorableEdit;
+    if (edit) {
+      this.edits.pop();
+      for (const snapshot of edit) {
+        replaceStrokes(this.doc, snapshot.layer, snapshot.frame, snapshot.strokes);
+      }
       this.undone = [];
       this.touched = true;
       return;
@@ -619,15 +783,9 @@ export class EditorState {
       && after.every((piece, i) => piece.points.length === before[i].points.length)) {
       return;
     }
-    this.erases.push({
-      cell,
-      strokes: before.map((stroke) => ({ points: stroke.points.slice(), tool_id: stroke.tool_id })),
-      after: after.length,
-    });
+    const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
     replaceStrokes(this.doc, this.activeLayer, this.activeFrame, after);
-    this.erases[this.erases.length - 1].cell = this.activeCell!;
-    this.undone = [];
-    this.touched = true;
+    this.pushEdit(snapshots);
   }
 
   /** Grows the brush by the profile's step (+ hotkey), up to its maximum. */
@@ -666,6 +824,7 @@ export class EditorState {
           minDistance: this.tonioMinDistance,
         },
         pickSource: this.pickSource,
+        timelineHeight: this.timelineHeight,
       },
     });
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-const source = await Bun.file(new URL('./LayersPanel.svelte', import.meta.url)).text();
+const source = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
 
 function fn(name: string): string {
   const match = source.match(new RegExp(`function ${name}\\([^]*?\\n  }`));

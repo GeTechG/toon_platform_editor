@@ -5,12 +5,15 @@ import {
   addLayer,
   addStroke,
   cloneColumn,
+  copyCells,
   createDocument,
+  mergeCells,
   insertFrameBefore,
   moveLayer,
   removeFrame,
   removeLastStroke,
   removeLayer,
+  replaceCells,
   replaceColumn,
   setFrameRate,
   setLayerHidden,
@@ -473,5 +476,79 @@ describe('replaceStrokes (mega eraser)', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [0, 0, 8, 8], width: 8, color: '#000000' });
     expect(() => replaceStrokes(doc, 0, 0, [{ points: [0, 0.5], tool_id: 0 }])).toThrow(RangeError);
+  });
+});
+
+
+describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', () => {
+  /** Two layers × three frames, each cell holding one stroke tagged by its coordinates. */
+  function grid(): ReturnType<typeof createDocument> {
+    const doc = createDocument();
+    addLayer(doc, 0);
+    addFrame(doc, 0);
+    addFrame(doc, 1);
+    for (let l = 0; l < 2; l++) {
+      for (let f = 0; f < 3; f++) {
+        addStroke(doc, l, f, { points: [l * 8, f * 8], width: 8, color: '#112233' });
+      }
+    }
+    return doc;
+  }
+
+  const at = (doc: ReturnType<typeof createDocument>, l: number, f: number) =>
+    doc.layers[l].frames[f].strokes.map((s) => s.points);
+
+  it('copies the selected block, layers then frames, with the tools resolved', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [1, 2], layers: [0, 1] });
+    expect(buffer).toHaveLength(2);
+    expect(buffer[0]).toHaveLength(2);
+    expect(buffer[0][0].strokes[0].points).toEqual([0, 8]);
+    expect(buffer[1][1].strokes[0].points).toEqual([8, 16]);
+    expect(buffer[0][0].strokes[0].tool.kind).toBe('pencil');
+  });
+
+  it('the copy is deep — drawing on the source afterwards leaves the buffer alone', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    addStroke(doc, 0, 0, { points: [99, 99], width: 8, color: '#000000' });
+    expect(buffer[0][0].strokes).toHaveLength(1);
+  });
+
+  it('replaceCells overwrites the target cells and returns what was there', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    const before = replaceCells(doc, { frames: [2], layers: [1] }, buffer);
+    expect(at(doc, 1, 2)).toEqual([[0, 0]]);
+    expect(before[0][0].strokes[0].points).toEqual([8, 16]);
+  });
+
+  it('mergeCells keeps the old strokes and appends the buffer on top', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    mergeCells(doc, { frames: [2], layers: [1] }, buffer);
+    expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0]]);
+  });
+
+  it('a target smaller than the buffer takes the cells that fit', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0, 1, 2], layers: [0, 1] });
+    replaceCells(doc, { frames: [2], layers: [1] }, buffer);
+    expect(at(doc, 1, 2)).toEqual([[0, 0]]);
+  });
+
+  it('a non-contiguous layer selection copies and pastes only those layers', () => {
+    const doc = grid();
+    addLayer(doc, 1);
+    addStroke(doc, 2, 0, { points: [16, 0], width: 8, color: '#112233' });
+    const buffer = copyCells(doc, { frames: [0], layers: [0, 2] });
+    expect(buffer).toHaveLength(2);
+    expect(buffer[1][0].strokes[0].points).toEqual([16, 0]);
+  });
+
+  it('rejects a cell outside the document', () => {
+    const doc = grid();
+    expect(() => copyCells(doc, { frames: [3], layers: [0] })).toThrow(RangeError);
+    expect(() => copyCells(doc, { frames: [0], layers: [9] })).toThrow(RangeError);
   });
 });

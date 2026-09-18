@@ -33,13 +33,20 @@ export interface DrawingUiConfig {
   tonio: { width: number; smooth: number; minDistance: number };
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
+  /** Studio timeline height in CSS px, set by dragging its divider. */
+  timelineHeight: number;
 }
+
+/** Timeline divider range. The upper bound is also capped at 75vh where it is used. */
+export const TIMELINE_HEIGHT_MIN = 122;
+export const TIMELINE_HEIGHT_MAX = 2000;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   activeProfile: 'multator',
   multatorWidth: 4,
   tonio: { width: 5, smooth: 3, minDistance: 3 },
   pickSource: 'canvas',
+  timelineHeight: TIMELINE_HEIGHT_MIN,
 };
 
 export interface UiConfig {
@@ -177,6 +184,12 @@ function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId)
       minDistance: clampNumber(tonio.minDistance, 0, 30, DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance),
     },
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
+    timelineHeight: clampNumber(
+      drawing.timelineHeight,
+      TIMELINE_HEIGHT_MIN,
+      TIMELINE_HEIGHT_MAX,
+      DEFAULT_DRAWING_UI_CONFIG.timelineHeight,
+    ),
   };
 }
 

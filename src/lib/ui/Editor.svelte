@@ -71,6 +71,16 @@
   // (Main.hx keyDown: charCodes 111,108,100 toggle the oldschool pen).
   const lastThreeKeys = ['', '', ''];
 
+  /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
+  function moveOrExtend(shift: boolean, frame: number, layer: number): void {
+    if (shift && studio) {
+      editor.selectCell(frame, layer, 'range');
+      return;
+    }
+    editor.selectFrame(frame);
+    editor.selectLayer(layer);
+  }
+
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
@@ -116,13 +126,15 @@
       case 'P':
         editor.selectTool('pipette');
         break;
+      // The studio clipboard is the timeline selection (cells × layers); the
+      // bar has no selection, so there C/V stay whole-frame copy and paste.
       case 'c':
       case 'C':
-        editor.copyActiveFrame();
+        studio ? editor.copySelection() : editor.copyActiveFrame();
         break;
       case 'v':
       case 'V':
-        editor.pasteFrame();
+        studio ? editor.pasteSelection() : editor.pasteFrame();
         break;
       case 'z':
       case 'Z':
@@ -134,9 +146,11 @@
       case 'Y':
         editor.redo();
         break;
+      // Reference M merges the buffer into the selected cells. The bar keeps
+      // Multator's meaning — M is the only way to its full color picker.
       case 'm':
       case 'M':
-        editor.togglePalette();
+        studio ? editor.mergeSelection() : editor.togglePalette();
         break;
       // The reference's F is the feather; ours is fullscreen. The studio
       // takes the reference's meaning, fullscreen stays on the button.
@@ -174,17 +188,19 @@
       case 'L':
         editor.selectFrame(lastFrame);
         break;
+      // Shift extends the selection to the neighbor instead of walking the
+      // active cell there — the keyboard equivalent of a Shift+click.
       case 'ArrowLeft':
-        editor.selectFrame(editor.activeFrame === 0 ? lastFrame : editor.activeFrame - 1);
+        moveOrExtend(e.shiftKey, editor.activeFrame === 0 ? lastFrame : editor.activeFrame - 1, editor.activeLayer);
         break;
       case 'ArrowRight':
-        editor.selectFrame(editor.activeFrame >= lastFrame ? 0 : editor.activeFrame + 1);
+        moveOrExtend(e.shiftKey, editor.activeFrame >= lastFrame ? 0 : editor.activeFrame + 1, editor.activeLayer);
         break;
       case 'ArrowUp':
-        editor.selectLayer(Math.min(editor.activeLayer + 1, editor.doc.layers.length - 1));
+        moveOrExtend(e.shiftKey, editor.activeFrame, Math.min(editor.activeLayer + 1, editor.doc.layers.length - 1));
         break;
       case 'ArrowDown':
-        editor.selectLayer(Math.max(editor.activeLayer - 1, 0));
+        moveOrExtend(e.shiftKey, editor.activeFrame, Math.max(editor.activeLayer - 1, 0));
         break;
       // Onion skin. The reference binds Tab; we do not — Tab is the way out
       // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
@@ -312,17 +328,18 @@
     ['E', 'Ластик'],
     ['P', 'Пипетка'],
     ['+ / −', 'Толще / тоньше кисть'],
-    ['M', 'Показать палитру'],
+    ['M', 'Показать палитру (Toonio: объединить)'],
     ['Z', 'Отменить штрих'],
     ['Y', 'Вернуть штрих'],
-    ['C', 'Скопировать кадр'],
-    ['V', 'Вставить кадр'],
+    ['C', 'Скопировать кадр (Toonio: выделение)'],
+    ['V', 'Вставить кадр (Toonio: выделение)'],
     ['F', 'Во весь экран (Toonio: перо)'],
     ['A', 'Добавить кадр (Shift — слой)'],
     ['Del', 'Удалить кадр (Shift — слой)'],
     ['J / L', 'Первый / последний кадр'],
     ['← / →', 'Предыдущий / следующий кадр'],
     ['↑ / ↓', 'Слой выше / ниже'],
+    ['Shift + ←→↑↓', 'Toonio: расширить выделение ленты'],
     ['K', 'Калька'],
     ['X', 'Поменять контур и заливку'],
   ];
@@ -580,7 +597,9 @@
             aria-label="Увеличить масштаб"
           >+</button>
         </div>
-        {#if editor.features.layers}
+        <!-- The studio timeline carries the layer list inline, so the popup
+             is the bar layout's form of it. -->
+        {#if editor.features.layers && !studio}
           <div class="layers">
             <button
               class="key"
@@ -656,17 +675,24 @@
           <button
             class="key icon"
             disabled={editor.playing}
-            onclick={() => editor.copyActiveFrame()}
-            title="Копировать кадр (C)"
-            aria-label="Копировать кадр"
+            onclick={() => editor.copySelection()}
+            title="Копировать выделенные ячейки (C)"
+            aria-label="Копировать выделение"
           ><Icon name="copy" /></button>
           <button
             class="key icon"
-            disabled={editor.playing || !editor.copiedColumn}
-            onclick={() => editor.pasteFrame()}
-            title="Вставить кадр с заменой текущего (V)"
-            aria-label="Вставить кадр"
+            disabled={!editor.canPasteCells}
+            onclick={() => editor.pasteSelection()}
+            title="Вставить с заменой ячеек (V)"
+            aria-label="Вставить выделение"
           ><Icon name="paste" /></button>
+          <button
+            class="key icon"
+            disabled={!editor.canPasteCells}
+            onclick={() => editor.mergeSelection()}
+            title="Объединить: штрихи буфера поверх ячеек (M)"
+            aria-label="Объединить кадры"
+          ><Icon name="merge" /></button>
         {/if}
         {#if onPublish}
           <!-- Publishing leaves the editor; it gets its own zone at the end of
@@ -972,6 +998,11 @@
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
   }
+  /* The studio timeline is a tall grid, so the frame buttons beside it sit at
+     its top rather than floating in the middle of it. */
+  .studio .row.frames {
+    align-items: flex-start;
+  }
   .fps-inline {
     display: inline-flex;
     align-items: center;
@@ -1030,6 +1061,21 @@
     .fps-inline,
     .studio .ends {
       display: none;
+    }
+    /* A height dragged out on a desktop must not swallow the canvas here: the
+       phone sizes the timeline to its rows instead, and the divider that sets
+       that height goes away with it. */
+    .studio .timeline :global(.studio) {
+      height: auto !important;
+      max-height: 40vh;
+    }
+    .studio .timeline :global([role='separator']) {
+      display: none;
+    }
+    /* Transport and output do not fit one 390px line — they wrap instead of
+       pushing the page into a horizontal scroll. */
+    .studio .row.transport {
+      flex-wrap: wrap;
     }
   }
   /* Full-screen catcher so a click anywhere dismisses the popover. */
