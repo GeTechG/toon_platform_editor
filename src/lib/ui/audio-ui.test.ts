@@ -85,6 +85,30 @@ describe('the timeline carries the wave and nothing else', () => {
   });
 });
 
+describe('the synchronisation flag', () => {
+  it('decides whether the track drives the frames', () => {
+    expect(playControls).toContain('editor.audio.sync && editor.audio.sounding');
+    expect(player).toContain('audioSync && sound && !sound.paused');
+  });
+
+  it('untied, the track starts at its own beginning rather than at the frame', () => {
+    expect(state).toContain('this.sync ? timeForFrame(frame, fps) : 0');
+  });
+
+  it('a track from before the flag reads as tied', () => {
+    expect(state).toContain('track.sync ?? true');
+  });
+
+  it('is offered in the panel and travels with a publish', () => {
+    expect(panel).toContain('bind:checked={editor.audio.sync}');
+    expect(editorUi).toContain('sync: editor.audio.sync');
+  });
+
+  it('rides the light write, never the file', () => {
+    expect(editorUi).toContain('setDraftCredits(draftId, name, author, sync)');
+  });
+});
+
 describe('the soundtrack panel', () => {
   it('opens from its own key rather than sitting on the timeline', () => {
     expect(editorUi).toContain('<AudioPanel');

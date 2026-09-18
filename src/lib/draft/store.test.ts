@@ -300,6 +300,43 @@ describe('draft audio track', () => {
   });
 });
 
+describe('the sync flag rides with the track', () => {
+  it('is kept and restored like the credits', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', {
+      blob: new Blob(['ля'], { type: 'audio/mpeg' }),
+      name: 'Песня',
+      author: '',
+      sync: false,
+    });
+    expect((await listDrafts())[0].audio?.sync).toBe(false);
+  });
+
+  it('flipping it writes the flag, not the file again', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', {
+      blob: new Blob(['ля'], { type: 'audio/mpeg' }),
+      name: 'Песня',
+      author: 'Автор',
+      sync: true,
+    });
+    await setDraftCredits('a', 'Песня', 'Автор', false);
+    const saved = (await listDrafts())[0];
+    expect(saved.audio?.sync).toBe(false);
+    expect(saved.audio?.name).toBe('Песня');
+    expect(await saved.audio?.blob.text()).toBe('ля');
+  });
+
+  it('a track saved before the flag existed simply has none', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', { blob: new Blob(['ля'], { type: 'audio/mpeg' }), name: 'П', author: '' });
+    expect((await listDrafts())[0].audio?.sync).toBeUndefined();
+  });
+});
+
 describe('concurrent draft writes', () => {
   const track = () => ({ blob: new Blob(['ля'], { type: 'audio/mpeg' }), name: 'Песня', author: '' });
 
@@ -322,7 +359,7 @@ describe('concurrent draft writes', () => {
     // Typing a name must not rewrite the file: a 3 MB blob per keystroke is
     // how a draft write turns into a race with itself.
     for (const name of ['П', 'Пе', 'Пес', 'Песн', 'Песня']) {
-      await setDraftCredits('a', name, 'Автор');
+      await setDraftCredits('a', name, 'Автор', true);
     }
     const saved = (await listDrafts())[0];
     expect(saved.audio?.name).toBe('Песня');
@@ -334,7 +371,7 @@ describe('concurrent draft writes', () => {
   it('credits for a session with no track are simply dropped', async () => {
     setIndexedDB(fakeIndexedDB());
     await saveDraft('a', doc(12));
-    await setDraftCredits('a', 'Песня', 'Автор');
+    await setDraftCredits('a', 'Песня', 'Автор', true);
     expect((await listDrafts())[0].audio).toBeUndefined();
   });
 });

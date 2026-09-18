@@ -19,6 +19,8 @@ export interface AudioTrackData {
   blob: Blob;
   name: string;
   author: string;
+  /** Whether the frames are tied to the track; see `AudioTrackState.sync`. */
+  sync?: boolean;
 }
 
 export class AudioTrackState {
@@ -28,6 +30,15 @@ export class AudioTrackState {
   /** Loudness at `ENVELOPE_RATE`; empty until a track is loaded. */
   envelope = $state<Float32Array>(new Float32Array(0));
   duration = $state(0);
+  /**
+   * The reference's synchronisation flag. Tied (the default), the track is the
+   * clock: frame N always falls on second N/fps of it, and when the track
+   * loops the animation returns to the first frame with it — exact, at the
+   * cost of a jump whenever the two lengths do not divide. Untied, the frames
+   * keep their own clock and the track just plays underneath, which is what
+   * background music wants.
+   */
+  sync = $state(true);
   /** Why the last load was refused, shown next to the note button. */
   error = $state('');
 
@@ -93,6 +104,8 @@ export class AudioTrackState {
       console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
       return;
     }
+    // A track stored before the flag existed was tied — that was its behaviour.
+    this.sync = track.sync ?? true;
     await this.load(track.blob as Blob & { type: string; size: number }, track.name, track.author);
   }
 
@@ -128,6 +141,7 @@ export class AudioTrackState {
     this.blob = null;
     this.name = '';
     this.author = '';
+    this.sync = true;
     this.envelope = new Float32Array(0);
     this.duration = 0;
     this.error = '';
@@ -142,14 +156,16 @@ export class AudioTrackState {
   }
 
   /**
-   * Starts the sound where frame `frame` sits. Past the end of the track the
-   * animation simply plays on in silence, as the reference does.
+   * Starts the sound. Tied to the frames it begins where frame `frame` sits;
+   * untied it begins at the top of the track, which is what "just play this
+   * underneath" means. Past the end of the track the animation plays on in
+   * silence, as the reference does.
    */
   playFrom(frame: number, fps: number): void {
     if (!this.#element) {
       return;
     }
-    const at = timeForFrame(frame, fps);
+    const at = this.sync ? timeForFrame(frame, fps) : 0;
     // Past the end of the track the animation plays on in silence, as the
     // reference does. An unknown duration is not a reason to stay quiet.
     if (this.duration > 0 && at >= this.duration) {

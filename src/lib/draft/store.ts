@@ -18,6 +18,12 @@ export interface DraftAudio {
   name: string;
   author: string;
   /**
+   * Whether the frames are tied to the track (the reference's synchronisation
+   * flag, `editor_help.js ShowSoundName`). Absent on tracks saved before the
+   * flag existed, which read as tied — that was their behaviour.
+   */
+  sync?: boolean;
+  /**
    * The file's length in bytes as it was attached. Checked again on restore:
    * a track that comes back shorter than it went in was damaged in storage,
    * and silently handing back a few seconds of a three-minute song is the
@@ -192,17 +198,22 @@ async function removeDraft(id: string): Promise<void> {
 }
 
 /**
- * Updates only the track's credits. Typing a name must not rewrite the file:
- * a multi-megabyte put per keystroke is how a draft write ends up racing
- * itself. A session with no track has no credits to keep, so this is a no-op.
- * Never throws.
+ * Updates the track's credits and its synchronisation flag — everything about
+ * a track except the file. Typing a name must not rewrite that file: a
+ * multi-megabyte put per keystroke is how a draft write ends up racing itself.
+ * A session with no track has nothing to keep, so this is a no-op. Never throws.
  */
-export async function setDraftCredits(id: string, name: string, author: string): Promise<void> {
+export async function setDraftCredits(
+  id: string,
+  name: string,
+  author: string,
+  sync: boolean,
+): Promise<void> {
   await queueWrite(() =>
     updateDraft(id, 'draft credits save', (previous) => {
       const next: DraftRecord = { ...previous, id, updated: Date.now(), doc: previous?.doc ?? null };
       if (next.audio) {
-        next.audio = { ...next.audio, name, author };
+        next.audio = { ...next.audio, name, author, sync };
       }
       return next;
     }),

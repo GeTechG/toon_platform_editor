@@ -27,6 +27,7 @@
     controls = true,
     playing = $bindable(!prefersReducedMotion()),
     audioSrc,
+    audioSync = true,
   }: {
     /** Any published version — the share page serves documents as they were saved. */
     doc: ToonDocumentV1 | ToonDocumentV2 | ToonDocument;
@@ -34,6 +35,12 @@
     playing?: boolean;
     /** The publication's soundtrack, if it has one. */
     audioSrc?: string;
+    /**
+     * Whether the frames are tied to that track. Tied, the track is the clock
+     * and the loop returns to the first frame with it; untied, the animation
+     * keeps its own clock and the track plays underneath.
+     */
+    audioSync?: boolean;
   } = $props();
 
   // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
@@ -115,7 +122,10 @@
     });
     const sound = audio;
     if (sound) {
-      sound.currentTime = (untrack(() => current) % frameCount(view)) / view.frame_rate;
+      // Untied, the track just plays under the picture, from its own start.
+      sound.currentTime = audioSync
+        ? (untrack(() => current) % frameCount(view)) / view.frame_rate
+        : sound.currentTime;
       void sound.play().catch(() => {
         // Every browser refuses to start sound the visitor did not ask for.
         // Playing the picture silently would look like a mute animation and
@@ -126,7 +136,7 @@
     }
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);
-      if (sound && !sound.paused) {
+      if (audioSync && sound && !sound.paused) {
         current = frameForTime(sound.currentTime, view.frame_rate) % frameCount(view);
       }
       raf = requestAnimationFrame(tick);

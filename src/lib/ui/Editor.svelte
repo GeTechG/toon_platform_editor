@@ -439,7 +439,7 @@
    * browser to swap the file under it.
    */
   let storedBlob: Blob | null = null;
-  /** The credits as they stand on disk, so restoring them writes nothing. */
+  /** The light metadata as it stands on disk, so restoring it writes nothing. */
   let storedCredits = '';
 
   $effect(() => {
@@ -450,25 +450,25 @@
       return;
     }
     draftId ??= newDraftId();
-    const { name, author } = untrack(() => editor.audio);
+    const { name, author, sync } = untrack(() => editor.audio);
     storedBlob = blob;
-    storedCredits = `${name}\u0000${author}`;
+    storedCredits = `${name}\u0000${author}\u0000${sync}`;
     void setDraftAudio(
       draftId,
-      blob ? { blob, name, author, bytes: blob.size } : null,
+      blob ? { blob, name, author, sync, bytes: blob.size } : null,
     );
   });
 
   // The credits are their own write. Reading them in the effect above would
   // put the whole file again on every keystroke — megabytes per character.
   $effect(() => {
-    const { name, author } = editor.audio;
-    const credits = `${name}\u0000${author}`;
+    const { name, author, sync } = editor.audio;
+    const credits = `${name}\u0000${author}\u0000${sync}`;
     if (draftId === null || credits === storedCredits || !untrack(() => editor.audio.hasTrack)) {
       return;
     }
     storedCredits = credits;
-    void setDraftCredits(draftId, name, author);
+    void setDraftCredits(draftId, name, author, sync);
   });
 
   // Autosave on the reference's clock (AutoSave, every 60 s by default). A
@@ -519,7 +519,9 @@
     // Claimed before the restore, which is async: the effect must already know
     // this blob is the one on disk by the time the track is adopted.
     storedBlob = entry.audio?.blob ?? null;
-    storedCredits = entry.audio ? `${entry.audio.name}\u0000${entry.audio.author}` : '';
+    storedCredits = entry.audio
+      ? `${entry.audio.name}\u0000${entry.audio.author}\u0000${entry.audio.sync ?? true}`
+      : '';
     if (entry.audio) {
       void editor.audio.restore(entry.audio);
     } else {
@@ -1082,7 +1084,12 @@
                 onPublish?.(
                   $state.snapshot(editor.doc),
                   editor.audio.blob
-                    ? { blob: editor.audio.blob, name: editor.audio.name, author: editor.audio.author }
+                    ? {
+                        blob: editor.audio.blob,
+                        name: editor.audio.name,
+                        author: editor.audio.author,
+                        sync: editor.audio.sync,
+                      }
                     : null,
                 )}
               title="Опубликовать"

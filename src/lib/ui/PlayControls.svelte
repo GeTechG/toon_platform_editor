@@ -21,11 +21,11 @@
     // still said "stop", and only a page reload brought playback back.
     try {
       player?.tick(now);
-      // With a track the sound is the clock: the frame is read off the audio
-      // element's own time rather than counted alongside it, so the two cannot
-      // drift apart however long the loop runs. Once the track ends the frame
-      // counter carries on by itself.
-      if (editor.audio.sounding) {
+      // Tied to the track, the sound is the clock: the frame is read off the
+      // audio element's own time rather than counted alongside it, so the two
+      // cannot drift however long the loop runs. Untied, the frame counter is
+      // left alone and the track simply plays underneath.
+      if (editor.audio.sync && editor.audio.sounding) {
         editor.playbackFrame =
           frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frameCount(editor.doc);
       }

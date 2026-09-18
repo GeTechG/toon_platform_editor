@@ -66,6 +66,18 @@
         <input bind:value={editor.audio.author} placeholder="Кто написал" />
       </label>
 
+      <label class="toggle">
+        <span>
+          Привязать к кадрам
+          <small>
+            {editor.audio.sync
+              ? 'кадр всегда попадает на своё место в треке; на повторе трека мультик начнётся заново'
+              : 'мультик крутится сам по себе, трек просто играет под ним'}
+          </small>
+        </span>
+        <input type="checkbox" role="switch" bind:checked={editor.audio.sync} />
+      </label>
+
       <p class="lengths">
         Мультик <b>{clock(filmSeconds)}</b>, трек <b>{clock(editor.audio.duration)}</b>
       </p>
@@ -151,6 +163,26 @@
   .field input:focus {
     border-color: var(--electric, #2f5bff);
     outline: none;
+  }
+  .toggle {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+    color: var(--ink);
+  }
+  .toggle small {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.74rem;
+    line-height: 1.3;
+    color: var(--ink-2, #555);
+    text-wrap: pretty;
+  }
+  .toggle input {
+    flex: none;
+    margin-top: 0.15rem;
   }
   .lengths {
     margin: 0;
