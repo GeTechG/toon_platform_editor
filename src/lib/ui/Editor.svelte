@@ -105,6 +105,12 @@
       case 'Z':
         editor.undo();
         break;
+      // Redo takes a bare key of its own, like every other shortcut here —
+      // z/Z already both mean undo, so shift cannot carry it.
+      case 'y':
+      case 'Y':
+        editor.redo();
+        break;
       case 'm':
       case 'M':
         editor.togglePalette();
@@ -159,6 +165,21 @@
   // A set-once concern, so it lives in its own roomy sheet, not the quick popover.
   let customizeOpen = $state(false);
 
+  // Mirrors the key handler above one-for-one. If a case is added there and not
+  // here, the sheet lies — keep them next to each other for that reason.
+  const SHORTCUTS: [string, string][] = [
+    ['B', 'Карандаш'],
+    ['E', 'Ластик'],
+    ['P', 'Пипетка'],
+    ['+ / −', 'Толще / тоньше кисть'],
+    ['M', 'Показать палитру'],
+    ['Z', 'Отменить штрих'],
+    ['Y', 'Вернуть штрих'],
+    ['C', 'Скопировать кадр'],
+    ['V', 'Вставить кадр'],
+    ['F', 'Во весь экран'],
+  ];
+
   function openCustomize(): void {
     settingsOpen = false;
     customizeOpen = true;
@@ -201,26 +222,51 @@
   </div>
   <div class="panel">
     <div class="toolbar">
-      <!-- Row A — frames: add / delete anchor the timeline strip. -->
-      <div class="row frames">
+      <!-- Row A — frames: taking a stroke back comes first, then add / delete
+           anchoring the timeline strip. -->
+      <div class="row frames" role="group" aria-label="Кадры">
+        <button
+          class="key"
+          disabled={!editor.canUndo}
+          onclick={() => editor.undo()}
+          title="Отменить последний штрих (Z)"
+          aria-label="Отменить"
+        >
+          <Icon name="undo" />
+          <span class="key-label">Отменить</span>
+        </button>
+        <button
+          class="key"
+          disabled={!editor.canRedo}
+          onclick={() => editor.redo()}
+          title="Вернуть отменённый штрих (Y)"
+          aria-label="Вернуть"
+        >
+          <Icon name="redo" />
+          <span class="key-label">Вернуть</span>
+        </button>
         {#if editor.features.addFrame}
           <button
-            class="key icon"
+            class="key"
             disabled={editor.playing}
             onclick={onAddFrame}
-            title="Add frame after current (Ctrl+click: before)"
+            title="Добавить кадр после текущего (Ctrl+клик — перед)"
+            aria-label="Добавить кадр"
           >
             <Icon name="plus" />
+            <span class="key-label">Кадр</span>
           </button>
         {/if}
         {#if editor.features.deleteFrame}
           <button
-            class="key icon"
+            class="key"
             disabled={editor.playing}
             onclick={() => editor.removeActiveFrame()}
-            title="Delete current frame"
+            title="Удалить текущий кадр"
+            aria-label="Удалить кадр"
           >
             <Icon name="trash" />
+            <span class="key-label">Удалить</span>
           </button>
         {/if}
         {#if editor.features.timeline}
@@ -232,25 +278,27 @@
 
       <!-- Row B — transport & output: play at left like the reference,
            settings / export next to it, publish anchored right. -->
-      <div class="row transport">
+      <div class="row transport" role="group" aria-label="Просмотр и экспорт">
         {#if editor.features.play}
           <PlayControls {editor} />
         {/if}
         {#if editor.features.onionSkin}
           <button
-            class="key icon"
+            class="key"
             class:active={editor.onionSkin}
             aria-pressed={editor.onionSkin}
             onclick={() => editor.toggleOnionSkin()}
-            title={editor.onionSkin ? 'Onion skin on' : 'Onion skin off'}
+            title={editor.onionSkin ? 'Калька включена' : 'Калька выключена'}
+            aria-label="Калька"
           >
             <Icon name="onion" />
+            <span class="key-label">Калька</span>
           </button>
         {/if}
         {#if editor.features.layers}
           <div class="layers">
             <button
-              class="key icon"
+              class="key"
               class:active={layersOpen}
               aria-expanded={layersOpen}
               aria-haspopup="dialog"
@@ -259,6 +307,7 @@
               aria-label="Слои"
             >
               <Icon name="layers" />
+              <span class="key-label">Слои</span>
             </button>
             {#if layersOpen}
               <LayersPanel {editor} onClose={() => (layersOpen = false)} />
@@ -268,22 +317,6 @@
         {#if editor.features.export}
           <ExportGifButton {editor} />
         {/if}
-        {#if onPublish}
-          <button
-            class="key primary icon publish"
-            onclick={() => onPublish?.($state.snapshot(editor.doc))}
-            title="Publish"
-            aria-label="Publish"
-          >
-            <Icon name="send" />
-          </button>
-        {/if}
-      </div>
-
-      <!-- Row C — drawing: tools · sizes · color, with settings anchored in the
-           otherwise-empty bottom-right corner. -->
-      <div class="row draw">
-        <BrushPanel {editor} />
         <div class="settings">
           <button
             class="key icon"
@@ -291,15 +324,16 @@
             aria-expanded={settingsOpen}
             aria-haspopup="dialog"
             onclick={() => (settingsOpen = !settingsOpen)}
-            title="Settings"
+            title="Настройки"
+            aria-label="Настройки"
           >
             <Icon name="gear" />
           </button>
           {#if settingsOpen}
-            <button class="backdrop" aria-label="Close settings" onclick={() => (settingsOpen = false)}></button>
-            <div class="popover" role="dialog" aria-label="Settings">
+            <button class="backdrop" aria-label="Закрыть настройки" onclick={() => (settingsOpen = false)}></button>
+            <div class="popover" role="dialog" aria-label="Настройки">
               <label class="opt">
-                <span class="opt-label">Frame rate</span>
+                <span class="opt-label">Частота кадров</span>
                 <span class="fps">
                   <input
                     type="number"
@@ -314,7 +348,7 @@
               </label>
               {#if document.fullscreenEnabled}
                 <button class="opt opt-btn" onclick={toggleFullscreen}>
-                  <span class="opt-label">Fullscreen</span>
+                  <span class="opt-label">На весь экран</span>
                   <kbd>F</kbd>
                 </button>
               {/if}
@@ -322,37 +356,59 @@
               <!-- The gear is never hideable, so customization is always reachable. -->
               <hr class="divider" />
               <button class="opt opt-btn" onclick={openCustomize}>
-                <span class="opt-label"><Icon name="gear" size={18} /> Customize toolbar…</span>
+                <span class="opt-label"><Icon name="gear" size={18} /> Настроить панель…</span>
                 <Icon name="chevron-right" size={16} />
               </button>
             </div>
           {/if}
         </div>
+        {#if onPublish}
+          <!-- Publishing leaves the editor; it gets its own zone at the end of
+               the row so it never reads as one more tool toggle. -->
+          <div class="ship" role="group" aria-label="Публикация">
+            <button
+              class="key primary publish"
+              onclick={() => onPublish?.($state.snapshot(editor.doc))}
+              title="Опубликовать"
+              aria-label="Опубликовать"
+            >
+              <Icon name="send" />
+              <span class="key-label">Опубликовать</span>
+            </button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Row C — drawing: tools · sizes · color, with settings anchored in the
+           otherwise-empty bottom-right corner. -->
+      <div class="row draw" role="group" aria-label="Кисть">
+        <BrushPanel {editor} />
       </div>
     </div>
   </div>
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
+  <!-- (SHORTCUTS is declared in the script block above.) -->
   {#if customizeOpen}
     <div
       class="sheet-backdrop"
       role="button"
       tabindex="-1"
-      aria-label="Close customization"
+      aria-label="Закрыть настройку панели"
       onclick={() => (customizeOpen = false)}
       onkeydown={(e) => e.key === 'Escape' && (customizeOpen = false)}
     ></div>
-    <div class="sheet" role="dialog" aria-label="Customize toolbar" aria-modal="true">
+    <div class="sheet" role="dialog" aria-label="Настроить панель" aria-modal="true">
       <header class="sheet-head">
-        <h2>Customize toolbar</h2>
-        <button class="key icon" onclick={() => (customizeOpen = false)} aria-label="Close">
+        <h2>Настроить панель</h2>
+        <button class="key icon" onclick={() => (customizeOpen = false)} aria-label="Закрыть">
           <Icon name="x" />
         </button>
       </header>
 
       <div class="sheet-body">
-        <p class="sheet-hint">Preset</p>
-        <div class="presets" role="group" aria-label="Preset">
+        <p class="sheet-hint">Набор</p>
+        <div class="presets" role="group" aria-label="Набор">
           {#each PRESETS as p (p.id)}
             <button
               class="preset-chip"
@@ -390,7 +446,7 @@
           </div>
         {/if}
 
-        <p class="sheet-hint">Buttons</p>
+        <p class="sheet-hint">Кнопки</p>
         <div class="toggles">
           {#each FEATURE_ORDER as key (key)}
             <label class="toggle">
@@ -407,11 +463,24 @@
             </label>
           {/each}
         </div>
+
+        <!-- Every shortcut the key handler above actually implements, in one
+             place. They were reachable but undocumented: nothing in the UI said
+             the editor had any. Behind the sheet, so the toolbar stays quiet. -->
+        <p class="sheet-hint">Горячие клавиши</p>
+        <dl class="keylist">
+          {#each SHORTCUTS as [combo, what] (combo)}
+            <div class="keyrow">
+              <dt><kbd>{combo}</kbd></dt>
+              <dd>{what}</dd>
+            </div>
+          {/each}
+        </dl>
       </div>
 
       <footer class="sheet-foot">
-        <button class="key" onclick={() => editor.resetFeatures()}>Reset to preset</button>
-        <button class="key primary" onclick={() => (customizeOpen = false)}>Done</button>
+        <button class="key" onclick={() => editor.resetFeatures()}>Сбросить к набору</button>
+        <button class="key primary" onclick={() => (customizeOpen = false)}>Готово</button>
       </footer>
     </div>
   {/if}
@@ -430,13 +499,15 @@
     --electric: #1b5cff;
     --electric-dark: #134bd6;
     --signal: #ff4326;
-    --signal-dark: #d8331c;
+    --signal-dark: #d8331c; /* the working red: what gets read, 4.76:1 */
+    --signal-deep: #b02a15;
     --hairline: #0b0c1024;
     --hairline-soft: #0b0c1012;
     --ghost-2: #1b5cff1a;
     --r-sm: 7px;
     --r-md: 14px;
-    --key-h: 2.5rem;
+    /* WCAG/DESIGN tap floor — every key is at least 44x44. */
+    --key-h: 2.75rem;
 
     display: flex;
     flex-direction: column;
@@ -490,8 +561,37 @@
   .settings {
     position: relative;
     display: flex;
-    /* Anchor to the empty bottom-right corner of the draw row. */
+  }
+  /* Publish leaves the editor, so it sits in its own zone at the end of the
+     row — pushed away from the tool toggles and fenced off by a hairline. */
+  .ship {
+    display: flex;
     margin-left: auto;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--hairline);
+  }
+  /* Phone: the toolbar is a wall between the drawing and the thumb, so it
+     gives back every spare pixel it can — the stage keeps the rest. */
+  @media (max-width: 40rem) {
+    .panel {
+      padding: 0.4rem 0.5rem;
+      padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
+    }
+    .toolbar {
+      gap: 0.35rem;
+    }
+    .row {
+      gap: 0.3rem;
+    }
+    .ship {
+      padding-left: 0.45rem;
+    }
+    /* The timeline's scroll arrows are a mouse affordance: a phone swipes the
+       strip and Tab walks the frames, so they give their 88px back to the
+       thumbnails. Both classes, to outrank the shared .key vocabulary below. */
+    .editor :global(.arrow.key) {
+      display: none;
+    }
   }
   /* Full-screen catcher so a click anywhere dismisses the popover. */
   .backdrop {
@@ -633,6 +733,40 @@
     text-transform: uppercase;
     color: var(--ink-2);
   }
+  .keylist {
+    margin: 0;
+    display: grid;
+    gap: 0.1rem;
+  }
+  .keyrow {
+    display: grid;
+    grid-template-columns: 4.2rem 1fr; /* fits the widest chip, «+ / −» */
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.32rem 0;
+  }
+  .keyrow dt,
+  .keyrow dd {
+    margin: 0;
+  }
+  .keylist kbd {
+    display: inline-block;
+    min-width: 1.9rem;
+    padding: 0.15rem 0.45rem;
+    background: var(--paper);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--ink);
+  }
+  .keylist dd {
+    font-size: 0.9rem;
+    color: var(--ink-2);
+  }
   .presets {
     display: flex;
     gap: 0.4rem;
@@ -735,7 +869,12 @@
   }
 
   /* ---- Shared button vocabulary (global so child components inherit it) ---- */
-  /* Ghost key: quiet toolbar action on canvas, 1px hairline, small press. */
+  /* Ghost key: quiet toolbar action on canvas, 1px hairline, physical press.
+     DESIGN §4 (The Physical-Key Rule) — a flat key with no travel is banned;
+     the action has to be felt. In a dense toolbar the offset is 2px rather
+     than the page's 5px, so the rule holds without the bar reading as a wall
+     of protruding blocks. box-shadow takes no layout space, so the rows keep
+     their heights. */
   .editor :global(.key) {
     display: inline-flex;
     align-items: center;
@@ -751,6 +890,7 @@
     font: inherit;
     font-weight: 650;
     cursor: pointer;
+    box-shadow: 0 2px 0 var(--hairline);
     transition:
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -760,12 +900,27 @@
   .editor :global(.key.icon) {
     padding: 0;
   }
+  /* Readable name beside the glyph. A `title` tooltip never fires on touch,
+     which is the primary device, so on anything roomier than a phone the
+     label is what names the control; narrower than that it falls back to the
+     glyph plus its aria-label. */
+  .editor :global(.key-label) {
+    white-space: nowrap;
+  }
+  @media (max-width: 52rem) {
+    .editor :global(.key-label) {
+      display: none;
+    }
+  }
   .editor :global(.key:hover:not(:disabled)) {
     background: var(--sky);
     border-color: var(--electric);
+    transform: translateY(1px);
+    box-shadow: 0 1px 0 var(--hairline);
   }
   .editor :global(.key:active:not(:disabled)) {
-    transform: translateY(1px);
+    transform: translateY(2px);
+    box-shadow: 0 0 0 var(--hairline);
   }
   .editor :global(.key:focus-visible) {
     outline: 3px solid var(--electric);
@@ -774,34 +929,74 @@
   .editor :global(.key:disabled) {
     opacity: 0.4;
     cursor: default;
+    box-shadow: 0 2px 0 var(--hairline);
   }
   .editor :global(.key.active) {
     background: var(--ghost-2);
     border-color: var(--electric);
     color: var(--electric);
+    box-shadow: 0 2px 0 var(--electric-dark);
   }
-  /* Primary key: the one positive "ship" action — electric physical key. */
-  /* Primary shares the exact key footprint — set apart by electric fill, not
-     size or a protruding shadow. */
+  .editor :global(.key.active:hover:not(:disabled)) {
+    box-shadow: 0 1px 0 var(--electric-dark);
+  }
+  .editor :global(.key.active:active:not(:disabled)) {
+    box-shadow: 0 0 0 var(--electric-dark);
+  }
+  /* The Signal Rule: the one red in the system belongs to "draw", and in the
+     editor that is the pencil — not the ship action, which stays electric.
+     Icon reads 3.63:1 on the tint (graphics need 3:1). */
+  .editor :global(.key.active.draw) {
+    background: color-mix(in srgb, var(--signal) 10%, transparent);
+    border-color: var(--signal-dark);
+    color: var(--signal-dark);
+    box-shadow: 0 2px 0 var(--signal-dark);
+  }
+  .editor :global(.key.active.draw:hover:not(:disabled)) {
+    background: color-mix(in srgb, var(--signal) 16%, transparent);
+    border-color: var(--signal-dark);
+    box-shadow: 0 1px 0 var(--signal-dark);
+  }
+  .editor :global(.key.active.draw:active:not(:disabled)) {
+    box-shadow: 0 0 0 var(--signal-dark);
+  }
+  /* Primary key: the one positive "ship" action — electric physical key. It
+     keeps the shared footprint and is set apart by the electric fill and a
+     deeper key travel than its neighbours. */
   .editor :global(.key.primary) {
     padding: 0 0.9rem;
     border-color: transparent;
     background: var(--electric);
     color: var(--canvas);
+    box-shadow: 0 4px 0 var(--electric-dark);
   }
   .editor :global(.key.primary.icon) {
     padding: 0;
   }
   .editor :global(.key.primary:hover:not(:disabled)) {
-    background: var(--electric-dark);
+    background: var(--electric);
     border-color: transparent;
+    transform: translateY(2px);
+    box-shadow: 0 2px 0 var(--electric-dark);
+  }
+  .editor :global(.key.primary:active:not(:disabled)) {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 var(--electric-dark);
+  }
+  .editor :global(.key.primary:disabled) {
+    box-shadow: 0 4px 0 var(--electric-dark);
   }
 
+  /* Reduced motion keeps the key's depth and its pressed state — only the
+     animated travel goes, so the button still reads as pressed. */
   @media (prefers-reduced-motion: reduce) {
     .editor :global(.key) {
       transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .editor :global(.key:active:not(:disabled)) {
+    .editor :global(.key:hover:not(:disabled)),
+    .editor :global(.key:active:not(:disabled)),
+    .editor :global(.key.primary:hover:not(:disabled)),
+    .editor :global(.key.primary:active:not(:disabled)) {
       transform: none;
     }
   }

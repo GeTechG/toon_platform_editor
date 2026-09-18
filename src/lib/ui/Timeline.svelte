@@ -50,8 +50,8 @@
     class="key icon arrow"
     disabled={!canLeft}
     onclick={() => nudge(-1)}
-    aria-label="Scroll frames left"
-    title="Scroll frames left"
+    aria-label="Прокрутить кадры влево"
+    title="Прокрутить кадры влево"
   >
     <Icon name="chevron-left" size={18} />
   </button>
@@ -63,7 +63,8 @@
         class:active={i === editor.displayedFrame}
         disabled={editor.playing}
         onclick={() => editor.selectFrame(i)}
-        title="Frame {i + 1}"
+        title="Кадр {i + 1}"
+        aria-label="Кадр {i + 1}"
       >
         <FrameThumb doc={editor.doc} frameIndex={i} />
         <span class="num">{i + 1}</span>
@@ -75,8 +76,8 @@
     class="key icon arrow"
     disabled={!canRight}
     onclick={() => nudge(1)}
-    aria-label="Scroll frames right"
-    title="Scroll frames right"
+    aria-label="Прокрутить кадры вправо"
+    title="Прокрутить кадры вправо"
   >
     <Icon name="chevron-right" size={18} />
   </button>
@@ -107,6 +108,8 @@
   .frame {
     position: relative;
     flex: none;
+    /* Tap floor: the thumbnail stays 32px tall, the button around it does not. */
+    min-height: var(--key-h);
     padding: 0;
     border: 1px solid var(--hairline);
     border-radius: 5px;
@@ -131,4 +134,5 @@
     opacity: 0.5;
     cursor: default;
   }
+
 </style>

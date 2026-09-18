@@ -28,7 +28,7 @@ describe('current Multator pointer lifecycle contract', () => {
     const up = handler('onPointerUp');
     expect(up).toContain('pointer.pointerUp(toPointerSample(e, true))');
     expect(up).toContain('commitPendingStroke()');
-    expect(handler('commitPendingStroke')).toContain('addStroke(editor.doc, index, editor.activeFrame, stroke)');
+    expect(handler('commitPendingStroke')).toContain('editor.commitStroke(index, stroke)');
   });
 
   it('cancel drains profile-specific committed geometry', () => {

@@ -2,7 +2,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_SKIN_ALPHAS } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
-  import { addStroke, frameCount } from '../model/operations';
+  import { frameCount } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
     blitLayer,
@@ -186,6 +186,13 @@
     ),
   );
   const cssHeight = $derived(cssWidth * (editor.doc.height / editor.doc.width));
+  // The canvas is the product. Without a role and a name it lands in the
+  // accessibility tree as an anonymous box, so it says what it is and which
+  // frame is on it.
+  const canvasLabel = $derived(
+    `Холст: кадр ${editor.displayedFrame + 1} из ${frameCount(editor.doc)}` +
+      (editor.doc.layers.length > 1 ? `, слой ${editor.activeLayer + 1}` : ''),
+  );
   const cursorDiameter = $derived(Math.max(1, editor.brushSizeLogical * cssWidth / CANVAS_LOGICAL_WIDTH));
   // Reference cursor: a ring in the pen color with a white outline. White
   // itself would vanish on the white canvas, so it falls back to ink.
@@ -424,8 +431,7 @@
     const index = strokeLayer ? editor.doc.layers.indexOf(strokeLayer) : -1;
     if (index < 0) return;
     try {
-      addStroke(editor.doc, index, editor.activeFrame, stroke);
-      editor.touched = true;
+      editor.commitStroke(index, stroke);
     } catch (err) {
       // Document is at a format limit — drop the stroke instead of crashing the input handler.
       console.warn('stroke rejected:', err);
@@ -454,8 +460,14 @@
 </script>
 
 <div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
+  <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
+       surface that renders a picture, and without it the drawing is an
+       anonymous box in the accessibility tree. -->
+  <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
   <canvas
     bind:this={canvasEl}
+    role="img"
+    aria-label={canvasLabel}
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     onpointerdown={onPointerDown}

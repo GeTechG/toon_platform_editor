@@ -60,10 +60,11 @@
   class="key play"
   class:playing={editor.playing}
   onclick={toggle}
-  title={editor.playing ? 'Stop preview' : 'Play preview'}
-  aria-label={editor.playing ? 'Stop preview' : 'Play preview'}
+  title={editor.playing ? 'Остановить просмотр' : 'Проиграть кадры'}
+  aria-label={editor.playing ? 'Остановить' : 'Проиграть'}
 >
   <Icon name={editor.playing ? 'stop' : 'play'} size={22} />
+  <span class="key-label">{editor.playing ? 'Стоп' : 'Проиграть'}</span>
 </button>
 
 <style>

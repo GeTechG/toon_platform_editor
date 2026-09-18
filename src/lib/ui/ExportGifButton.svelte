@@ -28,7 +28,7 @@
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (err) {
       console.warn('GIF export failed:', err);
-      exportError = 'GIF export failed, please try again';
+      exportError = 'GIF не собрался — попробуй ещё раз';
     } finally {
       exporting = false;
     }
@@ -36,17 +36,18 @@
 </script>
 
 <button
-  class="key icon"
+  class="key"
   onclick={downloadGif}
   disabled={exporting}
-  title="Export animated GIF"
-  aria-label="Export animated GIF"
+  title="Экспорт в GIF"
+  aria-label="Экспорт в GIF"
 >
   {#if exporting}
     <span class="progress">{exportProgress}%</span>
   {:else}
     <Icon name="download" />
   {/if}
+  <span class="key-label">GIF</span>
 </button>
 {#if exportError}
   <span class="error" role="alert">{exportError}</span>

@@ -2,6 +2,7 @@
   "name": "toon-editor",
   "private": true,
   "version": "0.0.1",
+  "license": "MIT",
   "type": "module",
   "svelte": "./src/index.ts",
   "types": "./src/index.ts",
@@ -10,6 +11,11 @@
       "types": "./src/index.ts",
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./player": {
+      "types": "./src/player.ts",
+      "svelte": "./src/player.ts",
+      "default": "./src/player.ts"
     }
   },
   "scripts": {

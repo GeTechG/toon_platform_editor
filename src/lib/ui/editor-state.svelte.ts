@@ -3,7 +3,7 @@
  * Document mutations go through model operations only.
  */
 
-import type { ToonDocument } from '../format/types';
+import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_BRUSH_SIZE_LOGICAL,
@@ -15,6 +15,7 @@ import {
 import {
   addFrame,
   addLayer,
+  addStroke,
   cloneColumn,
   createDocument,
   frameCount,
@@ -27,6 +28,7 @@ import {
   setFrameRate,
   setLayerHidden,
   type ResolvedColumn,
+  type ResolvedStroke,
 } from '../model/operations';
 import {
   activeFrameAfterRemove,
@@ -52,6 +54,13 @@ import {
 
 export type Tool = 'pencil' | 'eraser' | 'pipette';
 
+/**
+ * How many undone strokes are kept for redo. Each entry holds a stroke that
+ * is no longer in the document, so the stack is bounded — the design floor is
+ * a 2 GB phone, not a workstation.
+ */
+export const UNDO_HISTORY_LIMIT = 50;
+
 export class EditorState {
   tool = $state<Tool>('pencil');
   doc = $state(createDocument());
@@ -69,6 +78,8 @@ export class EditorState {
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
+  /** Strokes taken off by undo, newest last — what redo puts back. */
+  undone = $state<{ cell: Frame; stroke: Stroke }[]>([]);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
   copiedColumn = $state<ResolvedColumn | null>(null);
   /** Where the pipette reads from; Alt overrides it for one click. */
@@ -289,6 +300,7 @@ export class EditorState {
     this.activeLayer = 0;
     this.playing = false;
     this.playbackFrame = 0;
+    this.undone = [];
   }
 
   selectFrame(index: number): void {
@@ -350,14 +362,66 @@ export class EditorState {
     }
   }
 
-  /** Undo: drops the last stroke of the active layer's cell (per-stroke, no redo). */
+  /** The cell the next stroke goes into — undo and redo both work on it. */
+  get activeCell(): Frame | undefined {
+    return this.doc.layers[this.activeLayer]?.frames[this.activeFrame];
+  }
+
+  get canUndo(): boolean {
+    return !this.playing && (this.activeCell?.strokes.length ?? 0) > 0;
+  }
+
+  /**
+   * Redo is offered only for the cell the stroke was undone from. The entry
+   * remembers the cell itself, not its index, so a frame added, removed or
+   * pasted over retires its redo entries for free — the cell object is simply
+   * no longer the active one.
+   */
+  get canRedo(): boolean {
+    const last = this.undone[this.undone.length - 1];
+    return !this.playing && last !== undefined && last.cell === this.activeCell;
+  }
+
+  /** Undo: drops the last stroke of the active layer's cell and keeps it for redo. */
   undo(): void {
-    if (this.playing) {
+    if (!this.canUndo) {
       return;
     }
-    if (removeLastStroke(this.doc, this.activeLayer, this.activeFrame)) {
-      this.touched = true;
+    const cell = this.activeCell!;
+    const stroke = cell.strokes[cell.strokes.length - 1];
+    if (!removeLastStroke(this.doc, this.activeLayer, this.activeFrame)) {
+      return;
     }
+    this.undone.push({ cell, stroke });
+    if (this.undone.length > UNDO_HISTORY_LIMIT) {
+      this.undone.shift();
+    }
+    this.touched = true;
+  }
+
+  /** Redo: puts the last undone stroke back where it came from. */
+  redo(): void {
+    if (!this.canRedo) {
+      return;
+    }
+    const { stroke } = this.undone.pop()!;
+    // The tool is still interned, so this resolves to the same tool_id.
+    addStroke(this.doc, this.activeLayer, this.activeFrame, {
+      points: stroke.points,
+      tool: this.doc.tools[stroke.tool_id],
+    });
+    this.touched = true;
+  }
+
+  /**
+   * Appends a finished stroke to the active frame. The one place strokes
+   * enter the document, so it is also the one place a fresh stroke retires
+   * the redo stack.
+   */
+  commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
+    addStroke(this.doc, layerIndex, this.activeFrame, stroke);
+    this.undone = [];
+    this.touched = true;
   }
 
   /** Grows the brush by the profile's step (+ hotkey), up to its maximum. */

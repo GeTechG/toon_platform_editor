@@ -63,16 +63,16 @@ export const FEATURE_ORDER: FeatureKey[] = [
 ];
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
-  addFrame: 'Add frame',
-  deleteFrame: 'Delete frame',
-  timeline: 'Timeline',
-  play: 'Play',
-  export: 'Export GIF',
-  tools: 'Tools',
-  sizes: 'Brush sizes',
-  color: 'Color',
-  onionSkin: 'Onion skin',
-  layers: 'Layers',
+  addFrame: 'Добавить кадр',
+  deleteFrame: 'Удалить кадр',
+  timeline: 'Лента кадров',
+  play: 'Проигрывание',
+  export: 'Экспорт в GIF',
+  tools: 'Инструменты',
+  sizes: 'Толщина кисти',
+  color: 'Цвет',
+  onionSkin: 'Калька',
+  layers: 'Слои',
 };
 
 const allOn = (off: Partial<Features> = {}): Features => ({
