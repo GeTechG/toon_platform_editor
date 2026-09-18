@@ -12,10 +12,12 @@
   import { decodeToon } from '../format/toon-decode';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
   import { debounce } from '../draft/debounce';
-  import { decideRestore } from '../draft/restore';
-  import { loadDraft, saveDraft } from '../draft/store';
+  import { draftEntries } from '../draft/restore';
+  import { deleteDraft, listDrafts, newDraftId, saveDraft } from '../draft/store';
+  import FrameThumb from './FrameThumb.svelte';
   import { FEATURE_LABELS, FEATURE_ORDER, PRESETS } from './presets';
   import type { FeatureKey } from './presets';
+  import type { DraftEntry } from '../draft/restore';
   import type { IconName } from './Icon.svelte';
   import type { ToonDocument } from '../format/types';
 
@@ -37,7 +39,15 @@
   let { onPublish }: { onPublish?: (doc: ToonDocument) => void } = $props();
 
   const editor = new EditorState();
-  const scheduleSave = debounce((doc: unknown) => void saveDraft(doc), DRAFT_SAVE_DEBOUNCE_MS);
+  const scheduleSave = debounce(
+    (id: string, doc: unknown) => void saveDraft(id, doc),
+    DRAFT_SAVE_DEBOUNCE_MS,
+  );
+  // The session being autosaved. Minted at the first edit and kept for as long
+  // as this sheet lives, so a session overwrites its own record instead of
+  // piling up a new draft per stroke; a draft opened from the list continues
+  // under its own id.
+  let draftId: string | null = null;
 
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
@@ -158,18 +168,66 @@
         void cell.strokes.length;
       }
     }
-    scheduleSave($state.snapshot(doc));
+    draftId ??= newDraftId();
+    scheduleSave(draftId, $state.snapshot(doc));
     return () => scheduleSave.cancel();
   });
 
-  // Restore a saved draft on start — but only if the user has not edited
-  // during the async load, and only if it passes validation.
+  // Drafts saved on this device. The reference keeps every local save and
+  // greets you with "Доступно локальное сохранение!" rather than loading the
+  // last one behind your back (`toonio.bundle.js:233`) — so does this: the
+  // editor opens on a clean sheet and offers the list when there is one.
+  let draftsOpen = $state(false);
+  let drafts = $state<DraftEntry[]>([]);
+
+  async function refreshDrafts(): Promise<void> {
+    drafts = draftEntries(await listDrafts());
+  }
+
   onMount(async () => {
-    const restored = decideRestore(await loadDraft(), editor.touched);
-    if (restored) {
-      editor.replaceDoc(restored);
-    }
+    await refreshDrafts();
+    draftsOpen = drafts.length > 0;
   });
+
+  async function openDrafts(): Promise<void> {
+    settingsOpen = false;
+    await refreshDrafts();
+    draftsOpen = true;
+  }
+
+  /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
+  function openDraft(entry: DraftEntry): void {
+    if (editor.touched && !confirm('Открыть черновик? Текущий рисунок будет заменён.')) {
+      return;
+    }
+    editor.openDraft(entry.doc);
+    draftId = entry.id;
+    draftsOpen = false;
+  }
+
+  async function removeDraft(entry: DraftEntry): Promise<void> {
+    if (!confirm('Удалить черновик? Отменить это будет нельзя.')) {
+      return;
+    }
+    await deleteDraft(entry.id);
+    if (draftId === entry.id) {
+      draftId = null;
+    }
+    await refreshDrafts();
+  }
+
+  /** Leaves the list on an empty sheet; the next edit starts its own draft. */
+  function startFresh(): void {
+    editor.newDocument();
+    draftId = null;
+    draftsOpen = false;
+  }
+
+  const PLURAL = new Intl.PluralRules('ru');
+  function plural(n: number, one: string, few: string, many: string): string {
+    const form = PLURAL.select(n);
+    return `${n} ${form === 'one' ? one : form === 'few' ? few : many}`;
+  }
 
   // Settings popover (opens above the ⚙ key): holds the everyday controls the
   // reference bar has no room for — onion skin, playback fps, fullscreen.
@@ -437,6 +495,9 @@
               <button class="opt opt-btn" onclick={() => fileInput?.click()}>
                 <span class="opt-label">Открыть .toon…</span>
               </button>
+              <button class="opt opt-btn" onclick={openDrafts}>
+                <span class="opt-label">Черновики…</span>
+              </button>
               {#if document.fullscreenEnabled}
                 <button class="opt opt-btn" onclick={toggleFullscreen}>
                   <span class="opt-label">На весь экран</span>
@@ -476,6 +537,65 @@
       </div>
     </div>
   </div>
+
+  <!-- Drafts sheet: every local save with its first frame, newest first. -->
+  {#if draftsOpen}
+    <div
+      class="sheet-backdrop"
+      role="button"
+      tabindex="-1"
+      aria-label="Закрыть черновики"
+      onclick={() => (draftsOpen = false)}
+      onkeydown={(e) => e.key === 'Escape' && (draftsOpen = false)}
+    ></div>
+    <div class="sheet" role="dialog" aria-label="Черновики" aria-modal="true">
+      <header class="sheet-head">
+        <h2>Черновики</h2>
+        <button class="key icon" onclick={() => (draftsOpen = false)} aria-label="Закрыть">
+          <Icon name="x" />
+        </button>
+      </header>
+
+      <div class="sheet-body">
+        {#if drafts.length === 0}
+          <p class="empty">Сохранённых черновиков пока нет — рисуй, они появятся сами.</p>
+        {:else}
+          <p class="sheet-hint">Сохранены на этом устройстве</p>
+          <ul class="drafts">
+            {#each drafts as entry (entry.id)}
+              <li class="draft">
+                <button class="draft-open" onclick={() => openDraft(entry)}>
+                  <span class="draft-thumb">
+                    <FrameThumb doc={entry.doc} frameIndex={0} height={44} />
+                  </span>
+                  <span class="draft-meta">
+                    <span class="draft-date">{new Date(entry.updated).toLocaleString('ru')}</span>
+                    <span class="draft-size">
+                      {plural(entry.doc.layers[0].frames.length, 'кадр', 'кадра', 'кадров')} ·
+                      {plural(entry.doc.layers.length, 'слой', 'слоя', 'слоёв')}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  class="key icon"
+                  onclick={() => removeDraft(entry)}
+                  title="Удалить черновик"
+                  aria-label="Удалить черновик"
+                >
+                  <Icon name="trash" />
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <footer class="sheet-foot">
+        <button class="key" onclick={startFresh}>Чистый лист</button>
+        <button class="key primary" onclick={() => (draftsOpen = false)}>Закрыть</button>
+      </footer>
+    </div>
+  {/if}
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
   <!-- (SHORTCUTS is declared in the script block above.) -->
@@ -986,6 +1106,63 @@
     height: 1.3rem;
     accent-color: var(--electric);
     cursor: pointer;
+  }
+  /* One row per draft: preview, when it was saved, how big it is, delete. */
+  .drafts {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .draft {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .draft + .draft {
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .draft-open {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3.4rem;
+    padding: 0.4rem 0.3rem;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: none;
+    font: inherit;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+  }
+  .draft-open:hover {
+    background: var(--sky);
+  }
+  .draft-thumb {
+    display: flex;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    overflow: hidden;
+  }
+  .draft-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .draft-date {
+    font-size: 0.95rem;
+  }
+  .draft-size {
+    font-size: 0.8rem;
+    color: var(--ink-2);
+  }
+  .empty {
+    margin: 1.2rem 0;
+    color: var(--ink-2);
   }
   .sheet-foot {
     display: flex;

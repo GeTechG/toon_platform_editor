@@ -358,13 +358,27 @@ export class EditorState {
   }
 
   /**
-   * Opens an imported document: like a restored draft, but it *is* an edit —
-   * the local draft must keep it, so the document counts as touched.
+   * Opens a saved draft: the full reset of an import, but not an edit — the
+   * record already exists, so `touched` stays as it was.
    */
-  importDoc(doc: ToonDocument): void {
+  openDraft(doc: ToonDocument): void {
     this.replaceDoc(doc);
     this.visitedFrames = [0];
     this.erases = [];
+    this.touched = false;
+  }
+
+  /** A clean sheet: nothing to autosave until the first edit. */
+  newDocument(): void {
+    this.openDraft(createDocument({ frameRate: this.ux.defaultFps }));
+  }
+
+  /**
+   * Opens an imported document: like a loaded draft, but it *is* an edit —
+   * the local draft must keep it, so the document counts as touched.
+   */
+  importDoc(doc: ToonDocument): void {
+    this.openDraft(doc);
     this.touched = true;
   }
 
