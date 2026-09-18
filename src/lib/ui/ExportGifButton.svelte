@@ -47,7 +47,6 @@
   {:else}
     <Icon name="download" />
   {/if}
-  <span class="key-label">GIF</span>
 </button>
 {#if exportError}
   <span class="error" role="alert">{exportError}</span>

@@ -204,7 +204,7 @@
 
 <svelte:window onkeydown={onPanelKeydown} />
 
-<div class="plate" role="dialog" aria-label="Слои">
+<div class="layers-plate" role="dialog" aria-label="Слои">
   <header>
     <h2>Слои</h2>
     <button class="key icon" onclick={onClose} aria-label="Закрыть слои">
@@ -272,7 +272,7 @@
 </div>
 
 <style>
-  .plate {
+  .layers-plate {
     position: absolute;
     left: 0;
     bottom: calc(100% + 0.4rem);
@@ -287,7 +287,7 @@
   }
   /* Mobile: a bottom drawer instead of a floating plate. */
   @media (max-width: 40rem) {
-    .plate {
+    .layers-plate {
       position: fixed;
       inset: auto 0 0 0;
       width: auto;

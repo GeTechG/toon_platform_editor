@@ -5,7 +5,8 @@
   // onion skin, no draft — a pure viewer for the public share page.
   import { untrack } from 'svelte';
   import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
-  import type { ToonDocument } from '../format/types';
+  import type { ToonDocumentV1, ToonDocumentV2, ToonDocument } from '../format/types';
+  import { upgradeDocument } from '../format/upgrade';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
@@ -24,7 +25,16 @@
     /** Renders the play/pause key over the canvas. */
     controls = true,
     playing = $bindable(!prefersReducedMotion()),
-  }: { doc: ToonDocument; controls?: boolean; playing?: boolean } = $props();
+  }: {
+    /** Any published version — the share page serves documents as they were saved. */
+    doc: ToonDocumentV1 | ToonDocumentV2 | ToonDocument;
+    controls?: boolean;
+    playing?: boolean;
+  } = $props();
+
+  // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
+  // speaks v3 only, so the document is lifted once, here, at the boundary.
+  const view = $derived(upgradeDocument(doc));
 
   const renderer = new Canvas2DFrameRenderer();
   let canvasEl: HTMLCanvasElement;
@@ -39,11 +49,11 @@
       1,
       Math.min(
         wrapWidth || CANVAS_LOGICAL_WIDTH,
-        wrapHeight > 0 ? wrapHeight * (doc.width / doc.height) : Infinity,
+        wrapHeight > 0 ? wrapHeight * (view.width / view.height) : Infinity,
       ),
     ),
   );
-  const cssHeight = $derived(cssWidth * (doc.height / doc.width));
+  const cssHeight = $derived(cssWidth * (view.height / view.width));
 
   function draw(): void {
     if (!canvasEl) {
@@ -58,11 +68,11 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    if (current >= frameCount(doc)) {
+    if (current >= frameCount(view)) {
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
-    renderer.render(doc, current, ctx, { scale: cssWidth / doc.width, dpr });
+    renderer.render(view, current, ctx, { scale: cssWidth / view.width, dpr });
   }
 
   // The frame clock runs only while playing. Pausing tears the loop down;
@@ -73,9 +83,9 @@
       return;
     }
     const player = new LoopPlayer({
-      frameCount: frameCount(doc),
-      fps: doc.frame_rate,
-      startFrame: Math.min(untrack(() => current), frameCount(doc) - 1),
+      frameCount: frameCount(view),
+      fps: view.frame_rate,
+      startFrame: Math.min(untrack(() => current), frameCount(view) - 1),
       onFrame: (index) => {
         current = index;
       },
@@ -91,7 +101,7 @@
   $effect(() => {
     void current;
     void cssWidth;
-    void doc;
+    void view;
     draw();
   });
 </script>
@@ -105,11 +115,11 @@
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     role="img"
-    aria-label="Мультик, кадр {current + 1} из {frameCount(doc)}"
+    aria-label="Мультик, кадр {current + 1} из {frameCount(view)}"
   ></canvas>
   {#if controls}
     <button
-      class="btn"
+      class="play-key"
       type="button"
       onclick={() => (playing = !playing)}
       title={playing ? 'Пауза' : 'Проиграть'}
@@ -147,7 +157,7 @@
   /* The product's physical key (DESIGN §4): a hard offset shadow that the
      press takes away. Electric, never signal red — red belongs to «рисовать».
      Tokens fall back so the player works outside the editor's root. */
-  .btn {
+  .play-key {
     position: absolute;
     left: 50%;
     bottom: 12px;
@@ -171,25 +181,25 @@
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .btn:hover {
+  .play-key:hover {
     transform: translateX(-50%) translateY(2px);
     box-shadow: 0 2px 0 var(--electric-dark, #134bd6);
   }
-  .btn:active {
+  .play-key:active {
     transform: translateX(-50%) translateY(4px);
     box-shadow: 0 0 0 var(--electric-dark, #134bd6);
   }
-  .btn:focus-visible {
+  .play-key:focus-visible {
     outline: 3px solid var(--electric, #1b5cff);
     outline-offset: 3px;
   }
   /* The key keeps its depth and its pressed state; only the travel goes. */
   @media (prefers-reduced-motion: reduce) {
-    .btn {
+    .play-key {
       transition: none;
     }
-    .btn:hover,
-    .btn:active {
+    .play-key:hover,
+    .play-key:active {
       transform: translateX(-50%);
     }
   }

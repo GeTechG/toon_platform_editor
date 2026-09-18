@@ -64,7 +64,6 @@
   aria-label={editor.playing ? 'Остановить' : 'Проиграть'}
 >
   <Icon name={editor.playing ? 'stop' : 'play'} size={22} />
-  <span class="key-label">{editor.playing ? 'Стоп' : 'Проиграть'}</span>
 </button>
 
 <style>

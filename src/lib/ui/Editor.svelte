@@ -233,7 +233,6 @@
           aria-label="Отменить"
         >
           <Icon name="undo" />
-          <span class="key-label">Отменить</span>
         </button>
         <button
           class="key"
@@ -243,7 +242,6 @@
           aria-label="Вернуть"
         >
           <Icon name="redo" />
-          <span class="key-label">Вернуть</span>
         </button>
         {#if editor.features.addFrame}
           <button
@@ -254,7 +252,6 @@
             aria-label="Добавить кадр"
           >
             <Icon name="plus" />
-            <span class="key-label">Кадр</span>
           </button>
         {/if}
         {#if editor.features.deleteFrame}
@@ -266,7 +263,6 @@
             aria-label="Удалить кадр"
           >
             <Icon name="trash" />
-            <span class="key-label">Удалить</span>
           </button>
         {/if}
         {#if editor.features.timeline}
@@ -292,7 +288,6 @@
             aria-label="Калька"
           >
             <Icon name="onion" />
-            <span class="key-label">Калька</span>
           </button>
         {/if}
         {#if editor.features.layers}
@@ -307,7 +302,6 @@
               aria-label="Слои"
             >
               <Icon name="layers" />
-              <span class="key-label">Слои</span>
             </button>
             {#if layersOpen}
               <LayersPanel {editor} onClose={() => (layersOpen = false)} />
@@ -373,7 +367,6 @@
               aria-label="Опубликовать"
             >
               <Icon name="send" />
-              <span class="key-label">Опубликовать</span>
             </button>
           </div>
         {/if}
@@ -899,18 +892,6 @@
   }
   .editor :global(.key.icon) {
     padding: 0;
-  }
-  /* Readable name beside the glyph. A `title` tooltip never fires on touch,
-     which is the primary device, so on anything roomier than a phone the
-     label is what names the control; narrower than that it falls back to the
-     glyph plus its aria-label. */
-  .editor :global(.key-label) {
-    white-space: nowrap;
-  }
-  @media (max-width: 52rem) {
-    .editor :global(.key-label) {
-      display: none;
-    }
   }
   .editor :global(.key:hover:not(:disabled)) {
     background: var(--sky);
