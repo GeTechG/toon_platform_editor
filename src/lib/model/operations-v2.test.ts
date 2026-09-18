@@ -7,7 +7,7 @@ const internTool = (operations as unknown as { internTool?: InternTool }).intern
 
 function doc(): ToonDocument {
   return {
-    schema_version: 3,
+    schema_version: 4,
     width: 4800,
     height: 2400,
     frame_rate: 12,

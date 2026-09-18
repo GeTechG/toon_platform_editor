@@ -121,8 +121,63 @@ describe('Tonio Smooth / Prepare golden behavior', () => {
     ]);
   });
 
+  it('divides the threshold by the zoom captured at pointerdown (reference m / scale)', () => {
+    // m = 3 logical px over a 600px canvas normalised from 1280: at zoom 1 the
+    // 16-unit step is dropped, at zoom 4 the threshold is four times smaller
+    // and the same step survives.
+    const descriptor: ToolDescriptor = { kind: 'eraser', dialect: 'toonio', width: 40 };
+    const draw = (zoom: number) => {
+      const session = profiles.beginStrokeSession(
+        'toonio',
+        sample(1, 0, 0),
+        descriptor,
+        { smooth: 1, minDistance: 3 },
+        1,
+        false,
+        zoom,
+      );
+      profiles.appendStrokeEvent(session, sample(1, 16, 0));
+      profiles.appendStrokeEvent(session, sample(1, 40, 0));
+      return profiles.commitStrokeSession(session).points;
+    };
+
+    expect(draw(1)).toEqual([0, 0, 40, 0, 40, 0]);
+    expect(draw(4)).toEqual([0, 0, 16, 0, 40, 0, 40, 0, 40, 0]);
+  });
+
   it('truncates logical coordinates before converting to fixed-point ×8', () => {
     expect(profiles.quantizeTonioPoint(19.9, -19.9)).toEqual([16, -16]);
+  });
+});
+
+describe('Tonio feather and pixel sessions', () => {
+  it('the feather runs the pencil pipeline and keeps both colors', () => {
+    const descriptor: ToolDescriptor = {
+      kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000',
+    };
+    const session = profiles.beginStrokeSession('toonio', sample(1, 0, 0), descriptor, { smooth: 1, minDistance: 0 });
+    profiles.appendStrokeEvent(session, sample(1, 40, 0));
+    const committed = profiles.commitStrokeSession(session);
+    expect(committed.tool).toEqual(descriptor);
+    // Same Smooth + Prepare output as a Tonio pencil would give.
+    expect(committed.points).toEqual([0, 0, 40, 0, 40, 0, 40, 0]);
+  });
+
+  it('the pixel tool snaps to its cell grid and commits without a sentinel', () => {
+    const descriptor: ToolDescriptor = { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' };
+    const session = profiles.beginStrokeSession('toonio', sample(1, 0, 0), descriptor);
+    profiles.appendStrokeEvent(session, sample(1, 20, 4));
+    profiles.appendStrokeEvent(session, sample(1, 64, 0));
+    const committed = profiles.commitStrokeSession(session);
+    expect(committed.tool).toEqual(descriptor);
+    expect(committed.points).toEqual([0, 0, 16, 0, 64, 0]);
+  });
+
+  it('the pixel preview shows the cells as collected, unsmoothed', () => {
+    const descriptor: ToolDescriptor = { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' };
+    const session = profiles.beginStrokeSession('toonio', sample(1, 0, 0), descriptor);
+    profiles.appendStrokeEvent(session, sample(1, 20, 4));
+    expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 16, 0]);
   });
 });
 

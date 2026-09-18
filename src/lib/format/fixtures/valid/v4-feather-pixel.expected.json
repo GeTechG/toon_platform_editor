@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,400,200,800,0],\"tool_id\":0},{\"points\":[64,64,128,64,128,128],\"tool_id\":1}]}],\"hidden\":false}],\"schema_version\":4,\"tools\":[{\"color\":\"#000000\",\"dialect\":\"toonio\",\"fill\":\"#ff0000\",\"kind\":\"feather\",\"width\":40},{\"color\":\"#0026ff\",\"dialect\":\"toonio\",\"kind\":\"pixel\",\"width\":64}],\"width\":4800}",
+  "sha256": "7148fa8856e1b2158d3ceb7f9c9e9ae5b8eafc77d4ca1d3f6f0f80f694981d9e"
+}

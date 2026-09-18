@@ -14,12 +14,13 @@ import {
   replaceColumn,
   setFrameRate,
   setLayerHidden,
+  replaceStrokes,
 } from './operations';
 
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(3);
+    expect(doc.schema_version).toBe(4);
     expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(4800);
     expect(doc.height).toBe(2400);
@@ -445,5 +446,32 @@ describe('v3 schema limits', () => {
     expect(schema.$defs.layer.properties.frames.minItems).toBe(1);
     expect(limits.MAX_STROKES_PER_FRAME).toBe(schema.$defs.frame.properties.strokes.maxItems);
     expect(limits.MAX_STROKE_COORDS).toBe(schema.$defs.stroke.properties.points.maxItems);
+  });
+});
+
+describe('replaceStrokes (mega eraser)', () => {
+  it('swaps a cell contents, leaving the tool table and other cells alone', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0, 8, 8], width: 8, color: '#000000' });
+    replaceStrokes(doc, 0, 0, [
+      { points: [0, 0, 4, 4], tool_id: 0 },
+      { points: [16, 16, 24, 24], tool_id: 0 },
+    ]);
+    expect(doc.layers[0].frames[0].strokes).toEqual([
+      { points: [0, 0, 4, 4], tool_id: 0 },
+      { points: [16, 16, 24, 24], tool_id: 0 },
+    ]);
+    expect(doc.tools).toHaveLength(1);
+  });
+
+  it('refuses a stroke pointing at a tool the document does not have', () => {
+    const doc = createDocument();
+    expect(() => replaceStrokes(doc, 0, 0, [{ points: [0, 0], tool_id: 7 }])).toThrow(RangeError);
+  });
+
+  it('refuses fractional coordinates', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0, 8, 8], width: 8, color: '#000000' });
+    expect(() => replaceStrokes(doc, 0, 0, [{ points: [0, 0.5], tool_id: 0 }])).toThrow(RangeError);
   });
 });

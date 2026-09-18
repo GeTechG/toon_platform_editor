@@ -5,7 +5,7 @@ import { createDocument } from '../model/operations';
 describe('decideRestore', () => {
   it('restores a valid draft when the user has not edited yet', () => {
     const doc = createDocument();
-    expect(decideRestore(doc, false)?.schema_version).toBe(3);
+    expect(decideRestore(doc, false)?.schema_version).toBe(4);
   });
 
   it('discards the draft if the user already started editing', () => {
@@ -43,7 +43,7 @@ describe('decideRestore', () => {
       frames: [{ strokes: [{ points: [10, 20], tool_id: 0 }] }],
     };
     const restored = decideRestore(draft, false);
-    expect(restored?.schema_version).toBe(3);
+    expect(restored?.schema_version).toBe(4);
     expect(restored?.tools).toEqual(draft.tools as never);
     expect(restored?.layers).toEqual([{ hidden: false, frames: draft.frames }] as never);
   });

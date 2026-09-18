@@ -8,6 +8,7 @@ import {
 
 const multator = UX_PROFILES.multator;
 const toonop = UX_PROFILES.toonop;
+const toonio = UX_PROFILES.toonio;
 
 describe('UX_PROFILES', () => {
   it('multator reproduces the reference editor defaults', () => {
@@ -31,6 +32,44 @@ describe('UX_PROFILES', () => {
     expect(toonop.afterRemove).toBe('next');
     expect(toonop.playFromStart).toBe(false);
     expect(toonop.defaultFps).toBe(12);
+    expect(toonop.onionMode).toBe('neighbors');
+    expect(toonop.colorGrid).toBe(false);
+    expect(toonop.fpsRange).toEqual([5, 24]);
+    expect(toonop.livePipettePreview).toBe(false);
+    expect(toonop.crossCursor).toBe(false);
+  });
+
+  it('toonio reproduces the reference toonio.ru editor', () => {
+    // bundle:426/437 history onion, editor.html:270 fps 1–30, tools.js:631 pipette.
+    expect(toonio.onionMode).toBe('history');
+    expect(toonio.colorGrid).toBe(true);
+    expect(toonio.fpsRange).toEqual([1, 30]);
+    expect(toonio.livePipettePreview).toBe(true);
+    expect(toonio.crossCursor).toBe(true);
+    expect(toonio.defaultFps).toBe(12);
+    expect(toonio.brushSizeMax).toBe(500);
+    expect(toonio.quickPalette).toBeNull();
+    expect(toonio.whiteIsEraser).toBe(false);
+    expect(toonio.activeFrameAlpha).toBe(1);
+  });
+
+  it('offers the Tonio toolset only under Toonio', () => {
+    expect(toonio.tools).toEqual(['pencil', 'eraser', 'feather', 'pixel', 'mega-eraser', 'pipette']);
+    expect(multator.tools).toEqual(['pencil', 'eraser', 'pipette']);
+    expect(toonop.tools).toEqual(['pencil', 'eraser', 'pipette']);
+  });
+
+  it('multator keeps the neighbor onion and the narrow fps range', () => {
+    expect(multator.onionMode).toBe('neighbors');
+    expect(multator.colorGrid).toBe(false);
+    expect(multator.fpsRange).toEqual([5, 24]);
+  });
+});
+
+describe('resolveToolSelection with a profile toolset', () => {
+  it('ignores a tool the profile does not offer', () => {
+    expect(resolveToolSelection('feather', '#000000', multator)).toBeNull();
+    expect(resolveToolSelection('feather', '#000000', toonio)).toBe('feather');
   });
 });
 

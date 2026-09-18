@@ -8,7 +8,9 @@
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import Icon from './Icon.svelte';
-  import { DRAFT_SAVE_DEBOUNCE_MS, PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
+  import { DRAFT_SAVE_DEBOUNCE_MS } from '../format/constants';
+  import { decodeToon } from '../format/toon-decode';
+  import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
   import { debounce } from '../draft/debounce';
   import { decideRestore } from '../draft/restore';
   import { loadDraft, saveDraft } from '../draft/store';
@@ -119,6 +121,17 @@
       case 'F':
         toggleFullscreen();
         break;
+      // Onion skin. The reference binds Tab; we do not — Tab is the way out
+      // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
+      case 'k':
+      case 'K':
+        editor.toggleOnionSkin();
+        break;
+      // Reference: the X between the two swatches swaps outline and fill.
+      case 'x':
+      case 'X':
+        editor.swapColors();
+        break;
       default:
         handled = false;
     }
@@ -161,6 +174,27 @@
   // Settings popover (opens above the ⚙ key): holds the everyday controls the
   // reference bar has no room for — onion skin, playback fps, fullscreen.
   let settingsOpen = $state(false);
+  let fileInput = $state<HTMLInputElement | undefined>();
+  /** Import failure, shown until the next attempt. */
+  let importError = $state('');
+
+  /**
+   * Opens a Tonio `.toon` file. The current drawing is replaced, so a touched
+   * document asks first — the draft it would overwrite is the user's work.
+   */
+  async function importToon(file: File): Promise<void> {
+    importError = '';
+    settingsOpen = false;
+    if (editor.touched && !confirm(`Открыть «${file.name}»? Текущий рисунок будет заменён.`)) {
+      return;
+    }
+    const result = decodeToon(await file.arrayBuffer());
+    if (!result.ok) {
+      importError = `Не удалось открыть файл: ${result.error}`;
+      return;
+    }
+    editor.importDoc(result.doc);
+  }
   // Customization sheet: which buttons the toolbar shows, and the active preset.
   // A set-once concern, so it lives in its own roomy sheet, not the quick popover.
   let customizeOpen = $state(false);
@@ -211,13 +245,48 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<!-- A file dropped anywhere would otherwise navigate the page away from the
+     unsaved drawing, so the window takes the drop and opens it instead. -->
+<svelte:window
+  onkeydown={onKeydown}
+  ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
+  ondrop={(e) => {
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      e.preventDefault();
+      void importToon(file);
+    }
+  }}
+/>
+
+<input
+  bind:this={fileInput}
+  type="file"
+  accept=".toon"
+  class="file"
+  aria-label="Открыть файл .toon"
+  onchange={(e) => {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (file) {
+      void importToon(file);
+    }
+  }}
+/>
 
 <div class="editor" bind:this={editorEl}>
   <div class="stage">
     <CanvasView {editor} />
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
+    {/if}
+    {#if importError}
+      <p class="import-error" role="alert">
+        {importError}
+        <button class="key" onclick={() => (importError = '')} aria-label="Закрыть сообщение">
+          <Icon name="x" size={16} />
+        </button>
+      </p>
     {/if}
   </div>
   <div class="panel">
@@ -290,6 +359,31 @@
             <Icon name="onion" />
           </button>
         {/if}
+        <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
+             a control, and the readout says where we are. -->
+        <div class="zoom" role="group" aria-label="Масштаб холста">
+          <button
+            class="key"
+            disabled={editor.view.zoom <= ZOOM_MIN}
+            onclick={() => editor.zoomBy(-ZOOM_STEP)}
+            title="Уменьшить масштаб"
+            aria-label="Уменьшить масштаб"
+          >−</button>
+          <button
+            class="key zoom-value"
+            disabled={editor.view.zoom === ZOOM_MIN && editor.view.panX === 0 && editor.view.panY === 0}
+            onclick={() => editor.resetView()}
+            title="Вернуть 100%"
+            aria-label="Масштаб {Math.round(editor.view.zoom * 100)} процентов, вернуть 100%"
+          >{Math.round(editor.view.zoom * 100)}%</button>
+          <button
+            class="key"
+            disabled={editor.view.zoom >= ZOOM_MAX}
+            onclick={() => editor.zoomBy(ZOOM_STEP)}
+            title="Увеличить масштаб"
+            aria-label="Увеличить масштаб"
+          >+</button>
+        </div>
         {#if editor.features.layers}
           <div class="layers">
             <button
@@ -331,8 +425,8 @@
                 <span class="fps">
                   <input
                     type="number"
-                    min={PLAYER_FPS_MIN}
-                    max={PLAYER_FPS_MAX}
+                    min={editor.ux.fpsRange[0]}
+                    max={editor.ux.fpsRange[1]}
                     value={editor.doc.frame_rate}
                     onchange={onFpsChange}
                     disabled={editor.playing}
@@ -340,6 +434,9 @@
                   fps
                 </span>
               </label>
+              <button class="opt opt-btn" onclick={() => fileInput?.click()}>
+                <span class="opt-label">Открыть .toon…</span>
+              </button>
               {#if document.fullscreenEnabled}
                 <button class="opt opt-btn" onclick={toggleFullscreen}>
                   <span class="opt-label">На весь экран</span>
@@ -594,6 +691,44 @@
     border: none;
     background: transparent;
     cursor: default;
+  }
+  /* Zoom group: two keys around a tabular readout, so the width does not
+     jump as the percentage changes. */
+  /* Import failure: an alert over the canvas, dismissed by the user — an
+     error about their file must not vanish before it is read. */
+  .import-error {
+    position: absolute;
+    left: 50%;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: min(32rem, 92%);
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border: 2px solid var(--signal);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font-size: 0.85rem;
+  }
+  .file {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .zoom {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .zoom-value {
+    min-width: 3.4rem;
+    font-size: 0.74rem;
+    font-variant-numeric: tabular-nums;
   }
   .layers {
     position: relative;

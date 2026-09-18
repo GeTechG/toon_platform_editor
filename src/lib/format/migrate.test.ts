@@ -43,7 +43,7 @@ describe('v2 → v3 migration fixtures', () => {
 
   it('loadDocument runs the whole v1 → v2 → v3 chain', () => {
     const loaded = validation.loadDocument(structuredClone(fixture.input));
-    expect(loaded.schema_version).toBe(3);
+    expect(loaded.schema_version).toBe(4);
     expect(loaded.layers).toHaveLength(1);
     expect(loaded.layers[0].frames).toEqual(
       (fixture.expected as ToonDocumentV2).frames as never,

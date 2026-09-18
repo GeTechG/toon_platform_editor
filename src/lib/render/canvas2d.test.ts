@@ -223,7 +223,7 @@ const sampleTools: ToolDescriptor[] = [
 
 function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 3,
+    schema_version: 4,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -571,6 +571,72 @@ describe('contour tools (oldschool pen)', () => {
     expect(on).toBeGreaterThanOrEqual(0);
     expect(fill).toBeGreaterThan(on);
     expect(off).toBeGreaterThan(fill);
+  });
+});
+
+describe('Tonio feather and pixel tools', () => {
+  const tools: ToolDescriptor[] = [
+    { kind: 'feather', dialect: 'toonio', width: 32, color: '#000000', fill: '#ff0000' },
+    { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' },
+  ];
+
+  it('the feather fills the path before stroking it (tools.js Feather.PostDraw)', () => {
+    const ctx = new RecordingCtx();
+    // Tonio committed lines carry the duplicated endpoint sentinel.
+    const line = [0, 0, 40, 0, 40, 40, 40, 40];
+    renderer.render(docOf(tools, [{ strokes: [{ points: line, tool_id: 0 }] }]), 0, ctx, { scale: 1, dpr: 1 });
+    const from = ctx.log.indexOf('beginPath()');
+    expect(ctx.log.slice(from)).toEqual([
+      'beginPath()',
+      'fillStyle=#ff0000',
+      'lineWidth=32',
+      'strokeStyle=#000000',
+      'lineCap=round',
+      'lineJoin=round',
+      'quadraticCurveTo(0,0,20,0)',
+      'quadraticCurveTo(40,0,40,20)',
+      // Duplicated endpoint sentinel → the reference's +0.01 Chrome workaround.
+      'quadraticCurveTo(40.01,40.01,40.004999999999995,40.004999999999995)',
+      'fill()',
+      'stroke()',
+    ]);
+  });
+
+  it('fills the cells a fast drag skipped (reference Draw → InterpolateLine)', () => {
+    const ctx = new RecordingCtx();
+    renderer.render(
+      docOf(tools, [{ strokes: [{ points: [0, 0, 48, 0], tool_id: 1 }] }]),
+      0, ctx, { scale: 1, dpr: 1 },
+    );
+    // Both endpoints come back from the interpolation and are painted again —
+    // the reference repaints them too, and a cell filled twice looks the same.
+    expect(ctx.log.filter((line) => line.startsWith('fillRect')).slice(1)).toEqual([
+      'fillRect(0,0,16,16)',
+      'fillRect(0,0,16,16)',
+      'fillRect(16,0,16,16)',
+      'fillRect(32,0,16,16)',
+      'fillRect(48,0,16,16)',
+      'fillRect(48,0,16,16)',
+    ]);
+  });
+
+  it('the pixel tool fills a square per cell, no smoothing (tools.js Pixel.Draw)', () => {
+    const ctx = new RecordingCtx();
+    renderer.render(
+      docOf(tools, [{ strokes: [{ points: [0, 0, 16, 0, 16, 16], tool_id: 1 }] }]),
+      0, ctx, { scale: 1, dpr: 1 },
+    );
+    const from = ctx.log.indexOf('fillStyle=#0026ff');
+    expect(ctx.log.slice(from)).toEqual([
+      'fillStyle=#0026ff',
+      'fillRect(0,0,16,16)',
+      'fillRect(0,0,16,16)',
+      'fillRect(16,0,16,16)',
+      'fillRect(16,0,16,16)',
+      'fillRect(16,0,16,16)',
+      'fillRect(16,16,16,16)',
+      'fillRect(16,16,16,16)',
+    ]);
   });
 });
 

@@ -5,16 +5,27 @@
  * JSON schemas into its bundle.
  */
 
-import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3 } from './types';
+import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3, ToonDocumentV4 } from './types';
 
-type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3;
+type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3 | ToonDocumentV4;
 
-/** Lifts any supported version to v3. Structure only — no validation. */
-export function upgradeDocument(doc: AnyDocument): ToonDocumentV3 {
+/** Lifts any supported version to v4. Structure only — no validation. */
+export function upgradeDocument(doc: AnyDocument): ToonDocumentV4 {
   if (doc.schema_version === 1) {
-    return migrateV2ToV3(migrateV1ToV2(doc));
+    return migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(doc)));
   }
-  return doc.schema_version === 2 ? migrateV2ToV3(doc) : doc;
+  if (doc.schema_version === 2) {
+    return migrateV3ToV4(migrateV2ToV3(doc));
+  }
+  return doc.schema_version === 3 ? migrateV3ToV4(doc) : doc;
+}
+
+/**
+ * v4 only widens the tool table with the feather and pixel kinds, so a v3
+ * document is already a valid v4 one — the migration is the version bump.
+ */
+export function migrateV3ToV4(doc: ToonDocumentV3): ToonDocumentV4 {
+  return { ...doc, schema_version: 4 };
 }
 
 /**

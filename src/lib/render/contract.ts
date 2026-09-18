@@ -12,6 +12,12 @@ export interface Viewport {
   scale: number;
   /** devicePixelRatio of the target screen. */
   dpr: number;
+  /**
+   * Offset of the document origin inside the target, in CSS pixels. Only the
+   * editor canvas pans; thumbnails, player and export leave it at 0.
+   */
+  panX?: number;
+  panY?: number;
 }
 
 /**

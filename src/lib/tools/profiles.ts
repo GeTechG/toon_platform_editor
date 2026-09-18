@@ -1,8 +1,9 @@
 import { FIXED_POINT_SCALE } from '../format/constants';
-import type { LineToolDescriptor, StrokeDialect } from '../format/types';
+import type { LineToolDescriptor, PixelToolDescriptor, StrokeDialect } from '../format/types';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
 import { commitOldschoolStroke } from './oldschool';
+import { appendPixelCells, pixelPrepare } from './pixel';
 
 export interface PointerSample {
   pointerId: number;
@@ -31,9 +32,16 @@ export interface StrokeSession {
   readonly rawPoints: number[];
   readonly tonio: Readonly<TonioSettings>;
   readonly tonioCoordinateScale: number;
+  /** Viewport zoom frozen at pointerdown — the reference divides m by it. */
+  readonly zoom: number;
   readonly multator?: StrokeBuilder;
   /** Oldschool easter-egg pen: the Multator commit produces a filled contour. */
   readonly oldschool: boolean;
+}
+
+/** Tonio's pixel tool collects grid cells instead of a smoothed line. */
+function isPixelSession(session: StrokeSession): boolean {
+  return session.descriptor.kind === 'pixel';
 }
 
 export function beginStrokeSession(
@@ -43,8 +51,15 @@ export function beginStrokeSession(
   tonio: TonioSettings = DEFAULT_TONIO_SETTINGS,
   tonioCoordinateScale = 1,
   oldschool = false,
+  zoom = 1,
 ): StrokeSession {
-  const frozenDescriptor = copyLineTool({ ...descriptor, dialect: profile });
+  // Feather and pixel exist only in the Tonio dialect; everything else takes
+  // the profile the gesture started under.
+  const frozenDescriptor = copyLineTool(
+    descriptor.kind === 'feather' || descriptor.kind === 'pixel'
+      ? descriptor
+      : { ...descriptor, dialect: profile },
+  );
   if (profile === 'multator') {
     const builder = new StrokeBuilder({
       width: frozenDescriptor.width,
@@ -59,6 +74,7 @@ export function beginStrokeSession(
       rawPoints: builder.rawPoints as number[],
       tonio: { ...tonio },
       tonioCoordinateScale: 1,
+      zoom: 1,
       multator: builder,
       oldschool,
     };
@@ -70,6 +86,7 @@ export function beginStrokeSession(
     rawPoints: [],
     tonio: { smooth: clampInteger(tonio.smooth, 1, 100), minDistance: clampInteger(tonio.minDistance, 0, 30) },
     tonioCoordinateScale: positiveScale(tonioCoordinateScale),
+    zoom: positiveScale(zoom),
     oldschool: false,
   };
   appendTonioEventBatch(session, event);
@@ -92,6 +109,9 @@ export function finishStrokeEvent(session: StrokeSession, event: PointerSample):
 }
 
 export function previewStrokeSession(session: StrokeSession): readonly number[] {
+  if (isPixelSession(session)) {
+    return session.rawPoints;
+  }
   return session.profile === 'toonio'
     ? tonioSmooth(session.rawPoints, session.tonio.smooth)
     : session.rawPoints;
@@ -107,12 +127,17 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
         : { kind: 'contour-eraser', dialect: 'multator' },
     };
   }
+  if (isPixelSession(session)) {
+    // Reference Pixel: Smooth is the identity and Prepare thins by the width.
+    const width = (session.descriptor as PixelToolDescriptor).width;
+    return { points: pixelPrepare(session.rawPoints, width), tool: copyLineTool(session.descriptor) };
+  }
   const points = session.profile === 'multator'
     ? session.multator!.commit().points
     : tonioPrepare(
         tonioSmooth(session.rawPoints, session.tonio.smooth),
         session.tonio.minDistance,
-        1,
+        session.zoom,
         session.tonioCoordinateScale,
       );
   return { points, tool: copyLineTool(session.descriptor) };
@@ -163,6 +188,7 @@ export class PointerStrokeController {
       tonio?: TonioSettings;
       tonioCoordinateScale?: number;
       oldschool?: boolean;
+      zoom?: number;
     },
   ) {}
 
@@ -178,6 +204,7 @@ export class PointerStrokeController {
       selected.tonio,
       selected.tonioCoordinateScale,
       selected.oldschool ?? false,
+      selected.zoom ?? 1,
     );
     return true;
   }
@@ -215,6 +242,17 @@ export class PointerStrokeController {
 function appendTonioEventBatch(session: StrokeSession, event: PointerSample): void {
   const coalesced = event.coalesced?.filter((sample) => sample.pointerId === session.pointerId);
   const samples = coalesced && coalesced.length > 0 ? coalesced : [event];
+  if (isPixelSession(session)) {
+    // The pixel tool snaps to its own grid and drops cells the line already
+    // holds, so it never sees the line dedup above.
+    const width = (session.descriptor as PixelToolDescriptor).width;
+    const flat: number[] = [];
+    for (const sample of samples) flat.push(sample.x, sample.y);
+    const cells = appendPixelCells(session.rawPoints, flat, width);
+    session.rawPoints.length = 0;
+    session.rawPoints.push(...cells);
+    return;
+  }
   let previousX: number | undefined;
   let previousY: number | undefined;
   for (const sample of samples) {
@@ -227,9 +265,18 @@ function appendTonioEventBatch(session: StrokeSession, event: PointerSample): vo
 }
 
 function copyLineTool(tool: LineToolDescriptor): LineToolDescriptor {
-  return tool.kind === 'pencil'
-    ? { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color }
-    : { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+  switch (tool.kind) {
+    case 'pencil':
+      return { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color };
+    case 'eraser':
+      return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+    case 'feather':
+      return {
+        kind: 'feather', dialect: 'toonio', width: tool.width, color: tool.color, fill: tool.fill,
+      };
+    case 'pixel':
+      return { kind: 'pixel', dialect: 'toonio', width: tool.width, color: tool.color };
+  }
 }
 
 function clampInteger(value: number, min: number, max: number): number {

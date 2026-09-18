@@ -6,6 +6,7 @@ import {
   clampPlayerFps,
   dragTargetIndex,
   pickSource,
+  onionHistoryLayers,
   onionLayers,
   onionSkinVisible,
   playbackStartFrame,
@@ -105,6 +106,30 @@ describe('onionSkinVisible', () => {
   });
 });
 
+describe('onionHistoryLayers', () => {
+  it('drops the active frame and keeps the ladder of the full history (Tonio)', () => {
+    // visited 5 → 2 → 7, now editing 2: alpha = 0.15 / 3 * (i + 1) over the
+    // *unfiltered* history, so the freshest visit stays at 0.15.
+    // The ladder keeps the reference's own expression, float artifacts included.
+    expect(onionHistoryLayers([5, 2, 7], 2, 10)).toEqual([
+      { index: 5, alpha: (0.15 / 3) * 1 },
+      { index: 7, alpha: (0.15 / 3) * 3 },
+    ]);
+  });
+
+  it('a single visited frame gets the full 0.15', () => {
+    expect(onionHistoryLayers([4], 0, 10)).toEqual([{ index: 4, alpha: 0.15 }]);
+  });
+
+  it('an empty history draws nothing', () => {
+    expect(onionHistoryLayers([], 0, 10)).toEqual([]);
+  });
+
+  it('skips frames the document no longer has', () => {
+    expect(onionHistoryLayers([12], 0, 10)).toEqual([]);
+  });
+});
+
 describe('clampPlayerFps', () => {
   it('keeps fps within the 12–24 player range', () => {
     expect(clampPlayerFps(1)).toBe(5);
@@ -114,6 +139,13 @@ describe('clampPlayerFps', () => {
     expect(clampPlayerFps(24)).toBe(24);
     expect(clampPlayerFps(60)).toBe(24);
     expect(clampPlayerFps(Number.NaN)).toBe(5);
+  });
+
+  it('honors the profile range (Tonio: 1–30)', () => {
+    expect(clampPlayerFps(30, [1, 30])).toBe(30);
+    expect(clampPlayerFps(1, [1, 30])).toBe(1);
+    expect(clampPlayerFps(0.4, [1, 30])).toBe(1);
+    expect(clampPlayerFps(31, [1, 30])).toBe(30);
   });
 });
 

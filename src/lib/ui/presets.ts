@@ -102,7 +102,7 @@ export const PRESETS: {
 }[] = [
   { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator', ux: 'toonop' },
   { id: 'multator', label: 'Multator', features: allOn({ export: false, layers: false }), drawingProfile: 'multator', ux: 'multator' },
-  { id: 'toonio', label: 'Toonio', features: allOn({ onionSkin: false }), drawingProfile: 'toonio', ux: 'toonop' },
+  { id: 'toonio', label: 'Toonio', features: allOn(), drawingProfile: 'toonio', ux: 'toonio' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';

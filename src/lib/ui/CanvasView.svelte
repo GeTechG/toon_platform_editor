@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_SKIN_ALPHAS } from '../format/constants';
+  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
   import { frameCount } from '../model/operations';
   import type { Viewport } from '../render/contract';
@@ -12,8 +12,10 @@
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
-  import { onionLayers, pickSource } from './frame-selection';
+  import { pickSource } from './frame-selection';
+  import { ZOOM_STEP, clampPan, toDocument, zoomAt } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
+  import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
     TONIO_CANVAS_WIDTH,
@@ -34,18 +36,45 @@
   let cursorX = $state(0);
   let cursorY = $state(0);
   let cursorVisible = $state(false);
+  /** Color the pipette would take, shown next to the cursor (Tonio). */
+  let pickPreview = $state<string | null>(null);
+  /** Pointer that is panning the canvas (middle button or space+drag). */
+  let panning: { pointerId: number; x: number; y: number } | null = null;
+  let spaceHeld = false;
+  /** Active touch points, for two-finger pan and pinch. */
+  const touches = new Map<number, { x: number; y: number }>();
+  let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
+  /** Live mega-eraser gesture in document units, or null when idle. */
+  let megaGesture = $state<number[] | null>(null);
+  let megaPointerId = -1;
+  let lastPickPreview = 0;
+  const PIPETTE_THROTTLE_MS = 100;
   /** Transient message over the canvas (e.g. drawing into a hidden layer). */
   const HIDDEN_LAYER_HINT = 'Слой скрыт';
   let hint = $state('');
   let hintTimer = 0;
+  /** Descriptor for the active tool, frozen into the session at pointerdown. */
+  function activeDescriptor(): LineToolDescriptor {
+    const width = brushWidthDoc(editor.brushSizeLogical);
+    switch (editor.tool) {
+      case 'eraser':
+        return { kind: 'eraser', dialect: editor.drawingProfile, width };
+      case 'feather':
+        return { kind: 'feather', dialect: 'toonio', width, color: editor.brushColor, fill: editor.fillColor };
+      case 'pixel':
+        return { kind: 'pixel', dialect: 'toonio', width, color: editor.brushColor };
+      default:
+        return { kind: 'pencil', dialect: editor.drawingProfile, width, color: editor.brushColor };
+    }
+  }
+
   const pointer = new PointerStrokeController(() => ({
     profile: editor.drawingProfile,
-    descriptor: editor.tool === 'eraser'
-      ? { kind: 'eraser', dialect: editor.drawingProfile, width: brushWidthDoc(editor.brushSizeLogical) }
-      : { kind: 'pencil', dialect: editor.drawingProfile, width: brushWidthDoc(editor.brushSizeLogical), color: editor.brushColor },
+    descriptor: activeDescriptor(),
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE),
     oldschool: editor.oldschool,
+    zoom: editor.view.zoom,
   }));
   /**
    * Layer pinned at pointerdown — the object, not its index: a reorder during
@@ -158,7 +187,8 @@
     if (!cell || layer.hidden || cell.strokes.length === 0) {
       return null;
     }
-    const key = `${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}:${pxW}x${pxH}`;
+    const key = `${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}:${pxW}x${pxH}`
+      + `@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
     const cached = onionCache.get(key);
     if (cached) {
       return cached;
@@ -193,7 +223,9 @@
     `Холст: кадр ${editor.displayedFrame + 1} из ${frameCount(editor.doc)}` +
       (editor.doc.layers.length > 1 ? `, слой ${editor.activeLayer + 1}` : ''),
   );
-  const cursorDiameter = $derived(Math.max(1, editor.brushSizeLogical * cssWidth / CANVAS_LOGICAL_WIDTH));
+  const cursorDiameter = $derived(
+    Math.max(1, (editor.brushSizeLogical * cssWidth * editor.view.zoom) / CANVAS_LOGICAL_WIDTH),
+  );
   // Reference cursor: a ring in the pen color with a white outline. White
   // itself would vanish on the white canvas, so it falls back to ink.
   const cursorColor = $derived(
@@ -201,6 +233,11 @@
       ? editor.brushColor
       : 'var(--ink)',
   );
+
+  // The zoom buttons clamp against the canvas size, which only the view knows.
+  $effect(() => {
+    editor.viewSize = { width: cssWidth, height: cssHeight };
+  });
 
   function draw(): void {
     if (!canvasEl) {
@@ -216,7 +253,12 @@
       canvasEl.height = pxHeight;
     }
     const ctx = canvasEl.getContext('2d') as unknown as ViewCtx;
-    const viewport = { scale: cssWidth / editor.doc.width, dpr };
+    const viewport = {
+      scale: (cssWidth / editor.doc.width) * editor.view.zoom,
+      dpr,
+      panX: editor.view.panX,
+      panY: editor.view.panY,
+    };
     const frame = editor.displayedFrame;
     if (!editor.doc.layers[0]?.frames[frame]) {
       return;
@@ -233,10 +275,10 @@
     ctx.fillStyle = BACKGROUND_COLOR;
     ctx.fillRect(0, 0, pxWidth, pxHeight);
 
-    // Onion-skin under the whole current frame: neighbor cells of the active
-    // layer in their real colors, fading with distance (farthest first).
+    // Onion-skin under the whole current frame: cells of the active layer in
+    // their real colors — fading neighbors, or Tonio's last visited frames.
     if (editor.showOnionSkin) {
-      for (const neighbor of onionLayers(editor.activeFrame, frameCount(editor.doc), ONION_SKIN_ALPHAS, editor.ux.onionSides)) {
+      for (const neighbor of editor.onionSkinLayers) {
         const el = onionCell(neighbor.index, pxWidth, pxHeight, viewport);
         if (!el) {
           continue;
@@ -261,6 +303,27 @@
       const erase = session.descriptor.kind === 'eraser';
       lctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
       renderSessionPreview(session, lctx, viewport, erase ? BACKGROUND_COLOR : session.descriptor.color);
+      lctx.globalCompositeOperation = 'source-over';
+      activeWithLive = liveEl;
+    }
+
+    // The mega eraser previews its cut the way the reference does — the
+    // gesture punches alpha on top of the layer — while the strokes are only
+    // rewritten on pointerup.
+    if (megaGesture && megaGesture.length >= 2) {
+      liveEl = buffer(liveEl, pxWidth, pxHeight);
+      const lctx = liveEl.getContext('2d') as unknown as ViewCtx;
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.clearRect(0, 0, pxWidth, pxHeight);
+      lctx.drawImage(activeEl!, 0, 0);
+      lctx.globalCompositeOperation = 'destination-out';
+      renderRawPolyline(
+        megaGesture,
+        brushWidthDoc(editor.brushSizeLogical),
+        BACKGROUND_COLOR,
+        lctx,
+        viewport,
+      );
       lctx.globalCompositeOperation = 'source-over';
       activeWithLive = liveEl;
     }
@@ -325,6 +388,7 @@
     void editor.activeLayer;
     void editor.showOnionSkin;
     void editor.ux;
+    void editor.view;
     const frame = editor.displayedFrame;
     for (const layer of editor.doc.layers) {
       void layer.hidden;
@@ -332,11 +396,9 @@
       void cell;
       void cell?.strokes.length;
     }
-    const active = editor.activeFrame;
     const activeLayer = editor.doc.layers[editor.activeLayer];
-    for (let distance = 1; distance <= ONION_SKIN_ALPHAS.length; distance++) {
-      void activeLayer?.frames[active - distance]?.strokes.length;
-      void activeLayer?.frames[active + distance]?.strokes.length;
+    for (const onion of editor.onionSkinLayers) {
+      void activeLayer?.frames[onion.index]?.strokes.length;
     }
     stackDirty = true;
     scheduleDraw();
@@ -344,9 +406,7 @@
 
   function toDocUnits(e: { clientX: number; clientY: number }): [number, number] {
     const rect = canvasEl.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * editor.doc.width;
-    const y = ((e.clientY - rect.top) / rect.height) * editor.doc.height;
-    return [x, y];
+    return toDocument(e.clientX - rect.left, e.clientY - rect.top, rect, editor.doc, editor.view);
   }
 
   /**
@@ -381,15 +441,91 @@
     return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
   }
 
+  /**
+   * Navigation gestures, before drawing gets a say: middle button or a held
+   * space pans, two fingers pan and pinch. A second finger never interrupts a
+   * stroke already under way — it is ignored until the first one lifts.
+   */
+  function startNavigation(e: PointerEvent): boolean {
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2 && !pointer.session) {
+        gesture = pinchFrom(touches);
+        return true;
+      }
+      return touches.size > 1;
+    }
+    if (e.button === 1 || spaceHeld) {
+      panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      canvasEl.setPointerCapture(e.pointerId);
+      return true;
+    }
+    return false;
+  }
+
+  function pinchFrom(points: Map<number, { x: number; y: number }>) {
+    const [a, b] = [...points.values()];
+    return {
+      distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      midX: (a.x + b.x) / 2,
+      midY: (a.y + b.y) / 2,
+      zoom: editor.view.zoom,
+    };
+  }
+
+  function panBy(dx: number, dy: number): void {
+    const rect = canvasEl.getBoundingClientRect();
+    editor.view = clampPan(
+      { zoom: editor.view.zoom, panX: editor.view.panX + dx, panY: editor.view.panY + dy },
+      rect.width,
+      rect.height,
+    );
+  }
+
+  function zoomTo(zoom: number, clientX: number, clientY: number): void {
+    const rect = canvasEl.getBoundingClientRect();
+    editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, rect.width, rect.height);
+  }
+
+  /** Wheel zooms in the reference's 0.5 steps; Ctrl+wheel stays the browser's. */
+  function onWheel(e: WheelEvent): void {
+    if (e.ctrlKey || e.metaKey) {
+      return;
+    }
+    e.preventDefault();
+    zoomTo(editor.view.zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), e.clientX, e.clientY);
+  }
+
   function onPointerDown(e: PointerEvent): void {
+    if (startNavigation(e)) {
+      e.preventDefault();
+      return;
+    }
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
     if (editor.tool === 'pipette') {
       const picked = pickColor(e);
+      // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка).
+      if (e.button === 2 && editor.ux.tools.includes('feather')) {
+        editor.fillColor = picked;
+        return;
+      }
       editor.brushColor = picked;
       // Picking emptiness/background arms the eraser, a color arms the pencil.
       editor.tool = picked === BACKGROUND_COLOR ? 'eraser' : 'pencil';
+      return;
+    }
+    if (editor.tool === 'mega-eraser') {
+      if (editor.activeLayerHidden) {
+        showHint(HIDDEN_LAYER_HINT);
+        return;
+      }
+      const [x, y] = toDocUnits(e);
+      megaGesture = [Math.round(x), Math.round(y)];
+      canvasEl.setPointerCapture(e.pointerId);
+      megaPointerId = e.pointerId;
+      scheduleDraw();
       return;
     }
     if (editor.activeLayerHidden) {
@@ -406,6 +542,40 @@
   function onPointerMove(e: PointerEvent): void {
     cursorX = e.clientX;
     cursorY = e.clientY;
+    if (panning && e.pointerId === panning.pointerId) {
+      panBy(e.clientX - panning.x, e.clientY - panning.y);
+      panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      return;
+    }
+    if (megaGesture && e.pointerId === megaPointerId) {
+      const [x, y] = toDocUnits(e);
+      megaGesture.push(Math.round(x), Math.round(y));
+      scheduleDraw();
+      return;
+    }
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (gesture && touches.size === 2) {
+        const next = pinchFrom(touches);
+        zoomTo(gesture.zoom * (next.distance / gesture.distance), next.midX, next.midY);
+        panBy(next.midX - gesture.midX, next.midY - gesture.midY);
+        gesture = { ...next, zoom: gesture.zoom * (next.distance / gesture.distance) };
+        return;
+      }
+      if (touches.size > 1) {
+        return;
+      }
+    }
+    // Tonio's pipette previews the color it would take, throttled to 100 ms
+    // (tools.js Picker.MouseMove) — that cap is also what keeps a cheap phone
+    // from reading a pixel back on every move event.
+    if (editor.tool === 'pipette' && editor.ux.livePipettePreview) {
+      const now = performance.now();
+      if (now - lastPickPreview >= PIPETTE_THROTTLE_MS) {
+        lastPickPreview = now;
+        pickPreview = pickColor(e);
+      }
+    }
     if (!pointer.session || !e.isPrimary) {
       return;
     }
@@ -414,7 +584,30 @@
     scheduleDraw();
   }
 
+  function endNavigation(e: PointerEvent): boolean {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) {
+      gesture = null;
+    }
+    if (panning && e.pointerId === panning.pointerId) {
+      panning = null;
+      return true;
+    }
+    return false;
+  }
+
   function onPointerUp(e: PointerEvent): void {
+    if (endNavigation(e)) {
+      return;
+    }
+    if (megaGesture && e.pointerId === megaPointerId) {
+      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
+      megaGesture = null;
+      megaPointerId = -1;
+      stackDirty = true;
+      scheduleDraw();
+      return;
+    }
     if (!pointer.session || !e.isPrimary) {
       return;
     }
@@ -439,6 +632,9 @@
   }
 
   function onPointerCancel(e: PointerEvent): void {
+    if (endNavigation(e)) {
+      return;
+    }
     if (!pointer.session || !e.isPrimary) {
       return;
     }
@@ -459,6 +655,19 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === ' ') {
+      spaceHeld = true;
+    }
+  }}
+  onkeyup={(e) => {
+    if (e.key === ' ') {
+      spaceHeld = false;
+    }
+  }}
+/>
+
 <div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
   <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
        surface that renders a picture, and without it the drawing is an
@@ -472,6 +681,13 @@
     style:height="{cssHeight}px"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
+    onwheel={onWheel}
+    oncontextmenu={(e) => {
+      // Right-click is the fill-color pipette, not a browser menu.
+      if (editor.tool === 'pipette') {
+        e.preventDefault();
+      }
+    }}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
     onpointerenter={(event) => {
@@ -479,16 +695,30 @@
       cursorX = event.clientX;
       cursorY = event.clientY;
     }}
-    onpointerleave={() => (cursorVisible = false)}
+    onpointerleave={() => {
+      cursorVisible = false;
+      pickPreview = null;
+    }}
     class:custom-cursor={editor.tool !== 'pipette'}
   ></canvas>
   {#if hint}
     <p class="hint" role="status" aria-live="polite">{hint}</p>
   {/if}
+  {#if cursorVisible && editor.tool === 'pipette' && pickPreview}
+    <span
+      class="pick-preview"
+      style:left="{cursorX}px"
+      style:top="{cursorY}px"
+      style:background={pickPreview}
+      aria-hidden="true"
+    ></span>
+  {/if}
   {#if cursorVisible && editor.tool !== 'pipette'}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
+      class:cross={editor.ux.crossCursor
+        && (editor.brushSizeLogical <= 3 || editor.brushSizeLogical >= 25)}
       style:left="{cursorX}px"
       style:top="{cursorY}px"
       style:width="{cursorDiameter}px"
@@ -533,6 +763,37 @@
   }
   .brush-cursor.eraser {
     border-style: dashed;
+  }
+  /* Tonio adds a crosshair when the circle is too small to aim with, or so
+     big the center is lost (tools.js DrawCursor). */
+  .brush-cursor.cross::before,
+  .brush-cursor.cross::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: var(--ink);
+    box-shadow: 0 0 0 1px var(--canvas);
+    transform: translate(-50%, -50%);
+  }
+  .brush-cursor.cross::before {
+    width: 11px;
+    height: 1px;
+  }
+  .brush-cursor.cross::after {
+    width: 1px;
+    height: 11px;
+  }
+  /* Tonio draws a 25px swatch down-right of the pipette cursor. */
+  .pick-preview {
+    position: fixed;
+    z-index: 30;
+    width: 25px;
+    height: 25px;
+    margin: 10px 0 0 10px;
+    border: 1px solid var(--ink);
+    box-shadow: 0 0 0 1px var(--canvas);
+    pointer-events: none;
   }
   .hint {
     position: absolute;

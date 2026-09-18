@@ -6,11 +6,16 @@
 import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
+  DEFAULT_FILL_COLOR,
   DEFAULT_BRUSH_SIZE_LOGICAL,
   MAX_BRUSH_SIZE_LOGICAL,
   MAX_FRAMES,
   MAX_LAYERS,
+  CANVAS_LOGICAL_HEIGHT,
+  CANVAS_LOGICAL_WIDTH,
   MIN_BRUSH_SIZE_LOGICAL,
+  ONION_HISTORY_LENGTH,
+  ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
   addFrame,
@@ -25,6 +30,7 @@ import {
   removeLastStroke,
   removeLayer,
   replaceColumn,
+  replaceStrokes,
   setFrameRate,
   setLayerHidden,
   type ResolvedColumn,
@@ -35,10 +41,22 @@ import {
   activeLayerAfterMove,
   activeLayerAfterRemove,
   clampPlayerFps,
+  onionHistoryLayers,
+  onionLayers,
   onionSkinVisible,
+  type OnionLayer,
   type PickSource,
 } from './frame-selection';
-import { nudgeBrushSize, resolveToolSelection, toolAfterColorChange, type UxProfile } from './ux-profile';
+import { addPaletteColor, loadPalette, savePalette } from './color-palette';
+import { IDENTITY_VIEW, zoomAt, type Viewport2D } from './viewport';
+import { eraseStrokes } from '../tools/mega-eraser';
+import {
+  nudgeBrushSize,
+  resolveToolSelection,
+  toolAfterColorChange,
+  type SelectableTool,
+  type UxProfile,
+} from './ux-profile';
 import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
@@ -52,7 +70,7 @@ import {
   type Features,
 } from './presets';
 
-export type Tool = 'pencil' | 'eraser' | 'pipette';
+export type Tool = SelectableTool;
 
 /**
  * How many undone strokes are kept for redo. Each entry holds a stroke that
@@ -76,8 +94,25 @@ export class EditorState {
   tonioSmooth = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.smooth);
   tonioMinDistance = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance);
   brushColor = $state(DEFAULT_BRUSH_COLOR);
+  /** Second color: the feather fills with it, the pipette takes it on right-click. */
+  fillColor = $state(DEFAULT_FILL_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
+  /** Last frames the user has been on — Tonio's onion is built from these. */
+  visitedFrames = $state<number[]>([0]);
+  /** Saved color grid (Tonio preset); persisted separately from the UI config. */
+  palette = $state<string[]>(loadPalette());
+  /** Canvas zoom and pan; view state only, never part of the document. */
+  view = $state<Viewport2D>({ ...IDENTITY_VIEW });
+  /** Canvas size in CSS px, kept current by CanvasView — zoom clamps against it. */
+  viewSize = $state({ width: CANVAS_LOGICAL_WIDTH, height: CANVAS_LOGICAL_HEIGHT });
+  /**
+   * Cell contents captured before a mega-eraser cut, newest last. `after` is
+   * the stroke count the cut left behind, so a stroke drawn on top of the cut
+   * is undone first and the snapshot only comes back when the cell is in the
+   * state the cut produced.
+   */
+  erases = $state<{ cell: Frame; strokes: Stroke[]; after: number }[]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
   undone = $state<{ cell: Frame; stroke: Stroke }[]>([]);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
@@ -160,7 +195,10 @@ export class EditorState {
     this.ensureActiveLayerVisible();
     this.drawingProfile = presetDrawingProfile(id);
     this.paletteExpanded = this.ux.quickPalette === null;
-    if (!this.touched) {
+    if (this.touched) {
+      // A narrower profile range must not leave the document out of bounds.
+      setFrameRate(this.doc, clampPlayerFps(this.doc.frame_rate, this.ux.fpsRange));
+    } else {
       setFrameRate(this.doc, this.ux.defaultFps);
     }
     this.persistUiConfig();
@@ -176,6 +214,19 @@ export class EditorState {
     if (resolved) {
       this.tool = resolved;
     }
+  }
+
+  /** Swaps outline and fill (reference: the `X` button between the two swatches). */
+  swapColors(): void {
+    const outline = this.brushColor;
+    this.brushColor = this.fillColor;
+    this.fillColor = outline;
+  }
+
+  /** Keeps the current brush color in the saved grid (reference: «добавить в палитру»). */
+  addCurrentColorToPalette(): void {
+    this.palette = addPaletteColor(this.palette, this.brushColor);
+    savePalette(this.palette);
   }
 
   /** Color choice from the palette/picker; under Multator white arms the eraser, anything else the pencil. */
@@ -289,13 +340,43 @@ export class EditorState {
     return onionSkinVisible(this.onionSkin, this.playing);
   }
 
+  /** Onion layers for the canvas: fading neighbors, or Tonio's visited frames. */
+  get onionSkinLayers(): OnionLayer[] {
+    return this.ux.onionMode === 'history'
+      ? onionHistoryLayers(this.visitedFrames, this.activeFrame, frameCount(this.doc))
+      : onionLayers(this.activeFrame, frameCount(this.doc), ONION_SKIN_ALPHAS, this.ux.onionSides);
+  }
+
   toggleOnionSkin(): void {
     this.onionSkin = !this.onionSkin;
+  }
+
+  /** Zoom around the canvas center — the toolbar has no pointer to zoom at. */
+  zoomBy(delta: number): void {
+    const { width, height } = this.viewSize;
+    this.view = zoomAt(this.view, this.view.zoom + delta, width / 2, height / 2, width, height);
+  }
+
+  /**
+   * Opens an imported document: like a restored draft, but it *is* an edit —
+   * the local draft must keep it, so the document counts as touched.
+   */
+  importDoc(doc: ToonDocument): void {
+    this.replaceDoc(doc);
+    this.visitedFrames = [0];
+    this.erases = [];
+    this.touched = true;
+  }
+
+  /** Back to 100% with the document centered in the canvas. */
+  resetView(): void {
+    this.view = { ...IDENTITY_VIEW };
   }
 
   /** Replaces the document (restored draft); not a user edit, so `touched` stays as is. */
   replaceDoc(doc: ToonDocument): void {
     this.doc = doc;
+    this.resetView();
     this.activeFrame = 0;
     this.activeLayer = 0;
     this.playing = false;
@@ -308,6 +389,7 @@ export class EditorState {
       return;
     }
     this.activeFrame = index;
+    this.visitedFrames = [...this.visitedFrames, index].slice(-ONION_HISTORY_LENGTH);
   }
 
   addFrameAfterActive(): void {
@@ -337,7 +419,7 @@ export class EditorState {
   }
 
   setFps(value: number): void {
-    setFrameRate(this.doc, clampPlayerFps(value));
+    setFrameRate(this.doc, clampPlayerFps(value, this.ux.fpsRange));
     this.touched = true;
   }
 
@@ -367,8 +449,17 @@ export class EditorState {
     return this.doc.layers[this.activeLayer]?.frames[this.activeFrame];
   }
 
+  /** The mega-eraser cut undo would put back, if the cell is still as it left it. */
+  get restorableErase(): { cell: Frame; strokes: Stroke[]; after: number } | undefined {
+    const top = this.erases[this.erases.length - 1];
+    return top !== undefined && top.cell === this.activeCell && top.after === this.activeCell?.strokes.length
+      ? top
+      : undefined;
+  }
+
   get canUndo(): boolean {
-    return !this.playing && (this.activeCell?.strokes.length ?? 0) > 0;
+    return !this.playing
+      && ((this.activeCell?.strokes.length ?? 0) > 0 || this.restorableErase !== undefined);
   }
 
   /**
@@ -385,6 +476,16 @@ export class EditorState {
   /** Undo: drops the last stroke of the active layer's cell and keeps it for redo. */
   undo(): void {
     if (!this.canUndo) {
+      return;
+    }
+    // ponytail: a mega-eraser cut is undoable but not redoable — restoring it
+    // retires the redo stack. Give it a redo entry if anyone asks for one.
+    const erase = this.restorableErase;
+    if (erase) {
+      this.erases.pop();
+      replaceStrokes(this.doc, this.activeLayer, this.activeFrame, erase.strokes);
+      this.undone = [];
+      this.touched = true;
       return;
     }
     const cell = this.activeCell!;
@@ -420,6 +521,33 @@ export class EditorState {
    */
   commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
     addStroke(this.doc, layerIndex, this.activeFrame, stroke);
+    this.undone = [];
+    this.touched = true;
+  }
+
+  /**
+   * Mega eraser: cuts the active cell's strokes with the gesture capsule.
+   * Records the previous contents for undo and does nothing when the gesture
+   * missed everything.
+   */
+  applyMegaEraser(gesture: readonly number[], radius: number): void {
+    const cell = this.activeCell;
+    if (this.playing || !cell || this.activeLayerHidden) {
+      return;
+    }
+    const before = cell.strokes;
+    const after = eraseStrokes(before, gesture, radius);
+    if (after.length === before.length
+      && after.every((piece, i) => piece.points.length === before[i].points.length)) {
+      return;
+    }
+    this.erases.push({
+      cell,
+      strokes: before.map((stroke) => ({ points: stroke.points.slice(), tool_id: stroke.tool_id })),
+      after: after.length,
+    });
+    replaceStrokes(this.doc, this.activeLayer, this.activeFrame, after);
+    this.erases[this.erases.length - 1].cell = this.activeCell!;
     this.undone = [];
     this.touched = true;
   }

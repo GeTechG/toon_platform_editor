@@ -1,0 +1,54 @@
+{
+  "schema_version": 4,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [
+    {
+      "kind": "feather",
+      "dialect": "toonio",
+      "width": 40,
+      "color": "#000000",
+      "fill": "#ff0000"
+    },
+    {
+      "kind": "pixel",
+      "dialect": "toonio",
+      "width": 64,
+      "color": "#0026ff"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                400,
+                200,
+                800,
+                0
+              ],
+              "tool_id": 0
+            },
+            {
+              "points": [
+                64,
+                64,
+                128,
+                64,
+                128,
+                128
+              ],
+              "tool_id": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

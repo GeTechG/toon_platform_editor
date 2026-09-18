@@ -3,7 +3,7 @@
  * runes state so they can be tested without the Svelte compiler.
  */
 
-import { PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
+import { ONION_HISTORY_MAX_ALPHA, PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
 
 /**
  * Active frame after removing removedIndex. 'next' (default): the right
@@ -60,18 +60,43 @@ export function onionLayers(
   return layers;
 }
 
+/**
+ * Onion-skin layers from the visited-frame history (Tonio): every frame the
+ * user has been on lately except the active one, oldest first. The ladder is
+ * `0.15 / history.length * (i + 1)` over the *unfiltered* history, exactly as
+ * the reference composites it, so the freshest visit tops out at 0.15.
+ */
+export function onionHistoryLayers(
+  history: readonly number[],
+  active: number,
+  frameCount: number,
+): OnionLayer[] {
+  const layers: OnionLayer[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const index = history[i];
+    if (index === active || index < 0 || index >= frameCount) {
+      continue;
+    }
+    layers.push({ index, alpha: (ONION_HISTORY_MAX_ALPHA / history.length) * (i + 1) });
+  }
+  return layers;
+}
+
 /** Onion-skin renders only when enabled and not during playback. */
 export function onionSkinVisible(enabled: boolean, playing: boolean): boolean {
   return enabled && !playing;
 }
 
-/** Clamps fps to the player range (5–24). */
-export function clampPlayerFps(value: number): number {
+/** Clamps fps to the profile's player range (5–24 by default, 1–30 under Tonio). */
+export function clampPlayerFps(
+  value: number,
+  [min, max]: readonly [number, number] = [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
+): number {
   const fps = Math.round(value);
   if (!Number.isFinite(fps)) {
-    return PLAYER_FPS_MIN;
+    return min;
   }
-  return Math.min(PLAYER_FPS_MAX, Math.max(PLAYER_FPS_MIN, fps));
+  return Math.min(max, Math.max(min, fps));
 }
 
 /**

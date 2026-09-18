@@ -68,13 +68,42 @@ export interface ContourEraserToolDescriptor {
   readonly dialect: 'multator';
 }
 
-/** Tools whose points are a line of a given width (what the pointer session draws with). */
-export type LineToolDescriptor = PencilToolDescriptor | EraserToolDescriptor;
+/**
+ * Tonio's feather: the same midpoint curve as the pencil, but the path is
+ * filled with `fill` before being stroked with `color` (tools.js Feather).
+ */
+export interface FeatherToolDescriptor {
+  readonly kind: 'feather';
+  readonly dialect: 'toonio';
+  readonly width: number;
+  readonly color: string;
+  readonly fill: string;
+}
+
+/**
+ * Tonio's pixel tool: the points are grid cells of `width` document units,
+ * filled as squares with no smoothing (tools.js Pixel).
+ */
+export interface PixelToolDescriptor {
+  readonly kind: 'pixel';
+  readonly dialect: 'toonio';
+  readonly width: number;
+  readonly color: string;
+}
+
+/** Tools whose points a pointer session collects (line-like, one width). */
+export type LineToolDescriptor =
+  | PencilToolDescriptor
+  | EraserToolDescriptor
+  | FeatherToolDescriptor
+  | PixelToolDescriptor;
 
 /** Immutable drawing attributes shared by v2 strokes through tool_id. */
 export type ToolDescriptor =
   | PencilToolDescriptor
   | EraserToolDescriptor
+  | FeatherToolDescriptor
+  | PixelToolDescriptor
   | ContourToolDescriptor
   | ContourEraserToolDescriptor;
 
@@ -114,8 +143,13 @@ export interface ToonDocumentV3 {
   layers: LayerV3[];
 }
 
+/** v4 adds the feather and pixel tools; the document shape is v3's. */
+export interface ToonDocumentV4 extends Omit<ToonDocumentV3, 'schema_version'> {
+  schema_version: 4;
+}
+
 /** Current in-memory/editor model aliases. */
 export type Stroke = StrokeV2;
 export type Frame = FrameV2;
 export type Layer = LayerV3;
-export type ToonDocument = ToonDocumentV3;
+export type ToonDocument = ToonDocumentV4;

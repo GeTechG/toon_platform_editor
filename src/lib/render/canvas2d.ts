@@ -7,7 +7,15 @@ import { BACKGROUND_COLOR } from '../format/constants';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitSmoothedPath, type PathSink } from './smoothing';
-import { emitPathForTool, isContourTool, isEraserTool, resolveTool } from './dispatch';
+import { interpolatePixelLine } from '../tools/pixel';
+import {
+  emitPathForTool,
+  isContourTool,
+  isEraserTool,
+  isFilledLineTool,
+  isPixelTool,
+  resolveTool,
+} from './dispatch';
 
 /**
  * Subset of CanvasRenderingContext2D used by the renderer.
@@ -189,6 +197,29 @@ function drawResolvedStroke(
   tool: ToolDescriptor,
   color: string,
 ): void {
+  if (isPixelTool(tool)) {
+    // Tonio's pixel tool: every stored point is a grid cell drawn as a square
+    // of the tool's width, with the cells a fast drag skipped filled in by
+    // Bresenham between consecutive points — the capture side stores only
+    // what the pointer actually visited.
+    //
+    // ponytail: one fillRect per cell, exactly like the reference. A long
+    // stroke at a small cell size is thousands of calls — batch the cells into
+    // one path and a single fill() if a profile ever blames this.
+    target.fillStyle = color;
+    for (let i = 0; i < points.length; i += 2) {
+      if (i >= 2) {
+        const between = interpolatePixelLine(
+          points[i - 2], points[i - 1], points[i], points[i + 1], tool.width,
+        );
+        for (let j = 0; j < between.length; j += 2) {
+          target.fillRect(between[j], between[j + 1], tool.width, tool.width);
+        }
+      }
+      target.fillRect(points[i], points[i + 1], tool.width, tool.width);
+    }
+    return;
+  }
   target.beginPath();
   if (isContourTool(tool)) {
     // Oldschool contour: the thickness is in the geometry — fill it.
@@ -203,11 +234,19 @@ function drawResolvedStroke(
     target.fill();
     return;
   }
+  // The feather fills its path with the second color before stroking it.
+  const filled = isFilledLineTool(tool);
+  if (filled) {
+    target.fillStyle = tool.fill;
+  }
   target.lineWidth = tool.width;
   target.strokeStyle = color;
   target.lineCap = 'round';
   target.lineJoin = 'round';
   emitPathForTool(points, tool, target);
+  if (filled) {
+    target.fill();
+  }
   target.stroke();
 }
 
@@ -221,7 +260,12 @@ const ERASE_PAINT = '#000000';
 
 /** Paint color of a non-erasing tool. */
 function toolColor(tool: ToolDescriptor): string {
-  return tool.kind === 'pencil' || tool.kind === 'contour' ? tool.color : ERASE_PAINT;
+  return tool.kind === 'pencil'
+    || tool.kind === 'contour'
+    || tool.kind === 'feather'
+    || tool.kind === 'pixel'
+    ? tool.color
+    : ERASE_PAINT;
 }
 
 function clearToBackground(target: Canvas2DLike): void {
@@ -230,10 +274,10 @@ function clearToBackground(target: Canvas2DLike): void {
   target.fillRect(0, 0, target.canvas.width, target.canvas.height);
 }
 
-/** Maps document units to device pixels: k = scale × dpr. */
+/** Maps document units to device pixels: k = scale × dpr, offset by the pan. */
 function applyDocTransform(target: Canvas2DLike, viewport: Viewport): void {
   const k = viewport.scale * viewport.dpr;
-  target.setTransform(k, 0, 0, k, 0, 0);
+  target.setTransform(k, 0, 0, k, (viewport.panX ?? 0) * viewport.dpr, (viewport.panY ?? 0) * viewport.dpr);
 }
 
 function drawStrokePath(

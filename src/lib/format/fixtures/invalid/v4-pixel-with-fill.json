@@ -1,0 +1,35 @@
+{
+  "schema_version": 4,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [
+    {
+      "kind": "pixel",
+      "dialect": "toonio",
+      "width": 64,
+      "color": "#0026ff",
+      "fill": "#ff0000"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                8,
+                8
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

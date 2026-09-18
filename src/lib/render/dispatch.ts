@@ -1,6 +1,8 @@
 import type {
   ContourEraserToolDescriptor,
   ContourToolDescriptor,
+  FeatherToolDescriptor,
+  PixelToolDescriptor,
   StrokeV2,
   ToolDescriptor,
 } from '../format/types';
@@ -9,6 +11,16 @@ import { emitMultatorClosedPath, emitMultatorPath, emitTonioPath, type PathSink 
 /** Whether a tool erases (alpha punch) rather than paints. */
 export function isEraserTool(tool: ToolDescriptor): boolean {
   return tool.kind === 'eraser' || tool.kind === 'contour-eraser';
+}
+
+/** Whether a tool paints its path's interior as well as its outline (Tonio feather). */
+export function isFilledLineTool(tool: ToolDescriptor): tool is FeatherToolDescriptor {
+  return tool.kind === 'feather';
+}
+
+/** Whether a tool's points are grid cells filled as squares (Tonio pixel). */
+export function isPixelTool(tool: ToolDescriptor): tool is PixelToolDescriptor {
+  return tool.kind === 'pixel';
 }
 
 /** Whether a tool's points are a closed, filled contour (oldschool pen) rather than a line. */

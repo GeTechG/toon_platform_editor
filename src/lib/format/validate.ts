@@ -9,13 +9,14 @@ import Ajv2020 from 'ajv/dist/2020';
 import schemaV1 from './schema/toon-v1.schema.json';
 import schemaV2 from './schema/toon-v2.schema.json';
 import schemaV3 from './schema/toon-v3.schema.json';
+import schemaV4 from './schema/toon-v4.schema.json';
 import { MAX_SUPPORTED_SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
-import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3 } from './types';
+import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3, ToonDocumentV4 } from './types';
 import { upgradeDocument } from './upgrade';
 
 // The migrations live in ./upgrade — ajv-free, so the share page's player can
 // lift an old document without pulling the validator into the viewer bundle.
-export { migrateLegacyEraser, migrateV1ToV2, migrateV2ToV3, upgradeDocument } from './upgrade';
+export { migrateLegacyEraser, migrateV1ToV2, migrateV2ToV3, migrateV3ToV4, upgradeDocument } from './upgrade';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -35,7 +36,8 @@ const ajv = new Ajv2020({ allErrors: true });
 const validateSchemaV1 = ajv.compile(schemaV1);
 const validateSchemaV2 = ajv.compile(schemaV2);
 const validateSchemaV3 = ajv.compile(schemaV3);
-const SCHEMAS = [validateSchemaV1, validateSchemaV2, validateSchemaV3];
+const validateSchemaV4 = ajv.compile(schemaV4);
+const SCHEMAS = [validateSchemaV1, validateSchemaV2, validateSchemaV3, validateSchemaV4];
 
 /** Document load error; carries the list of validation issues. */
 export class FormatError extends Error {
@@ -81,10 +83,10 @@ export function validateDocument(data: unknown): ValidationResult {
   return { ok: issues.length === 0, issues };
 }
 
-type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3;
+type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3 | ToonDocumentV4;
 
-/** Validates and types already-parsed JSON, migrating v1 → v2 → v3; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocumentV3 {
+/** Validates and types already-parsed JSON, migrating v1 → v2 → v3 → v4; throws FormatError. */
+export function loadDocument(data: unknown): ToonDocumentV4 {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);
@@ -103,14 +105,15 @@ function semanticIssues(doc: AnyDocument): ValidationIssue[] {
 
   // v3 keeps cells per layer; v1/v2 are a single implicit layer at /frames.
   const cells: { path: string; frames: { strokes: { points: number[]; tool_id?: number }[] }[] }[] =
-    doc.schema_version === 3
-      ? doc.layers.map((layer, l) => ({ path: `/layers/${l}/frames`, frames: layer.frames }))
-      : [{ path: '/frames', frames: doc.frames }];
+    doc.schema_version >= 3
+      ? (doc as ToonDocumentV3).layers.map((layer, l) => ({ path: `/layers/${l}/frames`, frames: layer.frames }))
+      : [{ path: '/frames', frames: (doc as ToonDocumentV2).frames }];
 
   // The schema cannot express "every layer has the same number of frames".
-  if (doc.schema_version === 3) {
-    const expected = doc.layers[0].frames.length;
-    doc.layers.forEach((layer, l) => {
+  if (doc.schema_version >= 3) {
+    const layers = (doc as ToonDocumentV3).layers;
+    const expected = layers[0].frames.length;
+    layers.forEach((layer, l) => {
       if (layer.frames.length !== expected) {
         issues.push({
           category: 'semantic',

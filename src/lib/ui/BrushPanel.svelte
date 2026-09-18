@@ -6,18 +6,44 @@
 
   let { editor }: { editor: EditorState } = $props();
 
-  const TOOLS: { id: Tool; icon: IconName; title: string; label: string }[] = [
-    { id: 'pencil', icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш' },
-    { id: 'eraser', icon: 'eraser', title: 'Ластик (E)', label: 'Ластик' },
-    { id: 'pipette', icon: 'pipette', title: 'Пипетка (P)', label: 'Пипетка' },
-  ];
+  const TOOLS: Record<Tool, { icon: IconName; title: string; label: string }> = {
+    pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш' },
+    eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик' },
+    feather: { icon: 'feather', title: 'Перо — обводка и заливка', label: 'Перо' },
+    pixel: { icon: 'pixel', title: 'Пиксель — рисует по сетке', label: 'Пиксель' },
+    'mega-eraser': {
+      icon: 'mega-eraser',
+      title: 'Мега-ластик — режет линии целиком',
+      label: 'Мега-ластик',
+    },
+    pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка' },
+  };
 
-  // Reference (ToolPanel.hx): the pipette only exists once the palette is
-  // enabled; the collapsed Multator bar offers just black and red.
+  // The preset owns the toolset; the pipette additionally only exists once the
+  // palette is enabled (reference ToolPanel.hx).
   const tools = $derived(
-    TOOLS.filter((t) => t.id !== 'pipette' || !editor.ux.pipetteNeedsPalette || editor.paletteExpanded),
+    editor.ux.tools
+      .filter((id) => id !== 'pipette' || !editor.ux.pipetteNeedsPalette || editor.paletteExpanded)
+      .map((id) => ({ id, ...TOOLS[id] })),
   );
   const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
+
+  /**
+   * Clicking the already-active pipette opens the browser's own EyeDropper,
+   * which picks from anywhere on screen (reference Picker.Selected). Without
+   * that API the button just stays the canvas pipette.
+   */
+  function selectTool(id: Tool): void {
+    const eyeDropper = (window as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
+    if (id === 'pipette' && editor.tool === 'pipette' && eyeDropper) {
+      new eyeDropper().open().then(
+        (result) => editor.setBrushColor(result.sRGBHex),
+        () => {},
+      );
+      return;
+    }
+    editor.selectTool(id);
+  }
 </script>
 
 <div class="brush">
@@ -31,7 +57,7 @@
           class:active={editor.tool === t.id}
           class:draw={t.id === 'pencil'}
           aria-pressed={editor.tool === t.id}
-          onclick={() => editor.selectTool(t.id)}
+          onclick={() => selectTool(t.id)}
           title={t.title}
           aria-label={t.label}
         >
@@ -104,6 +130,42 @@
         oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
       />
     </label>
+    {#if editor.ux.tools.includes('feather')}
+      <label class="color fill" title="Цвет заливки пера (ПКМ пипеткой)" style:--swatch={editor.fillColor}>
+        <input
+          type="color"
+          value={editor.fillColor}
+          oninput={(e) => (editor.fillColor = e.currentTarget.value.toLowerCase())}
+        />
+      </label>
+      <button
+        class="key icon"
+        onclick={() => editor.swapColors()}
+        title="Поменять контур и заливку местами (X)"
+        aria-label="Поменять контур и заливку местами"
+      >⇄</button>
+    {/if}
+    {#if editor.ux.colorGrid}
+      <button
+        class="key icon"
+        onclick={() => editor.addCurrentColorToPalette()}
+        title="Добавить текущий цвет в палитру"
+        aria-label="Добавить текущий цвет в палитру"
+      >+</button>
+      <div class="grid" role="group" aria-label="Палитра">
+        {#each editor.palette as color (color)}
+          <button
+            class="cell"
+            class:active={editor.brushColor === color && editor.tool !== 'eraser'}
+            aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
+            style:--swatch={color}
+            onclick={() => editor.setBrushColor(color)}
+            title="Цвет {color}"
+            aria-label="Цвет {color}"
+          ></button>
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -213,6 +275,35 @@
     box-shadow: 0 0 0 2px var(--electric);
   }
   .swatch:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+  /* Saved color grid (Tonio): a scrolling strip of 24px cells — the WCAG 2.2
+     target floor — so thirty swatches never push the toolbar onto a new row. */
+  .grid {
+    display: flex;
+    gap: 3px;
+    max-width: 16rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-bottom: 1px;
+  }
+  .cell {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--hairline);
+    cursor: pointer;
+  }
+  .cell.active {
+    border-color: var(--canvas);
+    box-shadow: 0 0 0 2px var(--electric);
+  }
+  .cell:focus-visible {
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }

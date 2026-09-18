@@ -5,13 +5,41 @@
  * branching and the runes state stays a thin caller.
  *
  * `multator` reproduces the reference multator.ru editor (Main.hx /
- * DrawField.hx / ToolPanel.hx); `toonop` is the editor's own behavior.
+ * DrawField.hx / ToolPanel.hx), `toonio` the reference toonio.ru editor
+ * (toonio.bundle.js / tools.js / editor.html); `toonop` is the editor's own
+ * behavior.
  */
 
-import { DEFAULT_FPS, MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import {
+  DEFAULT_FPS,
+  MAX_BRUSH_SIZE_LOGICAL,
+  MIN_BRUSH_SIZE_LOGICAL,
+  PLAYER_FPS_MAX,
+  PLAYER_FPS_MIN,
+} from '../format/constants';
 
-export type UxProfileId = 'toonop' | 'multator';
-export type SelectableTool = 'pencil' | 'eraser' | 'pipette';
+export type UxProfileId = 'toonop' | 'multator' | 'toonio';
+export type SelectableTool =
+  | 'pencil'
+  | 'eraser'
+  | 'pipette'
+  | 'feather'
+  | 'pixel'
+  | 'mega-eraser';
+
+const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];
+/** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, PIXEL, plus the picker. */
+const TONIO_TOOLS: readonly SelectableTool[] = [
+  'pencil',
+  'eraser',
+  'feather',
+  'pixel',
+  'mega-eraser',
+  'pipette',
+];
+
+/** Tonio's brush ceiling (editor.html slider max). */
+const TONIO_MAX_BRUSH_SIZE_LOGICAL = 500;
 
 export interface UxProfile {
   /** Two-swatch quick palette shown while the full picker is collapsed; null = always the full picker. */
@@ -20,8 +48,20 @@ export interface UxProfile {
   readonly whiteIsEraser: boolean;
   /** The pipette is only offered while the full palette is expanded. */
   readonly pipetteNeedsPalette: boolean;
-  /** Which neighbors the onion skin shows. */
+  /** Which neighbors the onion skin shows (only read in the 'neighbors' mode). */
   readonly onionSides: 'both' | 'previous';
+  /** Onion model: fading neighbors, or Tonio's last visited frames. */
+  readonly onionMode: 'neighbors' | 'history';
+  /** A persistent grid of saved colors next to the picker (Tonio). */
+  readonly colorGrid: boolean;
+  /** Allowed player fps range. */
+  readonly fpsRange: readonly [number, number];
+  /** The pipette follows the pointer with a live color swatch (Tonio). */
+  readonly livePipettePreview: boolean;
+  /** Cursor draws a crosshair for very thin and very thick brushes (Tonio). */
+  readonly crossCursor: boolean;
+  /** Tools the preset offers, in toolbar order. */
+  readonly tools: readonly SelectableTool[];
   /** Opacity the active frame (with its live stroke) is composited at. */
   readonly activeFrameAlpha: number;
   /** Which neighbor becomes active after deleting a frame. */
@@ -48,6 +88,32 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     defaultFps: DEFAULT_FPS,
     brushSizeMax: MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
+    onionMode: 'neighbors',
+    colorGrid: false,
+    fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
+    livePipettePreview: false,
+    crossCursor: false,
+    tools: BASE_TOOLS,
+  },
+  // toonio.ru: onion over the last visited frames, saved color grid, fps 1–30,
+  // a pipette that previews while it moves, brush up to 500.
+  toonio: {
+    quickPalette: null,
+    whiteIsEraser: false,
+    pipetteNeedsPalette: false,
+    onionSides: 'both',
+    activeFrameAlpha: 1,
+    afterRemove: 'next',
+    playFromStart: false,
+    defaultFps: DEFAULT_FPS,
+    brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
+    adaptiveBrushStep: false,
+    onionMode: 'history',
+    colorGrid: true,
+    fpsRange: [1, 30],
+    livePipettePreview: true,
+    crossCursor: true,
+    tools: TONIO_TOOLS,
   },
   multator: {
     // ToolPanel.hx: pc1 = 0x000000, pc2 = 0xFF0000; the full picker is behind M.
@@ -67,6 +133,12 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps.
     brushSizeMax: 300,
     adaptiveBrushStep: true,
+    onionMode: 'neighbors',
+    colorGrid: false,
+    fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
+    livePipettePreview: false,
+    crossCursor: false,
+    tools: BASE_TOOLS,
   },
 };
 
@@ -91,6 +163,9 @@ export function resolveToolSelection(
   ux: UxProfile,
   paletteExpanded = true,
 ): SelectableTool | null {
+  if (!ux.tools.includes(tool)) {
+    return null;
+  }
   if (tool === 'pipette' && ux.pipetteNeedsPalette && !paletteExpanded) {
     return null;
   }

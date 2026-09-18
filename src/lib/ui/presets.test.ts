@@ -37,7 +37,7 @@ test('compatibility presets select their drawing profile through existing preset
 test('each preset owns a UX profile: Multator reproduces the reference, others keep toonop', () => {
   expect(presetUx('multator')).toBe(UX_PROFILES.multator);
   expect(presetUx('toonop')).toBe(UX_PROFILES.toonop);
-  expect(presetUx('toonio')).toBe(UX_PROFILES.toonop);
+  expect(presetUx('toonio')).toBe(UX_PROFILES.toonio);
 });
 
 test('UX profile lookup falls back to toonop for an unknown preset', () => {
@@ -116,6 +116,8 @@ test('parseUiConfig normalizes missing/unknown keys against the preset base', ()
 test('the layers panel is on in Toonop and Toonio, off in Multator', () => {
   expect(presetFeatures('toonop').layers).toBe(true);
   expect(presetFeatures('toonio').layers).toBe(true);
+  // The reference has an onion skin (Tab) — the preset must not hide it.
+  expect(presetFeatures('toonio').onionSkin).toBe(true);
   expect(presetFeatures('multator').layers).toBe(false);
   expect(FEATURE_ORDER).toContain('layers');
 });

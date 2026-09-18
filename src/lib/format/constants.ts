@@ -4,7 +4,7 @@
  */
 
 /** Version the editor writes; older ones are migrated on load. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 /** Highest schema version the loader accepts. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 export const CANVAS_LOGICAL_WIDTH = 600;
@@ -26,6 +26,8 @@ export const PLAYER_FPS_MAX = 24;
 export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
 export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
 export const DEFAULT_BRUSH_COLOR = '#000000';
+/** Second color of the Tonio palette (`fill`, right mouse button). */
+export const DEFAULT_FILL_COLOR = '#ff0000';
 /** Bounds for the +/- brush-size nudge (logical canvas px; 300 = reference cap). */
 export const MIN_BRUSH_SIZE_LOGICAL = 1;
 export const MAX_BRUSH_SIZE_LOGICAL = 300;
@@ -39,6 +41,11 @@ export const BACKGROUND_COLOR = '#ffffff';
  * to both previous and next frames — the classic frame-by-frame light table.
  */
 export const ONION_SKIN_ALPHAS = [0.3, 0.1] as const;
+
+/** Tonio's onion: ladder over the last visited frames, topping out here. */
+export const ONION_HISTORY_MAX_ALPHA = 0.15;
+/** How many visited frames Tonio keeps in that history. */
+export const ONION_HISTORY_LENGTH = 3;
 
 /** Local-draft autosave debounce (ms). */
 export const DRAFT_SAVE_DEBOUNCE_MS = 500;

@@ -15,10 +15,12 @@ import {
   MAX_STROKE_WIDTH,
   MAX_STROKES_PER_FRAME,
   MAX_TOTAL_POINTS,
+  SCHEMA_VERSION,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from '../format/constants';
 import type {
+  Stroke,
   Frame,
   FrameV1,
   FrameV2,
@@ -58,6 +60,13 @@ function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
       return right.kind === 'pencil' && left.width === right.width && left.color === right.color;
     case 'eraser':
       return right.kind === 'eraser' && left.width === right.width;
+    case 'feather':
+      return right.kind === 'feather'
+        && left.width === right.width
+        && left.color === right.color
+        && left.fill === right.fill;
+    case 'pixel':
+      return right.kind === 'pixel' && left.width === right.width && left.color === right.color;
     case 'contour':
       return right.kind === 'contour' && left.color === right.color;
     case 'contour-eraser':
@@ -83,7 +92,7 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
   }
   assertFrameRate(frameRate);
   return {
-    schema_version: 3,
+    schema_version: SCHEMA_VERSION,
     width,
     height,
     frame_rate: frameRate,
@@ -188,6 +197,38 @@ export function setLayerHidden(doc: ToonDocument, index: number, hidden: boolean
  * source document may have had a different number of layers). Limits are
  * checked before any mutation, so an oversized paste changes nothing.
  */
+/**
+ * Replaces one cell's strokes wholesale — what the mega eraser does after it
+ * cuts. The strokes must already reference tools of this document; nothing is
+ * interned here, because cutting a line never invents a new tool.
+ */
+export function replaceStrokes(
+  doc: ToonDocument,
+  layerIndex: number,
+  frameIndex: number,
+  strokes: readonly Stroke[],
+): void {
+  assertLayerIndex(doc, layerIndex);
+  assertFrameIndex(doc, frameIndex);
+  if (strokes.length > MAX_STROKES_PER_FRAME) {
+    throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+  }
+  for (const stroke of strokes) {
+    if (!doc.tools[stroke.tool_id]) {
+      throw new RangeError(`tool_id ${stroke.tool_id} does not reference an existing tool`);
+    }
+    assertStrokePoints(stroke.points);
+  }
+  const outgoing = pointCount(doc.layers[layerIndex].frames[frameIndex].strokes);
+  const incoming = pointCount(strokes as Stroke[]);
+  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
+    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+  }
+  doc.layers[layerIndex].frames[frameIndex] = {
+    strokes: strokes.map((stroke) => ({ points: stroke.points.slice(), tool_id: stroke.tool_id })),
+  };
+}
+
 export function replaceColumn(doc: ToonDocument, index: number, column: ResolvedColumn): void {
   assertFrameIndex(doc, index);
   const width = Math.min(doc.layers.length, column.length);
@@ -343,6 +384,16 @@ export function copyTool(tool: ToolDescriptor): ToolDescriptor {
       return { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color };
     case 'eraser':
       return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+    case 'feather':
+      return {
+        kind: 'feather',
+        dialect: 'toonio',
+        width: tool.width,
+        color: tool.color,
+        fill: tool.fill,
+      };
+    case 'pixel':
+      return { kind: 'pixel', dialect: 'toonio', width: tool.width, color: tool.color };
     case 'contour':
       return { kind: 'contour', dialect: 'multator', color: tool.color };
     case 'contour-eraser':
