@@ -234,7 +234,7 @@
             editor.toggleLayerHidden(layerIndex);
           }}
         >
-          <Icon name={editor.doc.layers[layerIndex].hidden ? 'x' : 'layers'} size={16} />
+          <Icon name={editor.doc.layers[layerIndex].hidden ? 'eye-off' : 'eye'} size={16} />
         </button>
 
         <span class="thumb" class:hidden={editor.doc.layers[layerIndex].hidden}>

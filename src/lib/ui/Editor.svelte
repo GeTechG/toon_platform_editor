@@ -21,7 +21,7 @@
   // glance; the rest fall back to their label alone.
   const FEATURE_ICONS: Partial<Record<FeatureKey, IconName>> = {
     addFrame: 'plus',
-    deleteFrame: 'x',
+    deleteFrame: 'trash',
     play: 'play',
     export: 'download',
     tools: 'pencil',
@@ -220,7 +220,7 @@
             onclick={() => editor.removeActiveFrame()}
             title="Delete current frame"
           >
-            <Icon name="x" />
+            <Icon name="trash" />
           </button>
         {/if}
         {#if editor.features.timeline}
