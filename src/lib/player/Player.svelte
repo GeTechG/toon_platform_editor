@@ -10,7 +10,7 @@
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
-  import { frameForTime } from '../audio/track';
+  import { frameForTime, trackShouldRestart } from '../audio/track';
 
   /**
    * Reduced motion means no autoplay: the visitor lands on the first frame
@@ -101,7 +101,6 @@
       return;
     }
     const element = new Audio(audioSrc);
-    element.loop = true;
     element.preload = 'auto';
     audio = element;
     return () => {
@@ -126,7 +125,11 @@
       },
     });
     const sound = audio;
+    let lastFrame = untrack(() => current);
     if (sound) {
+      // Tied, the animation owns the loop point, so the track must not wrap on
+      // its own; untied it loops freely underneath.
+      sound.loop = !audioSync;
       // Untied, the track just plays under the picture, from its own start.
       sound.currentTime = audioSync
         ? (untrack(() => current) % frameCount(view)) / view.frame_rate
@@ -141,8 +144,20 @@
     }
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);
-      if (audioSync && sound && !sound.paused) {
-        current = frameForTime(sound.currentTime, view.frame_rate) % frameCount(view);
+      if (audioSync && sound) {
+        if (!sound.paused) {
+          // Tied, the track is pinned to the first frame and comes back round
+          // with the animation instead of running on past it.
+          if (trackShouldRestart(sound.currentTime, frameCount(view), view.frame_rate)) {
+            sound.currentTime = 0;
+          }
+          current = frameForTime(sound.currentTime, view.frame_rate) % frameCount(view);
+        } else if (current < lastFrame) {
+          // A track shorter than the animation starts again with it.
+          sound.currentTime = 0;
+          void sound.play().catch(() => {});
+        }
+        lastFrame = current;
       }
       raf = requestAnimationFrame(tick);
     });

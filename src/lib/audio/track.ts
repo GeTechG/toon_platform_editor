@@ -26,6 +26,21 @@ export function timeForFrame(index: number, fps: number): number {
   return index / fps;
 }
 
+/** How long one pass of the animation lasts, in seconds. */
+export function loopSeconds(frames: number, fps: number): number {
+  return frames / fps;
+}
+
+/**
+ * Whether a tied track is due back at its start. Tied, the animation is the
+ * timeline and the track is pinned to its first frame, so the track restarts
+ * with the animation rather than running on past it — frame 0 always means
+ * second 0 of the track, however long the track is.
+ */
+export function trackShouldRestart(currentTime: number, frames: number, fps: number): boolean {
+  return currentTime >= loopSeconds(frames, fps);
+}
+
 /** The frame holding second `time`. */
 export function frameForTime(time: number, fps: number): number {
   return Math.floor(time * fps);

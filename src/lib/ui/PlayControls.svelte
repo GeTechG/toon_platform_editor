@@ -14,6 +14,8 @@
   // The frame being edited when playback started — where stop returns to,
   // whether the loop began there or (Multator) from the first frame.
   let resumeFrame = 0;
+  /** Previous frame on screen — a drop means the animation came back round. */
+  let lastFrame = 0;
 
   function tick(now: number): void {
     // Whatever goes wrong inside one frame, the next one still gets scheduled.
@@ -21,14 +23,23 @@
     // still said "stop", and only a page reload brought playback back.
     try {
       player?.tick(now);
-      // Tied to the track, the sound is the clock: the frame is read off the
-      // audio element's own time rather than counted alongside it, so the two
-      // cannot drift however long the loop runs. Untied, the frame counter is
-      // left alone and the track simply plays underneath.
-      if (editor.audio.sync && editor.audio.sounding) {
-        editor.playbackFrame =
-          frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frameCount(editor.doc);
+      // Tied, the track is pinned to the first frame: it restarts with the
+      // animation, and in between the frame is read off the track's own clock
+      // rather than counted alongside it, so the two cannot drift. Untied, the
+      // frame counter is left alone and the track simply plays underneath.
+      if (editor.audio.sync && editor.audio.hasTrack) {
+        const frames = frameCount(editor.doc);
+        if (editor.audio.sounding) {
+          editor.audio.restartIfLooped(frames, editor.doc.frame_rate);
+          editor.playbackFrame =
+            frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frames;
+        } else if (editor.playbackFrame < lastFrame) {
+          // The track ran out before the animation did — it starts again with
+          // it, and the stretch in between stays quiet.
+          editor.audio.playFrom(0, editor.doc.frame_rate);
+        }
       }
+      lastFrame = editor.playbackFrame;
     } catch (err) {
       console.warn('playback tick failed:', err);
     }
@@ -51,6 +62,7 @@
       onFrame: (frame) => (editor.playbackFrame = frame),
     });
     editor.playbackFrame = startFrame;
+    lastFrame = startFrame;
     editor.audio.playFrom(startFrame, editor.doc.frame_rate);
     editor.playing = true;
     rafId = requestAnimationFrame(tick);

@@ -5,8 +5,10 @@ import {
   checkAudioFile,
   ENVELOPE_RATE,
   frameForTime,
+  loopSeconds,
   timeForFrame,
   trackEnvelope,
+  trackShouldRestart,
   waveformPeaks,
 } from './track';
 
@@ -59,6 +61,26 @@ describe('waveformPeaks', () => {
 
   test('no samples → no peaks', () => {
     expect(waveformPeaks(new Float32Array(0), 8000, 12).length).toBe(0);
+  });
+});
+
+describe('loopSeconds', () => {
+  test('the animation\'s own length is where a tied track restarts', () => {
+    expect(loopSeconds(4, 12)).toBeCloseTo(1 / 3, 5);
+    expect(loopSeconds(24, 12)).toBe(2);
+  });
+
+  test('a tied track is due to restart once it passes that point', () => {
+    // 4 frames at 12 fps: the loop is a third of a second long.
+    expect(trackShouldRestart(0.3, 4, 12)).toBe(false);
+    expect(trackShouldRestart(0.34, 4, 12)).toBe(true);
+    // Exactly on the boundary is the next loop's first frame.
+    expect(trackShouldRestart(1 / 3, 4, 12)).toBe(true);
+  });
+
+  test('a track under way inside the loop is left alone', () => {
+    expect(trackShouldRestart(0, 4, 12)).toBe(false);
+    expect(trackShouldRestart(1.9, 24, 12)).toBe(false);
   });
 });
 

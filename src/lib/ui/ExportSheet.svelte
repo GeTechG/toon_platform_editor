@@ -33,9 +33,13 @@
 
   const formats = supportedVideoFormats();
 
-  // A tied track sets the length of the work: the animation loops to fill it.
+  // The file is what the preview sounds like. Tied, the track is pinned to the
+  // first frame and restarts with the animation, so the work is one pass of the
+  // animation long. Untied, the track just plays underneath, so it is the track
+  // that sets the length and the animation loops to fill it — which is what
+  // keeps a long song from being cut off at half a second of video.
   const trackSeconds = $derived(
-    editor.audio.hasTrack && editor.audio.sync ? editor.audio.duration : undefined,
+    editor.audio.hasTrack && !editor.audio.sync ? editor.audio.duration : undefined,
   );
   const videoSeconds = $derived(
     exportFrameCount(
@@ -172,9 +176,9 @@
           <p class="note">
             Звук «{editor.audio.name}» войдёт в видео.
             {#if editor.audio.sync}
-              Трек привязан к кадрам, поэтому он и задаёт длину: анимация повторяется, пока он играет.
+              Трек привязан к кадрам, поэтому видео длится один проход мультика — как в просмотре.
             {:else}
-              Трек не привязан, поэтому видео длится столько же, сколько мультик, и музыка обрежется.
+              Трек не привязан, поэтому он задаёт длину: мультик повторяется, пока играет музыка.
             {/if}
           </p>
         {/if}

@@ -88,8 +88,8 @@ describe('the timeline carries the wave and nothing else', () => {
 
 describe('the synchronisation flag', () => {
   it('decides whether the track drives the frames', () => {
-    expect(playControls).toContain('editor.audio.sync && editor.audio.sounding');
-    expect(player).toContain('audioSync && sound && !sound.paused');
+    expect(playControls).toContain('editor.audio.sync && editor.audio.hasTrack');
+    expect(player).toContain('audioSync && sound');
   });
 
   it('untied, the track starts at its own beginning rather than at the frame', () => {
@@ -105,10 +105,17 @@ describe('the synchronisation flag', () => {
     expect(editorUi).toContain('sync: editor.audio.sync');
   });
 
-  it('tied, the track sets the length of the exported video', () => {
-    // Otherwise the flag changes nothing anyone can see: both clocks run at
-    // the same rate, so the picture is identical either way.
-    expect(sheet).toContain('editor.audio.hasTrack && editor.audio.sync ? editor.audio.duration');
+  it('tied, the track is pinned to the first frame and restarts with the loop', () => {
+    expect(playControls).toContain('editor.audio.restartIfLooped(frames');
+    expect(player).toContain('trackShouldRestart(sound.currentTime');
+    expect(state).toContain('trackShouldRestart(this.#element.currentTime');
+  });
+
+  it('the exported file is what the preview sounds like', () => {
+    // Tied: one pass of the animation with the track pinned to it. Untied:
+    // the track sets the length and the animation loops under it, so a long
+    // song is not cut off at half a second of video.
+    expect(sheet).toContain('editor.audio.hasTrack && !editor.audio.sync ? editor.audio.duration');
     expect(sheet).toContain('trackSeconds,');
   });
 

@@ -11,6 +11,7 @@ import {
   checkAudioFile,
   timeForFrame,
   trackEnvelope,
+  trackShouldRestart,
   waveformPeaks,
 } from './track';
 
@@ -171,6 +172,10 @@ export class AudioTrackState {
     if (this.duration > 0 && at >= this.duration) {
       return;
     }
+    // Tied, the loop point is the animation's, not the track's: the element
+    // must not wrap on its own, or a track shorter than the animation would
+    // drag the frames back to the start with it and the tail would never show.
+    this.#element.loop = !this.sync;
     this.#element.currentTime = at;
     void this.#element.play().catch((err) => {
       // A refused play is the one failure the person can act on — browsers
@@ -179,6 +184,25 @@ export class AudioTrackState {
       console.warn('audio playback failed:', err);
       this.error = 'Браузер не дал включить звук — нажми «Проиграть» ещё раз';
     });
+  }
+
+  /**
+   * Tied, the animation is the timeline: when it comes back round to its first
+   * frame the track comes back with it, however much of the track is left.
+   * Returns true when it rewound, so the caller can read the frame off the
+   * fresh position rather than the old one.
+   *
+   * ponytail: checked once per animation frame, so the track can run up to one
+   * frame past the loop point before it snaps back — less than the video frame
+   * it sits under. A `setTimeout` scheduled at the loop point if that is ever
+   * audible.
+   */
+  restartIfLooped(frames: number, fps: number): boolean {
+    if (!this.sync || !this.#element || !trackShouldRestart(this.#element.currentTime, frames, fps)) {
+      return false;
+    }
+    this.#element.currentTime = 0;
+    return true;
   }
 
   stop(): void {
