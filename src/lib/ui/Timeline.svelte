@@ -75,7 +75,72 @@
     editor.selectCell(frame, layer, mode);
   }
 
+  // --- Soundtrack -----------------------------------------------------------
+  // One bar per frame, recomputed when fps changes — the wave stretches over
+  // the strip rather than being re-read from the file.
+  const peaks = $derived(editor.audio.peaks(editor.doc.frame_rate));
+  // Bar-layout frames are as wide as their thumbnail (FrameThumb's 32px tall
+  // canvas at the document's aspect) plus the 1px border on each side.
+  const thumbWidth = $derived(Math.round(32 * (editor.doc.width / editor.doc.height)) + 2);
+
+  let picker = $state<HTMLInputElement | undefined>();
+
+  async function pickTrack(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // picking the same file twice must fire change again
+    if (file) {
+      await editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
+    }
+  }
+
+  function removeTrack(): void {
+    if (!editor.warnings || confirm('Убрать звук? Отменить это будет нельзя.')) {
+      editor.audio.clear();
+    }
+  }
 </script>
+
+{#snippet wave(cellWidth: number)}
+  {#if editor.audio.hasTrack}
+    <!-- Decoration: the track's name and controls carry the meaning. -->
+    <div class="wave" aria-hidden="true">
+      {#each frames as _, i (i)}
+        <span class="bar" style:width="{cellWidth}px"><span style:height="{Math.round((peaks[i] ?? 0) * 100)}%"></span></span>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet trackControls()}
+  <div class="audio">
+    <input
+      type="file"
+      accept="audio/mpeg,audio/ogg,audio/wav,.mp3,.ogg,.wav"
+      bind:this={picker}
+      onchange={pickTrack}
+      hidden
+    />
+    <button
+      class="key icon"
+      onclick={() => picker?.click()}
+      title={editor.audio.hasTrack ? 'Заменить звук' : 'Добавить звук (mp3, ogg, wav)'}
+      aria-label={editor.audio.hasTrack ? 'Заменить звук' : 'Добавить звук'}
+    >
+      <Icon name="note" size={18} />
+    </button>
+    {#if editor.audio.hasTrack}
+      <input class="meta" bind:value={editor.audio.name} placeholder="Название" aria-label="Название трека" />
+      <input class="meta" bind:value={editor.audio.author} placeholder="Автор" aria-label="Автор трека" />
+      <button class="key icon" onclick={removeTrack} title="Убрать звук" aria-label="Убрать звук">
+        <Icon name="trash" size={16} />
+      </button>
+    {/if}
+    {#if editor.audio.error}
+      <span class="audio-error" role="alert">{editor.audio.error}</span>
+    {/if}
+  </div>
+{/snippet}
 
 {#if studio}
   <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
@@ -119,8 +184,10 @@
             {/each}
           </div>
         {/each}
+        {@render wave(46)}
       </div>
     </div>
+    {@render trackControls()}
   </div>
 {:else}
   <div class="scroller">
@@ -135,6 +202,7 @@
     </button>
 
     <div class="frames" bind:this={strip} bind:clientWidth onscroll={sync}>
+      <div class="row">
       {#each editor.doc.layers[0].frames as frame, i (frame)}
         <button
           class="frame"
@@ -149,6 +217,8 @@
           <span class="num">{i + 1}</span>
         </button>
       {/each}
+      </div>
+      {@render wave(thumbWidth)}
     </div>
 
     <button
@@ -161,6 +231,7 @@
       <Icon name="chevron-right" size={18} />
     </button>
   </div>
+  {@render trackControls()}
 {/if}
 
 <style>
@@ -176,6 +247,7 @@
   }
   .frames {
     display: flex;
+    flex-direction: column;
     gap: 2px;
     flex: 1;
     overflow-x: auto;
@@ -184,6 +256,10 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     padding: 3px;
+  }
+  .row {
+    display: flex;
+    gap: 2px;
   }
   .frame {
     position: relative;
@@ -320,6 +396,55 @@
   .cell:disabled {
     cursor: default;
   }
+  /* --- Soundtrack --------------------------------------------------------- */
+  /* One bar per frame, aligned to the strip above it, so the wave reads as
+     "this much sound happens on this frame" without a second ruler. */
+  .wave {
+    display: flex;
+    gap: 2px;
+    height: 18px;
+    padding: 0 2px;
+    align-items: flex-end;
+  }
+  .bar {
+    flex: none;
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+  }
+  .bar > span {
+    width: 100%;
+    min-height: 1px;
+    background: var(--electric, #2f5bff);
+    opacity: 0.55;
+    border-radius: 1px;
+  }
+  .audio {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding-top: 0.3rem;
+    min-width: 0;
+  }
+  .meta {
+    min-width: 0;
+    flex: 1 1 6rem;
+    height: var(--key-h);
+    padding: 0 0.4rem;
+    font: inherit;
+    font-size: 0.8rem;
+    color: var(--ink);
+    background: var(--canvas);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+  }
+  /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */
+  .audio-error {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
   /* Phone: a shorter timeline and no room for a wide layer column. */
   @media (max-width: 40rem) {
     .layer-col {

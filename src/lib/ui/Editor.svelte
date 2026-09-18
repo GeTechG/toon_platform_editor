@@ -6,7 +6,7 @@
   import ToolsPanel from './ToolsPanel.svelte';
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
-  import ExportGifButton from './ExportGifButton.svelte';
+  import ExportSheet from './ExportSheet.svelte';
   import LayersPanel from './LayersPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
@@ -15,7 +15,8 @@
   import { decodeToon } from '../format/toon-decode';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
   import { draftEntries } from '../draft/restore';
-  import { deleteDraft, listDrafts, newDraftId, saveDraft } from '../draft/store';
+  import { deleteDraft, listDrafts, newDraftId, saveDraft, setDraftAudio } from '../draft/store';
+  import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_MIN, PRESETS } from './presets';
   import type { FeatureKey } from './presets';
@@ -38,7 +39,11 @@
   // and hands the host a plain snapshot of the current document; the editor
   // itself stays unaware of what publishing means (no network, no platform
   // coupling).
-  let { onPublish }: { onPublish?: (doc: ToonDocument) => void } = $props();
+  // The soundtrack travels beside the document, not inside it: the toon format
+  // holds drawings, and the platform stores the file on its own endpoint.
+  let {
+    onPublish,
+  }: { onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void } = $props();
 
   const editor = new EditorState();
   // Studio layout (toonio.ru): tools down the left, palette and brush boxes
@@ -55,7 +60,7 @@
   let layersOpen = $state(false);
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
-  let exportButton = $state<ExportGifButton | undefined>();
+  let exportButton = $state<ExportSheet | undefined>();
 
   function toggleFullscreen(): void {
     if (!document.fullscreenEnabled) {
@@ -407,6 +412,15 @@
     editor.lastSavedAt = Date.now();
   }
 
+  // The track rides the draft but not the document: it is written on its own
+  // whenever the file or its credits change, so an autosave never carries a
+  // 10 MB blob and attaching a track never waits for the autosave clock.
+  $effect(() => {
+    const { blob, name, author } = editor.audio;
+    draftId ??= newDraftId();
+    void setDraftAudio(draftId, blob ? { blob, name, author } : null);
+  });
+
   // Autosave on the reference's clock (AutoSave, every 60 s by default). A
   // trailing debounce was wrong here: with a minute-long interval a hand that
   // keeps drawing would reset it forever and never write anything.
@@ -452,6 +466,11 @@
       return;
     }
     editor.openDraft(entry.doc);
+    if (entry.audio) {
+      void editor.audio.restore(entry.audio);
+    } else {
+      editor.audio.clear();
+    }
     draftId = entry.id;
     draftsOpen = false;
   }
@@ -895,7 +914,7 @@
           </div>
         {/if}
         {#if editor.features.export}
-          <ExportGifButton bind:this={exportButton} {editor} />
+          <ExportSheet bind:this={exportButton} {editor} />
         {/if}
         {#if lastSaved}
           <span class="saved" role="status">Сохранено {lastSaved}</span>
@@ -987,7 +1006,13 @@
           <div class="ship" role="group" aria-label="Публикация">
             <button
               class="key primary publish"
-              onclick={() => onPublish?.($state.snapshot(editor.doc))}
+              onclick={() =>
+                onPublish?.(
+                  $state.snapshot(editor.doc),
+                  editor.audio.blob
+                    ? { blob: editor.audio.blob, name: editor.audio.name, author: editor.audio.author }
+                    : null,
+                )}
               title="Опубликовать"
               aria-label="Опубликовать"
             >

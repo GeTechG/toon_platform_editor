@@ -3,6 +3,7 @@
  * Document mutations go through model operations only.
  */
 
+import { AudioTrackState } from '../audio/state.svelte';
 import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
@@ -153,6 +154,8 @@ interface CellSnapshot {
 }
 
 export class EditorState {
+  /** The one soundtrack: file, credits, envelope for the strip, playback. */
+  readonly audio = new AudioTrackState();
   tool = $state<Tool>('pencil');
   /** The open lasso/distort session; null when nothing is selected. */
   transform = $state<TransformState | null>(null);

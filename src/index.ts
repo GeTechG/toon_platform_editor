@@ -11,5 +11,8 @@ export { default as Editor } from './lib/ui/Editor.svelte';
 export { default as Player } from './lib/player/Player.svelte';
 export type { ToonDocument } from './lib/format/types';
 
+// The soundtrack the editor hands back with a published document.
+export type { AudioTrackData } from './lib/audio/state.svelte';
+
 // Animated-WebP gallery preview built from a document at publish time.
 export { buildPreview } from './lib/export/preview-webp';

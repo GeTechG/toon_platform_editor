@@ -12,11 +12,20 @@ const LEGACY_STORE = 'draft';
 const LEGACY_KEY = 'current';
 const VERSION = 2;
 
+/** An mp3/ogg/wav attached to a session, with the credits the reference asks for. */
+export interface DraftAudio {
+  blob: Blob;
+  name: string;
+  author: string;
+}
+
 /** One saved session: the document plus when it was last written. */
 export interface DraftRecord {
   id: string;
   updated: number;
   doc: unknown;
+  /** Absent on every draft written before tracks existed — no migration needed. */
+  audio?: DraftAudio;
 }
 
 /** Id for a fresh session — minted on the first edit, kept until the sheet is left. */
@@ -83,14 +92,25 @@ export async function listDrafts(): Promise<DraftRecord[]> {
   }
 }
 
-/** Persists one session (a plain, structured-clone-safe document). Never throws. */
-export async function saveDraft(id: string, doc: unknown): Promise<void> {
+/**
+ * Read-modify-write of one record in a single transaction, so an autosave
+ * never drops the track and attaching a track never rewinds the document.
+ * `mutate` always returns a record — the put is what completes the
+ * transaction. Never throws.
+ */
+async function updateDraft(
+  id: string,
+  what: string,
+  mutate: (previous: DraftRecord | undefined) => DraftRecord,
+): Promise<void> {
   try {
     const db = await openDb();
     try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).put({ id, updated: Date.now(), doc });
+        const store = tx.objectStore(STORE);
+        const read = store.get(id);
+        read.onsuccess = () => store.put(mutate(read.result as DraftRecord | undefined));
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
@@ -98,8 +118,26 @@ export async function saveDraft(id: string, doc: unknown): Promise<void> {
       db.close();
     }
   } catch (err) {
-    console.warn('draft save failed:', err);
+    console.warn(`${what} failed:`, err);
   }
+}
+
+/** Persists one session (a plain, structured-clone-safe document). Never throws. */
+export async function saveDraft(id: string, doc: unknown): Promise<void> {
+  await updateDraft(id, 'draft save', (previous) => ({ ...previous, id, updated: Date.now(), doc }));
+}
+
+/** Attaches, replaces or (with `null`) removes the session's track. Never throws. */
+export async function setDraftAudio(id: string, audio: DraftAudio | null): Promise<void> {
+  await updateDraft(id, 'draft audio save', (previous) => {
+    const next: DraftRecord = { ...previous, id, updated: Date.now(), doc: previous?.doc ?? null };
+    if (audio) {
+      next.audio = audio;
+    } else {
+      delete next.audio;
+    }
+    return next;
+  });
 }
 
 /** Removes one session. Never throws. */
@@ -121,9 +159,13 @@ export async function deleteDraft(id: string): Promise<void> {
   }
 }
 
-/** Every saved draft as one file — the reference's «экспорт всех сейвов». */
+/**
+ * Every saved draft as one file — the reference's «экспорт всех сейвов».
+ * Tracks stay behind: JSON carries no Blob, and a file of base64 mp3s would
+ * be too heavy to hand around.
+ */
 export async function exportDrafts(): Promise<string> {
-  return JSON.stringify(await listDrafts());
+  return JSON.stringify((await listDrafts()).map(({ audio: _audio, ...draft }) => draft));
 }
 
 /**

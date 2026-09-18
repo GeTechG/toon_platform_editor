@@ -7,7 +7,7 @@
 
 import { loadDocument, validateDocument } from '../format/validate';
 import type { ToonDocument } from '../format/types';
-import type { DraftRecord } from './store';
+import type { DraftAudio, DraftRecord } from './store';
 
 /** The document held by a draft record, or null if it is not one. */
 export function parseDraft(raw: unknown): ToonDocument | null {
@@ -22,12 +22,14 @@ export interface DraftEntry {
   id: string;
   updated: number;
   doc: ToonDocument;
+  /** The session's soundtrack, if it had one. */
+  audio?: DraftAudio;
 }
 
 /** Loads every record that still parses; a corrupt one is dropped, not fatal. */
 export function draftEntries(records: DraftRecord[]): DraftEntry[] {
   return records.flatMap((record) => {
     const doc = parseDraft(record.doc);
-    return doc ? [{ id: record.id, updated: record.updated, doc }] : [];
+    return doc ? [{ id: record.id, updated: record.updated, doc, ...(record.audio ? { audio: record.audio } : {}) }] : [];
   });
 }

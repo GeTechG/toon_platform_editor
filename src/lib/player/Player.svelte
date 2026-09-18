@@ -10,6 +10,7 @@
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
+  import { frameForTime } from '../audio/track';
 
   /**
    * Reduced motion means no autoplay: the visitor lands on the first frame
@@ -25,11 +26,14 @@
     /** Renders the play/pause key over the canvas. */
     controls = true,
     playing = $bindable(!prefersReducedMotion()),
+    audioSrc,
   }: {
     /** Any published version — the share page serves documents as they were saved. */
     doc: ToonDocumentV1 | ToonDocumentV2 | ToonDocument;
     controls?: boolean;
     playing?: boolean;
+    /** The publication's soundtrack, if it has one. */
+    audioSrc?: string;
   } = $props();
 
   // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
@@ -75,6 +79,24 @@
     renderer.render(view, current, ctx, { scale: cssWidth / view.width, dpr });
   }
 
+  // The soundtrack, when there is one. It is built once per src and its own
+  // clock drives the frames while it sounds, so picture and sound cannot drift
+  // apart however long the loop runs.
+  let audio = $state<HTMLAudioElement | null>(null);
+  $effect(() => {
+    if (!audioSrc) {
+      audio = null;
+      return;
+    }
+    const element = new Audio(audioSrc);
+    element.loop = true;
+    audio = element;
+    return () => {
+      element.pause();
+      audio = null;
+    };
+  });
+
   // The frame clock runs only while playing. Pausing tears the loop down;
   // pressing play builds a new one starting at the frame on the canvas, so
   // nothing jumps. `current` is read untracked — the loop writes it.
@@ -90,11 +112,24 @@
         current = index;
       },
     });
+    const sound = audio;
+    if (sound) {
+      sound.currentTime = (untrack(() => current) % frameCount(view)) / view.frame_rate;
+      void sound.play().catch(() => {
+        // Autoplay with sound is commonly blocked; the picture plays on.
+      });
+    }
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);
+      if (sound && !sound.paused) {
+        current = frameForTime(sound.currentTime, view.frame_rate) % frameCount(view);
+      }
       raf = requestAnimationFrame(tick);
     });
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      sound?.pause();
+    };
   });
 
   // Redraw on frame change or resize (client-only; effects do not run in SSR).

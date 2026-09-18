@@ -2,6 +2,7 @@
   import { frameCount } from '../model/operations';
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
+  import { frameForTime } from '../audio/track';
   import { playbackStartFrame } from './frame-selection';
   import Icon from './Icon.svelte';
 
@@ -15,6 +16,14 @@
 
   function tick(now: number): void {
     player?.tick(now);
+    // With a track the sound is the clock: the frame is read off the audio
+    // element's own time rather than counted alongside it, so the two cannot
+    // drift apart however long the loop runs. Once the track ends the frame
+    // counter carries on by itself.
+    if (editor.audio.sounding) {
+      editor.playbackFrame =
+        frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frameCount(editor.doc);
+    }
     rafId = requestAnimationFrame(tick);
   }
 
@@ -31,12 +40,14 @@
       onFrame: (frame) => (editor.playbackFrame = frame),
     });
     editor.playbackFrame = startFrame;
+    editor.audio.playFrom(startFrame, editor.doc.frame_rate);
     editor.playing = true;
     rafId = requestAnimationFrame(tick);
   }
 
   function stop(): void {
     cancelAnimationFrame(rafId);
+    editor.audio.stop();
     if (player) {
       player.stop();
       editor.activeFrame = resumeFrame;

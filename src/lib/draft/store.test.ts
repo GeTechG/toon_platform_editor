@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { deleteDraft, exportDrafts, importDrafts, listDrafts, newDraftId, saveDraft } from './store';
+import {
+  deleteDraft,
+  exportDrafts,
+  importDrafts,
+  listDrafts,
+  newDraftId,
+  saveDraft,
+  setDraftAudio,
+} from './store';
 
 /**
  * Minimal in-memory IndexedDB fake — enough for the keyPath store the draft
@@ -235,5 +243,58 @@ describe('draft export and import', () => {
     setIndexedDB(fakeIndexedDB());
     expect(await importDrafts('{')).toEqual({ loaded: 0 });
     expect(await listDrafts()).toEqual([]);
+  });
+});
+
+describe('draft audio track', () => {
+  const track = () => ({ blob: new Blob(['ля'], { type: 'audio/mpeg' }), name: 'Песня', author: 'Кто-то' });
+
+  it('keeps the track and its metadata on the draft record', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    const saved = (await listDrafts())[0];
+    expect(saved.audio?.name).toBe('Песня');
+    expect(saved.audio?.author).toBe('Кто-то');
+    expect(await saved.audio?.blob.text()).toBe('ля');
+  });
+
+  it('keeps the track when the document is saved again', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    await saveDraft('a', doc(24));
+    const saved = (await listDrafts())[0];
+    expect(saved.doc).toEqual(doc(24));
+    expect(saved.audio?.name).toBe('Песня');
+  });
+
+  it('replaces one track with another', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    await setDraftAudio('a', { ...track(), name: 'Другая' });
+    expect((await listDrafts())[0].audio?.name).toBe('Другая');
+  });
+
+  it('removes the track', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    await setDraftAudio('a', null);
+    expect((await listDrafts())[0].audio).toBeUndefined();
+  });
+
+  it('a draft written before tracks existed simply has none', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    expect((await listDrafts())[0].audio).toBeUndefined();
+  });
+
+  it('leaves the track out of the drafts file — JSON carries no blob', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    expect(JSON.parse(await exportDrafts())[0].audio).toBeUndefined();
   });
 });
