@@ -8,6 +8,7 @@
   import ScaleMenu from './ScaleMenu.svelte';
   import ExportSheet from './ExportSheet.svelte';
   import LayersPanel from './LayersPanel.svelte';
+  import AudioPanel from './AudioPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
@@ -58,6 +59,7 @@
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
   let layersOpen = $state(false);
+  let audioOpen = $state(false);
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
   let exportButton = $state<ExportSheet | undefined>();
@@ -924,6 +926,24 @@
             {/if}
           </div>
         {/if}
+        <!-- The soundtrack lives behind its own key, beside layers and export:
+             the wave belongs on the timeline, the file and its credits do not. -->
+        <div class="layers">
+          <button
+            class="key"
+            class:active={audioOpen}
+            aria-expanded={audioOpen}
+            aria-haspopup="dialog"
+            onclick={() => (audioOpen = !audioOpen)}
+            title={editor.audio.hasTrack ? `Звук: ${editor.audio.name || 'без названия'}` : 'Звук'}
+            aria-label="Звук"
+          >
+            <Icon name="note" />
+          </button>
+          {#if audioOpen}
+            <AudioPanel {editor} onClose={() => (audioOpen = false)} />
+          {/if}
+        </div>
         {#if editor.features.export}
           <ExportSheet bind:this={exportButton} {editor} />
         {/if}

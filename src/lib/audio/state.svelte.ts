@@ -95,6 +95,10 @@ export class AudioTrackState {
     this.author = author;
     this.#url = URL.createObjectURL(blob);
     const element = new Audio(this.#url);
+    // The frames loop, so the sound does too — a track shorter than the
+    // animation would otherwise run out part-way through the preview and
+    // leave the rest of it silent. Same rule as the share player.
+    element.loop = true;
     // Fetch it now rather than on the first press: a preview started against
     // an element that has not loaded yet plays nothing and says nothing.
     element.preload = 'auto';

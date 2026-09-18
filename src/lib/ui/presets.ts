@@ -45,11 +45,11 @@ export interface DrawingUiConfig {
  */
 export const PANEL_HEIGHT_MIN = 151;
 /**
- * What a soundtrack adds to that floor: the track strip (a key row plus its
- * top padding) and the wave lane under the cells. Without it, attaching a
- * track at the floor squeezes the layer rows and the wave out of the panel.
+ * What a soundtrack adds to that floor: the wave lane under the cells (the
+ * file and its credits live in the note key's panel, off the timeline).
+ * Without it, attaching a track at the floor pushes the lane out of view.
  */
-export const PANEL_HEIGHT_AUDIO = 66;
+export const PANEL_HEIGHT_AUDIO = 22;
 export const PANEL_HEIGHT_MAX = 2000;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
