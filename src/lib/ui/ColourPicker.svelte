@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { hexToRgb, parseHex, rgbToHex } from './color-model';
-  import { colorToPointer, nudgePointer, pointerToColor, type PickerModel, type Pointer } from './picker-model';
+  import { barPointer, colorToPointer, nudgePointer, pointerToColor, type PickerModel, type Pointer } from './picker-model';
+  import { contrastInk } from './color-palette';
   import Icon from './Icon.svelte';
 
   let {
@@ -108,6 +109,8 @@
 
   function dragWindow(e: PointerEvent): void {
     const el = e.currentTarget as HTMLElement;
+    // The capture would retarget the pointerup and eat the close button's click.
+    if ((e.target as HTMLElement).closest('button')) return;
     el.setPointerCapture(e.pointerId);
     const start = { x: e.clientX - offset.x, y: e.clientY - offset.y };
     const onMove = (m: PointerEvent) => (offset = { x: m.clientX - start.x, y: m.clientY - start.y });
@@ -152,7 +155,7 @@
     hexText = color;
   });
   $effect(() => paint(surface, 'surface', model, pointer));
-  $effect(() => paint(bar, 'bar', model, pointer));
+  $effect(() => paint(bar, 'bar', model, barPointer(model, pointer)));
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -175,50 +178,53 @@
   </header>
 
   <div class="models" role="group" aria-label="Модель цвета">
-    {#each [['hsv', 'ТНЯ'], ['rgb', 'RGB'], ['wheel', 'Круг']] as const as [id, name] (id)}
+    {#each [['hsv', 'HSV'], ['rgb', 'RGB'], ['wheel', 'Wheel']] as const as [id, name] (id)}
       <button class:active={model === id} aria-pressed={model === id} onclick={() => setModel(id)}>{name}</button>
     {/each}
   </div>
 
   <div class="stage">
-  <canvas
-    class="surface"
-    class:wheel={model === 'wheel'}
-    bind:this={surface}
-    width={SURFACE}
-    height={SURFACE}
-    role="slider"
-    tabindex="0"
-    aria-label="Поле цвета: стрелки — на единицу, Shift — на десять, Alt — по полосе"
-    aria-valuetext="{color}, поле {Math.round(pointer.x * 100)} на {Math.round((1 - pointer.y) * 100)}"
-    aria-valuenow={Math.round(pointer.x * 100)}
-    aria-valuemin={0}
-    aria-valuemax={100}
-    onpointerdown={(e) => drag(e, 'surface')}
-    onpointermove={(e) => move(e, 'surface')}
-    onkeydown={onSurfaceKey}
-  ></canvas>
+    <canvas
+      class="surface"
+      class:wheel={model === 'wheel'}
+      bind:this={surface}
+      width={SURFACE}
+      height={SURFACE}
+      role="slider"
+      tabindex="0"
+      aria-label="Поле цвета: стрелки — на единицу, Shift — на десять, Alt — по полосе"
+      aria-valuetext="{color}, поле {Math.round(pointer.x * 100)} на {Math.round((1 - pointer.y) * 100)}"
+      aria-valuenow={Math.round(pointer.x * 100)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      onpointerdown={(e) => drag(e, 'surface')}
+      onpointermove={(e) => move(e, 'surface')}
+      onkeydown={onSurfaceKey}
+    ></canvas>
     <span class="dot" style:left="{pointer.x * SURFACE}px" style:top="{pointer.y * SURFACE}px"></span>
   </div>
 
-  <canvas
-    class="bar"
-    bind:this={bar}
-    width={SURFACE}
-    height={BAR_H}
-    role="slider"
-    tabindex="0"
-    aria-label="Полоса"
-    aria-valuenow={Math.round(pointer.bar * 100)}
-    aria-valuemin={0}
-    aria-valuemax={100}
-    onpointerdown={(e) => drag(e, 'bar')}
-    onpointermove={(e) => move(e, 'bar')}
-    onkeydown={(e) => {
-      const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: true });
-      if (next !== pointer) (e.preventDefault(), apply(next));
-    }}
-  ></canvas>
+  <div class="stage bar-stage">
+    <canvas
+      class="bar"
+      bind:this={bar}
+      width={SURFACE}
+      height={BAR_H}
+      role="slider"
+      tabindex="0"
+      aria-label="Полоса"
+      aria-valuenow={Math.round(pointer.bar * 100)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      onpointerdown={(e) => drag(e, 'bar')}
+      onpointermove={(e) => move(e, 'bar')}
+      onkeydown={(e) => {
+        const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: true });
+        if (next !== pointer) (e.preventDefault(), apply(next));
+      }}
+    ></canvas>
+    <span class="knob" style:left="{pointer.bar * SURFACE}px"></span>
+  </div>
 
   <div class="fields">
     {#each [['r', 'R'], ['g', 'G'], ['b', 'B']] as const as [key, name] (key)}
@@ -234,10 +240,13 @@
       </label>
     {/each}
     <label class="hex">
-      <span>hex</span>
+      <span>HEX</span>
       <input
         type="text"
         maxlength="7"
+        spellcheck="false"
+        autocapitalize="off"
+        autocomplete="off"
         bind:value={hexText}
         onchange={commitHex}
         onkeydown={(e) => e.key === 'Enter' && commitHex()}
@@ -246,10 +255,14 @@
   </div>
 
   <div class="preview">
-    <span class="swatch new" style:background={color}>новый</span>
-    <button class="swatch old" style:background={origin} onclick={() => onpick(origin)} title="Вернуть исходный цвет {origin}">
-      исходный
-    </button>
+    <span class="swatch" style:background={color} style:color={contrastInk(color)}>новый</span>
+    <button
+      class="swatch old"
+      style:background={origin}
+      style:color={contrastInk(origin)}
+      onclick={() => onpick(origin)}
+      title="Вернуть исходный цвет {origin}"
+    >исходный</button>
   </div>
 </div>
 
@@ -262,64 +275,91 @@
     background: transparent;
     cursor: default;
   }
+  /* 176px of canvas plus a 14px gutter on either side. */
   .picker {
     position: fixed;
     z-index: 41;
     display: grid;
-    width: 176px;
-    justify-items: center;
+    width: 204px;
+    gap: 10px;
+    padding-bottom: 12px;
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
-    overflow: hidden;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
   }
   .head {
     display: flex;
-    width: 100%;
     align-items: center;
     justify-content: space-between;
-    padding: 0.3rem 0.5rem;
+    padding: 0.45rem 0.5rem 0.45rem 0.75rem;
     border-bottom: 1px solid var(--hairline);
-    font-size: 0.85rem;
     cursor: move;
     touch-action: none;
   }
+  .head strong {
+    font-size: 0.8rem;
+    text-transform: capitalize;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
   .close {
     display: flex;
-    padding: 0;
+    padding: 0.2rem;
     border: none;
+    border-radius: var(--r-sm);
     background: transparent;
     color: var(--ink-2);
     cursor: pointer;
   }
+  .close:hover {
+    background: var(--sky);
+    color: var(--ink);
+  }
+  /* Segmented control: one pill, three equal shares. */
   .models {
     display: grid;
-    width: 100%;
+    margin: 0 14px;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    background: var(--sky);
   }
   .models button {
-    padding: 0.25rem 0;
+    padding: 0.3rem 0;
     border: none;
-    border-bottom: 1px solid var(--hairline);
-    background: var(--canvas);
+    border-radius: calc(var(--r-sm) - 1px);
+    background: transparent;
     color: var(--ink-2);
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
     cursor: pointer;
   }
+  .models button:hover {
+    color: var(--ink);
+  }
   .models button.active {
-    background: var(--ghost-2);
+    background: var(--canvas);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
     color: var(--electric);
   }
+  /* The canvas and its pointer share one frame. */
+  /* No clipping here: at the edges of the field the pointer hangs half out. */
   .stage {
     position: relative;
+    margin: 0 14px;
     line-height: 0;
+  }
+  .bar-stage {
+    box-shadow: inset 0 0 0 1px var(--hairline);
   }
   .surface,
   .bar {
     display: block;
+    border-radius: var(--r-sm);
     touch-action: none;
     cursor: crosshair;
   }
@@ -327,30 +367,44 @@
     /* The wheel is square in the maths; the corners outside it are clipped away. */
     border-radius: 50%;
   }
-  /* The pointer sits over the surface without eating its events. */
+  /* The pointers sit over their canvas without eating its events. */
   .dot {
     position: absolute;
-    width: 9px;
-    height: 9px;
-    margin: -5px 0 0 -5px;
-    border: 1px solid #fff;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    border: 2px solid #fff;
     border-radius: 50%;
-    box-shadow: 0 0 0 1px #000;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+  }
+  .knob {
+    position: absolute;
+    top: 0;
+    width: 7px;
+    height: 100%;
+    margin-left: -3.5px;
+    border: 2px solid #fff;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
     pointer-events: none;
   }
   .fields {
     display: grid;
-    width: 100%;
+    margin: 0 14px;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.2rem;
-    padding: 0.3rem;
+    gap: 8px 6px;
   }
   .fields label {
     display: grid;
-    grid-template-columns: 1.2em 1fr;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.7rem;
+    gap: 3px;
+  }
+  .fields span {
+    color: var(--ink-2);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-align: center;
   }
   .hex {
     grid-column: 1 / -1;
@@ -358,40 +412,67 @@
   .fields input {
     width: 100%;
     min-width: 0;
-    padding: 0.1rem 0.2rem;
+    padding: 0.25rem 0.2rem;
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
     font: inherit;
     font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
   }
+  /* The spinners steal half the box at this width; the arrows do the nudging. */
+  .fields input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .fields input::-webkit-outer-spin-button,
+  .fields input::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  .hex input {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    letter-spacing: 0.04em;
+  }
+  /* New over original, the way the reference shows the two. */
   .preview {
     display: grid;
-    width: 100%;
+    margin: 0 14px;
     grid-template-columns: 1fr 1fr;
-    height: 28px;
-    border-top: 1px solid var(--hairline);
+    height: 34px;
+    border-radius: var(--r-sm);
+    box-shadow: inset 0 0 0 1px var(--hairline);
+    overflow: hidden;
   }
   .swatch {
     display: flex;
     align-items: center;
     justify-content: center;
     border: none;
-    color: transparent;
-    font-size: 0.65rem;
-    overflow: hidden;
+    font: inherit;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    opacity: 0.85;
   }
   .old {
     cursor: pointer;
   }
+  .old:hover {
+    opacity: 1;
+  }
   .surface:focus-visible,
-  .bar:focus-visible,
+  .bar:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: -3px;
+  }
   .models button:focus-visible,
   .close:focus-visible,
   .old:focus-visible,
   .fields input:focus-visible {
-    outline: 3px solid var(--electric);
-    outline-offset: -3px;
+    outline: 2px solid var(--electric);
+    outline-offset: -2px;
   }
 </style>

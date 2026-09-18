@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { colorToPointer, nudgePointer, pointerToColor } from './picker-model';
+import { barPointer, colorToPointer, nudgePointer, pointerToColor } from './picker-model';
 
 const MODELS = ['hsv', 'rgb', 'wheel'] as const;
 
@@ -57,5 +57,18 @@ describe('nudgePointer', () => {
     expect(nudgePointer('hsv', edge, 'ArrowRight', { shift: true })).toEqual(edge);
     expect(nudgePointer('hsv', edge, 'ArrowUp', {})).toEqual(edge);
     expect(nudgePointer('hsv', mid, 'Enter', {})).toEqual(mid);
+  });
+});
+
+describe('barPointer', () => {
+  it('keeps the hue strip fully saturated whatever the surface holds', () => {
+    const dark = { x: 0, y: 1, bar: 0.5 };
+    expect(barPointer('hsv', dark)).toEqual({ x: 1, y: 0, bar: 0.5 });
+  });
+
+  it('leaves the other models reading their own surface', () => {
+    const p = { x: 0.2, y: 0.8, bar: 0.4 };
+    expect(barPointer('rgb', p)).toEqual(p);
+    expect(barPointer('wheel', p)).toEqual(p);
   });
 });

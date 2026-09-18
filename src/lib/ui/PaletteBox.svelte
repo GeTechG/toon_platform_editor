@@ -75,8 +75,8 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     picking = {
       target,
-      x: Math.min(r.right + 6, window.innerWidth - 182),
-      y: Math.min(Math.max(6, r.top), Math.max(6, window.innerHeight - 360)),
+      x: Math.min(r.right + 6, window.innerWidth - 212),
+      y: Math.min(Math.max(6, r.top), Math.max(6, window.innerHeight - 392)),
     };
   }
 

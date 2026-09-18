@@ -71,3 +71,13 @@ export function nudgePointer(
   if (key === 'ArrowLeft' || key === 'ArrowRight') return { ...p, x: clamp01(p.x + step) };
   return { ...p, y: clamp01(p.y - step) };
 }
+
+/**
+ * Where to read the surface from while painting the bar. The hue strip is a
+ * full rainbow whatever the surface holds — otherwise a dark or grey colour
+ * would paint it black; the red and value bars do show their ramp against
+ * the current surface, which is what makes them readable.
+ */
+export function barPointer(model: PickerModel, p: Pointer): Pointer {
+  return model === 'hsv' ? { ...p, x: 1, y: 0 } : p;
+}
