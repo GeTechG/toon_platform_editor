@@ -5,20 +5,23 @@
 
   let { editor }: { editor: EditorState } = $props();
 
-  const TOOLS: Record<Tool, { icon: IconName; title: string; label: string }> = {
-    pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш' },
-    eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик' },
-    feather: { icon: 'feather', title: 'Перо — обводка и заливка', label: 'Перо' },
-    pixel: { icon: 'pixel', title: 'Пиксель — рисует по сетке', label: 'Пиксель' },
+  // `key` is the shortcut the button shows in place of its icon on hover
+  // (reference `.control p`); it is spelled out in the title as well.
+  const TOOLS: Record<Tool, { icon: IconName; title: string; label: string; key: string }> = {
+    pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш', key: 'B' },
+    eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик', key: 'E' },
+    feather: { icon: 'feather', title: 'Перо (F) — обводка и заливка', label: 'Перо', key: 'F' },
+    pixel: { icon: 'pixel', title: 'Пиксель — рисует по сетке', label: 'Пиксель', key: '' },
     'mega-eraser': {
       icon: 'mega-eraser',
-      title: 'Мега-ластик — режет линии целиком',
+      title: 'Мега-ластик (Alt+E) — режет линии целиком',
       label: 'Мега-ластик',
+      key: 'Alt+E',
     },
-    pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка' },
-    drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука' },
-    lasso: { icon: 'lasso', title: 'Лассо (Q) — выделить и трансформировать', label: 'Лассо' },
-    distort: { icon: 'distort', title: 'Искажение (~) — тянуть углы выделения', label: 'Искажение' },
+    pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка', key: 'P' },
+    drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D' },
+    lasso: { icon: 'lasso', title: 'Лассо (Q) — выделить и трансформировать', label: 'Лассо', key: 'Q' },
+    distort: { icon: 'distort', title: 'Искажение (~) — тянуть углы выделения', label: 'Искажение', key: '~' },
   };
 
   // The preset owns the toolset; the pipette additionally only exists once the
@@ -58,6 +61,7 @@
         class:draw={t.id === 'pencil'}
         aria-pressed={editor.tool === t.id}
         onclick={() => selectTool(t.id)}
+        data-key={t.key}
         title={t.title}
         aria-label={t.label}
       >

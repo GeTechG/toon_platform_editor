@@ -10,15 +10,20 @@ export const TONIO_DEFAULT_PALETTE: readonly string[] = (
   '#0026ff #b200ff #ff00dc #ff006e #7fffff #7fc9ff #7f92ff #d67fff #ff7fed #ff7fb6'
 ).split(' ');
 
-/** Reference `paletteLimit`. Full palette drops its oldest color instead of the reference's wipe. */
+/** Reference `paletteLimit` default; the settings sheet moves it between 30 and 300. */
 export const PALETTE_LIMIT = 50;
 
-export function addPaletteColor(palette: readonly string[], color: string): string[] {
+/**
+ * Reference AddColourToPalette. The grid is a ring: at the limit the colour
+ * at the start makes room for the new one, so lowering the limit lets fresh
+ * colours replace the old ones from the beginning.
+ */
+export function addPaletteColor(palette: readonly string[], color: string, limit = PALETTE_LIMIT): string[] {
   const next = color.toLowerCase();
   if (palette.includes(next)) {
     return palette.slice();
   }
-  return [...palette, next].slice(-PALETTE_LIMIT);
+  return [...palette, next].slice(-limit);
 }
 
 /** Reference RemoveColour: the color leaves the grid; an unknown one is a no-op. */
@@ -84,6 +89,26 @@ export function withSavedPalette(list: readonly SavedPalette[], name: string, co
   return [...list, { id, name, created: Date.now(), colours: colours.map((c) => c.toLowerCase()) }];
 }
 
+/** The reference's `palettes.json`: the saved list, verbatim. */
+export function exportPalettes(list: readonly SavedPalette[]): string {
+  return JSON.stringify(list);
+}
+
+/**
+ * Reference ImportPalettes: everything the file holds joins the list, under
+ * fresh ids so an import can never shadow a palette already saved. Broken
+ * entries and colours are dropped; the count is what the UI reports.
+ */
+export function importPalettes(
+  list: readonly SavedPalette[],
+  raw: string | null,
+): { palettes: SavedPalette[]; loaded: number } {
+  const incoming = parseSavedPalettes(raw);
+  let next = list.reduce((max, p) => Math.max(max, p.id), -1) + 1;
+  const renumbered = incoming.map((p) => ({ ...p, id: next++ }));
+  return { palettes: [...list, ...renumbered], loaded: renumbered.length };
+}
+
 /** Reference GetContrastBlack: ink color for a marker drawn over `hex`. */
 export function contrastInk(hex: string): '#000' | '#fff' {
   const n = parseInt(hex.slice(1, 7), 16);
@@ -119,7 +144,9 @@ export function loadPalette(): string[] {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
     if (Array.isArray(raw) && raw.every((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/.test(c))) {
-      return raw.slice(0, PALETTE_LIMIT);
+      // The settings sheet can raise the limit to 300; the cap belongs to
+      // addPaletteColor, so loading must not cut a grid saved under it.
+      return raw;
     }
   } catch {
     // blocked or corrupted storage — fall through to the defaults.

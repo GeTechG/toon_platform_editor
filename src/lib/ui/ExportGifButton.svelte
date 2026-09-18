@@ -33,13 +33,19 @@
       exporting = false;
     }
   }
+
+  /** Reference Alt+S: start the export without reaching for the button. */
+  export function start(): void {
+    void downloadGif();
+  }
 </script>
 
 <button
   class="key"
   onclick={downloadGif}
   disabled={exporting}
-  title="Экспорт в GIF"
+  data-key="Alt+S"
+  title="Экспорт в GIF (Alt+S)"
   aria-label="Экспорт в GIF"
 >
   {#if exporting}

@@ -1,12 +1,16 @@
 import { expect, test } from 'bun:test';
 import {
   DEFAULT_DRAWING_UI_CONFIG,
+  AUTOSAVE_INTERVALS,
   DEFAULT_PRESET,
+  DEFAULT_SETTINGS,
   FEATURE_ORDER,
   PRESETS,
   parseUiConfig,
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
+  PALETTE_LIMIT_MAX,
+  PALETTE_LIMIT_MIN,
   presetDrawingProfile,
   presetFeatures,
   presetUx,
@@ -62,6 +66,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
       pickSource: 'layer' as const,
       panelHeight: 200,
     },
+    settings: { ...DEFAULT_SETTINGS },
   };
   expect(parseUiConfig(JSON.stringify(config))).toEqual(config);
 });
@@ -167,4 +172,66 @@ test('panel height is clamped to the draggable range and falls back when absent'
   expect(stored(10)).toBe(PANEL_HEIGHT_MIN);
   expect(stored(9999)).toBe(PANEL_HEIGHT_MAX);
   expect(stored('tall')).toBe(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
+});
+
+test('settings fall back to the reference defaults when absent or corrupted', () => {
+  const base = { preset: 'toonio', features: presetFeatures('toonio') };
+  expect(parseUiConfig(JSON.stringify(base))?.settings).toEqual(DEFAULT_SETTINGS);
+  expect(parseUiConfig(JSON.stringify({ ...base, settings: 'nope' }))?.settings).toEqual(DEFAULT_SETTINGS);
+  expect(parseUiConfig(JSON.stringify({ ...base, settings: { theme: 'neon', paletteAutoAdd: 1 } }))?.settings)
+    .toEqual(DEFAULT_SETTINGS);
+});
+
+test('settings round-trip through the stored config', () => {
+  const settings = {
+    mouseMode: true,
+    crossCursor: false,
+    lockTransform: true,
+    paletteAutoAdd: false,
+    paletteLimit: 120,
+    autosaveMs: 0,
+    showDraftsOnStart: false,
+    theme: 'dark' as const,
+    greyCanvas: false,
+  };
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    settings,
+  }));
+  expect(parsed?.settings).toEqual(settings);
+});
+
+test('the palette limit is clamped to 30..300 and snapped to the 10 step', () => {
+  const stored = (paletteLimit: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    settings: { paletteLimit },
+  }))?.settings.paletteLimit;
+
+  expect(stored(120)).toBe(120);
+  expect(stored(124)).toBe(120);
+  expect(stored(5)).toBe(PALETTE_LIMIT_MIN);
+  expect(stored(9999)).toBe(PALETTE_LIMIT_MAX);
+  expect(stored('many')).toBe(DEFAULT_SETTINGS.paletteLimit);
+});
+
+test('an autosave interval outside the offered list falls back to the default', () => {
+  const stored = (autosaveMs: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    settings: { autosaveMs },
+  }))?.settings.autosaveMs;
+
+  for (const ms of AUTOSAVE_INTERVALS) {
+    expect(stored(ms)).toBe(ms);
+  }
+  expect(stored(1234)).toBe(DEFAULT_SETTINGS.autosaveMs);
+});
+
+test('the reference defaults: autosave every minute, drafts offered, palette capped at 50', () => {
+  expect(DEFAULT_SETTINGS.autosaveMs).toBe(60_000);
+  expect(DEFAULT_SETTINGS.showDraftsOnStart).toBe(true);
+  expect(DEFAULT_SETTINGS.paletteLimit).toBe(50);
+  expect(DEFAULT_SETTINGS.theme).toBe('light');
 });

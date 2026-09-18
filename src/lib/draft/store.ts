@@ -120,3 +120,37 @@ export async function deleteDraft(id: string): Promise<void> {
     console.warn('draft delete failed:', err);
   }
 }
+
+/** Every saved draft as one file — the reference's «экспорт всех сейвов». */
+export async function exportDrafts(): Promise<string> {
+  return JSON.stringify(await listDrafts());
+}
+
+/**
+ * Reads such a file back. An id already in use is reminted rather than
+ * overwritten — an import must never swallow a draft already on the device —
+ * and a record that is not a draft is dropped. Never throws.
+ */
+export async function importDrafts(raw: string): Promise<{ loaded: number }> {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { loaded: 0 };
+  }
+  if (!Array.isArray(data)) {
+    return { loaded: 0 };
+  }
+  const taken = new Set((await listDrafts()).map((d) => d.id));
+  let loaded = 0;
+  for (const entry of data) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { id, doc } = entry as Record<string, unknown>;
+    if (typeof id !== 'string' || doc == null) continue;
+    const fresh = taken.has(id) ? newDraftId() : id;
+    taken.add(fresh);
+    await saveDraft(fresh, doc);
+    loaded++;
+  }
+  return { loaded };
+}

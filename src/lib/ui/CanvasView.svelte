@@ -951,7 +951,7 @@
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
-      class:cross={editor.ux.crossCursor
+      class:cross={editor.ux.crossCursor && editor.settings.crossCursor
         && (editor.brushSizeLogical <= 3 || editor.brushSizeLogical >= 25)}
       style:left="{cursorX}px"
       style:top="{cursorY}px"

@@ -61,10 +61,11 @@ import {
 } from './frame-selection';
 import {
   addPaletteColor,
+  exportPalettes,
+  importPalettes,
   loadPalette,
   loadSavedPalettes,
   mergePalettes,
-  PALETTE_LIMIT,
   removePaletteColor,
   savePalette,
   saveSavedPalettes,
@@ -110,6 +111,7 @@ import {
 import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
+  DEFAULT_SETTINGS,
   loadUiConfig,
   presetDrawingProfile,
   presetFeatures,
@@ -118,6 +120,7 @@ import {
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
   type DrawingProfileId,
+  type EditorSettings,
   type FeatureKey,
   type Features,
 } from './presets';
@@ -156,11 +159,17 @@ export class EditorState {
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
   transformWidthWithScale = $state(false);
   /**
-   * Reference "paranoid mode": instead of applying an unfinished transform on
-   * the way out, block the move until it is applied or dropped. Bound to the
-   * settings sheet once that change lands.
+   * The reference's settings window, persisted with the rest of the UI config.
+   * Everything here applies the moment it changes.
    */
-  transformLock = $state(false);
+  settings = $state<EditorSettings>({ ...DEFAULT_SETTINGS });
+  /**
+   * Reference "paranoid mode": instead of applying an unfinished transform on
+   * the way out, block the move until it is applied or dropped.
+   */
+  get transformLock(): boolean {
+    return this.settings.lockTransform;
+  }
   doc = $state(createDocument());
   activeFrame = $state(0);
   /** Layer the next stroke goes into; UI state, not part of the document. */
@@ -224,9 +233,20 @@ export class EditorState {
   /**
    * The reference "old" easter egg: typing o, l, d toggles the oldschool pen
    * (a filled contour of variable width instead of a line). Multator line
-   * profile only; Tonio strokes ignore it.
+   * profile only; Tonio strokes ignore it. The egg and the settings sheet
+   * are two doors into the same option.
    */
-  oldschool = $state(false);
+  get oldschool(): boolean {
+    return this.settings.mouseMode;
+  }
+  /** When the draft was last written, for the panel's «Сохранено HH:MM». */
+  lastSavedAt = $state<number | null>(null);
+  /**
+   * Reference Alt+Enter: mutes the «точно удалить?» confirmations for this
+   * session. Deliberately not persisted — a muted warning should not outlive
+   * the sitting that muted it.
+   */
+  warnings = $state(true);
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
 
@@ -246,6 +266,7 @@ export class EditorState {
       this.tonioMinDistance = saved.drawing.tonio.minDistance;
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
+      this.settings = saved.settings;
     }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -326,7 +347,7 @@ export class EditorState {
 
   /** Keeps a color in the saved grid (reference AddColourToPalette). */
   addColorToPalette(color: string): void {
-    this.palette = addPaletteColor(this.palette, color);
+    this.palette = addPaletteColor(this.palette, color, this.settings.paletteLimit);
     savePalette(this.palette);
   }
 
@@ -352,7 +373,7 @@ export class EditorState {
     } else {
       this.setBrushColor(hex);
     }
-    if (!fromGrid && this.ux.colorGrid) {
+    if (!fromGrid && this.ux.colorGrid && this.settings.paletteAutoAdd) {
       this.addColorToPalette(hex);
     }
   }
@@ -364,13 +385,13 @@ export class EditorState {
 
   /** Reference LoadPalette(colours, true): the grid becomes exactly these colors. */
   replacePalette(colours: readonly string[]): void {
-    this.palette = colours.map((c) => c.toLowerCase()).slice(0, PALETTE_LIMIT);
+    this.palette = colours.map((c) => c.toLowerCase()).slice(-this.settings.paletteLimit);
     savePalette(this.palette);
   }
 
   /** Reference MergePalette: adds what the grid lacks; returns the counts for the UI to report. */
   mergePalette(colours: readonly string[]): { added: number; skipped: number } {
-    const merged = mergePalettes(this.palette, colours, PALETTE_LIMIT);
+    const merged = mergePalettes(this.palette, colours, this.settings.paletteLimit);
     this.palette = merged.palette;
     savePalette(this.palette);
     return merged;
@@ -378,6 +399,25 @@ export class EditorState {
 
   saveCurrentPalette(name: string): void {
     this.savedPalettes = withSavedPalette(this.savedPalettes, name, this.palette);
+    saveSavedPalettes(this.savedPalettes);
+  }
+
+  /** The reference's `palettes.json`. */
+  exportSavedPalettes(): string {
+    return exportPalettes(this.savedPalettes);
+  }
+
+  /** Reads such a file; returns how many palettes landed, for the sheet to report. */
+  importSavedPalettes(raw: string): number {
+    const { palettes, loaded } = importPalettes(this.savedPalettes, raw);
+    this.savedPalettes = palettes;
+    saveSavedPalettes(this.savedPalettes);
+    return loaded;
+  }
+
+  /** «Удалить все» — the sheet asks first. */
+  deleteAllSavedPalettes(): void {
+    this.savedPalettes = [];
     saveSavedPalettes(this.savedPalettes);
   }
 
@@ -1078,7 +1118,18 @@ export class EditorState {
   }
 
   toggleOldschool(): void {
-    this.oldschool = !this.oldschool;
+    this.setSetting('mouseMode', !this.settings.mouseMode);
+  }
+
+  /** Reference N: the dark theme. */
+  toggleTheme(): void {
+    this.setSetting('theme', this.settings.theme === 'dark' ? 'light' : 'dark');
+  }
+
+  /** One settings option, applied and persisted at once. */
+  setSetting<K extends keyof EditorSettings>(key: K, value: EditorSettings[K]): void {
+    this.settings = { ...this.settings, [key]: value };
+    this.persistUiConfig();
   }
 
   /** M hotkey / `enablePalette` in the reference: expand or collapse the full color picker. */
@@ -1105,6 +1156,7 @@ export class EditorState {
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
       },
+      settings: this.settings,
     });
   }
 }

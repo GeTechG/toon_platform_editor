@@ -47,9 +47,6 @@ export const ONION_HISTORY_MAX_ALPHA = 0.15;
 /** How many visited frames Tonio keeps in that history. */
 export const ONION_HISTORY_LENGTH = 3;
 
-/** Local-draft autosave debounce (ms). */
-export const DRAFT_SAVE_DEBOUNCE_MS = 500;
-
 /** Lang simplification: tolerance in logical px. */
 export const LANG_LOOK_AHEAD = 5;
 export const LANG_TOLERANCE_LOGICAL = 10;

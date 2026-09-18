@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { deleteDraft, listDrafts, newDraftId, saveDraft } from './store';
+import { deleteDraft, exportDrafts, importDrafts, listDrafts, newDraftId, saveDraft } from './store';
 
 /**
  * Minimal in-memory IndexedDB fake — enough for the keyPath store the draft
@@ -195,5 +195,45 @@ describe('draft store', () => {
       console.warn = original;
     }
     expect(warn).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('draft export and import', () => {
+  it('writes every saved draft to one file and reads them back', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(1));
+    await saveDraft('b', doc(2));
+    const file = await exportDrafts();
+
+    setIndexedDB(fakeIndexedDB());
+    expect(await importDrafts(file)).toEqual({ loaded: 2 });
+    const restored = await listDrafts();
+    expect(restored.map((d) => d.doc)).toEqual(expect.arrayContaining([doc(1), doc(2)]));
+  });
+
+  it('gives an imported draft a fresh id when one is already taken', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(9));
+    expect(await importDrafts(JSON.stringify([{ id: 'a', updated: 1, doc: doc(1) }]))).toEqual({ loaded: 1 });
+    const drafts = await listDrafts();
+    expect(drafts).toHaveLength(2);
+    expect(drafts.map((d) => d.doc)).toEqual(expect.arrayContaining([doc(9), doc(1)]));
+  });
+
+  it('drops broken records and reports what it loaded', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const loaded = await importDrafts(JSON.stringify([
+      { id: 'ok', updated: 1, doc: doc(3) },
+      { updated: 2, doc: doc(4) },
+      'мусор',
+    ]));
+    expect(loaded).toEqual({ loaded: 1 });
+    expect((await listDrafts())[0]?.doc).toEqual(doc(3));
+  });
+
+  it('loads nothing from a file that is not a draft export', async () => {
+    setIndexedDB(fakeIndexedDB());
+    expect(await importDrafts('{')).toEqual({ loaded: 0 });
+    expect(await listDrafts()).toEqual([]);
   });
 });

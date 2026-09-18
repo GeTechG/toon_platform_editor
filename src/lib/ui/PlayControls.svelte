@@ -45,7 +45,8 @@
     editor.playing = false;
   }
 
-  function toggle(): void {
+  /** Play/stop from the outside too — the reference binds Space to it. */
+  export function toggle(): void {
     if (editor.playing) {
       stop();
     } else {
@@ -60,7 +61,8 @@
   class="key play"
   class:playing={editor.playing}
   onclick={toggle}
-  title={editor.playing ? 'Остановить просмотр' : 'Проиграть кадры'}
+  data-key="Space"
+  title={editor.playing ? 'Остановить просмотр (Space)' : 'Проиграть кадры (Space)'}
   aria-label={editor.playing ? 'Остановить' : 'Проиграть'}
 >
   <Icon name={editor.playing ? 'stop' : 'play'} size={22} />

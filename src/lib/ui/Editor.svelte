@@ -10,11 +10,10 @@
   import LayersPanel from './LayersPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
+  import SettingsSheet from './SettingsSheet.svelte';
   import Icon from './Icon.svelte';
-  import { DRAFT_SAVE_DEBOUNCE_MS } from '../format/constants';
   import { decodeToon } from '../format/toon-decode';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
-  import { debounce } from '../draft/debounce';
   import { draftEntries } from '../draft/restore';
   import { deleteDraft, listDrafts, newDraftId, saveDraft } from '../draft/store';
   import FrameThumb from './FrameThumb.svelte';
@@ -45,10 +44,6 @@
   // Studio layout (toonio.ru): tools down the left, palette and brush boxes
   // on the right, the timeline and transport under the canvas.
   const studio = $derived(editor.ux.layout === 'studio');
-  const scheduleSave = debounce(
-    (id: string, doc: unknown) => void saveDraft(id, doc),
-    DRAFT_SAVE_DEBOUNCE_MS,
-  );
   // The session being autosaved. Minted at the first edit and kept for as long
   // as this sheet lives, so a session overwrites its own record instead of
   // piling up a new draft per stroke; a draft opened from the list continues
@@ -58,6 +53,9 @@
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
   let layersOpen = $state(false);
+  // Components the keyboard drives: Space is play/stop, Alt+S the export.
+  let playControls = $state<PlayControls | undefined>();
+  let exportButton = $state<ExportGifButton | undefined>();
 
   function toggleFullscreen(): void {
     if (!document.fullscreenEnabled) {
@@ -133,6 +131,24 @@
       editor.selectTool('mega-eraser');
       return;
     }
+    // Reference Ctrl+S / Alt+S / Alt+Enter. These fire from a form field too:
+    // the browser would otherwise take Ctrl+S for "save page", and muting the
+    // warnings is not a keystroke anyone types by accident.
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      saveNow();
+      return;
+    }
+    if (e.altKey && (e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      exportButton?.start();
+      return;
+    }
+    if (e.altKey && e.key === 'Enter') {
+      e.preventDefault();
+      editor.warnings = !editor.warnings;
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) {
       return;
     }
@@ -146,6 +162,8 @@
     if (editor.transform) {
       let taken = true;
       switch (e.key) {
+        // Reference: Space applies an unfinished transform instead of playing.
+        case ' ':
         case 'Enter':
           editor.commitTransform();
           break;
@@ -297,7 +315,7 @@
         break;
       case 'Delete':
         if (e.shiftKey) {
-          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || confirm('Удалить слой со штрихами?'))) {
+          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || askDelete('Удалить слой со штрихами?'))) {
             editor.removeActiveLayer();
           }
         } else {
@@ -338,6 +356,15 @@
       case 'X':
         editor.swapColors();
         break;
+      // Reference Space: run and stop the preview.
+      case ' ':
+        playControls?.toggle();
+        break;
+      // Reference N: the dark theme.
+      case 'n':
+      case 'N':
+        editor.toggleTheme();
+        break;
       default:
         handled = false;
     }
@@ -346,10 +373,12 @@
     }
   }
 
-  // Autosave after the first edit: track the change signals (fps, frame
-  // count, per-frame stroke count — strokes are append-only), snapshot the
-  // document to a plain object, and persist it debounced. Skipping the
-  // untouched document also avoids clobbering a draft before restore runs.
+  /** Something has changed since the last write. The autosave clock clears it. */
+  let dirty = $state(false);
+
+  // Track the change signals (fps, frame count, per-frame stroke count —
+  // strokes are append-only). Skipping the untouched document also avoids
+  // clobbering a draft before restore runs.
   $effect(() => {
     if (!editor.touched) {
       return;
@@ -364,9 +393,35 @@
         void cell.strokes.length;
       }
     }
+    dirty = true;
+  });
+
+  /** Writes the draft right now — the autosave clock, Ctrl+S and the sheet. */
+  function saveNow(): void {
+    if (!editor.touched) {
+      return;
+    }
     draftId ??= newDraftId();
-    scheduleSave(draftId, $state.snapshot(doc));
-    return () => scheduleSave.cancel();
+    void saveDraft(draftId, $state.snapshot(editor.doc));
+    dirty = false;
+    editor.lastSavedAt = Date.now();
+  }
+
+  // Autosave on the reference's clock (AutoSave, every 60 s by default). A
+  // trailing debounce was wrong here: with a minute-long interval a hand that
+  // keeps drawing would reset it forever and never write anything.
+  $effect(() => {
+    const ms = editor.settings.autosaveMs;
+    if (ms === 0) {
+      return; // «никогда» — Ctrl+S is the only way to disk.
+    }
+    const timer = setInterval(() => {
+      // The reference defers a write until playback is over.
+      if (dirty && !editor.playing) {
+        saveNow();
+      }
+    }, ms);
+    return () => clearInterval(timer);
   });
 
   // Drafts saved on this device. The reference keeps every local save and
@@ -382,7 +437,7 @@
 
   onMount(async () => {
     await refreshDrafts();
-    draftsOpen = drafts.length > 0;
+    draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart;
   });
 
   async function openDrafts(): Promise<void> {
@@ -402,7 +457,7 @@
   }
 
   async function removeDraft(entry: DraftEntry): Promise<void> {
-    if (!confirm('Удалить черновик? Отменить это будет нельзя.')) {
+    if (!askDelete('Удалить черновик? Отменить это будет нельзя.')) {
       return;
     }
     await deleteDraft(entry.id);
@@ -410,6 +465,11 @@
       draftId = null;
     }
     await refreshDrafts();
+  }
+
+  /** Reference Alt+Enter: with the warnings muted a delete just happens. */
+  function askDelete(message: string): boolean {
+    return !editor.warnings || confirm(message);
   }
 
   const PLURAL = new Intl.PluralRules('ru');
@@ -442,6 +502,21 @@
     }
     editor.importDoc(result.doc);
   }
+  // The reference's settings window: drawing, palette, autosave, view.
+  let settingsSheetOpen = $state(false);
+
+  function openSettingsSheet(): void {
+    settingsOpen = false;
+    settingsSheetOpen = true;
+  }
+
+  /** «Сохранено HH:MM» on the panel — the reference shows the last write. */
+  const lastSaved = $derived(
+    editor.lastSavedAt === null
+      ? ''
+      : new Date(editor.lastSavedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+  );
+
   // Customization sheet: which buttons the toolbar shows, and the active preset.
   // A set-once concern, so it lives in its own roomy sheet, not the quick popover.
   let customizeOpen = $state(false);
@@ -467,6 +542,11 @@
     ['Shift + ←→↑↓', 'Toonio: расширить выделение ленты'],
     ['K', 'Калька'],
     ['X', 'Поменять контур и заливку'],
+    ['Space', 'Просмотр (в трансформации — применить)'],
+    ['Ctrl + S', 'Сохранить черновик сейчас'],
+    ['Alt + S', 'Экспорт'],
+    ['Alt + Enter', 'Отключить предупреждения об удалении'],
+    ['N', 'Тёмная тема'],
   ];
 
   function openCustomize(): void {
@@ -540,6 +620,7 @@
     class="key"
     disabled={!editor.canUndo}
     onclick={() => editor.undo()}
+    data-key="Z"
     title="Отменить последний штрих (Z)"
     aria-label="Отменить"
   >
@@ -549,6 +630,7 @@
     class="key"
     disabled={!editor.canRedo}
     onclick={() => editor.redo()}
+    data-key="Y"
     title="Вернуть отменённый штрих (Y)"
     aria-label="Вернуть"
   >
@@ -556,7 +638,13 @@
   </button>
 {/snippet}
 
-<div class="editor" class:studio bind:this={editorEl}>
+<div
+  class="editor"
+  class:studio
+  class:dark={editor.settings.theme === 'dark'}
+  class:grey-canvas={editor.settings.greyCanvas}
+  bind:this={editorEl}
+>
   {#if studio}
     <aside class="left" aria-label="Инструменты и история">
       <ToolsPanel {editor} />
@@ -636,7 +724,8 @@
             class="key"
             disabled={editor.playing}
             onclick={onAddFrame}
-            title="Добавить кадр после текущего (Ctrl+клик — перед)"
+            data-key="A"
+            title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
             aria-label="Добавить кадр"
           >
             <Icon name="plus" />
@@ -647,7 +736,8 @@
             class="key"
             disabled={editor.playing}
             onclick={() => editor.removeActiveFrame()}
-            title="Удалить текущий кадр"
+            data-key="Del"
+            title="Удалить текущий кадр (Del)"
             aria-label="Удалить кадр"
           >
             <Icon name="trash" />
@@ -680,7 +770,7 @@
           >⏴</button>
         {/if}
         {#if editor.features.play}
-          <PlayControls {editor} />
+          <PlayControls bind:this={playControls} {editor} />
         {/if}
         {#if studio}
           <button
@@ -704,7 +794,8 @@
               class="key"
               disabled={editor.playing}
               onclick={onAddFrame}
-              title="Добавить кадр после текущего (Ctrl+клик — перед)"
+              data-key="A"
+            title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
               aria-label="Добавить кадр"
             >
               <Icon name="plus" />
@@ -715,7 +806,8 @@
               class="key"
               disabled={editor.playing}
               onclick={() => editor.removeActiveFrame()}
-              title="Удалить текущий кадр"
+              data-key="Del"
+            title="Удалить текущий кадр (Del)"
               aria-label="Удалить кадр"
             >
               <Icon name="trash" />
@@ -728,7 +820,8 @@
             class:active={editor.onionSkin}
             aria-pressed={editor.onionSkin}
             onclick={() => editor.toggleOnionSkin()}
-            title={editor.onionSkin ? 'Калька включена' : 'Калька выключена'}
+            data-key="K"
+            title={editor.onionSkin ? 'Калька (K) включена' : 'Калька (K) выключена'}
             aria-label="Калька"
           >
             <Icon name="onion" />
@@ -802,7 +895,10 @@
           </div>
         {/if}
         {#if editor.features.export}
-          <ExportGifButton {editor} />
+          <ExportGifButton bind:this={exportButton} {editor} />
+        {/if}
+        {#if lastSaved}
+          <span class="saved" role="status">Сохранено {lastSaved}</span>
         {/if}
         <div class="settings">
           <button
@@ -848,6 +944,10 @@
 
               <!-- The gear is never hideable, so customization is always reachable. -->
               <hr class="divider" />
+              <button class="opt opt-btn" onclick={openSettingsSheet}>
+                <span class="opt-label"><Icon name="gear" size={18} /> Настройки…</span>
+                <Icon name="chevron-right" size={16} />
+              </button>
               <button class="opt opt-btn" onclick={openCustomize}>
                 <span class="opt-label"><Icon name="gear" size={18} /> Настроить панель…</span>
                 <Icon name="chevron-right" size={16} />
@@ -860,6 +960,7 @@
             class="key icon"
             disabled={editor.playing}
             onclick={() => editor.copySelection()}
+            data-key="C"
             title="Копировать выделенные ячейки (C)"
             aria-label="Копировать выделение"
           ><Icon name="copy" /></button>
@@ -867,6 +968,7 @@
             class="key icon"
             disabled={!editor.canPasteCells}
             onclick={() => editor.pasteSelection()}
+            data-key="V"
             title="Вставить с заменой ячеек (V)"
             aria-label="Вставить выделение"
           ><Icon name="paste" /></button>
@@ -874,6 +976,7 @@
             class="key icon"
             disabled={!editor.canPasteCells}
             onclick={() => editor.mergeSelection()}
+            data-key="M"
             title="Объединить: штрихи буфера поверх ячеек (M)"
             aria-label="Объединить кадры"
           ><Icon name="merge" /></button>
@@ -961,6 +1064,10 @@
         <button class="key primary" onclick={() => (draftsOpen = false)}>Закрыть</button>
       </footer>
     </div>
+  {/if}
+
+  {#if settingsSheetOpen}
+    <SettingsSheet {editor} onClose={() => (settingsSheetOpen = false)} />
   {/if}
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
@@ -1072,6 +1179,37 @@
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
+  }
+  /**
+   * Dark theme (reference N key): window #19191A, worktable #262626, accent
+   * #0D85F3. Only the chrome turns dark — the document's own background, the
+   * frame thumbnails and the GIF export stay white, because the drawing is
+   * white paper whatever the room looks like.
+   *
+   * Contrast against the surfaces here (WCAG 1.4.3 / 1.4.11): --ink 15.7:1,
+   * --ink-2 8.9:1, --electric 5.9:1, and --canvas text on an --electric key
+   * the same 5.9:1.
+   */
+  .editor.dark {
+    --ink: #f2f4f8;
+    --ink-2: #b3bac6;
+    --paper: #262626;
+    --canvas: #19191a;
+    --sky: #24303f;
+    --electric: #4d96ff;
+    --electric-dark: #0d85f3;
+    --signal: #ff6a52;
+    --signal-dark: #ff8f7a;
+    --signal-deep: #ffb3a3;
+    --hairline: #ffffff2e;
+    --hairline-soft: #ffffff17;
+    --ghost-2: #4d96ff2e;
+    color-scheme: dark;
+  }
+  /* Reference option: a grey worktable under the drawing instead of the
+     near-black one. The white canvas on top is untouched. */
+  .editor.dark.grey-canvas .stage {
+    background: #616161;
   }
   /* The fields you do type in keep their selection. */
   .editor input {
@@ -1464,7 +1602,10 @@
     color: var(--ink-2);
   }
 
-  /* ---- Customization sheet ---- */
+  /* ---- Sheet chrome ----
+     Global, because the sheets are not all in this file any more: the settings
+     sheet is its own component and wears the same head / body / hint / foot /
+     toggle vocabulary. */
   .sheet-backdrop {
     position: fixed;
     inset: 0;
@@ -1473,7 +1614,7 @@
     background: rgba(11, 12, 16, 0.42);
   }
   /* Bottom sheet on mobile, centered card on wider screens. */
-  .sheet {
+  .editor :global(.sheet) {
     position: fixed;
     z-index: 11;
     left: 0;
@@ -1488,7 +1629,7 @@
     box-shadow: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);
   }
   @media (min-width: 40rem) {
-    .sheet {
+    .editor :global(.sheet) {
       left: 50%;
       right: auto;
       bottom: auto;
@@ -1498,23 +1639,26 @@
       border-radius: var(--r-md);
     }
   }
-  .sheet-head {
+  .editor :global(.sheet-head) {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0.9rem 1rem 0.6rem;
     border-bottom: 1px solid var(--hairline);
   }
-  .sheet-head h2 {
+  .editor :global(.sheet-head h2) {
     margin: 0;
     font-size: 1rem;
     font-weight: 700;
   }
-  .sheet-body {
+  .editor :global(.sheet-body) {
+    /* A flex child's min-height is its content unless told otherwise, which
+       would push the footer out of a full sheet instead of scrolling. */
+    min-height: 0;
     overflow-y: auto;
     padding: 0.4rem 1rem 0.6rem;
   }
-  .sheet-hint {
+  .editor :global(.sheet-hint) {
     margin: 0.7rem 0 0.4rem;
     font-size: 0.72rem;
     font-weight: 700;
@@ -1590,7 +1734,7 @@
     display: flex;
     flex-direction: column;
   }
-  .toggle {
+  .editor :global(.toggle) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1600,20 +1744,20 @@
     border-radius: var(--r-sm);
     cursor: pointer;
   }
-  .toggle:hover {
+  .editor :global(.toggle:hover) {
     background: var(--sky);
   }
-  .toggle + .toggle {
+  .editor :global(.toggle + .toggle) {
     border-top: 1px solid var(--hairline-soft);
   }
-  .toggle-label {
+  .editor :global(.toggle-label) {
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
     font-size: 0.95rem;
   }
   /* Bigger, brand-colored checkboxes — comfortable touch targets. */
-  .toggle input {
+  .editor :global(.toggle input) {
     width: 1.3rem;
     height: 1.3rem;
     accent-color: var(--electric);
@@ -1676,7 +1820,7 @@
     margin: 1.2rem 0;
     color: var(--ink-2);
   }
-  .sheet-foot {
+  .editor :global(.sheet-foot) {
     display: flex;
     justify-content: space-between;
     gap: 0.5rem;
@@ -1693,6 +1837,7 @@
      of protruding blocks. box-shadow takes no layout space, so the rows keep
      their heights. */
   .editor :global(.key) {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1713,6 +1858,33 @@
       box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       background 0.15s ease,
       border-color 0.15s ease;
+  }
+  /* Reference `.control p`: hovering a key with a shortcut swaps its icon for
+     the key itself. Drawn over the icon, so no button reflows on hover; the
+     same letter is in the title and the aria-label for everyone else. */
+  .editor :global(.key[data-key]:hover:not(:disabled))::after {
+    content: attr(data-key);
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: inherit;
+    background: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  @media (hover: none) {
+    /* A touch "hover" sticks after a tap — the letter would cover the icon. */
+    .editor :global(.key[data-key]:hover:not(:disabled))::after {
+      content: none;
+    }
+  }
+  .editor :global(.saved) {
+    padding: 0 0.4rem;
+    font-size: 0.78rem;
+    color: var(--ink-2);
+    white-space: nowrap;
   }
   .editor :global(.key.icon) {
     padding: 0;

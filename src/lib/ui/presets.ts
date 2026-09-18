@@ -54,10 +54,69 @@ export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   panelHeight: PANEL_HEIGHT_MIN,
 };
 
+/**
+ * The reference's cookie-backed settings window (`index.html #settings`).
+ * Every option applies immediately and is stored with the rest of the UI
+ * config; a corrupted value falls back to the reference default.
+ */
+export interface EditorSettings {
+  /** Oldschool pen for good, not only behind the "old" easter egg. */
+  mouseMode: boolean;
+  /** Crosshair on the brush cursor at very thin and very thick widths. */
+  crossCursor: boolean;
+  /** Reference "paranoid mode": an unfinished transform blocks the editor. */
+  lockTransform: boolean;
+  /** A picked colour joins the saved grid. */
+  paletteAutoAdd: boolean;
+  /** Grid capacity, 30..300 in steps of 10. */
+  paletteLimit: number;
+  /** Autosave interval in ms; 0 is "never" (Ctrl+S only). */
+  autosaveMs: number;
+  /** Offer the saved drafts on start when there are any. */
+  showDraftsOnStart: boolean;
+  theme: 'light' | 'dark';
+  /** Grey stage under the drawing in the dark theme; the document stays white. */
+  greyCanvas: boolean;
+}
+
+/** Offered autosave intervals, reference order; 0 is "never". */
+export const AUTOSAVE_INTERVALS: readonly number[] = [
+  10_000, 30_000, 60_000, 300_000, 600_000, 1_800_000, 3_600_000, 0,
+];
+
+/** What the sheet calls each interval. */
+export const AUTOSAVE_LABELS: Record<number, string> = {
+  10_000: '10 секунд',
+  30_000: '30 секунд',
+  60_000: 'минута',
+  300_000: '5 минут',
+  600_000: '10 минут',
+  1_800_000: '30 минут',
+  3_600_000: 'час',
+  0: 'никогда',
+};
+
+export const PALETTE_LIMIT_MIN = 30;
+export const PALETTE_LIMIT_MAX = 300;
+export const PALETTE_LIMIT_STEP = 10;
+
+export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
+  mouseMode: false,
+  crossCursor: true,
+  lockTransform: false,
+  paletteAutoAdd: true,
+  paletteLimit: 50,
+  autosaveMs: 60_000,
+  showDraftsOnStart: true,
+  theme: 'light',
+  greyCanvas: true,
+};
+
 export interface UiConfig {
   preset: string;
   features: Features;
   drawing: DrawingUiConfig;
+  settings: EditorSettings;
 }
 
 /** Render/checkbox order for the customization list. */
@@ -172,7 +231,37 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     preset,
     features: normalized,
     drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),
+    settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
+}
+
+function normalizeSettings(value: unknown): EditorSettings {
+  const raw = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+  const flag = (key: keyof EditorSettings): boolean =>
+    typeof raw[key] === 'boolean' ? raw[key] as boolean : DEFAULT_SETTINGS[key] as boolean;
+  return {
+    mouseMode: flag('mouseMode'),
+    crossCursor: flag('crossCursor'),
+    lockTransform: flag('lockTransform'),
+    paletteAutoAdd: flag('paletteAutoAdd'),
+    paletteLimit: snapPaletteLimit(raw.paletteLimit),
+    // An interval the UI cannot offer would be unchangeable from the sheet.
+    autosaveMs: AUTOSAVE_INTERVALS.includes(raw.autosaveMs as number)
+      ? raw.autosaveMs as number
+      : DEFAULT_SETTINGS.autosaveMs,
+    showDraftsOnStart: flag('showDraftsOnStart'),
+    theme: raw.theme === 'dark' ? 'dark' : DEFAULT_SETTINGS.theme,
+    greyCanvas: flag('greyCanvas'),
+  };
+}
+
+/** Clamps to the slider range and snaps to its step, so the sheet can show the value. */
+export function snapPaletteLimit(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_SETTINGS.paletteLimit;
+  }
+  const stepped = Math.round(value / PALETTE_LIMIT_STEP) * PALETTE_LIMIT_STEP;
+  return Math.min(PALETTE_LIMIT_MAX, Math.max(PALETTE_LIMIT_MIN, stepped));
 }
 
 function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId): DrawingUiConfig {
