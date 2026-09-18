@@ -506,14 +506,18 @@
     }
     if (editor.tool === 'pipette') {
       const picked = pickColor(e);
-      // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка).
-      if (e.button === 2 && editor.ux.tools.includes('feather')) {
-        editor.fillColor = picked;
+      // Picking emptiness/background arms the eraser (reference: alpha ≠ 255 → eraser).
+      if (picked === BACKGROUND_COLOR) {
+        editor.brushColor = picked;
+        editor.tool = 'eraser';
         return;
       }
-      editor.brushColor = picked;
-      // Picking emptiness/background arms the eraser, a color arms the pencil.
-      editor.tool = picked === BACKGROUND_COLOR ? 'eraser' : 'pencil';
+      // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка).
+      const toFill = e.button === 2 && editor.ux.tools.includes('feather');
+      editor.pickColor(picked, toFill ? 'fill' : 'outline');
+      if (!toFill) {
+        editor.tool = 'pencil';
+      }
       return;
     }
     if (editor.tool === 'mega-eraser') {

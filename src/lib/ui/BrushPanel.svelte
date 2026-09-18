@@ -1,88 +1,67 @@
 <script lang="ts">
-  import type { EditorState, Tool } from './editor-state.svelte';
+  import type { EditorState } from './editor-state.svelte';
   import { BRUSH_SIZES_LOGICAL } from '../format/constants';
-  import Icon from './Icon.svelte';
-  import type { IconName } from './Icon.svelte';
+  import PaletteBox from './PaletteBox.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
-  const TOOLS: Record<Tool, { icon: IconName; title: string; label: string }> = {
-    pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш' },
-    eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик' },
-    feather: { icon: 'feather', title: 'Перо — обводка и заливка', label: 'Перо' },
-    pixel: { icon: 'pixel', title: 'Пиксель — рисует по сетке', label: 'Пиксель' },
-    'mega-eraser': {
-      icon: 'mega-eraser',
-      title: 'Мега-ластик — режет линии целиком',
-      label: 'Мега-ластик',
-    },
-    pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка' },
-  };
-
-  // The preset owns the toolset; the pipette additionally only exists once the
-  // palette is enabled (reference ToolPanel.hx).
-  const tools = $derived(
-    editor.ux.tools
-      .filter((id) => id !== 'pipette' || !editor.ux.pipetteNeedsPalette || editor.paletteExpanded)
-      .map((id) => ({ id, ...TOOLS[id] })),
-  );
   const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
-
-  /**
-   * Clicking the already-active pipette opens the browser's own EyeDropper,
-   * which picks from anywhere on screen (reference Picker.Selected). Without
-   * that API the button just stays the canvas pipette.
-   */
-  function selectTool(id: Tool): void {
-    const eyeDropper = (window as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
-    if (id === 'pipette' && editor.tool === 'pipette' && eyeDropper) {
-      new eyeDropper().open().then(
-        (result) => editor.setBrushColor(result.sRGBHex),
-        () => {},
-      );
-      return;
-    }
-    editor.selectTool(id);
-  }
+  const studio = $derived(editor.ux.layout === 'studio');
+  const twoColors = $derived(editor.ux.tools.includes('feather'));
 </script>
 
-<div class="brush">
-  {#if editor.features.tools}
-    <div class="tools">
-      {#each tools as t (t.id)}
-        <!-- `draw` marks the one tool that *is* the "draw" action, so the
-             Signal Rule's single red lands on it and nowhere else. -->
-        <button
-          class="key icon"
-          class:active={editor.tool === t.id}
-          class:draw={t.id === 'pencil'}
-          aria-pressed={editor.tool === t.id}
-          onclick={() => selectTool(t.id)}
-          title={t.title}
-          aria-label={t.label}
-        >
-          <Icon name={t.icon} />
-        </button>
-      {/each}
+<!-- Studio (toonio.ru): the palette box — outline and fill as two big swatches
+     with the swap between them, the saved grid under, a tool strip at the
+     foot — and the brush box with the width and smoothing sliders. -->
+{#snippet colorGrid()}
+  <div class="grid" role="group" aria-label="Палитра">
+    {#each editor.palette as color (color)}
+      <button
+        class="cell"
+        class:active={editor.brushColor === color && editor.tool !== 'eraser'}
+        aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
+        style:--swatch={color}
+        onclick={() => editor.setBrushColor(color)}
+        title="Цвет {color}"
+        aria-label="Цвет {color}"
+      ></button>
+    {/each}
+  </div>
+{/snippet}
+
+{#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void)}
+  <input
+    type="range"
+    {min}
+    {max}
+    {value}
+    aria-label={label}
+    oninput={(e) => set(e.currentTarget.valueAsNumber)}
+  />
+  <input
+    type="number"
+    {min}
+    {max}
+    {value}
+    aria-label={label}
+    onchange={(e) => set(e.currentTarget.valueAsNumber)}
+  />
+{/snippet}
+
+{#if studio}
+  {#if editor.features.color}
+    <PaletteBox {editor} />
+  {/if}
+  {#if editor.features.sizes}
+    <div class="box brush-box" aria-label="Кисть">
+      <h3>Толщина</h3>
+      {@render slider('Толщина кисти', 1, editor.ux.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
+      <h3>Сглаживание</h3>
+      {@render slider('Минимальное расстояние между точками', 0, 30, editor.tonioMinDistance, (v) => editor.setTonioMinDistance(v))}
+      {@render slider('Общее сглаживание', 1, 100, editor.tonioSmooth, (v) => editor.setTonioSmooth(v))}
     </div>
   {/if}
-
-  {#if editor.tool === 'pipette'}
-    <div class="pick-source" role="group" aria-label="Источник пипетки">
-      {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
-        <button
-          class="key"
-          class:active={editor.pickSource === source}
-          aria-pressed={editor.pickSource === source}
-          onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
-          title={source === 'canvas'
-            ? 'Брать цвет с видимого холста (Alt — только активный слой)'
-            : 'Брать цвет только с активного слоя'}
-        >{label}</button>
-      {/each}
-    </div>
-  {/if}
-
+{:else}
   {#if editor.features.tools && editor.features.sizes}
     <span class="sep"></span>
   {/if}
@@ -104,10 +83,12 @@
     </div>
     <span class="size" title="Толщина кисти — меняется на +/−">{editor.brushSizeLogical}px</span>
   {/if}
-  {#if editor.oldschool}
-    <span class="old" title="Старая кисть — набери o, l, d ещё раз, чтобы вернуться">old</span>
-  {/if}
+{/if}
+{#if editor.oldschool}
+  <span class="old" title="Старая кисть — набери o, l, d ещё раз, чтобы вернуться">old</span>
+{/if}
 
+{#if !studio}
   {#if editor.features.color && quickPalette}
     <div class="quick" role="group" aria-label="Цвет (M — вся палитра)">
       {#each quickPalette as color (color)}
@@ -130,7 +111,7 @@
         oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
       />
     </label>
-    {#if editor.ux.tools.includes('feather')}
+    {#if twoColors}
       <label class="color fill" title="Цвет заливки пера (ПКМ пипеткой)" style:--swatch={editor.fillColor}>
         <input
           type="color"
@@ -152,44 +133,16 @@
         title="Добавить текущий цвет в палитру"
         aria-label="Добавить текущий цвет в палитру"
       >+</button>
-      <div class="grid" role="group" aria-label="Палитра">
-        {#each editor.palette as color (color)}
-          <button
-            class="cell"
-            class:active={editor.brushColor === color && editor.tool !== 'eraser'}
-            aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
-            style:--swatch={color}
-            onclick={() => editor.setBrushColor(color)}
-            title="Цвет {color}"
-            aria-label="Цвет {color}"
-          ></button>
-        {/each}
-      </div>
+      {@render colorGrid()}
     {/if}
   {/if}
-</div>
+{/if}
 
 <style>
-  .brush {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.5rem;
-    min-width: 0;
-  }
-  .tools,
   .sizes {
     display: flex;
     align-items: center;
     gap: 0.3rem;
-  }
-  .pick-source {
-    display: flex;
-    gap: 4px;
-  }
-  .pick-source .key {
-    padding: 0 10px;
-    font-size: 13px;
   }
   .sep {
     width: 1px;
@@ -321,6 +274,68 @@
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }
+  .color input {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  /* ---- Studio boxes (reference `.draw .panel`: 225px, rounded, window tone) ---- */
+  .box {
+    width: 225px;
+    max-width: 100%;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--canvas);
+    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+  }
+  /* Which swatch is which: the icon sits bottom-right in white with a dark
+     halo, so it reads on any color. */
+  /* The reference grid: 35px cells edge to edge, no gaps. */
+  .brush-box {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+  }
+  .brush-box h3 {
+    grid-column: 1 / 3;
+    margin: 0;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--ink-2);
+  }
+  .brush-box input[type='range'] {
+    width: 100%;
+    margin: 0;
+    accent-color: var(--electric);
+  }
+  .brush-box input[type='number'] {
+    width: 100%;
+    min-height: 2rem;
+    box-sizing: border-box;
+    padding: 0 0.2rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .brush-box input:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .size-btn,
     .swatch {
@@ -333,19 +348,8 @@
   /* Phone: the row has to hold ten 44px targets on a 390px screen, so the
      parts that only repeat what is already visible give way — the readout
      (the picked dot states the thickness) and the divider — and the gaps
-     tighten. That buys the whole brush row a single line. */
+     tighten. */
   @media (max-width: 40rem) {
-    .brush {
-      gap: 0.3rem 0.25rem;
-      /* Nine 44px targets need 396px and a 390px phone has 374 — rather than
-         orphan the last one onto a row of its own, the strip scrolls the last
-         few pixels, the way the frame strip does. */
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      scrollbar-width: none;
-      padding-bottom: 1px;
-    }
-    .tools,
     .sizes {
       gap: 0.15rem;
     }
@@ -353,15 +357,5 @@
     .sep {
       display: none;
     }
-  }
-  .color input {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: transparent;
-    opacity: 0;
-    cursor: pointer;
   }
 </style>

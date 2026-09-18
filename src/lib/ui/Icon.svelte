@@ -24,7 +24,13 @@
     | 'eye'
     | 'eye-off'
     | 'chevron-left'
-    | 'chevron-right';
+    | 'chevron-right'
+    | 'palette'
+    | 'edit'
+    | 'copy'
+    | 'paste'
+    | 'expand'
+    | 'drafts';
 
   const PATHS: Record<IconName, string> = {
     plus: 'M12 3v18M3 12h18',
@@ -59,6 +65,15 @@
       'M10.7 6.2A9.9 9.9 0 0 1 12 6c6.3 0 9.8 6 9.8 6a17 17 0 0 1-2.5 3.2M6.6 7.6A17 17 0 0 0 2.2 12s3.5 6 9.8 6a9.4 9.4 0 0 0 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18',
     'chevron-left': 'M15 6l-6 6 6 6',
     'chevron-right': 'M9 6l6 6-6 6',
+    // A painter's palette with three wells: the saved-palettes list.
+    palette:
+      'M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8zM8.5 10.5h.01M12.5 6.5h.01M16.5 9.5h.01',
+    // Pencil crossed with a ruler: edit the palette itself.
+    edit: 'M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13M8 6l2-2M18 16l2-2M17 11l4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17M15 5l4 4M3 21l1-4 11-11 3 3-11 11z',
+    copy: 'M9 9h11v11H9zM5 15V4h11',
+    paste: 'M8 4h8v3H8zM6 6H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1',
+    expand: 'M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5',
+    drafts: 'M3 14h18M3 14l2-8h14l2 8M3 14v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M7 17h.01M11 17h.01',
   };
 
 </script>

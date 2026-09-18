@@ -3,6 +3,7 @@
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
+  import ToolsPanel from './ToolsPanel.svelte';
   import ExportGifButton from './ExportGifButton.svelte';
   import LayersPanel from './LayersPanel.svelte';
   import Timeline from './Timeline.svelte';
@@ -39,6 +40,9 @@
   let { onPublish }: { onPublish?: (doc: ToonDocument) => void } = $props();
 
   const editor = new EditorState();
+  // Studio layout (toonio.ru): tools down the left, palette and brush boxes
+  // on the right, the timeline and transport under the canvas.
+  const studio = $derived(editor.ux.layout === 'studio');
   const scheduleSave = debounce(
     (id: string, doc: unknown) => void saveDraft(id, doc),
     DRAFT_SAVE_DEBOUNCE_MS,
@@ -70,6 +74,13 @@
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
+    // Alt+E is the reference's mega-eraser; every other modifier is the
+    // browser's or the OS's.
+    if (e.altKey && (e.key === 'e' || e.key === 'E') && studio) {
+      e.preventDefault();
+      editor.selectTool('mega-eraser');
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey) {
       return;
     }
@@ -127,9 +138,53 @@
       case 'M':
         editor.togglePalette();
         break;
+      // The reference's F is the feather; ours is fullscreen. The studio
+      // takes the reference's meaning, fullscreen stays on the button.
       case 'f':
       case 'F':
-        toggleFullscreen();
+        if (studio) {
+          editor.selectTool('feather');
+        } else {
+          toggleFullscreen();
+        }
+        break;
+      // Reference HotAdd / HotRemove: A adds a frame, Shift+A a layer;
+      // Delete removes the frame, Shift+Delete the layer.
+      case 'a':
+        editor.addFrameAfterActive();
+        break;
+      case 'A':
+        editor.addLayerAboveActive();
+        break;
+      case 'Delete':
+        if (e.shiftKey) {
+          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || confirm('Удалить слой со штрихами?'))) {
+            editor.removeActiveLayer();
+          }
+        } else {
+          editor.removeActiveFrame();
+        }
+        break;
+      // Reference J / L and the arrows: frames sideways, layers up and down.
+      case 'j':
+      case 'J':
+        editor.selectFrame(0);
+        break;
+      case 'l':
+      case 'L':
+        editor.selectFrame(lastFrame);
+        break;
+      case 'ArrowLeft':
+        editor.selectFrame(editor.activeFrame === 0 ? lastFrame : editor.activeFrame - 1);
+        break;
+      case 'ArrowRight':
+        editor.selectFrame(editor.activeFrame >= lastFrame ? 0 : editor.activeFrame + 1);
+        break;
+      case 'ArrowUp':
+        editor.selectLayer(Math.min(editor.activeLayer + 1, editor.doc.layers.length - 1));
+        break;
+      case 'ArrowDown':
+        editor.selectLayer(Math.max(editor.activeLayer - 1, 0));
         break;
       // Onion skin. The reference binds Tab; we do not — Tab is the way out
       // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
@@ -262,7 +317,14 @@
     ['Y', 'Вернуть штрих'],
     ['C', 'Скопировать кадр'],
     ['V', 'Вставить кадр'],
-    ['F', 'Во весь экран'],
+    ['F', 'Во весь экран (Toonio: перо)'],
+    ['A', 'Добавить кадр (Shift — слой)'],
+    ['Del', 'Удалить кадр (Shift — слой)'],
+    ['J / L', 'Первый / последний кадр'],
+    ['← / →', 'Предыдущий / следующий кадр'],
+    ['↑ / ↓', 'Слой выше / ниже'],
+    ['K', 'Калька'],
+    ['X', 'Поменять контур и заливку'],
   ];
 
   function openCustomize(): void {
@@ -288,6 +350,8 @@
       editor.addFrameAfterActive();
     }
   }
+
+  const lastFrame = $derived(editor.doc.layers[0].frames.length - 1);
 
   function onFpsChange(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
@@ -325,7 +389,44 @@
   }}
 />
 
-<div class="editor" bind:this={editorEl}>
+{#snippet history()}
+  <button
+    class="key"
+    disabled={!editor.canUndo}
+    onclick={() => editor.undo()}
+    title="Отменить последний штрих (Z)"
+    aria-label="Отменить"
+  >
+    <Icon name="undo" />
+  </button>
+  <button
+    class="key"
+    disabled={!editor.canRedo}
+    onclick={() => editor.redo()}
+    title="Вернуть отменённый штрих (Y)"
+    aria-label="Вернуть"
+  >
+    <Icon name="redo" />
+  </button>
+{/snippet}
+
+<div class="editor" class:studio bind:this={editorEl}>
+  {#if studio}
+    <aside class="left" aria-label="Инструменты и история">
+      <ToolsPanel {editor} />
+      <div class="history">
+        {@render history()}
+        {#if document.fullscreenEnabled}
+          <button class="key icon" onclick={toggleFullscreen} title="Полный экран" aria-label="Полный экран">
+            <Icon name="expand" />
+          </button>
+        {/if}
+        <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
+          <Icon name="drafts" />
+        </button>
+      </div>
+    </aside>
+  {/if}
   <div class="stage">
     <CanvasView {editor} />
     {#if flashVisible}
@@ -340,29 +441,19 @@
       </p>
     {/if}
   </div>
+  {#if studio}
+    <aside class="right" aria-label="Палитра и кисть">
+      <BrushPanel {editor} />
+    </aside>
+  {/if}
   <div class="panel">
     <div class="toolbar">
       <!-- Row A — frames: taking a stroke back comes first, then add / delete
            anchoring the timeline strip. -->
       <div class="row frames" role="group" aria-label="Кадры">
-        <button
-          class="key"
-          disabled={!editor.canUndo}
-          onclick={() => editor.undo()}
-          title="Отменить последний штрих (Z)"
-          aria-label="Отменить"
-        >
-          <Icon name="undo" />
-        </button>
-        <button
-          class="key"
-          disabled={!editor.canRedo}
-          onclick={() => editor.redo()}
-          title="Вернуть отменённый штрих (Y)"
-          aria-label="Вернуть"
-        >
-          <Icon name="redo" />
-        </button>
+        {#if !studio}
+          {@render history()}
+        {/if}
         {#if editor.features.addFrame}
           <button
             class="key"
@@ -395,8 +486,40 @@
       <!-- Row B — transport & output: play at left like the reference,
            settings / export next to it, publish anchored right. -->
       <div class="row transport" role="group" aria-label="Просмотр и экспорт">
+        {#if studio}
+          <button
+            class="key icon ends"
+            disabled={editor.playing || editor.activeFrame === 0}
+            onclick={() => editor.selectFrame(0)}
+            title="На первый кадр"
+            aria-label="На первый кадр"
+          >⏮</button>
+          <button
+            class="key icon"
+            disabled={editor.playing || editor.activeFrame === 0}
+            onclick={() => editor.selectFrame(editor.activeFrame - 1)}
+            title="Предыдущий кадр"
+            aria-label="Предыдущий кадр"
+          >⏴</button>
+        {/if}
         {#if editor.features.play}
           <PlayControls {editor} />
+        {/if}
+        {#if studio}
+          <button
+            class="key icon"
+            disabled={editor.playing || editor.activeFrame >= lastFrame}
+            onclick={() => editor.selectFrame(editor.activeFrame + 1)}
+            title="Следующий кадр"
+            aria-label="Следующий кадр"
+          >⏵</button>
+          <button
+            class="key icon ends"
+            disabled={editor.playing || editor.activeFrame >= lastFrame}
+            onclick={() => editor.selectFrame(lastFrame)}
+            title="На последний кадр"
+            aria-label="На последний кадр"
+          >⏭</button>
         {/if}
         {#if editor.features.onionSkin}
           <button
@@ -409,6 +532,28 @@
           >
             <Icon name="onion" />
           </button>
+        {/if}
+        {#if studio}
+          <!-- The reference keeps fps on the bar itself: a slider and a box. -->
+          <label class="fps-inline" title="Частота кадров">
+            <span class="sr-only">Частота кадров</span>
+            <input
+              type="range"
+              min={editor.ux.fpsRange[0]}
+              max={editor.ux.fpsRange[1]}
+              value={editor.doc.frame_rate}
+              oninput={onFpsChange}
+              disabled={editor.playing}
+            />
+            <input
+              type="number"
+              min={editor.ux.fpsRange[0]}
+              max={editor.ux.fpsRange[1]}
+              value={editor.doc.frame_rate}
+              onchange={onFpsChange}
+              disabled={editor.playing}
+            />
+          </label>
         {/if}
         <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
              a control, and the readout says where we are. -->
@@ -507,6 +652,22 @@
             </div>
           {/if}
         </div>
+        {#if studio}
+          <button
+            class="key icon"
+            disabled={editor.playing}
+            onclick={() => editor.copyActiveFrame()}
+            title="Копировать кадр (C)"
+            aria-label="Копировать кадр"
+          ><Icon name="copy" /></button>
+          <button
+            class="key icon"
+            disabled={editor.playing || !editor.copiedColumn}
+            onclick={() => editor.pasteFrame()}
+            title="Вставить кадр с заменой текущего (V)"
+            aria-label="Вставить кадр"
+          ><Icon name="paste" /></button>
+        {/if}
         {#if onPublish}
           <!-- Publishing leaves the editor; it gets its own zone at the end of
                the row so it never reads as one more tool toggle. -->
@@ -523,11 +684,14 @@
         {/if}
       </div>
 
-      <!-- Row C — drawing: tools · sizes · color, with settings anchored in the
-           otherwise-empty bottom-right corner. -->
-      <div class="row draw" role="group" aria-label="Кисть">
-        <BrushPanel {editor} />
-      </div>
+      <!-- Row C — drawing: tools · sizes · color. In the studio these live in
+           the side columns instead. -->
+      {#if !studio}
+        <div class="row draw" role="group" aria-label="Кисть">
+          <ToolsPanel {editor} />
+          <BrushPanel {editor} />
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -622,31 +786,6 @@
             </button>
           {/each}
         </div>
-
-        {#if editor.preset === 'toonio'}
-          <div class="tonio-preset-settings" aria-label="Настройки линии Tonio">
-            <label class="number-setting">
-              <span>Сглаживание</span>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={editor.tonioSmooth}
-                oninput={(event) => editor.setTonioSmooth(event.currentTarget.valueAsNumber)}
-              />
-            </label>
-            <label class="number-setting">
-              <span>Мин. расстояние</span>
-              <input
-                type="number"
-                min="0"
-                max="30"
-                value={editor.tonioMinDistance}
-                oninput={(event) => editor.setTonioMinDistance(event.currentTarget.valueAsNumber)}
-              />
-            </label>
-          </div>
-        {/if}
 
         <p class="sheet-hint">Кнопки</p>
         <div class="toggles">
@@ -792,6 +931,104 @@
        strip and Tab walks the frames, so they give their 88px back to the
        thumbnails. Both classes, to outrank the shared .key vocabulary below. */
     .editor :global(.arrow.key) {
+      display: none;
+    }
+  }
+  /* ---- Studio layout (toonio.ru editor.html) ----
+     tools | canvas | panels, the bar under all three. The bar keeps its own
+     rows; only the draw row moves out to the sides. */
+  .editor.studio {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+    background: var(--paper);
+  }
+  .studio .stage {
+    grid-column: 2;
+  }
+  .studio .panel {
+    grid-column: 1 / -1;
+  }
+  .studio .left,
+  .studio .right {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0;
+    padding: 1rem 0.9rem;
+    overflow-y: auto;
+    box-sizing: border-box;
+  }
+  .studio .left {
+    grid-column: 1;
+    width: 8.4rem;
+  }
+  .studio .right {
+    grid-column: 3;
+    align-items: stretch;
+  }
+  .studio .history {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  .fps-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.4rem;
+  }
+  .fps-inline input[type='range'] {
+    width: 6rem;
+    margin: 0;
+    accent-color: var(--electric);
+  }
+  .fps-inline input[type='number'] {
+    width: 3.2rem;
+    height: var(--key-h);
+    box-sizing: border-box;
+    padding: 0 0.3rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  /* Phone: no room for side columns — they stack above and below the canvas
+     and lay their contents out in a row. */
+  @media (max-width: 40rem) {
+    .editor.studio {
+      display: flex;
+    }
+    .studio .left,
+    .studio .right,
+    .studio .history {
+      display: flex;
+      flex-direction: row;
+      width: auto;
+      padding: 0.4rem 0.5rem;
+      gap: 0.4rem;
+    }
+    .studio .right :global(.box) {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+    }
+    .studio .right :global(.palette .grid) {
+      max-height: 64px;
+    }
+    .fps-inline,
+    .studio .ends {
       display: none;
     }
   }
@@ -980,7 +1217,7 @@
   }
   .keyrow {
     display: grid;
-    grid-template-columns: 4.2rem 1fr; /* fits the widest chip, «+ / −» */
+    grid-template-columns: 4.6rem 1fr; /* fits the widest chip, «← / →» */
     align-items: baseline;
     gap: 0.75rem;
     padding: 0.32rem 0;
@@ -1033,35 +1270,6 @@
     color: var(--canvas);
   }
   .preset-chip:focus-visible {
-    outline: 3px solid var(--electric);
-    outline-offset: 2px;
-  }
-  .tonio-preset-settings {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.55rem;
-    margin-top: 0.65rem;
-  }
-  .number-setting {
-    display: grid;
-    gap: 0.25rem;
-    color: var(--ink-2);
-    font-size: 0.74rem;
-    font-weight: 700;
-  }
-  .number-setting input {
-    width: 100%;
-    min-height: 2.75rem;
-    box-sizing: border-box;
-    padding-inline: 0.55rem;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-md);
-    background: var(--canvas);
-    color: var(--ink);
-    font: inherit;
-    font-variant-numeric: tabular-nums;
-  }
-  .number-setting input:focus-visible {
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }

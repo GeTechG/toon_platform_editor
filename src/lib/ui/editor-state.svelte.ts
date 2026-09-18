@@ -47,7 +47,18 @@ import {
   type OnionLayer,
   type PickSource,
 } from './frame-selection';
-import { addPaletteColor, loadPalette, savePalette } from './color-palette';
+import {
+  addPaletteColor,
+  loadPalette,
+  loadSavedPalettes,
+  mergePalettes,
+  PALETTE_LIMIT,
+  removePaletteColor,
+  savePalette,
+  saveSavedPalettes,
+  withSavedPalette,
+  type SavedPalette,
+} from './color-palette';
 import { IDENTITY_VIEW, zoomAt, type Viewport2D } from './viewport';
 import { eraseStrokes } from '../tools/mega-eraser';
 import {
@@ -102,6 +113,8 @@ export class EditorState {
   visitedFrames = $state<number[]>([0]);
   /** Saved color grid (Tonio preset); persisted separately from the UI config. */
   palette = $state<string[]>(loadPalette());
+  /** Reference `toonio_saved_palettes`: named snapshots of the grid. */
+  savedPalettes = $state<SavedPalette[]>(loadSavedPalettes());
   /** Canvas zoom and pan; view state only, never part of the document. */
   view = $state<Viewport2D>({ ...IDENTITY_VIEW });
   /** Canvas size in CSS px, kept current by CanvasView — zoom clamps against it. */
@@ -223,10 +236,66 @@ export class EditorState {
     this.fillColor = outline;
   }
 
+  /** Keeps a color in the saved grid (reference AddColourToPalette). */
+  addColorToPalette(color: string): void {
+    this.palette = addPaletteColor(this.palette, color);
+    savePalette(this.palette);
+  }
+
   /** Keeps the current brush color in the saved grid (reference: «добавить в палитру»). */
   addCurrentColorToPalette(): void {
-    this.palette = addPaletteColor(this.palette, this.brushColor);
+    this.addColorToPalette(this.brushColor);
+  }
+
+  /**
+   * A picked color lands on the outline (left button) or the fill (right
+   * button) — reference PickColour / OnPickColour. An eraser gives way to the
+   * pencil; other tools keep drawing. A pick from outside the grid (pipette,
+   * browser eyedropper) is also kept in the grid, the reference's
+   * `paletteAutoAdd` default.
+   */
+  pickColor(color: string, target: 'outline' | 'fill', fromGrid = false): void {
+    const hex = color.toLowerCase();
+    if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
+      this.tool = 'pencil';
+    }
+    if (target === 'fill') {
+      this.fillColor = hex;
+    } else {
+      this.setBrushColor(hex);
+    }
+    if (!fromGrid && this.ux.colorGrid) {
+      this.addColorToPalette(hex);
+    }
+  }
+
+  removePaletteColor(color: string): void {
+    this.palette = removePaletteColor(this.palette, color);
     savePalette(this.palette);
+  }
+
+  /** Reference LoadPalette(colours, true): the grid becomes exactly these colors. */
+  replacePalette(colours: readonly string[]): void {
+    this.palette = colours.map((c) => c.toLowerCase()).slice(0, PALETTE_LIMIT);
+    savePalette(this.palette);
+  }
+
+  /** Reference MergePalette: adds what the grid lacks; returns the counts for the UI to report. */
+  mergePalette(colours: readonly string[]): { added: number; skipped: number } {
+    const merged = mergePalettes(this.palette, colours, PALETTE_LIMIT);
+    this.palette = merged.palette;
+    savePalette(this.palette);
+    return merged;
+  }
+
+  saveCurrentPalette(name: string): void {
+    this.savedPalettes = withSavedPalette(this.savedPalettes, name, this.palette);
+    saveSavedPalettes(this.savedPalettes);
+  }
+
+  deleteSavedPalette(id: number): void {
+    this.savedPalettes = this.savedPalettes.filter((p) => p.id !== id);
+    saveSavedPalettes(this.savedPalettes);
   }
 
   /** Color choice from the palette/picker; under Multator white arms the eraser, anything else the pencil. */

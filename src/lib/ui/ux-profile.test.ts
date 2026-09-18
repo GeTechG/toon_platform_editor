@@ -53,6 +53,12 @@ describe('UX_PROFILES', () => {
     expect(toonio.activeFrameAlpha).toBe(1);
   });
 
+  it('only toonio takes the studio layout (tools left, panels right, timeline below)', () => {
+    expect(toonio.layout).toBe('studio');
+    expect(toonop.layout).toBe('bar');
+    expect(multator.layout).toBe('bar');
+  });
+
   it('offers the Tonio toolset only under Toonio', () => {
     expect(toonio.tools).toEqual(['pencil', 'eraser', 'feather', 'pixel', 'mega-eraser', 'pipette']);
     expect(multator.tools).toEqual(['pencil', 'eraser', 'pipette']);
