@@ -28,6 +28,7 @@
     playing = $bindable(!prefersReducedMotion()),
     audioSrc,
     audioSync = true,
+    current = $bindable(0),
   }: {
     /** Any published version — the share page serves documents as they were saved. */
     doc: ToonDocumentV1 | ToonDocumentV2 | ToonDocument;
@@ -41,6 +42,11 @@
      * keeps its own clock and the track plays underneath.
      */
     audioSync?: boolean;
+    /**
+     * The frame on screen. Bindable so a host can show it and step through it
+     * while paused — which is the only way to check a frame against the track.
+     */
+    current?: number;
   } = $props();
 
   // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
@@ -51,7 +57,6 @@
   let canvasEl: HTMLCanvasElement;
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
   let wrapHeight = $state(0);
-  let current = $state(0);
 
   // Fit the document aspect inside the wrap: capped by width and, when known,
   // by height (same letterboxing as the editor canvas).
@@ -145,6 +150,20 @@
       cancelAnimationFrame(raf);
       sound?.pause();
     };
+  });
+
+  // Stepping a frame while paused takes the track with it, so frame N can be
+  // heard where it actually falls. Silently: a step is not playback.
+  $effect(() => {
+    const frame = current;
+    if (playing || !audioSync || !audio) {
+      return;
+    }
+    untrack(() => {
+      if (audio) {
+        audio.currentTime = (frame % frameCount(view)) / view.frame_rate;
+      }
+    });
   });
 
   // Redraw on frame change or resize (client-only; effects do not run in SSR).

@@ -41,6 +41,20 @@ export function supportedVideoFormats(
   return VIDEO_FORMATS.filter((format) => isSupported(format.mimeType));
 }
 
+/**
+ * How many frames the recording runs for. Without a tied track that is the
+ * animation, once. With one, the track sets the length of the work and the
+ * animation loops to fill it — a five-frame loop under a three-minute song is
+ * a three-minute video, not half a second of it. A track shorter than the
+ * animation never cuts the animation short.
+ */
+export function exportFrameCount(frames: number, fps: number, trackSeconds: number | undefined): number {
+  if (trackSeconds === undefined) {
+    return frames;
+  }
+  return Math.max(frames, Math.round(trackSeconds * fps));
+}
+
 /** When each frame is due, in ms from the start — the document's own tempo. */
 export function frameDeadlines(count: number, fps: number): Float64Array {
   return Float64Array.from({ length: count }, (_, i) => (i * 1000) / fps);
@@ -55,6 +69,11 @@ export interface VideoExportOptions {
   onProgress?: (done: number, total: number) => void;
   /** Aborting drops the recording; nothing is returned and nothing is saved. */
   signal?: AbortSignal;
+  /**
+   * Length of the track when it is tied to the frames, in seconds. The
+   * animation then loops for that long instead of playing once.
+   */
+  trackSeconds?: number;
 }
 
 export const WATERMARK_TEXT = 'toonop';
@@ -85,7 +104,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.
  * Resolves with the finished file; rejects with an `AbortError` if cancelled.
  */
 export async function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
-  const { format, audio, watermark, onProgress, signal } = options;
+  const { format, audio, watermark, onProgress, signal, trackSeconds } = options;
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('этот браузер не умеет записывать видео');
   }
@@ -136,7 +155,8 @@ export async function exportVideo(doc: ToonDocument, options: VideoExportOptions
     recorder.onerror = () => reject(new Error('запись видео сорвалась'));
   });
 
-  const total = frameCount(doc);
+  const frames = frameCount(doc);
+  const total = exportFrameCount(frames, fps, trackSeconds);
   const deadlines = frameDeadlines(total, fps);
   const viewport = { scale: 1 / FIXED_POINT_SCALE, dpr: 1 };
   const renderer = new Canvas2DFrameRenderer();
@@ -149,7 +169,7 @@ export async function exportVideo(doc: ToonDocument, options: VideoExportOptions
         throw new DOMException('экспорт отменён', 'AbortError');
       }
       await sleep(started + deadlines[index] - performance.now());
-      renderer.render(doc, index, ctx as unknown as Canvas2DLike, viewport);
+      renderer.render(doc, index % frames, ctx as unknown as Canvas2DLike, viewport);
       if (watermark) {
         stampWatermark(ctx, width, height, watermark);
       }

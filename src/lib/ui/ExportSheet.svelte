@@ -13,6 +13,7 @@
   import { exportGif } from '../export/export-gif';
   import {
     WATERMARK_TEXT,
+    exportFrameCount,
     exportVideo,
     supportedVideoFormats,
     type VideoFormat,
@@ -31,6 +32,20 @@
   let cancelling = $state<AbortController | null>(null);
 
   const formats = supportedVideoFormats();
+
+  // A tied track sets the length of the work: the animation loops to fill it.
+  const trackSeconds = $derived(
+    editor.audio.hasTrack && editor.audio.sync ? editor.audio.duration : undefined,
+  );
+  const videoSeconds = $derived(
+    exportFrameCount(
+      editor.doc.layers[0].frames.length,
+      editor.doc.frame_rate,
+      trackSeconds,
+    ) / editor.doc.frame_rate,
+  );
+  const clock = (seconds: number) =>
+    `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
 
   $effect(() => {
     if (open) {
@@ -86,6 +101,7 @@
         format,
         audio: editor.audio.blob,
         watermark: watermark ? WATERMARK_TEXT : undefined,
+        trackSeconds,
         signal: cancelling.signal,
         onProgress: (done, total) => {
           progress = Math.round((done / total) * 100);
@@ -153,13 +169,16 @@
           <input type="checkbox" role="switch" bind:checked={watermark} />
         </label>
         {#if editor.audio.hasTrack}
-          <p class="note">Звук «{editor.audio.name}» войдёт в видео.</p>
+          <p class="note">
+            Звук «{editor.audio.name}» войдёт в видео.
+            {#if editor.audio.sync}
+              Трек привязан к кадрам, поэтому он и задаёт длину: анимация повторяется, пока он играет.
+            {:else}
+              Трек не привязан, поэтому видео длится столько же, сколько мультик, и музыка обрежется.
+            {/if}
+          </p>
         {/if}
-        <p class="note">
-          Запись идёт в реальном времени: {Math.ceil(
-            editor.doc.layers[0].frames.length / editor.doc.frame_rate,
-          )} с.
-        </p>
+        <p class="note">Запись идёт в реальном времени: {clock(videoSeconds)}.</p>
         {#each formats as format (format.mimeType)}
           <button class="key wide" disabled={busy !== ''} onclick={() => saveVideo(format)}>
             {format.label}

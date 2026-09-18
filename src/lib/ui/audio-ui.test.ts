@@ -4,6 +4,7 @@ const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).t
 const player = await Bun.file(new URL('../player/Player.svelte', import.meta.url)).text();
 const playControls = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('../audio/state.svelte.ts', import.meta.url)).text();
+const sheet = await Bun.file(new URL('./ExportSheet.svelte', import.meta.url)).text();
 const panel = await Bun.file(new URL('./AudioPanel.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 
@@ -102,6 +103,18 @@ describe('the synchronisation flag', () => {
   it('is offered in the panel and travels with a publish', () => {
     expect(panel).toContain('bind:checked={editor.audio.sync}');
     expect(editorUi).toContain('sync: editor.audio.sync');
+  });
+
+  it('tied, the track sets the length of the exported video', () => {
+    // Otherwise the flag changes nothing anyone can see: both clocks run at
+    // the same rate, so the picture is identical either way.
+    expect(sheet).toContain('editor.audio.hasTrack && editor.audio.sync ? editor.audio.duration');
+    expect(sheet).toContain('trackSeconds,');
+  });
+
+  it('the player can be stepped a frame at a time, and the track follows', () => {
+    expect(player).toContain('current = $bindable(0)');
+    expect(player).toContain('audio.currentTime = (frame % frameCount(view))');
   });
 
   it('rides the light write, never the file', () => {
