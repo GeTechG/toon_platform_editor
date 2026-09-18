@@ -2,6 +2,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { PALETTE_LIMIT, TONIO_DEFAULT_PALETTE, contrastInk, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
+  import ColourPicker from './ColourPicker.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -9,6 +10,8 @@
   let section = $state<'colors' | 'saved' | 'edit'>('colors');
   let removerMode = $state(false);
   let preview = $state<SavedPalette | null>(null);
+  /** Which big swatch the picker is open for, and where it opened. */
+  let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number } | null>(null);
 
   const twoColors = $derived(editor.ux.tools.includes('feather'));
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
@@ -67,6 +70,27 @@
     openSection('colors');
   }
 
+  /** The big swatch opens the picker beside itself (reference: OpenColourPicker). */
+  function openPicker(e: MouseEvent, target: 'outline' | 'fill'): void {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    picking = {
+      target,
+      x: Math.min(r.right + 6, window.innerWidth - 182),
+      y: Math.min(Math.max(6, r.top), Math.max(6, window.innerHeight - 360)),
+    };
+  }
+
+  /**
+   * The picker applies live without touching the grid; the color it settles on
+   * joins the grid once, on close, under the reference's `paletteAutoAdd`.
+   */
+  function closePicker(): void {
+    if (picking && editor.ux.colorGrid) {
+      editor.addColorToPalette(picking.target === 'fill' ? editor.fillColor : editor.brushColor);
+    }
+    picking = null;
+  }
+
   /** A color from the preview lands in the grid and on the outline / fill. */
   function onPreviewCell(e: MouseEvent, color: string): void {
     if (e.button !== 0 && e.button !== 2) return;
@@ -79,31 +103,35 @@
      grid (or the saved list) in the middle, a three-key strip at the foot. -->
 <div class="box palette" aria-label="Цвета">
   <div class="main-colors">
-    <label class="big" title="Цвет контура (ЛКМ)" style:--swatch={editor.brushColor} style:color={contrastInk(editor.brushColor)}>
-      <input
-        type="color"
-        value={editor.brushColor}
-        aria-label="Цвет контура"
-        oninput={(e) => editor.pickColor(e.currentTarget.value, 'outline', true)}
-      />
-      <span class="mark"><Icon name="pencil" size={16} /></span>
+    <div class="big" style:--swatch={editor.brushColor} style:color={contrastInk(editor.brushColor)}>
+      <button
+        class="face"
+        title="Цвет контура (ЛКМ)"
+        aria-label="Цвет контура {editor.brushColor}"
+        aria-haspopup="dialog"
+        onclick={(e) => openPicker(e, 'outline')}
+      >
+        <span class="mark"><Icon name="pencil" size={16} /></span>
+      </button>
       {#if !outlineInGrid}
         <button class="add" onclick={() => editor.addColorToPalette(editor.brushColor)} title="Добавить контур в палитру" aria-label="Добавить цвет контура в палитру"><Icon name="plus" size={16} /></button>
       {/if}
-    </label>
+    </div>
     {#if twoColors}
-      <label class="big" title="Цвет заливки (ПКМ)" style:--swatch={editor.fillColor} style:color={contrastInk(editor.fillColor)}>
-        <input
-          type="color"
-          value={editor.fillColor}
-          aria-label="Цвет заливки"
-          oninput={(e) => editor.pickColor(e.currentTarget.value, 'fill', true)}
-        />
-        <span class="mark"><Icon name="feather" size={16} /></span>
+      <div class="big" style:--swatch={editor.fillColor} style:color={contrastInk(editor.fillColor)}>
+        <button
+          class="face"
+          title="Цвет заливки (ПКМ)"
+          aria-label="Цвет заливки {editor.fillColor}"
+          aria-haspopup="dialog"
+          onclick={(e) => openPicker(e, 'fill')}
+        >
+          <span class="mark"><Icon name="feather" size={16} /></span>
+        </button>
         {#if !fillInGrid}
           <button class="add" onclick={() => editor.addColorToPalette(editor.fillColor)} title="Добавить заливку в палитру" aria-label="Добавить цвет заливки в палитру"><Icon name="plus" size={16} /></button>
         {/if}
-      </label>
+      </div>
       <button
         class="swap"
         onclick={() => editor.swapColors()}
@@ -232,6 +260,17 @@
   </div>
 {/if}
 
+{#if picking}
+  <ColourPicker
+    color={picking.target === 'fill' ? editor.fillColor : editor.brushColor}
+    label={picking.target === 'fill' ? 'заливка' : 'контур'}
+    x={picking.x}
+    y={picking.y}
+    onpick={(hex) => picking && editor.pickColor(hex, picking.target, true)}
+    onclose={closePicker}
+  />
+{/if}
+
 <style>
   .box {
     width: 225px;
@@ -259,19 +298,19 @@
     background: var(--swatch);
     cursor: pointer;
   }
-  .big:focus-within {
-    outline: 3px solid var(--electric);
-    outline-offset: -3px;
-  }
-  .big input {
+  /* The swatch face fills the tile and opens the picker. */
+  .face {
     width: 100%;
     height: 100%;
     margin: 0;
     padding: 0;
     border: none;
     background: transparent;
-    opacity: 0;
     cursor: pointer;
+  }
+  .face:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: -3px;
   }
   /* Which swatch is which: the marker sits bottom-right in the contrast ink. */
   .mark {
