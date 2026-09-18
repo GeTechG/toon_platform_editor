@@ -74,6 +74,20 @@ describe('the soundtrack panel', () => {
   });
 });
 
+describe('the draft keeps the track whole', () => {
+  it('a credit edit writes the credits, not the file again', () => {
+    // Reading name/author in the effect that writes the blob put megabytes
+    // into IndexedDB per keystroke, and raced the autosave doing the same.
+    expect(editorUi).toContain('setDraftCredits(');
+    expect(editorUi).toMatch(/const blob = editor\.audio\.blob;/);
+  });
+
+  it('a track that came back short is reported, not played as a stub', () => {
+    expect(state).toContain('track.bytes !== track.blob.size');
+    expect(state).toContain('повреждён');
+  });
+});
+
 describe('the draft keeps the track without inventing sessions', () => {
   it('an untouched editor writes no record just because it has no sound', () => {
     expect(editorUi).toContain('if (!blob && draftId === null)');

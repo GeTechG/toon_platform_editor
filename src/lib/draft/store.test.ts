@@ -7,6 +7,7 @@ import {
   newDraftId,
   saveDraft,
   setDraftAudio,
+  setDraftCredits,
 } from './store';
 
 /**
@@ -296,5 +297,44 @@ describe('draft audio track', () => {
     await saveDraft('a', doc(12));
     await setDraftAudio('a', track());
     expect(JSON.parse(await exportDrafts())[0].audio).toBeUndefined();
+  });
+});
+
+describe('concurrent draft writes', () => {
+  const track = () => ({ blob: new Blob(['ля'], { type: 'audio/mpeg' }), name: 'Песня', author: '' });
+
+  it('a document save and a track save at the same moment both land', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    // Both are fired without awaiting, which is what the editor does: the
+    // autosave clock and the track effect are independent. Each is a
+    // read-modify-write, so unserialized they overwrite each other's field.
+    await Promise.all([saveDraft('a', doc(24)), setDraftAudio('a', track())]);
+    const saved = (await listDrafts())[0];
+    expect(saved.doc).toEqual(doc(24));
+    expect(saved.audio?.name).toBe('Песня');
+  });
+
+  it('a burst of credit edits leaves the last one, with the track intact', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    // Typing a name must not rewrite the file: a 3 MB blob per keystroke is
+    // how a draft write turns into a race with itself.
+    for (const name of ['П', 'Пе', 'Пес', 'Песн', 'Песня']) {
+      await setDraftCredits('a', name, 'Автор');
+    }
+    const saved = (await listDrafts())[0];
+    expect(saved.audio?.name).toBe('Песня');
+    expect(saved.audio?.author).toBe('Автор');
+    expect(await saved.audio?.blob.text()).toBe('ля');
+    expect(saved.doc).toEqual(doc(12));
+  });
+
+  it('credits for a session with no track are simply dropped', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftCredits('a', 'Песня', 'Автор');
+    expect((await listDrafts())[0].audio).toBeUndefined();
   });
 });

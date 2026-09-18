@@ -82,8 +82,17 @@ export class AudioTrackState {
     return true;
   }
 
-  /** Restores a track that came back from a draft — already checked, already decoded once. */
-  async restore(track: AudioTrackData): Promise<void> {
+  /**
+   * Restores a track that came back from a draft. The size it was stored at
+   * is checked first: storage that hands back a short file would otherwise
+   * turn a three-minute song into a few silent seconds with nothing said.
+   */
+  async restore(track: AudioTrackData & { bytes?: number }): Promise<void> {
+    if (typeof track.bytes === 'number' && track.bytes !== track.blob.size) {
+      this.error = 'Трек в черновике повреждён — приложи файл заново';
+      console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
+      return;
+    }
     await this.load(track.blob as Blob & { type: string; size: number }, track.name, track.author);
   }
 

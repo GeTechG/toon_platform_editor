@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
@@ -16,7 +16,14 @@
   import { decodeToon } from '../format/toon-decode';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
   import { draftEntries } from '../draft/restore';
-  import { deleteDraft, listDrafts, newDraftId, saveDraft, setDraftAudio } from '../draft/store';
+  import {
+    deleteDraft,
+    listDrafts,
+    newDraftId,
+    saveDraft,
+    setDraftAudio,
+    setDraftCredits,
+  } from '../draft/store';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, PRESETS } from './presets';
@@ -424,14 +431,28 @@
   // whenever the file or its credits change, so an autosave never carries a
   // 10 MB blob and attaching a track never waits for the autosave clock.
   $effect(() => {
-    const { blob, name, author } = editor.audio;
+    const blob = editor.audio.blob;
     // An editor that was opened and not touched has no session to write to:
     // minting an id here would leave an empty record behind on every visit.
     if (!blob && draftId === null) {
       return;
     }
     draftId ??= newDraftId();
-    void setDraftAudio(draftId, blob ? { blob, name, author } : null);
+    const { name, author } = untrack(() => editor.audio);
+    void setDraftAudio(
+      draftId,
+      blob ? { blob, name, author, bytes: blob.size } : null,
+    );
+  });
+
+  // The credits are their own write. Reading them in the effect above would
+  // put the whole file again on every keystroke — megabytes per character.
+  $effect(() => {
+    const { name, author } = editor.audio;
+    if (draftId === null || !untrack(() => editor.audio.hasTrack)) {
+      return;
+    }
+    void setDraftCredits(draftId, name, author);
   });
 
   // Autosave on the reference's clock (AutoSave, every 60 s by default). A
