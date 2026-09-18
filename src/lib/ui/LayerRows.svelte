@@ -100,7 +100,6 @@
     if (!e.isPrimary || drag) {
       return;
     }
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     editor.selectLayer(layerIndex); // grabbing a layer selects it
     const row = editor.doc.layers.length - 1 - layerIndex;
     drag = {
@@ -206,7 +205,16 @@
   onDestroy(stopAutoscroll);
 </script>
 
-<svelte:window onkeydown={onPanelKeydown} />
+<!-- The gesture belongs to the window once it starts: reordering moves the
+     handle's node, which drops its pointer capture, so a release delivered
+     anywhere else would leave the drag — and its auto-scroll interval —
+     running. All three handlers bail out when no drag is up. -->
+<svelte:window
+  onkeydown={onPanelKeydown}
+  onpointermove={onHandleMove}
+  onpointerup={endDrag}
+  onpointercancel={cancelDrag}
+/>
 
 <div class="head">
   <button
@@ -257,9 +265,6 @@
           role="presentation"
           title="Перетащить слой (Alt+↑ / Alt+↓)"
           onpointerdown={(e) => onHandleDown(e, layerIndex)}
-          onpointermove={onHandleMove}
-          onpointerup={endDrag}
-          onpointercancel={cancelDrag}
         >⇕</span>
 
         <button

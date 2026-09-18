@@ -42,6 +42,17 @@ describe('layer drag contract', () => {
     expect(move).not.toContain('this.playing');
   });
 
+  it('finishes the drag from the window, not from the handle', () => {
+    // Reordering moves the handle's node in the DOM, which drops its pointer
+    // capture, so a pointerup delivered elsewhere would never reach the
+    // handle's own listener — the drag and its auto-scroll interval would run
+    // on forever. The window sees every release.
+    const win = source.match(/<svelte:window[^]*?\/>/)?.[0] ?? '';
+    expect(win).toContain('onpointermove={onHandleMove}');
+    expect(win).toContain('onpointerup={endDrag}');
+    expect(win).toContain('onpointercancel={cancelDrag}');
+  });
+
   it('stops the auto-scroll interval when the panel goes away', () => {
     expect(source).toContain('onDestroy');
     expect(source.match(/onDestroy\([^]*?\)/)?.[0] ?? '').toContain('stopAutoscroll');
