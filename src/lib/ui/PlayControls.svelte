@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { frameCount } from '../model/operations';
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
@@ -15,22 +16,32 @@
   let resumeFrame = 0;
 
   function tick(now: number): void {
-    player?.tick(now);
-    // With a track the sound is the clock: the frame is read off the audio
-    // element's own time rather than counted alongside it, so the two cannot
-    // drift apart however long the loop runs. Once the track ends the frame
-    // counter carries on by itself.
-    if (editor.audio.sounding) {
-      editor.playbackFrame =
-        frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frameCount(editor.doc);
+    // Whatever goes wrong inside one frame, the next one still gets scheduled.
+    // A throw here used to end the loop for good: the frames froze, the button
+    // still said "stop", and only a page reload brought playback back.
+    try {
+      player?.tick(now);
+      // With a track the sound is the clock: the frame is read off the audio
+      // element's own time rather than counted alongside it, so the two cannot
+      // drift apart however long the loop runs. Once the track ends the frame
+      // counter carries on by itself.
+      if (editor.audio.sounding) {
+        editor.playbackFrame =
+          frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frameCount(editor.doc);
+      }
+    } catch (err) {
+      console.warn('playback tick failed:', err);
     }
     rafId = requestAnimationFrame(tick);
   }
 
   function play(): void {
-    if (editor.playing) {
+    // `editor.playing` outlives this component — a remount during playback
+    // leaves the flag set with no loop behind it. Trust the loop, not the flag.
+    if (editor.playing && player !== null) {
       return;
     }
+    cancelAnimationFrame(rafId);
     resumeFrame = editor.activeFrame;
     const startFrame = playbackStartFrame(editor.activeFrame, editor.ux.playFromStart);
     player = new LoopPlayer({
@@ -58,12 +69,28 @@
 
   /** Play/stop from the outside too — the reference binds Space to it. */
   export function toggle(): void {
-    if (editor.playing) {
+    // Same reason as in `play`: a set flag with no loop behind it is a stopped
+    // preview, and pressing the key has to start it rather than stop nothing.
+    if (editor.playing && player !== null) {
       stop();
     } else {
       play();
     }
   }
+
+  // Decoding a long track takes a second or two, and the draft list hands one
+  // over on the way in — so the preview can be running before the sound is
+  // ready. When it lands, it joins the frames that are already playing rather
+  // than staying silent until the next press.
+  $effect(() => {
+    if (!editor.audio.hasTrack || !editor.playing) {
+      return;
+    }
+    if (untrack(() => editor.audio.sounding)) {
+      return;
+    }
+    editor.audio.playFrom(untrack(() => editor.playbackFrame), editor.doc.frame_rate);
+  });
 
   $effect(() => () => cancelAnimationFrame(rafId));
 </script>

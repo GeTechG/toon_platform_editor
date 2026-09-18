@@ -430,15 +430,29 @@
   // The track rides the draft but not the document: it is written on its own
   // whenever the file or its credits change, so an autosave never carries a
   // 10 MB blob and attaching a track never waits for the autosave clock.
+  /**
+   * The track already in the draft on disk. A restored track must not be
+   * written straight back: it is megabytes of IndexedDB traffic for a record
+   * that already holds them, it lands a second or two after the draft opens —
+   * right when the preview is starting — and re-`put`ting a Blob that the
+   * playing `<audio>` element is reading through an object URL is asking the
+   * browser to swap the file under it.
+   */
+  let storedBlob: Blob | null = null;
+  /** The credits as they stand on disk, so restoring them writes nothing. */
+  let storedCredits = '';
+
   $effect(() => {
     const blob = editor.audio.blob;
     // An editor that was opened and not touched has no session to write to:
     // minting an id here would leave an empty record behind on every visit.
-    if (!blob && draftId === null) {
+    if ((!blob && draftId === null) || blob === storedBlob) {
       return;
     }
     draftId ??= newDraftId();
     const { name, author } = untrack(() => editor.audio);
+    storedBlob = blob;
+    storedCredits = `${name}\u0000${author}`;
     void setDraftAudio(
       draftId,
       blob ? { blob, name, author, bytes: blob.size } : null,
@@ -449,9 +463,11 @@
   // put the whole file again on every keystroke — megabytes per character.
   $effect(() => {
     const { name, author } = editor.audio;
-    if (draftId === null || !untrack(() => editor.audio.hasTrack)) {
+    const credits = `${name}\u0000${author}`;
+    if (draftId === null || credits === storedCredits || !untrack(() => editor.audio.hasTrack)) {
       return;
     }
+    storedCredits = credits;
     void setDraftCredits(draftId, name, author);
   });
 
@@ -500,6 +516,10 @@
       return;
     }
     editor.openDraft(entry.doc);
+    // Claimed before the restore, which is async: the effect must already know
+    // this blob is the one on disk by the time the track is adopted.
+    storedBlob = entry.audio?.blob ?? null;
+    storedCredits = entry.audio ? `${entry.audio.name}\u0000${entry.audio.author}` : '';
     if (entry.audio) {
       void editor.audio.restore(entry.audio);
     } else {

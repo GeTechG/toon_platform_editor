@@ -36,6 +36,38 @@ describe('sound never fails silently', () => {
   });
 });
 
+describe('playback cannot be bricked', () => {
+  it('a throw inside one frame does not end the loop', () => {
+    // It used to: the frames froze, the key still read "stop", and only a
+    // reload brought the preview back.
+    expect(playControls).toMatch(/try \{[\s\S]*rafId = requestAnimationFrame\(tick\)/);
+    expect(playControls).toContain("console.warn('playback tick failed:'");
+  });
+
+  it('a set playing flag with no loop behind it counts as stopped', () => {
+    // `editor.playing` outlives this component; a remount mid-preview leaves
+    // the flag set and nothing running, and the key has to start it again.
+    expect(playControls).toContain('editor.playing && player !== null');
+  });
+
+  it('a track that decodes mid-preview joins it instead of staying silent', () => {
+    expect(playControls).toContain('!editor.audio.hasTrack || !editor.playing');
+    expect(playControls).toContain('editor.audio.playFrom(untrack(');
+  });
+
+  it('restoring credits writes nothing either', () => {
+    expect(editorUi).toContain('storedCredits');
+    expect(editorUi).toContain('credits === storedCredits');
+  });
+
+  it('a restored track is not written back over itself', () => {
+    // Megabytes of IndexedDB traffic a second after the draft opens, on the
+    // very Blob the playing element is reading through an object URL.
+    expect(editorUi).toContain('storedBlob');
+    expect(editorUi).toContain('blob === storedBlob');
+  });
+});
+
 describe('the timeline carries the wave and nothing else', () => {
   it('no file picker, no credits and no bin under the frames', () => {
     // A row of fields under the strip was in the way of the strip.
@@ -90,7 +122,7 @@ describe('the draft keeps the track whole', () => {
 
 describe('the draft keeps the track without inventing sessions', () => {
   it('an untouched editor writes no record just because it has no sound', () => {
-    expect(editorUi).toContain('if (!blob && draftId === null)');
+    expect(editorUi).toContain('blob === storedBlob');
   });
 
   it('the panel floor grows only when there is a track', () => {
