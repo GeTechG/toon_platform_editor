@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'bun:test';
-import { hexToRgb, hsvToRgb, parseHex, rgbToHex, rgbToHsv, wheelToHsv } from './color-model';
+import { hexToRgb, hsvToRgb, normalizeHexInput, parseHex, rgbToHex, rgbToHsv, wheelToHsv } from './color-model';
+
+describe('normalizeHexInput', () => {
+  it('drops what is not a hex digit and pads the rest with zeros', () => {
+    expect(normalizeHexInput('12g')).toBe('#120000');
+    expect(normalizeHexInput('#AbC')).toBe('#abc000');
+    expect(normalizeHexInput('')).toBe('#000000');
+  });
+
+  it('keeps only the first six digits', () => {
+    expect(normalizeHexInput('#1234567')).toBe('#123456');
+    expect(normalizeHexInput('7fc9ff')).toBe('#7fc9ff');
+  });
+});
 
 describe('parseHex', () => {
   it('takes 6 digits with and without the hash', () => {

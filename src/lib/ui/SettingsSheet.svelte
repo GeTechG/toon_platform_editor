@@ -13,9 +13,12 @@
   import {
     AUTOSAVE_INTERVALS,
     AUTOSAVE_LABELS,
+    FEATURE_LABELS,
+    FEATURE_ORDER,
     PALETTE_LIMIT_MAX,
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
+    PRESETS,
     mouseModeLabel,
   } from './presets';
   import Icon from './Icon.svelte';
@@ -25,7 +28,16 @@
     editor,
     onClose,
     onSaveNow,
-  }: { editor: EditorState; onClose: () => void; onSaveNow?: () => void } = $props();
+    onOpenFile,
+    onOpenDrafts,
+  }: {
+    editor: EditorState;
+    onClose: () => void;
+    onSaveNow?: () => void;
+    /** The file dialog and the draft list live in the editor, not the sheet. */
+    onOpenFile?: () => void;
+    onOpenDrafts?: () => void;
+  } = $props();
 
   /** Without the API the option would be a switch that does nothing. */
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
@@ -284,6 +296,12 @@
         Скачать черновики (.toonops)
       </button>
       <button class="key" onclick={() => draftFile?.click()}>Загрузить черновики…</button>
+      {#if onOpenDrafts}
+        <button class="key" onclick={onOpenDrafts}>Черновики…</button>
+      {/if}
+      {#if onOpenFile}
+        <button class="key" onclick={onOpenFile}>Открыть .toon…</button>
+      {/if}
       {#if onSaveNow}
         <button class="key" onclick={onSaveNow}>Сохранить сейчас (Ctrl+S)</button>
       {/if}
@@ -310,6 +328,44 @@
         onchange={(e) => editor.setSetting('greyCanvas', e.currentTarget.checked)}
       />
     </label>
+    <label class="toggle">
+      <span class="toggle-label">Панели слева, инструменты справа</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.settings.altLayout}
+        onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
+      />
+    </label>
+
+    <!-- Reference «Настроить панель»: which buttons the toolbar shows, and the
+         preset they come from. The gear is never hideable, so this is always
+         reachable. Last, because it is a set-once concern. -->
+    <p class="sheet-hint">Панель</p>
+    <div class="presets" role="group" aria-label="Набор">
+      {#each PRESETS as p (p.id)}
+        <button
+          class="preset-chip"
+          class:active={editor.preset === p.id}
+          aria-pressed={editor.preset === p.id}
+          onclick={() => editor.applyPreset(p.id)}
+        >{p.label}</button>
+      {/each}
+    </div>
+    {#each FEATURE_ORDER as key (key)}
+      <label class="toggle">
+        <span class="toggle-label">{FEATURE_LABELS[key]}</span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={editor.features[key]}
+          onchange={() => editor.toggleFeature(key)}
+        />
+      </label>
+    {/each}
+    <div class="actions">
+      <button class="key" onclick={() => editor.resetFeatures()}>Сбросить к набору</button>
+    </div>
 
     {#if report}
       <p class="report" role="status">{report}</p>
@@ -322,6 +378,35 @@
 </dialog>
 
 <style>
+  /* Preset chips: one row, equal shares (same control as the old sheet). */
+  .presets {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .preset-chip {
+    flex: 1;
+    height: var(--key-h);
+    padding: 0 0.5rem;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .preset-chip:hover {
+    background: var(--sky);
+  }
+  .preset-chip.active {
+    background: var(--electric);
+    border-color: transparent;
+    color: var(--canvas);
+  }
+  .preset-chip:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
   /* A picked record needs two lines: when it was written, and what is in it —
      the date alone is how a stub record passed for a drawing. */
   .picklist {

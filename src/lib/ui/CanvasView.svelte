@@ -799,8 +799,9 @@
         editor.tool = 'eraser';
         return;
       }
-      // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка).
-      const toFill = e.button === 2 && editor.ux.tools.includes('feather');
+      // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка);
+      // the palette's pipette can arm the fill for the left button too.
+      const toFill = (e.button === 2 || editor.pipetteTarget === 'fill') && editor.ux.tools.includes('feather');
       editor.pickColor(picked, toFill ? 'fill' : 'outline');
       if (!toFill) {
         // Back to whatever was drawing — the pen stays a pen (ResetHelpTool).

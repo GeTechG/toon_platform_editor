@@ -29,10 +29,12 @@
   };
 
   // The preset owns the toolset; the pipette additionally only exists once the
-  // palette is enabled (reference ToolPanel.hx).
+  // palette is enabled (reference ToolPanel.hx), and under Toonio it is not a
+  // rail button at all — the palette's foot holds it (reference `E:205-208`).
   const tools = $derived(
     editor.ux.tools
-      .filter((id) => id !== 'pipette' || !editor.ux.pipetteNeedsPalette || editor.paletteExpanded)
+      .filter((id) => id !== 'pipette'
+        || (!editor.ux.pipetteOffRail && (!editor.ux.pipetteNeedsPalette || editor.paletteExpanded)))
       .map((id) => ({ id, ...TOOLS[id] })),
   );
 

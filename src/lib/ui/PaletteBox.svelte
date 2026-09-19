@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { PALETTE_LIMIT, TONIO_DEFAULT_PALETTE, contrastInk, type SavedPalette } from './color-palette';
+  import { TONIO_DEFAULT_PALETTE, contrastInk, mergePalettes, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
   import ColourPicker from './ColourPicker.svelte';
 
@@ -10,8 +10,10 @@
   let section = $state<'colors' | 'saved' | 'edit'>('colors');
   let removerMode = $state(false);
   let preview = $state<SavedPalette | null>(null);
-  /** Which big swatch the picker is open for, and where it opened. */
-  let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number } | null>(null);
+  /** Which big swatch the picker is open for, where it opened, and from what colour. */
+  let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number; origin: string } | null>(null);
+  /** The grid, for scrolling the chosen outline into view. */
+  let gridEl = $state<HTMLElement | null>(null);
 
   const twoColors = $derived(editor.ux.tools.includes('feather'));
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
@@ -47,15 +49,33 @@
     section = 'colors';
   }
 
+  /**
+   * Reference MergePalette (`bundle:10653-10685`): the overflow warning comes
+   * before anything is applied, and the count afterwards names the limit the
+   * settings actually hold.
+   */
   function mergePalette(p: SavedPalette): void {
-    const { added, skipped } = editor.mergePalette(p.colours);
+    const limit = editor.settings.paletteLimit;
+    const { added, skipped } = mergePalettes(editor.palette, p.colours, limit);
     if (added === 0 && skipped === 0) {
       alert('Все эти цвета уже есть в текущей палитре.');
       return;
     }
-    if (skipped > 0) alert(`Не поместилось ${skipped} — лимит палитры ${PALETTE_LIMIT}.`);
+    if (skipped > 0 && !confirm(`Не поместится ${skipped} — лимит палитры ${limit}.\nПродолжить?`)) {
+      return;
+    }
+    editor.mergePalette(p.colours);
+    alert(`Добавлено ${added}`);
     preview = null;
     section = 'colors';
+  }
+
+  /** Reference `bundle:10493-10506`: the remover explains itself once, then never again. */
+  function toggleRemover(): void {
+    removerMode = !removerMode;
+    if (!removerMode || editor.settings.removerTipShown) return;
+    editor.setSetting('removerTipShown', true);
+    alert('Щёлкай по цветам, чтобы убрать их из палитры.');
   }
 
   function deletePalette(p: SavedPalette): void {
@@ -70,26 +90,37 @@
     openSection('colors');
   }
 
-  /** The big swatch opens the picker beside itself (reference: OpenColourPicker). */
+  /** The big swatch opens the picker under itself, clamped to the window. */
   function openPicker(e: MouseEvent, target: 'outline' | 'fill'): void {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     picking = {
       target,
-      x: Math.min(r.right + 6, window.innerWidth - 212),
-      y: Math.min(Math.max(6, r.top), Math.max(6, window.innerHeight - 392)),
+      x: Math.max(6, Math.min(r.left, window.innerWidth - 212)),
+      y: Math.max(6, Math.min(r.bottom + 6, window.innerHeight - 392)),
+      origin: target === 'fill' ? editor.fillColor : editor.brushColor,
     };
   }
 
   /**
-   * The picker applies live without touching the grid; the color it settles on
-   * joins the grid once, on close, under the reference's `paletteAutoAdd`.
+   * The picker applies live without touching the grid. Esc asks for the colour
+   * it opened on back; any other way out keeps what is chosen, and that colour
+   * joins the grid under the reference's `paletteAutoAdd`.
    */
-  function closePicker(): void {
-    if (picking && editor.ux.colorGrid) {
-      editor.addColorToPalette(picking.target === 'fill' ? editor.fillColor : editor.brushColor);
+  function closePicker(options?: { revert?: boolean }): void {
+    if (!picking) return;
+    const { target, origin } = picking;
+    if (options?.revert) {
+      editor.pickColor(origin, target, true);
+    } else if (editor.ux.colorGrid && editor.settings.paletteAutoAdd) {
+      editor.addColorToPalette(target === 'fill' ? editor.fillColor : editor.brushColor);
     }
     picking = null;
   }
+
+  /* Reference `bundle:7783`: the grid follows the chosen outline. */
+  $effect(() => {
+    gridEl?.querySelector(`[data-color="${editor.brushColor}"]`)?.scrollIntoView({ block: 'nearest' });
+  });
 
   /** A color from the preview lands in the grid and on the outline / fill. */
   function onPreviewCell(e: MouseEvent, color: string): void {
@@ -161,12 +192,13 @@
       {/each}
     </div>
   {:else}
-    <div class="grid" class:remover={removerMode} role="group" aria-label="Палитра">
+    <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label="Палитра">
       {#each editor.palette as color (color)}
         {@const isOutline = editor.brushColor === color}
         {@const isFill = twoColors && editor.fillColor === color}
         <button
           class="cell"
+          data-color={color}
           style:--swatch={color}
           style:color={contrastInk(color)}
           onmousedown={(e) => onCell(e, color)}
@@ -204,7 +236,7 @@
         class="foot-btn"
         class:active={removerMode}
         aria-pressed={removerMode}
-        onclick={() => (removerMode = !removerMode)}
+        onclick={toggleRemover}
         title="Удалить цвета: щёлкай по ним в палитре"
         aria-label="Режим удаления цветов"
       ><Icon name="x" size={18} /></button>
@@ -223,8 +255,9 @@
         class:active={editor.tool === 'pipette'}
         aria-pressed={editor.tool === 'pipette'}
         onclick={() => editor.selectTool('pipette')}
-        title="Пипетка (P)"
-        aria-label="Пипетка"
+        oncontextmenu={(e) => (e.preventDefault(), editor.selectTool('pipette', 'fill'))}
+        title="Пипетка (P); ПКМ — в заливку"
+        aria-label="Пипетка; правая кнопка берёт цвет в заливку"
       ><Icon name="pipette" size={18} /></button>
     {/if}
   </div>
@@ -266,6 +299,8 @@
     label={picking.target === 'fill' ? 'заливка' : 'контур'}
     x={picking.x}
     y={picking.y}
+    model={editor.settings.pickerModel}
+    onmodel={(next) => editor.setSetting('pickerModel', next)}
     onpick={(hex) => picking && editor.pickColor(hex, picking.target, true)}
     onclose={closePicker}
   />

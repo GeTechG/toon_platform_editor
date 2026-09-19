@@ -99,7 +99,7 @@ describe('the autosave record is one per visit', () => {
   });
 
   it('forces a write before an export, a mega eraser and any file opening', () => {
-    expect(editorUi).toContain('onOpen={saveNow}');
+    expect(editorUi).toMatch(/onOpen=\{\(\) => \{[^]{0,120}saveNow\(\)/);
     expect(editorUi).toMatch(/megaEraserWarned = true;[^]*?saveNow\(\)/);
     expect(editorUi).toMatch(/function openDraft[^]*?saveNow\(\)/);
   });

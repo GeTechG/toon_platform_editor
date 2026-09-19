@@ -58,6 +58,11 @@ export interface UxProfile {
   readonly whiteIsEraser: boolean;
   /** The pipette is only offered while the full palette is expanded. */
   readonly pipetteNeedsPalette: boolean;
+  /**
+   * The pipette is not a rail button: the reference keeps it in the palette's
+   * foot alone (`E:205-208`). It stays reachable by P and by that button.
+   */
+  readonly pipetteOffRail: boolean;
   /** Which neighbors the onion skin shows (only read in the 'neighbors' mode). */
   readonly onionSides: 'both' | 'previous';
   /** Onion model: fading neighbors, or Tonio's last visited frames. */
@@ -106,6 +111,7 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     quickPalette: null,
     whiteIsEraser: false,
     pipetteNeedsPalette: false,
+    pipetteOffRail: false,
     onionSides: 'both',
     activeFrameAlpha: 1,
     afterRemove: 'next',
@@ -130,6 +136,7 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     quickPalette: null,
     whiteIsEraser: false,
     pipetteNeedsPalette: false,
+    pipetteOffRail: true,
     onionSides: 'both',
     activeFrameAlpha: 1,
     afterRemove: 'next',
@@ -153,6 +160,7 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     quickPalette: ['#000000', '#ff0000'],
     whiteIsEraser: true,
     pipetteNeedsPalette: true,
+    pipetteOffRail: false,
     // DrawField.hx: backContainerSprite (0.3) and backContainerSprite2 (0.1)
     // hold the previous frames; containerSprite.alpha = 0.8 is the drawing.
     onionSides: 'previous',

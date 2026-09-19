@@ -34,22 +34,9 @@
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
-  import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, PRESETS } from './presets';
-  import type { FeatureKey } from './presets';
+  import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN } from './presets';
   import type { DraftEntry } from '../draft/restore';
-  import type { IconName } from './Icon.svelte';
   import type { ToonDocument } from '../format/types';
-
-  // Icon per toggle where one maps cleanly — makes each row recognizable at a
-  // glance; the rest fall back to their label alone.
-  const FEATURE_ICONS: Partial<Record<FeatureKey, IconName>> = {
-    addFrame: 'plus',
-    deleteFrame: 'trash',
-    play: 'play',
-    export: 'download',
-    tools: 'pencil',
-    onionSkin: 'onion',
-  };
 
   // Optional publish hook. When a host app provides it, a Publish button appears
   // and hands the host a plain snapshot of the current document; the editor
@@ -80,6 +67,9 @@
   let playControls = $state<PlayControls | undefined>();
   let exportButton = $state<ExportSheet | undefined>();
 
+  /** Mirrors `document.fullscreenElement`, so the button can show it is on. */
+  let isFullscreen = $state(false);
+
   function toggleFullscreen(): void {
     if (!document.fullscreenEnabled) {
       return;
@@ -88,6 +78,30 @@
       ? document.exitFullscreen()
       : editorEl.requestFullscreen();
     void request.catch(() => {});
+  }
+
+  /**
+   * A sheet over a full-screen editor is a dialog with nowhere to go, so the
+   * reference drops out of the mode first (`bundle:7551-7560, 7104-7125`).
+   */
+  function leaveFullscreen(): void {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  /**
+   * Alt+L, the reference's own debug hatch (`bundle:11407-11409`): whatever
+   * the session logged as an error, as a file. Nothing leaves the machine.
+   */
+  function downloadErrorLog(): void {
+    const lines = editor.errorLog.length > 0 ? editor.errorLog : [new Date().toISOString()];
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'toonop-errors.txt';
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // Last three typed characters, for the reference's "old" easter egg
@@ -188,6 +202,12 @@
     if (e.altKey && e.key === 'Enter') {
       e.preventDefault();
       editor.warnings = !editor.warnings;
+      return;
+    }
+    // Reference Alt+L: the session's errors as a file, for a bug report.
+    if (e.altKey && (e.key === 'l' || e.key === 'L')) {
+      e.preventDefault();
+      downloadErrorLog();
       return;
     }
     if (e.altKey) {
@@ -687,7 +707,7 @@
   });
 
   async function openDrafts(): Promise<void> {
-    settingsOpen = false;
+    leaveFullscreen();
     await refreshDrafts();
     draftsOpen = true;
   }
@@ -761,9 +781,6 @@
     return `${n} ${form === 'one' ? one : form === 'few' ? few : many}`;
   }
 
-  // Settings popover (opens above the ⚙ key): holds the everyday controls the
-  // reference bar has no room for — onion skin, playback fps, fullscreen.
-  let settingsOpen = $state(false);
   let fileInput = $state<HTMLInputElement | undefined>();
   /** Import failure, shown until the next attempt. */
   let importError = $state('');
@@ -777,7 +794,6 @@
    */
   async function openFile(file: File): Promise<void> {
     importError = '';
-    settingsOpen = false;
     if (editor.touched) {
       if (!confirm(`Открыть «${file.name}»? Текущий рисунок будет заменён.`)) {
         return;
@@ -855,7 +871,7 @@
   let settingsSheetOpen = $state(false);
 
   function openSettingsSheet(): void {
-    settingsOpen = false;
+    leaveFullscreen();
     settingsSheetOpen = true;
   }
 
@@ -869,9 +885,9 @@
       : new Date(editor.lastSavedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
   );
 
-  // Customization sheet: which buttons the toolbar shows, and the active preset.
-  // A set-once concern, so it lives in its own roomy sheet, not the quick popover.
-  let customizeOpen = $state(false);
+  // Reference «Мануал» (`E:61-63`) opens the site's manual page; we have none,
+  // so the button opens the list of keys the editor actually implements.
+  let manualOpen = $state(false);
 
   // Mirrors the key handler above one-for-one. If a case is added there and not
   // here, the sheet lies — keep them next to each other for that reason.
@@ -898,13 +914,9 @@
     ['Ctrl + S', 'Сохранить черновик сейчас'],
     ['Alt + S', studio ? 'Скачать проект (.toonop)' : 'Экспорт'],
     ['Alt + Enter', 'Отключить предупреждения об удалении'],
+    ['Alt + L', 'Скачать лог ошибок'],
     ['N', 'Тёмная тема'],
   ]);
-
-  function openCustomize(): void {
-    settingsOpen = false;
-    customizeOpen = true;
-  }
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
   // (fadeSprite). Skipped under reduced motion.
@@ -936,6 +948,8 @@
 
 <!-- A file dropped anywhere would otherwise navigate the page away from the
      unsaved drawing, so the window takes the drop and opens it instead. -->
+<svelte:document onfullscreenchange={() => (isFullscreen = document.fullscreenElement !== null)} />
+
 <svelte:window
   bind:innerHeight={viewportHeight}
   onkeydown={onKeydown}
@@ -994,6 +1008,7 @@
 <div
   class="editor"
   class:studio
+  class:alt={editor.settings.altLayout}
   class:dark={editor.settings.theme === 'dark'}
   class:grey-canvas={editor.settings.greyCanvas}
   bind:this={editorEl}
@@ -1003,8 +1018,19 @@
       <ToolsPanel {editor} onSave={saveNow} {dirty} />
       <div class="history">
         {@render history()}
+        <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
+        <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
+          <Icon name="help" />
+        </button>
         {#if document.fullscreenEnabled}
-          <button class="key icon" onclick={toggleFullscreen} title="Полный экран" aria-label="Полный экран">
+          <button
+            class="key icon"
+            class:active={isFullscreen}
+            aria-pressed={isFullscreen}
+            onclick={toggleFullscreen}
+            title="Полный экран"
+            aria-label="Полный экран"
+          >
             <Icon name="expand" />
           </button>
         {/if}
@@ -1180,9 +1206,8 @@
             <Icon name="onion" />
           </button>
         {/if}
-        {#if studio}
-          <!-- The reference keeps fps on the bar itself: a slider and a box. -->
-          <label class="fps-inline" title="Частота кадров">
+        <!-- The reference keeps fps on the bar itself: a slider and a box. -->
+        <label class="fps-inline" title="Частота кадров">
             <span class="sr-only">Частота кадров</span>
             <input
               type="range"
@@ -1200,8 +1225,7 @@
               onchange={onFpsChange}
               disabled={editor.playing}
             />
-          </label>
-        {/if}
+        </label>
         <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
              a control, and the readout says where we are. -->
         <div class="zoom" role="group" aria-label="Масштаб холста">
@@ -1266,7 +1290,14 @@
           {/if}
         </div>
         {#if editor.features.export}
-          <ExportSheet bind:this={exportButton} {editor} onOpen={saveNow} />
+          <ExportSheet
+            bind:this={exportButton}
+            {editor}
+            onOpen={() => {
+              saveNow();
+              leaveFullscreen();
+            }}
+          />
         {/if}
         {#if saveFailed}
           <span class="saved too_big" role="status">
@@ -1277,61 +1308,35 @@
             сохранено локально {lastSaved} · {formatFileSize(savedBytes)}
           </span>
         {/if}
-        <div class="settings">
-          <button
-            class="key icon"
-            class:active={settingsOpen}
-            aria-expanded={settingsOpen}
-            aria-haspopup="dialog"
-            onclick={() => (settingsOpen = !settingsOpen)}
-            title="Настройки"
-            aria-label="Настройки"
-          >
-            <Icon name="gear" />
+        <!-- The gear is never hideable, so the settings are always reachable. -->
+        <button
+          class="key icon"
+          aria-haspopup="dialog"
+          onclick={openSettingsSheet}
+          title="Настройки"
+          aria-label="Настройки"
+        >
+          <Icon name="gear" />
+        </button>
+        {#if !studio}
+          <!-- The rail holds these under the studio layout; the bar has no rail. -->
+          <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
+            <Icon name="drafts" />
           </button>
-          {#if settingsOpen}
-            <button class="backdrop" aria-label="Закрыть настройки" onclick={() => (settingsOpen = false)}></button>
-            <div class="popover" role="dialog" aria-label="Настройки">
-              <label class="opt">
-                <span class="opt-label">Частота кадров</span>
-                <span class="fps">
-                  <input
-                    type="number"
-                    min={editor.ux.fpsRange[0]}
-                    max={editor.ux.fpsRange[1]}
-                    value={editor.doc.frame_rate}
-                    onchange={onFpsChange}
-                    disabled={editor.playing}
-                  />
-                  fps
-                </span>
-              </label>
-              <button class="opt opt-btn" onclick={() => fileInput?.click()}>
-                <span class="opt-label">Открыть .toon…</span>
-              </button>
-              <button class="opt opt-btn" onclick={openDrafts}>
-                <span class="opt-label">Черновики…</span>
-              </button>
-              {#if document.fullscreenEnabled}
-                <button class="opt opt-btn" onclick={toggleFullscreen}>
-                  <span class="opt-label">На весь экран</span>
-                  <kbd>F</kbd>
-                </button>
-              {/if}
-
-              <!-- The gear is never hideable, so customization is always reachable. -->
-              <hr class="divider" />
-              <button class="opt opt-btn" onclick={openSettingsSheet}>
-                <span class="opt-label"><Icon name="gear" size={18} /> Настройки…</span>
-                <Icon name="chevron-right" size={16} />
-              </button>
-              <button class="opt opt-btn" onclick={openCustomize}>
-                <span class="opt-label"><Icon name="gear" size={18} /> Настроить панель…</span>
-                <Icon name="chevron-right" size={16} />
-              </button>
-            </div>
+          {#if document.fullscreenEnabled}
+            <button
+              class="key icon"
+              class:active={isFullscreen}
+              aria-pressed={isFullscreen}
+              onclick={toggleFullscreen}
+              data-key="F"
+              title="Полный экран (F)"
+              aria-label="Полный экран"
+            >
+              <Icon name="expand" />
+            </button>
           {/if}
-        </div>
+        {/if}
         {#if studio}
           <button
             class="key icon"
@@ -1485,61 +1490,35 @@
   {/if}
 
   {#if settingsSheetOpen}
-    <SettingsSheet {editor} onClose={() => (settingsSheetOpen = false)} onSaveNow={saveNow} />
+    <SettingsSheet
+      {editor}
+      onClose={() => (settingsSheetOpen = false)}
+      onSaveNow={saveNow}
+      onOpenFile={() => fileInput?.click()}
+      onOpenDrafts={openDrafts}
+    />
   {/if}
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
   <!-- (SHORTCUTS is declared in the script block above.) -->
-  {#if customizeOpen}
+  {#if manualOpen}
     <div
       class="sheet-backdrop"
       role="button"
       tabindex="-1"
-      aria-label="Закрыть настройку панели"
-      onclick={() => (customizeOpen = false)}
-      onkeydown={(e) => e.key === 'Escape' && (customizeOpen = false)}
+      aria-label="Закрыть мануал"
+      onclick={() => (manualOpen = false)}
+      onkeydown={(e) => e.key === 'Escape' && (manualOpen = false)}
     ></div>
-    <div class="sheet" role="dialog" aria-label="Настроить панель" aria-modal="true">
+    <div class="sheet" role="dialog" aria-label="Мануал" aria-modal="true">
       <header class="sheet-head">
-        <h2>Настроить панель</h2>
-        <button class="key icon" onclick={() => (customizeOpen = false)} aria-label="Закрыть">
+        <h2>Мануал</h2>
+        <button class="key icon" onclick={() => (manualOpen = false)} aria-label="Закрыть">
           <Icon name="x" />
         </button>
       </header>
 
       <div class="sheet-body">
-        <p class="sheet-hint">Набор</p>
-        <div class="presets" role="group" aria-label="Набор">
-          {#each PRESETS as p (p.id)}
-            <button
-              class="preset-chip"
-              class:active={editor.preset === p.id}
-              aria-pressed={editor.preset === p.id}
-              onclick={() => editor.applyPreset(p.id)}
-            >
-              {p.label}
-            </button>
-          {/each}
-        </div>
-
-        <p class="sheet-hint">Кнопки</p>
-        <div class="toggles">
-          {#each FEATURE_ORDER as key (key)}
-            <label class="toggle">
-              <span class="toggle-label">
-                {#if FEATURE_ICONS[key]}<Icon name={FEATURE_ICONS[key]} size={18} />{/if}
-                {FEATURE_LABELS[key]}
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={editor.features[key]}
-                onchange={() => editor.toggleFeature(key)}
-              />
-            </label>
-          {/each}
-        </div>
-
         <!-- Every shortcut the key handler above actually implements, in one
              place. They were reachable but undocumented: nothing in the UI said
              the editor had any. Behind the sheet, so the toolbar stays quiet. -->
@@ -1555,8 +1534,7 @@
       </div>
 
       <footer class="sheet-foot">
-        <button class="key" onclick={() => editor.resetFeatures()}>Сбросить к набору</button>
-        <button class="key primary" onclick={() => (customizeOpen = false)}>Готово</button>
+        <button class="key primary" onclick={() => (manualOpen = false)}>Готово</button>
       </footer>
     </div>
   {/if}
@@ -1752,10 +1730,6 @@
     flex: 1;
     min-width: 0;
   }
-  .settings {
-    position: relative;
-    display: flex;
-  }
   /* Publish leaves the editor, so it sits in its own zone at the end of the
      row — pushed away from the tool toggles and fenced off by a hairline. */
   .ship {
@@ -1796,11 +1770,16 @@
     grid-template-rows: minmax(0, 1fr) auto;
     background: var(--paper);
   }
+  /* Every area names its row as well as its column: grid auto-placement never
+     goes backwards, so under `.alt` — where .left sits right of .right — an
+     unpinned row would push each following area onto a new one. */
   .studio .stage {
     grid-column: 2;
+    grid-row: 1;
   }
   .studio .panel {
     grid-column: 1 / -1;
+    grid-row: 2;
   }
   .studio .left,
   .studio .right {
@@ -1814,11 +1793,24 @@
   }
   .studio .left {
     grid-column: 1;
+    grid-row: 1;
     width: 8.4rem;
   }
   .studio .right {
     grid-column: 3;
+    grid-row: 1;
     align-items: stretch;
+  }
+  /* Reference «альтернативная раскладка» (`S:2321-2331`): the two side columns
+     swap places. Classes only — the DOM order, and so the tab order, is
+     untouched. Above the phone breakpoint, where there are columns to swap. */
+  @media (min-width: 40.0625rem) {
+    .studio.alt .left {
+      grid-column: 3;
+    }
+    .studio.alt .right {
+      grid-column: 1;
+    }
   }
   .studio .history {
     display: grid;
@@ -1918,15 +1910,6 @@
       flex-wrap: wrap;
     }
   }
-  /* Full-screen catcher so a click anywhere dismisses the popover. */
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 1;
-    border: none;
-    background: transparent;
-    cursor: default;
-  }
   /* Zoom group: two keys around a tabular readout, so the width does not
      jump as the percentage changes. */
   /* Import failure: an alert over the canvas, dismissed by the user — an
@@ -1967,75 +1950,6 @@
   }
   .layers {
     position: relative;
-  }
-  .popover {
-    position: absolute;
-    bottom: calc(100% + 0.4rem);
-    right: 0;
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    min-width: 13rem;
-    padding: 0.4rem;
-    background: var(--canvas);
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-md);
-    box-shadow: 0 12px 28px -12px rgba(15, 23, 60, 0.35);
-  }
-  .opt {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin: 0;
-    padding: 0.45rem 0.55rem;
-    border: none;
-    border-radius: var(--r-sm);
-    background: transparent;
-    font: inherit;
-    font-size: 0.9rem;
-    color: var(--ink);
-    text-align: left;
-    cursor: pointer;
-  }
-  .opt:hover {
-    background: var(--sky);
-  }
-  .opt-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-  }
-  .fps {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.82rem;
-    color: var(--ink-2);
-  }
-  .fps input {
-    width: 3.2rem;
-    padding: 0.2rem 0.35rem;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    font: inherit;
-    font-variant-numeric: tabular-nums;
-  }
-  .divider {
-    height: 1px;
-    margin: 0.3rem 0.1rem;
-    border: none;
-    background: var(--hairline);
-  }
-  .opt kbd {
-    padding: 0.05rem 0.4rem;
-    border: 1px solid var(--hairline);
-    border-radius: 5px;
-    background: var(--paper);
-    font-size: 0.72rem;
-    font-family: inherit;
-    color: var(--ink-2);
   }
 
   /* ---- Sheet chrome ----
@@ -2135,40 +2049,6 @@
   .keylist dd {
     font-size: 0.9rem;
     color: var(--ink-2);
-  }
-  .presets {
-    display: flex;
-    gap: 0.4rem;
-  }
-  .preset-chip {
-    flex: 1;
-    height: var(--key-h);
-    padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    background: var(--canvas);
-    color: var(--ink);
-    font: inherit;
-    font-weight: 650;
-    cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-  .preset-chip:hover {
-    background: var(--sky);
-  }
-  .preset-chip.active {
-    background: var(--electric);
-    border-color: transparent;
-    color: var(--canvas);
-  }
-  .preset-chip:focus-visible {
-    outline: 3px solid var(--electric);
-    outline-offset: 2px;
-  }
-  /* One row per button, whole row is the tap target. */
-  .toggles {
-    display: flex;
-    flex-direction: column;
   }
   .editor :global(.toggle) {
     display: flex;

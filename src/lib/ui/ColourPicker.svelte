@@ -1,7 +1,16 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { hexToRgb, parseHex, rgbToHex } from './color-model';
-  import { barPointer, colorToPointer, nudgePointer, pointerToColor, type PickerModel, type Pointer } from './picker-model';
+  import { hexToRgb, normalizeHexInput, parseHex, rgbToHex } from './color-model';
+  import {
+    barPointer,
+    colorToPointer,
+    nudgePointer,
+    pointerToColor,
+    rgbChannelAt,
+    surfaceToPointer,
+    type PickerModel,
+    type Pointer,
+  } from './picker-model';
   import { contrastInk } from './color-palette';
   import Icon from './Icon.svelte';
 
@@ -10,6 +19,8 @@
     label,
     x,
     y,
+    model,
+    onmodel,
     onpick,
     onclose,
   }: {
@@ -18,17 +29,24 @@
     /** Viewport coordinates the window opens at (it is fixed, then draggable). */
     x: number;
     y: number;
+    /** Colour model, remembered between openings (reference `toonio_picker_mode`). */
+    model: PickerModel;
+    onmodel: (next: PickerModel) => void;
     onpick: (hex: string) => void;
-    onclose: () => void;
+    /** Esc asks for the original colour back; every other way out accepts. */
+    onclose: (options?: { revert?: boolean }) => void;
   } = $props();
 
   /** Reference #colour_picker: a 176×176 surface over a 176×31 bar. */
   const SURFACE = 176;
   const BAR_H = 31;
+  /** Clear pixels either side of a channel column in the rgb model. */
+  const COLUMN_GAP = 5;
 
   const origin = untrack(() => color);
-  let model = $state<PickerModel>('hsv');
-  let pointer = $state<Pointer>(untrack(() => colorToPointer('hsv', color)));
+  let pointer = $state<Pointer>(untrack(() => colorToPointer(model, color)));
+  /** Which of the two the arrows drive; a drag moves it (`bundle:10058-10063`). */
+  let lastTarget = $state<'surface' | 'bar'>('surface');
   /** Last colour this window produced — anything else came from outside. */
   let applied = $state(origin);
   let surface = $state<HTMLCanvasElement | null>(null);
@@ -49,7 +67,7 @@
   }
 
   function setModel(next: PickerModel): void {
-    model = next;
+    onmodel(next);
     pointer = colorToPointer(next, color);
     applied = color;
   }
@@ -62,6 +80,15 @@
     const hex = parseHex(hexText);
     if (hex) onpick(hex);
     else hexText = color;
+  }
+
+  /** Reference: the field paints as it is typed (`bundle:10144-10152`). */
+  function typeHex(raw: string): void {
+    hexText = raw;
+    const hex = normalizeHexInput(raw);
+    applied = hex;
+    pointer = colorToPointer(model, hex);
+    onpick(hex);
   }
 
   /** Pointer events cover mouse and touch alike; the capture keeps the drag alive outside. */
@@ -80,19 +107,31 @@
     const r = el.getBoundingClientRect();
     const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    apply(target === 'bar' ? { ...pointer, bar: fx } : { ...pointer, x: fx, y: fy });
+    apply(target === 'bar' ? { ...pointer, bar: fx } : surfaceToPointer(model, pointer, fx, fy));
   }
 
   function onSurfaceKey(e: KeyboardEvent): void {
-    const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey });
+    const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: lastTarget });
     if (next === pointer) return;
     e.preventDefault();
     apply(next);
   }
 
-  /** Esc closes; Tab stays inside the window (reference: the picker is modal-ish). */
+  /**
+   * Esc puts the original colour back and closes; Enter and Space close on
+   * what is chosen (`bundle:9942-9987`). Tab stays inside the window.
+   */
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
+      e.stopPropagation();
+      onclose({ revert: true });
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      // A field owns its own keys: Space types, Enter commits what was typed.
+      const inField = (e.target as HTMLElement | null)?.tagName === 'INPUT';
+      if (inField && e.key === ' ') return;
+      if (inField) commitHex();
       e.stopPropagation();
       onclose();
       return;
@@ -128,14 +167,33 @@
     if (!canvas || !ctx) return;
     const { width, height } = canvas;
     const img = ctx.createImageData(width, height);
+    // The rgb surface is three channel columns, not two axes: each one ramps
+    // its own channel over the other two as they stand (`bundle:10046-10064`).
+    const columns = m === 'rgb' && kind === 'surface';
+    const base = columns ? hexToRgb(pointerToColor(m, p)) : null;
+    const colWidth = width / 3;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        if (base) {
+          const channel = rgbChannelAt(x / (width - 1));
+          const inColumn = x - channel * colWidth;
+          // The gaps between the columns stay clear, so three bars read as three.
+          if ((channel > 0 && inColumn < COLUMN_GAP) || (channel < 2 && inColumn > colWidth - COLUMN_GAP)) {
+            continue;
+          }
+          const ramp = { ...base, [(['r', 'g', 'b'] as const)[channel]]: Math.round((1 - y / (height - 1)) * 255) };
+          img.data[i] = ramp.r;
+          img.data[i + 1] = ramp.g;
+          img.data[i + 2] = ramp.b;
+          img.data[i + 3] = 255;
+          continue;
+        }
         const at =
           kind === 'bar'
             ? { x: p.x, y: p.y, bar: x / (width - 1) }
             : { x: x / (width - 1), y: y / (height - 1), bar: p.bar };
         const { r, g, b } = hexToRgb(pointerToColor(m, at));
-        const i = (y * width + x) * 4;
         img.data[i] = r;
         img.data[i + 1] = g;
         img.data[i + 2] = b;
@@ -144,6 +202,14 @@
     }
     ctx.putImageData(img, 0, 0);
   }
+
+  /** Where the marker sits: the column centre and channel height in the rgb model. */
+  const marker = $derived.by(() => {
+    if (model !== 'rgb') return { x: pointer.x, y: pointer.y };
+    const channel = pointer.channel ?? 0;
+    const value = channel === 0 ? pointer.bar : channel === 1 ? 1 - pointer.y : pointer.x;
+    return { x: (channel + 0.5) / 3, y: 1 - value };
+  });
 
   /* A colour set outside the surface — a field, the original swatch, the
      palette — moves the pointer; the surface's own drags do not, so a grey
@@ -161,7 +227,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <!-- Click-outside catcher; the picker itself sits above it. -->
-<button class="backdrop" aria-label="Закрыть выбор цвета" onclick={onclose}></button>
+<button class="backdrop" aria-label="Закрыть выбор цвета" onclick={() => onclose()}></button>
 
 <div
   class="picker"
@@ -174,7 +240,7 @@
 >
   <header class="head" role="presentation" onpointerdown={dragWindow}>
     <strong>{label}</strong>
-    <button class="close" onclick={onclose} aria-label="Закрыть"><Icon name="x" size={16} /></button>
+    <button class="close" onclick={() => onclose()} aria-label="Закрыть"><Icon name="x" size={16} /></button>
   </header>
 
   <div class="models" role="group" aria-label="Модель цвета">
@@ -199,11 +265,13 @@
       aria-valuemax={100}
       onpointerdown={(e) => drag(e, 'surface')}
       onpointermove={(e) => move(e, 'surface')}
+      onpointerup={() => (lastTarget = 'surface')}
       onkeydown={onSurfaceKey}
     ></canvas>
-    <span class="dot" style:left="{pointer.x * SURFACE}px" style:top="{pointer.y * SURFACE}px"></span>
+    <span class="dot" style:left="{marker.x * SURFACE}px" style:top="{marker.y * SURFACE}px"></span>
   </div>
 
+  {#if model !== 'rgb'}
   <div class="stage bar-stage">
     <canvas
       class="bar"
@@ -218,27 +286,31 @@
       aria-valuemax={100}
       onpointerdown={(e) => drag(e, 'bar')}
       onpointermove={(e) => move(e, 'bar')}
+      onpointerup={() => (lastTarget = 'bar')}
       onkeydown={(e) => {
-        const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: true });
+        const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: 'bar' });
         if (next !== pointer) (e.preventDefault(), apply(next));
       }}
     ></canvas>
     <span class="knob" style:left="{pointer.bar * SURFACE}px"></span>
   </div>
+  {/if}
 
   <div class="fields">
-    {#each [['r', 'R'], ['g', 'G'], ['b', 'B']] as const as [key, name] (key)}
-      <label>
-        <span>{name}</span>
-        <input
-          type="number"
-          min="0"
-          max="255"
-          value={rgb[key]}
-          oninput={(e) => setChannel(key, Number(e.currentTarget.value))}
-        />
-      </label>
-    {/each}
+    {#if model === 'rgb'}
+      {#each [['r', 'R'], ['g', 'G'], ['b', 'B']] as const as [key, name] (key)}
+        <label>
+          <span>{name}</span>
+          <input
+            type="number"
+            min="0"
+            max="255"
+            value={rgb[key]}
+            oninput={(e) => setChannel(key, Number(e.currentTarget.value))}
+          />
+        </label>
+      {/each}
+    {/if}
     <label class="hex">
       <span>HEX</span>
       <input
@@ -247,9 +319,9 @@
         spellcheck="false"
         autocapitalize="off"
         autocomplete="off"
-        bind:value={hexText}
+        value={hexText}
+        oninput={(e) => typeHex(e.currentTarget.value)}
         onchange={commitHex}
-        onkeydown={(e) => e.key === 'Enter' && commitHex()}
       />
     </label>
   </div>

@@ -28,6 +28,15 @@ export function parseHex(text: string): string | null {
   return null;
 }
 
+/**
+ * Reference hex field on every keystroke (`bundle:10144-10152`): anything
+ * that is not a hex digit is dropped, the rest is cut to six and padded with
+ * zeros, so the colour follows the typing instead of waiting for Enter.
+ */
+export function normalizeHexInput(raw: string): string {
+  return `#${raw.toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 6).padEnd(6, '0')}`;
+}
+
 export function hexToRgb(hex: string): Rgb {
   const n = parseInt((parseHex(hex) ?? '#000000').slice(1), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };

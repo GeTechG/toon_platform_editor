@@ -26,16 +26,28 @@ export function uniqueColours(colours: readonly string[]): string[] {
 }
 
 /**
- * Reference AddColourToPalette. The grid is a ring: at the limit the colour
- * at the start makes room for the new one, so lowering the limit lets fresh
- * colours replace the old ones from the beginning.
+ * Reference AddColourToPalette (`bundle:7828-7867`). While there is room the
+ * colour joins the end; at the limit it overwrites the cell at `cursor` in
+ * place — the grid is a ring, so the other cells never shift — and the cursor
+ * moves on. Lowering the limit cuts the tail and replaces from the first cell.
  */
-export function addPaletteColor(palette: readonly string[], color: string, limit = PALETTE_LIMIT): string[] {
+export function addPaletteColor(
+  palette: readonly string[],
+  color: string,
+  limit = PALETTE_LIMIT,
+  cursor = 0,
+): { palette: string[]; cursor: number } {
   const next = color.toLowerCase();
   if (palette.includes(next)) {
-    return palette.slice();
+    return { palette: palette.slice(), cursor };
   }
-  return [...palette, next].slice(-limit);
+  if (palette.length < limit) {
+    return { palette: [...palette, next], cursor };
+  }
+  const grid = palette.slice(0, limit);
+  const at = ((cursor % limit) + limit) % limit;
+  grid[at] = next;
+  return { palette: grid, cursor: (at + 1) % limit };
 }
 
 /** Reference RemoveColour: the color leaves the grid; an unknown one is a no-op. */
@@ -168,7 +180,12 @@ export function saveSavedPalettes(list: readonly SavedPalette[]): void {
 
 const STORAGE_KEY = 'toon-editor:palette';
 
-/** Saved palette, or the reference defaults when there is none / on any failure. */
+/**
+ * The grid the editor starts from when no draft is opened. The reference keeps
+ * no global palette at all (`bundle:7469-7470, 7572-7594`): a drawing's colours
+ * come from its draft, and `restoreState` overwrites whatever this returned —
+ * so this is the fallback, not the source of truth.
+ */
 export function loadPalette(): string[] {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');

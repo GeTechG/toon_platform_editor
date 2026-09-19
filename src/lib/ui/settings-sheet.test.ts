@@ -10,6 +10,14 @@ const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url
 const tools = await Bun.file(new URL('./ToolsPanel.svelte', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 
+/** The body of a class method, so a contract cannot be met by a later method. */
+function methodBody(source: string, name: string): string {
+  const open = source.indexOf(`${name}(`);
+  const end = source.indexOf('\n  }', open);
+  expect(open).toBeGreaterThan(-1);
+  return source.slice(open, end);
+}
+
 describe('every autosave interval the sheet offers has a label', () => {
   it('covers the list, «никогда» included', () => {
     for (const ms of AUTOSAVE_INTERVALS) {
@@ -17,6 +25,64 @@ describe('every autosave interval the sheet offers has a label', () => {
     }
     expect(AUTOSAVE_LABELS[0]).toBe('никогда');
     expect(Object.keys(AUTOSAVE_LABELS)).toHaveLength(AUTOSAVE_INTERVALS.length);
+  });
+});
+
+describe('the rail and the chrome follow the reference studio', () => {
+  it('drops the pipette from the rail where the profile says so', () => {
+    expect(tools).toContain('editor.ux.pipetteOffRail');
+  });
+
+  it('gives the rail a Мануал button with no key caption', () => {
+    expect(editorUi).toContain('manualOpen = true');
+    expect(editorUi).toMatch(/Мануал/);
+  });
+
+  it('opens the settings sheet straight from the gear, with no popover left', () => {
+    expect(editorUi).not.toContain('settingsOpen');
+    expect(editorUi).not.toContain('class="popover"');
+    expect(editorUi).toMatch(/onclick=\{openSettingsSheet\}[^]{0,200}Настройки/);
+  });
+
+  it('shows the fullscreen button as active while the mode is on', () => {
+    expect(editorUi).toContain('isFullscreen = $state(false)');
+    expect(editorUi).toContain('onfullscreenchange');
+    expect(editorUi).toContain('class:active={isFullscreen}');
+  });
+
+  it('leaves fullscreen when a sheet takes the screen over', () => {
+    expect(editorUi).toContain('leaveFullscreen()');
+    expect(editorUi).toMatch(/function leaveFullscreen[^]{0,200}document\.exitFullscreen\(\)/);
+    expect(editorUi).toMatch(/function openSettingsSheet[^]{0,120}leaveFullscreen\(\)/);
+    expect(editorUi).toMatch(/async function openDrafts[^]{0,120}leaveFullscreen\(\)/);
+  });
+
+  it('puts the panels on the left under the alternative layout', () => {
+    expect(editorUi).toContain('class:alt={editor.settings.altLayout}');
+    expect(sheet).toContain("setSetting('altLayout'");
+  });
+
+  it('pins every studio area to its row, so swapping the columns cannot restack them', () => {
+    // Auto-placement never goes backwards: with .left at column 3 and .right
+    // at column 1, an unpinned row sends each following area to a new row.
+    // Every column an area claims comes with the row it claims, outside the
+    // `.alt` override that only moves columns.
+    const studioCss = editorUi.slice(editorUi.indexOf('.editor.studio {'));
+    const claims = [...studioCss.matchAll(/grid-column: [^;]+;\s*(grid-row: [^;]+;)?/g)];
+    expect(claims.length).toBeGreaterThanOrEqual(4);
+    expect(claims.filter((m) => m[1] !== undefined)).toHaveLength(4);
+  });
+
+  it('keeps the panel section as the last one in the settings sheet', () => {
+    expect(sheet).toContain('Панель');
+    expect(sheet).toContain('FEATURE_ORDER');
+    expect(sheet.indexOf('Панель')).toBeGreaterThan(sheet.indexOf('Вид'));
+  });
+
+  it('downloads the session error log on Alt+L', () => {
+    expect(editorUi).toMatch(/altKey[^]{0,80}'l'/i);
+    expect(editorUi).toContain('errorLog');
+    expect(state).toContain('unhandledrejection');
   });
 });
 
@@ -42,7 +108,7 @@ describe('the settings live in the persisted UI config', () => {
   });
 
   it('the grid is capped by the limit from the settings, not the constant', () => {
-    expect(state).toContain('addPaletteColor(this.palette, color, this.settings.paletteLimit)');
+    expect(state).toContain('addPaletteColor(this.palette, color, this.settings.paletteLimit, this.paletteCursor)');
     expect(state).toContain('mergePalettes(this.palette, colours, this.settings.paletteLimit)');
     expect(state).not.toContain('PALETTE_LIMIT)');
   });
@@ -51,6 +117,20 @@ describe('the settings live in the persisted UI config', () => {
     expect(state).toContain('exportPalettes(');
     expect(state).toContain('importPalettes(');
     expect(state).toContain('deleteAllSavedPalettes(');
+  });
+
+  it('a full grid is overwritten in place from a cursor that a reload resets', () => {
+    expect(state).toContain('paletteCursor = $state(0)');
+    expect(state).toMatch(/replacePalette\([^]*?this\.paletteCursor = 0/);
+  });
+
+  it('the system theme decides only until the stored config names one', () => {
+    expect(state).toContain('const prefersDark = prefersDarkTheme()');
+    expect(state).toContain('loadUiConfig(prefersDark)');
+  });
+
+  it('swapping the two colours leaves an eraser for the pencil, as a pick does', () => {
+    expect(methodBody(state, 'swapColors')).toMatch(/'eraser' \|\| this\.tool === 'mega-eraser'[^]*?this\.tool = 'pencil'/);
   });
 
   it('a manual save records when it happened, for the panel to show', () => {

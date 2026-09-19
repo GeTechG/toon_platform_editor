@@ -197,6 +197,9 @@ test('settings round-trip through the stored config', () => {
     showDraftsOnStart: false,
     theme: 'dark' as const,
     greyCanvas: false,
+    pickerModel: 'wheel' as const,
+    altLayout: true,
+    removerTipShown: true,
   };
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
@@ -204,6 +207,32 @@ test('settings round-trip through the stored config', () => {
     settings,
   }));
   expect(parsed?.settings).toEqual(settings);
+});
+
+test('the picker model is one of the three, or the reference default', () => {
+  const stored = (pickerModel: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    settings: { pickerModel },
+  }))?.settings.pickerModel;
+
+  expect(stored('rgb')).toBe('rgb');
+  expect(stored('wheel')).toBe('wheel');
+  expect(stored('spiral')).toBe('hsv');
+  expect(DEFAULT_SETTINGS.pickerModel).toBe('hsv');
+});
+
+test('the system dark theme applies until the config holds a theme of its own', () => {
+  const base = { preset: 'toonio', features: presetFeatures('toonio') };
+  const themeOf = (settings: unknown, prefersDark: boolean) =>
+    parseUiConfig(JSON.stringify({ ...base, settings }), prefersDark)?.settings.theme;
+
+  expect(themeOf(undefined, true)).toBe('dark');
+  expect(themeOf({ paletteLimit: 60 }, true)).toBe('dark');
+  expect(themeOf(undefined, false)).toBe('light');
+  // An explicit choice wins over the system, in both directions.
+  expect(themeOf({ theme: 'light' }, true)).toBe('light');
+  expect(themeOf({ theme: 'dark' }, false)).toBe('dark');
 });
 
 test('the palette limit is clamped to 30..300 and snapped to the 10 step', () => {

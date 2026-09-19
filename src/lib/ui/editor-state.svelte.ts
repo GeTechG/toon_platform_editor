@@ -125,6 +125,7 @@ import {
   brushToolOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
+  prefersDarkTheme,
   presetDrawingProfile,
   presetFeatures,
   presetUx,
@@ -227,6 +228,13 @@ export class EditorState {
   visitedFrames = $state<number[]>([]);
   /** Saved color grid (Tonio preset); persisted separately from the UI config. */
   palette = $state<string[]>(loadPalette());
+  /** Cell a full grid overwrites next (reference AddColourToPalette's ring). */
+  paletteCursor = $state(0);
+  /**
+   * Errors the session has seen, for Alt+L (`bundle:11407-11409`). Capped, so
+   * a loop that throws every frame cannot grow the tab out of memory.
+   */
+  readonly errorLog: string[] = [];
   /** Reference `toonio_saved_palettes`: named snapshots of the grid. */
   savedPalettes = $state<SavedPalette[]>(loadSavedPalettes());
   /** Canvas zoom and pan; view state only, never part of the document. */
@@ -273,6 +281,12 @@ export class EditorState {
    * divider on its top edge. The timeline is the row that grows with it.
    */
   panelHeight = $state(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
+  /**
+   * Which swatch the pipette fills. A plain pick arms the outline; the right
+   * button on the palette's pipette arms the fill (`bundle:7009-7016`), and
+   * the right button on the canvas still overrides it for one click.
+   */
+  pipetteTarget = $state<'outline' | 'fill'>('outline');
   /** Where the pipette reads from; Alt overrides it for one click. */
   pickSource = $state<PickSource>(DEFAULT_DRAWING_UI_CONFIG.pickSource);
   /**
@@ -319,7 +333,12 @@ export class EditorState {
   features = $state<Features>(presetFeatures(DEFAULT_PRESET));
 
   constructor() {
-    const saved = loadUiConfig();
+    // The system theme decides only while no stored config names one.
+    const prefersDark = prefersDarkTheme();
+    const saved = loadUiConfig(prefersDark);
+    if (prefersDark) {
+      this.settings = { ...DEFAULT_SETTINGS, theme: 'dark' };
+    }
     if (saved) {
       this.preset = saved.preset;
       this.features = saved.features;
@@ -330,12 +349,33 @@ export class EditorState {
       this.panelHeight = saved.drawing.panelHeight;
       this.settings = saved.settings;
     }
+    this.watchErrors();
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
     // The reference names every layer it creates, the first one included.
     // Without a name here the row falls back to its position, and the moment
     // a second layer slid in under it both rows would read «Слой 2».
     renameLayer(this.doc, 0, 'Слой 1');
+  }
+
+  /** Everything the session logs as an error, so Alt+L has something to hand over. */
+  private watchErrors(): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const note = (what: unknown): void => {
+      if (this.errorLog.length >= 200) {
+        this.errorLog.shift();
+      }
+      this.errorLog.push(`${new Date().toISOString()} ${what instanceof Error ? what.stack ?? what.message : String(what)}`);
+    };
+    window.addEventListener('error', (e) => note(e.error ?? e.message));
+    window.addEventListener('unhandledrejection', (e) => note(e.reason));
+    const wasError = console.error.bind(console);
+    console.error = (...args: unknown[]) => {
+      note(args.join(' '));
+      wasError(...args);
+    };
   }
 
   /** Behavior profile of the active preset (palette, eraser rule, onion side, frames, playback). */
@@ -408,7 +448,7 @@ export class EditorState {
    * with a white color is the eraser and the pipette needs the expanded
    * palette. Unavailable requests are ignored.
    */
-  selectTool(tool: Tool): void {
+  selectTool(tool: Tool, pipetteTarget: 'outline' | 'fill' = 'outline'): void {
     const resolved = resolveToolSelection(tool, this.brushColor, this.ux, this.paletteExpanded);
     if (!resolved || !this.leaveTransform()) {
       return;
@@ -425,6 +465,7 @@ export class EditorState {
     }
     this.tool = resolved;
     if (resolved === 'pipette') {
+      this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
     }
   }
@@ -442,7 +483,7 @@ export class EditorState {
       return;
     }
     new eyeDropper().open().then(
-      (result) => this.pickColor(result.sRGBHex, 'outline'),
+      (result) => this.pickColor(result.sRGBHex, this.pipetteTarget),
       () => {},
     );
   }
@@ -452,16 +493,25 @@ export class EditorState {
     this.tool = toolAfterHelp(this.previousDrawingTool);
   }
 
-  /** Swaps outline and fill (reference: the `X` button between the two swatches). */
+  /**
+   * Swaps outline and fill (reference: the `X` button between the two
+   * swatches, `bundle:7786-7790`). An eraser has no colour to swap into, so
+   * it gives way to the pencil, the same rule a pick from the grid follows.
+   */
   swapColors(): void {
     const outline = this.brushColor;
     this.brushColor = this.fillColor;
     this.fillColor = outline;
+    if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
+      this.tool = 'pencil';
+    }
   }
 
   /** Keeps a color in the saved grid (reference AddColourToPalette). */
   addColorToPalette(color: string): void {
-    this.palette = addPaletteColor(this.palette, color, this.settings.paletteLimit);
+    const next = addPaletteColor(this.palette, color, this.settings.paletteLimit, this.paletteCursor);
+    this.palette = next.palette;
+    this.paletteCursor = next.cursor;
     savePalette(this.palette);
   }
 
@@ -500,6 +550,7 @@ export class EditorState {
   /** Reference LoadPalette(colours, true): the grid becomes exactly these colors. */
   replacePalette(colours: readonly string[]): void {
     this.palette = uniqueColours(colours).slice(-this.settings.paletteLimit);
+    this.paletteCursor = 0;
     savePalette(this.palette);
   }
 
@@ -845,6 +896,7 @@ export class EditorState {
       // A record written by an older build may hold repeats; the grid is keyed
       // by colour, so they have to go before it is rendered.
       this.palette = uniqueColours(saved.palette);
+      this.paletteCursor = 0;
       savePalette(this.palette);
     }
     if (saved.tool) {

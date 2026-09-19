@@ -24,22 +24,39 @@ describe('TONIO_DEFAULT_PALETTE', () => {
   });
 });
 
+const grid = (n: number) => Array.from({ length: n }, (_, i) => `#0000${i.toString(16).padStart(2, '0')}`);
+
 describe('addPaletteColor', () => {
-  it('appends a new color', () => {
-    expect(addPaletteColor(['#000000'], '#123456')).toEqual(['#000000', '#123456']);
+  it('appends a new color, leaving the overwrite cursor where it was', () => {
+    expect(addPaletteColor(['#000000'], '#123456')).toEqual({ palette: ['#000000', '#123456'], cursor: 0 });
   });
 
   it('normalizes case and keeps a color it already has', () => {
-    expect(addPaletteColor(['#123456'], '#123456')).toEqual(['#123456']);
-    expect(addPaletteColor(['#123456'], '#123456'.toUpperCase())).toEqual(['#123456']);
+    expect(addPaletteColor(['#123456'], '#123456').palette).toEqual(['#123456']);
+    expect(addPaletteColor(['#123456'], '#123456'.toUpperCase()).palette).toEqual(['#123456']);
   });
 
-  it('drops the oldest color once the palette is full', () => {
-    const full = Array.from({ length: PALETTE_LIMIT }, (_, i) => `#0000${i.toString(16).padStart(2, '0')}`);
-    const grown = addPaletteColor(full, '#ffffff');
-    expect(grown).toHaveLength(PALETTE_LIMIT);
-    expect(grown[0]).toBe(full[1]);
-    expect(grown.at(-1)).toBe('#ffffff');
+  it('overwrites the cell at the cursor once the palette is full', () => {
+    const full = grid(PALETTE_LIMIT);
+    const one = addPaletteColor(full, '#ff0000', PALETTE_LIMIT, 0);
+    expect(one.palette).toHaveLength(PALETTE_LIMIT);
+    expect(one.palette[0]).toBe('#ff0000');
+    expect(one.palette.slice(1)).toEqual(full.slice(1));
+    expect(one.cursor).toBe(1);
+
+    const two = addPaletteColor(one.palette, '#00ff00', PALETTE_LIMIT, one.cursor);
+    expect(two.palette[0]).toBe('#ff0000');
+    expect(two.palette[1]).toBe('#00ff00');
+    expect(two.palette.slice(2)).toEqual(full.slice(2));
+    expect(two.cursor).toBe(2);
+  });
+
+  it('wraps the cursor back to the first cell at the end of the grid', () => {
+    const full = grid(3);
+    expect(addPaletteColor(full, '#ffffff', 3, 2)).toEqual({
+      palette: ['#000000', '#000001', '#ffffff'],
+      cursor: 0,
+    });
   });
 });
 
@@ -99,20 +116,20 @@ describe('contrastInk', () => {
 
 describe('the palette limit from the settings', () => {
   it('appends up to the limit it is given', () => {
-    expect(addPaletteColor(['#000000'], '#123456', 30)).toEqual(['#000000', '#123456']);
+    expect(addPaletteColor(['#000000'], '#123456', 30).palette).toEqual(['#000000', '#123456']);
   });
 
-  it('drops colors from the start once the grid is at its limit', () => {
+  it('overwrites from the first cell once the grid is at its limit', () => {
     const full = ['#000000', '#111111', '#222222'];
-    expect(addPaletteColor(full, '#ffffff', 3)).toEqual(['#111111', '#222222', '#ffffff']);
+    expect(addPaletteColor(full, '#ffffff', 3).palette).toEqual(['#ffffff', '#111111', '#222222']);
   });
 
-  it('brings a grid saved under a larger limit back down to the new one', () => {
-    const wide = Array.from({ length: 60 }, (_, i) => `#0000${i.toString(16).padStart(2, '0')}`);
+  it('brings a grid saved under a larger limit back down, replacing from the start', () => {
+    const wide = grid(60);
     const grown = addPaletteColor(wide, '#ffffff', 30);
-    expect(grown).toHaveLength(30);
-    expect(grown.at(-1)).toBe('#ffffff');
-    expect(grown[0]).toBe(wide[31]);
+    expect(grown.palette).toHaveLength(30);
+    expect(grown.palette[0]).toBe('#ffffff');
+    expect(grown.palette.slice(1)).toEqual(wide.slice(1, 30));
   });
 });
 
@@ -237,5 +254,83 @@ describe('a palette is a set: one swatch per colour', () => {
     } finally {
       delete (globalThis as { localStorage?: unknown }).localStorage;
     }
+  });
+});
+
+// The picker and the palette box are Svelte components: asserted as source,
+// the same contract style as settings-sheet.test.ts.
+const picker = await Bun.file(new URL('./ColourPicker.svelte', import.meta.url)).text();
+const paletteBox = await Bun.file(new URL('./PaletteBox.svelte', import.meta.url)).text();
+const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
+const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+
+describe('the colour picker follows the reference window', () => {
+  it('applies the hex field on every keystroke, not only on Enter', () => {
+    expect(picker).toMatch(/oninput=\{[^}]*typeHex/);
+    expect(picker).toMatch(/function typeHex[^]{0,200}normalizeHexInput/);
+  });
+
+  it('shows the R/G/B fields and hides the bar in the rgb model only', () => {
+    expect(picker).toContain("{#if model === 'rgb'}");
+    expect(picker).toContain("{#if model !== 'rgb'}");
+  });
+
+  it('reads a surface drag through the model geometry', () => {
+    expect(picker).toContain('surfaceToPointer(model, pointer,');
+  });
+
+  it('remembers which of the surface and the bar the arrows drive', () => {
+    expect(picker).toContain('onpointerup');
+    expect(picker).toContain('target: lastTarget');
+  });
+
+  it('takes its model from the settings and writes the choice back', () => {
+    expect(picker).toContain('onmodel(next)');
+    expect(paletteBox).toContain("editor.setSetting('pickerModel'");
+    expect(paletteBox).toContain('model={editor.settings.pickerModel}');
+  });
+
+  it('closes with a revert flag on Esc and without one otherwise', () => {
+    expect(picker).toContain('onclose: (options?: { revert?: boolean }) => void');
+    expect(picker).toContain('onclose({ revert: true })');
+    expect(picker).toMatch(/e\.key === 'Enter'[^]{0,400}onclose\(\)/);
+  });
+
+  it('opens under the swatch, clamped to the viewport', () => {
+    expect(paletteBox).toContain('r.bottom + 6');
+    expect(paletteBox).toContain('window.innerHeight');
+  });
+});
+
+describe('the palette box follows the reference palette', () => {
+  it('puts the original colour back on a revert, without touching the grid', () => {
+    expect(paletteBox).toMatch(/options\?\.revert[^]{0,80}pickColor\(origin, target, true\)/);
+  });
+
+  it('adds the picked colour to the grid on close only while auto-add is on', () => {
+    expect(paletteBox).toContain('editor.settings.paletteAutoAdd');
+  });
+
+  it('asks before a merge that would overflow, then reports what was added', () => {
+    expect(paletteBox).toMatch(/skipped > 0[^]{0,200}confirm\(/);
+    expect(paletteBox).toContain('editor.settings.paletteLimit');
+    expect(paletteBox).toContain('Добавлено');
+    expect(paletteBox).not.toContain('PALETTE_LIMIT');
+  });
+
+  it('shows the remover hint once, then remembers that it did', () => {
+    expect(paletteBox).toContain('removerTipShown');
+    expect(paletteBox).toMatch(/alert\('[^']*цвет/);
+  });
+
+  it('scrolls the grid to the cell of the chosen outline', () => {
+    expect(paletteBox).toContain("scrollIntoView({ block: 'nearest'");
+  });
+
+  it('gives the foot pipette a right button that picks into the fill', () => {
+    expect(paletteBox).toMatch(/oncontextmenu=\{[^}]*selectTool\('pipette', 'fill'\)/);
+    // The canvas pick honours that target as well as the button it is made with.
+    expect(state).toContain("pipetteTarget = $state<'outline' | 'fill'>('outline')");
+    expect(canvas).toContain("editor.pipetteTarget === 'fill'");
   });
 });

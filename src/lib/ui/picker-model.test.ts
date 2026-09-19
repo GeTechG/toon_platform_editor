@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { barPointer, colorToPointer, nudgePointer, pointerToColor } from './picker-model';
+import { barPointer, colorToPointer, nudgePointer, pointerToColor, rgbChannelAt, surfaceToPointer } from './picker-model';
 
 const MODELS = ['hsv', 'rgb', 'wheel'] as const;
 
@@ -32,12 +32,40 @@ describe('colorToPointer / pointerToColor', () => {
   });
 });
 
+describe('surfaceToPointer', () => {
+  it('reads the rgb surface as three columns, y the channel value', () => {
+    const p = colorToPointer('rgb', '#112233');
+    const top = surfaceToPointer('rgb', p, 0.5, 0);
+    expect(pointerToColor('rgb', top)).toBe('#11ff33');
+    expect(top.channel).toBe(1);
+  });
+
+  it('keeps the other channels when a column is dragged', () => {
+    const p = colorToPointer('rgb', '#112233');
+    expect(pointerToColor('rgb', surfaceToPointer('rgb', p, 0.1, 1))).toBe('#002233');
+    expect(pointerToColor('rgb', surfaceToPointer('rgb', p, 0.9, 1))).toBe('#112200');
+  });
+
+  it('leaves the other models reading the surface as two axes', () => {
+    const p = { x: 0.5, y: 0.5, bar: 0.5 };
+    expect(surfaceToPointer('hsv', p, 0.3, 0.4)).toEqual({ x: 0.3, y: 0.4, bar: 0.5 });
+    expect(surfaceToPointer('wheel', p, 0.3, 0.4)).toEqual({ x: 0.3, y: 0.4, bar: 0.5 });
+  });
+
+  it('snaps the gap between columns to the nearest one', () => {
+    expect(rgbChannelAt(0)).toBe(0);
+    expect(rgbChannelAt(0.33)).toBe(0);
+    expect(rgbChannelAt(0.34)).toBe(1);
+    expect(rgbChannelAt(1)).toBe(2);
+  });
+});
+
 describe('nudgePointer', () => {
   const mid = { x: 0.5, y: 0.5, bar: 0.5 };
 
-  it('moves one unit of the axis, ten with Shift', () => {
+  it('moves one unit of the axis, five with Shift', () => {
     expect(nudgePointer('hsv', mid, 'ArrowRight', {}).x).toBeCloseTo(0.51, 6);
-    expect(nudgePointer('hsv', mid, 'ArrowRight', { shift: true }).x).toBeCloseTo(0.6, 6);
+    expect(nudgePointer('hsv', mid, 'ArrowRight', { shift: true }).x).toBeCloseTo(0.55, 6);
     expect(nudgePointer('rgb', mid, 'ArrowLeft', {}).x).toBeCloseTo(0.5 - 1 / 255, 6);
   });
 
@@ -50,6 +78,24 @@ describe('nudgePointer', () => {
     const alt = nudgePointer('hsv', mid, 'ArrowRight', { alt: true });
     expect(alt.x).toBe(0.5);
     expect(alt.bar).toBeCloseTo(0.5 + 1 / 360, 6);
+  });
+
+  it('drives the surface when Alt flips a bar target back', () => {
+    const flipped = nudgePointer('hsv', mid, 'ArrowUp', { alt: true, target: 'bar' });
+    expect(flipped.bar).toBe(0.5);
+    expect(flipped.y).toBeCloseTo(0.49, 6);
+  });
+
+  it('moves the bar five units with Alt+Shift while the surface stays put', () => {
+    const next = nudgePointer('hsv', mid, 'ArrowUp', { alt: true, shift: true, target: 'surface' });
+    expect(next.bar).toBeCloseTo(0.5 + 5 / 360, 6);
+    expect(next.y).toBe(0.5);
+  });
+
+  it('follows the last target without Alt', () => {
+    const next = nudgePointer('hsv', mid, 'ArrowUp', { target: 'bar' });
+    expect(next.bar).toBeCloseTo(0.5 + 1 / 360, 6);
+    expect(next.y).toBe(0.5);
   });
 
   it('clamps at the edges and ignores other keys', () => {

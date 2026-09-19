@@ -13,6 +13,28 @@ export interface Pointer {
   x: number;
   y: number;
   bar: number;
+  /** RGB model only: the column the last click landed in, for the marker. */
+  channel?: 0 | 1 | 2;
+}
+
+/** Which of the three RGB columns a surface x falls in; the gaps snap to a column. */
+export function rgbChannelAt(fx: number): 0 | 1 | 2 {
+  return Math.min(2, Math.max(0, Math.floor(fx * 3))) as 0 | 1 | 2;
+}
+
+/**
+ * Where a surface click lands. Two axes in the hsv and wheel models; in the
+ * rgb model the surface is three vertical channel columns (`bundle:10046-10064`),
+ * so x picks the column and y its value, leaving the other two channels alone.
+ */
+export function surfaceToPointer(model: PickerModel, p: Pointer, fx: number, fy: number): Pointer {
+  if (model !== 'rgb') return { ...p, x: fx, y: fy };
+  const channel = rgbChannelAt(fx);
+  const value = 1 - fy;
+  // rgb pointer axes: r = bar, g = 1 - y, b = x.
+  if (channel === 0) return { ...p, bar: value, channel };
+  if (channel === 1) return { ...p, y: fy, channel };
+  return { ...p, x: value, channel };
 }
 
 /** How many steps an arrow key has to cross each axis, per model. */
@@ -53,20 +75,22 @@ export function colorToPointer(model: PickerModel, hex: string): Pointer {
 }
 
 /**
- * Arrow keys move the pointer one axis unit (Shift: ten); with Alt they drive
- * the bar instead of the surface. Any other key leaves the pointer alone.
+ * Arrow keys move the pointer one axis unit (Shift: five, `bundle:9925-9941`)
+ * along `target`, the surface or the bar the pointer last touched; Alt flips
+ * that target for this one step. Any other key leaves the pointer alone.
  */
 export function nudgePointer(
   model: PickerModel,
   p: Pointer,
   key: string,
-  { shift = false, alt = false }: { shift?: boolean; alt?: boolean },
+  { shift = false, alt = false, target = 'surface' }: { shift?: boolean; alt?: boolean; target?: 'surface' | 'bar' },
 ): Pointer {
   const dir = key === 'ArrowRight' || key === 'ArrowUp' ? 1 : key === 'ArrowLeft' || key === 'ArrowDown' ? -1 : 0;
   if (dir === 0) return p;
+  const onBar = alt ? target === 'surface' : target === 'bar';
   const range = RANGES[model];
-  const step = (dir * (shift ? 10 : 1)) / (alt ? range.bar : key === 'ArrowLeft' || key === 'ArrowRight' ? range.x : range.y);
-  if (alt) return { ...p, bar: clamp01(p.bar + step) };
+  const step = (dir * (shift ? 5 : 1)) / (onBar ? range.bar : key === 'ArrowLeft' || key === 'ArrowRight' ? range.x : range.y);
+  if (onBar) return { ...p, bar: clamp01(p.bar + step) };
   // The surface's y grows downward, so ArrowUp has to subtract.
   if (key === 'ArrowLeft' || key === 'ArrowRight') return { ...p, x: clamp01(p.x + step) };
   return { ...p, y: clamp01(p.y - step) };

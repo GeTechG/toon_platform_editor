@@ -122,6 +122,14 @@ describe('resolveToolSelection', () => {
     expect(resolveToolSelection('pencil', '#000000', multator)).toBe('pencil');
   });
 
+  it('toonio keeps the pipette off the rail — it lives in the palette foot', () => {
+    expect(toonio.pipetteOffRail).toBe(true);
+    expect(toonop.pipetteOffRail).toBe(false);
+    expect(multator.pipetteOffRail).toBe(false);
+    // Off the rail, not out of the editor: P and the palette button still arm it.
+    expect(resolveToolSelection('pipette', '#000000', toonio)).toBe('pipette');
+  });
+
   it('multator: the pipette needs the expanded palette', () => {
     expect(resolveToolSelection('pipette', '#000000', multator, false)).toBeNull();
     expect(resolveToolSelection('pipette', '#000000', multator, true)).toBe('pipette');
