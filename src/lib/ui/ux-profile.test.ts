@@ -179,3 +179,19 @@ describe('help tools and the drawing tool behind them', () => {
     expect(toolAfterHelp('mega-eraser')).toBe('pencil');
   });
 });
+
+describe('timeline behaviour by profile', () => {
+  it('toonio plays the selection, puts a new layer under the active one and keeps redo alive', () => {
+    expect(toonio.playbackRange).toBe('selection');
+    expect(toonio.newLayerPosition).toBe('below');
+    expect(toonio.redoSurvivesStroke).toBe(true);
+  });
+
+  it('toonop and multator keep playing the whole document and stacking layers upward', () => {
+    for (const profile of [toonop, multator]) {
+      expect(profile.playbackRange).toBe('document');
+      expect(profile.newLayerPosition).toBe('above');
+      expect(profile.redoSurvivesStroke).toBe(false);
+    }
+  });
+});

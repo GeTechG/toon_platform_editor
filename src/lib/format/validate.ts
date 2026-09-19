@@ -10,13 +10,27 @@ import schemaV1 from './schema/toon-v1.schema.json';
 import schemaV2 from './schema/toon-v2.schema.json';
 import schemaV3 from './schema/toon-v3.schema.json';
 import schemaV4 from './schema/toon-v4.schema.json';
+import schemaV5 from './schema/toon-v5.schema.json';
 import { MAX_SUPPORTED_SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
-import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3, ToonDocumentV4 } from './types';
+import type {
+  ToonDocumentV1,
+  ToonDocumentV2,
+  ToonDocumentV3,
+  ToonDocumentV4,
+  ToonDocumentV5,
+} from './types';
 import { upgradeDocument } from './upgrade';
 
 // The migrations live in ./upgrade — ajv-free, so the share page's player can
 // lift an old document without pulling the validator into the viewer bundle.
-export { migrateLegacyEraser, migrateV1ToV2, migrateV2ToV3, migrateV3ToV4, upgradeDocument } from './upgrade';
+export {
+  migrateLegacyEraser,
+  migrateV1ToV2,
+  migrateV2ToV3,
+  migrateV3ToV4,
+  migrateV4ToV5,
+  upgradeDocument,
+} from './upgrade';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -37,7 +51,14 @@ const validateSchemaV1 = ajv.compile(schemaV1);
 const validateSchemaV2 = ajv.compile(schemaV2);
 const validateSchemaV3 = ajv.compile(schemaV3);
 const validateSchemaV4 = ajv.compile(schemaV4);
-const SCHEMAS = [validateSchemaV1, validateSchemaV2, validateSchemaV3, validateSchemaV4];
+const validateSchemaV5 = ajv.compile(schemaV5);
+const SCHEMAS = [
+  validateSchemaV1,
+  validateSchemaV2,
+  validateSchemaV3,
+  validateSchemaV4,
+  validateSchemaV5,
+];
 
 /** Document load error; carries the list of validation issues. */
 export class FormatError extends Error {
@@ -83,10 +104,15 @@ export function validateDocument(data: unknown): ValidationResult {
   return { ok: issues.length === 0, issues };
 }
 
-type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3 | ToonDocumentV4;
+type AnyDocument =
+  | ToonDocumentV1
+  | ToonDocumentV2
+  | ToonDocumentV3
+  | ToonDocumentV4
+  | ToonDocumentV5;
 
-/** Validates and types already-parsed JSON, migrating v1 → v2 → v3 → v4; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocumentV4 {
+/** Validates and types already-parsed JSON, migrating v1 → … → v5; throws FormatError. */
+export function loadDocument(data: unknown): ToonDocumentV5 {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);

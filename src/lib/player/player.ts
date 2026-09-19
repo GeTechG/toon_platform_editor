@@ -10,11 +10,19 @@ export interface LoopPlayerOptions {
   fps: number;
   /** Frame playback starts from (and returns to on stop). */
   startFrame: number;
+  /**
+   * The stretch the loop runs over; the whole document by default. A frame
+   * selection narrows it, and `startFrame` may sit anywhere inside it —
+   * Shift+Space begins at the active frame and still wraps to `loopStart`.
+   */
+  loopStart?: number;
+  loopEnd?: number;
   onFrame: (frameIndex: number) => void;
 }
 
 export class LoopPlayer {
-  readonly #frameCount: number;
+  readonly #loopStart: number;
+  readonly #loopLength: number;
   readonly #intervalMs: number;
   readonly #startFrame: number;
   readonly #onFrame: (frameIndex: number) => void;
@@ -35,7 +43,23 @@ export class LoopPlayer {
     ) {
       throw new RangeError(`startFrame ${options.startFrame} is out of range 0..${options.frameCount - 1}`);
     }
-    this.#frameCount = options.frameCount;
+    const loopStart = options.loopStart ?? 0;
+    const loopEnd = options.loopEnd ?? options.frameCount - 1;
+    if (
+      !Number.isInteger(loopStart) ||
+      !Number.isInteger(loopEnd) ||
+      loopStart < 0 ||
+      loopEnd >= options.frameCount ||
+      loopStart > loopEnd ||
+      options.startFrame < loopStart ||
+      options.startFrame > loopEnd
+    ) {
+      throw new RangeError(
+        `loop range ${loopStart}..${loopEnd} is not a stretch of 0..${options.frameCount - 1} holding ${options.startFrame}`,
+      );
+    }
+    this.#loopStart = loopStart;
+    this.#loopLength = loopEnd - loopStart + 1;
     this.#intervalMs = 1000 / options.fps;
     this.#startFrame = options.startFrame;
     this.#current = options.startFrame;
@@ -57,7 +81,8 @@ export class LoopPlayer {
       return;
     }
     const steps = Math.floor(delta / this.#intervalMs);
-    this.#current = (this.#current + steps) % this.#frameCount;
+    this.#current =
+      this.#loopStart + ((this.#current - this.#loopStart + steps) % this.#loopLength);
     this.#last = nowMs - (delta % this.#intervalMs);
     this.#onFrame(this.#current);
   }

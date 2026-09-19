@@ -4,7 +4,7 @@
  */
 
 /** Version the editor writes; older ones are migrated on load. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 /** Highest schema version the loader accepts. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 /** New documents take the reference Tonio canvas (toonio.ru draws 1280×720). */
@@ -72,6 +72,8 @@ export const MAX_FRAMES = 4096;
 /** Layers per document (v3); the Toonio reference caps at the same number. */
 export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
+/** Layer name length (v5); the reference's `MAX_LAYER_NAME`. */
+export const MAX_LAYER_NAME = 12;
 /** Maximum coordinate count (x,y flat) per stroke. */
 export const MAX_STROKE_COORDS = 65536;
 export const MAX_STROKE_WIDTH = 4800;

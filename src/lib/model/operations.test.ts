@@ -12,7 +12,9 @@ import {
   moveLayer,
   removeFrame,
   removeLastStroke,
+  pasteNeedsConfirm,
   removeLayer,
+  renameLayer,
   replaceCells,
   replaceColumn,
   setFrameRate,
@@ -26,7 +28,7 @@ import { transformMatrix } from './geom';
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(4);
+    expect(doc.schema_version).toBe(5);
     expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(10240);
     expect(doc.height).toBe(5760);
@@ -97,7 +99,7 @@ describe('addFrame / removeFrame', () => {
 describe('cloneColumn / replaceColumn (frame copy-paste across layers)', () => {
   function twoLayerDoc() {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addFrame(doc, 0);
     addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#112233' });
     addStroke(doc, 1, 0, { points: [5, 6], width: 8, color: '#ff0000' });
@@ -166,16 +168,30 @@ describe('cloneColumn / replaceColumn (frame copy-paste across layers)', () => {
 });
 
 describe('layer operations', () => {
-  it('addLayer inserts an empty layer above the given one and returns its index', () => {
+  it('addLayer inserts an empty layer at the given index and returns it', () => {
     const doc = createDocument();
     addFrame(doc, 0);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
-    const index = addLayer(doc, 0);
+    const index = addLayer(doc, 1);
     expect(index).toBe(1);
     expect(doc.layers).toHaveLength(2);
     expect(doc.layers[1].hidden).toBe(false);
     expect(doc.layers[1].frames).toEqual([{ strokes: [] }, { strokes: [] }]);
     expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('addLayer can slide a layer in underneath the bottom one', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
+    expect(addLayer(doc, 0)).toBe(0);
+    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[1].frames[0].strokes).toHaveLength(1);
+  });
+
+  it('addLayer takes the index one past the top — the new top layer', () => {
+    const doc = createDocument();
+    expect(addLayer(doc, 1)).toBe(1);
+    expect(() => addLayer(doc, 3)).toThrow(RangeError);
   });
 
   it('addLayer stops at the layer limit', () => {
@@ -188,7 +204,7 @@ describe('layer operations', () => {
 
   it('removeLayer drops the layer but never the last one', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addStroke(doc, 1, 0, { points: [1, 2], width: 8, color: '#000000' });
     removeLayer(doc, 1);
     expect(doc.layers).toHaveLength(1);
@@ -198,8 +214,8 @@ describe('layer operations', () => {
 
   it('moveLayer reorders in place', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
     addLayer(doc, 1);
+    addLayer(doc, 2);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     moveLayer(doc, 0, 2);
     expect(doc.layers[2].frames[0].strokes).toHaveLength(1);
@@ -210,11 +226,11 @@ describe('layer operations', () => {
 
   it('rejects out-of-range layer indices', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     expect(() => moveLayer(doc, 0, 2)).toThrow(RangeError);
     expect(() => moveLayer(doc, -1, 0)).toThrow(RangeError);
     expect(() => removeLayer(doc, 2)).toThrow(RangeError);
-    expect(() => addLayer(doc, 5)).toThrow(RangeError);
+    expect(() => addLayer(doc, 6)).toThrow(RangeError);
   });
 
   it('setLayerHidden toggles visibility in the document', () => {
@@ -371,7 +387,7 @@ describe('schema limits', () => {
 describe('layer coordinate', () => {
   it('addStroke targets the given layer only', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
     expect(doc.layers[1].frames[0].strokes).toHaveLength(0);
@@ -379,7 +395,7 @@ describe('layer coordinate', () => {
 
   it('removeLastStroke pops from the given layer only', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     addStroke(doc, 1, 0, { points: [3, 4], width: 8, color: '#ff0000' });
     expect(removeLastStroke(doc, 1, 0)).toBe(true);
@@ -397,8 +413,8 @@ describe('layer coordinate', () => {
 describe('frame operations across layers', () => {
   it('addFrame inserts an empty cell into every layer', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
     addLayer(doc, 1);
+    addLayer(doc, 2);
     addStroke(doc, 2, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(addFrame(doc, 0)).toBe(1);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([2, 2, 2]);
@@ -409,7 +425,7 @@ describe('frame operations across layers', () => {
 
   it('insertFrameBefore inserts into every layer at the same position', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addStroke(doc, 1, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(insertFrameBefore(doc, 0)).toBe(0);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([2, 2]);
@@ -419,7 +435,7 @@ describe('frame operations across layers', () => {
 
   it('removeFrame removes the column from every layer', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addFrame(doc, 0);
     addStroke(doc, 1, 1, { points: [1, 2], width: 8, color: '#000000' });
     removeFrame(doc, 0);
@@ -429,7 +445,7 @@ describe('frame operations across layers', () => {
 
   it('clears the last remaining column in every layer, keeping the layers', () => {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     addStroke(doc, 1, 0, { points: [3, 4], width: 8, color: '#000000' });
     removeFrame(doc, 0);
@@ -487,7 +503,7 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
   /** Two layers × three frames, each cell holding one stroke tagged by its coordinates. */
   function grid(): ReturnType<typeof createDocument> {
     const doc = createDocument();
-    addLayer(doc, 0);
+    addLayer(doc, 1);
     addFrame(doc, 0);
     addFrame(doc, 1);
     for (let l = 0; l < 2; l++) {
@@ -553,7 +569,7 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
 
   it('a non-contiguous layer selection copies and pastes only those layers', () => {
     const doc = grid();
-    addLayer(doc, 1);
+    addLayer(doc, 2);
     addStroke(doc, 2, 0, { points: [16, 0], width: 8, color: '#112233' });
     const buffer = copyCells(doc, { frames: [0], layers: [0, 2] });
     expect(buffer).toHaveLength(2);
@@ -564,6 +580,58 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
     const doc = grid();
     expect(() => copyCells(doc, { frames: [3], layers: [0] })).toThrow(RangeError);
     expect(() => copyCells(doc, { frames: [0], layers: [9] })).toThrow(RangeError);
+  });
+
+  it('repeats a short buffer over the target frames, cycling by f % buffer', () => {
+    const doc = grid();
+    addFrame(doc, 2);
+    addFrame(doc, 3);
+    // Two frames of layer 0 ([0,0] and [0,8]) over the five frames 0..4.
+    const buffer = copyCells(doc, { frames: [0, 1], layers: [0] });
+    replaceCells(doc, { frames: [0, 1, 2, 3, 4], layers: [0] }, buffer);
+    expect([0, 1, 2, 3, 4].map((f) => at(doc, 0, f))).toEqual([
+      [[0, 0]],
+      [[0, 8]],
+      [[0, 0]],
+      [[0, 8]],
+      [[0, 0]],
+    ]);
+  });
+
+  it('a repeated merge does not double the strokes it already laid down', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    mergeCells(doc, { frames: [2], layers: [1] }, buffer);
+    mergeCells(doc, { frames: [2], layers: [1] }, buffer);
+    expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0]]);
+  });
+
+  it('merges a buffer whose strokes differ from the cell tail', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    mergeCells(doc, { frames: [2], layers: [1] }, buffer);
+    const other = copyCells(doc, { frames: [1], layers: [0] });
+    mergeCells(doc, { frames: [2], layers: [1] }, other);
+    expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0], [0, 8]]);
+  });
+
+  it('a same-shaped stroke drawn with another tool is not the tail', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    mergeCells(doc, { frames: [2], layers: [1] }, buffer);
+    const recoloured: typeof buffer = [[{
+      strokes: [{ points: [0, 0], tool: { kind: 'pencil', dialect: 'multator', width: 8, color: '#ff0000' } }],
+    }]];
+    mergeCells(doc, { frames: [2], layers: [1] }, recoloured);
+    expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0], [0, 0]]);
+  });
+
+  it('cycles the buffer through mergeCells too', () => {
+    const doc = grid();
+    const buffer = copyCells(doc, { frames: [0], layers: [0] });
+    mergeCells(doc, { frames: [1, 2], layers: [0] }, buffer);
+    expect(at(doc, 0, 1)).toEqual([[0, 8], [0, 0]]);
+    expect(at(doc, 0, 2)).toEqual([[0, 16], [0, 0]]);
   });
 });
 
@@ -717,3 +785,84 @@ describe('mirrorCell', () => {
   });
 });
 
+
+describe('renameLayer', () => {
+  const doc = () => {
+    const d = createDocument();
+    addLayer(d, 0);
+    return d;
+  };
+
+  it('stores the name on the layer', () => {
+    const d = doc();
+    renameLayer(d, 1, 'Фон');
+    expect(d.layers[1].name).toBe('Фон');
+    expect(d.layers[0].name).toBeUndefined();
+  });
+
+  it('trims surrounding whitespace', () => {
+    const d = doc();
+    renameLayer(d, 0, '  Фон  ');
+    expect(d.layers[0].name).toBe('Фон');
+  });
+
+  it('cuts a name longer than MAX_LAYER_NAME instead of refusing it', () => {
+    const d = doc();
+    renameLayer(d, 0, 'Слой с именем');
+    expect(d.layers[0].name).toBe('Слой с имене');
+  });
+
+  it('drops the field for an empty name — the row falls back to its position', () => {
+    const d = doc();
+    renameLayer(d, 0, 'Фон');
+    renameLayer(d, 0, '   ');
+    expect('name' in d.layers[0]).toBe(false);
+  });
+
+  it('keeps the document valid', () => {
+    const d = doc();
+    renameLayer(d, 0, 'Фон');
+    expect(validateDocument(d).ok).toBe(true);
+  });
+
+  it('refuses an index outside the layer stack', () => {
+    expect(() => renameLayer(doc(), 5, 'Фон')).toThrow(RangeError);
+  });
+});
+
+
+describe('pasteNeedsConfirm', () => {
+  /** Two layers × three frames; only layer 0 / frame 0 holds a stroke. */
+  function sparse() {
+    const doc = createDocument();
+    addLayer(doc, 1);
+    addFrame(doc, 0);
+    addFrame(doc, 1);
+    addStroke(doc, 0, 0, { points: [0, 0], width: 8, color: '#112233' });
+    return doc;
+  }
+
+  it('reports an empty target as nothing to ask about', () => {
+    expect(pasteNeedsConfirm(sparse(), { frames: [1, 2], layers: [0, 1] })).toEqual({
+      nonEmpty: false,
+      frames: 2,
+      layers: 2,
+    });
+  });
+
+  it('reports a target holding a stroke anywhere as non-empty', () => {
+    expect(pasteNeedsConfirm(sparse(), { frames: [0, 1], layers: [0] })).toEqual({
+      nonEmpty: true,
+      frames: 2,
+      layers: 1,
+    });
+  });
+
+  it('counts a single cell as one frame and one layer — the second dialog is skipped', () => {
+    expect(pasteNeedsConfirm(sparse(), { frames: [0], layers: [0] })).toEqual({
+      nonEmpty: true,
+      frames: 1,
+      layers: 1,
+    });
+  });
+});

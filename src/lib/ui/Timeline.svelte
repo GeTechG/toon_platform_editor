@@ -65,14 +65,50 @@
     return editor.selection.frames.includes(frame) && editor.selection.layers.includes(layer);
   }
 
-  function isCopied(frame: number, layer: number): boolean {
-    const from = editor.copiedFrom;
-    return from !== null && from.frames.includes(frame) && from.layers.includes(layer);
-  }
-
   function onCellClick(e: MouseEvent, frame: number, layer: number): void {
     const mode = e.shiftKey ? 'range' : e.ctrlKey || e.metaKey ? 'toggle' : 'set';
     editor.selectCell(frame, layer, mode);
+  }
+
+  // --- Drag-selection -------------------------------------------------------
+  // The reference drags a rectangle of cells with the button held
+  // (`bundle:9111-9150`). Touch is left alone: a finger on the grid scrolls
+  // the strip, which is the only way to reach a frame off screen on a phone.
+  let dragging = $state(false);
+
+  function onCellDown(e: PointerEvent, frame: number, layer: number): void {
+    if (e.pointerType === 'touch' || !e.isPrimary || e.shiftKey || e.ctrlKey || e.metaKey) {
+      return;
+    }
+    dragging = true;
+    // The anchor is the cell pressed: `selectCell` moves the active cell
+    // there, and every later 'range' spans from it.
+    editor.selectCell(frame, layer);
+  }
+
+  function onCellEnter(e: PointerEvent, frame: number, layer: number): void {
+    if (!dragging || e.pointerType === 'touch') {
+      return;
+    }
+    editor.selectCell(frame, layer, 'range');
+    (e.currentTarget as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function endCellDrag(): void {
+    dragging = false;
+  }
+
+  /**
+   * A press on the empty part of the strip collapses the block
+   * (`bundle:8938-8944`). The rows stretch across the strip, so "empty" is
+   * anywhere inside it that is not a cell — comparing the container against
+   * itself would leave nowhere to press.
+   */
+  function resetSelection(e: PointerEvent): void {
+    if (editor.playing || (e.target as HTMLElement).closest('.cell')) {
+      return;
+    }
+    editor.collapseSelection();
   }
 
   // --- Soundtrack -----------------------------------------------------------
@@ -101,6 +137,10 @@
 {/snippet}
 
 
+<!-- The release may land anywhere — outside the grid, outside the window —
+     so the drag always ends on the window rather than on a cell. -->
+<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} />
+
 {#if studio}
   <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
   <div class="studio">
@@ -109,7 +149,18 @@
         <LayerRows {editor} compact />
       </div>
 
-      <div class="grid" bind:this={strip} bind:clientWidth onscroll={sync}>
+      <!-- The press-to-deselect is a mouse convenience on top of the cells,
+           which are ordinary buttons: nothing here is keyboard-only reachable
+           through the container, so it stays a labelled group. -->
+      <div
+        class="grid"
+        role="group"
+        aria-label="Кадры и слои"
+        bind:this={strip}
+        bind:clientWidth
+        onscroll={sync}
+        onpointerdown={resetSelection}
+      >
         <div class="head">
           {#each frames as _, i (i)}
             <span
@@ -127,7 +178,7 @@
                 class="cell"
                 class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
                 class:selected={isSelected(i, layerIndex)}
-                class:copied={isCopied(i, layerIndex)}
+                class:copied={editor.isCopiedCell(i, layerIndex)}
                 class:dim={editor.doc.layers[layerIndex].hidden}
                 data-frame={i}
                 disabled={editor.playing}
@@ -135,6 +186,8 @@
                   ? 'true'
                   : undefined}
                 onclick={(e) => onCellClick(e, i, layerIndex)}
+                onpointerdown={(e) => onCellDown(e, i, layerIndex)}
+                onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
                 title="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
                 aria-label="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
               >

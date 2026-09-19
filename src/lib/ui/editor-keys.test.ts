@@ -50,3 +50,47 @@ describe('the hand owns the keyboard while it is picked', () => {
     expect(onKeydown()).toContain('e.shiftKey ? 30 : 10');
   });
 });
+
+describe('timeline navigation wraps round (Toonio parity)', () => {
+  it('the layer arrows wrap instead of stopping at the ends', () => {
+    expect(onKeydown()).toContain('wrapIndex(editor.activeLayer + 1');
+    expect(onKeydown()).toContain('wrapIndex(editor.activeLayer - 1');
+  });
+
+  it('the ⏴/⏵ buttons wrap too, so they never go dead at an end', () => {
+    expect(editorUi).toContain('editor.selectFrame(wrapIndex(editor.activeFrame - 1');
+    expect(editorUi).toContain('editor.selectFrame(wrapIndex(editor.activeFrame + 1');
+    expect(editorUi).not.toContain('disabled={editor.playing || editor.activeFrame === 0}\n            onclick={() => editor.selectFrame(editor.activeFrame - 1)}');
+  });
+});
+
+describe('preview start (Toonio parity)', () => {
+  it('Shift+Space begins at the active frame, plain Space at the range start', () => {
+    expect(onKeydown()).toContain('playControls?.toggle({ fromActive: e.shiftKey })');
+  });
+});
+
+describe('one confirm for the whole editor', () => {
+  it('the state asks through Editor.svelte rather than calling confirm itself', () => {
+    expect(editorUi).toContain('editor.ask =');
+  });
+});
+
+const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
+
+describe('the transport plays the range (Toonio parity)', () => {
+  it('asks frame-selection what to play instead of only where to start', () => {
+    expect(play).toContain('playbackRange(');
+    expect(play).not.toContain('playbackStartFrame(');
+  });
+
+  it('hands the loop its bounds', () => {
+    expect(play).toContain('loopStart:');
+    expect(play).toContain('loopEnd:');
+  });
+
+  it('the button is dead when there is nothing to play', () => {
+    expect(play).toContain('canPlay');
+    expect(play).toContain('disabled={!canPlay}');
+  });
+});

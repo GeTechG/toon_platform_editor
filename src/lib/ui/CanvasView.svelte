@@ -223,15 +223,29 @@
     paintStack(activeEl, activeCell && !layers[editor.activeLayer].hidden ? [activeCell] : [], pxW, pxH, viewport);
   }
 
-  /** Neighbor cell of the active layer, cached (onion shows that layer only). */
+  /**
+   * A ghost frame, cached: the neighbour model draws the active layer alone,
+   * while Tonio's history flattens every selected layer of that frame into one
+   * ghost (`bundle:11035-11040`) — the state decides which through
+   * `onionHistoryLayerIndices`.
+   */
   function onionCell(frame: number, pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement | null {
-    const layer = editor.doc.layers[editor.activeLayer];
-    const cell = layer?.frames[frame];
-    if (!cell || layer.hidden || cell.strokes.length === 0) {
+    const indices = editor.onionHistoryLayerIndices;
+    const cells: { layer: Layer; cell: Frame }[] = [];
+    for (const index of indices) {
+      const layer = editor.doc.layers[index];
+      const cell = layer?.frames[frame];
+      if (cell && !layer.hidden && cell.strokes.length > 0) {
+        cells.push({ layer, cell });
+      }
+    }
+    if (cells.length === 0) {
       return null;
     }
-    const key = `${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}:${pxW}x${pxH}`
-      + `@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
+    const key = cells
+      .map(({ layer, cell }) => `${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}`)
+      .join('|')
+      + `:${pxW}x${pxH}@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
     const cached = onionCache.get(key);
     if (cached) {
       return cached;
@@ -239,12 +253,35 @@
     const el = buffer(null, pxW, pxH);
     const ctx = el.getContext('2d') as unknown as ViewCtx;
     ctx.clearRect(0, 0, pxW, pxH);
-    renderStrokesLayer(cell, editor.doc.tools, ctx, viewport);
+    for (const { cell } of cells) {
+      renderStrokesLayer(cell, editor.doc.tools, ctx, viewport);
+    }
     onionCache.set(key, el);
     while (onionCache.size > ONION_CACHE_LIMIT) {
       onionCache.delete(onionCache.keys().next().value as string);
     }
     return el;
+  }
+
+  /**
+   * Blits the ghosts. They sit where the active layer sits in the stack — over
+   * the layers below it, under the active one and everything above
+   * (`bundle:11158-11161`), so a ghost never covers the line being drawn.
+   */
+  function drawOnion(ctx: ViewCtx, pxWidth: number, pxHeight: number, viewport: Viewport): void {
+    if (!editor.showOnionSkin) {
+      return;
+    }
+    for (const neighbor of editor.onionSkinLayers) {
+      const el = onionCell(neighbor.index, pxWidth, pxHeight, viewport);
+      if (!el) {
+        continue;
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = neighbor.alpha;
+      ctx.drawImage(el, 0, 0);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // Fit inside the wrap (whose size is set by the page layout, not by the
@@ -347,21 +384,6 @@
     ctx.fillStyle = BACKGROUND_COLOR;
     ctx.fillRect(0, 0, pxWidth, pxHeight);
 
-    // Onion-skin under the whole current frame: cells of the active layer in
-    // their real colors — fading neighbors, or Tonio's last visited frames.
-    if (editor.showOnionSkin) {
-      for (const neighbor of editor.onionSkinLayers) {
-        const el = onionCell(neighbor.index, pxWidth, pxHeight, viewport);
-        if (!el) {
-          continue;
-        }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalAlpha = neighbor.alpha;
-        ctx.drawImage(el, 0, 0);
-      }
-      ctx.globalAlpha = 1;
-    }
-
     // The live stroke belongs to the active layer: it composites with that
     // layer alone, so an eraser punches its alpha and not the layers below.
     const session = pointer.session;
@@ -409,6 +431,7 @@
       cctx.setTransform(1, 0, 0, 1, 0, 0);
       cctx.clearRect(0, 0, pxWidth, pxHeight);
       cctx.drawImage(belowEl!, 0, 0);
+      drawOnion(cctx, pxWidth, pxHeight, viewport);
       cctx.drawImage(activeWithLive, 0, 0);
       cctx.drawImage(aboveEl!, 0, 0);
       ctx.globalAlpha = alpha;
@@ -416,6 +439,7 @@
       ctx.globalAlpha = 1;
     } else {
       blitLayer(belowEl!, ctx);
+      drawOnion(ctx, pxWidth, pxHeight, viewport);
       blitLayer(activeWithLive, ctx);
       blitLayer(aboveEl!, ctx);
     }
@@ -586,9 +610,16 @@
       void cell;
       void cell?.strokes.length;
     }
-    const activeLayer = editor.doc.layers[editor.activeLayer];
+    // The ghosts are drawn from every layer the state names — the active one
+    // under the neighbour model, the whole selection under Tonio's history.
+    // Both the list and those layers' ghost cells are read here, or a
+    // Ctrl+click on a second layer would change nothing on screen until some
+    // other dependency happened to invalidate the stack.
+    const ghostLayers = editor.onionHistoryLayerIndices;
     for (const onion of editor.onionSkinLayers) {
-      void activeLayer?.frames[onion.index]?.strokes.length;
+      for (const index of ghostLayers) {
+        void editor.doc.layers[index]?.frames[onion.index]?.strokes.length;
+      }
     }
     stackDirty = true;
     scheduleDraw();

@@ -4,10 +4,11 @@
   // popup panel (bar layout) and the studio timeline column both render this,
   // so the two forms cannot drift apart. Layers are stored bottom-up and
   // shown top-down (topmost row first) — the order you see on the canvas.
-  // There are no layer names in the format: a row is numbered by its
-  // position, so moving a layer renumbers the rows.
+  // A row shows the layer's stored name, or its position when it has none,
+  // so moving an unnamed layer renumbers its row. The colour tag is a display
+  // aid — six of them, cycling by position, never written to the document.
   import { onDestroy } from 'svelte';
-  import { MAX_LAYERS } from '../format/constants';
+  import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
   import { dragTargetIndex } from './frame-selection';
   import LayerThumb from './LayerThumb.svelte';
@@ -38,6 +39,34 @@
     return editor.doc.layers.length - layerIndex;
   }
 
+  // --- Renaming -------------------------------------------------------------
+  /** Layer being renamed, and the text in its field. */
+  let renaming = $state<{ layer: number; text: string } | null>(null);
+
+  function startRename(layerIndex: number): void {
+    renaming = { layer: layerIndex, text: editor.layerLabel(layerIndex) };
+  }
+
+  function commitRename(): void {
+    if (!renaming) {
+      return;
+    }
+    editor.renameActiveLayer(renaming.layer, renaming.text);
+    renaming = null;
+  }
+
+  function onRenameKeydown(e: KeyboardEvent): void {
+    // The editor's own hotkeys must not fire while a name is being typed.
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitRename();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      renaming = null;
+    }
+  }
+
   function announce(layerIndex: number): void {
     announcement = `Слой: позиция ${rowNumber(layerIndex)} из ${editor.doc.layers.length}`;
   }
@@ -55,10 +84,8 @@
     if (!canRemove) {
       return;
     }
-    // Deleting a layer is not undoable, so a layer with strokes asks first.
-    if (editor.layerHasStrokes(layerIndex) && !confirm('Удалить слой со штрихами?')) {
-      return;
-    }
+    // Deleting a layer is not undoable; the state asks by name through the
+    // editor's one `ask`, so Alt+Enter mutes this the way it mutes the rest.
     editor.selectLayer(layerIndex);
     editor.removeActiveLayer();
   }
@@ -69,6 +96,14 @@
       e.preventDefault();
       editor.selectLayer(layerIndex);
       moveBy(layerIndex, e.key === 'ArrowUp' ? 1 : -1);
+      return;
+    }
+    // F2 is the platform's rename key — the keyboard way in, since a double
+    // click has none (WCAG 2.1.1).
+    if (e.key === 'F2') {
+      e.preventDefault();
+      editor.selectLayer(layerIndex);
+      startRename(layerIndex);
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -220,7 +255,7 @@
   <button
     class="add-layer"
     disabled={!canAdd}
-    onclick={() => editor.addLayerAboveActive()}
+    onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
     title="Добавить слой (Shift+A)"
   >
     <Icon name="plus" size={16} /> Слой
@@ -237,6 +272,7 @@
         aria-selected={layerIndex === editor.activeLayer}
         tabindex="0"
         onclick={() => editor.selectLayer(layerIndex)}
+        ondblclick={() => startRename(layerIndex)}
         onkeydown={(e) => onRowKeydown(e, layerIndex)}
       >
         <button
@@ -258,7 +294,24 @@
           </span>
         {/if}
 
-        <span class="name">Слой {rowNumber(layerIndex)}</span>
+        <span class="tag" style="background: var(--layer-tag-{layerIndex % 6})"></span>
+
+        {#if renaming?.layer === layerIndex}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="name rename"
+            autofocus
+            maxlength={MAX_LAYER_NAME}
+            bind:value={renaming.text}
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={onRenameKeydown}
+            onblur={commitRename}
+            aria-label="Имя слоя"
+          />
+        {:else}
+          <span class="name" title="Двойной клик или F2 — переименовать"
+            >{editor.layerLabel(layerIndex)}</span>
+        {/if}
 
         <span
           class="handle"
@@ -330,10 +383,28 @@
   }
   .name {
     flex: 1;
+    min-width: 0;
     font-size: 0.85rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .rename {
+    border: 1px solid var(--electric, #2f5bff);
+    border-radius: var(--r-sm, 6px);
+    padding: 0 0.25rem;
+    background: var(--canvas, #fff);
+    color: inherit;
+    font: inherit;
+    font-size: 0.85rem;
+  }
+  /* Six cycling tags, by position — the reference colours its rows the same
+     way, in the theme rather than in the document. */
+  .tag {
+    flex: none;
+    width: 4px;
+    height: 24px;
+    border-radius: 2px;
   }
   /* The handle is the only drag surface, so the list still scrolls by touch. */
   .handle {

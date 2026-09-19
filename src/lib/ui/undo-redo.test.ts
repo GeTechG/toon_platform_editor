@@ -52,14 +52,14 @@ describe('undo/redo availability', () => {
     expect(member(state, 'redo')).toContain('addStroke(');
   });
 
-  it('caps the history so a long session cannot grow without bound', () => {
-    expect(state).toContain('UNDO_HISTORY_LIMIT');
-    expect(member(state, 'undo')).toContain('UNDO_HISTORY_LIMIT');
+  it('keeps the history unbounded, as the reference does', () => {
+    expect(state).not.toContain('UNDO_HISTORY_LIMIT');
   });
 
-  it('ends the redo chain when a new stroke is drawn', () => {
+  it('ends the redo chain when a new stroke is drawn — unless the preset says otherwise', () => {
     // Strokes land through the state, not straight into the document, so
     // there is one place where a fresh stroke retires the redo stack.
+    expect(member(state, 'commitStroke')).toContain('this.ux.redoSurvivesStroke');
     expect(member(state, 'commitStroke')).toContain('this.undone = []');
     expect(canvasView).toContain('editor.commitStroke(');
     expect(canvasView).not.toContain('addStroke(editor.doc');

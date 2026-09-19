@@ -148,8 +148,19 @@ export interface ToonDocumentV4 extends Omit<ToonDocumentV3, 'schema_version'> {
   schema_version: 4;
 }
 
+/** v5 gives a layer an optional name (1–12 chars); everything else is v4's. */
+export interface LayerV5 extends LayerV3 {
+  /** Display name, 1–`MAX_LAYER_NAME` characters; absent means "name by position". */
+  name?: string;
+}
+
+export interface ToonDocumentV5 extends Omit<ToonDocumentV4, 'schema_version' | 'layers'> {
+  schema_version: 5;
+  layers: LayerV5[];
+}
+
 /** Current in-memory/editor model aliases. */
 export type Stroke = StrokeV2;
 export type Frame = FrameV2;
-export type Layer = LayerV3;
-export type ToonDocument = ToonDocumentV4;
+export type Layer = LayerV5;
+export type ToonDocument = ToonDocumentV5;

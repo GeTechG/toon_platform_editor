@@ -5,19 +5,41 @@
  * JSON schemas into its bundle.
  */
 
-import type { ToonDocumentV1, ToonDocumentV2, ToonDocumentV3, ToonDocumentV4 } from './types';
+import type {
+  ToonDocumentV1,
+  ToonDocumentV2,
+  ToonDocumentV3,
+  ToonDocumentV4,
+  ToonDocumentV5,
+} from './types';
 
-type AnyDocument = ToonDocumentV1 | ToonDocumentV2 | ToonDocumentV3 | ToonDocumentV4;
+type AnyDocument =
+  | ToonDocumentV1
+  | ToonDocumentV2
+  | ToonDocumentV3
+  | ToonDocumentV4
+  | ToonDocumentV5;
 
-/** Lifts any supported version to v4. Structure only — no validation. */
-export function upgradeDocument(doc: AnyDocument): ToonDocumentV4 {
+/** Lifts any supported version to v5. Structure only — no validation. */
+export function upgradeDocument(doc: AnyDocument): ToonDocumentV5 {
   if (doc.schema_version === 1) {
-    return migrateV3ToV4(migrateV2ToV3(migrateV1ToV2(doc)));
+    doc = migrateV1ToV2(doc);
   }
   if (doc.schema_version === 2) {
-    return migrateV3ToV4(migrateV2ToV3(doc));
+    doc = migrateV2ToV3(doc);
   }
-  return doc.schema_version === 3 ? migrateV3ToV4(doc) : doc;
+  if (doc.schema_version === 3) {
+    doc = migrateV3ToV4(doc);
+  }
+  return doc.schema_version === 4 ? migrateV4ToV5(doc) : doc;
+}
+
+/**
+ * v5 only adds the optional layer `name`, so a v4 document is already a valid
+ * v5 one — the migration is the version bump, nothing gains a name.
+ */
+export function migrateV4ToV5(doc: ToonDocumentV4): ToonDocumentV5 {
+  return { ...doc, schema_version: 5 };
 }
 
 /**

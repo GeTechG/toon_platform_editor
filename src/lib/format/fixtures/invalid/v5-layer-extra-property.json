@@ -1,0 +1,18 @@
+{
+  "schema_version": 5,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": []
+        }
+      ],
+      "colour": 3
+    }
+  ]
+}

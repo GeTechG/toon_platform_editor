@@ -86,9 +86,11 @@ describe('layer-aware canvas contract', () => {
     expect(handler('onPointerMove')).not.toContain('stackDirty');
   });
 
-  it('onion-skin composites neighbor cells of the active layer only', () => {
+  it('onion-skin composites only the layers the state names for the ghost', () => {
+    // Neighbour model: the active layer alone, so a static background is not
+    // painted twice. Tonio's history: every selected layer, flattened.
     const onion = source.match(/function onionCell\([^]*?\n  }/)?.[0] ?? '';
-    expect(onion).toContain('editor.activeLayer');
+    expect(onion).toContain('editor.onionHistoryLayerIndices');
     expect(source).toContain('ONION_CACHE_LIMIT');
   });
 
@@ -248,5 +250,45 @@ describe('the wheel zoom', () => {
 
   it('remembers where the cursor was, so the buttons and keys zoom there', () => {
     expect(handler('onPointerMove')).toContain('editor.lastScalePivot = ');
+  });
+});
+
+describe('onion position in the layer stack (Toonio parity)', () => {
+  it('the ghosts land between the layers below and the active one', () => {
+    const draw = source.slice(source.indexOf('blitLayer(belowEl'));
+    expect(source).toContain('drawOnion(');
+    // The ghosts are blitted after the layers below the active one and before it.
+    const below = source.indexOf('blitLayer(belowEl!, ctx)');
+    const onion = source.indexOf('drawOnion(ctx', below);
+    const active = source.indexOf('blitLayer(activeWithLive, ctx)', below);
+    expect(onion).toBeGreaterThan(below);
+    expect(active).toBeGreaterThan(onion);
+    expect(draw).toBeTruthy();
+  });
+
+  it('a ghost flattens every layer the selection covers', () => {
+    expect(source).toContain('editor.onionHistoryLayerIndices');
+  });
+});
+
+describe('the ghosts repaint when the selection changes', () => {
+  // The ghost is built from every selected layer, so the redraw effect has to
+  // subscribe to that list — and to the cells of those layers, not just the
+  // active one. Without it a Ctrl+click showed nothing until the active layer
+  // moved and something else invalidated the stack.
+  function redrawEffect(): string {
+    const match = source.match(/\$effect\(\(\) => \{[^]*?stackDirty = true;[^]*?\n  \}\);/);
+    if (!match) throw new Error('missing the stack effect');
+    return match[0];
+  }
+
+  it('subscribes to the layers the ghosts are drawn from', () => {
+    expect(redrawEffect()).toContain('editor.onionHistoryLayerIndices');
+  });
+
+  it('subscribes to those layers cells, not only the active one', () => {
+    const effect = redrawEffect();
+    const ghostLoop = effect.slice(effect.indexOf('editor.onionSkinLayers'));
+    expect(ghostLoop).not.toContain('activeLayer?.frames');
   });
 });

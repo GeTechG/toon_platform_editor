@@ -4,7 +4,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
   import { frameForTime } from '../audio/track';
-  import { playbackStartFrame } from './frame-selection';
+  import { playbackRange } from './frame-selection';
   import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
@@ -46,19 +46,40 @@
     rafId = requestAnimationFrame(tick);
   }
 
-  function play(): void {
+  /**
+   * What Space plays right now: under Toonio a frame selection is the range,
+   * and a one-frame document plays nothing at all.
+   */
+  const range = $derived(
+    playbackRange(editor.activeFrame, editor.selection, frameCount(editor.doc), editor.ux, false),
+  );
+  const canPlay = $derived(editor.playing || range !== null);
+
+  function play(fromActive = false): void {
     // `editor.playing` outlives this component — a remount during playback
     // leaves the flag set with no loop behind it. Trust the loop, not the flag.
     if (editor.playing && player !== null) {
       return;
     }
+    const span = playbackRange(
+      editor.activeFrame,
+      editor.selection,
+      frameCount(editor.doc),
+      editor.ux,
+      fromActive,
+    );
+    if (!span) {
+      return;
+    }
     cancelAnimationFrame(rafId);
     resumeFrame = editor.activeFrame;
-    const startFrame = playbackStartFrame(editor.activeFrame, editor.ux.playFromStart);
+    const startFrame = span.first;
     player = new LoopPlayer({
       frameCount: frameCount(editor.doc),
       fps: editor.doc.frame_rate,
       startFrame,
+      loopStart: span.start,
+      loopEnd: span.end,
       onFrame: (frame) => (editor.playbackFrame = frame),
     });
     editor.playbackFrame = startFrame;
@@ -79,14 +100,17 @@
     editor.playing = false;
   }
 
-  /** Play/stop from the outside too — the reference binds Space to it. */
-  export function toggle(): void {
+  /**
+   * Play/stop from the outside too — the reference binds Space to it, and
+   * Shift+Space starts at the active frame inside the same range.
+   */
+  export function toggle(options: { fromActive?: boolean } = {}): void {
     // Same reason as in `play`: a set flag with no loop behind it is a stopped
     // preview, and pressing the key has to start it rather than stop nothing.
     if (editor.playing && player !== null) {
       stop();
     } else {
-      play();
+      play(options.fromActive === true);
     }
   }
 
@@ -110,7 +134,8 @@
 <button
   class="key play"
   class:playing={editor.playing}
-  onclick={toggle}
+  disabled={!canPlay}
+  onclick={() => toggle()}
   data-key="Space"
   title={editor.playing ? 'Остановить просмотр (Space)' : 'Проиграть кадры (Space)'}
   aria-label={editor.playing ? 'Остановить' : 'Проиграть'}

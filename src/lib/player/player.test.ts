@@ -72,3 +72,45 @@ describe('LoopPlayer', () => {
     expect(() => makePlayer({ startFrame: 3 })).toThrow(RangeError);
   });
 });
+
+describe('LoopPlayer over a frame range', () => {
+  it('loops inside the range instead of over the whole document', () => {
+    const { player, shown } = makePlayer({
+      frameCount: 9,
+      startFrame: 4,
+      loopStart: 4,
+      loopEnd: 6,
+    });
+    player.tick(0);
+    player.tick(100);
+    player.tick(200);
+    player.tick(300);
+    expect(shown).toEqual([5, 6, 4]);
+  });
+
+  it('starts mid-range (Shift+Space) and still comes back to the range start', () => {
+    const { player, shown } = makePlayer({
+      frameCount: 9,
+      startFrame: 5,
+      loopStart: 4,
+      loopEnd: 6,
+    });
+    player.tick(0);
+    player.tick(100);
+    player.tick(200);
+    expect(shown).toEqual([6, 4]);
+  });
+
+  it('a one-frame range stays in place', () => {
+    const { player, shown } = makePlayer({ frameCount: 5, startFrame: 2, loopStart: 2, loopEnd: 2 });
+    player.tick(0);
+    player.tick(100);
+    expect(shown).toEqual([2]);
+  });
+
+  it('rejects a range that does not hold the start frame or runs backwards', () => {
+    expect(() => makePlayer({ frameCount: 9, startFrame: 0, loopStart: 4, loopEnd: 6 })).toThrow(RangeError);
+    expect(() => makePlayer({ frameCount: 9, startFrame: 5, loopStart: 6, loopEnd: 4 })).toThrow(RangeError);
+    expect(() => makePlayer({ frameCount: 3, startFrame: 0, loopStart: 0, loopEnd: 9 })).toThrow(RangeError);
+  });
+});

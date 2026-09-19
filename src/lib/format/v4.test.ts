@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { MAX_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION } from './constants';
 import type { ToonDocumentV3, ToonDocumentV4 } from './types';
-import { upgradeDocument } from './upgrade';
+import { migrateV3ToV4 } from './upgrade';
 import { validateDocument } from './validate';
 
 const v4 = (tools: unknown[]): unknown => ({
@@ -17,11 +16,6 @@ const FEATHER = { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000
 const PIXEL = { kind: 'pixel', dialect: 'toonio', width: 64, color: '#0026ff' };
 
 describe('schema version 4', () => {
-  it('is the version the editor writes', () => {
-    expect(SCHEMA_VERSION).toBe(4);
-    expect(MAX_SUPPORTED_SCHEMA_VERSION).toBe(4);
-  });
-
   it('accepts the feather and pixel tools', () => {
     expect(validateDocument(v4([FEATHER, PIXEL])).ok).toBe(true);
   });
@@ -57,7 +51,7 @@ describe('v3 → v4 migration', () => {
       tools: [{ kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' }],
       layers: [{ hidden: false, frames: [{ strokes: [{ points: [0, 0, 8, 8], tool_id: 0 }] }] }],
     };
-    const upgraded: ToonDocumentV4 = upgradeDocument(structuredClone(doc));
+    const upgraded: ToonDocumentV4 = migrateV3ToV4(structuredClone(doc));
     expect(upgraded).toEqual({ ...doc, schema_version: 4 } as ToonDocumentV4);
   });
 });

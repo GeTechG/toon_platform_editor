@@ -15,6 +15,7 @@
   import Icon from './Icon.svelte';
   import { decodeToon } from '../format/toon-decode';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
+  import { wrapIndex } from './frame-selection';
   import { draftEntries } from '../draft/restore';
   import {
     deleteDraft,
@@ -394,7 +395,7 @@
         }
         break;
       case 'A':
-        editor.addLayerAboveActive();
+        editor.addLayerAtActive(e.ctrlKey || e.metaKey);
         break;
       case 'Delete':
         if (e.shiftKey) {
@@ -423,10 +424,10 @@
         moveOrExtend(e.shiftKey, editor.activeFrame >= lastFrame ? 0 : editor.activeFrame + 1, editor.activeLayer);
         break;
       case 'ArrowUp':
-        moveOrExtend(e.shiftKey, editor.activeFrame, Math.min(editor.activeLayer + 1, editor.doc.layers.length - 1));
+        moveOrExtend(e.shiftKey, editor.activeFrame, wrapIndex(editor.activeLayer + 1, editor.doc.layers.length));
         break;
       case 'ArrowDown':
-        moveOrExtend(e.shiftKey, editor.activeFrame, Math.max(editor.activeLayer - 1, 0));
+        moveOrExtend(e.shiftKey, editor.activeFrame, wrapIndex(editor.activeLayer - 1, editor.doc.layers.length));
         break;
       // Onion skin. The reference binds Tab; we do not — Tab is the way out
       // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
@@ -439,9 +440,10 @@
       case 'X':
         editor.swapColors();
         break;
-      // Reference Space: run and stop the preview.
+      // Reference Space: run and stop the preview. Shift starts at the
+      // active frame instead of the start of the range.
       case ' ':
-        playControls?.toggle();
+        playControls?.toggle({ fromActive: e.shiftKey });
         break;
       // Reference N: the dark theme.
       case 'n':
@@ -563,6 +565,9 @@
   }
 
   onMount(async () => {
+    // One place the editor asks from — the state calls it for frames, layers
+    // and pastes alike, and `Alt+Enter` mutes it inside `confirmed`.
+    editor.ask = (message: string) => confirm(message);
     await refreshDrafts();
     draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart;
   });
@@ -921,8 +926,8 @@
           >⏮</button>
           <button
             class="key icon"
-            disabled={editor.playing || editor.activeFrame === 0}
-            onclick={() => editor.selectFrame(editor.activeFrame - 1)}
+            disabled={editor.playing}
+            onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
             title="Предыдущий кадр"
             aria-label="Предыдущий кадр"
           >⏴</button>
@@ -933,8 +938,8 @@
         {#if studio}
           <button
             class="key icon"
-            disabled={editor.playing || editor.activeFrame >= lastFrame}
-            onclick={() => editor.selectFrame(editor.activeFrame + 1)}
+            disabled={editor.playing}
+            onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
             title="Следующий кадр"
             aria-label="Следующий кадр"
           >⏵</button>
@@ -1349,6 +1354,15 @@
     --hairline: #0b0c1024;
     --hairline-soft: #0b0c1012;
     --ghost-2: #1b5cff1a;
+    /* Layer tags: six hues cycling by row position, a display aid only — the
+       document stores no colour. Kept muted so a column of them reads as
+       stripes beside the names rather than competing with the drawing. */
+    --layer-tag-0: #1b5cff;
+    --layer-tag-1: #00997a;
+    --layer-tag-2: #b8860b;
+    --layer-tag-3: #c0392b;
+    --layer-tag-4: #7d3cc7;
+    --layer-tag-5: #0f7d9e;
     --r-sm: 7px;
     --r-md: 14px;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
@@ -1391,6 +1405,12 @@
     --hairline: #ffffff2e;
     --hairline-soft: #ffffff17;
     --ghost-2: #4d96ff2e;
+    --layer-tag-0: #4d96ff;
+    --layer-tag-1: #2fbfa0;
+    --layer-tag-2: #e0ad2b;
+    --layer-tag-3: #ff6a52;
+    --layer-tag-4: #b08cf0;
+    --layer-tag-5: #45b6da;
     color-scheme: dark;
   }
   /* Reference option: a grey worktable under the drawing instead of the

@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,400,200],\"tool_id\":0}]}],\"hidden\":false,\"name\":\"Фон\"},{\"frames\":[{\"strokes\":[]}],\"hidden\":true,\"name\":\"Персонаж 12\"},{\"frames\":[{\"strokes\":[]}],\"hidden\":false}],\"schema_version\":5,\"tools\":[{\"color\":\"#000000\",\"dialect\":\"toonio\",\"kind\":\"pencil\",\"width\":32}],\"width\":4800}",
+  "sha256": "030d334d930dfaf8399d1ed6b139421e106a4d1178b10bac100770c52d220d42"
+}

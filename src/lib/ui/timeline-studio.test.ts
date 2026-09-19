@@ -9,7 +9,7 @@ describe('one layer list, two placements', () => {
   it('the rows and their operations live in one component', () => {
     expect(rows).toContain('editor.toggleLayerHidden(');
     expect(rows).toContain('editor.moveLayerTo(');
-    expect(rows).toContain('editor.addLayerAboveActive()');
+    expect(rows).toContain('editor.addLayerAtActive(');
     expect(rows).toContain('editor.removeActiveLayer()');
   });
 

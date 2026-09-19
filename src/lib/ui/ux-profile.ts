@@ -84,6 +84,15 @@ export interface UxProfile {
   readonly afterRemove: 'next' | 'previous';
   /** Playback starts from the first frame instead of the active one. */
   readonly playFromStart: boolean;
+  /**
+   * What Space plays: the whole document, or (Tonio) the frame selection when
+   * it spans more than one frame — with a one-frame document refusing to play.
+   */
+  readonly playbackRange: 'document' | 'selection';
+  /** Where a new layer lands relative to the active one; Ctrl inverts it. */
+  readonly newLayerPosition: 'above' | 'below';
+  /** A new stroke leaves the redo buffer alone (Tonio) instead of clearing it. */
+  readonly redoSurvivesStroke: boolean;
   /** Frame rate a fresh document gets under this preset. */
   readonly defaultFps: number;
   /** Upper bound for the +/- brush nudge (logical px). */
@@ -101,6 +110,9 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     activeFrameAlpha: 1,
     afterRemove: 'next',
     playFromStart: false,
+    playbackRange: 'document',
+    newLayerPosition: 'above',
+    redoSurvivesStroke: false,
     defaultFps: DEFAULT_FPS,
     brushSizeMax: MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
@@ -122,6 +134,9 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     activeFrameAlpha: 1,
     afterRemove: 'next',
     playFromStart: false,
+    playbackRange: 'selection',
+    newLayerPosition: 'below',
+    redoSurvivesStroke: true,
     defaultFps: DEFAULT_FPS,
     brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
@@ -146,6 +161,9 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     afterRemove: 'previous',
     // Main.hx onPlayMovie: playFrame = 0.
     playFromStart: true,
+    playbackRange: 'document',
+    newLayerPosition: 'above',
+    redoSurvivesStroke: false,
     // draw31.fla stage is 30 fps, doPlay runs every 6th tick → 5 fps.
     defaultFps: 5,
     // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps.

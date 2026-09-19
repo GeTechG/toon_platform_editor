@@ -15,7 +15,7 @@ describe('the player accepts every published document version', () => {
 
     const doc = upgradeDocument(v2);
 
-    expect(doc.schema_version).toBe(4);
+    expect(doc.schema_version).toBe(5);
     expect(frameCount(doc)).toBe(v2.frames.length);
     expect(doc.layers[0].frames).toEqual(v2.frames);
   });

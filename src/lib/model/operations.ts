@@ -10,6 +10,7 @@ import {
   DEFAULT_FPS,
   MAX_DOC_DIMENSION,
   MAX_FRAMES,
+  MAX_LAYER_NAME,
   MAX_LAYERS,
   MAX_STROKE_COORDS,
   MAX_STROKE_WIDTH,
@@ -155,13 +156,17 @@ export function removeFrame(doc: ToonDocument, index: number): void {
   }
 }
 
-/** Inserts an empty layer above `belowIndex`; returns the new layer's index. */
-export function addLayer(doc: ToonDocument, belowIndex: number): number {
-  assertLayerIndex(doc, belowIndex);
+/**
+ * Inserts an empty layer at `at`, which may be anywhere from under the bottom
+ * layer (0) to one past the top (`layers.length`); returns that index.
+ */
+export function addLayer(doc: ToonDocument, at: number): number {
+  if (!Number.isInteger(at) || at < 0 || at > doc.layers.length) {
+    throw new RangeError(`layer index ${at} is out of range 0..${doc.layers.length}`);
+  }
   if (doc.layers.length >= MAX_LAYERS) {
     throw new RangeError(`document already has the maximum of ${MAX_LAYERS} layers`);
   }
-  const at = belowIndex + 1;
   const frames = Array.from({ length: frameCount(doc) }, emptyFrame);
   doc.layers.splice(at, 0, { hidden: false, frames });
   return at;
@@ -174,6 +179,21 @@ export function removeLayer(doc: ToonDocument, index: number): void {
     throw new RangeError('a document must keep at least one layer');
   }
   doc.layers.splice(index, 1);
+}
+
+/**
+ * Names a layer, or drops the name when the text is blank — a nameless row is
+ * numbered by position. Over-long names are cut to `MAX_LAYER_NAME` rather than
+ * refused: the reference truncates as you type.
+ */
+export function renameLayer(doc: ToonDocument, index: number, name: string): void {
+  assertLayerIndex(doc, index);
+  const trimmed = name.trim().slice(0, MAX_LAYER_NAME);
+  if (trimmed) {
+    doc.layers[index].name = trimmed;
+  } else {
+    delete doc.layers[index].name;
+  }
 }
 
 /** Moves a layer to another position, shifting the rest. */
@@ -455,6 +475,21 @@ export interface CellRange {
  */
 export type CellBuffer = ResolvedFrame[][];
 
+/**
+ * What a paste onto `target` is about to overwrite: whether any target cell
+ * holds a stroke, and how wide the block is. The reference asks before it
+ * overwrites, and asks a second time once more than one frame or layer is at
+ * stake (`bundle:8192-8250`).
+ */
+export function pasteNeedsConfirm(
+  doc: ToonDocument,
+  target: CellRange,
+): { nonEmpty: boolean; frames: number; layers: number } {
+  const nonEmpty = target.layers.some((layer) =>
+    target.frames.some((frame) => cell(doc, layer, frame).strokes.length > 0));
+  return { nonEmpty, frames: target.frames.length, layers: target.layers.length };
+}
+
 /** Deep-copies the selected block for the timeline clipboard. */
 export function copyCells(doc: ToonDocument, range: CellRange): CellBuffer {
   return range.layers.map((layerIndex) =>
@@ -463,19 +498,44 @@ export function copyCells(doc: ToonDocument, range: CellRange): CellBuffer {
 
 /**
  * Writes the buffer into the target cells and returns what they held, ready
- * to be the undo snapshot. The target is the authority on shape: a buffer
- * that runs past it is cut off, and cells the buffer does not reach are left
- * alone.
+ * to be the undo snapshot. The target is the authority on shape: surplus
+ * buffer *layers* are cut off, while its frames repeat over the target ones.
  */
 export function replaceCells(doc: ToonDocument, target: CellRange, buffer: CellBuffer): CellBuffer {
   return writeCells(doc, target, buffer, (_, incoming) => incoming);
 }
 
-/** Like `replaceCells`, but the buffer's strokes land on top of the cell's own. */
+/**
+ * Like `replaceCells`, but the buffer's strokes land on top of the cell's own
+ * — unless they are already sitting there. The reference's `AssignLines`
+ * (`bundle:3762-3789`) skips what the cell's tail already holds, so pressing M
+ * twice merges once.
+ *
+ * ponytail: all-or-nothing tail match; per-stroke dedup if a partial repeat
+ * ever shows up in practice.
+ */
 export function mergeCells(doc: ToonDocument, target: CellRange, buffer: CellBuffer): CellBuffer {
-  return writeCells(doc, target, buffer, (existing, incoming) => ({
-    strokes: [...existing.strokes, ...incoming.strokes],
-  }));
+  return writeCells(doc, target, buffer, (existing, incoming) =>
+    tailHolds(existing.strokes, incoming.strokes)
+      ? { strokes: [...existing.strokes] }
+      : { strokes: [...existing.strokes, ...incoming.strokes] });
+}
+
+/** Whether `strokes` ends with exactly `tail` — same tools, same points. */
+function tailHolds(strokes: readonly ResolvedStroke[], tail: readonly ResolvedStroke[]): boolean {
+  if (tail.length === 0 || tail.length > strokes.length) {
+    return false;
+  }
+  const offset = strokes.length - tail.length;
+  return tail.every((stroke, i) => strokeEquals(strokes[offset + i], stroke));
+}
+
+function strokeEquals(a: ResolvedStroke, b: ResolvedStroke): boolean {
+  return (
+    a.points.length === b.points.length &&
+    a.points.every((value, i) => value === b.points[i]) &&
+    toolEquals(a.tool, b.tool)
+  );
 }
 
 function writeCells(
@@ -495,9 +555,11 @@ function writeCells(
     const t = target.layers.length - 1 - i;
     const source = buffer[buffer.length - 1 - i];
     const layer = target.layers[t];
-    for (let f = 0; f < target.frames.length && f < source.length; f++) {
+    // Frames cycle: a buffer shorter than the target repeats over it, which is
+    // how the reference fills a long selection from a two-frame copy.
+    for (let f = 0; f < target.frames.length && source.length > 0; f++) {
       const frame = target.frames[f];
-      const next = resolvedFrameToV2(doc, combine(before[t][f], source[f]));
+      const next = resolvedFrameToV2(doc, combine(before[t][f], source[f % source.length]));
       if (next.strokes.length > MAX_STROKES_PER_FRAME) {
         throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }

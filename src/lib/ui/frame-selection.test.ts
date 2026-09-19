@@ -6,15 +6,22 @@ import {
   activeLayerAfterRemove,
   clampPlayerFps,
   dragTargetIndex,
+  keepsSelection,
+  newLayerIndex,
+  pasteTargetFromSelection,
   pickSource,
   onionHistoryLayers,
   onionLayers,
   onionSkinVisible,
-  pasteTarget,
+  playbackRange,
+  pushVisited,
+  shiftVisited,
+  wrapIndex,
   playbackStartFrame,
   rangeSelection,
   toggleLayerInSelection,
 } from './frame-selection';
+import type { CellSelection } from './frame-selection';
 
 const ALPHAS = [0.3, 0.1];
 
@@ -265,44 +272,36 @@ describe('rangeSelection', () => {
 describe('toggleLayerInSelection', () => {
   it('adds a layer, keeping the list ascending', () => {
     const selection = { frames: [3], layers: [2] };
-    expect(toggleLayerInSelection(selection, 0)).toEqual({ frames: [3], layers: [0, 2] });
+    expect(toggleLayerInSelection(selection, { frame: 3, layer: 0 }, 2)).toEqual({
+      frames: [3],
+      layers: [0, 2],
+    });
   });
 
   it('removes a layer that was in the selection', () => {
     const selection = { frames: [3], layers: [0, 1, 2] };
-    expect(toggleLayerInSelection(selection, 1)).toEqual({ frames: [3], layers: [0, 2] });
+    expect(toggleLayerInSelection(selection, { frame: 3, layer: 1 }, 2)).toEqual({
+      frames: [3],
+      layers: [0, 2],
+    });
   });
 
   it('refuses to empty the selection', () => {
     const selection = { frames: [3], layers: [1] };
-    expect(toggleLayerInSelection(selection, 1)).toEqual({ frames: [3], layers: [1] });
-  });
-});
-
-describe('pasteTarget', () => {
-  const BOUNDS = { frames: 6, layers: 3 };
-
-  it('hangs the block from the active cell: frames forward, layers downward', () => {
-    // Layers are stored bottom-up and shown top-down, so a block dropped on a
-    // row fills that row and the rows *under* it — lower indices.
-    expect(pasteTarget({ frames: 3, layers: 2 }, { frame: 1, layer: 2 }, BOUNDS)).toEqual({
-      frames: [1, 2, 3],
-      layers: [1, 2],
-    });
-  });
-
-  it('clips what runs past the last frame and the bottom layer', () => {
-    expect(pasteTarget({ frames: 4, layers: 3 }, { frame: 4, layer: 0 }, BOUNDS)).toEqual({
-      frames: [4, 5],
-      layers: [0],
-    });
-  });
-
-  it('a one-cell buffer lands on the active cell alone', () => {
-    expect(pasteTarget({ frames: 1, layers: 1 }, { frame: 3, layer: 1 }, BOUNDS)).toEqual({
+    expect(toggleLayerInSelection(selection, { frame: 3, layer: 1 }, 0)).toEqual({
       frames: [3],
       layers: [1],
     });
+  });
+
+  it('declines a frame outside the selection — the caller plain-clicks it', () => {
+    const selection = { frames: [3, 4], layers: [1] };
+    expect(toggleLayerInSelection(selection, { frame: 7, layer: 0 }, 1)).toBeNull();
+  });
+
+  it('declines the active layer — Ctrl must not drop the row you draw on', () => {
+    const selection = { frames: [3], layers: [0, 1] };
+    expect(toggleLayerInSelection(selection, { frame: 3, layer: 1 }, 1)).toBeNull();
   });
 });
 
@@ -327,5 +326,223 @@ describe('cursorShape', () => {
   it('a thin brush without the setting is a plain ring', () => {
     expect(cursorShape(2, false)).toEqual({ ring: true, cross: false });
     expect(cursorShape(3, false)).toEqual({ ring: true, cross: false });
+  });
+});
+
+describe('keepsSelection', () => {
+  const selection: CellSelection = { frames: [2, 3, 4], layers: [1, 3] };
+
+  it('keeps a multi-cell selection when the new active cell is inside it', () => {
+    expect(keepsSelection(selection, { frame: 3, layer: 3 })).toBe(true);
+  });
+
+  it('keeps it on the edge of the block', () => {
+    expect(keepsSelection(selection, { frame: 2, layer: 1 })).toBe(true);
+    expect(keepsSelection(selection, { frame: 4, layer: 3 })).toBe(true);
+  });
+
+  it('collapses it when the frame steps outside', () => {
+    expect(keepsSelection(selection, { frame: 5, layer: 3 })).toBe(false);
+  });
+
+  it('collapses it when the layer steps outside — a gap counts as outside', () => {
+    expect(keepsSelection(selection, { frame: 3, layer: 2 })).toBe(false);
+  });
+});
+
+
+describe('pasteTargetFromSelection', () => {
+  it('a single selected cell takes a single-cell buffer — the plain paste', () => {
+    expect(pasteTargetFromSelection({ frames: [3], layers: [1] }, { frames: 1, layers: 1 }))
+      .toEqual({ frames: [3], layers: [1] });
+  });
+
+  it('fills every selected frame, however few the buffer holds', () => {
+    expect(pasteTargetFromSelection({ frames: [5, 6, 7, 8, 9], layers: [0] }, { frames: 2, layers: 1 }))
+      .toEqual({ frames: [5, 6, 7, 8, 9], layers: [0] });
+  });
+
+  it('takes the topmost rows when the selection has more layers than the buffer', () => {
+    expect(pasteTargetFromSelection({ frames: [2], layers: [0, 1, 2, 3] }, { frames: 1, layers: 2 }))
+      .toEqual({ frames: [2], layers: [2, 3] });
+  });
+
+  it('a buffer with more layers than the selection targets the selection as it is', () => {
+    expect(pasteTargetFromSelection({ frames: [2], layers: [1, 2] }, { frames: 1, layers: 5 }))
+      .toEqual({ frames: [2], layers: [1, 2] });
+  });
+
+  it('keeps the gaps of a Ctrl-built layer selection', () => {
+    expect(pasteTargetFromSelection({ frames: [0], layers: [0, 3, 5] }, { frames: 1, layers: 2 }))
+      .toEqual({ frames: [0], layers: [3, 5] });
+  });
+
+  it('targets nothing when the buffer holds no layer', () => {
+    expect(pasteTargetFromSelection({ frames: [0, 1], layers: [0, 1] }, { frames: 0, layers: 0 }))
+      .toEqual({ frames: [0, 1], layers: [] });
+  });
+});
+
+describe('playbackRange', () => {
+  const selectionUx = { playbackRange: 'selection', playFromStart: false } as const;
+  const documentUx = { playbackRange: 'document', playFromStart: false } as const;
+  const multatorUx = { playbackRange: 'document', playFromStart: true } as const;
+  const one = (frame: number) => ({ frames: [frame], layers: [0] });
+
+  it('Toonio: Space plays the whole document from the first frame', () => {
+    expect(playbackRange(3, one(3), 9, selectionUx, false)).toEqual({ start: 0, end: 8, first: 0 });
+  });
+
+  it('Toonio: a multi-frame selection plays only itself, from its start', () => {
+    expect(playbackRange(5, { frames: [3, 4, 5], layers: [0] }, 9, selectionUx, false)).toEqual({
+      start: 3,
+      end: 5,
+      first: 3,
+    });
+  });
+
+  it('Toonio: Shift+Space starts at the active frame inside the same range', () => {
+    expect(playbackRange(5, { frames: [3, 4, 5], layers: [0] }, 9, selectionUx, true)).toEqual({
+      start: 3,
+      end: 5,
+      first: 5,
+    });
+  });
+
+  it('Toonio: Shift+Space without a selection starts at the active frame', () => {
+    expect(playbackRange(3, one(3), 9, selectionUx, true)).toEqual({ start: 0, end: 8, first: 3 });
+  });
+
+  it('Toonio: a one-frame document does not play at all', () => {
+    expect(playbackRange(0, one(0), 1, selectionUx, false)).toBeNull();
+  });
+
+  it('Toonio: a gappy selection still plays the stretch it spans', () => {
+    expect(playbackRange(2, { frames: [2, 7], layers: [0] }, 9, selectionUx, false)).toEqual({
+      start: 2,
+      end: 7,
+      first: 2,
+    });
+  });
+
+  it('Toonop: the whole document from the active frame, selection or not', () => {
+    expect(playbackRange(3, { frames: [5, 6], layers: [0] }, 9, documentUx, false)).toEqual({
+      start: 0,
+      end: 8,
+      first: 3,
+    });
+  });
+
+  it('Multator: the whole document from the first frame', () => {
+    expect(playbackRange(3, one(3), 9, multatorUx, false)).toEqual({ start: 0, end: 8, first: 0 });
+  });
+
+  it('Multator: Shift still starts at the active frame', () => {
+    expect(playbackRange(3, one(3), 9, multatorUx, true)).toEqual({ start: 0, end: 8, first: 3 });
+  });
+
+  it('Toonop: a one-frame document still plays — only Toonio refuses', () => {
+    expect(playbackRange(0, one(0), 1, documentUx, false)).toEqual({ start: 0, end: 0, first: 0 });
+  });
+});
+
+describe('pushVisited', () => {
+  it('records the frame that was left, not the one arrived at', () => {
+    expect(pushVisited([], 0, 4)).toEqual([0]);
+  });
+
+  it('walking 1 → 2 → 3 → 4 → 5 leaves the three ghosts behind the cursor', () => {
+    let history: number[] = [];
+    for (const [from, to] of [[0, 1], [1, 2], [2, 3], [3, 4]]) {
+      history = pushVisited(history, from, to);
+    }
+    expect(history).toEqual([1, 2, 3]);
+    const ghosts = onionHistoryLayers(history, 4, 5);
+    expect(ghosts.map((g) => g.index)).toEqual([1, 2, 3]);
+    expect(ghosts.map((g) => Number(g.alpha.toFixed(2)))).toEqual([0.05, 0.1, 0.15]);
+  });
+
+  it('keeps only the last three visits', () => {
+    expect(pushVisited([1, 2, 3], 4, 7)).toEqual([2, 3, 4]);
+  });
+
+  it('ignores a move that lands where it started', () => {
+    expect(pushVisited([1, 2], 2, 2)).toEqual([1, 2]);
+  });
+
+  it('a hop out and back keeps both ends in the history', () => {
+    // Opened on 1, visited 5, 2 and 7, then back to 2 (one-based).
+    let history: number[] = [];
+    for (const [from, to] of [[1, 5], [5, 2], [2, 7], [7, 2]]) {
+      history = pushVisited(history, from, to);
+    }
+    expect(history).toEqual([5, 2, 7]);
+    const ghosts = onionHistoryLayers(history, 2, 9);
+    expect(ghosts.map((g) => g.index)).toEqual([5, 7]);
+    expect(ghosts.map((g) => Number(g.alpha.toFixed(2)))).toEqual([0.05, 0.15]);
+  });
+});
+
+describe('shiftVisited', () => {
+  it('moves the frames an insertion pushed along', () => {
+    expect(shiftVisited([2, 3], 2)).toEqual([3, 4]);
+  });
+
+  it('leaves the frames before the insertion where they are', () => {
+    expect(shiftVisited([0, 1, 5], 2)).toEqual([0, 1, 6]);
+  });
+
+  it('an empty history survives an insertion', () => {
+    expect(shiftVisited([], 0)).toEqual([]);
+  });
+});
+
+describe('wrapIndex', () => {
+  it('walks forward inside the list', () => {
+    expect(wrapIndex(1, 4)).toBe(1);
+    expect(wrapIndex(3, 4)).toBe(3);
+  });
+
+  it('wraps past the end round to the start', () => {
+    expect(wrapIndex(4, 4)).toBe(0);
+    expect(wrapIndex(5, 4)).toBe(1);
+  });
+
+  it('wraps before the start round to the end', () => {
+    expect(wrapIndex(-1, 4)).toBe(3);
+    expect(wrapIndex(-5, 4)).toBe(3);
+  });
+
+  it('a one-item list stays put', () => {
+    expect(wrapIndex(-1, 1)).toBe(0);
+    expect(wrapIndex(1, 1)).toBe(0);
+  });
+});
+
+describe('newLayerIndex', () => {
+  it('Toonio drops the new layer right under the active one', () => {
+    expect(newLayerIndex(2, 'below', false)).toBe(2);
+  });
+
+  it('Ctrl flips it to above', () => {
+    expect(newLayerIndex(2, 'below', true)).toBe(3);
+  });
+
+  it('the other presets stack upward, and Ctrl flips them down', () => {
+    expect(newLayerIndex(2, 'above', false)).toBe(3);
+    expect(newLayerIndex(2, 'above', true)).toBe(2);
+  });
+});
+
+describe('pushVisited without a landing frame', () => {
+  it('records the frame that was left even when the index stays put', () => {
+    // Inserting a frame in front of the active one keeps the index but puts a
+    // *different* cell under it, so there is nothing to compare against — the
+    // reference pushes unconditionally on that path (`AddHistory(prev, ctrl)`).
+    expect(pushVisited([1], 2)).toEqual([1, 2]);
+  });
+
+  it('still keeps only the last three', () => {
+    expect(pushVisited([1, 2, 3], 4)).toEqual([2, 3, 4]);
   });
 });

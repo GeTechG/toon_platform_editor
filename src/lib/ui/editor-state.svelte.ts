@@ -15,12 +15,13 @@ import {
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
   MIN_BRUSH_SIZE_LOGICAL,
-  ONION_HISTORY_LENGTH,
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
   addFrame,
   addLayer,
+  pasteNeedsConfirm,
+  renameLayer,
   addStroke,
   cloneColumn,
   copyCells,
@@ -54,7 +55,11 @@ import {
   onionSkinVisible,
   scaleMenuVisible,
   SCALE_MENU_MS,
-  pasteTarget,
+  keepsSelection,
+  newLayerIndex,
+  pasteTargetFromSelection,
+  pushVisited,
+  shiftVisited,
   rangeSelection,
   toggleLayerInSelection,
   type CellSelection,
@@ -142,12 +147,6 @@ function copyBrushes(source: Record<BrushToolId, TonioBrush>): Record<BrushToolI
 }
 
 /**
- * How many undone strokes are kept for redo. Each entry holds a stroke that
- * is no longer in the document, so the stack is bounded — the design floor is
- * a 2 GB phone, not a workstation.
- */
-export const UNDO_HISTORY_LIMIT = 50;
-/**
  * Steps kept inside one transform session. A drag writes one per pointermove,
  * so this is a ring, not a full history — enough to walk back out of a bad
  * rotation, bounded so a long drag cannot grow without end.
@@ -218,8 +217,11 @@ export class EditorState {
   fillColor = $state(DEFAULT_FILL_COLOR);
   /** Onion-skin toggle; ignored during playback. */
   onionSkin = $state(true);
-  /** Last frames the user has been on — Tonio's onion is built from these. */
-  visitedFrames = $state<number[]>([0]);
+  /**
+   * Frames the user has *left* — Tonio's onion is built from these, so the
+   * ghosts trail the cursor. Empty on open: one frame change leaves one ghost.
+   */
+  visitedFrames = $state<number[]>([]);
   /** Saved color grid (Tonio preset); persisted separately from the UI config. */
   palette = $state<string[]>(loadPalette());
   /** Reference `toonio_saved_palettes`: named snapshots of the grid. */
@@ -255,6 +257,14 @@ export class EditorState {
   copiedCells = $state<CellBuffer | null>(null);
   /** Where the buffer was taken from — the timeline marks those cells. */
   copiedFrom = $state<CellSelection | null>(null);
+  /** Cells of that block already drawn into, as `frame:layer` — their mark is out. */
+  copiedDrawnInto = $state<string[]>([]);
+  /**
+   * Names the next new layer takes (reference `layerIterator`): a running
+   * count for the session, seeded from the open document so the first new
+   * layer of a three-layer drawing is «Слой 4». Not stored in the document.
+   */
+  layerCounter = $state(1);
   /**
    * Studio bottom-panel height in CSS px (persisted), set by dragging the
    * divider on its top edge. The timeline is the row that grows with it.
@@ -287,6 +297,13 @@ export class EditorState {
    * the sitting that muted it.
    */
   warnings = $state(true);
+  /**
+   * How the editor asks before it overwrites. Editor.svelte points it at
+   * `confirm`; in tests and on the share page nothing asks, so the default
+   * says yes. `Alt+Enter` mutes every question for the session — see
+   * `confirmed`.
+   */
+  ask: (message: string) => boolean = () => true;
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
 
@@ -308,6 +325,10 @@ export class EditorState {
     }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
+    // The reference names every layer it creates, the first one included.
+    // Without a name here the row falls back to its position, and the moment
+    // a second layer slid in under it both rows would read «Слой 2».
+    renameLayer(this.doc, 0, 'Слой 1');
   }
 
   /** Behavior profile of the active preset (palette, eraser rule, onion side, frames, playback). */
@@ -551,8 +572,10 @@ export class EditorState {
 
   selectLayer(index: number): void {
     if (index >= 0 && index < this.doc.layers.length && this.leaveTransform()) {
+      if (!keepsSelection(this.selection, { frame: this.activeFrame, layer: index })) {
+        this.selection = { frames: [this.activeFrame], layers: [index] };
+      }
       this.activeLayer = index;
-      this.selection = { frames: [this.activeFrame], layers: [index] };
     }
   }
 
@@ -580,19 +603,32 @@ export class EditorState {
       return;
     }
     if (mode === 'toggle') {
-      this.selection = toggleLayerInSelection(this.selection, layer);
-      return;
+      const toggled = toggleLayerInSelection(this.selection, { frame, layer }, this.activeLayer);
+      if (toggled) {
+        this.selection = toggled;
+        return;
+      }
+      // Ctrl had nothing to say about this cell — the reference falls through
+      // to a plain click rather than swallowing it.
     }
     this.selectFrame(frame);
     this.selectLayer(layer);
   }
 
-  /** Adds an empty layer above the active one; it becomes active. */
-  addLayerAboveActive(): void {
+  /**
+   * Adds an empty layer where the preset puts it — under the active one in
+   * Toonio (`bundle:8485-8487`), over it elsewhere — and makes it active.
+   * Ctrl asks for the other side. The name follows the session counter, so
+   * two layers never share one however the stack is reordered.
+   */
+  addLayerAtActive(ctrlKey = false): void {
     if (this.playing || this.doc.layers.length >= MAX_LAYERS) {
       return;
     }
-    this.activeLayer = addLayer(this.doc, this.activeLayer);
+    const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
+    this.activeLayer = addLayer(this.doc, at);
+    this.layerCounter++;
+    renameLayer(this.doc, at, `Слой ${this.layerCounter}`);
     this.touched = true;
   }
 
@@ -601,8 +637,25 @@ export class EditorState {
     return this.doc.layers[index]?.frames.some((cell) => cell.strokes.length > 0) ?? false;
   }
 
+  /** What the panel calls a layer: its stored name, or its position. */
+  layerLabel(index: number): string {
+    return this.doc.layers[index]?.name ?? `Слой ${index + 1}`;
+  }
+
+  /** Names a layer (double click in the panel); a blank name goes back to the position. */
+  renameActiveLayer(index: number, name: string): void {
+    if (this.playing || !this.doc.layers[index]) {
+      return;
+    }
+    renameLayer(this.doc, index, name);
+    this.touched = true;
+  }
+
   removeActiveLayer(): void {
     if (this.playing || this.doc.layers.length <= 1) {
+      return;
+    }
+    if (!this.confirmed(`Удалить «${this.layerLabel(this.activeLayer)}»?`)) {
       return;
     }
     const removed = this.activeLayer;
@@ -662,6 +715,15 @@ export class EditorState {
       : onionLayers(this.activeFrame, frameCount(this.doc), ONION_SKIN_ALPHAS, this.ux.onionSides);
   }
 
+  /**
+   * Which layers a ghost frame is drawn from. Tonio flattens every selected
+   * layer into one ghost (`bundle:11035-11040`); the neighbor model shows the
+   * active layer alone, so a static background is not painted twice.
+   */
+  get onionHistoryLayerIndices(): number[] {
+    return this.ux.onionMode === 'history' ? [...this.selection.layers] : [this.activeLayer];
+  }
+
   toggleOnionSkin(): void {
     this.onionSkin = !this.onionSkin;
   }
@@ -705,6 +767,7 @@ export class EditorState {
    */
   openDraft(doc: ToonDocument): void {
     this.replaceDoc(doc);
+    this.layerCounter = doc.layers.length;
     this.visitedFrames = [0];
     this.edits = [];
     this.touched = false;
@@ -742,16 +805,32 @@ export class EditorState {
     if (this.playing || index < 0 || index >= frameCount(this.doc) || !this.leaveTransform()) {
       return;
     }
+    this.visitedFrames = pushVisited(this.visitedFrames, this.activeFrame, index);
+    if (!keepsSelection(this.selection, { frame: index, layer: this.activeLayer })) {
+      this.selection = { frames: [index], layers: [this.activeLayer] };
+    }
     this.activeFrame = index;
-    this.selection = { frames: [index], layers: [this.activeLayer] };
-    this.visitedFrames = [...this.visitedFrames, index].slice(-ONION_HISTORY_LENGTH);
+  }
+
+  /**
+   * Back to the single active cell. A block left over the frame you have just
+   * left would still be what V pastes into, so every frame operation ends here.
+   */
+  collapseSelection(): void {
+    this.selection = { frames: [this.activeFrame], layers: [this.activeLayer] };
   }
 
   addFrameAfterActive(): void {
     if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
       return;
     }
+    const left = this.activeFrame;
     this.activeFrame = addFrame(this.doc, this.activeFrame);
+    // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
+    // the frame it came from goes into the onion history like any other move.
+    // Without this the fresh cell showed no ghost of the drawing it follows.
+    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
+    this.collapseSelection();
     this.touched = true;
   }
 
@@ -760,16 +839,37 @@ export class EditorState {
     if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
       return;
     }
+    const left = this.activeFrame;
     this.activeFrame = insertFrameBefore(this.doc, this.activeFrame);
+    // `AddHistory(prev, ctrl)`: the frame left goes in first, then every entry
+    // shifts, because the insert pushed those cells one to the right. The cell
+    // that was under `left` now lives at `left + 1` — where its ghost belongs.
+    const recorded = pushVisited(this.visitedFrames, left);
+    this.visitedFrames = shiftVisited(recorded, this.activeFrame);
+    this.collapseSelection();
     this.touched = true;
   }
 
+  /**
+   * Whether Delete may take the frame. Toonio refuses the last one outright
+   * (`bundle:8619-8644`); the other presets clear its cells instead.
+   */
+  get canRemoveFrame(): boolean {
+    return this.ux.playbackRange === 'selection' ? frameCount(this.doc) > 1 : true;
+  }
+
   removeActiveFrame(): void {
-    if (this.playing) {
+    if (this.playing || !this.canRemoveFrame) {
       return;
     }
+    if (!this.confirmed(`Удалить кадр ${this.activeFrame + 1}?`)) {
+      return;
+    }
+    const left = this.activeFrame;
     removeFrame(this.doc, this.activeFrame);
     this.activeFrame = activeFrameAfterRemove(this.activeFrame, frameCount(this.doc), this.ux.afterRemove);
+    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
+    this.collapseSelection();
     this.touched = true;
   }
 
@@ -803,6 +903,7 @@ export class EditorState {
   copySelection(): void {
     this.copiedCells = copyCells(this.doc, this.selection);
     this.copiedFrom = this.selection;
+    this.copiedDrawnInto = [];
     this.flashTick++;
   }
 
@@ -820,16 +921,34 @@ export class EditorState {
     this.applyCopiedCells(mergeCells);
   }
 
+  /** One question, muted for the session by `Alt+Enter` (the reference's warnings flag). */
+  private confirmed(message: string): boolean {
+    return !this.warnings || this.ask(message);
+  }
+
   private applyCopiedCells(write: typeof replaceCells): void {
     const buffer = this.copiedCells;
     if (!this.canPasteCells || !buffer) {
       return;
     }
-    const target = pasteTarget(
-      { frames: buffer[0]?.length ?? 0, layers: buffer.length },
-      { frame: this.activeFrame, layer: this.activeLayer },
-      this.cellBounds,
-    );
+    const target = pasteTargetFromSelection(this.selection, {
+      frames: buffer[0]?.length ?? 0,
+      layers: buffer.length,
+    });
+    // The reference asks before it overwrites, and asks a second time once
+    // more than one cell is at stake (`bundle:8192-8250`).
+    const { nonEmpty, frames, layers } = pasteNeedsConfirm(this.doc, target);
+    if (nonEmpty) {
+      if (!this.confirmed('Ячейки не пустые. Заменить их содержимое?')) {
+        return;
+      }
+      if (
+        (frames > 1 || layers > 1)
+        && !this.confirmed(`Это затронет кадров: ${frames}, слоёв: ${layers}. Продолжить?`)
+      ) {
+        return;
+      }
+    }
     const snapshots = this.snapshotCells(target);
     try {
       write(this.doc, target, buffer);
@@ -877,9 +996,6 @@ export class EditorState {
       snapshot.after = snapshot.cell.strokes.length;
     }
     this.edits.push(snapshots);
-    if (this.edits.length > UNDO_HISTORY_LIMIT) {
-      this.edits.shift();
-    }
     this.undone = [];
     this.touched = true;
   }
@@ -943,10 +1059,9 @@ export class EditorState {
     if (!removeLastStroke(this.doc, this.activeLayer, this.activeFrame)) {
       return;
     }
+    // Unbounded, like the reference's own buffer: a stroke off the stack is
+    // still the one the document held a moment ago, not a second copy of it.
     this.undone.push({ cell, stroke });
-    if (this.undone.length > UNDO_HISTORY_LIMIT) {
-      this.undone.shift();
-    }
     this.touched = true;
   }
 
@@ -971,8 +1086,27 @@ export class EditorState {
    */
   commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
     addStroke(this.doc, layerIndex, this.activeFrame, stroke);
-    this.undone = [];
+    if (!this.ux.redoSurvivesStroke) {
+      this.undone = [];
+    }
+    // The reference drops the "copied" mark off a cell as soon as it is drawn
+    // into (`bundle:8143-8151`); the rest of the block keeps it.
+    const key = `${this.activeFrame}:${layerIndex}`;
+    if (this.copiedFrom && !this.copiedDrawnInto.includes(key)) {
+      this.copiedDrawnInto = [...this.copiedDrawnInto, key];
+    }
     this.touched = true;
+  }
+
+  /** Whether the timeline still marks this cell as copied from. */
+  isCopiedCell(frame: number, layer: number): boolean {
+    const from = this.copiedFrom;
+    return (
+      from !== null
+      && from.frames.includes(frame)
+      && from.layers.includes(layer)
+      && !this.copiedDrawnInto.includes(`${frame}:${layer}`)
+    );
   }
 
   /**

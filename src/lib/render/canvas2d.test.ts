@@ -223,7 +223,7 @@ const sampleTools: ToolDescriptor[] = [
 
 function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 4,
+    schema_version: 5,
     width: 4800,
     height: 2400,
     frame_rate: 12,

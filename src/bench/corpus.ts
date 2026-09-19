@@ -34,7 +34,7 @@ export function buildCorpus(opts: CorpusOptions): ToonDocument {
     if (f > 0) addFrame(doc, f - 1);
   }
   for (let l = 1; l < layerCount; l++) {
-    addLayer(doc, l - 1);
+    addLayer(doc, l);
   }
   for (let l = 0; l < layerCount; l++) {
     for (let f = 0; f < opts.frames; f++) {

@@ -1,0 +1,52 @@
+{
+  "schema_version": 5,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [
+    {
+      "kind": "pencil",
+      "dialect": "toonio",
+      "width": 32,
+      "color": "#000000"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "name": "Фон",
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                400,
+                200
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "hidden": true,
+      "name": "Персонаж 12",
+      "frames": [
+        {
+          "strokes": []
+        }
+      ]
+    },
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": []
+        }
+      ]
+    }
+  ]
+}

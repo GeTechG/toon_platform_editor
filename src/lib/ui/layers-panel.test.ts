@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 const source = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
+const rows = source;
 
 function fn(name: string): string {
   const match = source.match(new RegExp(`function ${name}\\([^]*?\\n  }`));
@@ -56,5 +57,27 @@ describe('layer drag contract', () => {
   it('stops the auto-scroll interval when the panel goes away', () => {
     expect(source).toContain('onDestroy');
     expect(source.match(/onDestroy\([^]*?\)/)?.[0] ?? '').toContain('stopAutoscroll');
+  });
+});
+
+describe('layer names and colour tags (Toonio parity)', () => {
+  it('a row shows the stored name, falling back to its position', () => {
+    expect(rows).toContain('editor.layerLabel(layerIndex)');
+  });
+
+  it('double-clicking a row name opens it for renaming', () => {
+    expect(rows).toContain('ondblclick');
+    expect(rows).toContain('editor.renameActiveLayer(');
+    expect(rows).toContain('MAX_LAYER_NAME');
+  });
+
+  it('Enter commits the new name and Escape drops it', () => {
+    expect(rows).toContain("'Enter'");
+    expect(rows).toContain("'Escape'");
+  });
+
+  it('every row carries one of six cycling colour tags', () => {
+    expect(rows).toContain('% 6');
+    expect(rows).toContain('--layer-tag-');
   });
 });

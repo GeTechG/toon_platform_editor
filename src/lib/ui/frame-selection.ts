@@ -3,7 +3,12 @@
  * runes state so they can be tested without the Svelte compiler.
  */
 
-import { ONION_HISTORY_MAX_ALPHA, PLAYER_FPS_MAX, PLAYER_FPS_MIN } from '../format/constants';
+import {
+  ONION_HISTORY_LENGTH,
+  ONION_HISTORY_MAX_ALPHA,
+  PLAYER_FPS_MAX,
+  PLAYER_FPS_MIN,
+} from '../format/constants';
 
 /**
  * Active frame after removing removedIndex. 'next' (default): the right
@@ -24,6 +29,42 @@ export function activeFrameAfterRemove(
 /** Frame playback starts from: the active frame, or the first when the profile plays from start. */
 export function playbackStartFrame(activeFrame: number, playFromStart: boolean): number {
   return playFromStart ? 0 : activeFrame;
+}
+
+/** The stretch playback runs over, and the frame it begins on. */
+export interface PlaybackRange {
+  readonly start: number;
+  readonly end: number;
+  readonly first: number;
+}
+
+/**
+ * What Space (and Shift+Space) plays. Under Toonio the selection is the range:
+ * more than one selected frame plays `[min..max]` from its start, a lone cell
+ * plays the whole document from frame 1, and a one-frame document does not
+ * play at all (`bundle:8405-8433`). The other presets keep their own rule —
+ * the whole document from the active frame, or from the first one (Multator).
+ * `fromActive` is Shift: begin where the cursor is, inside the same range.
+ */
+export function playbackRange(
+  activeFrame: number,
+  selection: CellSelection,
+  frameCount: number,
+  ux: { readonly playbackRange: 'document' | 'selection'; readonly playFromStart: boolean },
+  fromActive: boolean,
+): PlaybackRange | null {
+  if (ux.playbackRange !== 'selection') {
+    const first = fromActive ? activeFrame : playbackStartFrame(activeFrame, ux.playFromStart);
+    return { start: 0, end: frameCount - 1, first };
+  }
+  if (frameCount < 2) {
+    return null;
+  }
+  const spanned = selection.frames.length > 1;
+  const start = spanned ? Math.min(...selection.frames) : 0;
+  const end = spanned ? Math.max(...selection.frames) : frameCount - 1;
+  const first = fromActive ? Math.min(end, Math.max(start, activeFrame)) : start;
+  return { start, end, first };
 }
 
 export interface OnionLayer {
@@ -83,12 +124,64 @@ export function onionHistoryLayers(
 }
 
 /**
+ * Tonio's visited-frame history after a move: the reference records the frame
+ * being *left* (`AddHistory(prev)`, `bundle:11026-11033`), not the one arrived
+ * at, so the ghosts trail the cursor. A move that goes nowhere records
+ * nothing, and only the last three visits are kept.
+ *
+ * `newFrame` is left out when the index is no guide — inserting a frame in
+ * front of the active one keeps the number but puts a different cell under it,
+ * and the reference pushes unconditionally there.
+ */
+export function pushVisited(
+  history: readonly number[],
+  leftFrame: number,
+  newFrame?: number,
+): number[] {
+  if (leftFrame === newFrame) {
+    return [...history];
+  }
+  return [...history, leftFrame].slice(-ONION_HISTORY_LENGTH);
+}
+
+/**
+ * The history after a frame was inserted at `insertedAt`: everything from
+ * there on moved one to the right, so the ghosts stay on the cells they were
+ * drawn from (`bundle:11027-11029`).
+ */
+export function shiftVisited(history: readonly number[], insertedAt: number): number[] {
+  return history.map((index) => (index >= insertedAt ? index + 1 : index));
+}
+
+/**
  * Onion-skin renders only when enabled, not during playback, and never under
  * the pipette — the reference hides it so a pick reads the drawing itself
  * rather than a ghost of the neighbouring frame.
  */
 export function onionSkinVisible(enabled: boolean, playing: boolean, tool = 'pencil'): boolean {
   return enabled && !playing && tool !== 'pipette';
+}
+
+/**
+ * Index `i` folded back into a list of `n` — the arrows and the ⏴/⏵ buttons
+ * wrap round both ends rather than stopping at them.
+ */
+export function wrapIndex(i: number, n: number): number {
+  return ((i % n) + n) % n;
+}
+
+/**
+ * Where `addLayer` inserts the new row. Layers are stored bottom-up, so "under
+ * the active one" is the active index itself and "over it" is one past
+ * (`bundle:8485-8487`); Ctrl asks for the other one.
+ */
+export function newLayerIndex(
+  activeLayer: number,
+  position: 'above' | 'below',
+  ctrlKey: boolean,
+): number {
+  const above = ctrlKey ? position === 'below' : position === 'above';
+  return above ? activeLayer + 1 : activeLayer;
 }
 
 /** How long the zoom window stays up after a wheel zoom (reference: 2 seconds). */
@@ -190,6 +283,15 @@ export interface CellSelection {
   readonly layers: readonly number[];
 }
 
+/**
+ * Whether a navigation keeps the block selection: the reference collapses it
+ * only when the cell you land on is outside it (`manual && !inSelection`), so
+ * arrows, J/L and the ⏴/⏵ buttons walk *inside* a selection without losing it.
+ */
+export function keepsSelection(selection: CellSelection, cell: Cell): boolean {
+  return selection.frames.includes(cell.frame) && selection.layers.includes(cell.layer);
+}
+
 function span(a: number, b: number, limit: number): number[] {
   const lo = Math.max(0, Math.min(a, b));
   const hi = Math.min(limit - 1, Math.max(a, b));
@@ -208,25 +310,41 @@ export function rangeSelection(anchor: Cell, target: Cell, bounds: CellBounds): 
   };
 }
 
-/** Ctrl+click: the layer joins or leaves the selection, which never empties. */
-export function toggleLayerInSelection(selection: CellSelection, layer: number): CellSelection {
-  const layers = selection.layers.includes(layer)
-    ? selection.layers.filter((index) => index !== layer)
-    : [...selection.layers, layer].sort((a, b) => a - b);
+/**
+ * Ctrl+click: the layer joins or leaves the selection, which never empties.
+ * The reference only reads Ctrl on a cell whose frame is already selected and
+ * whose row is not the active one (`bundle:8957-8968`); anywhere else the
+ * modifier is ignored, so `null` means "treat it as a plain click".
+ */
+export function toggleLayerInSelection(
+  selection: CellSelection,
+  cell: Cell,
+  activeLayer: number,
+): CellSelection | null {
+  if (!selection.frames.includes(cell.frame) || cell.layer === activeLayer) {
+    return null;
+  }
+  const layers = selection.layers.includes(cell.layer)
+    ? selection.layers.filter((index) => index !== cell.layer)
+    : [...selection.layers, cell.layer].sort((a, b) => a - b);
   return layers.length === 0 ? selection : { frames: selection.frames, layers };
 }
 
 /**
- * Where a copied block lands: it hangs from the active cell, which takes the
- * buffer's first frame and its *top* layer. Frames run forward, layers run
- * downward — they are stored bottom-up and shown top-down, so the rows under
- * the one you dropped on are the lower indices. Whatever runs off the end of
- * the document is cut.
+ * Where a copied block lands: on the selection, not next to the active cell.
+ * Every selected frame is filled — a short buffer repeats over them — while
+ * the rows pair from the top down, so a buffer narrower than the selection
+ * takes its topmost rows and the ones below are left alone
+ * (`bundle:8192-8250`). A single selected cell still means a single paste.
  */
-export function pasteTarget(buffer: CellBounds, active: Cell, bounds: CellBounds): CellSelection {
+export function pasteTargetFromSelection(
+  selection: CellSelection,
+  buffer: CellBounds,
+): CellSelection {
+  const rows = Math.min(selection.layers.length, buffer.layers);
   return {
-    frames: span(active.frame, active.frame + buffer.frames - 1, bounds.frames),
-    layers: span(active.layer, active.layer - buffer.layers + 1, bounds.layers),
+    frames: [...selection.frames],
+    layers: selection.layers.slice(selection.layers.length - rows),
   };
 }
 
