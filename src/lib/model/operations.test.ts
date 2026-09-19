@@ -28,8 +28,8 @@ describe('createDocument', () => {
     const doc = createDocument();
     expect(doc.schema_version).toBe(4);
     expect(doc.tools).toEqual([]);
-    expect(doc.width).toBe(4800);
-    expect(doc.height).toBe(2400);
+    expect(doc.width).toBe(10240);
+    expect(doc.height).toBe(5760);
     expect(doc.frame_rate).toBe(12);
     expect(doc.layers).toEqual([{ hidden: false, frames: [{ strokes: [] }] }]);
     expect(validateDocument(doc).ok).toBe(true);

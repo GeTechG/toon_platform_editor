@@ -1,4 +1,4 @@
-import { FIXED_POINT_SCALE } from '../format/constants';
+import { FIXED_POINT_SCALE, MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, PixelToolDescriptor, StrokeDialect } from '../format/types';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
@@ -23,6 +23,24 @@ export interface TonioSettings {
 export const DEFAULT_TONIO_SETTINGS: Readonly<TonioSettings> = { smooth: 3, minDistance: 3 };
 /** Native width of the source Tonio drawing canvas. */
 export const TONIO_CANVAS_WIDTH = 1280;
+/** Native width of the source Multator drawing canvas. */
+export const MULTATOR_CANVAS_WIDTH = 600;
+
+/**
+ * A brush width is a pixel of the canvas its dialect was drawn on, so on a
+ * document of another size it is divided by this scale — the same
+ * normalisation `tonioPrepare` already applies to the minimum distance.
+ */
+export function canvasCoordinateScale(dialect: StrokeDialect, documentLogicalWidth: number): number {
+  const reference = dialect === 'toonio' ? TONIO_CANVAS_WIDTH : MULTATOR_CANVAS_WIDTH;
+  return reference / positiveScale(documentLogicalWidth);
+}
+
+/** That width in document units, kept inside what the format can store. */
+export function strokeWidthOnCanvas(width: number, coordinateScale: number): number {
+  const scaled = Math.round(width / positiveScale(coordinateScale));
+  return Math.min(MAX_STROKE_WIDTH, Math.max(1, scaled));
+}
 
 export interface StrokeSession {
   readonly profile: StrokeDialect;
@@ -49,20 +67,18 @@ export function beginStrokeSession(
   event: PointerSample,
   descriptor: LineToolDescriptor,
   tonio: TonioSettings = DEFAULT_TONIO_SETTINGS,
-  tonioCoordinateScale = 1,
+  coordinateScale = 1,
   oldschool = false,
   zoom = 1,
 ): StrokeSession {
   // Feather and pixel exist only in the Tonio dialect; everything else takes
   // the profile the gesture started under.
-  const scale = positiveScale(tonioCoordinateScale);
+  const scale = positiveScale(coordinateScale);
   const tonioOnlyTool = descriptor.kind === 'feather' || descriptor.kind === 'pixel';
   const base = tonioOnlyTool ? descriptor : { ...descriptor, dialect: profile };
-  // A Tonio width is a pixel of the reference 1280-wide canvas, like the
-  // Prepare minimum below: on a narrower document it shrinks with the canvas.
-  const frozenDescriptor = copyLineTool(
-    profile === 'multator' ? base : { ...base, width: Math.max(1, Math.round(base.width / scale)) },
-  );
+  // Both dialects measure a width on their own reference canvas, so the
+  // stroke covers the same share of the picture on a document of any size.
+  const frozenDescriptor = copyLineTool({ ...base, width: strokeWidthOnCanvas(base.width, scale) });
   // A Tonio-only tool is collected the Tonio way whatever preset holds it:
   // the Multator builder would smooth a pixel tool's cells into a polyline
   // the pixel renderer cannot draw.
@@ -80,7 +96,7 @@ export function beginStrokeSession(
       descriptor: frozenDescriptor,
       rawPoints: builder.rawPoints as number[],
       tonio: { ...tonio },
-      tonioCoordinateScale: 1,
+      tonioCoordinateScale: scale,
       zoom: 1,
       multator: builder,
       oldschool,
@@ -210,7 +226,7 @@ export class PointerStrokeController {
       profile: StrokeDialect;
       descriptor: LineToolDescriptor;
       tonio?: TonioSettings;
-      tonioCoordinateScale?: number;
+      coordinateScale?: number;
       oldschool?: boolean;
       zoom?: number;
     },
@@ -226,7 +242,7 @@ export class PointerStrokeController {
       event,
       selected.descriptor,
       selected.tonio,
-      selected.tonioCoordinateScale,
+      selected.coordinateScale,
       selected.oldschool ?? false,
       selected.zoom ?? 1,
     );

@@ -15,7 +15,8 @@ describe('current Multator pointer lifecycle contract', () => {
     expect(down).toContain('setPointerCapture(e.pointerId)');
     expect(down).toContain('pointer.pointerDown(toPointerSample(e, true))');
     expect(source).toContain("(pointer.session?.profile ?? editor.drawingProfile) === 'toonio'");
-    expect(source).toContain('tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE)');
+    expect(source).toContain('coordinateScale: brushCanvasScale');
+    expect(source).toContain('canvasCoordinateScale(');
   });
 
   it('takes exactly one point from each pointermove without unpacking coalesced events', () => {

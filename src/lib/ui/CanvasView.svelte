@@ -27,8 +27,8 @@
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
+    canvasCoordinateScale,
     swapStrokeColours,
-    TONIO_CANVAS_WIDTH,
     previewStrokeSession,
     type PointerSample,
   } from '../tools/profiles';
@@ -80,6 +80,14 @@
   const HIDDEN_LAYER_HINT = 'Слой скрыт';
   let hint = $state('');
   let hintTimer = 0;
+  /** Reference-canvas normalisation of the active tool, by its own dialect. */
+  const brushCanvasScale = $derived(
+    canvasCoordinateScale(
+      editor.tool === 'feather' || editor.tool === 'pixel' ? 'toonio' : editor.drawingProfile,
+      editor.doc.width / FIXED_POINT_SCALE,
+    ),
+  );
+
   /** Descriptor for the active tool, frozen into the session at pointerdown. */
   function activeDescriptor(): LineToolDescriptor {
     const width = brushWidthDoc(editor.brushSizeLogical);
@@ -107,7 +115,7 @@
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
-    tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE),
+    coordinateScale: brushCanvasScale,
     oldschool: editor.oldschool,
     zoom: editor.view.zoom,
   }));
@@ -286,15 +294,11 @@
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (cssWidth * editor.view.zoom) / editor.doc.width));
   /**
-   * Width the brush actually lands on the document with, in logical px: a
-   * Tonio width is a pixel of the reference 1280-wide canvas and shrinks with
-   * the document, so the cursor has to shrink with it.
+   * Width the brush actually lands on the document with, in logical px. Each
+   * dialect measures its brush on its own reference canvas, so the cursor and
+   * the mega-eraser radius take the same normalisation as the stroke.
    */
-  const brushLogicalOnCanvas = $derived(
-    editor.drawingProfile === 'toonio'
-      ? editor.brushSizeLogical / (TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE))
-      : editor.brushSizeLogical,
-  );
+  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / brushCanvasScale);
   /** That width in screen pixels — what the ring, the square and the grid measure. */
   const cursorDiameter = $derived(
     Math.max(1, (brushLogicalOnCanvas * cssWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
@@ -888,7 +892,7 @@
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
-      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
+      editor.applyMegaEraser(megaGesture, brushWidthDoc(brushLogicalOnCanvas) / 2);
       megaGesture = null;
       gesturePointerId = -1;
       stackDirty = true;

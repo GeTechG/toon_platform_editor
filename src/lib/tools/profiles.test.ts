@@ -3,6 +3,7 @@ import type { ToolDescriptor } from '../format/types';
 import * as profiles from './profiles';
 import { addStroke, createDocument } from '../model/operations';
 import { canonicalize } from '../format/canonical';
+import { MAX_STROKE_WIDTH } from '../format/constants';
 import { loadDocument } from '../format/validate';
 
 const pencil: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' };
@@ -255,6 +256,33 @@ function sample(pointerId: number, x: number, y: number, coalesced?: profiles.Po
 describe('brush width in reference-canvas pixels', () => {
   const scale600 = profiles.TONIO_CANVAS_WIDTH / 600;
 
+  it('each dialect measures its brush on its own reference canvas', () => {
+    expect(profiles.canvasCoordinateScale('toonio', 1280)).toBe(1);
+    expect(profiles.canvasCoordinateScale('toonio', 600)).toBe(1280 / 600);
+    expect(profiles.canvasCoordinateScale('multator', 600)).toBe(1);
+    expect(profiles.canvasCoordinateScale('multator', 1280)).toBe(600 / 1280);
+  });
+
+  it('a Multator stroke grows with a canvas wider than its own', () => {
+    // 4 logical px = 32 doc units on Multator's 600-wide canvas; on 1280 the
+    // same stroke has to cover the same share of the picture.
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' },
+      { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('multator', 1280),
+    );
+    expect(session.descriptor.width).toBe(68);
+  });
+
+  it('never widens a stroke past what the format can hold', () => {
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'pencil', dialect: 'multator', width: 2400, color: '#123456' },
+      { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('multator', 1280),
+    );
+    expect(session.descriptor.width).toBe(MAX_STROKE_WIDTH);
+  });
+
   it('Tonio divides the frozen width by the canvas normalisation', () => {
     // 5 logical px = 40 doc units on a 600-wide canvas: 40 / (1280 / 600) = 18.75 → 19.
     const session = profiles.beginStrokeSession(
@@ -274,11 +302,11 @@ describe('brush width in reference-canvas pixels', () => {
     expect(session.descriptor.width).toBe(40);
   });
 
-  it('Multator keeps its width whatever the canvas is', () => {
+  it('Multator keeps its width on the canvas it was drawn for', () => {
     const session = profiles.beginStrokeSession(
       'multator', sample(1, 0, 0),
       { kind: 'pencil', dialect: 'multator', width: 40, color: '#123456' },
-      { smooth: 1, minDistance: 0 }, scale600,
+      { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('multator', 600),
     );
     expect(session.descriptor.width).toBe(40);
   });
@@ -330,12 +358,14 @@ describe('the pixel tool outside the Tonio preset', () => {
     expect(stroke.points.every((v) => v % 16 === 0)).toBe(true);
   });
 
-  it('leaves the pixel cell size alone outside the Tonio preset', () => {
+  it('measures its cell on the Tonio canvas whatever preset draws it', () => {
+    // The scale follows the tool's dialect, not the preset: a pixel cell is
+    // a pixel of the 1280-wide canvas wherever the tool is offered.
     const session = profiles.beginStrokeSession(
       'multator', sample(1, 0, 0),
       { kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' },
-      { smooth: 1, minDistance: 0 }, profiles.TONIO_CANVAS_WIDTH / 600,
+      { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('toonio', 600),
     );
-    expect(session.descriptor.width).toBe(16);
+    expect(session.descriptor.width).toBe(8);
   });
 });

@@ -7,13 +7,14 @@
 export const SCHEMA_VERSION = 4;
 /** Highest schema version the loader accepts. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
-export const CANVAS_LOGICAL_WIDTH = 600;
-export const CANVAS_LOGICAL_HEIGHT = 300;
+/** New documents take the reference Tonio canvas (toonio.ru draws 1280×720). */
+export const CANVAS_LOGICAL_WIDTH = 1280;
+export const CANVAS_LOGICAL_HEIGHT = 720;
 
 /** Fixed-point multiplier: 1 logical px = 8 document units. */
 export const FIXED_POINT_SCALE = 8;
 
-/** Default canvas size in document units (4800×2400 — fits int16). */
+/** Default canvas size in document units (10240×5760 — fits int16). */
 export const DEFAULT_DOC_WIDTH = CANVAS_LOGICAL_WIDTH * FIXED_POINT_SCALE;
 export const DEFAULT_DOC_HEIGHT = CANVAS_LOGICAL_HEIGHT * FIXED_POINT_SCALE;
 
@@ -22,7 +23,10 @@ export const DEFAULT_FPS = 12;
 export const PLAYER_FPS_MIN = 5;
 export const PLAYER_FPS_MAX = 24;
 
-/** Brush: in logical canvas px. */
+/**
+ * Brush sizes, in pixels of the dialect's own reference canvas (Multator's
+ * 600-wide one) — `canvasCoordinateScale` maps them onto the document.
+ */
 export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
 export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
 export const DEFAULT_BRUSH_COLOR = '#000000';
