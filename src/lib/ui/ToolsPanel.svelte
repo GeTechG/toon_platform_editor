@@ -3,7 +3,11 @@
   import Icon from './Icon.svelte';
   import type { IconName } from './Icon.svelte';
 
-  let { editor }: { editor: EditorState } = $props();
+  let {
+    editor,
+    onSave,
+    dirty = false,
+  }: { editor: EditorState; onSave?: () => void; dirty?: boolean } = $props();
 
   // `key` is the shortcut the button shows in place of its icon on hover
   // (reference `.control p`); it is spelled out in the title as well.
@@ -52,6 +56,20 @@
         <Icon name={t.icon} />
       </button>
     {/each}
+    {#if onSave}
+      <!-- Reference «Сохранить»: the draft goes to disk now rather than on the
+           next turn of the autosave clock. Nothing to write, nothing to press. -->
+      <button
+        class="key icon"
+        onclick={onSave}
+        disabled={!dirty}
+        data-key="Ctrl+S"
+        title="Сохранить черновик сейчас (Ctrl+S)"
+        aria-label="Сохранить черновик"
+      >
+        <Icon name="save" />
+      </button>
+    {/if}
   </div>
 {/if}
 

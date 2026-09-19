@@ -4,6 +4,7 @@ const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).t
 const player = await Bun.file(new URL('../player/Player.svelte', import.meta.url)).text();
 const playControls = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('../audio/state.svelte.ts', import.meta.url)).text();
+const track = await Bun.file(new URL('../audio/track.ts', import.meta.url)).text();
 const sheet = await Bun.file(new URL('./ExportSheet.svelte', import.meta.url)).text();
 const panel = await Bun.file(new URL('./AudioPanel.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
@@ -23,12 +24,12 @@ describe('sound never fails silently', () => {
   });
 
   it('an unknown duration is not a reason to stay quiet', () => {
-    expect(state).toContain('this.duration > 0 && at >= this.duration');
+    // Silence only past a *known* end; an undecoded length is not one.
+    expect(track).toContain('duration > 0 && at >= duration ? null : at');
   });
 
-  it('the preview reads its frame off the track while it sounds', () => {
-    expect(playControls).toContain('editor.audio.sounding');
-    expect(playControls).toContain('frameForTime(editor.audio.currentTime');
+  it('the preview starts and stops the sound with the frames', () => {
+    expect(playControls).toContain('editor.audio.playFrom(');
     expect(playControls).toContain('editor.audio.stop()');
   });
 
@@ -93,7 +94,7 @@ describe('the synchronisation flag', () => {
   });
 
   it('untied, the track starts at its own beginning rather than at the frame', () => {
-    expect(state).toContain('this.sync ? timeForFrame(frame, fps) : 0');
+    expect(state).toContain('this.sync ? trackTimeFor(frame, fps, this.duration) : 0');
   });
 
   it('a freshly attached track is untied, so a song plays under the frames', () => {
@@ -112,10 +113,18 @@ describe('the synchronisation flag', () => {
     expect(editorUi).toContain('sync: editor.audio.sync');
   });
 
-  it('tied, the track is pinned to the first frame and restarts with the loop', () => {
-    expect(playControls).toContain('editor.audio.restartIfLooped(frames');
+  it('tied, the track is pulled back to where the frame sits on every pass', () => {
+    // One frame, one point of the track: past its end the pass is quiet, and
+    // the next turn of the animation starts the track again.
+    expect(playControls).toContain('editor.audio.reseekAtLoop(');
     expect(player).toContain('trackShouldRestart(sound.currentTime');
-    expect(state).toContain('trackShouldRestart(this.#element.currentTime');
+    expect(state).toContain('trackTimeFor(frame, fps, this.duration)');
+  });
+
+  it('the frames keep their own clock in both modes', () => {
+    // The reference counts frames with `UpdatePlayFrame` whether the track is
+    // tied or not; reading them off the track's clock is how they drift.
+    expect(playControls).not.toContain('frameForTime(editor.audio.currentTime');
   });
 
   it('the exported file is what the preview sounds like', () => {

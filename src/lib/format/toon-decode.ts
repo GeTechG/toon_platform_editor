@@ -11,11 +11,12 @@
 import {
   FIXED_POINT_SCALE,
   MAX_LAYERS,
+  MAX_LAYER_NAME,
   SCHEMA_VERSION,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from './constants';
-import type { LayerV3, ToolDescriptor, ToonDocument } from './types';
+import type { Layer, ToolDescriptor, ToonDocument } from './types';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
 export const TOONIO_CANVAS_WIDTH = 1280;
@@ -25,6 +26,10 @@ export const TOONIO_CANVAS_HEIGHT = 720;
 const SIGNATURE = 999;
 const MAX_VERSION = 5;
 
+/** Defaults of the legacy `.json` save, which stored neither (toon.js:1240-1283). */
+const LEGACY_JSON_FPS = 13;
+const LEGACY_JSON_WIDTH = 5;
+
 /** tools.js tool types. */
 const ERASER = 0;
 const PENCIL = 1;
@@ -32,7 +37,10 @@ const FEATHER = 2;
 const MEGAERASER = 3;
 const PIXEL = 4;
 
-export type ToonImportResult = { ok: true; doc: ToonDocument } | { ok: false; error: string };
+export type ToonImportResult =
+  /** `original` is the title the reference stored in the file (v3+); '' when it carries none. */
+  | { ok: true; doc: ToonDocument; original: string }
+  | { ok: false; error: string };
 
 class Truncated extends Error {}
 
@@ -63,12 +71,14 @@ class Reader {
     return raw < 0 ? 65536 + raw : raw;
   }
 
-  /** Length-prefixed char array (layer name, original title) — read and dropped. */
-  skipString(): void {
+  /** Length-prefixed char array (layer name, original title). */
+  string(): string {
     const length = this.count();
+    let text = '';
     for (let i = 0; i < length; i++) {
-      this.next();
+      text += String.fromCharCode(this.next());
     }
+    return text;
   }
 }
 
@@ -77,7 +87,7 @@ export function decodeToon(buffer: ArrayBuffer): ToonImportResult {
     return { ok: false, error: 'это не файл Тунио: пустой или обрезанный' };
   }
   try {
-    return { ok: true, doc: read(new Reader(new Int16Array(buffer))) };
+    return { ok: true, ...read(new Reader(new Int16Array(buffer))) };
   } catch (error) {
     if (error instanceof Truncated) {
       return { ok: false, error: 'обрыв файла: он повреждён или обрезан' };
@@ -86,7 +96,7 @@ export function decodeToon(buffer: ArrayBuffer): ToonImportResult {
   }
 }
 
-function read(reader: Reader): ToonDocument {
+function read(reader: Reader): { doc: ToonDocument; original: string } {
   const layerCount = reader.next();
   const frameCount = reader.next();
   const frameRate = reader.next();
@@ -101,9 +111,7 @@ function read(reader: Reader): ToonDocument {
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
     throw new Error('это не файл Тунио: неправдоподобный заголовок');
   }
-  if (version >= 3) {
-    reader.skipString(); // the original's title
-  }
+  const original = version >= 3 ? reader.string() : '';
 
   const tools: ToolDescriptor[] = [];
   if (version >= 5) {
@@ -113,13 +121,12 @@ function read(reader: Reader): ToonDocument {
     }
   }
 
-  const layers: LayerV3[] = [];
+  const layers: Layer[] = [];
   for (let l = 0; l < layerCount; l++) {
     const hidden = reader.next() === 0;
-    if (version >= 2) {
-      reader.skipString(); // the layer name; our format numbers rows instead
-    }
-    const frames: LayerV3['frames'] = [];
+    // An unnamed layer is named by its position, so the field stays absent.
+    const name = version >= 2 ? reader.string().slice(0, MAX_LAYER_NAME) : '';
+    const frames: Layer['frames'] = [];
     for (let f = 0; f < frameCount; f++) {
       if (version >= 4 && reader.next() === 1) {
         // A clone frame shares its predecessor's object in the reference; our
@@ -135,7 +142,7 @@ function read(reader: Reader): ToonDocument {
       }
       frames.push({ strokes: readStrokes(reader, version, tools) });
     }
-    layers.push({ hidden, frames });
+    layers.push(name ? { hidden, name, frames } : { hidden, frames });
   }
 
   if (!reader.exhausted) {
@@ -145,14 +152,17 @@ function read(reader: Reader): ToonDocument {
     throw new Error('это не файл Тунио: после рисунка остались лишние данные');
   }
   return {
-    schema_version: SCHEMA_VERSION,
-    width: TOONIO_CANVAS_WIDTH * FIXED_POINT_SCALE,
-    height: TOONIO_CANVAS_HEIGHT * FIXED_POINT_SCALE,
-    frame_rate: Math.min(60, Math.max(1, frameRate)),
-    tools,
-    // The reference draws layer 0 last, so its first layer is the topmost one;
-    // ours renders bottom-up.
-    layers: layers.reverse(),
+    original,
+    doc: {
+      schema_version: SCHEMA_VERSION,
+      width: TOONIO_CANVAS_WIDTH * FIXED_POINT_SCALE,
+      height: TOONIO_CANVAS_HEIGHT * FIXED_POINT_SCALE,
+      frame_rate: Math.min(60, Math.max(1, frameRate)),
+      tools,
+      // The reference draws layer 0 last, so its first layer is the topmost one;
+      // ours renders bottom-up.
+      layers: layers.reverse(),
+    },
   };
 }
 
@@ -249,11 +259,65 @@ function readColor(reader: Reader): string {
   return `#${channel()}${channel()}${channel()}`;
 }
 
-/** Reference units are logical pixels; ours are eighths of one. */
+/**
+ * Reference units are logical pixels; ours are eighths of one. A point that
+ * flew past the representable range is pinned to the edge rather than losing
+ * the whole file: it is far off-canvas either way.
+ */
 function scale(value: number): number {
-  const scaled = value * FIXED_POINT_SCALE;
-  if (scaled < STROKE_COORD_MIN || scaled > STROKE_COORD_MAX) {
-    throw new Error(`координата ${value} выходит за пределы, которые редактор может сохранить`);
+  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, value * FIXED_POINT_SCALE));
+}
+
+/**
+ * Tonio's pre-binary `.json` save (toon.js:1240-1283): either the full
+ * `{Data: {FPS}, Frames}` object or a bare array of frames. One visible
+ * layer of pencil lines — the format knew nothing else.
+ */
+export function decodeLegacyJson(text: string): ToonImportResult {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (error) {
+    return { ok: false, error: `это не JSON: ${error instanceof Error ? error.message : error}` };
   }
-  return scaled;
+  const source = Array.isArray(data) ? data : (data as { Frames?: unknown } | null)?.Frames;
+  if (!Array.isArray(source) || source.length === 0) {
+    return { ok: false, error: 'это не сохранение Тунио: в файле нет кадров' };
+  }
+  const fps = Number((data as { Data?: { FPS?: unknown } }).Data?.FPS) || LEGACY_JSON_FPS;
+
+  const tools: ToolDescriptor[] = [];
+  const frames = source.map((frame) => ({
+    strokes: (Array.isArray(frame) ? frame : []).flatMap((line) => {
+      // A line is either `{Width, Color, Cs}` or, in the bare form, its points.
+      const raw = Array.isArray(line) ? { Cs: line } : (line as { Width?: number; Color?: string; Cs?: unknown });
+      const points = (Array.isArray(raw?.Cs) ? raw.Cs : []).flatMap((point: { x?: number; y?: number }) => [
+        scale(Number(point?.x) || 0),
+        scale(Number(point?.y) || 0),
+      ]);
+      if (points.length < 2) {
+        return [];
+      }
+      const tool = toolDescriptor(
+        PENCIL,
+        scale(Number(raw?.Width) || LEGACY_JSON_WIDTH),
+        typeof raw?.Color === 'string' ? raw.Color : '#000000',
+        '#000000',
+      );
+      return [{ points, tool_id: internLegacyTool(tool, tools) }];
+    }),
+  }));
+
+  return {
+    ok: true,
+    original: '',
+    doc: {
+      schema_version: SCHEMA_VERSION,
+      width: TOONIO_CANVAS_WIDTH * FIXED_POINT_SCALE,
+      height: TOONIO_CANVAS_HEIGHT * FIXED_POINT_SCALE,
+      frame_rate: Math.min(60, Math.max(1, fps)),
+      tools,
+      layers: [{ hidden: false, frames }],
+    },
+  };
 }

@@ -32,6 +32,7 @@
     | 'merge'
     | 'expand'
     | 'drafts'
+    | 'save'
     | 'hand'
     | 'lasso'
     | 'distort'
@@ -89,6 +90,8 @@
     merge: 'M4 5h9v9H4zM11 10h9v9h-9zM13 5v5h-2v4h4v-4',
     expand: 'M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5',
     drafts: 'M3 14h18M3 14l2-8h14l2 8M3 14v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M7 17h.01M11 17h.01',
+    // The floppy nobody has held in twenty years and everybody still reads.
+    save: 'M5 3h11l3 3v15H5zM8 3v6h7V3M8 14h8v7H8z',
   };
 
 </script>

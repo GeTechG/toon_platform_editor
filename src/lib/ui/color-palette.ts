@@ -3,6 +3,8 @@
  * swatches plus whatever the user adds, capped and persisted best-effort.
  */
 
+import type { ToonDocument } from '../format/types';
+
 /** toonio.bundle.js `defaultPalette`, verbatim. */
 export const TONIO_DEFAULT_PALETTE: readonly string[] = (
   '#000000 #404040 #606060 #808080 #a0a0a0 #ffffff #ff0000 #ff6a00 #ffd800 #b6ff00 ' +
@@ -12,6 +14,16 @@ export const TONIO_DEFAULT_PALETTE: readonly string[] = (
 
 /** Reference `paletteLimit` default; the settings sheet moves it between 30 and 300. */
 export const PALETTE_LIMIT = 50;
+
+/**
+ * The grid is a set, not a list: it is keyed by colour, so a repeat is not a
+ * cosmetic duplicate — it takes the editor down with `each_key_duplicate`, and
+ * removing one of the pair would remove both. Every way colours enter the grid
+ * goes through here.
+ */
+export function uniqueColours(colours: readonly string[]): string[] {
+  return [...new Set(colours.map((colour) => colour.toLowerCase()))];
+}
 
 /**
  * Reference AddColourToPalette. The grid is a ring: at the limit the colour
@@ -41,10 +53,27 @@ export function mergePalettes(
   incoming: readonly string[],
   limit: number,
 ): { palette: string[]; added: number; skipped: number } {
-  const fresh = incoming.map((c) => c.toLowerCase()).filter((c) => !palette.includes(c));
+  const fresh = uniqueColours(incoming).filter((c) => !palette.includes(c));
   const room = Math.max(0, limit - palette.length);
   const taken = fresh.slice(0, room);
   return { palette: [...palette, ...taken], added: taken.length, skipped: fresh.length - taken.length };
+}
+
+/**
+ * Reference behaviour on opening a file: the grid has no home of its own, so
+ * the colours the drawing uses join it (`bundle:7469-7470`). Order follows the
+ * tool table; the limit still caps the grid.
+ */
+export function stealPalette(
+  palette: readonly string[],
+  doc: ToonDocument,
+  limit: number,
+): string[] {
+  const colours = doc.tools.flatMap((tool) => [
+    'color' in tool ? tool.color : [],
+    'fill' in tool ? tool.fill : [],
+  ].flat());
+  return mergePalettes(palette, colours, limit).palette;
 }
 
 /** One of the reference's `toonio_saved_palettes` entries, same field names. */
@@ -146,7 +175,9 @@ export function loadPalette(): string[] {
     if (Array.isArray(raw) && raw.every((c) => typeof c === 'string' && /^#[0-9a-f]{6}$/.test(c))) {
       // The settings sheet can raise the limit to 300; the cap belongs to
       // addPaletteColor, so loading must not cut a grid saved under it.
-      return raw;
+      // Deduplicated on the way in: a grid written by an older build may hold
+      // repeats, and the editor must open rather than crash on the keyed grid.
+      return uniqueColours(raw);
     }
   } catch {
     // blocked or corrupted storage — fall through to the defaults.

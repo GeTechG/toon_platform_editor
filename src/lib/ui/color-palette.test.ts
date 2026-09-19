@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import type { ToolDescriptor, ToonDocument } from '../format/types';
 import {
   PALETTE_LIMIT,
   TONIO_DEFAULT_PALETTE,
@@ -10,6 +11,7 @@ import {
   mergePalettes,
   parseSavedPalettes,
   removePaletteColor,
+  stealPalette,
   withSavedPalette,
 } from './color-palette';
 
@@ -158,6 +160,80 @@ describe('loadPalette', () => {
       const wide = Array.from({ length: 200 }, (_, i) => `#${i.toString(16).padStart(6, '0')}`);
       store.set('toon-editor:palette', JSON.stringify(wide));
       expect(loadPalette()).toEqual(wide);
+    } finally {
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
+});
+
+describe('stealPalette', () => {
+  /** A document whose tool table carries the colours to steal. */
+  const doc = (tools: ToolDescriptor[]): ToonDocument => ({
+    schema_version: 5,
+    width: 10240,
+    height: 5760,
+    frame_rate: 12,
+    tools,
+    layers: [{ hidden: false, frames: [{ strokes: [] }] }],
+  });
+
+  it('appends the colours of the opened document the grid lacks', () => {
+    const stolen = stealPalette(['#000000'], doc([
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#Ff0000' },
+      { kind: 'eraser', dialect: 'toonio', width: 40 },
+      { kind: 'feather', dialect: 'toonio', width: 40, color: '#00ff00', fill: '#0000ff' },
+      { kind: 'pencil', dialect: 'toonio', width: 8, color: '#000000' },
+    ]), 50);
+    expect(stolen).toEqual(['#000000', '#ff0000', '#00ff00', '#0000ff']);
+  });
+
+  it('stops at the limit and leaves the grid alone when it has them all', () => {
+    expect(stealPalette(['#000000'], doc([
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#ff0000' },
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#00ff00' },
+    ]), 2)).toEqual(['#000000', '#ff0000']);
+    expect(stealPalette(['#ff0000'], doc([
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#ff0000' },
+    ]), 50)).toEqual(['#ff0000']);
+  });
+});
+
+describe('a palette is a set: one swatch per colour', () => {
+  it('mergePalettes drops repeats inside the incoming list, not just the ones already there', () => {
+    // The grid is keyed by colour, so a repeat is not a cosmetic duplicate —
+    // it takes the whole editor down with `each_key_duplicate`.
+    const merged = mergePalettes(['#000000'], ['#e2e8f0', '#E2E8F0', '#000000', '#ff0000'], 50);
+    expect(merged.palette).toEqual(['#000000', '#e2e8f0', '#ff0000']);
+    expect(merged.added).toBe(2);
+  });
+
+  it('stealPalette takes a colour used by two tools only once', () => {
+    const doc: ToonDocument = {
+      schema_version: 5,
+      width: 10240,
+      height: 5760,
+      frame_rate: 12,
+      tools: [
+        { kind: 'pencil', dialect: 'toonio', width: 40, color: '#e2e8f0' },
+        { kind: 'pencil', dialect: 'toonio', width: 144, color: '#e2e8f0' },
+        { kind: 'feather', dialect: 'toonio', width: 40, color: '#e2e8f0', fill: '#e2e8f0' },
+      ],
+      layers: [{ hidden: false, frames: [{ strokes: [] }] }],
+    };
+    const stolen = stealPalette(['#000000'], doc, 50);
+    expect(stolen).toEqual(['#000000', '#e2e8f0']);
+    expect(new Set(stolen).size).toBe(stolen.length);
+  });
+
+  it('a grid saved with duplicates in it comes back clean', () => {
+    const store = new Map<string, string>();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    };
+    try {
+      store.set('toon-editor:palette', JSON.stringify(['#000000', '#e2e8f0', '#e2e8f0', '#ff0000']));
+      expect(loadPalette()).toEqual(['#000000', '#e2e8f0', '#ff0000']);
     } finally {
       delete (globalThis as { localStorage?: unknown }).localStorage;
     }

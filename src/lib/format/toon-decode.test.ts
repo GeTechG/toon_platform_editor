@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { TOONIO_CANVAS_HEIGHT, TOONIO_CANVAS_WIDTH, decodeToon } from './toon-decode';
+import { STROKE_COORD_MAX, STROKE_COORD_MIN } from './constants';
+import { TOONIO_CANVAS_HEIGHT, TOONIO_CANVAS_WIDTH, decodeLegacyJson, decodeToon } from './toon-decode';
 import { validateDocument } from './validate';
 
 /** Builds a `.toon` body the way the reference writer does (Int16 words). */
@@ -110,16 +111,58 @@ describe('decodeToon: rejections', () => {
     if (!result.ok) expect(result.error).toContain('обрыв');
   });
 
-  it('refuses coordinates the editor cannot represent', () => {
-    const result = decodeToon(encode([
-      ...header(1, 1), 1, ...PENCIL,
-      1, 0, 0, 1, 0, 1, 30000, 0,
-    ]));
-    expect(result.ok).toBe(false);
-  });
-
   it('refuses an empty buffer', () => {
     expect(decodeToon(new ArrayBuffer(0)).ok).toBe(false);
+  });
+});
+
+/** Length-prefixed char array, the way the reference writes a string. */
+const str = (text: string) => [text.length, ...[...text].map((c) => c.charCodeAt(0))];
+
+describe('decodeToon: names', () => {
+  it('keeps the layer names and the title of the original', () => {
+    const result = decodeToon(encode([
+      2, 1, 12, 999, 5, ...str('Мой мульт'),
+      1, ...PENCIL,
+      1, ...str('Герой'),
+      0, 0,
+      1, ...str('Фон'),
+      0, 0,
+    ]));
+    if (!result.ok) throw new Error(result.error);
+    expect(result.original).toBe('Мой мульт');
+    // The reference's layer 0 is the topmost one; ours renders bottom-up.
+    expect(result.doc.layers.map((layer) => layer.name)).toEqual(['Фон', 'Герой']);
+    expect(validateDocument(result.doc).ok).toBe(true);
+  });
+
+  it('leaves an unnamed layer without a name and an untitled file without a title', () => {
+    const result = decodeToon(encode([
+      1, 1, 12, 999, 5, 0,
+      1, ...PENCIL,
+      1, 0,
+      0, 0,
+    ]));
+    if (!result.ok) throw new Error(result.error);
+    expect(result.original).toBe('');
+    expect(result.doc.layers[0].name).toBeUndefined();
+  });
+});
+
+describe('decodeToon: a point that flew off the canvas', () => {
+  it('clamps it to the document range instead of rejecting the file', () => {
+    // One stroke leaves the representable range; the rest of the drawing
+    // must still open — the reference never loses a file over one point.
+    const doc = ok(decodeToon(encode([
+      ...header(1, 1), 1, ...PENCIL,
+      1, 0, 0, 2,
+      0, 2, 30000, 10, -30000, 20,
+      0, 2, 1, 2, 3, 4,
+    ])));
+    const [flown, intact] = doc.layers[0].frames[0].strokes;
+    expect(flown.points).toEqual([STROKE_COORD_MAX, 80, STROKE_COORD_MIN, 160]);
+    expect(intact.points).toEqual([8, 16, 24, 32]);
+    expect(validateDocument(doc).ok).toBe(true);
   });
 });
 
@@ -136,5 +179,52 @@ describe('decodeToon: legacy versions', () => {
     ])));
     expect(doc.tools).toEqual([{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }]);
     expect(doc.layers[0].frames[0].strokes[0].points).toEqual([80, -160, 240, 320]);
+  });
+});
+
+describe('decodeLegacyJson', () => {
+  it('reads the full form: Data.FPS, per-line width and color', () => {
+    const doc = ok(decodeLegacyJson(JSON.stringify({
+      Data: { FPS: 10 },
+      Frames: [
+        [{ Width: 3, Color: '#ff0000', Cs: [{ x: 10, y: 20 }, { x: 30, y: 40 }] }],
+        [{ Width: 8, Color: '#00ff00', Cs: [{ x: 1, y: 2 }] }],
+      ],
+    })));
+    expect(doc.frame_rate).toBe(10);
+    expect(doc.width).toBe(TOONIO_CANVAS_WIDTH * 8);
+    expect(doc.height).toBe(TOONIO_CANVAS_HEIGHT * 8);
+    expect(doc.layers).toHaveLength(1);
+    expect(doc.layers[0].hidden).toBe(false);
+    expect(doc.tools).toEqual([
+      { kind: 'pencil', dialect: 'toonio', width: 24, color: '#ff0000' },
+      { kind: 'pencil', dialect: 'toonio', width: 64, color: '#00ff00' },
+    ]);
+    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [80, 160, 240, 320], tool_id: 0 }]);
+    expect(doc.layers[0].frames[1].strokes).toEqual([{ points: [8, 16], tool_id: 1 }]);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('reads the bare array form as a black pencil of width 5 at 13 fps', () => {
+    const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 1, y: 2 }, { x: 3, y: 4 }]]])));
+    expect(doc.frame_rate).toBe(13);
+    expect(doc.tools).toEqual([{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }]);
+    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [8, 16, 24, 32], tool_id: 0 }]);
+  });
+
+  it('clamps a point that flew off the canvas', () => {
+    const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 30000, y: 0 }]]])));
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([STROKE_COORD_MAX, 0]);
+  });
+
+  it('refuses text that is not JSON', () => {
+    const result = decodeLegacyJson('{not json');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBeString();
+  });
+
+  it('refuses JSON that carries no frames', () => {
+    expect(decodeLegacyJson('{"Data":{"FPS":10}}').ok).toBe(false);
+    expect(decodeLegacyJson('[]').ok).toBe(false);
   });
 });

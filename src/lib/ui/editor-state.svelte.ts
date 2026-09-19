@@ -4,6 +4,7 @@
  */
 
 import { AudioTrackState } from '../audio/state.svelte';
+import type { DraftState } from '../draft/store';
 import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
@@ -76,6 +77,8 @@ import {
   removePaletteColor,
   savePalette,
   saveSavedPalettes,
+  stealPalette,
+  uniqueColours,
   withSavedPalette,
   type SavedPalette,
 } from './color-palette';
@@ -306,6 +309,10 @@ export class EditorState {
   ask: (message: string) => boolean = () => true;
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
+  /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
+  original = $state('');
+  /** Set by the transport so a write deferred by playback lands on stop. */
+  onStop: (() => void) | null = null;
 
   /** Active UI preset id and the per-button visibility map (persisted). */
   preset = $state(DEFAULT_PRESET);
@@ -492,7 +499,7 @@ export class EditorState {
 
   /** Reference LoadPalette(colours, true): the grid becomes exactly these colors. */
   replacePalette(colours: readonly string[]): void {
-    this.palette = colours.map((c) => c.toLowerCase()).slice(-this.settings.paletteLimit);
+    this.palette = uniqueColours(colours).slice(-this.settings.paletteLimit);
     savePalette(this.palette);
   }
 
@@ -780,6 +787,72 @@ export class EditorState {
   importDoc(doc: ToonDocument): void {
     this.openDraft(doc);
     this.touched = true;
+  }
+
+  /**
+   * Reference behaviour on opening a file: the grid takes the colours the
+   * drawing uses, since the file carries no palette of its own.
+   */
+  stealPalette(doc: ToonDocument): void {
+    this.palette = stealPalette(this.palette, doc, this.settings.paletteLimit);
+    savePalette(this.palette);
+  }
+
+  /** Where the hand is, for the draft record to carry. */
+  sessionState(): DraftState {
+    const widths: Record<string, number> = {};
+    const smooth: Record<string, number> = {};
+    const minDistance: Record<string, number> = {};
+    for (const id of BRUSH_TOOLS) {
+      const brush = this.tonioByTool[id];
+      widths[id] = brush.width;
+      smooth[id] = brush.smooth;
+      minDistance[id] = brush.minDistance;
+    }
+    widths.multator = this.multatorBrushSizeLogical;
+    return {
+      frame: this.activeFrame,
+      layer: this.activeLayer,
+      tool: this.tool,
+      widths,
+      smooth,
+      minDistance,
+      outline: this.brushColor,
+      fill: this.fillColor,
+      palette: this.palette.slice(),
+    };
+  }
+
+  /** Puts it back after a draft is opened. Anything missing is left as it is. */
+  restoreState(saved: DraftState): void {
+    for (const id of BRUSH_TOOLS) {
+      this.tonioByTool[id] = {
+        width: saved.widths?.[id] ?? this.tonioByTool[id].width,
+        smooth: saved.smooth?.[id] ?? this.tonioByTool[id].smooth,
+        minDistance: saved.minDistance?.[id] ?? this.tonioByTool[id].minDistance,
+      };
+    }
+    if (typeof saved.widths?.multator === 'number') {
+      this.multatorBrushSizeLogical = saved.widths.multator;
+    }
+    if (saved.outline) {
+      this.brushColor = saved.outline;
+    }
+    if (saved.fill) {
+      this.fillColor = saved.fill;
+    }
+    if (Array.isArray(saved.palette) && saved.palette.length > 0) {
+      // A record written by an older build may hold repeats; the grid is keyed
+      // by colour, so they have to go before it is rendered.
+      this.palette = uniqueColours(saved.palette);
+      savePalette(this.palette);
+    }
+    if (saved.tool) {
+      this.selectTool(saved.tool as Tool);
+    }
+    this.selectFrame(saved.frame ?? 0);
+    this.selectLayer(saved.layer ?? 0);
+    this.persistUiConfig();
   }
 
   /** Back to 100% with the document centered in the canvas. */

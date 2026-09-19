@@ -3,7 +3,6 @@
   import { frameCount } from '../model/operations';
   import type { EditorState } from './editor-state.svelte';
   import { LoopPlayer } from '../player/player';
-  import { frameForTime } from '../audio/track';
   import { playbackRange } from './frame-selection';
   import Icon from './Icon.svelte';
 
@@ -23,21 +22,13 @@
     // still said "stop", and only a page reload brought playback back.
     try {
       player?.tick(now);
-      // Tied, the track is pinned to the first frame: it restarts with the
-      // animation, and in between the frame is read off the track's own clock
-      // rather than counted alongside it, so the two cannot drift. Untied, the
-      // frame counter is left alone and the track simply plays underneath.
-      if (editor.audio.sync && editor.audio.hasTrack) {
-        const frames = frameCount(editor.doc);
-        if (editor.audio.sounding) {
-          editor.audio.restartIfLooped(frames, editor.doc.frame_rate);
-          editor.playbackFrame =
-            frameForTime(editor.audio.currentTime, editor.doc.frame_rate) % frames;
-        } else if (editor.playbackFrame < lastFrame) {
-          // The track ran out before the animation did — it starts again with
-          // it, and the stretch in between stays quiet.
-          editor.audio.playFrom(0, editor.doc.frame_rate);
-        }
+      // The frames run on the player's clock in both modes, as the reference's
+      // `UpdatePlayFrame` does. Tied, every time the animation comes back round
+      // the track is pulled to where this frame sits in it — so a track shorter
+      // than the animation repeats under it rather than falling silent, and a
+      // longer one is heard only as far as the animation reaches.
+      if (editor.audio.sync && editor.audio.hasTrack && editor.playbackFrame < lastFrame) {
+        editor.audio.reseekAtLoop(editor.playbackFrame, editor.doc.frame_rate);
       }
       lastFrame = editor.playbackFrame;
     } catch (err) {
@@ -92,6 +83,10 @@
   function stop(): void {
     cancelAnimationFrame(rafId);
     editor.audio.stop();
+    // The reference defers an autosave until the preview is over; this is the
+    // moment it is over, so a deferred write happens now rather than on the
+    // next turn of the clock.
+    editor.onStop?.();
     if (player) {
       player.stop();
       editor.activeFrame = resumeFrame;

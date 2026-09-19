@@ -4,16 +4,20 @@
  * decoding itself (`AudioContext.decodeAudioData`) lives in the UI.
  */
 
-/** Types the reference's «нота» button accepts. */
+/** Types the «нота» button suggests; anything `audio/*` is accepted. */
 export const AUDIO_MIME_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-wav'] as const;
 
-/** Size cap: a track rides in the draft and in the publish payload. */
-export const AUDIO_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * Size cap: a track rides in the draft, and past this point the record itself
+ * is «слишком большой» for IndexedDB on a phone. The reference has no cap of
+ * its own — the browser's decoder is the only judge of a file.
+ */
+export const AUDIO_MAX_BYTES = 70 * 1024 * 1024;
 
 /** Complaint about a picked file, or null if it may be loaded. */
 export function checkAudioFile(file: { type: string; size: number }): string | null {
-  if (!(AUDIO_MIME_TYPES as readonly string[]).includes(file.type)) {
-    return 'Нужен звуковой файл: mp3, ogg или wav';
+  if (!file.type.startsWith('audio/')) {
+    return 'Нужен звуковой файл';
   }
   if (file.size > AUDIO_MAX_BYTES) {
     return `Файл тяжелее ${AUDIO_MAX_BYTES / 1024 / 1024} МБ`;
@@ -39,6 +43,23 @@ export function loopSeconds(frames: number, fps: number): number {
  */
 export function trackShouldRestart(currentTime: number, frames: number, fps: number): boolean {
   return currentTime >= loopSeconds(frames, fps);
+}
+
+/**
+ * Where a tied track stands when frame `index` is shown, or `null` past its
+ * end — there is nothing to play there.
+ *
+ * Tied means one frame maps to one point of the track. A track shorter than
+ * the animation therefore sounds once and stops, starting again when the
+ * animation comes back round to its first frame. The reference repeats it by
+ * the modulo of its length instead (`bundle:8429-8447`), which plays the same
+ * second of the track on several frames and turns a three-second line of
+ * dialogue into a chant; looping under the frames is what the *untied* mode is
+ * for. Deliberate departure from toonio.ru — see the `audio-track` spec.
+ */
+export function trackTimeFor(index: number, fps: number, duration: number): number | null {
+  const at = timeForFrame(index, fps);
+  return duration > 0 && at >= duration ? null : at;
 }
 
 /** The frame holding second `time`. */
@@ -102,4 +123,101 @@ export function trackEnvelope(buffer: DecodedAudio): Float32Array {
     }
   }
   return envelope;
+}
+
+/**
+ * The reference's wave (`bundle:8706-8740`): every frame is cut into
+ * `barsPerFrame` windows, each bar is the mean level of its window, and the
+ * whole track is normalised by its loudest bar — so a quiet recording still
+ * draws a full wave.
+ */
+export function waveformBars(
+  samples: Float32Array,
+  sampleRate: number,
+  fps: number,
+  barsPerFrame: number,
+): Float32Array {
+  const perBar = sampleRate / fps / Math.max(1, barsPerFrame);
+  const bars = new Float32Array(Math.ceil(samples.length / perBar));
+  const counts = new Float32Array(bars.length);
+  for (let i = 0; i < samples.length; i++) {
+    const bar = Math.floor(i / perBar);
+    bars[bar] += Math.abs(samples[i]);
+    counts[bar]++;
+  }
+  let loudest = 0;
+  for (let i = 0; i < bars.length; i++) {
+    bars[i] = counts[i] ? bars[i] / counts[i] : 0;
+    if (bars[i] > loudest) {
+      loudest = bars[i];
+    }
+  }
+  if (loudest > 0) {
+    for (let i = 0; i < bars.length; i++) {
+      bars[i] /= loudest;
+    }
+  }
+  return bars;
+}
+
+/**
+ * Artist and title out of an ID3v2.3/2.4 tag — `TPE1` and `TIT2`, in the
+ * three text encodings anything in the wild uses. Untrusted input: every
+ * length comes out of the file, so a frame that claims more than the buffer
+ * holds ends the read instead of throwing. No tag means empty strings, which
+ * is exactly what the reference falls back on.
+ */
+export function readId3(buffer: ArrayBuffer): { artist: string; title: string } {
+  const bytes = new Uint8Array(buffer);
+  const none = { artist: '', title: '' };
+  if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) {
+    return none;
+  }
+  const version = bytes[3];
+  if (version !== 3 && version !== 4) {
+    return none;
+  }
+  const end = Math.min(bytes.length, 10 + synchsafe(bytes, 6));
+  const found = { ...none };
+  let at = 10;
+  while (at + 10 <= end) {
+    const id = String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
+    if (id === '\0\0\0\0') {
+      break; // padding
+    }
+    // v2.4 sizes are synchsafe; v2.3 stores a plain 32-bit length.
+    const size = version === 4
+      ? synchsafe(bytes, at + 4)
+      : (bytes[at + 4] << 24) | (bytes[at + 5] << 16) | (bytes[at + 6] << 8) | bytes[at + 7];
+    const from = at + 10;
+    if (size <= 0 || from + size > end) {
+      break;
+    }
+    if (id === 'TPE1' || id === 'TIT2') {
+      const text = decodeText(bytes.subarray(from, from + size));
+      if (id === 'TPE1') {
+        found.artist = text;
+      } else {
+        found.title = text;
+      }
+    }
+    at = from + size;
+  }
+  return found;
+}
+
+/** Four bytes of seven bits each — ID3's way of never spelling 0xFF. */
+function synchsafe(bytes: Uint8Array, at: number): number {
+  return ((bytes[at] & 127) << 21) | ((bytes[at + 1] & 127) << 14) | ((bytes[at + 2] & 127) << 7) | (bytes[at + 3] & 127);
+}
+
+/** An ID3 text frame: one encoding byte, then the string. */
+function decodeText(frame: Uint8Array): string {
+  const body = frame.subarray(1);
+  const label = frame[0] === 1 || frame[0] === 2 ? 'utf-16' : frame[0] === 3 ? 'utf-8' : 'latin1';
+  try {
+    return new TextDecoder(label).decode(body).replace(/\0+$/, '');
+  } catch {
+    return '';
+  }
 }

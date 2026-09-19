@@ -6,9 +6,12 @@ import {
   ENVELOPE_RATE,
   frameForTime,
   loopSeconds,
+  readId3,
   timeForFrame,
+  trackTimeFor,
   trackEnvelope,
   trackShouldRestart,
+  waveformBars,
   waveformPeaks,
 } from './track';
 
@@ -27,7 +30,7 @@ describe('checkAudioFile', () => {
   });
 
   test('rejects a type that is not audio', () => {
-    expect(checkAudioFile({ type: 'video/mp4', size: 1024 })).toMatch(/mp3/);
+    expect(checkAudioFile({ type: 'video/mp4', size: 1024 })).toMatch(/звук/);
   });
 
   test('accepts every advertised type', () => {
@@ -117,5 +120,133 @@ describe('trackEnvelope', () => {
     const env = trackEnvelope(buffer([Array(ENVELOPE_RATE).fill(1)], ENVELOPE_RATE));
     expect(waveformPeaks(env, ENVELOPE_RATE, 12).length).toBe(12);
     expect(waveformPeaks(env, ENVELOPE_RATE, 24).length).toBe(24);
+  });
+});
+
+describe('any audio file the browser might play', () => {
+  test('accepts a type outside the known list, as long as it is audio', () => {
+    expect(checkAudioFile({ type: 'audio/flac', size: 1024 })).toBeNull();
+    expect(checkAudioFile({ type: 'audio/x-unknown', size: 1024 })).toBeNull();
+  });
+
+  test('still refuses what is not audio at all', () => {
+    expect(checkAudioFile({ type: 'image/png', size: 1024 })).toBeString();
+    expect(checkAudioFile({ type: '', size: 1024 })).toBeString();
+  });
+
+  test('the cap is the size a draft record can still carry', () => {
+    expect(AUDIO_MAX_BYTES).toBe(70 * 1024 * 1024);
+  });
+});
+
+describe('trackTimeFor: tied means one frame, one point of the track', () => {
+  test('the position is the frame\'s own time', () => {
+    expect(trackTimeFor(24, 12, 10)).toBeCloseTo(2, 5);
+    expect(trackTimeFor(0, 12, 1)).toBe(0);
+    expect(trackTimeFor(11, 12, 1)).toBeCloseTo(11 / 12, 5);
+  });
+
+  test('past the end of the track there is nothing to play — silence, not a repeat', () => {
+    // 36 frames at 12 fps over a one-second track: the track sounds through
+    // frame 11 and the rest of the pass is quiet, until frame 0 comes round.
+    expect(trackTimeFor(12, 12, 1)).toBeNull();
+    expect(trackTimeFor(30, 12, 1)).toBeNull();
+  });
+
+  test('an unknown duration is not a reason to stay quiet', () => {
+    expect(trackTimeFor(24, 12, 0)).toBeCloseTo(2, 5);
+  });
+});
+
+describe('waveformBars', () => {
+  test('a bar is the mean level of its window, normalised by the loudest', () => {
+    // 100 Hz, 2 fps, one bar per frame → a 50-sample window per bar.
+    const samples = signal(100, (i) => (i < 50 ? 1 : 0.25));
+    const bars = waveformBars(samples, 100, 2, 1);
+    expect(bars.length).toBe(2);
+    expect(bars[0]).toBeCloseTo(1, 5);
+    expect(bars[1]).toBeCloseTo(0.25, 5);
+  });
+
+  test('a full sine reads as its mean magnitude, not its peak', () => {
+    const rate = 1000;
+    const samples = signal(rate, (i) => Math.sin((2 * Math.PI * i) / rate));
+    // One second at 2 fps, two bars per frame → four quarter-second windows,
+    // each holding a quarter of the sine; all four have the same mean.
+    const bars = waveformBars(samples, rate, 2, 2);
+    expect(bars.length).toBe(4);
+    for (const bar of bars) {
+      expect(bar).toBeCloseTo(1, 1); // discrete windows differ a fraction of a percent
+    }
+  });
+
+  test('more bars per frame cuts the same track into more windows', () => {
+    const samples = signal(1200, () => 0.5);
+    expect(waveformBars(samples, 1200, 12, 1).length).toBe(12);
+    expect(waveformBars(samples, 1200, 12, 4).length).toBe(48);
+  });
+
+  test('silence and no samples produce no false bars', () => {
+    expect(waveformBars(new Float32Array(0), 8000, 12, 2).length).toBe(0);
+    expect([...waveformBars(signal(100, () => 0), 100, 2, 1)]).toEqual([0, 0]);
+  });
+});
+
+describe('readId3', () => {
+  /** Builds an ID3v2 tag holding the given frames, then a byte of "audio". */
+  function tag(version: 3 | 4, frames: [string, number, string][]): ArrayBuffer {
+    const body: number[] = [];
+    for (const [id, encoding, text] of frames) {
+      const data = [encoding, ...textBytes(encoding, text)];
+      const size = version === 4
+        ? [(data.length >> 21) & 127, (data.length >> 14) & 127, (data.length >> 7) & 127, data.length & 127]
+        : [(data.length >>> 24) & 255, (data.length >> 16) & 255, (data.length >> 8) & 255, data.length & 255];
+      body.push(...[...id].map((c) => c.charCodeAt(0)), ...size, 0, 0, ...data);
+    }
+    const n = body.length;
+    return Uint8Array.from([
+      0x49, 0x44, 0x33, version, 0, 0,
+      (n >> 21) & 127, (n >> 14) & 127, (n >> 7) & 127, n & 127,
+      ...body,
+      0xff, 0xfb, // where the audio would start
+    ]).buffer;
+  }
+
+  function textBytes(encoding: number, text: string): number[] {
+    if (encoding === 1) {
+      const out = [0xff, 0xfe]; // little-endian BOM
+      for (const char of text) {
+        const code = char.charCodeAt(0);
+        out.push(code & 255, code >> 8);
+      }
+      return out;
+    }
+    return [...new TextEncoder().encode(text)];
+  }
+
+  test('reads the artist and the title of a v2.3 tag', () => {
+    expect(readId3(tag(3, [['TPE1', 0, 'Kino'], ['TIT2', 0, 'Kukushka']]))).toEqual({
+      artist: 'Kino',
+      title: 'Kukushka',
+    });
+  });
+
+  test('reads UTF-16 and UTF-8 frames of a v2.4 tag', () => {
+    expect(readId3(tag(4, [['TPE1', 1, 'Кино'], ['TIT2', 3, 'Кукушка']]))).toEqual({
+      artist: 'Кино',
+      title: 'Кукушка',
+    });
+  });
+
+  test('a file with no tag, or only some of it, gives empty strings', () => {
+    expect(readId3(Uint8Array.from([0xff, 0xfb, 0, 0]).buffer)).toEqual({ artist: '', title: '' });
+    expect(readId3(new ArrayBuffer(0))).toEqual({ artist: '', title: '' });
+    expect(readId3(tag(4, [['TIT2', 3, 'Кукушка']]))).toEqual({ artist: '', title: 'Кукушка' });
+  });
+
+  test('a size that runs past the buffer does not read past it', () => {
+    const bytes = new Uint8Array(tag(3, [['TIT2', 0, 'Kukushka']]));
+    bytes[17] = 200; // the frame claims 200 bytes of text
+    expect(readId3(bytes.buffer)).toEqual({ artist: '', title: '' });
   });
 });

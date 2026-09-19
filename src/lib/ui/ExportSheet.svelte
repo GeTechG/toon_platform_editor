@@ -18,7 +18,7 @@
   import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
 
-  let { editor }: { editor: EditorState } = $props();
+  let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
 
   type Format = 'png' | 'gif' | 'video';
 
@@ -146,6 +146,9 @@
    * format the document actually is (`export_help.js:108-126`).
    */
   function openSheet(): void {
+    // The reference writes the draft before an export: what is being exported
+    // should be on disk before a long encode has a chance to go wrong.
+    onOpen?.();
     format = singleFrame ? 'png' : 'gif';
     open = true;
   }

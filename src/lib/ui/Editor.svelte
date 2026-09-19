@@ -13,18 +13,25 @@
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
   import Icon from './Icon.svelte';
-  import { decodeToon } from '../format/toon-decode';
+  import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
+  import { loadDocument } from '../format/validate';
+  import { isEmptyDocument } from '../model/operations';
+  import { draftSizeClass, formatFileSize } from './file-size';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
   import { wrapIndex } from './frame-selection';
   import { draftEntries } from '../draft/restore';
   import {
+    deleteAllDrafts,
     deleteDraft,
+    duplicateDraft,
     listDrafts,
     newDraftId,
     saveDraft,
     setDraftAudio,
     setDraftCredits,
+    setDraftScreenshot,
   } from '../draft/store';
+  import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { FEATURE_LABELS, FEATURE_ORDER, PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, PRESETS } from './presets';
@@ -58,11 +65,12 @@
   // Studio layout (toonio.ru): tools down the left, palette and brush boxes
   // on the right, the timeline and transport under the canvas.
   const studio = $derived(editor.ux.layout === 'studio');
-  // The session being autosaved. Minted at the first edit and kept for as long
-  // as this sheet lives, so a session overwrites its own record instead of
-  // piling up a new draft per stroke; a draft opened from the list continues
-  // under its own id.
-  let draftId: string | null = null;
+  // The session being autosaved. Minted when the editor opens and kept for as
+  // long as this sheet lives, so a visit overwrites its own record instead of
+  // piling up a new draft per stroke (reference `autosave_worker.js:14-22`); a
+  // draft opened from the list continues under its own id, and opening a file
+  // starts a fresh one. Nothing is written until something is drawn.
+  let draftId = newDraftId();
 
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
@@ -168,7 +176,13 @@
     }
     if (e.altKey && (e.key === 's' || e.key === 'S')) {
       e.preventDefault();
-      exportButton?.start();
+      // Reference Alt+S in Toonio saves the project to a file; the other
+      // presets have no project file, so there it stays the export.
+      if (studio) {
+        saveProjectFile();
+      } else {
+        exportButton?.start();
+      }
       return;
     }
     if (e.altKey && e.key === 'Enter') {
@@ -481,15 +495,73 @@
     dirty = true;
   });
 
+  /** A write into working storage failed: stop trying and say so, once. */
+  let saveFailed = $state(false);
+  /** The clock came round during playback; the write waits for the stop. */
+  let queued = false;
+  /** Size of the record as last written — what the indicator reports. */
+  let savedBytes = $state(0);
+
   /** Writes the draft right now — the autosave clock, Ctrl+S and the sheet. */
   function saveNow(): void {
-    if (!editor.touched) {
+    if (!editor.touched || saveFailed) {
       return;
     }
-    draftId ??= newDraftId();
-    void saveDraft(draftId, $state.snapshot(editor.doc));
+    const doc = $state.snapshot(editor.doc);
+    queued = false;
     dirty = false;
     editor.lastSavedAt = Date.now();
+    // What the record will weigh: the document plus the track riding with it.
+    savedBytes = JSON.stringify(doc).length + (editor.audio.blob?.size ?? 0);
+    void saveDraft(draftId, doc, editor.sessionState()).then((ok) => {
+      if (ok) {
+        writeScreenshot(doc);
+        return;
+      }
+      saveFailed = true;
+      alert('Ошибка локального сохранения. Скачайте проект и перезагрузите страницу.');
+    });
+  }
+
+  /** Called by the transport when a preview stops: the deferred write lands now. */
+  export function saveQueued(): void {
+    if (queued) {
+      saveNow();
+    }
+  }
+
+  /**
+   * The card's thumbnail: rendered once per write, when the CPU is free.
+   * Drawing it inline would cost a frame of the stroke that triggered it.
+   */
+  function writeScreenshot(doc: ToonDocument): void {
+    // The record this write belongs to, captured now: by the time the browser
+    // is idle a file may have been opened and `draftId` moved on.
+    const id = draftId;
+    const idle = globalThis.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 500));
+    idle(() => {
+      void renderScreenshot(doc)
+        .then((blob) => setDraftScreenshot(id, blob))
+        .catch((err) => console.warn('draft screenshot failed:', err));
+    });
+  }
+
+  /**
+   * Reference Alt+S in the Toonio preset: the project leaves as a file in our
+   * own `.toonop` — the document exactly as the draft and the API hold it, no
+   * wrapper. Sound and palette stay in the draft, as they do in a `.toon`.
+   */
+  function saveProjectFile(): void {
+    if (editor.warnings && !confirm('Скачать проект в формате .toonop?')) {
+      return;
+    }
+    const blob = new Blob([JSON.stringify($state.snapshot(editor.doc))], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'toonop.toonop';
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   // The track rides the draft but not the document: it is written on its own
@@ -509,12 +581,9 @@
 
   $effect(() => {
     const blob = editor.audio.blob;
-    // An editor that was opened and not touched has no session to write to:
-    // minting an id here would leave an empty record behind on every visit.
-    if ((!blob && draftId === null) || blob === storedBlob) {
+    if (blob === storedBlob) {
       return;
     }
-    draftId ??= newDraftId();
     const { name, author, sync } = untrack(() => editor.audio);
     storedBlob = blob;
     storedCredits = `${name}\u0000${author}\u0000${sync}`;
@@ -529,7 +598,7 @@
   $effect(() => {
     const { name, author, sync } = editor.audio;
     const credits = `${name}\u0000${author}\u0000${sync}`;
-    if (draftId === null || credits === storedCredits || !untrack(() => editor.audio.hasTrack)) {
+    if (credits === storedCredits || !untrack(() => editor.audio.hasTrack)) {
       return;
     }
     storedCredits = credits;
@@ -541,14 +610,22 @@
   // keeps drawing would reset it forever and never write anything.
   $effect(() => {
     const ms = editor.settings.autosaveMs;
-    if (ms === 0) {
-      return; // «никогда» — Ctrl+S is the only way to disk.
+    if (ms === 0 || saveFailed) {
+      // «никогда» — Ctrl+S is the only way to disk; and after a failed write
+      // the clock stays off until the page is reloaded (`toon.js:99-109`).
+      return;
     }
     const timer = setInterval(() => {
-      // The reference defers a write until playback is over.
-      if (dirty && !editor.playing) {
-        saveNow();
+      if (!dirty) {
+        return;
       }
+      // The reference defers a write until playback is over — `saveQueued`
+      // writes it the moment the transport stops.
+      if (editor.playing) {
+        queued = true;
+        return;
+      }
+      saveNow();
     }, ms);
     return () => clearInterval(timer);
   });
@@ -560,14 +637,51 @@
   let draftsOpen = $state(false);
   let drafts = $state<DraftEntry[]>([]);
 
+  /** How much of the device's storage everything on it takes, for the header. */
+  let storageUsed = $state(0);
+
+  /**
+   * Object URLs for the cards' screenshots, one per record. Made here rather
+   * than in the markup: a URL minted while rendering is minted again on every
+   * re-render, and every one of them pins its blob in memory for the session.
+   */
+  let thumbUrls = $state<Record<string, string>>({});
+
   async function refreshDrafts(): Promise<void> {
     drafts = draftEntries(await listDrafts());
+    for (const url of Object.values(thumbUrls)) {
+      URL.revokeObjectURL(url);
+    }
+    thumbUrls = Object.fromEntries(
+      drafts.flatMap((entry) => (entry.screenshot ? [[entry.id, URL.createObjectURL(entry.screenshot)]] : [])),
+    );
+    storageUsed = (await navigator.storage?.estimate?.().catch(() => null))?.usage ?? 0;
+  }
+
+  /** Reference «копия»: the same drawing under a new key, the original untouched. */
+  async function copyDraft(entry: DraftEntry): Promise<void> {
+    await duplicateDraft(entry.id);
+    await refreshDrafts();
+  }
+
+  async function removeAllDrafts(): Promise<void> {
+    if (!askDelete('Удалить все черновики? Отменить это будет нельзя.')) {
+      return;
+    }
+    await deleteAllDrafts();
+    draftId = newDraftId();
+    await refreshDrafts();
   }
 
   onMount(async () => {
     // One place the editor asks from — the state calls it for frames, layers
     // and pastes alike, and `Alt+Enter` mutes it inside `confirmed`.
     editor.ask = (message: string) => confirm(message);
+    // The transport defers a write until the preview is over and tells us here.
+    editor.onStop = saveQueued;
+    // Ask the browser to keep the drafts: without this they are evictable the
+    // moment the device is short of space.
+    void navigator.storage?.persist?.().catch(() => false);
     await refreshDrafts();
     draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart;
   });
@@ -580,10 +694,16 @@
 
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
   function openDraft(entry: DraftEntry): void {
-    if (editor.touched && !confirm('Открыть черновик? Текущий рисунок будет заменён.')) {
-      return;
+    if (editor.touched) {
+      if (!confirm('Открыть черновик? Текущий рисунок будет заменён.')) {
+        return;
+      }
+      saveNow();
     }
     editor.openDraft(entry.doc);
+    if (entry.state) {
+      editor.restoreState(entry.state);
+    }
     // Claimed before the restore, which is async: the effect must already know
     // this blob is the one on disk by the time the track is adopted.
     storedBlob = entry.audio?.blob ?? null;
@@ -605,7 +725,7 @@
     }
     await deleteDraft(entry.id);
     if (draftId === entry.id) {
-      draftId = null;
+      draftId = newDraftId();
     }
     await refreshDrafts();
   }
@@ -649,21 +769,87 @@
   let importError = $state('');
 
   /**
-   * Opens a Tonio `.toon` file. The current drawing is replaced, so a touched
-   * document asks first — the draft it would overwrite is the user's work.
+   * The one door every drawing comes in through: the file dialog and a drop on
+   * the window. The decoder is picked by extension, as the reference does
+   * (`bundle:7341-7355`) — `.toonop` is our own document, `.toon` the binary
+   * Tonio file, `.json` its pre-binary save. The current drawing is replaced,
+   * so a touched document asks first and its draft is written before it goes.
    */
-  async function importToon(file: File): Promise<void> {
+  async function openFile(file: File): Promise<void> {
     importError = '';
     settingsOpen = false;
-    if (editor.touched && !confirm(`Открыть «${file.name}»? Текущий рисунок будет заменён.`)) {
+    if (editor.touched) {
+      if (!confirm(`Открыть «${file.name}»? Текущий рисунок будет заменён.`)) {
+        return;
+      }
+      saveNow();
+    }
+    const name = file.name.toLowerCase();
+    let doc: ToonDocument;
+    let original = '';
+    try {
+      if (name.endsWith('.toonop')) {
+        doc = loadDocument(JSON.parse(await file.text()));
+      } else if (name.endsWith('.json')) {
+        const result = decodeLegacyJson(await file.text());
+        if (!result.ok) {
+          importError = `Не удалось открыть файл: ${result.error}`;
+          return;
+        }
+        doc = result.doc;
+      } else if (name.endsWith('.toon')) {
+        const result = decodeToon(await file.arrayBuffer());
+        if (!result.ok) {
+          importError = `Не удалось открыть файл: ${result.error}`;
+          return;
+        }
+        doc = result.doc;
+        original = result.original;
+      } else {
+        importError = 'Кажется, такой формат файла не поддерживается';
+        return;
+      }
+    } catch (err) {
+      importError = `Не удалось открыть файл: ${err instanceof Error ? err.message : err}`;
       return;
     }
-    const result = decodeToon(await file.arrayBuffer());
-    if (!result.ok) {
-      importError = `Не удалось открыть файл: ${result.error}`;
+    adoptOpenedDoc(doc, original);
+  }
+
+  /**
+   * What the reference does around a file it has just read: the drawing
+   * replaces the current one, the grid takes the colours it uses, the track
+   * goes (a file carries none) and the visit starts a new draft record so the
+   * opened file does not overwrite what was being drawn before it.
+   */
+  function adoptOpenedDoc(doc: ToonDocument, original: string): void {
+    editor.importDoc(doc);
+    editor.original = original;
+    editor.stealPalette(doc);
+    editor.audio.clear();
+    storedBlob = null;
+    storedCredits = '';
+    draftId = newDraftId();
+  }
+
+  /**
+   * A file dropped anywhere on the window (`bundle:7341-7407`): a drawing
+   * opens, a sound is attached, anything else is named rather than ignored.
+   */
+  function onDrop(e: DragEvent): void {
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) {
       return;
     }
-    editor.importDoc(result.doc);
+    e.preventDefault();
+    if (/\.(toonop|toon|json)$/i.test(file.name)) {
+      void openFile(file);
+    } else if (file.type.startsWith('audio/')) {
+      void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
+      audioOpen = true;
+    } else {
+      importError = 'Кажется, такой формат файла не поддерживается';
+    }
   }
   // The reference's settings window: drawing, palette, autosave, view.
   let settingsSheetOpen = $state(false);
@@ -673,7 +859,10 @@
     settingsSheetOpen = true;
   }
 
-  /** «Сохранено HH:MM» on the panel — the reference shows the last write. */
+  /**
+   * «сохранено локально <дата> <размер>» on the panel — the reference names
+   * the storage, when it last wrote and how heavy the record has become.
+   */
   const lastSaved = $derived(
     editor.lastSavedAt === null
       ? ''
@@ -686,7 +875,7 @@
 
   // Mirrors the key handler above one-for-one. If a case is added there and not
   // here, the sheet lies — keep them next to each other for that reason.
-  const SHORTCUTS: [string, string][] = [
+  const SHORTCUTS: [string, string][] = $derived([
     ['B', 'Карандаш'],
     ['E', 'Ластик'],
     ['P', 'Пипетка'],
@@ -707,10 +896,10 @@
     ['X', 'Поменять контур и заливку'],
     ['Space', 'Просмотр (в трансформации — применить)'],
     ['Ctrl + S', 'Сохранить черновик сейчас'],
-    ['Alt + S', 'Экспорт'],
+    ['Alt + S', studio ? 'Скачать проект (.toonop)' : 'Экспорт'],
     ['Alt + Enter', 'Отключить предупреждения об удалении'],
     ['N', 'Тёмная тема'],
-  ];
+  ]);
 
   function openCustomize(): void {
     settingsOpen = false;
@@ -754,11 +943,12 @@
   onpointerup={onDividerUp}
   onpointercancel={onDividerUp}
   ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
-  ondrop={(e) => {
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
+  ondrop={onDrop}
+  onbeforeunload={(e) => {
+    // Unsaved strokes on a sheet that has something on it: the browser's own
+    // dialog is the last thing between them and a closed tab.
+    if (editor.touched && dirty && !isEmptyDocument(editor.doc)) {
       e.preventDefault();
-      void importToon(file);
     }
   }}
 />
@@ -766,14 +956,14 @@
 <input
   bind:this={fileInput}
   type="file"
-  accept=".toon"
+  accept=".toonop,.toon,.json"
   class="file"
-  aria-label="Открыть файл .toon"
+  aria-label="Открыть файл проекта"
   onchange={(e) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
     if (file) {
-      void importToon(file);
+      void openFile(file);
     }
   }}
 />
@@ -810,7 +1000,7 @@
 >
   {#if studio}
     <aside class="left" aria-label="Инструменты и история">
-      <ToolsPanel {editor} />
+      <ToolsPanel {editor} onSave={saveNow} {dirty} />
       <div class="history">
         {@render history()}
         {#if document.fullscreenEnabled}
@@ -1076,10 +1266,16 @@
           {/if}
         </div>
         {#if editor.features.export}
-          <ExportSheet bind:this={exportButton} {editor} />
+          <ExportSheet bind:this={exportButton} {editor} onOpen={saveNow} />
         {/if}
-        {#if lastSaved}
-          <span class="saved" role="status">Сохранено {lastSaved}</span>
+        {#if saveFailed}
+          <span class="saved too_big" role="status">
+            <Icon name="x" size={14} /> Ошибка локального сохранения
+          </span>
+        {:else if lastSaved}
+          <span class="saved {draftSizeClass(savedBytes)}" role="status">
+            сохранено локально {lastSaved} · {formatFileSize(savedBytes)}
+          </span>
         {/if}
         <div class="settings">
           <button
@@ -1193,6 +1389,7 @@
            the side columns instead. -->
       {#if !studio}
         <div class="row draw" role="group" aria-label="Кисть">
+          <!-- The save key is the Toonio rail's; the other presets keep Ctrl+S. -->
           <ToolsPanel {editor} />
           <BrushPanel {editor} />
         </div>
@@ -1222,21 +1419,47 @@
         {#if drafts.length === 0}
           <p class="empty">Сохранённых черновиков пока нет — рисуй, они появятся сами.</p>
         {:else}
-          <p class="sheet-hint">Сохранены на этом устройстве</p>
+          <p class="sheet-hint">
+            {plural(drafts.length, 'черновик', 'черновика', 'черновиков')} на этом устройстве
+            {#if storageUsed}· занято {formatFileSize(storageUsed)}{/if}
+          </p>
           <ul class="drafts">
             {#each drafts as entry (entry.id)}
               <li class="draft">
                 <button class="draft-open" onclick={() => openDraft(entry)}>
                   <span class="draft-thumb">
-                    <FrameThumb doc={entry.doc} frameIndex={0} height={44} />
+                    {#if thumbUrls[entry.id]}
+                      <!-- The still written with the record: no document to
+                           re-render, and it is what the drawing looked like. -->
+                      <img src={thumbUrls[entry.id]} alt="" height="44" />
+                    {:else}
+                      <FrameThumb doc={entry.doc} frameIndex={0} height={44} />
+                    {/if}
                   </span>
                   <span class="draft-meta">
                     <span class="draft-date">{new Date(entry.updated).toLocaleString('ru')}</span>
                     <span class="draft-size">
                       {plural(entry.doc.layers[0].frames.length, 'кадр', 'кадра', 'кадров')} ·
                       {plural(entry.doc.layers.length, 'слой', 'слоя', 'слоёв')}
+                      {#if entry.bytes}
+                        · <span class={draftSizeClass(entry.bytes)}>{formatFileSize(entry.bytes)}</span>
+                      {/if}
                     </span>
+                    {#if entry.audio}
+                      <span class="draft-track">
+                        <Icon name="note" size={13} />
+                        {entry.audio.author ? `${entry.audio.author} — ` : ''}{entry.audio.name || 'без названия'}
+                      </span>
+                    {/if}
                   </span>
+                </button>
+                <button
+                  class="key icon"
+                  onclick={() => copyDraft(entry)}
+                  title="Сделать копию черновика"
+                  aria-label="Копия черновика"
+                >
+                  <Icon name="copy" />
                 </button>
                 <button
                   class="key icon"
@@ -1253,13 +1476,16 @@
       </div>
 
       <footer class="sheet-foot">
+        {#if drafts.length > 0}
+          <button class="key" onclick={removeAllDrafts}>Удалить все</button>
+        {/if}
         <button class="key primary" onclick={() => (draftsOpen = false)}>Закрыть</button>
       </footer>
     </div>
   {/if}
 
   {#if settingsSheetOpen}
-    <SettingsSheet {editor} onClose={() => (settingsSheetOpen = false)} />
+    <SettingsSheet {editor} onClose={() => (settingsSheetOpen = false)} onSaveNow={saveNow} />
   {/if}
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->

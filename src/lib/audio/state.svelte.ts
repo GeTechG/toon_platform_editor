@@ -9,10 +9,10 @@
 import {
   ENVELOPE_RATE,
   checkAudioFile,
-  timeForFrame,
+  readId3,
   trackEnvelope,
-  trackShouldRestart,
-  waveformPeaks,
+  trackTimeFor,
+  waveformBars,
 } from './track';
 
 /** A track as it is stored and published: bytes plus the credits. */
@@ -65,9 +65,12 @@ export class AudioTrackState {
     return this.#element?.currentTime ?? 0;
   }
 
-  /** One bar per frame at `fps` — what the timeline draws under the strip. */
-  peaks(fps: number): Float32Array {
-    return waveformPeaks(this.envelope, ENVELOPE_RATE, fps);
+  /**
+   * `barsPerFrame` bars per frame at `fps` — what the timeline draws under
+   * the strip, the reference's half-a-bar-per-pixel wave.
+   */
+  bars(fps: number, barsPerFrame: number): Float32Array {
+    return waveformBars(this.envelope, ENVELOPE_RATE, fps, barsPerFrame);
   }
 
   /**
@@ -80,10 +83,13 @@ export class AudioTrackState {
       this.error = complaint;
       return false;
     }
+    let tags = { artist: '', title: '' };
     try {
+      const bytes = await file.arrayBuffer();
+      tags = readId3(bytes);
       const context = new AudioContext();
       try {
-        const decoded = await context.decodeAudioData(await file.arrayBuffer());
+        const decoded = await context.decodeAudioData(bytes);
         this.envelope = trackEnvelope(decoded);
         this.duration = decoded.duration;
       } finally {
@@ -91,10 +97,12 @@ export class AudioTrackState {
       }
     } catch (err) {
       console.warn('audio decode failed:', err);
-      this.error = 'Не получилось прочитать звук';
+      this.error = 'Редактор не смог декодировать этот звук, попробуйте другой формат';
       return false;
     }
-    this.#adopt(file, name, author);
+    // What the file says about itself wins over the file name, which is what
+    // the caller passes when it knows nothing better.
+    this.#adopt(file, tags.title || name, tags.artist || author);
     this.error = '';
     return true;
   }
@@ -162,24 +170,25 @@ export class AudioTrackState {
   }
 
   /**
-   * Starts the sound. Tied to the frames it begins where frame `frame` sits;
-   * untied it begins at the top of the track, which is what "just play this
-   * underneath" means. Past the end of the track the animation plays on in
-   * silence, as the reference does.
+   * Starts the sound. Tied to the frames it begins where frame `frame` sits
+   * inside the track — and stays silent past the track's end, since no frame
+   * out there has any sound of its own. Untied it begins at the top of the
+   * track, which is what "just play this underneath" means.
    */
   playFrom(frame: number, fps: number): void {
     if (!this.#element) {
       return;
     }
-    const at = this.sync ? timeForFrame(frame, fps) : 0;
-    // Past the end of the track the animation plays on in silence, as the
-    // reference does. An unknown duration is not a reason to stay quiet.
-    if (this.duration > 0 && at >= this.duration) {
+    const at = this.sync ? trackTimeFor(frame, fps, this.duration) : 0;
+    if (at === null) {
+      // Past the end of a tied track: quiet until the animation comes round.
+      this.stop();
       return;
     }
-    // Tied, the loop point is the animation's, not the track's: the element
-    // must not wrap on its own, or a track shorter than the animation would
-    // drag the frames back to the start with it and the tail would never show.
+    // Tied, the loop belongs to the animation, not to the track: the element
+    // must not wrap on its own, or the tail of a long pass would hear the
+    // beginning of the track again. Untied, looping under the frames is the
+    // whole point.
     this.#element.loop = !this.sync;
     this.#element.currentTime = at;
     void this.#element.play().catch((err) => {
@@ -192,21 +201,21 @@ export class AudioTrackState {
   }
 
   /**
-   * Tied, the animation is the timeline: when it comes back round to its first
-   * frame the track comes back with it, however much of the track is left.
-   * Returns true when it rewound, so the caller can read the frame off the
-   * fresh position rather than the old one.
+   * Tied, the animation is the timeline: every time the preview comes back
+   * round to the frame it started on, the track is pulled to where that frame
+   * sits in it and played from there — which is also how a track that ran out
+   * during the pass starts again. Same rule as `playFrom`, so there is one
+   * place that decides where a tied track stands.
    *
-   * ponytail: checked once per animation frame, so the track can run up to one
-   * frame past the loop point before it snaps back — less than the video frame
-   * it sits under. A `setTimeout` scheduled at the loop point if that is ever
-   * audible.
+   * ponytail: realigned once per pass, so a long pass can drift by whatever
+   * the element's clock drifts — inaudible at these lengths. Reseek per frame
+   * if it ever is not.
    */
-  restartIfLooped(frames: number, fps: number): boolean {
-    if (!this.sync || !this.#element || !trackShouldRestart(this.#element.currentTime, frames, fps)) {
+  reseekAtLoop(frame: number, fps: number): boolean {
+    if (!this.sync || !this.#element) {
       return false;
     }
-    this.#element.currentTime = 0;
+    this.playFrom(frame, fps);
     return true;
   }
 

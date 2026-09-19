@@ -113,7 +113,8 @@ describe('autosave on the settings interval', () => {
 
   it('a write waits out playback and records when it happened', () => {
     expect(editorUi).toMatch(/saveNow\(\)[^]*?editor\.lastSavedAt = Date\.now\(\)/);
-    expect(editorUi).toContain('!editor.playing');
+    // Deferred, not skipped: the transport writes it the moment it stops.
+    expect(editorUi).toMatch(/if \(editor\.playing\) \{[^]*?queued = true/);
   });
 });
 
@@ -176,8 +177,8 @@ describe('the view options', () => {
     expect(canvasView).toContain('editor.ux.crossCursor && editor.settings.crossCursor');
   });
 
-  it('the panel says when the draft was last written', () => {
-    expect(editorUi).toContain('Сохранено');
+  it('the panel says when the draft was last written, and how heavy it is', () => {
+    expect(editorUi).toContain('сохранено локально');
     expect(editorUi).toContain('editor.lastSavedAt');
   });
 });

@@ -112,9 +112,10 @@
   }
 
   // --- Soundtrack -----------------------------------------------------------
-  // One bar per frame, recomputed when fps changes — the wave stretches over
-  // the strip rather than being re-read from the file.
-  const peaks = $derived(editor.audio.peaks(editor.doc.frame_rate));
+  // The reference's wave: half a bar per pixel of frame width, recomputed when
+  // fps changes — the wave stretches over the strip rather than being re-read
+  // from the file.
+  const barsPerFrame = (cellWidth: number) => Math.max(1, Math.round(cellWidth / 2));
   // Bar-layout frames are as wide as their thumbnail (FrameThumb's 32px tall
   // canvas at the document's aspect) plus the 1px border on each side.
   const thumbWidth = $derived(Math.round(32 * (editor.doc.width / editor.doc.height)) + 2);
@@ -123,13 +124,17 @@
 
 {#snippet wave(cellWidth: number)}
   {#if editor.audio.hasTrack}
+    {@const per = barsPerFrame(cellWidth)}
+    {@const bars = editor.audio.bars(editor.doc.frame_rate, per)}
     <!-- Decoration: the note key's panel carries the track's name, its length
          and the controls. The lane is drawn even where the track is silent, so
          an empty stretch reads as "quiet here", not as a missing waveform. -->
     <div class="wave" aria-hidden="true">
       {#each frames as _, i (i)}
         <span class="bar" style:width="{cellWidth}px">
-          <span style:height="{Math.max(6, Math.round((peaks[i] ?? 0) * 100))}%"></span>
+          {#each { length: per } as _, k (k)}
+            <span style:height="{Math.max(6, Math.round((bars[i * per + k] ?? 0) * 100))}%"></span>
+          {/each}
         </span>
       {/each}
     </div>
@@ -424,11 +429,12 @@
   .bar {
     flex: none;
     display: flex;
+    gap: 1px;
     align-items: flex-end;
     height: 100%;
   }
   .bar > span {
-    width: 100%;
+    flex: 1;
     background: var(--electric, #2f5bff);
     opacity: 0.6;
     border-radius: 1px;

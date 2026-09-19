@@ -7,7 +7,9 @@
    * A native <dialog> rather than a hand-rolled sheet — showModal() brings the
    * focus trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
-  import { exportDrafts, importDrafts } from '../draft/store';
+  import { exportDrafts, importDrafts, listDrafts } from '../draft/store';
+  import { draftEntries, type DraftEntry } from '../draft/restore';
+  import { formatFileSize } from './file-size';
   import {
     AUTOSAVE_INTERVALS,
     AUTOSAVE_LABELS,
@@ -19,7 +21,11 @@
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
-  let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
+  let {
+    editor,
+    onClose,
+    onSaveNow,
+  }: { editor: EditorState; onClose: () => void; onSaveNow?: () => void } = $props();
 
   /** Without the API the option would be a switch that does nothing. */
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
@@ -33,6 +39,44 @@
   $effect(() => {
     dialogEl?.showModal();
   });
+
+  // The records to tick for an export. Read once when the sheet opens: the
+  // list is a few dozen rows at most and nothing writes while it is up. They
+  // go through `draftEntries`, so a record whose document does not parse is
+  // not offered for export — it is not a draft, whatever storage still holds.
+  let drafts = $state<DraftEntry[]>([]);
+  let chosen = $state<string[]>([]);
+  /** Records written so far / to write, while an export runs. */
+  let exporting = $state<{ done: number; total: number } | null>(null);
+
+  $effect(() => {
+    void listDrafts().then((records) => {
+      drafts = draftEntries(records);
+      chosen = drafts.map((entry) => entry.id);
+    });
+  });
+
+  async function saveDraftsFile(): Promise<void> {
+    exporting = { done: 0, total: chosen.length };
+    try {
+      download(
+        // Our own name for our own file; `.toonio` from toonio.ru still opens.
+        'drafts.toonops',
+        await exportDrafts(chosen, (done, total) => (exporting = { done, total })),
+      );
+      report = `Скачано ${plural(chosen.length, 'черновик', 'черновика', 'черновиков')}`;
+    } finally {
+      exporting = null;
+    }
+  }
+
+  /** Reference «постоянное хранилище»: drafts the browser may not evict. */
+  async function askPersist(): Promise<void> {
+    const granted = await navigator.storage?.persist?.().catch(() => false);
+    report = granted
+      ? 'Хранилище теперь постоянное — черновики не будут удаляться браузером'
+      : 'Браузер не дал постоянное хранилище';
+  }
 
   const PLURAL = new Intl.PluralRules('ru');
   function plural(n: number, one: string, few: string, many: string): string {
@@ -66,10 +110,14 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    const { loaded } = await importDrafts(await file.text());
-    report = loaded > 0
-      ? `Загружено ${plural(loaded, 'черновик', 'черновика', 'черновиков')}`
+    if (editor.warnings && !confirm(`Загрузить черновики из «${file.name}»? Они добавятся к уже сохранённым.`)) {
+      return;
+    }
+    const { loaded, broken } = await importDrafts(await file.text());
+    report = loaded > 0 || broken > 0
+      ? `Загружено ${loaded}, повреждено ${broken}`
       : 'В файле нет черновиков';
+    drafts = draftEntries(await listDrafts());
   }
 
   function wipePalettes(): void {
@@ -93,7 +141,7 @@
   bind:this={draftFile}
   class="file"
   type="file"
-  accept="application/json,.json"
+  accept=".toonops,.toonio,application/json,.json"
   aria-label="Файл черновиков"
   onchange={onDraftFile}
 />
@@ -201,12 +249,45 @@
         onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
       />
     </label>
+    {#if drafts.length > 0}
+      <ul class="picklist">
+        {#each drafts as entry (entry.id)}
+          <li>
+            <label class="toggle">
+              <span class="toggle-label">
+                {new Date(entry.updated).toLocaleString('ru')}
+                <small>
+                  {plural(entry.doc.layers[0].frames.length, 'кадр', 'кадра', 'кадров')}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio} · со звуком{/if}
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                checked={chosen.includes(entry.id)}
+                onchange={(e) => {
+                  chosen = e.currentTarget.checked
+                    ? [...chosen, entry.id]
+                    : chosen.filter((id) => id !== entry.id);
+                }}
+              />
+            </label>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+    {#if exporting}
+      <progress value={exporting.done} max={exporting.total}>
+        {exporting.done} из {exporting.total}
+      </progress>
+    {/if}
     <div class="actions">
-      <button
-        class="key"
-        onclick={async () => download('drafts.json', await exportDrafts())}
-      >Скачать черновики</button>
+      <button class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
+        Скачать черновики (.toonops)
+      </button>
       <button class="key" onclick={() => draftFile?.click()}>Загрузить черновики…</button>
+      {#if onSaveNow}
+        <button class="key" onclick={onSaveNow}>Сохранить сейчас (Ctrl+S)</button>
+      {/if}
+      <button class="key" onclick={askPersist}>Запросить постоянное хранилище</button>
     </div>
 
     <p class="sheet-hint">Вид</p>
@@ -241,6 +322,24 @@
 </dialog>
 
 <style>
+  /* A picked record needs two lines: when it was written, and what is in it —
+     the date alone is how a stub record passed for a drawing. */
+  .picklist {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 13rem;
+    overflow-y: auto;
+  }
+  .picklist .toggle-label {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+  }
+  .picklist small {
+    font-size: 0.8rem;
+    opacity: 0.7;
+  }
   .file {
     position: absolute;
     width: 1px;

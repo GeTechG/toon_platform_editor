@@ -9,6 +9,8 @@ import {
   createDocument,
   mergeCells,
   insertFrameBefore,
+  internTool,
+  isEmptyDocument,
   moveLayer,
   removeFrame,
   removeLastStroke,
@@ -864,5 +866,27 @@ describe('pasteNeedsConfirm', () => {
       frames: 1,
       layers: 1,
     });
+  });
+});
+
+describe('isEmptyDocument', () => {
+  it('a fresh sheet is empty', () => {
+    expect(isEmptyDocument(createDocument())).toBe(true);
+  });
+
+  it('one stroke anywhere is enough to make it worth keeping', () => {
+    const doc = createDocument();
+    addFrame(doc, 0);
+    addLayer(doc, 1);
+    const tool = internTool(doc, { kind: 'pencil', dialect: 'toonio', width: 8, color: '#000000' });
+    doc.layers[1].frames[1].strokes.push({ points: [0, 0, 8, 8], tool_id: tool });
+    expect(isEmptyDocument(doc)).toBe(false);
+  });
+
+  it('empty cells on many frames and layers are still empty', () => {
+    const doc = createDocument();
+    addFrame(doc, 0);
+    addLayer(doc, 1);
+    expect(isEmptyDocument(doc)).toBe(true);
   });
 });

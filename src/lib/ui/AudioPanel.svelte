@@ -50,7 +50,7 @@
   <div class="body">
     <input
       type="file"
-      accept="audio/mpeg,audio/ogg,audio/wav,.mp3,.ogg,.wav"
+      accept="audio/*"
       bind:this={picker}
       onchange={pickTrack}
       hidden

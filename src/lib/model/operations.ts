@@ -106,6 +106,14 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
 }
 
 /** Number of frames — the same in every layer (a format invariant). */
+/**
+ * Nothing drawn anywhere: no stroke in any cell of any layer. What tells a
+ * sheet nobody has touched from work worth holding the tab open for.
+ */
+export function isEmptyDocument(doc: ToonDocument): boolean {
+  return doc.layers.every((layer) => layer.frames.every((frame) => frame.strokes.length === 0));
+}
+
 export function frameCount(doc: ToonDocument): number {
   return doc.layers[0].frames.length;
 }

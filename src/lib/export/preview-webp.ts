@@ -24,6 +24,19 @@ const PREVIEW_QUALITY = 0.75;
  * downscaled so the long side is `MAX_PREVIEW_LONG_SIDE`, looping forever.
  */
 export async function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
+  const { canvas, ctx, renderer, viewport, width, height } = previewTarget(doc);
+  const count = Math.min(previewFrameBudget(doc.frame_rate), frameCount(doc));
+
+  const stills: WebpStill[] = [];
+  for (let i = 0; i < count; i++) {
+    renderer.render(doc, i, ctx, viewport);
+    stills.push({ data: await encodeStill(canvas), width, height });
+  }
+  return assembleAnimatedWebp(stills, { fps: doc.frame_rate });
+}
+
+/** The downscaled canvas, renderer and viewport both previews draw through. */
+function previewTarget(doc: ToonDocument) {
   const logicalW = Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE));
   const logicalH = Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE));
   const { width, height } = downscaleSize(logicalW, logicalH, MAX_PREVIEW_LONG_SIDE);
@@ -35,18 +48,31 @@ export async function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayB
   if (!ctx) {
     throw new Error('canvas 2d context unavailable');
   }
+  return {
+    canvas,
+    ctx: ctx as unknown as Canvas2DLike,
+    renderer: new Canvas2DFrameRenderer(),
+    // Player's doc-units→px mapping (1 / FIXED_POINT_SCALE) times the downscale.
+    viewport: { scale: width / logicalW / FIXED_POINT_SCALE, dpr: 1 },
+    width,
+    height,
+  };
+}
 
-  const renderer = new Canvas2DFrameRenderer();
-  // Player's doc-units→px mapping (1 / FIXED_POINT_SCALE) times the downscale.
-  const viewport = { scale: width / logicalW / FIXED_POINT_SCALE, dpr: 1 };
-  const count = Math.min(previewFrameBudget(doc.frame_rate), frameCount(doc));
-
-  const stills: WebpStill[] = [];
-  for (let i = 0; i < count; i++) {
-    renderer.render(doc, i, ctx as unknown as Canvas2DLike, viewport);
-    stills.push({ data: await encodeStill(canvas), width, height });
-  }
-  return assembleAnimatedWebp(stills, { fps: doc.frame_rate });
+/**
+ * WebP still of the first frame — the thumbnail a draft card shows without
+ * re-rendering the document. Same renderer and size as the gallery preview.
+ */
+export function renderScreenshot(doc: ToonDocument): Promise<Blob> {
+  const { canvas, ctx, renderer, viewport } = previewTarget(doc);
+  renderer.render(doc, 0, ctx, viewport);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('webp encoding unsupported'))),
+      'image/webp',
+      PREVIEW_QUALITY,
+    );
+  });
 }
 
 /** Native WebP still-encode of the canvas's current pixels. */
