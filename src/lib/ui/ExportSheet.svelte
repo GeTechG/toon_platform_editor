@@ -3,7 +3,8 @@
    * The reference's export window: the same drawing as GIF, MP4 or WebM, with
    * the soundtrack and an optional watermark on the video. Which video
    * formats appear is what the browser can actually record — mp4 is not
-   * offered where it cannot be written, with a line saying so rather than a
+   * offered where it cannot be written (with a track, that takes an AAC
+   * encoder the browser may not have), with a line saying so rather than a
    * disabled control with no explanation.
    *
    * A native <dialog> for the same reasons as the settings window: focus
@@ -31,7 +32,9 @@
   let watermark = $state(false);
   let cancelling = $state<AbortController | null>(null);
 
-  const formats = supportedVideoFormats();
+  // Recomputed when a track arrives: mp4 needs an AAC encoder to carry sound,
+  // and a browser without one can still write a silent mp4.
+  const formats = $derived(supportedVideoFormats(editor.audio.hasTrack));
 
   // The file is what the preview sounds like. Tied, the track is pinned to the
   // first frame and restarts with the animation, so the work is one pass of the
@@ -166,7 +169,10 @@
         <p class="note">Этот браузер не умеет записывать видео — остаётся GIF.</p>
       {:else}
         {#if !formats.some((f) => f.extension === 'mp4')}
-          <p class="note">MP4 этот браузер не пишет; WebM откроется в нём же и в любом плеере.</p>
+          <p class="note">
+            MP4 {editor.audio.hasTrack ? 'со звуком ' : ''}этот браузер не пишет; WebM откроется в нём
+            же и в любом плеере.
+          </p>
         {/if}
         <label class="toggle">
           <span class="toggle-label">Водяной знак «{WATERMARK_TEXT}»</span>

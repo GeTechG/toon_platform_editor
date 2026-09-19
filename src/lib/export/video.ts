@@ -5,9 +5,9 @@
  * There is no muxer library here and no ffmpeg.wasm. `MediaRecorder` over
  * `canvas.captureStream()` is a browser feature that already encodes off the
  * main thread, already accepts an audio track, and already writes both
- * containers — Chromium and Safari record `video/mp4` with H.264 + AAC,
- * Firefox records WebM with VP9 + Opus. PRODUCT.md's device floor rules out
- * the 26 MB fallback the reference ships.
+ * containers — Chrome and Safari record `video/mp4` with H.264, Firefox
+ * records WebM with VP9 + Opus. PRODUCT.md's device floor rules out the
+ * 26 MB fallback the reference ships.
  *
  * ponytail: `MediaRecorder` stamps frames by the wall clock, so the export
  * runs in real time — a 120-frame animation at 12 fps takes ten seconds.
@@ -27,18 +27,63 @@ export interface VideoFormat {
   label: string;
 }
 
-/** Best container first: mp4 plays everywhere a phone does. */
-export const VIDEO_FORMATS: readonly VideoFormat[] = [
-  { mimeType: 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', extension: 'mp4', label: 'MP4 (H.264)' },
-  { mimeType: 'video/webm;codecs=vp9,opus', extension: 'webm', label: 'WebM (VP9)' },
+export interface VideoContainer {
+  extension: 'mp4' | 'webm';
+  label: string;
+  /** Codec strings to try, best first, when the export carries sound. */
+  withSound: readonly string[];
+  /**
+   * The same for a silent export, where no audio codec is named: Firefox hangs
+   * on a recorder promised Opus by a stream that has no audio track.
+   */
+  silent?: readonly string[];
+}
+
+/**
+ * Best container first: mp4 plays everywhere a phone does. Each one lists the
+ * codecs to ask for, because no two browsers record the same set — Chrome
+ * writes H.264 into mp4 and VP9 into WebM, Firefox records WebM and only VP8.
+ */
+export const VIDEO_CONTAINERS: readonly VideoContainer[] = [
+  {
+    extension: 'mp4',
+    label: 'MP4 (H.264)',
+    withSound: ['video/mp4;codecs=avc1.42E01E,mp4a.40.2'],
+    silent: ['video/mp4;codecs=avc1.42E01E'],
+  },
+  {
+    extension: 'webm',
+    label: 'WebM',
+    withSound: ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus'],
+    silent: ['video/webm;codecs=vp9', 'video/webm;codecs=vp8'],
+  },
 ];
 
-/** The formats this browser can actually record, best first. */
+/**
+ * The formats this browser can actually record, best first — one entry per
+ * container, carrying the first codec string it accepts.
+ *
+ * mp4 is asked for by two different names. A silent export needs no audio
+ * codec, and Chrome records H.264 into mp4 everywhere. With a track it needs
+ * AAC, which Chrome only has where the platform provides an encoder — on
+ * Linux it does not, and the mp4 it would write instead carries Opus, which is
+ * an mp4 a phone will not play. So there mp4 drops off the list and WebM takes
+ * the sound.
+ */
 export function supportedVideoFormats(
+  hasAudio = true,
   isSupported: (mimeType: string) => boolean = (type) =>
     typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type),
 ): VideoFormat[] {
-  return VIDEO_FORMATS.filter((format) => isSupported(format.mimeType));
+  const formats: VideoFormat[] = [];
+  for (const container of VIDEO_CONTAINERS) {
+    const candidates = hasAudio ? container.withSound : container.silent ?? container.withSound;
+    const mimeType = candidates.find(isSupported);
+    if (mimeType) {
+      formats.push({ mimeType, extension: container.extension, label: container.label });
+    }
+  }
+  return formats;
 }
 
 /**
@@ -78,10 +123,15 @@ export interface VideoExportOptions {
 
 export const WATERMARK_TEXT = 'toonop';
 
-/** Corner stamp, sized to the canvas so it reads the same at any document size. */
-function stampWatermark(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
+/**
+ * Corner stamp, sized to the canvas so it reads the same at any document size.
+ * Drawn in device pixels: the frame renderer leaves its document-units
+ * transform on the context, and under that the stamp would shrink to a smudge.
+ */
+export function stampWatermark(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
   const size = Math.max(10, Math.round(height / 18));
   ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.font = `600 ${size}px system-ui, sans-serif`;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'bottom';
