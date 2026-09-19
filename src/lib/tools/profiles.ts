@@ -232,6 +232,17 @@ export class PointerStrokeController {
     return true;
   }
 
+  /**
+   * Drops the session without committing it, unlike `pointerCancel`, which
+   * still lands a Tonio stroke. A second finger on the canvas means the first
+   * one was reaching for a gesture, not drawing.
+   */
+  discard(): boolean {
+    if (!this.#session) return false;
+    this.#session = null;
+    return true;
+  }
+
   takeCommitted(): ResolvedStroke | null {
     const stroke = this.#committed;
     this.#committed = null;

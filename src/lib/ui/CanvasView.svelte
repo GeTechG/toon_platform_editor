@@ -560,13 +560,18 @@
 
   /**
    * Navigation gestures, before drawing gets a say: middle button or a held
-   * space pans, two fingers pan and pinch. A second finger never interrupts a
-   * stroke already under way — it is ignored until the first one lifts.
+   * space pans, two fingers pan and pinch. The first finger always lands
+   * before the second, so the stroke it started is discarded rather than
+   * committed: two fingers mean navigation, and nothing must be drawn.
    */
   function startNavigation(e: PointerEvent): boolean {
     if (e.pointerType === 'touch') {
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (touches.size === 2 && !pointer.session) {
+      if (touches.size === 2) {
+        if (pointer.discard()) {
+          strokeLayer = undefined;
+          scheduleDraw();
+        }
         gesture = pinchFrom(touches);
         return true;
       }

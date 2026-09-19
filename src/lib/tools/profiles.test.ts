@@ -65,6 +65,19 @@ describe('profile/session contract', () => {
     expect(controller.takeCommitted()).toBeNull();
   });
 
+  it('discard drops a Tonio session whole — a second finger means the stroke never happened', () => {
+    const descriptor: ToolDescriptor = { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' };
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'toonio', descriptor, tonio: { smooth: 1, minDistance: 0 },
+    }));
+    expect(controller.pointerDown(sample(1, 0, 0))).toBe(true);
+    controller.pointerMove(sample(1, 16, 0));
+    expect(controller.discard()).toBe(true);
+    expect(controller.session).toBeNull();
+    expect(controller.takeCommitted()).toBeNull();
+    expect(controller.discard()).toBe(false);
+  });
+
   it('Tonio cancel commits collected points without appending the cancel event', () => {
     const descriptor: ToolDescriptor = { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' };
     const controller = new profiles.PointerStrokeController(() => ({
