@@ -52,6 +52,8 @@ import {
   onionHistoryLayers,
   onionLayers,
   onionSkinVisible,
+  scaleMenuVisible,
+  SCALE_MENU_MS,
   pasteTarget,
   rangeSelection,
   toggleLayerInSelection,
@@ -72,7 +74,7 @@ import {
   withSavedPalette,
   type SavedPalette,
 } from './color-palette';
-import { IDENTITY_VIEW, zoomAt, type Viewport2D } from './viewport';
+import { IDENTITY_VIEW, clampPan, zoomAt, type Viewport2D } from './viewport';
 import { eraseStrokes } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
@@ -101,14 +103,18 @@ export interface TransformState {
 }
 import {
   nudgeBrushSize,
+  isHelpTool,
   resolveToolSelection,
   toolAfterColorChange,
+  toolAfterHelp,
   type SelectableTool,
   type UxProfile,
 } from './ux-profile';
 import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
+  BRUSH_TOOLS,
+  brushToolOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetDrawingProfile,
@@ -117,13 +123,23 @@ import {
   saveUiConfig,
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
+  type BrushToolId,
   type DrawingProfileId,
   type EditorSettings,
   type FeatureKey,
   type Features,
+  type TonioBrush,
 } from './presets';
 
 export type Tool = SelectableTool;
+
+/** Fresh brush records, so a load or a save never shares objects with the config. */
+function copyBrushes(source: Record<BrushToolId, TonioBrush>): Record<BrushToolId, TonioBrush> {
+  return BRUSH_TOOLS.reduce((all, tool) => {
+    all[tool] = { ...source[tool] };
+    return all;
+  }, {} as Record<BrushToolId, TonioBrush>);
+}
 
 /**
  * How many undone strokes are kept for redo. Each entry holds a stroke that
@@ -156,6 +172,13 @@ export class EditorState {
   /** The one soundtrack: file, credits, envelope for the strip, playback. */
   readonly audio = new AudioTrackState();
   tool = $state<Tool>('pencil');
+  /** What was drawing before a help tool (pipette, hand, lasso, distort) took over. */
+  previousDrawingTool = $state<Tool>('pencil');
+  /**
+   * Whether the mega-eraser has already warned this session. Session state,
+   * not a setting: the reference warns again in the next tab.
+   */
+  megaEraserWarned = $state(false);
   /** The open lasso/distort session; null when nothing is selected. */
   transform = $state<TransformState | null>(null);
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
@@ -184,9 +207,12 @@ export class EditorState {
   playbackFrame = $state(0);
   drawingProfile = $state<DrawingProfileId>('multator');
   multatorBrushSizeLogical = $state(DEFAULT_BRUSH_SIZE_LOGICAL);
-  tonioBrushSizeLogical = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.width);
-  tonioSmooth = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.smooth);
-  tonioMinDistance = $state(DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance);
+  /**
+   * Tonio width, smoothing and minimum per tool: the reference keeps a brush
+   * for the pencil, the eraser, the feather and the mega-eraser, and picking
+   * a tool puts its own numbers back in the sliders.
+   */
+  tonioByTool = $state<Record<BrushToolId, TonioBrush>>(copyBrushes(DEFAULT_DRAWING_UI_CONFIG.tonioByTool));
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Second color: the feather fills with it, the pipette takes it on right-click. */
   fillColor = $state(DEFAULT_FILL_COLOR);
@@ -202,6 +228,15 @@ export class EditorState {
   view = $state<Viewport2D>({ ...IDENTITY_VIEW });
   /** Canvas size in CSS px, kept current by CanvasView — zoom clamps against it. */
   viewSize = $state({ width: CANVAS_LOGICAL_WIDTH, height: CANVAS_LOGICAL_HEIGHT });
+  /**
+   * Where the cursor last was over the canvas, CSS px. The reference zooms
+   * its buttons, slider and `+`/`-` around that point rather than the middle
+   * of the canvas, so the place being worked on stays under the hand.
+   */
+  lastScalePivot = $state<{ x: number; y: number } | null>(null);
+  /** When the zoom window stops showing itself after a wheel zoom, ms epoch. */
+  scaleMenuUntil = $state(0);
+  private scaleMenuTimer = 0;
   /**
    * Cell contents captured before a block edit — a mega-eraser cut, a paste,
    * a merge — newest last, one entry per undoable operation. `after` is the
@@ -266,9 +301,7 @@ export class EditorState {
       this.features = saved.features;
       this.drawingProfile = saved.drawing.activeProfile;
       this.multatorBrushSizeLogical = saved.drawing.multatorWidth;
-      this.tonioBrushSizeLogical = saved.drawing.tonio.width;
-      this.tonioSmooth = saved.drawing.tonio.smooth;
-      this.tonioMinDistance = saved.drawing.tonio.minDistance;
+      this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
       this.settings = saved.settings;
@@ -282,13 +315,30 @@ export class EditorState {
     return presetUx(this.preset);
   }
 
+  /** Brush record of the active tool — what the sliders read and write. */
+  get tonioBrush(): TonioBrush {
+    return this.tonioByTool[brushToolOf(this.tool)];
+  }
+
+  get tonioBrushSizeLogical(): number {
+    return this.tonioBrush.width;
+  }
+
+  get tonioSmooth(): number {
+    return this.tonioBrush.smooth;
+  }
+
+  get tonioMinDistance(): number {
+    return this.tonioBrush.minDistance;
+  }
+
   get brushSizeLogical(): number {
     return this.drawingProfile === 'toonio' ? this.tonioBrushSizeLogical : this.multatorBrushSizeLogical;
   }
 
   set brushSizeLogical(value: number) {
     if (this.drawingProfile === 'toonio') {
-      this.tonioBrushSizeLogical = Math.min(500, Math.max(1, Math.round(value)));
+      this.tonioBrush.width = Math.min(500, Math.max(1, Math.round(value)));
     } else {
       this.multatorBrushSizeLogical = Math.min(MAX_BRUSH_SIZE_LOGICAL, Math.max(MIN_BRUSH_SIZE_LOGICAL, Math.round(value)));
     }
@@ -296,12 +346,12 @@ export class EditorState {
   }
 
   setTonioSmooth(value: number): void {
-    this.tonioSmooth = Math.min(100, Math.max(1, Math.round(value)));
+    this.tonioBrush.smooth = Math.min(100, Math.max(1, Math.round(value)));
     this.persistUiConfig();
   }
 
   setTonioMinDistance(value: number): void {
-    this.tonioMinDistance = Math.min(30, Math.max(0, Math.round(value)));
+    this.tonioBrush.minDistance = Math.min(30, Math.max(0, Math.round(value)));
     this.persistUiConfig();
   }
 
@@ -340,7 +390,38 @@ export class EditorState {
     if (resolved === 'lasso' && !this.beginTransform()) {
       return;
     }
+    // A help tool is a detour, so the way back is kept — but only the first
+    // one: hopping pipette → hand must not make the pipette the way back.
+    if (isHelpTool(resolved) && !isHelpTool(this.tool)) {
+      this.previousDrawingTool = this.tool;
+    }
     this.tool = resolved;
+    if (resolved === 'pipette') {
+      this.openBrowserPicker();
+    }
+  }
+
+  /**
+   * Reference `Picker.Selected`: picking the pipette opens the browser's own
+   * eyedropper, which reads anywhere on screen. Off by setting, and absent in
+   * browsers without the API — the canvas pipette works either way.
+   */
+  private openBrowserPicker(): void {
+    const eyeDropper = (globalThis as {
+      EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
+    }).EyeDropper;
+    if (!this.settings.chromePicker || !eyeDropper) {
+      return;
+    }
+    new eyeDropper().open().then(
+      (result) => this.pickColor(result.sRGBHex, 'outline'),
+      () => {},
+    );
+  }
+
+  /** Leaves a help tool for whatever was drawing before it (reference `ResetHelpTool`). */
+  resetHelpTool(): void {
+    this.tool = toolAfterHelp(this.previousDrawingTool);
   }
 
   /** Swaps outline and fill (reference: the `X` button between the two swatches). */
@@ -571,7 +652,7 @@ export class EditorState {
 
   /** Whether onion-skin layers should currently render. */
   get showOnionSkin(): boolean {
-    return onionSkinVisible(this.onionSkin, this.playing);
+    return onionSkinVisible(this.onionSkin, this.playing, this.tool);
   }
 
   /** Onion layers for the canvas: fading neighbors, or Tonio's visited frames. */
@@ -585,10 +666,37 @@ export class EditorState {
     this.onionSkin = !this.onionSkin;
   }
 
-  /** Zoom around the canvas center — the toolbar has no pointer to zoom at. */
+  /** The zoom window: up with the hand, and for a moment after a wheel zoom. */
+  get scaleMenuVisible(): boolean {
+    return scaleMenuVisible(this.tool, this.scaleMenuUntil, Date.now());
+  }
+
+  /** Raises the zoom window for the reference's two seconds (wheel zoom). */
+  flashScaleMenu(): void {
+    this.scaleMenuUntil = Date.now() + SCALE_MENU_MS;
+    clearTimeout(this.scaleMenuTimer);
+    // The deadline alone is not reactive — something has to wake the view up
+    // once it passes.
+    this.scaleMenuTimer = setTimeout(() => {
+      this.scaleMenuUntil = 0;
+    }, SCALE_MENU_MS) as unknown as number;
+  }
+
+  /** Zoom around the last cursor position, falling back to the canvas centre. */
   zoomBy(delta: number): void {
     const { width, height } = this.viewSize;
-    this.view = zoomAt(this.view, this.view.zoom + delta, width / 2, height / 2, width, height);
+    const pivot = this.lastScalePivot ?? { x: width / 2, y: height / 2 };
+    this.view = zoomAt(this.view, this.view.zoom + delta, pivot.x, pivot.y, width, height);
+  }
+
+  /** Slides the view by CSS pixels (the hand's arrow keys), never past the edge. */
+  panBy(dx: number, dy: number): void {
+    const { width, height } = this.viewSize;
+    this.view = clampPan(
+      { zoom: this.view.zoom, panX: this.view.panX + dx, panY: this.view.panY + dy },
+      width,
+      height,
+    );
   }
 
   /**
@@ -1195,11 +1303,7 @@ export class EditorState {
       drawing: {
         activeProfile: this.drawingProfile,
         multatorWidth: this.multatorBrushSizeLogical,
-        tonio: {
-          width: this.tonioBrushSizeLogical,
-          smooth: this.tonioSmooth,
-          minDistance: this.tonioMinDistance,
-        },
+        tonioByTool: copyBrushes(this.tonioByTool),
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
       },

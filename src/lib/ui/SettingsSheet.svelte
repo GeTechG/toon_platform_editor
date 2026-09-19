@@ -14,11 +14,15 @@
     PALETTE_LIMIT_MAX,
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
+    mouseModeLabel,
   } from './presets';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
   let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
+
+  /** Without the API the option would be a switch that does nothing. */
+  const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let paletteFile = $state<HTMLInputElement | undefined>();
@@ -105,7 +109,7 @@
   <div class="sheet-body">
     <p class="sheet-hint">Рисование</p>
     <label class="toggle">
-      <span class="toggle-label">Режим мышки (старое перо)</span>
+      <span class="toggle-label">{mouseModeLabel(editor.drawingProfile)}</span>
       <input
         type="checkbox"
         role="switch"
@@ -113,6 +117,17 @@
         onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
       />
     </label>
+    {#if hasEyeDropper}
+      <label class="toggle">
+        <span class="toggle-label">Пипетка браузера</span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={editor.settings.chromePicker}
+          onchange={(e) => editor.setSetting('chromePicker', e.currentTarget.checked)}
+        />
+      </label>
+    {/if}
     <label class="toggle">
       <span class="toggle-label">Крест на курсоре при тонкой кисти</span>
       <input

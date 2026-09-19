@@ -125,17 +125,19 @@ export function interpolatePixelLine(
 
 /**
  * Commit-time thinning (reference `Pixel.Prepare`): drops a cell closer than
- * the tool width to the previous kept one, `>=` rejects, and the true endpoint
- * is appended once — no sentinel.
+ * `width / zoom` to the previous kept one, `>=` rejects, and the true endpoint
+ * is appended once — no sentinel. Zoomed in, the hand moves more document
+ * units per screen pixel, so the reference lowers the threshold to match.
  */
-export function pixelPrepare(points: readonly number[], width: number): number[] {
+export function pixelPrepare(points: readonly number[], width: number, zoom = 1): number[] {
   if (points.length <= 2) {
     return points.slice();
   }
+  const threshold = width / (Number.isFinite(zoom) && zoom > 0 ? zoom : 1);
   const result = [points[0], points[1]];
   for (let i = 2; i < points.length - 2; i += 2) {
     const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
-    if (distance >= width) {
+    if (distance >= threshold) {
       result.push(points[i], points[i + 1]);
     }
   }

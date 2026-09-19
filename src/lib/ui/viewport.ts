@@ -54,6 +54,34 @@ export function zoomAt(
   );
 }
 
+/**
+ * Zooms to `zoom` and slides the document point under (x, y) to the middle of
+ * the viewport — the reference's `NormalizeCoords`, which recentres on the
+ * cursor instead of pinning the point in place the way `zoomAt` does.
+ */
+export function zoomCentredOn(
+  view: Viewport2D,
+  zoom: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Viewport2D {
+  const next = clampZoom(zoom);
+  // Where the point sits along the document, 0..1, whatever the current view.
+  const u = (x - view.panX) / (width * view.zoom);
+  const v = (y - view.panY) / (height * view.zoom);
+  return clampPan(
+    {
+      zoom: next,
+      panX: width / 2 - u * width * next,
+      panY: height / 2 - v * height * next,
+    },
+    width,
+    height,
+  );
+}
+
 /** Keeps the zoomed content covering the viewport — no empty margins. */
 export function clampPan(view: Viewport2D, width: number, height: number): Viewport2D {
   return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AUTOSAVE_INTERVALS, AUTOSAVE_LABELS } from './presets';
+import { AUTOSAVE_INTERVALS, AUTOSAVE_LABELS, mouseModeLabel } from './presets';
 
 // EditorState and the sheets are runes/Svelte, so they are asserted as source
 // (same contract style as layers-panel.test.ts); the pure parts run for real.
@@ -179,5 +179,34 @@ describe('the view options', () => {
   it('the panel says when the draft was last written', () => {
     expect(editorUi).toContain('Сохранено');
     expect(editorUi).toContain('editor.lastSavedAt');
+  });
+});
+
+describe('the browser eyedropper option', () => {
+  it('is offered only where the browser has the API', () => {
+    expect(sheet).toContain("'EyeDropper' in window");
+    expect(sheet).toContain("editor.setSetting('chromePicker'");
+  });
+});
+
+describe('«режим мышки» says what it does under the active preset', () => {
+  it('names the oldschool pen for Multator and the plain input for Tonio', () => {
+    expect(mouseModeLabel('multator')).toContain('перо');
+    expect(mouseModeLabel('toonio')).not.toBe(mouseModeLabel('multator'));
+    expect(sheet).toContain('mouseModeLabel(editor.drawingProfile)');
+  });
+});
+
+describe('the mega-eraser warns once a session', () => {
+  it('keeps the flag on the session state, not in the saved settings', () => {
+    expect(state).toContain('megaEraserWarned = $state(false)');
+    expect(state).not.toContain("megaEraserWarned: flag");
+  });
+
+  it('warns and writes the draft the first time the tool is picked', () => {
+    expect(editorUi).toContain('editor.megaEraserWarned');
+    expect(editorUi).toContain('MEGA_ERASER_WARNING');
+    const block = editorUi.slice(editorUi.indexOf('MEGA_ERASER_WARNING'));
+    expect(block).toContain('saveNow()');
   });
 });

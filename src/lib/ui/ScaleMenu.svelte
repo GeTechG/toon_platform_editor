@@ -9,6 +9,7 @@
   import type { EditorState } from './editor-state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
+  import { draggable } from './draggable';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -30,7 +31,8 @@
   });
 </script>
 
-<div class="scale-menu" role="group" aria-label="Масштаб">
+<div class="scale-menu" role="group" aria-label="Масштаб" use:draggable>
+  <p class="title" data-drag-handle>Масштаб</p>
   <div class="thumb">
     <FrameThumb doc={editor.doc} frameIndex={editor.displayedFrame} height={THUMB_HEIGHT} />
     <span
@@ -46,7 +48,7 @@
     type="range"
     min={ZOOM_MIN}
     max={ZOOM_MAX}
-    step={ZOOM_STEP}
+    step={1}
     value={editor.view.zoom}
     oninput={(e) => setZoom(e.currentTarget.value)}
     aria-label="Масштаб холста"
@@ -74,6 +76,13 @@
     border-radius: 10px;
     background: var(--canvas, #fff);
     font-size: 13px;
+  }
+  .title {
+    margin: 0;
+    cursor: move;
+    font-weight: 600;
+    touch-action: none;
+    user-select: none;
   }
   .thumb {
     position: relative;

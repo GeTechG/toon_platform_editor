@@ -102,7 +102,6 @@ describe('layer-aware canvas contract', () => {
   it('the pipette honors the configured source and Alt', () => {
     const pick = handler('pickColor');
     expect(pick).toContain('pickSource(editor.pickSource, e.altKey)');
-    expect(pick).toContain('BACKGROUND_COLOR');
   });
 });
 
@@ -165,5 +164,88 @@ describe('transform tools on the canvas', () => {
     // Purely visual: every gesture is read off the canvas itself, so touch
     // and pointer capture keep working.
     expect(source).toContain('pointer-events: none');
+  });
+});
+
+describe('the right button draws with the fill colour', () => {
+  it('never lets the browser menu open over the canvas', () => {
+    expect(source).toContain('oncontextmenu={(e) => e.preventDefault()}');
+  });
+
+  it('freezes a swapped descriptor for a stroke started with another button', () => {
+    expect(source).toContain('swapStrokeColours(');
+    expect(handler('onPointerDown')).toContain('strokeButton = e.button');
+  });
+});
+
+describe('mouse mode in the Tonio profile', () => {
+  it('takes the event itself instead of unpacking coalesced samples', () => {
+    // Reference `oldPen`: the checkbox that makes Multator's pen oldschool
+    // makes Tonio read one point per event.
+    expect(handler('toPointerSample')).toContain('!editor.settings.mouseMode');
+  });
+});
+
+describe('the pipette over emptiness', () => {
+  it('reads nothing from a pixel that is not fully opaque', () => {
+    // Reference: alpha ≠ 255 is "no colour here", including the antialiased
+    // rim of a stroke — not the background colour.
+    expect(handler('pickColor')).toContain('a !== 255');
+    expect(source).toContain('function pickColor(e: PointerEvent): string | null');
+  });
+
+  it('arms the eraser and leaves both colours alone', () => {
+    const down = handler('onPointerDown');
+    expect(down).toContain('picked === null');
+    expect(down).not.toContain('editor.brushColor = picked');
+  });
+
+  it('gives the previous drawing tool back after a left-button pick', () => {
+    expect(handler('onPointerDown')).toContain('editor.resetHelpTool()');
+  });
+});
+
+describe('the cursor over the canvas', () => {
+  it('rings in fixed colours, never the pen colour', () => {
+    expect(source).not.toContain('style:border-color={cursorColor}');
+  });
+
+  it('takes its ring and cross from the shared rule', () => {
+    expect(source).toContain('cursorShape(');
+  });
+
+  it('is a hand while the hand tool is up, closed while it drags', () => {
+    expect(source).toContain("'grabbing'");
+    expect(source).toContain("'grab'");
+  });
+
+  it('measures the ring by the width the stroke really lands at', () => {
+    // After the reference-canvas normalisation a Tonio width of 5 draws
+    // thinner than 5 logical px, and the ring has to follow it.
+    expect(source).toContain('brushLogicalOnCanvas');
+  });
+
+  it('squares the cursor and lays a difference grid under the pixel tool', () => {
+    expect(source).toContain('class:square=');
+    expect(handler('draw')).toContain("drawPixelGrid(");
+    expect(handler('drawPixelGrid')).toContain("'difference'");
+  });
+
+  it('takes the grid away while the preview plays', () => {
+    expect(handler('draw')).toContain("editor.tool === 'pixel' && !editor.playing");
+  });
+});
+
+describe('the wheel zoom', () => {
+  it('recentres the view on the cursor instead of pinning the point', () => {
+    expect(handler('onWheel')).toContain('zoomCentredOn(');
+  });
+
+  it('stays out of the way while the preview runs', () => {
+    expect(handler('onWheel')).toContain('editor.playing');
+  });
+
+  it('remembers where the cursor was, so the buttons and keys zoom there', () => {
+    expect(handler('onPointerMove')).toContain('editor.lastScalePivot = ');
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   activeFrameAfterRemove,
+  cursorShape,
   activeLayerAfterMove,
   activeLayerAfterRemove,
   clampPlayerFps,
@@ -95,6 +96,11 @@ describe('onionLayers', () => {
 });
 
 describe('onionSkinVisible', () => {
+  it('hides while the pipette is up, so it reads the drawing and not the ghosts', () => {
+    expect(onionSkinVisible(true, false, 'pipette')).toBe(false);
+    expect(onionSkinVisible(true, false, 'pencil')).toBe(true);
+  });
+
   it('shows when enabled and not playing', () => {
     expect(onionSkinVisible(true, false)).toBe(true);
   });
@@ -297,5 +303,29 @@ describe('pasteTarget', () => {
       frames: [3],
       layers: [1],
     });
+  });
+});
+
+describe('cursorShape', () => {
+  it('drops the ring for a thin brush and shows the cross instead', () => {
+    expect(cursorShape(2, true)).toEqual({ ring: false, cross: true });
+    expect(cursorShape(3, true)).toEqual({ ring: false, cross: true });
+  });
+
+  it('keeps the ring alone between the two thresholds', () => {
+    for (const cross of [true, false]) {
+      expect(cursorShape(4, cross)).toEqual({ ring: true, cross: false });
+      expect(cursorShape(24, cross)).toEqual({ ring: true, cross: false });
+    }
+  });
+
+  it('crosses a thick brush whether or not the setting is on', () => {
+    expect(cursorShape(25, false)).toEqual({ ring: true, cross: true });
+    expect(cursorShape(25, true)).toEqual({ ring: true, cross: true });
+  });
+
+  it('a thin brush without the setting is a plain ring', () => {
+    expect(cursorShape(2, false)).toEqual({ ring: true, cross: false });
+    expect(cursorShape(3, false)).toEqual({ ring: true, cross: false });
   });
 });

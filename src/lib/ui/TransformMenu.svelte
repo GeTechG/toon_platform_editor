@@ -9,6 +9,7 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
+  import { draggable } from './draggable';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -34,6 +35,7 @@
     class="transform-menu"
     role="group"
     aria-label="Трансформация"
+    use:draggable
     onkeydown={(e) => {
       // Escape inside the fields still cancels (WCAG 2.1.2: no keyboard trap).
       if (e.key === 'Escape') {
@@ -42,6 +44,7 @@
       }
     }}
   >
+    <p class="title" data-drag-handle>Трансформация</p>
     <!-- Label and field are siblings in the grid rather than a wrapping
          <label display:contents>, which older browsers drop out of the
          accessibility tree along with the association it carries. -->
@@ -82,6 +85,13 @@
 {/if}
 
 <style>
+  .title {
+    margin: 0;
+    cursor: move;
+    font-weight: 600;
+    touch-action: none;
+    user-select: none;
+  }
   .transform-menu {
     display: flex;
     flex-direction: column;

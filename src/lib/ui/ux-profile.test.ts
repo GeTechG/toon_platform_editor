@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import {
   UX_PROFILES,
+  isHelpTool,
   nudgeBrushSize,
   resolveToolSelection,
   toolAfterColorChange,
+  toolAfterHelp,
 } from './ux-profile';
 
 const multator = UX_PROFILES.multator;
@@ -61,11 +63,18 @@ describe('UX_PROFILES', () => {
 
   it('offers the Tonio toolset only under Toonio', () => {
     expect(toonio.tools).toEqual([
-      'pencil', 'eraser', 'feather', 'pixel', 'mega-eraser', 'pipette',
+      'pencil', 'eraser', 'feather', 'mega-eraser', 'pipette',
       'drag', 'lasso', 'distort',
     ]);
     expect(multator.tools).toEqual(['pencil', 'eraser', 'pipette']);
-    expect(toonop.tools).toEqual(['pencil', 'eraser', 'pipette']);
+  });
+
+  it('keeps the pixel tool where the reference does not show it — out of Toonio', () => {
+    // The reference toolbar has no pixel button, so parity means hiding it
+    // there; Toonop is where it stays available.
+    expect(toonio.tools).not.toContain('pixel');
+    expect(toonop.tools).toEqual(['pencil', 'eraser', 'pipette', 'pixel']);
+    expect(multator.tools).not.toContain('pixel');
   });
 
   it('multator keeps the neighbor onion and the narrow fps range', () => {
@@ -154,5 +163,19 @@ describe('transform tools', () => {
   it('asking for a transform tool the preset has no button for is refused', () => {
     expect(resolveToolSelection('lasso', '#000000', toonop)).toBeNull();
     expect(resolveToolSelection('lasso', '#000000', toonio)).toBe('lasso');
+  });
+});
+
+describe('help tools and the drawing tool behind them', () => {
+  it('names the tools that only help, never draw', () => {
+    expect((['pipette', 'drag', 'lasso', 'distort'] as const).every(isHelpTool)).toBe(true);
+    expect((['pencil', 'eraser', 'feather', 'pixel', 'mega-eraser'] as const).some(isHelpTool)).toBe(false);
+  });
+
+  it('gives back the tool that was drawing, but never an eraser', () => {
+    expect(toolAfterHelp('feather')).toBe('feather');
+    expect(toolAfterHelp('pixel')).toBe('pixel');
+    expect(toolAfterHelp('eraser')).toBe('pencil');
+    expect(toolAfterHelp('mega-eraser')).toBe('pencil');
   });
 });

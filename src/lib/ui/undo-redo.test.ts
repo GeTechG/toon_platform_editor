@@ -150,3 +150,48 @@ describe('transform hotkeys', () => {
     expect(transformBranch).toBeLessThan(brushBranch);
   });
 });
+
+describe('the drawing tool behind a help tool', () => {
+  it('remembers what was drawing when a help tool takes over', () => {
+    const select = member(state, 'selectTool');
+    expect(select).toContain('isHelpTool(');
+    expect(select).toContain('this.previousDrawingTool = ');
+  });
+
+  it('hands that tool back, through the eraser rule', () => {
+    expect(member(state, 'resetHelpTool')).toContain('toolAfterHelp(this.previousDrawingTool)');
+  });
+});
+
+describe('view moves the hand makes', () => {
+  it('zooms around the last place the cursor was, not the canvas centre', () => {
+    expect(member(state, 'zoomBy')).toContain('this.lastScalePivot');
+    expect(state).toContain('lastScalePivot = $state');
+  });
+
+  it('slides the view and keeps it over the document', () => {
+    expect(member(state, 'panBy')).toContain('clampPan(');
+  });
+});
+
+describe('the browser eyedropper', () => {
+  it('opens from the state, so the P key reaches it as well as the button', () => {
+    const select = member(state, 'selectTool');
+    expect(select).toContain('openBrowserPicker');
+    expect(state).toContain('this.settings.chromePicker');
+    expect(state).toContain('EyeDropper');
+  });
+});
+
+describe('the brush each tool remembers', () => {
+  it('the sliders read and write the active tool record, not one shared brush', () => {
+    expect(member(state, 'get tonioBrush')).toContain('this.tonioByTool[brushToolOf(this.tool)]');
+    expect(member(state, 'setTonioSmooth')).toContain('this.tonioBrush.smooth');
+    expect(member(state, 'setTonioMinDistance')).toContain('this.tonioBrush.minDistance');
+    expect(member(state, 'set brushSizeLogical')).toContain('this.tonioBrush.width');
+  });
+
+  it('every record is persisted, so a tool keeps its brush across sessions', () => {
+    expect(member(state, 'private persistUiConfig')).toContain('tonioByTool:');
+  });
+});

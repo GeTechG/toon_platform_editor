@@ -32,22 +32,6 @@
       .map((id) => ({ id, ...TOOLS[id] })),
   );
 
-  /**
-   * Clicking the already-active pipette opens the browser's own EyeDropper,
-   * which picks from anywhere on screen (reference Picker.Selected). Without
-   * that API the button just stays the canvas pipette.
-   */
-  function selectTool(id: Tool): void {
-    const eyeDropper = (window as { EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper;
-    if (id === 'pipette' && editor.tool === 'pipette' && eyeDropper) {
-      new eyeDropper().open().then(
-        (result) => editor.setBrushColor(result.sRGBHex),
-        () => {},
-      );
-      return;
-    }
-    editor.selectTool(id);
-  }
 </script>
 
 {#if editor.features.tools}
@@ -60,7 +44,7 @@
         class:active={editor.tool === t.id}
         class:draw={t.id === 'pencil'}
         aria-pressed={editor.tool === t.id}
-        onclick={() => selectTool(t.id)}
+        onclick={() => editor.selectTool(t.id)}
         data-key={t.key}
         title={t.title}
         aria-label={t.label}

@@ -44,6 +44,16 @@ describe('pixelPrepare', () => {
   it('returns a single cell untouched', () => {
     expect(pixelPrepare([16, 16], 16)).toEqual([16, 16]);
   });
+
+  it('divides the threshold by the viewport zoom, so a zoomed stroke keeps more cells', () => {
+    // Reference d.w / scale: at zoom 4 the threshold is 4, and the cell at 8
+    // that zoom 1 drops survives.
+    expect(pixelPrepare([0, 0, 8, 0, 64, 0, 96, 0], 16, 4)).toEqual([0, 0, 8, 0, 64, 0, 96, 0]);
+  });
+
+  it('zoom 1 is the threshold the tool width already gave', () => {
+    expect(pixelPrepare([0, 0, 8, 0, 64, 0, 96, 0], 16, 1)).toEqual(pixelPrepare([0, 0, 8, 0, 64, 0, 96, 0], 16));
+  });
 });
 
 describe('pixelCellNearest', () => {

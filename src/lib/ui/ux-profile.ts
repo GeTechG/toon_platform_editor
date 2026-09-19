@@ -34,12 +34,13 @@ export type SelectableTool =
   | 'distort';
 
 const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];
-/** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, PIXEL, plus the picker. */
+/** Toonop keeps the pixel tool the reference toolbar never showed. */
+const TOONOP_TOOLS: readonly SelectableTool[] = [...BASE_TOOLS, 'pixel'];
+/** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, plus the picker — no pixel button. */
 const TONIO_TOOLS: readonly SelectableTool[] = [
   'pencil',
   'eraser',
   'feather',
-  'pixel',
   'mega-eraser',
   'pipette',
   'drag',
@@ -108,7 +109,7 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
     livePipettePreview: false,
     crossCursor: false,
-    tools: BASE_TOOLS,
+    tools: TOONOP_TOOLS,
     layout: 'bar',
   },
   // toonio.ru: onion over the last visited frames, saved color grid, fps 1–30,
@@ -191,6 +192,22 @@ export function resolveToolSelection(
     return 'eraser';
   }
   return tool;
+}
+
+/** Tools that interrupt drawing instead of replacing it (reference `helpTool`). */
+const HELP_TOOLS: readonly SelectableTool[] = ['pipette', 'drag', 'lasso', 'distort'];
+
+export function isHelpTool(tool: SelectableTool): boolean {
+  return HELP_TOOLS.includes(tool);
+}
+
+/**
+ * The drawing tool a help tool hands back (reference `ResetHelpTool`). An
+ * eraser is not something a picked colour can be used with, so it becomes the
+ * pencil; everything else returns as it was.
+ */
+export function toolAfterHelp(previous: SelectableTool): SelectableTool {
+  return previous === 'eraser' || previous === 'mega-eraser' ? 'pencil' : previous;
 }
 
 /** Tool to switch to after picking `color`; null when the profile leaves the tool alone. */

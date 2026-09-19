@@ -141,6 +141,12 @@
     editor.selectLayer(layer);
   }
 
+  /**
+   * Keys the reference still acts on while a form field has focus: apply,
+   * play and cancel. Everything else belongs to the field being typed in.
+   */
+  const TYPING_KEYS = ['Enter', ' ', 'Escape'];
+
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
@@ -169,12 +175,50 @@
       editor.warnings = !editor.warnings;
       return;
     }
-    if (e.ctrlKey || e.metaKey || e.altKey) {
+    if (e.altKey) {
       return;
     }
+    // The reference dispatches its hotkey table whatever modifier is held, so
+    // Ctrl+Z, Ctrl+C, Ctrl+V and Ctrl+M land on the same handlers as the bare
+    // keys; only A and F7 change meaning under Ctrl.
     const target = e.target as HTMLElement | null;
-    if (target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))) {
+    const typing = !!target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
+    if (typing && !TYPING_KEYS.includes(e.key)) {
       return;
+    }
+    // The hand takes the zoom and the arrows before frames and brush size do
+    // — the reference's `helpTool.ArrowMove || PrevFrame` order.
+    if (editor.tool === 'drag' && !editor.transform) {
+      const step = e.shiftKey ? 30 : 10;
+      let taken = true;
+      switch (e.key) {
+        case '+':
+        case '=':
+          editor.zoomBy(ZOOM_STEP);
+          break;
+        case '-':
+        case '_':
+          editor.zoomBy(-ZOOM_STEP);
+          break;
+        case 'ArrowLeft':
+          editor.panBy(step, 0);
+          break;
+        case 'ArrowRight':
+          editor.panBy(-step, 0);
+          break;
+        case 'ArrowUp':
+          editor.panBy(0, step);
+          break;
+        case 'ArrowDown':
+          editor.panBy(0, -step);
+          break;
+        default:
+          taken = false;
+      }
+      if (taken) {
+        e.preventDefault();
+        return;
+      }
     }
     // An open transform owns the arrows, Q/W, +/- and Enter/Esc. Without one
     // those keys stay frame navigation and brush size, so this branch has to
@@ -339,8 +383,15 @@
         break;
       // Reference HotAdd / HotRemove: A adds a frame, Shift+A a layer;
       // Delete removes the frame, Shift+Delete the layer.
+      // Reference HotAdd: A (and F7) add a frame after the current one, the
+      // same key with Ctrl inserts one in front of it.
       case 'a':
-        editor.addFrameAfterActive();
+      case 'F7':
+        if (e.ctrlKey || e.metaKey) {
+          editor.addFrameBeforeActive();
+        } else {
+          editor.addFrameAfterActive();
+        }
         break;
       case 'A':
         editor.addLayerAboveActive();
@@ -555,6 +606,26 @@
   }
 
   /** Reference Alt+Enter: with the warnings muted a delete just happens. */
+  /**
+   * Reference warning on the first mega-eraser of the session: the tool
+   * rewrites the strokes of a cell in place, so the draft written right after
+   * it is the way back.
+   */
+  const MEGA_ERASER_WARNING =
+    'Мега-ластик — экспериментальный инструмент: он режет уже нарисованные штрихи. '
+    + 'Черновик сохранён на всякий случай.';
+
+  $effect(() => {
+    if (editor.tool !== 'mega-eraser' || editor.megaEraserWarned) {
+      return;
+    }
+    editor.megaEraserWarned = true;
+    if (editor.warnings) {
+      alert(MEGA_ERASER_WARNING);
+    }
+    saveNow();
+  });
+
   function askDelete(message: string): boolean {
     return !editor.warnings || confirm(message);
   }
@@ -753,12 +824,12 @@
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
-    {#if editor.transform || editor.tool === 'drag'}
+    {#if editor.transform || editor.scaleMenuVisible}
       <div class="tool-windows">
         {#if editor.transform}
           <TransformMenu {editor} />
         {/if}
-        {#if editor.tool === 'drag'}
+        {#if editor.scaleMenuVisible}
           <ScaleMenu {editor} />
         {/if}
       </div>

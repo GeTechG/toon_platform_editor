@@ -251,3 +251,91 @@ it('round-trips Multator → Tonio → Multator references in one frame', () => 
 function sample(pointerId: number, x: number, y: number, coalesced?: profiles.PointerSample[]): profiles.PointerSample {
   return { pointerId, isPrimary: true, x, y, coalesced };
 }
+
+describe('brush width in reference-canvas pixels', () => {
+  const scale600 = profiles.TONIO_CANVAS_WIDTH / 600;
+
+  it('Tonio divides the frozen width by the canvas normalisation', () => {
+    // 5 logical px = 40 doc units on a 600-wide canvas: 40 / (1280 / 600) = 18.75 → 19.
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0),
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
+      { smooth: 1, minDistance: 0 }, scale600,
+    );
+    expect(session.descriptor.width).toBe(19);
+  });
+
+  it('a 1280-wide document keeps the width it was given', () => {
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0),
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
+      { smooth: 1, minDistance: 0 }, 1,
+    );
+    expect(session.descriptor.width).toBe(40);
+  });
+
+  it('Multator keeps its width whatever the canvas is', () => {
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'pencil', dialect: 'multator', width: 40, color: '#123456' },
+      { smooth: 1, minDistance: 0 }, scale600,
+    );
+    expect(session.descriptor.width).toBe(40);
+  });
+
+  it('the scaled width never falls below one document unit', () => {
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0),
+      { kind: 'eraser', dialect: 'toonio', width: 1 },
+      { smooth: 1, minDistance: 0 }, 100,
+    );
+    expect(session.descriptor.width).toBe(1);
+  });
+});
+
+describe('swapStrokeColours (a stroke drawn with the right button)', () => {
+  it('a pencil draws with the fill colour', () => {
+    expect(profiles.swapStrokeColours(
+      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }, '#ff0000',
+    )).toEqual({ kind: 'pencil', dialect: 'toonio', width: 40, color: '#ff0000' });
+  });
+
+  it('a feather trades its outline for its own fill', () => {
+    expect(profiles.swapStrokeColours(
+      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' }, '#00ff00',
+    )).toEqual({ kind: 'feather', dialect: 'toonio', width: 40, color: '#ff0000', fill: '#000000' });
+  });
+
+  it('an eraser has no colours to trade', () => {
+    const eraser = { kind: 'eraser', dialect: 'toonio', width: 40 } as const;
+    expect(profiles.swapStrokeColours(eraser, '#ff0000')).toEqual(eraser);
+  });
+});
+
+describe('the pixel tool outside the Tonio preset', () => {
+  it('collects grid cells even when the preset draws Multator lines', () => {
+    // Toonop keeps the pixel tool but draws its pencil the Multator way. The
+    // Multator builder would smooth the cells into an ordinary polyline and
+    // commit geometry the pixel renderer cannot draw.
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator',
+      descriptor: { kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' },
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 20, 4));
+    controller.pointerUp(sample(1, 40, 8));
+    const stroke = controller.takeCommitted()!;
+    expect(stroke.tool).toEqual({ kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' });
+    // Every committed point sits on the 16-unit grid.
+    expect(stroke.points.every((v) => v % 16 === 0)).toBe(true);
+  });
+
+  it('leaves the pixel cell size alone outside the Tonio preset', () => {
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' },
+      { smooth: 1, minDistance: 0 }, profiles.TONIO_CANVAS_WIDTH / 600,
+    );
+    expect(session.descriptor.width).toBe(16);
+  });
+});

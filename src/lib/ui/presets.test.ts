@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
+  BRUSH_TOOLS,
+  brushToolOf,
   DEFAULT_DRAWING_UI_CONFIG,
   AUTOSAVE_INTERVALS,
   DEFAULT_PRESET,
@@ -62,7 +64,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
     drawing: {
       activeProfile: 'multator' as const,
       multatorWidth: 10,
-      tonio: { width: 5, smooth: 3, minDistance: 3 },
+      tonioByTool: { ...DEFAULT_DRAWING_UI_CONFIG.tonioByTool },
       pickSource: 'layer' as const,
       panelHeight: 200,
     },
@@ -95,10 +97,11 @@ test('drawing profile settings are clamped to supported ranges', () => {
     features: presetFeatures('toonop'),
     drawing: { activeProfile: 'bad', multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
   }));
+  const clamped = { width: 500, smooth: 1, minDistance: 30 };
   expect(parsed?.drawing).toEqual({
     activeProfile: 'multator',
     multatorWidth: 1,
-    tonio: { width: 500, smooth: 1, minDistance: 30 },
+    tonioByTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
   });
@@ -186,6 +189,7 @@ test('settings round-trip through the stored config', () => {
   const settings = {
     mouseMode: true,
     crossCursor: false,
+    chromePicker: false,
     lockTransform: true,
     paletteAutoAdd: false,
     paletteLimit: 120,
@@ -234,4 +238,60 @@ test('the reference defaults: autosave every minute, drafts offered, palette cap
   expect(DEFAULT_SETTINGS.showDraftsOnStart).toBe(true);
   expect(DEFAULT_SETTINGS.paletteLimit).toBe(50);
   expect(DEFAULT_SETTINGS.theme).toBe('light');
+});
+
+test('every brush tool starts from the same Tonio defaults', () => {
+  expect(DEFAULT_DRAWING_UI_CONFIG.tonioByTool).toEqual({
+    pencil: { width: 5, smooth: 3, minDistance: 3 },
+    eraser: { width: 5, smooth: 3, minDistance: 3 },
+    feather: { width: 5, smooth: 3, minDistance: 3 },
+    'mega-eraser': { width: 5, smooth: 3, minDistance: 3 },
+  });
+});
+
+test('a config with one shared Tonio brush copies it into every tool', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: { activeProfile: 'toonio', tonio: { width: 7, smooth: 4, minDistance: 2 } },
+  }));
+  for (const tool of BRUSH_TOOLS) {
+    expect(parsed?.drawing.tonioByTool[tool]).toEqual({ width: 7, smooth: 4, minDistance: 2 });
+  }
+});
+
+test('per-tool brushes are kept apart and clamped one by one', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: {
+      activeProfile: 'toonio',
+      tonioByTool: {
+        pencil: { width: 20, smooth: 3, minDistance: 3 },
+        eraser: { width: 999, smooth: 0, minDistance: 99 },
+      },
+    },
+  }));
+  expect(parsed?.drawing.tonioByTool.pencil).toEqual({ width: 20, smooth: 3, minDistance: 3 });
+  expect(parsed?.drawing.tonioByTool.eraser).toEqual({ width: 500, smooth: 1, minDistance: 30 });
+  expect(parsed?.drawing.tonioByTool.feather).toEqual(DEFAULT_DRAWING_UI_CONFIG.tonioByTool.feather);
+});
+
+test('a tool that draws no line borrows the pencil brush', () => {
+  expect(BRUSH_TOOLS.map(brushToolOf)).toEqual([...BRUSH_TOOLS]);
+  for (const tool of ['pixel', 'pipette', 'drag', 'lasso', 'distort']) {
+    expect(brushToolOf(tool)).toBe('pencil');
+  }
+});
+
+test('the browser eyedropper is on by default and a corrupted flag falls back', () => {
+  expect(DEFAULT_SETTINGS.chromePicker).toBe(true);
+  const stored = (chromePicker: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    settings: { chromePicker },
+  }))?.settings.chromePicker;
+
+  expect(stored(false)).toBe(false);
+  expect(stored('yes')).toBe(true);
 });

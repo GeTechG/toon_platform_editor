@@ -82,9 +82,24 @@ export function onionHistoryLayers(
   return layers;
 }
 
-/** Onion-skin renders only when enabled and not during playback. */
-export function onionSkinVisible(enabled: boolean, playing: boolean): boolean {
-  return enabled && !playing;
+/**
+ * Onion-skin renders only when enabled, not during playback, and never under
+ * the pipette — the reference hides it so a pick reads the drawing itself
+ * rather than a ghost of the neighbouring frame.
+ */
+export function onionSkinVisible(enabled: boolean, playing: boolean, tool = 'pencil'): boolean {
+  return enabled && !playing && tool !== 'pipette';
+}
+
+/** How long the zoom window stays up after a wheel zoom (reference: 2 seconds). */
+export const SCALE_MENU_MS = 2000;
+
+/**
+ * The zoom window is up while the hand is held, and for a moment after a
+ * wheel zoom so the new scale can be read.
+ */
+export function scaleMenuVisible(tool: string, until: number, now: number): boolean {
+  return tool === 'drag' || now < until;
 }
 
 /** Clamps fps to the profile's player range (5–24 by default, 1–30 under Tonio). */
@@ -213,4 +228,15 @@ export function pasteTarget(buffer: CellBounds, active: Cell, bounds: CellBounds
     frames: span(active.frame, active.frame + buffer.frames - 1, bounds.frames),
     layers: span(active.layer, active.layer - buffer.layers + 1, bounds.layers),
   };
+}
+
+/**
+ * What the brush cursor is made of (reference `tools.js:80-100`): a ring the
+ * width of the brush, and a cross when the brush is too thin to aim with or
+ * so thick its ring hides the point. A thin brush with the cross on drops the
+ * ring — two pixels of circle are noise, not a cursor.
+ */
+export function cursorShape(width: number, crossCursor: boolean): { ring: boolean; cross: boolean } {
+  const thin = width <= 3;
+  return { ring: !(thin && crossCursor), cross: (thin && crossCursor) || width >= 25 };
 }

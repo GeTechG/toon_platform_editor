@@ -27,10 +27,26 @@ export type FeatureKey =
 export type Features = Record<FeatureKey, boolean>;
 export type DrawingProfileId = 'multator' | 'toonio';
 
+/** Tools that keep their own Tonio brush (reference: one record per tool). */
+export type BrushToolId = 'pencil' | 'eraser' | 'feather' | 'mega-eraser';
+export const BRUSH_TOOLS: readonly BrushToolId[] = ['pencil', 'eraser', 'feather', 'mega-eraser'];
+
+/** Whose brush record a tool uses; anything that draws no line takes the pencil's. */
+export function brushToolOf(tool: string): BrushToolId {
+  return BRUSH_TOOLS.includes(tool as BrushToolId) ? tool as BrushToolId : 'pencil';
+}
+
+export interface TonioBrush {
+  width: number;
+  smooth: number;
+  minDistance: number;
+}
+
 export interface DrawingUiConfig {
   activeProfile: DrawingProfileId;
   multatorWidth: number;
-  tonio: { width: number; smooth: number; minDistance: number };
+  /** Width, smoothing and minimum per tool; a tool keeps what it was left at. */
+  tonioByTool: Record<BrushToolId, TonioBrush>;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
@@ -55,7 +71,12 @@ export const PANEL_HEIGHT_MAX = 2000;
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   activeProfile: 'multator',
   multatorWidth: 4,
-  tonio: { width: 5, smooth: 3, minDistance: 3 },
+  tonioByTool: {
+    pencil: { width: 5, smooth: 3, minDistance: 3 },
+    eraser: { width: 5, smooth: 3, minDistance: 3 },
+    feather: { width: 5, smooth: 3, minDistance: 3 },
+    'mega-eraser': { width: 5, smooth: 3, minDistance: 3 },
+  },
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
 };
@@ -70,6 +91,8 @@ export interface EditorSettings {
   mouseMode: boolean;
   /** Crosshair on the brush cursor at very thin and very thick widths. */
   crossCursor: boolean;
+  /** Picking the pipette opens the browser's own eyedropper, where there is one. */
+  chromePicker: boolean;
   /** Reference "paranoid mode": an unfinished transform blocks the editor. */
   lockTransform: boolean;
   /** A picked colour joins the saved grid. */
@@ -102,6 +125,16 @@ export const AUTOSAVE_LABELS: Record<number, string> = {
   0: 'никогда',
 };
 
+/**
+ * «Режим мышки» is one checkbox with two meanings: the Multator line takes it
+ * as the oldschool pen, the Tonio line as one point per event (`oldPen`).
+ */
+export function mouseModeLabel(profile: DrawingProfileId): string {
+  return profile === 'toonio'
+    ? 'Режим мышки (точка на событие)'
+    : 'Режим мышки (старое перо)';
+}
+
 export const PALETTE_LIMIT_MIN = 30;
 export const PALETTE_LIMIT_MAX = 300;
 export const PALETTE_LIMIT_STEP = 10;
@@ -109,6 +142,7 @@ export const PALETTE_LIMIT_STEP = 10;
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
   crossCursor: true,
+  chromePicker: true,
   lockTransform: false,
   paletteAutoAdd: true,
   paletteLimit: 50,
@@ -248,6 +282,7 @@ function normalizeSettings(value: unknown): EditorSettings {
   return {
     mouseMode: flag('mouseMode'),
     crossCursor: flag('crossCursor'),
+    chromePicker: flag('chromePicker'),
     lockTransform: flag('lockTransform'),
     paletteAutoAdd: flag('paletteAutoAdd'),
     paletteLimit: snapPaletteLimit(raw.paletteLimit),
@@ -272,17 +307,23 @@ export function snapPaletteLimit(value: unknown): number {
 
 function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
-  const tonio = typeof drawing.tonio === 'object' && drawing.tonio !== null
-    ? drawing.tonio as Record<string, unknown>
-    : {};
+  // A config from before the split holds one shared brush: every tool starts
+  // from it, so nobody's width jumps on the upgrade.
+  const shared = record(drawing.tonio);
+  const byTool = record(drawing.tonioByTool);
   return {
     activeProfile,
     multatorWidth: clampNumber(drawing.multatorWidth, 1, 300, DEFAULT_DRAWING_UI_CONFIG.multatorWidth),
-    tonio: {
-      width: clampNumber(tonio.width, 1, 500, DEFAULT_DRAWING_UI_CONFIG.tonio.width),
-      smooth: clampNumber(tonio.smooth, 1, 100, DEFAULT_DRAWING_UI_CONFIG.tonio.smooth),
-      minDistance: clampNumber(tonio.minDistance, 0, 30, DEFAULT_DRAWING_UI_CONFIG.tonio.minDistance),
-    },
+    tonioByTool: Object.fromEntries(BRUSH_TOOLS.map((tool) => {
+      const stored = record(byTool[tool]);
+      const fallback = DEFAULT_DRAWING_UI_CONFIG.tonioByTool[tool];
+      const pick = (key: keyof TonioBrush) => stored[key] ?? shared[key];
+      return [tool, {
+        width: clampNumber(pick('width'), 1, 500, fallback.width),
+        smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
+        minDistance: clampNumber(pick('minDistance'), 0, 30, fallback.minDistance),
+      }];
+    })) as Record<BrushToolId, TonioBrush>,
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
     panelHeight: clampNumber(
       drawing.panelHeight,
@@ -291,6 +332,10 @@ function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId)
       DEFAULT_DRAWING_UI_CONFIG.panelHeight,
     ),
   };
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

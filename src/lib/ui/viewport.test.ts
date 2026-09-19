@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { IDENTITY_VIEW, clampPan, clampZoom, toDocument, zoomAt } from './viewport';
+import { IDENTITY_VIEW, clampPan, clampZoom, toDocument, zoomAt, zoomCentredOn } from './viewport';
 
 const SIZE = { width: 200, height: 100 };
 const DOC = { width: 4800, height: 2400 };
@@ -57,5 +57,34 @@ describe('toDocument', () => {
     // zoom 2, panned by a full viewport: the top-left corner now shows the
     // middle of the document.
     expect(toDocument(0, 0, SIZE, DOC, { zoom: 2, panX: -200, panY: -100 })).toEqual([2400, 1200]);
+  });
+});
+
+describe('zoomCentredOn', () => {
+  const size = { width: 400, height: 200 };
+
+  it('puts the document point under the cursor in the middle of the viewport', () => {
+    const view = zoomCentredOn(IDENTITY_VIEW, 2, 100, 50, size.width, size.height);
+    // The point sat a quarter in; at zoom 2 the middle is 200 / 100 px away.
+    expect(view).toEqual({ zoom: 2, panX: 0, panY: 0 });
+    expect(0.25 * size.width * view.zoom + view.panX).toBe(size.width / 2);
+    expect(0.25 * size.height * view.zoom + view.panY).toBe(size.height / 2);
+  });
+
+  it('centres on a point past the middle by panning', () => {
+    const view = zoomCentredOn(IDENTITY_VIEW, 2, 300, 150, size.width, size.height);
+    expect(view).toEqual({ zoom: 2, panX: -400, panY: -200 });
+  });
+
+  it('never pans past the edge of the zoomed document', () => {
+    const view = zoomCentredOn(IDENTITY_VIEW, 1.5, 400, 200, size.width, size.height);
+    expect(view.panX).toBe(size.width - size.width * 1.5);
+    expect(view.panY).toBe(size.height - size.height * 1.5);
+  });
+
+  it('zooming back out to 1 leaves no pan behind', () => {
+    const panned = { zoom: 4, panX: -300, panY: -150 };
+    expect(zoomCentredOn(panned, 1, 10, 10, size.width, size.height))
+      .toEqual({ zoom: 1, panX: 0, panY: 0 });
   });
 });

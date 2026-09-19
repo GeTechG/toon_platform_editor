@@ -55,12 +55,19 @@ export function beginStrokeSession(
 ): StrokeSession {
   // Feather and pixel exist only in the Tonio dialect; everything else takes
   // the profile the gesture started under.
+  const scale = positiveScale(tonioCoordinateScale);
+  const tonioOnlyTool = descriptor.kind === 'feather' || descriptor.kind === 'pixel';
+  const base = tonioOnlyTool ? descriptor : { ...descriptor, dialect: profile };
+  // A Tonio width is a pixel of the reference 1280-wide canvas, like the
+  // Prepare minimum below: on a narrower document it shrinks with the canvas.
   const frozenDescriptor = copyLineTool(
-    descriptor.kind === 'feather' || descriptor.kind === 'pixel'
-      ? descriptor
-      : { ...descriptor, dialect: profile },
+    profile === 'multator' ? base : { ...base, width: Math.max(1, Math.round(base.width / scale)) },
   );
-  if (profile === 'multator') {
+  // A Tonio-only tool is collected the Tonio way whatever preset holds it:
+  // the Multator builder would smooth a pixel tool's cells into a polyline
+  // the pixel renderer cannot draw.
+  const sessionProfile: StrokeDialect = tonioOnlyTool ? 'toonio' : profile;
+  if (sessionProfile === 'multator') {
     const builder = new StrokeBuilder({
       width: frozenDescriptor.width,
       color: frozenDescriptor.kind === 'pencil' ? frozenDescriptor.color : '#000000',
@@ -68,7 +75,7 @@ export function beginStrokeSession(
     });
     builder.addPoint(event.x, event.y);
     return {
-      profile,
+      profile: sessionProfile,
       pointerId: event.pointerId,
       descriptor: frozenDescriptor,
       rawPoints: builder.rawPoints as number[],
@@ -80,17 +87,34 @@ export function beginStrokeSession(
     };
   }
   const session: StrokeSession = {
-    profile,
+    profile: sessionProfile,
     pointerId: event.pointerId,
     descriptor: frozenDescriptor,
     rawPoints: [],
     tonio: { smooth: clampInteger(tonio.smooth, 1, 100), minDistance: clampInteger(tonio.minDistance, 0, 30) },
-    tonioCoordinateScale: positiveScale(tonioCoordinateScale),
+    tonioCoordinateScale: scale,
     zoom: positiveScale(zoom),
     oldschool: false,
   };
   appendTonioEventBatch(session, event);
   return session;
+}
+
+/**
+ * A stroke started with a button other than the left one draws with the fill
+ * colour, the way the reference swaps `c.c` and `c.f` for the gesture.
+ * The pencil carries no fill of its own, so the editor's one comes in.
+ */
+export function swapStrokeColours(tool: LineToolDescriptor, fill: string): LineToolDescriptor {
+  switch (tool.kind) {
+    case 'pencil':
+    case 'pixel':
+      return { ...tool, color: fill };
+    case 'feather':
+      return { ...tool, color: tool.fill, fill: tool.color };
+    default:
+      return tool;
+  }
 }
 
 export function appendStrokeEvent(session: StrokeSession, event: PointerSample): void {
@@ -130,7 +154,7 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
   if (isPixelSession(session)) {
     // Reference Pixel: Smooth is the identity and Prepare thins by the width.
     const width = (session.descriptor as PixelToolDescriptor).width;
-    return { points: pixelPrepare(session.rawPoints, width), tool: copyLineTool(session.descriptor) };
+    return { points: pixelPrepare(session.rawPoints, width, session.zoom), tool: copyLineTool(session.descriptor) };
   }
   const points = session.profile === 'multator'
     ? session.multator!.commit().points

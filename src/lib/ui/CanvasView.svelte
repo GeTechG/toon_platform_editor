@@ -12,7 +12,7 @@
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
-  import { pickSource } from './frame-selection';
+  import { cursorShape, pickSource } from './frame-selection';
   import {
     hitMode,
     movedBy,
@@ -22,11 +22,12 @@
     type HitMode,
     type TransformSession,
   } from '../tools/lasso';
-  import { ZOOM_STEP, clampPan, toDocument, zoomAt } from './viewport';
+  import { ZOOM_STEP, clampPan, toDocument, zoomAt, zoomCentredOn } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
+    swapStrokeColours,
     TONIO_CANVAS_WIDTH,
     previewStrokeSession,
     type PointerSample,
@@ -48,7 +49,7 @@
   /** Color the pipette would take, shown next to the cursor (Tonio). */
   let pickPreview = $state<string | null>(null);
   /** Pointer that is panning the canvas (middle button or space+drag). */
-  let panning: { pointerId: number; x: number; y: number } | null = null;
+  let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
   let spaceHeld = false;
   /** Active touch points, for two-finger pan and pinch. */
   const touches = new Map<number, { x: number; y: number }>();
@@ -94,9 +95,17 @@
     }
   }
 
+  /**
+   * Button the live stroke was started with. Anything but the left one draws
+   * with the fill colour (reference: `c.c = fillColour` for the gesture).
+   */
+  let strokeButton = 0;
+
   const pointer = new PointerStrokeController(() => ({
     profile: editor.drawingProfile,
-    descriptor: activeDescriptor(),
+    descriptor: strokeButton === 0
+      ? activeDescriptor()
+      : swapStrokeColours(activeDescriptor(), editor.fillColor),
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     tonioCoordinateScale: TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE),
     oldschool: editor.oldschool,
@@ -267,23 +276,31 @@
   const overlayCursor = $derived(
     editor.tool === 'distort'
       ? 'e-resize'
-      : editor.transform
-        ? CURSOR_BY_MODE[hoverMode]
-        : '',
+      : editor.tool === 'drag'
+        ? (panning ? 'grabbing' : 'grab')
+        : editor.transform
+          ? CURSOR_BY_MODE[hoverMode]
+          : '',
   );
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (cssWidth * editor.view.zoom) / editor.doc.width));
+  /**
+   * Width the brush actually lands on the document with, in logical px: a
+   * Tonio width is a pixel of the reference 1280-wide canvas and shrinks with
+   * the document, so the cursor has to shrink with it.
+   */
+  const brushLogicalOnCanvas = $derived(
+    editor.drawingProfile === 'toonio'
+      ? editor.brushSizeLogical / (TONIO_CANVAS_WIDTH / (editor.doc.width / FIXED_POINT_SCALE))
+      : editor.brushSizeLogical,
+  );
+  /** That width in screen pixels — what the ring, the square and the grid measure. */
   const cursorDiameter = $derived(
-    Math.max(1, (editor.brushSizeLogical * cssWidth * editor.view.zoom) / CANVAS_LOGICAL_WIDTH),
+    Math.max(1, (brushLogicalOnCanvas * cssWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
   );
-  // Reference cursor: a ring in the pen color with a white outline. White
-  // itself would vanish on the white canvas, so it falls back to ink.
-  const cursorColor = $derived(
-    editor.tool === 'pencil' && editor.brushColor.toLowerCase() !== BACKGROUND_COLOR
-      ? editor.brushColor
-      : 'var(--ink)',
-  );
+  /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
+  const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
 
   // The zoom buttons clamp against the canvas size, which only the view knows.
   $effect(() => {
@@ -398,6 +415,41 @@
       blitLayer(activeWithLive, ctx);
       blitLayer(aboveEl!, ctx);
     }
+    // The grid is a drawing aid, not part of the picture: the preview shows
+    // the frames as they will be exported.
+    if (editor.tool === 'pixel' && !editor.playing) {
+      drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+    }
+  }
+
+  /**
+   * The pixel tool's grid, one line per cell (reference `tools.js:346-357`).
+   * `difference` keeps it visible over both the white page and a black
+   * stroke without a colour of its own.
+   */
+  function drawPixelGrid(ctx: ViewCtx, pxWidth: number, pxHeight: number, dpr: number): void {
+    const step = cursorDiameter * dpr;
+    if (step < 4) {
+      // Denser than this the grid is a grey wash, not a guide.
+      return;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'difference';
+    ctx.strokeStyle = '#303030';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const originX = editor.view.panX * dpr;
+    const originY = editor.view.panY * dpr;
+    for (let x = originX % step; x < pxWidth; x += step) {
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, pxHeight);
+    }
+    for (let y = originY % step; y < pxHeight; y += step) {
+      ctx.moveTo(0, Math.round(y) + 0.5);
+      ctx.lineTo(pxWidth, Math.round(y) + 0.5);
+    }
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   /**
@@ -538,6 +590,16 @@
     scheduleDraw();
   });
 
+  // The pixel grid is painted over the composited stack, so picking the tool
+  // or resizing its cell repaints the canvas — without invalidating buffers
+  // that have not changed.
+  $effect(() => {
+    void editor.tool;
+    void editor.playing;
+    void cursorDiameter;
+    scheduleDraw();
+  });
+
   function toDocUnits(e: { clientX: number; clientY: number }): [number, number] {
     const rect = canvasEl.getBoundingClientRect();
     return toDocument(e.clientX - rect.left, e.clientY - rect.top, rect, editor.doc, editor.view);
@@ -549,7 +611,8 @@
    * alone. Alt takes the layer for this click without changing the setting.
    * A transparent pixel is the background.
    */
-  function pickColor(e: PointerEvent): string {
+  /** Colour under the pointer, or null where the canvas is not fully opaque. */
+  function pickColor(e: PointerEvent): string | null {
     const source = pickSource(editor.pickSource, e.altKey);
     const rect = canvasEl.getBoundingClientRect();
     const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * canvasEl.width)));
@@ -566,11 +629,14 @@
       el = compositeEl;
     }
     if (!el) {
-      return BACKGROUND_COLOR;
+      return null;
     }
     const [r, g, b, a] = el.getContext('2d')!.getImageData(px, py, 1, 1).data;
-    if (a === 0) {
-      return BACKGROUND_COLOR;
+    // Reference: only a fully opaque pixel carries a colour. The soft rim of
+    // a stroke reads as emptiness, so the pipette never picks a washed-out
+    // version of the line it was aimed at.
+    if (a !== 255) {
+      return null;
     }
     return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
   }
@@ -620,6 +686,7 @@
       rect.width,
       rect.height,
     );
+    editor.flashScaleMenu();
   }
 
   function zoomTo(zoom: number, clientX: number, clientY: number): void {
@@ -627,13 +694,25 @@
     editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, rect.width, rect.height);
   }
 
-  /** Wheel zooms in the reference's 0.5 steps; Ctrl+wheel stays the browser's. */
+  /**
+   * Wheel zooms in the reference's 0.5 steps and recentres the view on the
+   * cursor (`NormalizeCoords`). Ctrl+wheel stays the browser's, and the
+   * preview owns the canvas while it plays.
+   */
   function onWheel(e: WheelEvent): void {
-    if (e.ctrlKey || e.metaKey) {
+    if (e.ctrlKey || e.metaKey || editor.playing) {
       return;
     }
     e.preventDefault();
-    zoomTo(editor.view.zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), e.clientX, e.clientY);
+    const rect = canvasEl.getBoundingClientRect();
+    editor.view = zoomCentredOn(
+      editor.view,
+      editor.view.zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP),
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+      rect.width,
+      rect.height,
+    );
   }
 
   function onPointerDown(e: PointerEvent): void {
@@ -680,9 +759,8 @@
     }
     if (editor.tool === 'pipette') {
       const picked = pickColor(e);
-      // Picking emptiness/background arms the eraser (reference: alpha ≠ 255 → eraser).
-      if (picked === BACKGROUND_COLOR) {
-        editor.brushColor = picked;
+      // Emptiness arms the eraser and keeps both colours (reference: alpha ≠ 255).
+      if (picked === null) {
         editor.tool = 'eraser';
         return;
       }
@@ -690,7 +768,8 @@
       const toFill = e.button === 2 && editor.ux.tools.includes('feather');
       editor.pickColor(picked, toFill ? 'fill' : 'outline');
       if (!toFill) {
-        editor.tool = 'pencil';
+        // Back to whatever was drawing — the pen stays a pen (ResetHelpTool).
+        editor.resetHelpTool();
       }
       return;
     }
@@ -712,6 +791,7 @@
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
+    strokeButton = e.button;
     canvasEl.setPointerCapture(e.pointerId);
     pointer.pointerDown(toPointerSample(e, true));
     scheduleDraw();
@@ -720,6 +800,9 @@
   function onPointerMove(e: PointerEvent): void {
     cursorX = e.clientX;
     cursorY = e.clientY;
+    // Where the zoom buttons, the slider and `+`/`-` will zoom around.
+    const canvasRect = canvasEl.getBoundingClientRect();
+    editor.lastScalePivot = { x: e.clientX - canvasRect.left, y: e.clientY - canvasRect.top };
     if (panning && e.pointerId === panning.pointerId) {
       panBy(e.clientX - panning.x, e.clientY - panning.y);
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
@@ -889,7 +972,12 @@
 
   function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
     const [x, y] = toDocUnits(e);
-    const coalesced = unpackCoalesced && (pointer.session?.profile ?? editor.drawingProfile) === 'toonio'
+    // «Режим мышки» is the reference `oldPen`: one point per event, no
+    // coalesced batch. In the Multator profile the same checkbox means the
+    // oldschool pen instead, which never unpacks anyway.
+    const coalesced = unpackCoalesced
+      && !editor.settings.mouseMode
+      && (pointer.session?.profile ?? editor.drawingProfile) === 'toonio'
       ? e.getCoalescedEvents?.().map((sample) => {
           const [sampleX, sampleY] = toDocUnits(sample);
           return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };
@@ -917,6 +1005,8 @@
        surface that renders a picture, and without it the drawing is an
        anonymous box in the accessibility tree. -->
   <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
+  <!-- The right button picks the fill colour and draws with it, so the
+       browser menu never opens over the canvas. -->
   <canvas
     bind:this={canvasEl}
     role="img"
@@ -926,12 +1016,7 @@
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
     onwheel={onWheel}
-    oncontextmenu={(e) => {
-      // Right-click is the fill-color pipette, not a browser menu.
-      if (editor.tool === 'pipette') {
-        e.preventDefault();
-      }
-    }}
+    oncontextmenu={(e) => e.preventDefault()}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
     onpointerenter={(event) => {
@@ -981,13 +1066,13 @@
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
-      class:cross={editor.ux.crossCursor && editor.settings.crossCursor
-        && (editor.brushSizeLogical <= 3 || editor.brushSizeLogical >= 25)}
+      class:cross={cursorParts.cross}
+      class:ringless={!cursorParts.ring}
+      class:square={editor.tool === 'pixel'}
       style:left="{cursorX}px"
       style:top="{cursorY}px"
       style:width="{cursorDiameter}px"
       style:height="{cursorDiameter}px"
-      style:border-color={cursorColor}
       aria-hidden="true"
     ></span>
   {/if}
@@ -1046,6 +1131,15 @@
   }
   .brush-cursor.eraser {
     border-style: dashed;
+  }
+  /* Too thin for a circle: the crosshair is the whole cursor. */
+  .brush-cursor.ringless {
+    border-color: transparent;
+    box-shadow: none;
+  }
+  /* The pixel tool paints grid cells, so its cursor is one cell. */
+  .brush-cursor.square {
+    border-radius: 0;
   }
   /* Tonio adds a crosshair when the circle is too small to aim with, or so
      big the center is lost (tools.js DrawCursor). */
