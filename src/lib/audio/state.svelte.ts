@@ -32,14 +32,19 @@ export class AudioTrackState {
   envelope = $state<Float32Array>(new Float32Array(0));
   duration = $state(0);
   /**
-   * The reference's synchronisation flag. Tied (the default), the track is the
-   * clock: frame N always falls on second N/fps of it, and when the track
-   * loops the animation returns to the first frame with it — exact, at the
-   * cost of a jump whenever the two lengths do not divide. Untied, the frames
+   * The reference's synchronisation flag. Tied, the track is the clock: frame
+   * N always falls on second N/fps of it, and when the animation comes round
+   * again the track starts again with it — exact, at the cost of a jump
+   * whenever the two lengths do not divide. Untied (the default), the frames
    * keep their own clock and the track just plays underneath, which is what
    * background music wants.
+   *
+   * Untied is the default because the animation loop is frames/fps long: on a
+   * one-frame document a tied track is rewound twelve times a second, and the
+   * preview looks right while sounding like nothing at all. A track stored
+   * without the flag still reads as tied — that was its behaviour.
    */
-  sync = $state(true);
+  sync = $state(false);
   /** Why the last load was refused, shown next to the note button. */
   error = $state('');
 
@@ -142,7 +147,7 @@ export class AudioTrackState {
     this.blob = null;
     this.name = '';
     this.author = '';
-    this.sync = true;
+    this.sync = false;
     this.envelope = new Float32Array(0);
     this.duration = 0;
     this.error = '';

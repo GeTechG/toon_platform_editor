@@ -96,6 +96,13 @@ describe('the synchronisation flag', () => {
     expect(state).toContain('this.sync ? timeForFrame(frame, fps) : 0');
   });
 
+  it('a freshly attached track is untied, so a song plays under the frames', () => {
+    // Tied is the reference's behaviour but a trap as a default: the loop is
+    // frames/fps long, and on a one-frame document that rewinds the track
+    // twelve times a second — the preview looks right and sounds like nothing.
+    expect(state).toContain('sync = $state(false)');
+  });
+
   it('a track from before the flag reads as tied', () => {
     expect(state).toContain('track.sync ?? true');
   });
