@@ -226,6 +226,17 @@
         case 'H':
           editor.mirrorTransform('vertical');
           break;
+        // Z and Y walk the session's own steps. With none left they are
+        // swallowed rather than falling through to the document's undo,
+        // which would delete the strokes under the live frame.
+        case 'z':
+        case 'Z':
+          editor.undoTransform();
+          break;
+        case 'y':
+        case 'Y':
+          editor.redoTransform();
+          break;
         default:
           taken = false;
       }
@@ -282,12 +293,13 @@
       case '`':
         editor.selectTool('distort');
         break;
-      // Reference Mirror: with nothing selected H flips the whole cell.
+      // Reference Mirror: with nothing selected H flips the frame on every
+      // selected layer.
       case 'h':
-        editor.mirrorActiveCell('horizontal');
+        editor.mirrorSelectedLayers('horizontal');
         break;
       case 'H':
-        editor.mirrorActiveCell('vertical');
+        editor.mirrorSelectedLayers('vertical');
         break;
       // The studio clipboard is the timeline selection (cells × layers); the
       // bar has no selection, so there C/V stay whole-frame copy and paste.

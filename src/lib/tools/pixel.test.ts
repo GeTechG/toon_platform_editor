@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { appendPixelCells, interpolatePixelLine, pixelPrepare } from './pixel';
+import { describe, expect, it, test } from 'bun:test';
+import { appendPixelCells, interpolatePixelLine, pixelCellNearest, pixelPrepare } from './pixel';
 
 describe('appendPixelCells', () => {
   it('snaps every point to the grid of the tool width', () => {
@@ -43,5 +43,20 @@ describe('pixelPrepare', () => {
 
   it('returns a single cell untouched', () => {
     expect(pixelPrepare([16, 16], 16)).toEqual([16, 16]);
+  });
+});
+
+describe('pixelCellNearest', () => {
+  test('snaps to the closest cell, so a whole row shifts by the same amount', () => {
+    // A transform lands the row between cells with one common remainder.
+    // Rounding down sends neighbours opposite ways and collapses cells;
+    // rounding to the nearest moves every one of them by the same step.
+    const row = [-10, 14, 38, 62, 86, 110];
+    expect(row.map((v) => pixelCellNearest(v, 24))).toEqual([0, 24, 48, 72, 96, 120]);
+  });
+
+  test('is exact on a cell boundary and never yields -0', () => {
+    expect(pixelCellNearest(24, 24)).toBe(24);
+    expect(pixelCellNearest(-1, 24)).toBe(0);
   });
 });

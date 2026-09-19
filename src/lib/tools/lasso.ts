@@ -1,7 +1,7 @@
 /**
- * Lasso selection and the transform session it opens (toonio.bundle.js
- * `Lasso`): a polygon picks strokes out of a cell, their bounding box gets
- * the handles, and every drag, field and hotkey accumulates into one set of
+ * The lasso and the transform session it opens (toonio.bundle.js `Lasso`):
+ * Q takes the whole frame on every selected layer, its bounding box gets the
+ * eight handles, and every drag, field and hotkey accumulates into one set of
  * parameters. Nothing is written to the document until the session is
  * applied, so Esc is free and Enter is a single undo step.
  *
@@ -10,7 +10,7 @@
  */
 
 import type { Box, Matrix } from '../model/geom';
-import { pointInPolygon, transformMatrix } from '../model/geom';
+import { transformMatrix } from '../model/geom';
 
 export interface SelectableStroke {
   points: readonly number[];
@@ -28,49 +28,45 @@ export interface TransformSession {
 
 export const EMPTY_TRANSFORM: TransformSession = { dx: 0, dy: 0, rotate: 0, scaleX: 1, scaleY: 1 };
 
-/** Reference nudge steps: arrows 1 (shift 10), Q/W 1° (shift 15°), +/- 10%. */
+/** What the pointer is over: which handle, the body, the turning ring, or nothing. */
+export type HitMode =
+  | 'move'
+  | 'rotate'
+  | 'scale-u'
+  | 'scale-d'
+  | 'scale-l'
+  | 'scale-r'
+  | 'scale-ul'
+  | 'scale-ur'
+  | 'scale-dl'
+  | 'scale-dr'
+  | 'none';
+
+/** Reference nudge steps: arrows 1 (shift 10), Q/W 1° (shift 15°), +/- 1% (shift 5%). */
 const MOVE_STEP = 1;
 const MOVE_STEP_SHIFT = 10;
 const ROTATE_STEP = 1;
 const ROTATE_STEP_SHIFT = 15;
-const SCALE_STEP = 0.1;
+const SCALE_STEP = 0.01;
+const SCALE_STEP_SHIFT = 0.05;
 /** A selection scaled to nothing can never be grown back, so it never gets there. */
 const SCALE_MIN = 0.01;
+/** Reference hit thresholds, in screen pixels: handles, and the ring outside a corner. */
+const HANDLE_PX = 10;
+const ROTATE_PX = 50;
+/** Ctrl while turning snaps to this many degrees. */
+const ROTATE_SNAP = 15;
 
-/**
- * Indices of the strokes with at least one point inside the polygon — the
- * reference's rule, and the forgiving one: a stroke clipped by the lasso
- * comes along whole rather than being cut.
- */
-export function selectStrokes(
-  strokes: readonly SelectableStroke[],
-  polygon: readonly number[],
-): number[] {
-  const selected: number[] = [];
-  if (polygon.length < 6) {
-    return selected;
-  }
-  strokes.forEach((stroke, index) => {
-    for (let i = 0; i < stroke.points.length; i += 2) {
-      if (pointInPolygon(stroke.points[i], stroke.points[i + 1], polygon)) {
-        selected.push(index);
-        return;
-      }
-    }
-  });
-  return selected;
-}
-
-/** Axis-aligned box around the chosen strokes; null when nothing is chosen. */
+/** Axis-aligned box around the chosen strokes (null indices = all); null when empty. */
 export function selectionBounds(
   strokes: readonly SelectableStroke[],
-  indices: readonly number[],
+  indices: readonly number[] | null = null,
 ): Box | null {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const index of indices) {
+  for (const index of indices ?? strokes.map((_, i) => i)) {
     const stroke = strokes[index];
     if (!stroke) {
       continue;
@@ -95,13 +91,142 @@ export function sessionMatrix(session: TransformSession, box: Box): Matrix {
 
 /**
  * Factor the stroke width is multiplied by when "change width with scale" is
- * on: the mean of the axis scales, unsigned — a mirror does not thin a line.
+ * on: the smaller of the axis scales, unsigned — a mirror does not thin a
+ * line, and a stretch on one axis alone does not fatten it (`tools.js:1861`).
  */
 export function sessionWidthScale(session: TransformSession): number {
-  return (Math.abs(session.scaleX) + Math.abs(session.scaleY)) / 2;
+  return Math.min(Math.abs(session.scaleX), Math.abs(session.scaleY));
 }
 
-/** One keyboard step: arrows move, Q/W rotate, +/- scale both axes. */
+/** Where the frame sits now: its centre and half-extents after the session. */
+function frameGeometry(box: Box, session: TransformSession) {
+  return {
+    cx: box.x + box.width / 2 + session.dx,
+    cy: box.y + box.height / 2 + session.dy,
+    hw: Math.abs((box.width / 2) * session.scaleX),
+    hh: Math.abs((box.height / 2) * session.scaleY),
+  };
+}
+
+/** A document point in the frame's own coordinates — centred and un-turned. */
+function toLocal(x: number, y: number, cx: number, cy: number, rotate: number): [number, number] {
+  const a = (-rotate * Math.PI) / 180;
+  const dx = x - cx;
+  const dy = y - cy;
+  return [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+}
+
+/**
+ * What a press at (x, y) would do. `zoom` is screen pixels per document unit,
+ * so the reference's 10 px handles and 50 px turning ring stay the same size
+ * on screen at any magnification. Checked in the reference's order: handles,
+ * then the body, then the ring outside a corner.
+ */
+export function hitMode(
+  x: number,
+  y: number,
+  box: Box,
+  session: TransformSession,
+  zoom: number,
+): HitMode {
+  const { cx, cy, hw, hh } = frameGeometry(box, session);
+  const [lx, ly] = toLocal(x, y, cx, cy, session.rotate);
+  const handle = HANDLE_PX / zoom;
+  if (Math.abs(lx) <= hw + handle && Math.abs(ly) <= hh + handle) {
+    const u = Math.abs(ly + hh) <= handle;
+    const d = Math.abs(ly - hh) <= handle;
+    const l = Math.abs(lx + hw) <= handle;
+    const r = Math.abs(lx - hw) <= handle;
+    const vertical = u ? 'u' : d ? 'd' : '';
+    const horizontal = l ? 'l' : r ? 'r' : '';
+    return vertical || horizontal
+      ? (`scale-${vertical}${horizontal}` as HitMode)
+      : 'move';
+  }
+  const corner = Math.hypot(Math.abs(lx) - hw, Math.abs(ly) - hh);
+  return corner <= ROTATE_PX / zoom ? 'rotate' : 'none';
+}
+
+/**
+ * The body dragged from `start` to `pos`. With shift the first dominant move
+ * picks an axis and the drag stays on it until shift is let go; `axis` is
+ * that lock, handed back for the next move.
+ */
+export function movedBy(
+  base: TransformSession,
+  start: { x: number; y: number },
+  pos: { x: number; y: number },
+  shift: boolean,
+  axis: 'x' | 'y' | null,
+): { session: TransformSession; axis: 'x' | 'y' | null } {
+  let dx = pos.x - start.x;
+  let dy = pos.y - start.y;
+  let lock = shift ? axis : null;
+  if (shift) {
+    if (!lock && (dx !== 0 || dy !== 0)) {
+      lock = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+    }
+    if (lock === 'x') {
+      dy = 0;
+    } else if (lock === 'y') {
+      dx = 0;
+    }
+  }
+  return { session: { ...base, dx: base.dx + dx, dy: base.dy + dy }, axis: lock };
+}
+
+/** The angle the pointer swept about the frame's centre; ctrl snaps it to 15°. */
+export function rotatedTo(
+  base: TransformSession,
+  box: Box,
+  start: { x: number; y: number },
+  pos: { x: number; y: number },
+  ctrl: boolean,
+): TransformSession {
+  const { cx, cy } = frameGeometry(box, base);
+  const swept =
+    Math.atan2(pos.y - cy, pos.x - cx) - Math.atan2(start.y - cy, start.x - cx);
+  const rotate = base.rotate + (swept * 180) / Math.PI;
+  return { ...base, rotate: ctrl ? ROTATE_SNAP * Math.trunc(rotate / ROTATE_SNAP) : rotate };
+}
+
+/**
+ * A handle dragged from `start` to `pos`. The pointer is un-turned into the
+ * frame's coordinates first, so a handle on a rotated selection still scales
+ * along the selection's own axes; the travel counts double because the
+ * opposite side moves too. Shift on a corner keeps the ratio the drag began
+ * with.
+ */
+export function scaledBy(
+  base: TransformSession,
+  box: Box,
+  mode: HitMode,
+  start: { x: number; y: number },
+  pos: { x: number; y: number },
+  shift: boolean,
+): TransformSession {
+  const suffix = mode.startsWith('scale-') ? mode.slice(6) : '';
+  const signX = suffix.includes('l') ? -1 : suffix.includes('r') ? 1 : 0;
+  const signY = suffix.includes('u') ? -1 : suffix.includes('d') ? 1 : 0;
+  const { cx, cy } = frameGeometry(box, base);
+  const [sx, sy] = toLocal(start.x, start.y, cx, cy, base.rotate);
+  const [px, py] = toLocal(pos.x, pos.y, cx, cy, base.rotate);
+  let scaleX = base.scaleX;
+  let scaleY = base.scaleY;
+  // A selection with no extent on an axis cannot be scaled along it.
+  if (signX && box.width > 0) {
+    scaleX = base.scaleX + ((px - sx) * 2 * signX) / box.width;
+  }
+  if (signY && box.height > 0) {
+    scaleY = base.scaleY + ((py - sy) * 2 * signY) / box.height;
+  }
+  if (shift && signX && signY && base.scaleX !== 0) {
+    scaleY = scaleX * (base.scaleY / base.scaleX);
+  }
+  return { ...base, scaleX, scaleY };
+}
+
+/** One keyboard step: arrows move, Q/W rotate, +/- scale. */
 export function nudged(
   session: TransformSession,
   what: 'move' | 'rotate' | 'scale',
@@ -117,67 +242,15 @@ export function nudged(
     case 'rotate':
       return { ...session, rotate: session.rotate + dir * (shift ? ROTATE_STEP_SHIFT : ROTATE_STEP) };
     case 'scale': {
-      const step = dir * SCALE_STEP;
-      return {
-        ...session,
-        scaleX: stepScale(session.scaleX, step),
-        scaleY: stepScale(session.scaleY, step),
-      };
+      // The reference steps the larger axis and drags the other along in
+      // proportion, so 200/100 % plus one step is 201/100.5 %.
+      const step = dir * (shift ? SCALE_STEP_SHIFT : SCALE_STEP);
+      const major = Math.max(Math.abs(session.scaleX), Math.abs(session.scaleY));
+      if (major <= 0) {
+        return session;
+      }
+      const factor = Math.max(SCALE_MIN, major + step) / major;
+      return { ...session, scaleX: session.scaleX * factor, scaleY: session.scaleY * factor };
     }
   }
-}
-
-/** Grows or shrinks one axis, keeping its mirror sign and staying positive-sized. */
-function stepScale(value: number, step: number): number {
-  const sign = value < 0 ? -1 : 1;
-  return sign * Math.max(SCALE_MIN, Math.abs(value) + step);
-}
-
-/**
- * The selection box as a quad — corners clockwise from the top left. Both the
- * transform handles and the distort tool start from these four points; the
- * distort session is just this array with corners dragged out of place, fed
- * to `distortStrokes`.
- */
-export function boxCorners(box: Box): number[] {
-  return [
-    box.x, box.y,
-    box.x + box.width, box.y,
-    box.x + box.width, box.y + box.height,
-    box.x, box.y + box.height,
-  ];
-}
-
-/** Index of the corner under (x, y) within `radius`, nearest first; null if none. */
-export function cornerAt(
-  quad: readonly number[],
-  x: number,
-  y: number,
-  radius: number,
-): number | null {
-  let best: number | null = null;
-  let bestDistance = radius * radius;
-  for (let i = 0; i < quad.length; i += 2) {
-    const dx = quad[i] - x;
-    const dy = quad[i + 1] - y;
-    const distance = dx * dx + dy * dy;
-    if (distance <= bestDistance) {
-      bestDistance = distance;
-      best = i / 2;
-    }
-  }
-  return best;
-}
-
-/** The quad with one corner moved — a copy, so the original survives Esc. */
-export function movedCorner(
-  quad: readonly number[],
-  corner: number,
-  x: number,
-  y: number,
-): number[] {
-  const next = quad.slice();
-  next[corner * 2] = x;
-  next[corner * 2 + 1] = y;
-  return next;
 }

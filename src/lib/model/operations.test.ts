@@ -20,7 +20,6 @@ import {
   replaceStrokes,
   transformStrokes,
   mirrorCell,
-  distortStrokes,
 } from './operations';
 import { transformMatrix } from './geom';
 
@@ -568,6 +567,57 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
   });
 });
 
+describe('transformStrokes and the pixel grid', () => {
+  /** Cells of `width` laid edge to edge from the origin. */
+  function pixelRow(width: number, cells: number) {
+    const doc = createDocument({ width: 4000, height: 4000 });
+    addStroke(doc, 0, 0, {
+      points: Array.from({ length: cells * 2 }, (_, i) => (i % 2 ? 0 : (i / 2) * width)),
+      tool: { kind: 'pixel', dialect: 'toonio', width, color: '#000000' },
+    });
+    return doc;
+  }
+
+  /** Distance between consecutive cells along x. */
+  function steps(points: readonly number[]): number[] {
+    const out: number[] = [];
+    for (let i = 2; i < points.length; i += 2) {
+      out.push(points[i] - points[i - 2]);
+    }
+    return out;
+  }
+
+  it('puts the scaled cells back on the grid, so drawing over them lines up', () => {
+    const doc = pixelRow(20, 6);
+    transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.2, scaleY: 1.2 }, 50, 50), 1.2);
+    const points = doc.layers[0].frames[0].strokes[0].points;
+    expect(points.every((v) => v % 24 === 0)).toBe(true);
+  });
+
+  it('keeps the cells edge to edge when the width follows the scale', () => {
+    // A pixel cell is drawn as a square of the tool width from its top-left
+    // corner, so the row only stays solid while the gap equals that width.
+    // Snapping the scaled points back onto the global grid breaks exactly
+    // this: neighbours collapse onto one cell and the row grows holes.
+    const doc = pixelRow(20, 6);
+    transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.2, scaleY: 1.2 }, 50, 50), 1.2);
+    const stroke = doc.layers[0].frames[0].strokes[0];
+    const tool = doc.tools[stroke.tool_id];
+    expect(tool.kind === 'pixel' && tool.width).toBe(24);
+    expect(steps(stroke.points)).toEqual([24, 24, 24, 24, 24]);
+  });
+
+  it('leaves an ordinary stroke exactly where the matrix put it', () => {
+    const doc = createDocument({ width: 100, height: 100 });
+    addStroke(doc, 0, 0, {
+      points: [0, 0, 10, 10],
+      tool: { kind: 'pencil', dialect: 'toonio', width: 10, color: '#000000' },
+    });
+    transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.5, scaleY: 1.5 }, 0, 0));
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 15, 15]);
+  });
+});
+
 describe('transformStrokes', () => {
   const cell = (doc: ReturnType<typeof createDocument>) => doc.layers[0].frames[0];
 
@@ -667,27 +717,3 @@ describe('mirrorCell', () => {
   });
 });
 
-describe('distortStrokes', () => {
-  const box = { x: 0, y: 0, width: 100, height: 100 };
-
-  function corners() {
-    const doc = createDocument({ width: 100, height: 100 });
-    addStroke(doc, 0, 0, {
-      points: [0, 0, 100, 100],
-      tool: { kind: 'pencil', dialect: 'toonio', width: 5, color: '#000000' },
-    });
-    return doc;
-  }
-
-  it('drags the points at a moved corner and leaves the opposite one', () => {
-    const doc = corners();
-    distortStrokes(doc, 0, 0, null, box, [0, 0, 100, 0, 100, 150, 0, 100]);
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 100, 150]);
-  });
-
-  it('an unmoved quad is a no-op', () => {
-    const doc = corners();
-    distortStrokes(doc, 0, 0, null, box, [0, 0, 100, 0, 100, 100, 0, 100]);
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 100, 100]);
-  });
-});

@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import {
-  applyMatrix,
-  bilinearWarp,
-  clampCoord,
-  pointInPolygon,
-  transformMatrix,
-} from './geom';
+import { applyMatrix, clampCoord, transformMatrix } from './geom';
 
 const CENTRE = { cx: 100, cy: 100 };
 
@@ -50,70 +44,11 @@ describe('transformMatrix', () => {
   });
 });
 
-describe('pointInPolygon', () => {
-  const square = [0, 0, 100, 0, 100, 100, 0, 100];
-
-  test('a point inside is inside', () => {
-    expect(pointInPolygon(50, 50, square)).toBe(true);
-  });
-
-  test('a point outside is outside', () => {
-    expect(pointInPolygon(150, 50, square)).toBe(false);
-    expect(pointInPolygon(50, -1, square)).toBe(false);
-  });
-
-  test('a concave polygon excludes its notch', () => {
-    // A "C": the gap on the right side is outside despite the bounding box.
-    const c = [0, 0, 100, 0, 100, 20, 20, 20, 20, 80, 100, 80, 100, 100, 0, 100];
-    expect(pointInPolygon(60, 50, c)).toBe(false);
-    expect(pointInPolygon(10, 50, c)).toBe(true);
-  });
-
-  test('a degenerate polygon contains nothing', () => {
-    expect(pointInPolygon(0, 0, [0, 0, 1, 1])).toBe(false);
-  });
-});
-
-describe('bilinearWarp', () => {
-  const box = { x: 0, y: 0, width: 100, height: 100 };
-  /** Corners in TL, TR, BR, BL order. */
-  const identityQuad = [0, 0, 100, 0, 100, 100, 0, 100];
-
-  test('an unmoved quad leaves points where they are', () => {
-    const [x, y] = bilinearWarp(30, 70, box, identityQuad);
-    expect(x).toBeCloseTo(30, 6);
-    expect(y).toBeCloseTo(70, 6);
-  });
-
-  test('a dragged corner moves points near it and leaves the far one alone', () => {
-    const quad = [0, 0, 100, 0, 100, 150, 0, 100];
-    const [nearX, nearY] = bilinearWarp(100, 100, box, quad);
-    expect(nearX).toBeCloseTo(100, 6);
-    expect(nearY).toBeCloseTo(150, 6);
-    const [farX, farY] = bilinearWarp(0, 0, box, quad);
-    expect(farX).toBeCloseTo(0, 6);
-    expect(farY).toBeCloseTo(0, 6);
-  });
-
-  test('the centre of the box lands at the centroid of the quad', () => {
-    const quad = [10, 0, 100, 20, 90, 100, 0, 80];
-    const [x, y] = bilinearWarp(50, 50, box, quad);
-    expect(x).toBeCloseTo((10 + 100 + 90 + 0) / 4, 6);
-    expect(y).toBeCloseTo((0 + 20 + 100 + 80) / 4, 6);
-  });
-
-  test('a zero-sized box maps everything to the first corner', () => {
-    const [x, y] = bilinearWarp(5, 5, { x: 5, y: 5, width: 0, height: 0 }, identityQuad);
-    expect(x).toBe(0);
-    expect(y).toBe(0);
-  });
-});
-
 describe('clampCoord', () => {
-  test('rounds to whole document units', () => {
+  test('truncates to whole document units, the way the reference does', () => {
     expect(clampCoord(4.4)).toBe(4);
-    expect(clampCoord(4.6)).toBe(5);
-    expect(clampCoord(-4.6)).toBe(-5);
+    expect(clampCoord(4.6)).toBe(4);
+    expect(clampCoord(-4.6)).toBe(-4);
   });
 
   test('clamps to the int16 range the format stores', () => {

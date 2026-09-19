@@ -111,10 +111,10 @@ describe('transform tools on the canvas', () => {
     expect(handler('startNavigation')).toContain("editor.tool === 'drag'");
   });
 
-  it('the lasso traces a polygon and hands it to the state on pointerup', () => {
-    expect(handler('onPointerDown')).toContain("editor.tool === 'lasso'");
-    expect(handler('onPointerMove')).toContain('lassoPolygon');
-    expect(handler('onPointerUp')).toContain('editor.beginTransform(lassoPolygon)');
+  it('the distort brush shakes the frame between press and release', () => {
+    expect(handler('onPointerDown')).toContain('editor.beginDistort(');
+    expect(handler('onPointerMove')).toContain('editor.distortStep(');
+    expect(handler('onPointerUp')).toContain('editor.endDistort()');
   });
 
   it('a live transform takes the drag before the pencil does', () => {
@@ -123,19 +123,41 @@ describe('transform tools on the canvas', () => {
     expect(down.indexOf('editor.transform')).toBeLessThan(down.indexOf('pointer.pointerDown'));
   });
 
-  it('grabbing a corner distorts under ~ and scales under the lasso', () => {
+  it('a press with the lasso in hand takes the frame again instead of drawing', () => {
+    // Apply closes the session but leaves the tool selected; without this the
+    // canvas goes dead until the user switches tools and back.
     const down = handler('onPointerDown');
-    expect(down).toContain('cornerAt(');
-    expect(handler('onPointerMove')).toContain('dragTransform(e)');
-    const drag = handler('dragTransform');
-    expect(drag).toContain('editor.setTransformQuad(');
-    expect(drag).toContain('editor.setTransform(');
+    expect(down).toContain("editor.tool === 'lasso'");
+    expect(down).toContain('editor.beginTransform()');
+    expect(down.indexOf("editor.tool === 'lasso'")).toBeLessThan(down.indexOf('pointer.pointerDown'));
   });
 
-  it('draws the selection moved, not doubled: the stack leaves the selected strokes out', () => {
+  it('the pressed zone decides whether the drag moves, turns or scales', () => {
+    expect(handler('onPointerDown')).toContain('hitMode(');
+    expect(handler('onPointerMove')).toContain('dragTransform(e)');
+    const drag = handler('dragTransform');
+    expect(drag).toContain('movedBy(');
+    expect(drag).toContain('rotatedTo(');
+    expect(drag).toContain('scaledBy(');
+  });
+
+  it('previews the selection at the width apply will write, so nothing jumps', () => {
+    // "Change width with scale" used to land only on apply: the preview kept
+    // the old width and the strokes jumped the moment Enter was pressed.
+    // It also keeps the pixel tool honest: its cells only stay edge to edge
+    // while the width is scaled with the points.
+    expect(source).toContain('scaleToolWidth(tool, scale)');
+    expect(handler('stackCell')).toContain('widthWithScale');
+    // Preview and apply share one quantizer, or the strokes snap on Enter.
+    expect(handler('stackCell')).toContain('quantizeStrokePoints(');
+    expect(source).toContain('renderStrokesLayer(cells[0], previewTools');
+  });
+
+  it('draws the selection moved, not doubled: the stack rasterizes it transformed', () => {
     // Otherwise the originals stay under the preview and every drag smears.
-    expect(handler('rebuildStack')).toContain('editor.transform');
-    expect(source).toContain('editor.transformPoint(');
+    expect(handler('stackCell')).toContain('editor.transform');
+    expect(handler('stackCell')).toContain('editor.transformPoint(');
+    expect(handler('rebuildStack')).toContain('stackCell(');
   });
 
   it('shows the polygon, the frame and its handles as an overlay over the canvas', () => {

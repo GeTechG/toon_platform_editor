@@ -28,8 +28,9 @@ import type {
   ToonDocument,
   ToolDescriptor,
 } from '../format/types';
-import type { Box, Matrix } from './geom';
-import { applyMatrix, bilinearWarp, clampCoord, transformMatrix } from './geom';
+import type { Matrix } from './geom';
+import { applyMatrix, clampCoord, transformMatrix } from './geom';
+import { pixelCellNearest } from '../tools/pixel';
 
 export interface ResolvedStroke {
   points: number[];
@@ -542,22 +543,39 @@ function mapStrokes(
     const points = stroke.points;
     for (let i = 0; i < points.length; i += 2) {
       const [x, y] = map(points[i], points[i + 1]);
-      points[i] = clampCoord(x);
-      points[i + 1] = clampCoord(y);
+      points[i] = x;
+      points[i + 1] = y;
     }
+    // The width has to be rescaled before the points are quantized: a pixel
+    // cell snaps onto the grid of the width it will be drawn at.
     if (widthScale !== 1) {
       stroke.tool_id = internTool(doc, scaleToolWidth(doc.tools[stroke.tool_id], widthScale));
     }
+    quantizeStrokePoints(points, doc.tools[stroke.tool_id]);
+  }
+}
+
+/**
+ * The quantization a transformed stroke lands on: whole document units inside
+ * int16, and — for the pixel tool, whose points are grid cells drawn as
+ * squares — back onto the grid of the width it is drawn at. The canvas runs
+ * its live preview through this too, so what is on screen during a drag is
+ * exactly what apply writes.
+ */
+export function quantizeStrokePoints(points: number[], tool: ToolDescriptor): void {
+  const pixel = tool.kind === 'pixel';
+  for (let i = 0; i < points.length; i++) {
+    points[i] = clampCoord(pixel ? pixelCellNearest(points[i], tool.width) : points[i]);
   }
 }
 
 /** The same descriptor with its width scaled into the format's 1..MAX range. */
-function scaleToolWidth(tool: ToolDescriptor, scale: number): ToolDescriptor {
+export function scaleToolWidth(tool: ToolDescriptor, scale: number): ToolDescriptor {
   const copy = copyTool(tool);
   if (!('width' in copy)) {
     return copy;
   }
-  return { ...copy, width: Math.min(MAX_STROKE_WIDTH, Math.max(1, Math.round(copy.width * scale))) };
+  return { ...copy, width: Math.min(MAX_STROKE_WIDTH, Math.max(1, Math.trunc(copy.width * scale))) };
 }
 
 /** Applies an affine transform to the chosen strokes of a cell (null = all). */
@@ -583,14 +601,4 @@ export function mirrorCell(
   transformStrokes(doc, layerIndex, frameIndex, null, transformMatrix(flip, doc.width / 2, doc.height / 2));
 }
 
-/** Reprojects the chosen strokes from the selection box into a dragged quad. */
-export function distortStrokes(
-  doc: ToonDocument,
-  layerIndex: number,
-  frameIndex: number,
-  indices: readonly number[] | null,
-  box: Box,
-  quad: readonly number[],
-): void {
-  mapStrokes(doc, layerIndex, frameIndex, indices, (x, y) => bilinearWarp(x, y, box, quad));
-}
+

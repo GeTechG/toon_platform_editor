@@ -16,6 +16,18 @@ export function pixelCell(value: number, width: number): number {
 }
 
 /**
+ * Snaps one coordinate onto the closest cell of the grid. Capture uses
+ * `pixelCell` (the reference's truncation), but a transform lands a whole row
+ * between cells with one shared remainder: truncating sends neighbours
+ * opposite ways and collapses them, while rounding moves every cell of the
+ * row by the same step — the shape survives and lands back on the grid, so
+ * drawing over it afterwards lines up.
+ */
+export function pixelCellNearest(value: number, width: number): number {
+  return width * Math.round(value / width) || 0;
+}
+
+/**
  * Appends the snapped cells of one pointer batch. Returns a new array; cells
  * already present in `line` before this call are dropped.
  */

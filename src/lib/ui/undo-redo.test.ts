@@ -83,11 +83,16 @@ describe('editor toolbar and hotkeys', () => {
 });
 
 describe('transform edits go on the same undo stack', () => {
-  it('mirroring a cell snapshots it first, so one H is one undo step', () => {
-    const mirror = member(state, 'mirrorActiveCell');
+  it('mirroring snapshots every selected layer first, so one H is one undo step', () => {
+    const mirror = member(state, 'mirrorSelectedLayers');
     expect(mirror).toContain('this.snapshotCells(');
     expect(mirror).toContain('mirrorCell(');
     expect(mirror).toContain('this.pushEdit(');
+  });
+
+  it('a distort gesture snapshots on press and files one step on release', () => {
+    expect(member(state, 'beginDistort')).toContain('this.snapshotCells(');
+    expect(member(state, 'endDistort')).toContain('this.pushEdit(');
   });
 
   it('applying a transform snapshots every cell it writes', () => {
@@ -97,10 +102,11 @@ describe('transform edits go on the same undo stack', () => {
   });
 
   it('refuses to edit while playing or on a hidden layer, like the mega eraser', () => {
-    for (const name of ['mirrorActiveCell', 'applyTransform']) {
+    for (const name of ['mirrorSelectedLayers', 'applyTransform', 'beginDistort']) {
       expect(member(state, name)).toContain('this.playing');
-      expect(member(state, name)).toContain('this.activeLayerHidden');
     }
+    // Hidden layers never reach these: they are filtered out of the target list.
+    expect(member(state, 'visibleSelectedLayers')).toContain('.hidden');
   });
 });
 
@@ -115,9 +121,16 @@ describe('transform hotkeys', () => {
     expect(editorUi).toContain("editor.selectTool('distort')");
   });
 
-  it('H mirrors the cell horizontally and Shift+H vertically', () => {
-    expect(editorUi).toContain("editor.mirrorActiveCell('horizontal')");
-    expect(editorUi).toContain("editor.mirrorActiveCell('vertical')");
+  it('H mirrors the selected layers horizontally and Shift+H vertically', () => {
+    expect(editorUi).toContain("editor.mirrorSelectedLayers('horizontal')");
+    expect(editorUi).toContain("editor.mirrorSelectedLayers('vertical')");
+  });
+
+  it('Z and Y step inside an open session instead of the document history', () => {
+    const branch = editorUi.slice(editorUi.indexOf('if (editor.transform) {'));
+    const session = branch.slice(0, branch.indexOf('lastThreeKeys'));
+    expect(session).toContain('editor.undoTransform()');
+    expect(session).toContain('editor.redoTransform()');
   });
 
   it('Enter applies the open transform and Escape drops it', () => {

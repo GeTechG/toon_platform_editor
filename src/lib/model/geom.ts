@@ -1,7 +1,6 @@
 /**
  * Plane geometry for the transform tools: the affine matrix a selection is
- * dragged, turned and scaled by, the polygon hit test the lasso selects with,
- * and the bilinear warp the distort tool reprojects through.
+ * dragged, turned and scaled by, and the box it is measured in.
  *
  * Pure math over document units, so `bun test` covers it and the tools and
  * Svelte components stay thin callers.
@@ -46,29 +45,6 @@ export function applyMatrix(m: Matrix, x: number, y: number): [number, number] {
   return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
 }
 
-/**
- * Even-odd ray cast over a flat `[x0, y0, x1, y1, …]` polygon. Points exactly
- * on an edge fall either way; the lasso does not need a tie-break, because a
- * stroke is selected when *any* of its points is inside.
- */
-export function pointInPolygon(x: number, y: number, polygon: readonly number[]): boolean {
-  const count = polygon.length >> 1;
-  if (count < 3) {
-    return false;
-  }
-  let inside = false;
-  for (let i = 0, j = count - 1; i < count; j = i++) {
-    const xi = polygon[i * 2];
-    const yi = polygon[i * 2 + 1];
-    const xj = polygon[j * 2];
-    const yj = polygon[j * 2 + 1];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
 export interface Box {
   x: number;
   y: number;
@@ -77,29 +53,10 @@ export interface Box {
 }
 
 /**
- * Reprojects a point from `box` into `quad` — four corners in TL, TR, BR, BL
- * order — by bilinear interpolation. A corner dragged away takes the points
- * near it along and leaves the opposite corner untouched.
+ * Truncates to a whole document unit inside the int16 range the format
+ * stores. The reference truncates towards zero everywhere it writes a
+ * coordinate (`tools.js:1808-1873`), and so do we when a stroke is captured.
  */
-export function bilinearWarp(
-  x: number,
-  y: number,
-  box: Box,
-  quad: readonly number[],
-): [number, number] {
-  const u = box.width === 0 ? 0 : (x - box.x) / box.width;
-  const v = box.height === 0 ? 0 : (y - box.y) / box.height;
-  const top = (1 - u) * (1 - v);
-  const topRight = u * (1 - v);
-  const bottomRight = u * v;
-  const bottomLeft = (1 - u) * v;
-  return [
-    top * quad[0] + topRight * quad[2] + bottomRight * quad[4] + bottomLeft * quad[6],
-    top * quad[1] + topRight * quad[3] + bottomRight * quad[5] + bottomLeft * quad[7],
-  ];
-}
-
-/** Rounds to a whole document unit inside the int16 range the format stores. */
 export function clampCoord(value: number): number {
   if (!Number.isFinite(value)) {
     return value === Number.POSITIVE_INFINITY
@@ -108,5 +65,5 @@ export function clampCoord(value: number): number {
         ? STROKE_COORD_MIN
         : 0;
   }
-  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, Math.round(value)));
+  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, Math.trunc(value)));
 }

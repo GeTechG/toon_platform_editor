@@ -20,8 +20,8 @@
     },
     pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка', key: 'P' },
     drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D' },
-    lasso: { icon: 'lasso', title: 'Лассо (Q) — выделить и трансформировать', label: 'Лассо', key: 'Q' },
-    distort: { icon: 'distort', title: 'Искажение (~) — тянуть углы выделения', label: 'Искажение', key: '~' },
+    lasso: { icon: 'lasso', title: 'Лассо (Q) — взять кадр и трансформировать', label: 'Лассо', key: 'Q' },
+    distort: { icon: 'distort', title: 'Искажение (~) — дребезг штрихов кадра', label: 'Искажение', key: '~' },
   };
 
   // The preset owns the toolset; the pipette additionally only exists once the

@@ -28,9 +28,9 @@ export type SelectableTool =
   | 'mega-eraser'
   /** Hand: drags the canvas under a zoom window (reference `Drag`). */
   | 'drag'
-  /** Lasso: selects strokes and opens the transform window (reference `Lasso`). */
+  /** Lasso: takes the frame on every selected layer and opens the transform window. */
   | 'lasso'
-  /** Distort: drags the four corners of the selection box (reference `Distort`). */
+  /** Distort: shakes the frame's points as the pointer travels (reference `Distort`). */
   | 'distort';
 
 const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];

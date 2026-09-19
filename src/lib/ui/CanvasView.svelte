@@ -2,7 +2,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
-  import { frameCount } from '../model/operations';
+  import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
     blitLayer,
@@ -13,7 +13,15 @@
     type Canvas2DLike,
   } from '../render/canvas2d';
   import { pickSource } from './frame-selection';
-  import { boxCorners, cornerAt, movedCorner } from '../tools/lasso';
+  import {
+    hitMode,
+    movedBy,
+    rotatedTo,
+    scaledBy,
+    sessionWidthScale,
+    type HitMode,
+    type TransformSession,
+  } from '../tools/lasso';
   import { ZOOM_STEP, clampPan, toDocument, zoomAt } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
@@ -47,15 +55,24 @@
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
-  /** Pointer owning the mega-eraser or lasso gesture — only one runs at a time. */
+  /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
-  /** Lasso polygon being traced, in document units; null when idle. */
-  let lassoPolygon = $state<number[] | null>(null);
+  /** Pointer holding a live distort drag; the state throttles the steps. */
+  let distortGrab: { pointerId: number } | null = null;
   /**
-   * Drag inside an open transform: which corner is held (null = the body, so
-   * the drag moves the selection) and where it started, in document units.
+   * Drag inside an open transform: which zone was pressed, the session it
+   * started from, where it started (document units) and the axis shift locked.
    */
-  let grab: { pointerId: number; corner: number | null; x: number; y: number } | null = null;
+  let grab: {
+    pointerId: number;
+    mode: HitMode;
+    base: TransformSession;
+    x: number;
+    y: number;
+    axis: 'x' | 'y' | null;
+  } | null = null;
+  /** Zone the pointer hovers inside an open transform — only the cursor reads it. */
+  let hoverMode = $state<HitMode>('none');
   let lastPickPreview = 0;
   const PIPETTE_THROTTLE_MS = 100;
   /** Transient message over the canvas (e.g. drawing into a hidden layer). */
@@ -154,7 +171,7 @@
     ctx.clearRect(0, 0, pxW, pxH);
     if (cells.length === 1) {
       // A single layer cannot bleed into another — rasterize it in place.
-      renderStrokesLayer(cells[0], editor.doc.tools, ctx, viewport);
+      renderStrokesLayer(cells[0], previewTools, ctx, viewport);
       return;
     }
     for (const cell of cells) {
@@ -164,7 +181,7 @@
       const sctx = layerScratchEl.getContext('2d') as unknown as ViewCtx;
       sctx.setTransform(1, 0, 0, 1, 0, 0);
       sctx.clearRect(0, 0, pxW, pxH);
-      renderStrokesLayer(cell, editor.doc.tools, sctx, viewport);
+      renderStrokesLayer(cell, previewTools, sctx, viewport);
       blitLayer(layerScratchEl, ctx);
     }
   }
@@ -174,7 +191,7 @@
     const below: Frame[] = [];
     const above: Frame[] = [];
     for (let l = 0; l < layers.length; l++) {
-      const cell = layers[l].frames[frame];
+      const cell = stackCell(l, frame);
       if (!cell || layers[l].hidden || l === editor.activeLayer) {
         continue;
       }
@@ -185,14 +202,7 @@
     activeEl = buffer(activeEl, pxW, pxH);
     paintStack(belowEl, below, pxW, pxH, viewport);
     paintStack(aboveEl, above, pxW, pxH, viewport);
-    let activeCell = layers[editor.activeLayer]?.frames[frame];
-    // While a transform is open its strokes are drawn moved, on top — so they
-    // must not also sit here in their old place, or every drag smears.
-    const open = editor.transform;
-    if (activeCell && open) {
-      const held = new Set(open.indices);
-      activeCell = { strokes: activeCell.strokes.filter((_, i) => !held.has(i)) };
-    }
+    const activeCell = stackCell(editor.activeLayer, frame);
     paintStack(activeEl, activeCell && !layers[editor.activeLayer].hidden ? [activeCell] : [], pxW, pxH, viewport);
   }
 
@@ -239,10 +249,31 @@
     `Холст: кадр ${editor.displayedFrame + 1} из ${frameCount(editor.doc)}` +
       (editor.doc.layers.length > 1 ? `, слой ${editor.activeLayer + 1}` : ''),
   );
-  /** Grab radius for the handles, in document units — 12 CSS px at this zoom. */
-  const handleRadius = $derived(
-    (12 * editor.doc.width) / Math.max(1, cssWidth * editor.view.zoom),
+  /** Reference cursors for the transform zones (`tools.js:995-1032`). */
+  const CURSOR_BY_MODE: Record<HitMode, string> = {
+    move: 'move',
+    rotate: 'crosshair',
+    'scale-u': 'ns-resize',
+    'scale-d': 'ns-resize',
+    'scale-l': 'ew-resize',
+    'scale-r': 'ew-resize',
+    'scale-ul': 'nwse-resize',
+    'scale-dr': 'nwse-resize',
+    'scale-ur': 'nesw-resize',
+    'scale-dl': 'nesw-resize',
+    none: '',
+  };
+  /** A real CSS cursor while a transform or the distort brush owns the canvas. */
+  const overlayCursor = $derived(
+    editor.tool === 'distort'
+      ? 'e-resize'
+      : editor.transform
+        ? CURSOR_BY_MODE[hoverMode]
+        : '',
   );
+
+  /** Screen pixels per document unit — what the transform hit thresholds scale by. */
+  const hitZoom = $derived(Math.max(1e-6, (cssWidth * editor.view.zoom) / editor.doc.width));
   const cursorDiameter = $derived(
     Math.max(1, (editor.brushSizeLogical * cssWidth * editor.view.zoom) / CANVAS_LOGICAL_WIDTH),
   );
@@ -348,18 +379,6 @@
       activeWithLive = liveEl;
     }
 
-    // The selection as it stands right now, over the layer it was cut out of.
-    const transformed = transformPreviewCell();
-    if (transformed) {
-      liveEl = buffer(liveEl, pxWidth, pxHeight);
-      const lctx = liveEl.getContext('2d') as unknown as ViewCtx;
-      lctx.setTransform(1, 0, 0, 1, 0, 0);
-      lctx.clearRect(0, 0, pxWidth, pxHeight);
-      lctx.drawImage(activeEl!, 0, 0);
-      renderStrokesLayer(transformed, editor.doc.tools, lctx, viewport);
-      activeWithLive = liveEl;
-    }
-
     // The profile's active alpha (Multator: 0.8, its containerSprite) applies
     // to the whole current frame, so the stack composites offscreen first.
     const alpha = editor.playing ? 1 : editor.ux.activeFrameAlpha;
@@ -381,40 +400,67 @@
     }
   }
 
-  /** The selected strokes at their current transform; null when none is open. */
-  function transformPreviewCell(): Frame | null {
+  /**
+   * Tool table the stack draws with. While "change width with scale" is on,
+   * a scaled copy of every tool is appended, so the selection is previewed at
+   * the width Enter will actually write — no jump on apply.
+   */
+  const previewTools = $derived.by(() => {
     const open = editor.transform;
-    const cell = editor.activeCell;
-    if (!open || !cell) {
-      return null;
+    if (!open?.widthWithScale) {
+      return editor.doc.tools;
+    }
+    const scale = sessionWidthScale(open.session);
+    return [...editor.doc.tools, ...editor.doc.tools.map((tool) => scaleToolWidth(tool, scale))];
+  });
+
+  /**
+   * A layer's cell as the stack should draw it: the lasso takes whole cells,
+   * so a selected one is rasterized already moved rather than left in its old
+   * place with a preview on top.
+   */
+  function stackCell(layer: number, frame: number): Frame | undefined {
+    const cell = editor.doc.layers[layer]?.frames[frame];
+    const open = editor.transform;
+    if (!cell || !open || frame !== editor.activeFrame || !open.layers.includes(layer)) {
+      return cell;
     }
     return {
-      strokes: open.indices.flatMap((index) => {
-        const stroke = cell.strokes[index];
-        if (!stroke) {
-          return [];
-        }
+      strokes: cell.strokes.map((stroke) => {
         const points = stroke.points.slice();
         for (let i = 0; i < points.length; i += 2) {
           const [x, y] = editor.transformPoint(points[i], points[i + 1]);
           points[i] = x;
           points[i + 1] = y;
         }
-        return [{ points, tool_id: stroke.tool_id }];
+        // The scaled copies sit right after the real table, at the same offsets.
+        // The same quantization apply will perform, so the drag shows the
+        // real result instead of a smooth version of it that snaps on Enter.
+        const tool_id = open.widthWithScale ? stroke.tool_id + editor.doc.tools.length : stroke.tool_id;
+        quantizeStrokePoints(points, previewTools[tool_id]);
+        return { points, tool_id };
       }),
     };
   }
 
-  /** The four handles where they are drawn now — box corners run through the session. */
-  const displayedQuad = $derived.by(() => {
+  /**
+   * The eight handles where they are drawn now: the box corners run through
+   * the session, plus the side midpoints between them (the session is affine,
+   * so a midpoint stays a midpoint).
+   */
+  const displayedHandles = $derived.by(() => {
     const open = editor.transform;
     if (!open) {
       return null;
     }
-    const source = boxCorners(open.box);
+    const { x, y, width: w, height: h } = open.box;
+    const corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+      .map(([cx, cy]) => editor.transformPoint(cx, cy));
     const out: number[] = [];
-    for (let i = 0; i < source.length; i += 2) {
-      out.push(...editor.transformPoint(source[i], source[i + 1]));
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = corners[i];
+      const [bx, by] = corners[(i + 1) % 4];
+      out.push(ax, ay, (ax + bx) / 2, (ay + by) / 2);
     }
     return out;
   });
@@ -434,35 +480,6 @@
       out.push(toScreen(polygon[i], polygon[i + 1]).join(','));
     }
     return out.join(' ');
-  }
-
-  /**
-   * Scale that puts `corner` under the pointer. The pointer is un-rotated and
-   * un-translated first, so dragging a handle on a turned selection still
-   * scales along the selection's own axes.
-   */
-  function scaleFromCorner(
-    open: NonNullable<typeof editor.transform>,
-    corner: number,
-    x: number,
-    y: number,
-  ) {
-    const cx = open.box.x + open.box.width / 2;
-    const cy = open.box.y + open.box.height / 2;
-    const angle = (-open.session.rotate * Math.PI) / 180;
-    const dx = x - open.session.dx - cx;
-    const dy = y - open.session.dy - cy;
-    const ux = dx * Math.cos(angle) - dy * Math.sin(angle);
-    const uy = dx * Math.sin(angle) + dy * Math.cos(angle);
-    const source = boxCorners(open.box);
-    const rx = source[corner * 2] - cx;
-    const ry = source[corner * 2 + 1] - cy;
-    // A selection with no extent on an axis cannot be scaled along it.
-    return {
-      ...open.session,
-      scaleX: Math.abs(rx) < 1 ? open.session.scaleX : ux / rx,
-      scaleY: Math.abs(ry) < 1 ? open.session.scaleY : uy / ry,
-    };
   }
 
   function renderSessionPreview(
@@ -627,30 +644,38 @@
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
-    // A live transform owns the canvas: a handle scales or distorts, anywhere
-    // else moves. It comes before every drawing tool.
+    // A live transform owns the canvas: a handle scales, the ring outside a
+    // corner turns, the body moves. It comes before every drawing tool.
     if (editor.transform) {
       const [x, y] = toDocUnits(e);
-      grab = {
-        pointerId: e.pointerId,
-        corner: cornerAt(displayedQuad ?? [], x, y, handleRadius),
-        x,
-        y,
-      };
-      canvasEl.setPointerCapture(e.pointerId);
+      const mode = hitMode(x, y, editor.transform.box, editor.transform.session, hitZoom);
+      hoverMode = mode;
+      if (mode !== 'none') {
+        grab = { pointerId: e.pointerId, mode, base: editor.transform.session, x, y, axis: null };
+        canvasEl.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
+    // The lasso is not a drawing tool, so a press never leaves a stroke. With
+    // no session open it takes the frame again: applying or cancelling would
+    // otherwise strand the tool in hand with nothing left to edit.
+    if (editor.tool === 'lasso') {
+      if (!editor.transform) {
+        editor.beginTransform();
+      }
       return;
     }
-    // Lasso and distort both start by tracing the selection polygon.
-    if (editor.tool === 'lasso' || editor.tool === 'distort') {
+    // The distort brush shakes the frame as the pointer travels sideways.
+    if (editor.tool === 'distort') {
       if (editor.activeLayerHidden) {
         showHint(HIDDEN_LAYER_HINT);
         return;
       }
-      const [x, y] = toDocUnits(e);
-      lassoPolygon = [x, y];
+      const [x] = toDocUnits(e);
+      editor.beginDistort(x);
+      distortGrab = { pointerId: e.pointerId };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
-      scheduleDraw();
       return;
     }
     if (editor.tool === 'pipette') {
@@ -706,15 +731,21 @@
       scheduleDraw();
       return;
     }
-    if (lassoPolygon && e.pointerId === gesturePointerId) {
-      const [x, y] = toDocUnits(e);
-      lassoPolygon.push(x, y);
-      scheduleDraw();
+    if (distortGrab && e.pointerId === gesturePointerId) {
+      // ponytail: the state throttles to every fifth reference pixel and
+      // rewrites the cells there. Batch by rAF if a big frame ever stutters.
+      const [x] = toDocUnits(e);
+      editor.distortStep(x);
       return;
     }
     if (grab && e.pointerId === grab.pointerId) {
       dragTransform(e);
       return;
+    }
+    // No button down over an open transform: the cursor names the zone.
+    if (editor.transform) {
+      const [x, y] = toDocUnits(e);
+      hoverMode = hitMode(x, y, editor.transform.box, editor.transform.session, hitZoom);
     }
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -767,11 +798,10 @@
       grab = null;
       return;
     }
-    if (lassoPolygon && e.pointerId === gesturePointerId) {
-      editor.beginTransform(lassoPolygon);
-      lassoPolygon = null;
+    if (distortGrab && e.pointerId === gesturePointerId) {
+      editor.endDistort();
+      distortGrab = null;
       gesturePointerId = -1;
-      scheduleDraw();
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
@@ -790,34 +820,28 @@
     scheduleDraw();
   }
 
-  /** One pointermove inside a live transform: handle scales/distorts, body moves. */
+  /**
+   * One pointermove inside a live transform. Every step is measured from the
+   * session the press started on, not from the last move, so shift can lock
+   * an axis and ctrl can snap an angle without the drag drifting.
+   */
   function dragTransform(e: PointerEvent): void {
     const open = editor.transform;
     if (!open || !grab) {
       return;
     }
     const [x, y] = toDocUnits(e);
-    if (grab.corner !== null && editor.tool === 'distort') {
-      editor.setTransformQuad(movedCorner(editor.transformQuad, grab.corner, x, y));
-    } else if (grab.corner !== null) {
-      editor.setTransform(scaleFromCorner(open, grab.corner, x, y));
-    } else if (open.quad) {
-      // A distorted selection has no affine session left to move — the four
-      // corners travel together instead.
-      const moved = open.quad.slice();
-      for (let i = 0; i < moved.length; i += 2) {
-        moved[i] += x - grab.x;
-        moved[i + 1] += y - grab.y;
-      }
-      editor.setTransformQuad(moved);
+    const start = { x: grab.x, y: grab.y };
+    const pos = { x, y };
+    if (grab.mode === 'move') {
+      const moved = movedBy(grab.base, start, pos, e.shiftKey, grab.axis);
+      grab.axis = moved.axis;
+      editor.setTransform(moved.session);
+    } else if (grab.mode === 'rotate') {
+      editor.setTransform(rotatedTo(grab.base, open.box, start, pos, e.ctrlKey || e.metaKey));
     } else {
-      editor.setTransform({
-        ...open.session,
-        dx: open.session.dx + (x - grab.x),
-        dy: open.session.dy + (y - grab.y),
-      });
+      editor.setTransform(scaledBy(grab.base, open.box, grab.mode, start, pos, e.shiftKey));
     }
-    grab = { ...grab, x, y };
   }
 
   function commitPendingStroke(): void {
@@ -847,7 +871,10 @@
     }
     if (e.pointerId === gesturePointerId) {
       megaGesture = null;
-      lassoPolygon = null;
+      if (distortGrab) {
+        editor.endDistort();
+        distortGrab = null;
+      }
       gesturePointerId = -1;
       scheduleDraw();
       return;
@@ -916,11 +943,12 @@
       cursorVisible = false;
       pickPreview = null;
     }}
-    class:custom-cursor={editor.tool !== 'pipette'}
+    class:custom-cursor={editor.tool !== 'pipette' && !overlayCursor}
+    style:cursor={overlayCursor || null}
   ></canvas>
   <!-- Selection chrome. Purely visual: every gesture is read off the canvas
        itself, so pointer capture, touch and the keyboard path stay intact. -->
-  {#if lassoPolygon || displayedQuad}
+  {#if displayedHandles}
     <svg
       class="overlay"
       width={cssWidth}
@@ -928,16 +956,13 @@
       viewBox="0 0 {cssWidth} {cssHeight}"
       aria-hidden="true"
     >
-      {#if lassoPolygon}
-        <polygon class="lasso" points={screenPoints(lassoPolygon)} />
-      {/if}
-      {#if displayedQuad}
-        <polygon class="frame" points={screenPoints(displayedQuad)} />
-        {#each [0, 1, 2, 3] as corner (corner)}
-          {@const [hx, hy] = toScreen(displayedQuad[corner * 2], displayedQuad[corner * 2 + 1])}
-          <rect class="handle" x={hx - 5} y={hy - 5} width="10" height="10" />
-        {/each}
-      {/if}
+      <!-- The side midpoints sit on the sides, so all eight points trace the
+           same outline as the four corners alone. -->
+      <polygon class="frame" points={screenPoints(displayedHandles)} />
+      {#each [0, 1, 2, 3, 4, 5, 6, 7] as handle (handle)}
+        {@const [hx, hy] = toScreen(displayedHandles[handle * 2], displayedHandles[handle * 2 + 1])}
+        <rect class="handle" x={hx - 5} y={hy - 5} width="10" height="10" />
+      {/each}
     </svg>
   {/if}
   {#if hint}
@@ -952,7 +977,7 @@
       aria-hidden="true"
     ></span>
   {/if}
-  {#if cursorVisible && editor.tool !== 'pipette'}
+  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
@@ -998,12 +1023,6 @@
     top: 50%;
     transform: translate(-50%, -50%);
     pointer-events: none;
-  }
-  .overlay .lasso {
-    fill: color-mix(in srgb, var(--electric, #2f6fed) 12%, transparent);
-    stroke: var(--electric, #2f6fed);
-    stroke-width: 1;
-    stroke-dasharray: 4 3;
   }
   .overlay .frame {
     fill: none;
