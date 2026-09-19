@@ -23,10 +23,17 @@ export interface EncodeGifOptions {
 /** Palette quantization input is capped by sampling pixels evenly. */
 const PALETTE_SAMPLE_MAX_PIXELS = 65536;
 
+/**
+ * Frame duration in ms, truncated like the reference (`toon.js:616`). GIF
+ * itself stores hundredths of a second, so the encoder rounds this to
+ * centiseconds — that last step is the format's own, and the only tempo drift.
+ */
+export function gifDelayMs(fps: number): number {
+  return Math.max(1, Math.trunc(1000 / fps));
+}
+
 export function encodeGif(frames: RgbaFrame[], { fps, onProgress }: EncodeGifOptions): Uint8Array {
-  // ponytail: whole centiseconds — GIF stores delay in 1/100 s, the tempo
-  // drift (~4% at 12 fps) is inherent to the format.
-  const delayMs = Math.max(1, Math.round(100 / fps)) * 10;
+  const delayMs = gifDelayMs(fps);
   const palette = quantize(samplePixels(frames), 256);
   const gif = GIFEncoder();
   frames.forEach((frame, i) => {

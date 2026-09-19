@@ -1,24 +1,34 @@
 /**
- * Video export: the animation, its soundtrack and an optional watermark, in
- * mp4 where the browser can record it and WebM everywhere else.
+ * Video export. Where the browser has WebCodecs, frames go straight to a
+ * `VideoEncoder` through mediabunny, which muxes mp4 or WebM — the export then
+ * runs as fast as the machine encodes instead of in real time, and the
+ * bitrate is ours to set. Where it does not, the old `MediaRecorder` over
+ * `canvas.captureStream()` stays as the fallback, and the sheet says the
+ * recording will take as long as the animation lasts.
  *
- * There is no muxer library here and no ffmpeg.wasm. `MediaRecorder` over
- * `canvas.captureStream()` is a browser feature that already encodes off the
- * main thread, already accepts an audio track, and already writes both
- * containers — Chrome and Safari record `video/mp4` with H.264, Firefox
- * records WebM with VP9 + Opus. PRODUCT.md's device floor rules out the
- * 26 MB fallback the reference ships.
- *
- * ponytail: `MediaRecorder` stamps frames by the wall clock, so the export
- * runs in real time — a 120-frame animation at 12 fps takes ten seconds.
- * Upgrade path if that ever grates: `VideoEncoder` (WebCodecs) plus a muxer,
- * which encodes as fast as the CPU allows.
+ * Frames come from the shared rasterizer, so resolution and watermark are
+ * the same here as in GIF and PNG.
  */
 
-import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
+import {
+  FrameRasterizer,
+  exportSize,
+  logicalSize,
+  rasterViewport,
+  stampWatermark,
+  throwIfAborted,
+  type ExportStage,
+  type RasterizeOptions,
+} from './rasterize';
+import {
+  AUDIO_BITRATE,
+  VIDEO_BITRATE,
+  selectVideoTarget,
+  type VideoTarget,
+} from './video-codecs';
 
 export interface VideoFormat {
   mimeType: string;
@@ -60,15 +70,10 @@ export const VIDEO_CONTAINERS: readonly VideoContainer[] = [
 ];
 
 /**
- * The formats this browser can actually record, best first — one entry per
- * container, carrying the first codec string it accepts.
- *
- * mp4 is asked for by two different names. A silent export needs no audio
- * codec, and Chrome records H.264 into mp4 everywhere. With a track it needs
- * AAC, which Chrome only has where the platform provides an encoder — on
- * Linux it does not, and the mp4 it would write instead carries Opus, which is
- * an mp4 a phone will not play. So there mp4 drops off the list and WebM takes
- * the sound.
+ * The formats `MediaRecorder` can record, best first — one entry per
+ * container, carrying the first codec string it accepts. Only the fallback
+ * path asks; the WebCodecs path asks the encoders themselves
+ * (`./video-codecs`).
  */
 export function supportedVideoFormats(
   hasAudio = true,
@@ -105,63 +110,159 @@ export function frameDeadlines(count: number, fps: number): Float64Array {
   return Float64Array.from({ length: count }, (_, i) => (i * 1000) / fps);
 }
 
-export interface VideoExportOptions {
-  format: VideoFormat;
-  /** The soundtrack, muxed into the recording; omitted for a silent export. */
+/**
+ * Copies the track into the video's own length: a short track repeats until
+ * the video ends, a long one is cut where the video does.
+ */
+export function fillLooped(source: Float32Array, out: Float32Array): void {
+  if (source.length === 0) {
+    return;
+  }
+  for (let i = 0; i < out.length; i++) {
+    out[i] = source[i % source.length];
+  }
+}
+
+/** What this browser will write, and by which of the two paths. */
+export interface VideoPlan {
+  extension: 'mp4' | 'webm';
+  label: string;
+  /** True when only `MediaRecorder` is left: the export takes the animation's own length. */
+  realtime: boolean;
+  target?: VideoTarget;
+  format?: VideoFormat;
+}
+
+/** Picks the export path: WebCodecs first, `MediaRecorder` if it cannot. */
+export async function planVideo(doc: ToonDocument, hasAudio: boolean, width?: number): Promise<VideoPlan | null> {
+  const size = exportSize(doc, width ?? logicalSize(doc).width);
+  const target = await selectVideoTarget({ hasAudio, ...size });
+  if (target) {
+    return { extension: target.extension, label: target.label, realtime: false, target };
+  }
+  const format = supportedVideoFormats(hasAudio)[0];
+  return format
+    ? { extension: format.extension, label: format.label, realtime: true, format }
+    : null;
+}
+
+export interface VideoExportOptions extends RasterizeOptions {
+  plan: VideoPlan;
+  /** The soundtrack, muxed into the video; omitted for a silent export. */
   audio?: Blob | null;
-  /** Stamped into the corner of every frame when set. */
-  watermark?: string;
-  onProgress?: (done: number, total: number) => void;
-  /** Aborting drops the recording; nothing is returned and nothing is saved. */
+  onProgress?: (done: number, total: number, stage: ExportStage) => void;
+  /** Aborting drops the export; nothing is returned and nothing is saved. */
   signal?: AbortSignal;
   /**
-   * Length of the track when it is tied to the frames, in seconds. The
+   * Length of the track when it is not tied to the frames, in seconds. The
    * animation then loops for that long instead of playing once.
    */
   trackSeconds?: number;
 }
 
-export const WATERMARK_TEXT = 'toonop';
+/**
+ * Renders the document through the same `Canvas2DFrameRenderer` the canvas,
+ * the GIF and the player use, and encodes it. Resolves with the finished
+ * file; rejects with an `AbortError` if cancelled.
+ */
+export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
+  return options.plan.realtime ? recordVideo(doc, options) : encodeVideo(doc, options);
+}
+
+/** WebCodecs: frames are encoded as fast as the machine manages. */
+async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
+  const { plan, audio, onProgress, signal, trackSeconds, ...raster } = options;
+  const target = plan.target;
+  if (!target) {
+    throw new Error('видео-кодек не выбран');
+  }
+  const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, WebMOutputFormat } =
+    await import('mediabunny');
+
+  const fps = doc.frame_rate;
+  const frames = frameCount(doc);
+  const total = exportFrameCount(frames, fps, trackSeconds);
+  const rasterizer = new FrameRasterizer(doc, raster);
+  const buffer = new BufferTarget();
+  const output = new Output({
+    format: target.extension === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat(),
+    target: buffer,
+  });
+  const video = new CanvasSource(rasterizer.canvas, {
+    codec: target.videoCodec,
+    quality: new Quality({ bitrate: VIDEO_BITRATE }),
+  });
+  output.addVideoTrack(video, { frameRate: fps });
+  const sound =
+    target.audioCodec && audio
+      ? new AudioBufferSource({
+          codec: target.audioCodec,
+          quality: new Quality({ bitrate: AUDIO_BITRATE }),
+        })
+      : null;
+  if (sound) {
+    output.addAudioTrack(sound);
+  }
+
+  try {
+    await output.start();
+    if (sound && audio) {
+      await sound.add(await buildSoundtrack(audio, total / fps));
+      sound.close();
+    }
+    for (let index = 0; index < total; index++) {
+      throwIfAborted(signal);
+      rasterizer.draw(index % frames);
+      await video.add(index / fps, 1 / fps);
+      onProgress?.(index + 1, total, 'encode');
+    }
+    video.close();
+    await output.finalize();
+    return new Blob([buffer.buffer as ArrayBuffer], { type: output.format.mimeType });
+  } catch (err) {
+    await output.cancel().catch(() => {});
+    throw err;
+  }
+}
 
 /**
- * Corner stamp, sized to the canvas so it reads the same at any document size.
- * Drawn in device pixels: the frame renderer leaves its document-units
- * transform on the context, and under that the stamp would shrink to a smudge.
+ * The track, decoded and laid out over the whole video: looped where it is
+ * shorter, cut where it is longer.
  */
-export function stampWatermark(ctx: CanvasRenderingContext2D, width: number, height: number, text: string): void {
-  const size = Math.max(10, Math.round(height / 18));
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.font = `600 ${size}px system-ui, sans-serif`;
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  // Ink on a light halo: legible over a dark drawing and over an empty canvas.
-  ctx.lineWidth = Math.max(2, size / 6);
-  ctx.strokeStyle = BACKGROUND_COLOR;
-  ctx.globalAlpha = 0.55;
-  ctx.strokeText(text, width - size / 2, height - size / 2);
-  ctx.fillStyle = '#000000';
-  ctx.globalAlpha = 0.45;
-  ctx.fillText(text, width - size / 2, height - size / 2);
-  ctx.restore();
+async function buildSoundtrack(audio: Blob, seconds: number): Promise<AudioBuffer> {
+  const ctx = new AudioContext();
+  try {
+    const decoded = await ctx.decodeAudioData(await audio.arrayBuffer());
+    const out = ctx.createBuffer(
+      decoded.numberOfChannels,
+      Math.max(1, Math.round(seconds * decoded.sampleRate)),
+      decoded.sampleRate,
+    );
+    for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
+      fillLooped(decoded.getChannelData(channel), out.getChannelData(channel));
+    }
+    return out;
+  } finally {
+    void ctx.close();
+  }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 /**
- * Records the document, in playback order at its own frame rate, through the
- * same `Canvas2DFrameRenderer` the canvas, the GIF and the player use.
- * Resolves with the finished file; rejects with an `AbortError` if cancelled.
+ * Fallback for browsers without WebCodecs: `MediaRecorder` stamps frames by
+ * the wall clock, so this runs in real time — a 120-frame animation at 12 fps
+ * takes ten seconds.
  */
-export async function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
-  const { format, audio, watermark, onProgress, signal, trackSeconds } = options;
-  if (typeof MediaRecorder === 'undefined') {
+async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
+  const { plan, audio, onProgress, signal, trackSeconds, width, watermark } = options;
+  const format = plan.format;
+  if (!format) {
     throw new Error('этот браузер не умеет записывать видео');
   }
-  const width = Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE));
-  const height = Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE));
+  const { width: targetWidth, height } = exportSize(doc, width ?? logicalSize(doc).width);
   const canvas = document.createElement('canvas');
-  canvas.width = width;
+  canvas.width = targetWidth;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
@@ -208,25 +309,24 @@ export async function exportVideo(doc: ToonDocument, options: VideoExportOptions
   const frames = frameCount(doc);
   const total = exportFrameCount(frames, fps, trackSeconds);
   const deadlines = frameDeadlines(total, fps);
-  const viewport = { scale: 1 / FIXED_POINT_SCALE, dpr: 1 };
+  const viewport = rasterViewport(doc, targetWidth);
+  const scale = targetWidth / logicalSize(doc).width;
   const renderer = new Canvas2DFrameRenderer();
   try {
     recorder.start();
     await audioElement?.play().catch((err) => console.warn('audio playback failed:', err));
     const started = performance.now();
     for (let index = 0; index < total; index++) {
-      if (signal?.aborted) {
-        throw new DOMException('экспорт отменён', 'AbortError');
-      }
+      throwIfAborted(signal);
       await sleep(started + deadlines[index] - performance.now());
       renderer.render(doc, index % frames, ctx as unknown as Canvas2DLike, viewport);
       if (watermark) {
-        stampWatermark(ctx, width, height, watermark);
+        stampWatermark(ctx, targetWidth, height, scale);
       }
       if (manualFrames) {
         videoTrack.requestFrame();
       }
-      onProgress?.(index + 1, total);
+      onProgress?.(index + 1, total, 'encode');
     }
     // Hold the last frame for its own duration, or it flashes past.
     await sleep(started + (total * 1000) / fps - performance.now());
@@ -244,4 +344,3 @@ export async function exportVideo(doc: ToonDocument, options: VideoExportOptions
     }
   }
 }
-

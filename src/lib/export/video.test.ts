@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   VIDEO_CONTAINERS,
   exportFrameCount,
+  fillLooped,
   frameDeadlines,
-  stampWatermark,
   supportedVideoFormats,
 } from './video';
 
@@ -118,37 +118,22 @@ describe('exportFrameCount', () => {
   });
 });
 
-describe('stampWatermark', () => {
-  /** Records what a real 2D context would have been told to do. */
-  function fakeContext() {
-    const calls: string[] = [];
-    const ctx = {
-      canvas: { width: 600, height: 300 },
-      font: '', textAlign: '', textBaseline: '', lineWidth: 0,
-      strokeStyle: '', fillStyle: '', globalAlpha: 1,
-      save: () => calls.push('save'),
-      restore: () => calls.push('restore'),
-      setTransform: (...a: number[]) => calls.push(`setTransform(${a.join(',')})`),
-      strokeText: (t: string, x: number, y: number) => calls.push(`strokeText(${t},${x},${y})`),
-      fillText: (t: string, x: number, y: number) => calls.push(`fillText(${t},${x},${y})`),
-    };
-    return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
-  }
-
-  test('draws in device pixels, not in whatever transform the renderer left', () => {
-    // The frame renderer leaves a document-units transform on the context;
-    // inheriting it shrinks the stamp to a smudge in the corner of the canvas.
-    const { ctx, calls } = fakeContext();
-    stampWatermark(ctx, 600, 300, 'toonop');
-    expect(calls[0]).toBe('save');
-    expect(calls[1]).toBe('setTransform(1,0,0,1,0,0)');
-    expect(calls.at(-1)).toBe('restore');
+describe('fillLooped', () => {
+  test('a track shorter than the video repeats instead of falling silent', () => {
+    const out = new Float32Array(5);
+    fillLooped(Float32Array.from([1, 2]), out);
+    expect(Array.from(out)).toEqual([1, 2, 1, 2, 1]);
   });
 
-  test('sits in the bottom-right corner of the frame', () => {
-    const { ctx, calls } = fakeContext();
-    stampWatermark(ctx, 600, 300, 'toonop');
-    // height / 18 = 17px type, half of it as the margin.
-    expect(calls).toContain('fillText(toonop,591.5,291.5)');
+  test('a track longer than the video is cut, not squeezed', () => {
+    const out = new Float32Array(2);
+    fillLooped(Float32Array.from([1, 2, 3, 4]), out);
+    expect(Array.from(out)).toEqual([1, 2]);
+  });
+
+  test('an empty track leaves silence', () => {
+    const out = new Float32Array(3);
+    fillLooped(new Float32Array(0), out);
+    expect(Array.from(out)).toEqual([0, 0, 0]);
   });
 });

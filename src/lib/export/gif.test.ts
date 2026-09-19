@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { encodeGif, type RgbaFrame } from './gif';
+import { encodeGif, gifDelayMs, type RgbaFrame } from './gif';
 
 /** Solid-color opaque frame. */
 function frame(w: number, h: number, [r, g, b]: [number, number, number]): RgbaFrame {
@@ -30,6 +30,14 @@ function gceDelay(bytes: Uint8Array, offset: number): number {
 }
 
 const ascii = (bytes: Uint8Array) => String.fromCharCode(...bytes);
+
+describe('gifDelayMs', () => {
+  test('the reference truncates milliseconds (toon.js:616)', () => {
+    expect(gifDelayMs(12)).toBe(83);
+    expect(gifDelayMs(24)).toBe(41);
+    expect(gifDelayMs(5)).toBe(200);
+  });
+});
 
 describe('encodeGif', () => {
   test('two frames → valid GIF89a with 2 frames and fps-derived delay', () => {

@@ -1,54 +1,49 @@
 /**
- * Main-thread side of GIF export: rasterizes document frames through the
- * existing Canvas2DFrameRenderer (same stroke path as the canvas), then
- * hands the RGBA buffers to the encoding worker.
+ * Main-thread side of GIF export: frames come from the shared rasterizer
+ * (resolution, watermark and background live there), the RGBA buffers go to
+ * the encoding worker.
  */
 
-import { FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
-import { frameCount } from '../model/operations';
-import { Canvas2DFrameRenderer } from '../render/canvas2d';
-import type { Canvas2DLike } from '../render/canvas2d';
+import {
+  rasterizeDocument,
+  throwIfAborted,
+  type ExportStage,
+  type RasterizeOptions,
+} from './rasterize';
 import type { ExportRequest, ExportResponse } from './worker';
 
-/**
- * Renders every frame in playback order at the logical canvas size,
- * flattened onto opaque white (the renderer clears to BACKGROUND_COLOR).
- */
-export function rasterizeDocument(doc: ToonDocument): ExportRequest['frames'] {
-  const width = Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE));
-  const height = Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('canvas 2d context unavailable');
-  }
-  const renderer = new Canvas2DFrameRenderer();
-  const viewport = { scale: 1 / FIXED_POINT_SCALE, dpr: 1 };
-  return Array.from({ length: frameCount(doc) }, (_, index) => {
-    renderer.render(doc, index, ctx as unknown as Canvas2DLike, viewport);
-    return { data: ctx.getImageData(0, 0, width, height).data.buffer as ArrayBuffer, width, height };
-  });
+export interface ExportGifOptions extends RasterizeOptions {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number, stage: ExportStage) => void;
 }
 
 /** Rasterizes the document and encodes it to GIF bytes in a Web Worker. */
-export function exportGif(
+export async function exportGif(
   doc: ToonDocument,
-  onProgress?: (done: number, total: number) => void,
+  { signal, onProgress, ...raster }: ExportGifOptions = {},
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const frames = rasterizeDocument(doc);
+  const frames = await rasterizeDocument(doc, {
+    ...raster,
+    signal,
+    onProgress: (done, total) => onProgress?.(done, total, 'render'),
+  });
+  throwIfAborted(signal);
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   return new Promise((resolve, reject) => {
     const done = (settle: () => void) => {
       worker.terminate();
+      signal?.removeEventListener('abort', onAbort);
       settle();
     };
+    function onAbort(): void {
+      done(() => reject(new DOMException('экспорт отменён', 'AbortError')));
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
     worker.onmessage = (e: MessageEvent<ExportResponse>) => {
       const msg = e.data;
       if (msg.type === 'progress') {
-        onProgress?.(msg.done, msg.total);
+        onProgress?.(msg.done, msg.total, 'encode');
       } else if (msg.type === 'done') {
         done(() => resolve(new Uint8Array(msg.bytes)));
       } else {

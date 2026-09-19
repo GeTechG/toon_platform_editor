@@ -1,40 +1,63 @@
 <script lang="ts">
   /**
-   * The reference's export window: the same drawing as GIF, MP4 or WebM, with
-   * the soundtrack and an optional watermark on the video. Which video
-   * formats appear is what the browser can actually record — mp4 is not
-   * offered where it cannot be written (with a track, that takes an AAC
-   * encoder the browser may not have), with a line saying so rather than a
-   * disabled control with no explanation.
+   * The reference's export window: a format, a resolution, a watermark and
+   * one «Скачать» button (`index.html:255-300`, `export_help.js:100-133`).
+   * PNG appears only for a one-frame document, and only PNG offers a
+   * transparent background. The video container is whatever this browser can
+   * encode — mp4 where it can, WebM otherwise, with a line saying why.
    *
    * A native <dialog> for the same reasons as the settings window: focus
    * trap, Esc, inert page.
    */
   import type { EditorState } from './editor-state.svelte';
+  import { EXPORT_DEFAULT_WIDTH, EXPORT_WIDTHS } from '../format/constants';
+  import { frameCount } from '../model/operations';
   import { exportGif } from '../export/export-gif';
-  import {
-    WATERMARK_TEXT,
-    exportFrameCount,
-    exportVideo,
-    supportedVideoFormats,
-    type VideoFormat,
-  } from '../export/video';
+  import { exportPng } from '../export/png';
+  import { WATERMARK_TEXT, exportSize, type ExportStage } from '../export/rasterize';
+  import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
+  type Format = 'png' | 'gif' | 'video';
+
   let open = $state(false);
   let dialogEl = $state<HTMLDialogElement | undefined>();
+  let format = $state<Format>('gif');
+  let width = $state(EXPORT_DEFAULT_WIDTH);
+  let watermark = $state(true);
+  let transparent = $state(false);
   /** What is being built right now, empty while idle. */
   let busy = $state('');
+  let stage = $state('');
   let progress = $state(0);
   let error = $state('');
-  let watermark = $state(false);
   let cancelling = $state<AbortController | null>(null);
+  let plan = $state<VideoPlan | null>(null);
+  let planned = $state(false);
 
-  // Recomputed when a track arrives: mp4 needs an AAC encoder to carry sound,
-  // and a browser without one can still write a silent mp4.
-  const formats = $derived(supportedVideoFormats(editor.audio.hasTrack));
+  const singleFrame = $derived(frameCount(editor.doc) === 1);
+
+  // PNG is a still: the moment there is a second frame it stops being on
+  // offer, and a sheet left on it falls back to GIF (`export_help.js:124-126`).
+  $effect(() => {
+    if (!singleFrame && format === 'png') {
+      format = 'gif';
+    }
+  });
+
+  // Which video path exists is a question for the encoders, and the answer
+  // changes when a track arrives: mp4 needs an AAC encoder to carry sound.
+  $effect(() => {
+    const hasAudio = editor.audio.hasTrack;
+    const target = width;
+    planned = false;
+    planVideo(editor.doc, hasAudio, target).then((result) => {
+      plan = result;
+      planned = true;
+    });
+  });
 
   // The file is what the preview sounds like. Tied, the track is pinned to the
   // first frame and restarts with the animation, so the work is one pass of the
@@ -45,14 +68,16 @@
     editor.audio.hasTrack && !editor.audio.sync ? editor.audio.duration : undefined,
   );
   const videoSeconds = $derived(
-    exportFrameCount(
-      editor.doc.layers[0].frames.length,
+    exportFrameCount(frameCount(editor.doc), editor.doc.frame_rate, trackSeconds) /
       editor.doc.frame_rate,
-      trackSeconds,
-    ) / editor.doc.frame_rate,
   );
   const clock = (seconds: number) =>
     `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
+
+  const STAGES: Record<ExportStage, string> = {
+    render: 'Рендер кадров…',
+    encode: 'Кодирование…',
+  };
 
   $effect(() => {
     if (open) {
@@ -70,52 +95,59 @@
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  async function run(what: string, build: () => Promise<void>): Promise<void> {
+  function track(done: number, total: number, at: ExportStage): void {
+    progress = Math.round((done / total) * 100);
+    stage = STAGES[at];
+  }
+
+  async function download(): Promise<void> {
     if (busy) {
       return;
     }
-    busy = what;
+    // TODO(toonio-file-parity): force a draft save before the export, as the
+    // reference does (`toon.js:265`) — the hook arrives with that change.
+    busy = format;
+    stage = STAGES.render;
     progress = 0;
     error = '';
+    cancelling = new AbortController();
+    const options = { width, watermark, signal: cancelling.signal, onProgress: track };
     try {
-      await build();
+      if (format === 'png') {
+        save(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
+      } else if (format === 'gif') {
+        const bytes = await exportGif(editor.doc, options);
+        save(new Blob([bytes], { type: 'image/gif' }), 'toonop.gif');
+      } else if (plan) {
+        const blob = await exportVideo(editor.doc, {
+          ...options,
+          plan,
+          audio: editor.audio.blob,
+          trackSeconds,
+        });
+        save(blob, `toonop.${plan.extension}`);
+      }
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') {
         error = 'Экспорт отменён';
       } else {
         console.warn('export failed:', err);
-        error = `${what} не собрался — попробуй ещё раз`;
+        error = 'Не собралось — попробуй ещё раз';
       }
     } finally {
       busy = '';
+      stage = '';
       cancelling = null;
     }
   }
 
-  function saveGif(): Promise<void> {
-    return run('GIF', async () => {
-      const bytes = await exportGif(editor.doc, (done, total) => {
-        progress = Math.round((done / total) * 100);
-      });
-      save(new Blob([bytes], { type: 'image/gif' }), 'animation.gif');
-    });
-  }
-
-  function saveVideo(format: VideoFormat): Promise<void> {
-    return run(format.label, async () => {
-      cancelling = new AbortController();
-      const blob = await exportVideo(editor.doc, {
-        format,
-        audio: editor.audio.blob,
-        watermark: watermark ? WATERMARK_TEXT : undefined,
-        trackSeconds,
-        signal: cancelling.signal,
-        onProgress: (done, total) => {
-          progress = Math.round((done / total) * 100);
-        },
-      });
-      save(blob, `animation.${format.extension}`);
-    });
+  /**
+   * A still opens on PNG, an animation on GIF — the reference picks the
+   * format the document actually is (`export_help.js:108-126`).
+   */
+  function openSheet(): void {
+    format = singleFrame ? 'png' : 'gif';
+    open = true;
   }
 
   function cancel(): void {
@@ -129,13 +161,13 @@
 
   /** Reference Alt+S: open the export without reaching for the button. */
   export function start(): void {
-    open = true;
+    openSheet();
   }
 </script>
 
 <button
   class="key"
-  onclick={() => (open = true)}
+  onclick={openSheet}
   data-key="Alt+S"
   title="Экспорт (Alt+S)"
   aria-label="Экспорт"
@@ -161,23 +193,55 @@
     </header>
 
     <div class="sheet-body">
-      <p class="sheet-hint">Картинка</p>
-      <button class="key wide" disabled={busy !== ''} onclick={saveGif}>GIF</button>
+      <p class="sheet-hint">Формат</p>
+      <div class="choices" role="group" aria-label="Формат">
+        {#if singleFrame}
+          <button class="key" class:active={format === 'png'} aria-pressed={format === 'png'} onclick={() => (format = 'png')}>PNG</button>
+        {/if}
+        <button class="key" class:active={format === 'gif'} aria-pressed={format === 'gif'} onclick={() => (format = 'gif')}>GIF</button>
+        <button
+          class="key"
+          class:active={format === 'video'}
+          aria-pressed={format === 'video'}
+          disabled={planned && !plan}
+          onclick={() => (format = 'video')}
+        >{plan?.label ?? 'Видео'}</button>
+      </div>
 
-      <p class="sheet-hint">Видео</p>
-      {#if formats.length === 0}
-        <p class="note">Этот браузер не умеет записывать видео — остаётся GIF.</p>
-      {:else}
-        {#if !formats.some((f) => f.extension === 'mp4')}
+      <p class="sheet-hint">Разрешение</p>
+      <div class="choices" role="group" aria-label="Разрешение">
+        {#each EXPORT_WIDTHS as w (w)}
+          {@const s = exportSize(editor.doc, w)}
+          <button class="key" class:active={width === w} aria-pressed={width === w} onclick={() => (width = w)}>
+            {s.width}×{s.height}
+          </button>
+        {/each}
+      </div>
+
+      <label class="toggle">
+        <span class="toggle-label">Водяной знак «{WATERMARK_TEXT}»</span>
+        <input type="checkbox" role="switch" bind:checked={watermark} />
+      </label>
+      {#if format === 'png'}
+        <label class="toggle">
+          <span class="toggle-label">Прозрачный фон</span>
+          <input type="checkbox" role="switch" bind:checked={transparent} />
+        </label>
+      {/if}
+
+      {#if editor.settings.theme === 'dark' && !editor.settings.greyCanvas}
+        <p class="note">Холст в файле будет белым, как на бумаге, — тёмная тема красит только студию.</p>
+      {/if}
+
+      {#if format === 'video'}
+        {#if planned && !plan}
+          <p class="note">Этот браузер не умеет кодировать видео — остаются GIF и PNG.</p>
+        {:else if plan && plan.extension !== 'mp4'}
           <p class="note">
-            MP4 {editor.audio.hasTrack ? 'со звуком ' : ''}этот браузер не пишет; WebM откроется в нём
-            же и в любом плеере.
+            MP4 {editor.audio.hasTrack ? 'со звуком ' : ''}этот браузер не кодирует; WebM откроется в
+            нём же и в любом плеере.
           </p>
         {/if}
-        <label class="toggle">
-          <span class="toggle-label">Водяной знак «{WATERMARK_TEXT}»</span>
-          <input type="checkbox" role="switch" bind:checked={watermark} />
-        </label>
         {#if editor.audio.hasTrack}
           <p class="note">
             Звук «{editor.audio.name}» войдёт в видео.
@@ -188,20 +252,19 @@
             {/if}
           </p>
         {/if}
-        <p class="note">Запись идёт в реальном времени: {clock(videoSeconds)}.</p>
-        {#each formats as format (format.mimeType)}
-          <button class="key wide" disabled={busy !== ''} onclick={() => saveVideo(format)}>
-            {format.label}
-          </button>
-        {/each}
+        {#if plan?.realtime}
+          <p class="note">Этот браузер пишет видео в реальном времени: {clock(videoSeconds)}.</p>
+        {/if}
       {/if}
 
+      <button class="key wide primary" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
+        Скачать
+      </button>
+
       {#if busy}
-        <p class="note" role="status">{busy}: {progress}%</p>
+        <p class="note" role="status">{stage} {progress}%</p>
         <progress max="100" value={progress}></progress>
-        {#if cancelling}
-          <button class="key wide" onclick={cancel}>Отменить</button>
-        {/if}
+        <button class="key wide" onclick={cancel}>Отменить</button>
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>
@@ -226,6 +289,15 @@
   }
   .sheet-dialog::backdrop {
     background: rgba(11, 12, 16, 0.42);
+  }
+  .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  .choices .key.active {
+    color: var(--electric);
+    box-shadow: inset 0 0 0 2px var(--electric);
   }
   .wide {
     width: 100%;

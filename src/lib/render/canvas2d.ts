@@ -88,7 +88,7 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
   }
 
   render(doc: ToonDocument, frameIndex: number, target: Canvas2DLike, viewport: Viewport): void {
-    clearToBackground(target);
+    clearToBackground(target, viewport.background);
     const cells: Frame[] = [];
     for (const layer of doc.layers) {
       const cell = layer.frames[frameIndex];
@@ -268,9 +268,13 @@ function toolColor(tool: ToolDescriptor): string {
     : ERASE_PAINT;
 }
 
-function clearToBackground(target: Canvas2DLike): void {
+function clearToBackground(target: Canvas2DLike, background: string | null = BACKGROUND_COLOR): void {
   target.setTransform(1, 0, 0, 1, 0, 0);
-  target.fillStyle = BACKGROUND_COLOR;
+  if (background === null) {
+    target.clearRect(0, 0, target.canvas.width, target.canvas.height);
+    return;
+  }
+  target.fillStyle = background;
   target.fillRect(0, 0, target.canvas.width, target.canvas.height);
 }
 

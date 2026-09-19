@@ -284,6 +284,22 @@ describe('Canvas2DFrameRenderer', () => {
     ]);
   });
 
+  it('viewport.background: null clears instead of filling (transparent PNG)', () => {
+    const ctx = new RecordingCtx();
+    renderer.render(docOf(sampleTools, [{ strokes: [] }]), 0, ctx, { ...viewport, background: null });
+    expect(ctx.log).toEqual([
+      'setTransform(1,0,0,1,0,0)',
+      'clearRect(0,0,1200,600)',
+      'setTransform(0.25,0,0,0.25,0,0)',
+    ]);
+  });
+
+  it('viewport.background paints the color it is given', () => {
+    const ctx = new RecordingCtx();
+    renderer.render(docOf(sampleTools, [{ strokes: [] }]), 0, ctx, { ...viewport, background: '#112233' });
+    expect(ctx.log).toContain('fillStyle=#112233');
+  });
+
   it('draws strokes in order with their attributes', () => {
     const log = renderToLog(sampleDoc()).join('\n');
     const black = log.indexOf('strokeStyle=#000000');

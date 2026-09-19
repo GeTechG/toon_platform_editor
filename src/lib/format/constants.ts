@@ -75,3 +75,10 @@ export const MAX_STROKES_PER_FRAME = 16384;
 /** Maximum coordinate count (x,y flat) per stroke. */
 export const MAX_STROKE_COORDS = 65536;
 export const MAX_STROKE_WIDTH = 4800;
+
+/**
+ * Export resolutions, by width (the reference's row, `export_help.js:61`).
+ * The height follows the document's own proportion — see `exportSize`.
+ */
+export const EXPORT_WIDTHS = [640, 1280, 1920, 2560] as const;
+export const EXPORT_DEFAULT_WIDTH = 1280;

@@ -18,6 +18,11 @@ export interface Viewport {
    */
   panX?: number;
   panY?: number;
+  /**
+   * What the frame is cleared to. Left out, it is the canvas background;
+   * `null` clears to transparent — the PNG export's transparent mode.
+   */
+  background?: string | null;
 }
 
 /**
