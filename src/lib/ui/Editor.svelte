@@ -1581,8 +1581,11 @@
       max-height: 40vh;
     }
     /* Transport and output do not fit one 390px line — they wrap instead of
-       pushing the page into a horizontal scroll. */
-    .studio .row.transport {
+       pushing the page into a horizontal scroll. Every layout, not just the
+       studio: a row that overflows widens the whole layout viewport, and the
+       fixed sheets (drafts, settings) then hang their right edge — the delete
+       key of a draft row — off the screen. */
+    .row.transport {
       flex-wrap: wrap;
     }
   }
