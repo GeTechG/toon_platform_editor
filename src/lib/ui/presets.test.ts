@@ -181,7 +181,7 @@ test('settings fall back to the reference defaults when absent or corrupted', ()
   const base = { preset: 'toonio', features: presetFeatures('toonio') };
   expect(parseUiConfig(JSON.stringify(base))?.settings).toEqual(DEFAULT_SETTINGS);
   expect(parseUiConfig(JSON.stringify({ ...base, settings: 'nope' }))?.settings).toEqual(DEFAULT_SETTINGS);
-  expect(parseUiConfig(JSON.stringify({ ...base, settings: { theme: 'neon', paletteAutoAdd: 1 } }))?.settings)
+  expect(parseUiConfig(JSON.stringify({ ...base, settings: { paletteAutoAdd: 1 } }))?.settings)
     .toEqual(DEFAULT_SETTINGS);
 });
 
@@ -195,8 +195,6 @@ test('settings round-trip through the stored config', () => {
     paletteLimit: 120,
     autosaveMs: 0,
     showDraftsOnStart: false,
-    theme: 'dark' as const,
-    greyCanvas: false,
     pickerModel: 'wheel' as const,
     altLayout: true,
     removerTipShown: true,
@@ -220,19 +218,6 @@ test('the picker model is one of the three, or the reference default', () => {
   expect(stored('wheel')).toBe('wheel');
   expect(stored('spiral')).toBe('hsv');
   expect(DEFAULT_SETTINGS.pickerModel).toBe('hsv');
-});
-
-test('the system dark theme applies until the config holds a theme of its own', () => {
-  const base = { preset: 'toonio', features: presetFeatures('toonio') };
-  const themeOf = (settings: unknown, prefersDark: boolean) =>
-    parseUiConfig(JSON.stringify({ ...base, settings }), prefersDark)?.settings.theme;
-
-  expect(themeOf(undefined, true)).toBe('dark');
-  expect(themeOf({ paletteLimit: 60 }, true)).toBe('dark');
-  expect(themeOf(undefined, false)).toBe('light');
-  // An explicit choice wins over the system, in both directions.
-  expect(themeOf({ theme: 'light' }, true)).toBe('light');
-  expect(themeOf({ theme: 'dark' }, false)).toBe('dark');
 });
 
 test('the palette limit is clamped to 30..300 and snapped to the 10 step', () => {
@@ -266,7 +251,7 @@ test('the reference defaults: autosave every minute, drafts offered, palette cap
   expect(DEFAULT_SETTINGS.autosaveMs).toBe(60_000);
   expect(DEFAULT_SETTINGS.showDraftsOnStart).toBe(true);
   expect(DEFAULT_SETTINGS.paletteLimit).toBe(50);
-  expect(DEFAULT_SETTINGS.theme).toBe('light');
+  expect(DEFAULT_SETTINGS).not.toContainKey('theme');
 });
 
 test('every brush tool starts from the same Tonio defaults', () => {

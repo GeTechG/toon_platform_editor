@@ -51,10 +51,6 @@ describe('watermark and background', () => {
     expect(sheet).toMatch(/transparent = \$state\(false\)/);
     expect(sheet).toMatch(/\{#if format === 'png'\}/);
   });
-
-  it('warns about the white background in the dark theme without the grey canvas', () => {
-    expect(sheet).toMatch(/theme === 'dark' && !editor\.settings\.greyCanvas/);
-  });
 });
 
 describe('progress', () => {

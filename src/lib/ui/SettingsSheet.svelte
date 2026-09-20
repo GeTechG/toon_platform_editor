@@ -310,25 +310,6 @@
 
     <p class="sheet-hint">Вид</p>
     <label class="toggle">
-      <span class="toggle-label">Тёмная тема <kbd>N</kbd></span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.theme === 'dark'}
-        onchange={(e) => editor.setSetting('theme', e.currentTarget.checked ? 'dark' : 'light')}
-      />
-    </label>
-    <label class="toggle">
-      <span class="toggle-label">Серый холст в тёмной теме</span>
-      <input
-        type="checkbox"
-        role="switch"
-        disabled={editor.settings.theme !== 'dark'}
-        checked={editor.settings.greyCanvas}
-        onchange={(e) => editor.setSetting('greyCanvas', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="toggle">
       <span class="toggle-label">Панели слева, инструменты справа</span>
       <input
         type="checkbox"
@@ -488,13 +469,5 @@
     margin: 0.7rem 0 0.2rem;
     font-size: 0.9rem;
     color: var(--ink-2);
-  }
-  kbd {
-    padding: 0.1rem 0.35rem;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    background: var(--paper);
-    font: inherit;
-    font-size: 0.78rem;
   }
 </style>

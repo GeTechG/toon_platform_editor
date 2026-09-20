@@ -124,11 +124,6 @@ describe('the settings live in the persisted UI config', () => {
     expect(state).toMatch(/replacePalette\([^]*?this\.paletteCursor = 0/);
   });
 
-  it('the system theme decides only until the stored config names one', () => {
-    expect(state).toContain('const prefersDark = prefersDarkTheme()');
-    expect(state).toContain('loadUiConfig(prefersDark)');
-  });
-
   it('swapping the two colours leaves an eraser for the pencil, as a pick does', () => {
     expect(methodBody(state, 'swapColors')).toMatch(/'eraser' \|\| this\.tool === 'mega-eraser'[^]*?this\.tool = 'pencil'/);
   });
@@ -210,12 +205,8 @@ describe('the remaining reference keys', () => {
     expect(editorUi).toMatch(/altKey && e\.key === 'Enter'/);
   });
 
-  it('N switches the theme', () => {
-    expect(editorUi).toMatch(/case 'n':[^]*?toggleTheme\(\)/);
-  });
-
   it('the shortcut list names them too, so the sheet does not lie', () => {
-    for (const combo of ['Space', 'Ctrl + S', 'Alt + S', 'Alt + Enter', 'N']) {
+    for (const combo of ['Space', 'Ctrl + S', 'Alt + S', 'Alt + Enter']) {
       expect(editorUi).toContain(`['${combo}'`);
     }
   });
@@ -243,14 +234,12 @@ describe('key hints on the buttons', () => {
 });
 
 describe('the view options', () => {
-  it('the dark theme is a class on the editor root, with its own tokens', () => {
-    expect(editorUi).toContain('class:dark=');
-    expect(editorUi).toContain('.editor.dark {');
-  });
-
-  it('the grey stage is the dark theme only, and never reaches the document', () => {
-    expect(editorUi).toContain('.editor.dark.grey-canvas .stage');
-    expect(editorUi).toContain('class:grey-canvas=');
+  // The dark theme belongs to the site, not to the editor: the studio carries
+  // no theme of its own, no switch for one and no key.
+  it('holds no theme of its own', () => {
+    for (const source of [state, sheet, editorUi]) {
+      expect(source.match(/class:dark|\.editor\.dark|grey-?[Cc]anvas|prefersDark|toggleTheme|Тёмная/g)).toBeNull();
+    }
   });
 
   it('the crosshair cursor obeys both the preset and the setting', () => {

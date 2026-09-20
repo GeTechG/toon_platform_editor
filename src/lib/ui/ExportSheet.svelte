@@ -232,10 +232,6 @@
         </label>
       {/if}
 
-      {#if editor.settings.theme === 'dark' && !editor.settings.greyCanvas}
-        <p class="note">Холст в файле будет белым, как на бумаге, — тёмная тема красит только студию.</p>
-      {/if}
-
       {#if format === 'video'}
         {#if planned && !plan}
           <p class="note">Этот браузер не умеет кодировать видео — остаются GIF и PNG.</p>

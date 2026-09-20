@@ -104,9 +104,6 @@ export interface EditorSettings {
   autosaveMs: number;
   /** Offer the saved drafts on start when there are any. */
   showDraftsOnStart: boolean;
-  theme: 'light' | 'dark';
-  /** Grey stage under the drawing in the dark theme; the document stays white. */
-  greyCanvas: boolean;
   /** Colour model the picker opens in (reference `toonio_picker_mode`). */
   pickerModel: PickerModel;
   /** Panels left of the canvas, tool rail on the right (wide screens only). */
@@ -157,8 +154,6 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   paletteLimit: 50,
   autosaveMs: 60_000,
   showDraftsOnStart: true,
-  theme: 'light',
-  greyCanvas: true,
   pickerModel: 'hsv',
   altLayout: false,
   removerTipShown: false,
@@ -251,12 +246,7 @@ export function presetUx(id: string): UxProfile {
 }
 
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
-/**
- * `prefersDark` is the system's `prefers-color-scheme`: it decides the theme
- * only while the stored config carries none of its own, so the first explicit
- * choice in the sheet turns the automatic off for good.
- */
-export function parseUiConfig(raw: string | null, prefersDark = false): UiConfig | null {
+export function parseUiConfig(raw: string | null): UiConfig | null {
   if (!raw) {
     return null;
   }
@@ -288,11 +278,11 @@ export function parseUiConfig(raw: string | null, prefersDark = false): UiConfig
     preset,
     features: normalized,
     drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),
-    settings: normalizeSettings((data as Record<string, unknown>).settings, prefersDark),
+    settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
 }
 
-function normalizeSettings(value: unknown, prefersDark = false): EditorSettings {
+function normalizeSettings(value: unknown): EditorSettings {
   const raw = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const flag = (key: keyof EditorSettings): boolean =>
     typeof raw[key] === 'boolean' ? raw[key] as boolean : DEFAULT_SETTINGS[key] as boolean;
@@ -308,10 +298,6 @@ function normalizeSettings(value: unknown, prefersDark = false): EditorSettings 
       ? raw.autosaveMs as number
       : DEFAULT_SETTINGS.autosaveMs,
     showDraftsOnStart: flag('showDraftsOnStart'),
-    theme: raw.theme === 'dark' || raw.theme === 'light'
-      ? raw.theme
-      : prefersDark ? 'dark' : DEFAULT_SETTINGS.theme,
-    greyCanvas: flag('greyCanvas'),
     pickerModel: PICKER_MODELS.includes(raw.pickerModel as PickerModel)
       ? raw.pickerModel as PickerModel
       : DEFAULT_SETTINGS.pickerModel,
@@ -370,15 +356,10 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 
 const STORAGE_KEY = 'toon-editor:ui';
 
-/** The system theme at start-up; false where there is no `matchMedia`. */
-export function prefersDarkTheme(): boolean {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
 /** Loads the saved UI config, or null if none / on any failure. */
-export function loadUiConfig(prefersDark = false): UiConfig | null {
+export function loadUiConfig(): UiConfig | null {
   try {
-    return parseUiConfig(localStorage.getItem(STORAGE_KEY), prefersDark);
+    return parseUiConfig(localStorage.getItem(STORAGE_KEY));
   } catch {
     return null;
   }

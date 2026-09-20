@@ -125,7 +125,6 @@ import {
   brushToolOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
-  prefersDarkTheme,
   presetDrawingProfile,
   presetFeatures,
   presetUx,
@@ -333,12 +332,7 @@ export class EditorState {
   features = $state<Features>(presetFeatures(DEFAULT_PRESET));
 
   constructor() {
-    // The system theme decides only while no stored config names one.
-    const prefersDark = prefersDarkTheme();
-    const saved = loadUiConfig(prefersDark);
-    if (prefersDark) {
-      this.settings = { ...DEFAULT_SETTINGS, theme: 'dark' };
-    }
+    const saved = loadUiConfig();
     if (saved) {
       this.preset = saved.preset;
       this.features = saved.features;
@@ -1533,11 +1527,6 @@ export class EditorState {
 
   toggleOldschool(): void {
     this.setSetting('mouseMode', !this.settings.mouseMode);
-  }
-
-  /** Reference N: the dark theme. */
-  toggleTheme(): void {
-    this.setSetting('theme', this.settings.theme === 'dark' ? 'light' : 'dark');
   }
 
   /** One settings option, applied and persisted at once. */

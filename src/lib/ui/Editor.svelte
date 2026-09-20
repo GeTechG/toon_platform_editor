@@ -479,11 +479,6 @@
       case ' ':
         playControls?.toggle({ fromActive: e.shiftKey });
         break;
-      // Reference N: the dark theme.
-      case 'n':
-      case 'N':
-        editor.toggleTheme();
-        break;
       default:
         handled = false;
     }
@@ -915,7 +910,6 @@
     ['Alt + S', studio ? 'Скачать проект (.toonop)' : 'Экспорт'],
     ['Alt + Enter', 'Отключить предупреждения об удалении'],
     ['Alt + L', 'Скачать лог ошибок'],
-    ['N', 'Тёмная тема'],
   ]);
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
@@ -1009,8 +1003,6 @@
   class="editor"
   class:studio
   class:alt={editor.settings.altLayout}
-  class:dark={editor.settings.theme === 'dark'}
-  class:grey-canvas={editor.settings.greyCanvas}
   bind:this={editorEl}
 >
   {#if studio}
@@ -1585,49 +1577,12 @@
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
-  /**
-   * Dark theme (reference N key): window #19191A, worktable #262626, accent
-   * #0D85F3. Only the chrome turns dark — the document's own background, the
-   * frame thumbnails and the GIF export stay white, because the drawing is
-   * white paper whatever the room looks like.
-   *
-   * Contrast against the surfaces here (WCAG 1.4.3 / 1.4.11): --ink 15.7:1,
-   * --ink-2 8.9:1, --electric 5.9:1, and --canvas text on an --electric key
-   * the same 5.9:1.
-   */
-  .editor.dark {
-    --ink: #f2f4f8;
-    --ink-2: #b3bac6;
-    --paper: #262626;
-    --canvas: #19191a;
-    --sky: #24303f;
-    --electric: #4d96ff;
-    --electric-dark: #0d85f3;
-    --signal: #ff6a52;
-    --signal-dark: #ff8f7a;
-    --signal-deep: #ffb3a3;
-    --hairline: #ffffff2e;
-    --hairline-soft: #ffffff17;
-    --ghost-2: #4d96ff2e;
-    --layer-tag-0: #4d96ff;
-    --layer-tag-1: #2fbfa0;
-    --layer-tag-2: #e0ad2b;
-    --layer-tag-3: #ff6a52;
-    --layer-tag-4: #b08cf0;
-    --layer-tag-5: #45b6da;
-    color-scheme: dark;
-  }
-  /* Reference option: a grey worktable under the drawing instead of the
-     near-black one. The white canvas on top is untouched. */
-  .editor.dark.grey-canvas .stage {
-    background: #616161;
-  }
   /* The fields you do type in keep their selection. */
   .editor input {
     user-select: text;
     -webkit-user-select: text;
   }
-  /* Paper worktable so the white canvas floats on brand tone, not a bare dark
+  /* Paper worktable so the white canvas floats on brand tone, not a bare
      letterbox. Padding keeps the canvas off the bars. */
   .stage {
     position: relative;
