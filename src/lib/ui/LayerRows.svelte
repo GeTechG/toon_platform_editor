@@ -275,7 +275,7 @@
   </button>
 </div>
 
-<div class="list" bind:this={listEl} role="listbox" aria-label="Слои" tabindex="-1">
+<div class="list" data-layer-list bind:this={listEl} role="listbox" aria-label="Слои" tabindex="-1">
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
       <div
         class="row"

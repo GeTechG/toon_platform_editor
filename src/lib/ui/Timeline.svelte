@@ -13,6 +13,20 @@
 
 
   let strip = $state<HTMLDivElement | undefined>();
+  let body = $state<HTMLDivElement | undefined>();
+
+  /** Keeps the layer names level with their row of cells. */
+  function syncRowScroll(e: Event): void {
+    const from = e.target as HTMLElement | null;
+    const list = body?.querySelector<HTMLElement>('[data-layer-list]');
+    if (!from || !list || !strip) {
+      return;
+    }
+    const to = from === list ? strip : from === strip ? list : null;
+    if (to && Math.abs(to.scrollTop - from.scrollTop) > 1) {
+      to.scrollTop = from.scrollTop;
+    }
+  }
 
   // Keep the active frame in view (the reference list re-centers on it):
   // after add/delete/paste/hotkeys the strip scrolls just enough to show it.
@@ -167,7 +181,10 @@
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
-  <div class="body">
+  <!-- The names and the cells are two scrollers side by side; a scroll in one
+       is a scroll in the other, or the rows stop meaning the same layer.
+       Scroll does not bubble, so this listens in the capture phase. -->
+  <div class="body" bind:this={body} onscrollcapture={syncRowScroll}>
     <div
       class="layer-col"
       bind:clientWidth={colPx}

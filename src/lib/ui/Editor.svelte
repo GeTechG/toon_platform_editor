@@ -38,7 +38,13 @@
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
-  import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, SIDE_WIDTH_MAX, SIDE_WIDTH_MIN } from './presets';
+  import {
+    PANEL_HEIGHT_AUDIO,
+    PANEL_HEIGHT_MIN,
+    PANEL_ROW_STEP,
+    SIDE_WIDTH_MAX,
+    SIDE_WIDTH_MIN,
+  } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
   import type { DraftEntry } from '../draft/restore';
@@ -129,7 +135,13 @@
    * the timeline, so a panel sitting at its minimum has to make room for them
    * rather than push the layer rows out of view.
    */
-  const panelFloor = $derived(PANEL_HEIGHT_MIN + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0));
+  const panelFloor = $derived(
+    PANEL_HEIGHT_MIN
+      + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0)
+      // The floor is written for a strip and one row; every row beyond that
+      // needs its own height, or it is cut off at the panel's edge.
+      + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP,
+  );
   /** The stored panel height, never more than three quarters of the viewport. */
   const panelHeight = $derived(
     Math.max(panelFloor, Math.min(editor.panelHeight, Math.round((viewportHeight || 800) * 0.75))),
@@ -1500,7 +1512,7 @@
     class="panel"
     class:collapsed={panelFolded}
     class:dragging={resize?.side === 'panel'}
-    style={!panelFolded && !editor.arranging ? `min-height: ${panelHeight}px` : undefined}
+    style={!panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
   >
     <!-- The bar folds like the columns do: the same key-shaped tab, lying on
            its side at the corner of its seam. -->
@@ -1810,12 +1822,13 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    /* The divider sets the panel's floor, not its ceiling: a row holding a
-       box (the palette, the brush sliders) makes the panel as tall as it
-       needs, up to three quarters of the screen — past that the rows scroll
-       rather than eating the canvas. Nothing spills out of it either way. */
+    /* The divider owns the height: the strip scrolls its layers inside it and
+       a row too tall for it scrolls too, rather than growing the panel over
+       the canvas or past the bottom of the window. `clip` with a margin so a
+       key's shadow is not shaved off at the edge. */
     max-height: 75vh;
-    overflow: hidden;
+    overflow: clip;
+    overflow-clip-margin: 6px;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair

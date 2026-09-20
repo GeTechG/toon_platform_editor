@@ -31,6 +31,14 @@ describe('one layer list, two placements', () => {
 });
 
 
+describe('the names and the cells scroll together', () => {
+  it('a scroll in either scroller moves the other', () => {
+    expect(timeline).toContain('onscrollcapture={syncRowScroll}');
+    expect(timeline).toContain('[data-layer-list]');
+    expect(rows).toContain('data-layer-list');
+  });
+});
+
 describe('studio timeline grid', () => {
   it('is one layer-by-frame grid, in the bar layout as well', () => {
     expect(timeline).toContain('<LayerThumb');
@@ -117,12 +125,18 @@ describe('bottom panel divider', () => {
     expect(editorUi).toMatch(/\.editor input \{[^}]*user-select: text/s);
   });
 
+  it('the floor grows with every row the arrangement adds', () => {
+    // 151px is written for a strip and one row; a third row needs its own
+    // height or it is cut off at the bottom edge.
+    expect(editorUi).toContain('editor.panels.rows.length - 2) * PANEL_ROW_STEP');
+  });
+
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.
     // (arrange mode lets the bar size to its contents, hence the second term)
     expect(editorUi).toContain('style={!panelFolded && !editor.arranging ?');
-    expect(editorUi).toContain('min-height: ${panelHeight}px');
+    expect(editorUi).toContain('height: ${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
   });

@@ -78,6 +78,12 @@ export const PANEL_HEIGHT_MIN = 151;
  * Without it, attaching a track at the floor pushes the lane out of view.
  */
 export const PANEL_HEIGHT_AUDIO = 22;
+/**
+ * What one more row of the bottom panel adds to that floor: a 44px row plus
+ * the gap above it. An arrangement with three rows cannot live in the height
+ * two rows need — the last one would be cut off at the bottom edge.
+ */
+export const PANEL_ROW_STEP = 53;
 export const PANEL_HEIGHT_MAX = 2000;
 /**
  * Side-column range. Each side has its own floor: the tool keys reflow down
