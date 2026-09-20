@@ -1,8 +1,8 @@
-import { FIXED_POINT_SCALE, MAX_STROKE_WIDTH } from '../format/constants';
+import { FIXED_POINT_SCALE, LANG_TOLERANCE_DOC, MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, PixelToolDescriptor, StrokeDialect } from '../format/types';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
-import { commitOldschoolStroke } from './oldschool';
+import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool';
 import { appendPixelCells, pixelPrepare } from './pixel';
 
 export interface PointerSample {
@@ -142,10 +142,22 @@ export function appendStrokeEvent(session: StrokeSession, event: PointerSample):
   appendTonioEventBatch(session, event);
 }
 
-/** Tonio uses a non-empty coalesced pointerup batch, otherwise the main event. */
+/**
+ * Tonio uses a non-empty coalesced pointerup batch, otherwise the main event.
+ * Multator (DrawField.onEndDraw) pushes the mouseup point too — unless the
+ * gesture never moved and released where it pressed, which stays a dot. The
+ * oldschool release (onOldEndDraw) adds nothing.
+ */
 export function finishStrokeEvent(session: StrokeSession, event: PointerSample): void {
-  if (!event.isPrimary || event.pointerId !== session.pointerId || session.profile !== 'toonio') return;
-  appendTonioEventBatch(session, event);
+  if (!event.isPrimary || event.pointerId !== session.pointerId) return;
+  if (session.profile === 'toonio') {
+    appendTonioEventBatch(session, event);
+    return;
+  }
+  if (session.oldschool) return;
+  const raw = session.rawPoints;
+  if (raw.length === 2 && raw[0] === event.x && raw[1] === event.y) return;
+  session.multator!.addPoint(event.x, event.y);
 }
 
 export function previewStrokeSession(session: StrokeSession): readonly number[] {
@@ -158,10 +170,18 @@ export function previewStrokeSession(session: StrokeSession): readonly number[] 
 }
 
 export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
+  // The reference measures its Lang tolerance on its own 600 px canvas, so
+  // on a document of another size it scales the way the width does.
+  const langScale = FIXED_POINT_SCALE / session.tonioCoordinateScale;
   if (session.oldschool && session.profile === 'multator') {
     const descriptor = session.descriptor;
     return {
-      points: commitOldschoolStroke(session.rawPoints, descriptor.width / FIXED_POINT_SCALE),
+      points: commitOldschoolStroke(
+        session.rawPoints,
+        descriptor.width / FIXED_POINT_SCALE,
+        Math.random,
+        OLDSCHOOL_LANG_TOLERANCE_LOGICAL * langScale,
+      ),
       tool: descriptor.kind === 'pencil'
         ? { kind: 'contour', dialect: 'multator', color: descriptor.color }
         : { kind: 'contour-eraser', dialect: 'multator' },
@@ -173,7 +193,7 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
     return { points: pixelPrepare(session.rawPoints, width, session.zoom), tool: copyLineTool(session.descriptor) };
   }
   const points = session.profile === 'multator'
-    ? session.multator!.commit().points
+    ? session.multator!.commit(LANG_TOLERANCE_DOC / session.tonioCoordinateScale).points
     : tonioPrepare(
         tonioSmooth(session.rawPoints, session.tonio.smooth),
         session.tonio.minDistance,

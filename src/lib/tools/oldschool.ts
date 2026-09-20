@@ -154,12 +154,13 @@ export function commitOldschoolStroke(
   rawPoints: readonly number[],
   brushSizeLogical: number,
   random: () => number = Math.random,
+  tolerance = OLDSCHOOL_LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE,
 ): number[] {
   if (rawPoints.length < 2) {
     throw new Error('cannot commit an empty stroke');
   }
   const halfLogical = Math.trunc(brushSizeLogical / 2);
-  const simplified = simplifyLang(rawPoints, LANG_LOOK_AHEAD, OLDSCHOOL_LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE);
+  const simplified = simplifyLang(rawPoints, LANG_LOOK_AHEAD, tolerance);
   const contour = oldschoolContour(
     simplified,
     halfLogical * FIXED_POINT_SCALE,

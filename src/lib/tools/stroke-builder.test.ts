@@ -33,13 +33,12 @@ describe('StrokeBuilder', () => {
     });
   }
 
-  it('drops consecutive duplicate raw points', () => {
+  it('keeps consecutive duplicate raw points, like the reference', () => {
     const b = new StrokeBuilder({ width: 32, color: '#000000' });
     b.addPoint(1.5, 2.5);
     b.addPoint(1.5, 2.5);
     b.addPoint(3, 4);
-    b.addPoint(1.5, 2.5); // not consecutive — kept
-    expect(b.rawPoints).toEqual([1.5, 2.5, 3, 4, 1.5, 2.5]);
+    expect(b.rawPoints).toEqual([1.5, 2.5, 1.5, 2.5, 3, 4]);
   });
 
   it('carries the erase flag onto the committed stroke, and omits it otherwise', () => {

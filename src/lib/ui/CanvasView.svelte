@@ -352,7 +352,12 @@
     if (!canvasEl) {
       return;
     }
-    const dpr = window.devicePixelRatio || 1;
+    // toonio.ru draws into a fixed 1280×720 bitmap the browser then scales to
+    // the element, whatever the screen density — so its lines are rasterized
+    // at one bitmap pixel per logical document pixel, never per device pixel.
+    const dpr = editor.drawingProfile === 'toonio'
+      ? editor.doc.width / FIXED_POINT_SCALE / cssWidth
+      : window.devicePixelRatio || 1;
     const pxWidth = Math.max(1, Math.round(cssWidth * dpr));
     const pxHeight = Math.max(1, Math.round(cssHeight * dpr));
     if (canvasEl.width !== pxWidth) {
@@ -569,6 +574,8 @@
     color: string,
   ): void {
     if (session.profile === 'multator') {
+      // The reference press is a bare moveTo: the dot appears on release.
+      if (session.rawPoints.length < 4) return;
       renderRawPolyline(session.rawPoints, session.descriptor.width, color, target, viewport);
     } else {
       renderResolvedPreview(previewStrokeSession(session), session.descriptor, color, target, viewport);

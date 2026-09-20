@@ -43,35 +43,33 @@ export class StrokeBuilder {
     return this.#points;
   }
 
-  /** Adds a raw point; consecutive duplicates are dropped. */
+  /**
+   * Adds a raw point. A repeat is kept: the reference pushes every mousemove
+   * and the mouseup as they come, and a trailing repeat changes both the
+   * Lang window and the last curve segment.
+   */
   addPoint(x: number, y: number): void {
-    const n = this.#points.length;
-    if (n >= 2 && this.#points[n - 2] === x && this.#points[n - 1] === y) {
-      return;
-    }
     this.#points.push(x, y);
   }
 
   /**
    * Commit: Lang simplification → quantization (round + clamp to the
-   * int16 storage range; points may lie outside the canvas) →
-   * collapsing duplicates introduced by quantization. Quantized points
-   * are canonical; there is no re-quantization.
+   * int16 storage range; points may lie outside the canvas). Quantized
+   * points are canonical; there is no re-quantization. Repeats survive: the
+   * reference stores them, and `[…, X, P, P]` curves through the midpoint of
+   * X–P where `[…, X, P]` would not.
+   *
+   * `tolerance` is the Lang tolerance in document units — the reference's
+   * 10 px of its 600 px canvas, scaled to the document by the caller.
    */
-  commit(): StrokeV1 {
+  commit(tolerance = LANG_TOLERANCE_DOC): StrokeV1 {
     if (this.#points.length === 0) {
       throw new Error('cannot commit an empty stroke');
     }
-    const simplified = simplifyLang(this.#points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC);
+    const simplified = simplifyLang(this.#points, LANG_LOOK_AHEAD, tolerance);
     const quantized: number[] = [];
     for (let i = 0; i < simplified.length; i += 2) {
-      const x = clampInt(simplified[i]);
-      const y = clampInt(simplified[i + 1]);
-      const n = quantized.length;
-      if (n >= 2 && quantized[n - 2] === x && quantized[n - 1] === y) {
-        continue;
-      }
-      quantized.push(x, y);
+      quantized.push(clampInt(simplified[i]), clampInt(simplified[i + 1]));
     }
     // A single stroke over the format limit (~33k retained points) is
     // truncated rather than surfaced — takes many minutes of continuous drawing

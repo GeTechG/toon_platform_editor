@@ -228,7 +228,10 @@ function drawResolvedStroke(
     target.fill();
     return;
   }
-  if (points.length === 2 && tool.dialect === 'multator') {
+  // Frame.addSpline: one point, or two equal ones, is a circle of the pen's radius.
+  const dot = points.length === 2
+    || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
+  if (dot && tool.dialect === 'multator') {
     target.fillStyle = color;
     target.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
     target.fill();

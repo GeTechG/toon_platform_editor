@@ -32,7 +32,9 @@ export function simplifyLang(
     return points.slice() as number[];
   }
   const out: number[] = [points[0], points[1]];
-  let window = lookAhead;
+  // Reference: the window never exceeds count-1 from the start, so a stroke
+  // of exactly lookAhead+... points is not skipped at key 0.
+  let window = Math.min(lookAhead, count - 1);
   let key = 0;
   while (key < count) {
     // Reference quirk kept as-is: the clamp compares against count, not
