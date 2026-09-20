@@ -90,7 +90,7 @@ export interface UxProfile {
   readonly livePipettePreview: boolean;
   /** Cursor draws a crosshair for very thin and very thick brushes (Tonio). */
   readonly crossCursor: boolean;
-  /** Tools the preset offers, in toolbar order. */
+  /** Tools the preset's starting arrangement places, in toolbar order. */
   readonly tools: readonly SelectableTool[];
   /** Opacity the active frame (with its live stroke) is composited at. */
   readonly activeFrameAlpha: number;
@@ -210,14 +210,18 @@ export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number
  * The tool that actually becomes active when the user asks for `tool` with
  * the current brush color; null when the request is not available (pipette
  * without the expanded palette).
+ *
+ * `available` is what the arrangement offers right now (panels.ts
+ * `visibleTools`); without one, the profile's own starting set stands in.
  */
 export function resolveToolSelection(
   tool: SelectableTool,
   color: string,
   ux: UxProfile,
   paletteExpanded = true,
+  available: readonly SelectableTool[] = ux.tools,
 ): SelectableTool | null {
-  if (!ux.tools.includes(tool)) {
+  if (!available.includes(tool)) {
     return null;
   }
   if (tool === 'pipette' && ux.pipetteNeedsPalette && !paletteExpanded) {

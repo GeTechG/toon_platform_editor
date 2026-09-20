@@ -2,45 +2,93 @@
  * Canvas viewport: zoom and pan of the drawing surface. Pure math over CSS
  * pixels, so `bun test` covers it and CanvasView stays a thin caller.
  *
- * The canvas element keeps the size the page layout gives it; zoom magnifies
- * the document inside that element and pan slides it, so only the visible
- * region is ever rasterized (a 2 GB phone cannot hold a 10× buffer).
+ * The sheet lies on a worktable the size of the stage: the canvas element is
+ * the whole workspace, and the view says where the sheet sits on it and how
+ * big it is drawn. Only the visible region is ever rasterized (a 2 GB phone
+ * cannot hold a 10× buffer), so the sheet can be walked around, not just
+ * magnified inside its own frame.
  */
 
-/** Reference zoom range and wheel step (toonio: 1–10, 0.5 per notch). */
-export const ZOOM_MIN = 1;
+/** Zoom range: a tenth of the sheet up to the reference's 10× (toonio: 1–10). */
+export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 10;
+/** The reference's wheel notch, kept from 100% up. */
 export const ZOOM_STEP = 0.5;
+/** Below 100% the sheet is small — a 0.5 notch would jump past it. */
+const FINE_STEP = 0.1;
+/** How much of the sheet stays on the workspace when it is pushed off, CSS px. */
+export const EDGE_KEEP = 64;
+/** Air left around the sheet at 100%, so the whole page is on the table. */
+export const FIT_PADDING = 16;
 
 export interface Viewport2D {
   zoom: number;
-  /** Offset of the document's top-left corner from the canvas corner, CSS px. */
+  /** Offset of the sheet's top-left corner from the workspace corner, CSS px. */
   panX: number;
   panY: number;
+}
+
+/** The workspace and the sheet lying on it, both in CSS pixels. */
+export interface Stage {
+  /** Canvas element — the whole worktable. */
+  width: number;
+  height: number;
+  /** The sheet at zoom 1: the document fitted inside the workspace. */
+  sheetWidth: number;
+  sheetHeight: number;
 }
 
 export const IDENTITY_VIEW: Viewport2D = { zoom: 1, panX: 0, panY: 0 };
 
 export function clampZoom(value: number): number {
   if (!Number.isFinite(value)) {
-    return ZOOM_MIN;
+    return 1;
   }
-  const snapped = Math.round(value / ZOOM_STEP) * ZOOM_STEP;
+  const step = value < 1 ? FINE_STEP : ZOOM_STEP;
+  const snapped = Math.round((Math.round(value / step) * step) * 100) / 100;
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, snapped));
 }
 
 /**
- * Zooms to `zoom` around the canvas point (x, y) in CSS pixels, keeping the
- * document point under it in place, then clamps the pan.
+ * One notch of the wheel, the `+`/`-` keys or the zoom buttons. The step is
+ * picked for where the notch lands, so 100% is never a wall to climb.
  */
-export function zoomAt(
-  view: Viewport2D,
-  zoom: number,
-  x: number,
-  y: number,
+export function zoomDelta(zoom: number, direction: number): number {
+  const fine = direction > 0 ? zoom < 1 : zoom <= 1;
+  const step = fine ? FINE_STEP : ZOOM_STEP;
+  return direction > 0 ? step : -step;
+}
+
+/**
+ * The sheet at 100%: the document fitted inside the workspace with air around
+ * it, so the whole page — edges, shadow and all — is on screen from the start.
+ * An unmeasured height (Infinity) fits by width alone.
+ */
+export function fitSheet(
   width: number,
   height: number,
-): Viewport2D {
+  doc: { width: number; height: number },
+): { width: number; height: number } {
+  const room = Math.max(1, width - 2 * FIT_PADDING);
+  const tall = Math.max(1, height - 2 * FIT_PADDING);
+  const scale = Math.min(room / doc.width, tall / doc.height);
+  return { width: doc.width * scale, height: doc.height * scale };
+}
+
+/** 100% with the sheet centred on the workspace. */
+export function fitView(stage: Stage): Viewport2D {
+  return {
+    zoom: 1,
+    panX: (stage.width - stage.sheetWidth) / 2,
+    panY: (stage.height - stage.sheetHeight) / 2,
+  };
+}
+
+/**
+ * Zooms to `zoom` around the workspace point (x, y) in CSS pixels, keeping the
+ * document point under it in place, then clamps the pan.
+ */
+export function zoomAt(view: Viewport2D, zoom: number, x: number, y: number, stage: Stage): Viewport2D {
   const next = clampZoom(zoom);
   const ratio = next / view.zoom;
   return clampPan(
@@ -49,14 +97,13 @@ export function zoomAt(
       panX: x - (x - view.panX) * ratio,
       panY: y - (y - view.panY) * ratio,
     },
-    width,
-    height,
+    stage,
   );
 }
 
 /**
  * Zooms to `zoom` and slides the document point under (x, y) to the middle of
- * the viewport — the reference's `NormalizeCoords`, which recentres on the
+ * the workspace — the reference's `NormalizeCoords`, which recentres on the
  * cursor instead of pinning the point in place the way `zoomAt` does.
  */
 export function zoomCentredOn(
@@ -64,43 +111,52 @@ export function zoomCentredOn(
   zoom: number,
   x: number,
   y: number,
-  width: number,
-  height: number,
+  stage: Stage,
 ): Viewport2D {
   const next = clampZoom(zoom);
-  // Where the point sits along the document, 0..1, whatever the current view.
-  const u = (x - view.panX) / (width * view.zoom);
-  const v = (y - view.panY) / (height * view.zoom);
+  // Where the point sits along the sheet, 0..1, whatever the current view.
+  const u = (x - view.panX) / (stage.sheetWidth * view.zoom);
+  const v = (y - view.panY) / (stage.sheetHeight * view.zoom);
   return clampPan(
     {
       zoom: next,
-      panX: width / 2 - u * width * next,
-      panY: height / 2 - v * height * next,
+      panX: stage.width / 2 - u * stage.sheetWidth * next,
+      panY: stage.height / 2 - v * stage.sheetHeight * next,
     },
-    width,
-    height,
+    stage,
   );
 }
 
-/** Keeps the zoomed content covering the viewport — no empty margins. */
-export function clampPan(view: Viewport2D, width: number, height: number): Viewport2D {
+/** Keeps the sheet on the table: it slides freely, an edge always in reach. */
+export function clampPan(view: Viewport2D, stage: Stage): Viewport2D {
   return {
     zoom: view.zoom,
-    panX: Math.min(0, Math.max(width - width * view.zoom, view.panX)),
-    panY: Math.min(0, Math.max(height - height * view.zoom, view.panY)),
+    panX: panAxis(view.panX, stage.width, stage.sheetWidth * view.zoom),
+    panY: panAxis(view.panY, stage.height, stage.sheetHeight * view.zoom),
   };
 }
 
-/** Canvas point in CSS pixels → document units (fixed-point, unrounded). */
+function panAxis(pan: number, workspace: number, sheet: number): number {
+  // The sheet lies loose on the table at every zoom — a small one is pushed
+  // around as freely as a magnified one; only losing it is forbidden.
+  const keep = Math.min(sheet, EDGE_KEEP);
+  return Math.min(workspace - keep, Math.max(keep - sheet, pan));
+}
+
+/**
+ * Workspace point in CSS pixels → document units (fixed-point, unrounded).
+ * `sheet` is the sheet at zoom 1; a point beside the sheet reads as units
+ * outside the document, which is what the table around it is.
+ */
 export function toDocument(
   x: number,
   y: number,
-  size: { width: number; height: number },
+  sheet: { width: number; height: number },
   doc: { width: number; height: number },
   view: Viewport2D,
 ): [number, number] {
   return [
-    ((x - view.panX) / (size.width * view.zoom)) * doc.width,
-    ((y - view.panY) / (size.height * view.zoom)) * doc.height,
+    ((x - view.panX) / (sheet.width * view.zoom)) * doc.width,
+    ((y - view.panY) / (sheet.height * view.zoom)) * doc.height,
   ];
 }

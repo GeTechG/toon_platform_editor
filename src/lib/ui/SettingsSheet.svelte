@@ -19,15 +19,6 @@
     PRESETS,
     mouseModeLabel,
   } from './presets';
-  import {
-    KIND_LABELS,
-    itemsOf,
-    panelItem,
-    slotLabel,
-    slotRow,
-    slotsOf,
-    type PanelSlot,
-  } from './panels';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
@@ -45,12 +36,6 @@
     onOpenFile?: () => void;
     onOpenDrafts?: () => void;
   } = $props();
-
-  // The sections to list: every panel the arrangement has. «Новая строка» is
-  // not a section — it is only somewhere to send an item to.
-  const slots = $derived(
-    slotsOf(editor.panels).filter((slot) => !slotRow(slot)?.fresh),
-  );
 
   /** Without the API the option would be a switch that does nothing. */
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
@@ -347,9 +332,8 @@
       {/each}
     </div>
 
-    <!-- Расположение: every button, key and widget, and which panel holds it.
-         A select rather than a drag: it is the same control for a mouse, a
-         keyboard and a screen reader (WCAG 2.2 AA 2.5.7 — no drag required). -->
+    <!-- Расположение: arranged by hand in the editor, where the panels are.
+         A list of selects said the same thing twice and nobody used it. -->
     <p class="sheet-hint">Расположение</p>
     <div class="actions">
       <button
@@ -358,51 +342,7 @@
           editor.arranging = true;
           dialogEl?.close();
         }}
-      >Переставить прямо в редакторе</button>
-    </div>
-    <p class="sheet-hint quiet">…или списком, если так удобнее:</p>
-    {#each slots as slot (slot)}
-      {@const items = itemsOf(editor.panels, slot)}
-      <p class="slot-name">{slotLabel(slot)}</p>
-      <ul class="arrange">
-        {#each items as id, i (id)}
-          <li>
-            <span class="arrange-label">
-              {panelItem(id)?.label}
-              <small>{KIND_LABELS[panelItem(id)?.kind ?? 'widget']}</small>
-            </span>
-            <select
-              value={slot}
-              aria-label="Где «{panelItem(id)?.label}»"
-              onchange={(e) => editor.movePanelItem(id, e.currentTarget.value as PanelSlot)}
-            >
-              {#each slotsOf(editor.panels) as target (target)}
-                <option value={target}>{slotLabel(target)}</option>
-              {/each}
-            </select>
-            <button
-              class="key icon"
-              disabled={i === 0}
-              onclick={() => editor.movePanelItem(id, slot, i - 1)}
-              title="Выше"
-              aria-label="«{panelItem(id)?.label}» выше"
-            >↑</button>
-            <button
-              class="key icon"
-              disabled={i === items.length - 1}
-              onclick={() => editor.movePanelItem(id, slot, i + 1)}
-              title="Ниже"
-              aria-label="«{panelItem(id)?.label}» ниже"
-            >↓</button>
-          </li>
-        {/each}
-        {#if items.length === 0}
-          <li class="empty-slot">пусто</li>
-        {/if}
-      </ul>
-    {/each}
-    <div class="actions">
-      <button class="key" onclick={() => editor.resetPanels()}>Сбросить к набору</button>
+      >Редактировать панели</button>
     </div>
 
     {#if report}
@@ -444,46 +384,6 @@
   .preset-chip:focus-visible {
     outline: 3px solid var(--electric);
     outline-offset: 2px;
-  }
-  /* Расположение: one row per item — what it is, which panel it is in, and
-     where it sits in that panel. */
-  .sheet-hint.quiet {
-    font-weight: 400;
-  }
-  .slot-name {
-    margin: 0.7rem 0 0.2rem;
-    font-size: 0.9rem;
-    font-weight: 650;
-    color: var(--ink-2);
-  }
-  .arrange {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  .arrange li {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.15rem 0.3rem;
-  }
-  .arrange-label {
-    flex: 1;
-    min-width: 0;
-    font-size: 0.95rem;
-  }
-  .arrange-label small {
-    color: var(--ink-2);
-    font-size: 0.78rem;
-  }
-  .arrange select {
-    flex: 0 0 auto;
-    max-width: 11rem;
-  }
-  .empty-slot {
-    padding: 0.15rem 0.3rem;
-    color: var(--ink-2);
-    font-size: 0.9rem;
   }
   /* A picked record needs two lines: when it was written, and what is in it —
      the date alone is how a stub record passed for a drawing. */

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
@@ -12,6 +13,7 @@
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
+  import { isFilledLineTool } from '../render/dispatch';
   import { cursorShape, pickSource } from './frame-selection';
   import {
     hitMode,
@@ -22,7 +24,16 @@
     type HitMode,
     type TransformSession,
   } from '../tools/lasso';
-  import { ZOOM_STEP, clampPan, toDocument, zoomAt, zoomCentredOn } from './viewport';
+  import {
+    clampPan,
+    fitSheet,
+    fitView,
+    toDocument,
+    zoomAt,
+    zoomCentredOn,
+    zoomDelta,
+    type Stage,
+  } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
   import {
@@ -38,7 +49,18 @@
   // The visible context needs a few more members than the pure Canvas2DLike/
   // BlitTarget seam (alpha compositing, clearing). It is a real 2D context.
   type ViewCtx = Canvas2DLike &
-    BlitTarget & { globalAlpha: number; clearRect(x: number, y: number, w: number, h: number): void };
+    BlitTarget & {
+      globalAlpha: number;
+      shadowColor: string;
+      shadowBlur: number;
+      shadowOffsetY: number;
+      clearRect(x: number, y: number, w: number, h: number): void;
+      rect(x: number, y: number, w: number, h: number): void;
+      strokeRect(x: number, y: number, w: number, h: number): void;
+      clip(): void;
+      save(): void;
+      restore(): void;
+    };
 
   let canvasEl: HTMLCanvasElement;
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
@@ -83,7 +105,9 @@
   /** Reference-canvas normalisation of the active tool, by its own dialect. */
   const brushCanvasScale = $derived(
     canvasCoordinateScale(
-      editor.tool === 'feather' || editor.tool === 'pixel' ? 'toonio' : editor.drawingProfile,
+      // The pixel tool's cell is always a pixel of the Tonio canvas; every
+      // other tool, the feather included, measures on its preset's canvas.
+      editor.tool === 'pixel' ? 'toonio' : editor.drawingProfile,
       editor.doc.width / FIXED_POINT_SCALE,
     ),
   );
@@ -95,7 +119,14 @@
       case 'eraser':
         return { kind: 'eraser', dialect: editor.drawingProfile, width };
       case 'feather':
-        return { kind: 'feather', dialect: 'toonio', width, color: editor.brushColor, fill: editor.fillColor };
+        // The preset's line, filled: the session freezes the same dialect.
+        return {
+          kind: 'feather',
+          dialect: editor.drawingProfile,
+          width,
+          color: editor.brushColor,
+          fill: editor.fillColor,
+        };
       case 'pixel':
         return { kind: 'pixel', dialect: 'toonio', width, color: editor.brushColor };
       default:
@@ -284,18 +315,24 @@
     ctx.globalAlpha = 1;
   }
 
-  // Fit inside the wrap (whose size is set by the page layout, not by the
-  // canvas itself): capped by width and, when known, by height.
-  const cssWidth = $derived(
-    Math.max(
-      1,
-      Math.min(
-        wrapWidth || CANVAS_LOGICAL_WIDTH,
-        wrapHeight > 0 ? wrapHeight * (editor.doc.width / editor.doc.height) : Infinity,
-      ),
-    ),
+  // The sheet at 100%: the document fitted inside the wrap (whose size the
+  // page layout sets, not the canvas itself), with air around it.
+  const sheet = $derived(
+    fitSheet(wrapWidth || CANVAS_LOGICAL_WIDTH, wrapHeight > 0 ? wrapHeight : Infinity, editor.doc),
   );
-  const cssHeight = $derived(cssWidth * (editor.doc.height / editor.doc.width));
+  const sheetWidth = $derived(sheet.width);
+  const sheetHeight = $derived(sheet.height);
+  /**
+   * The worktable: the canvas element is the whole workspace and the sheet
+   * lies on it, so zoom magnifies the paper rather than the window, and the
+   * pan walks around a sheet whose edges are visible.
+   */
+  const stage = $derived<Stage>({
+    width: Math.max(1, wrapWidth || sheetWidth),
+    height: Math.max(1, wrapHeight || sheetHeight),
+    sheetWidth,
+    sheetHeight,
+  });
   // The canvas is the product. Without a role and a name it lands in the
   // accessibility tree as an anonymous box, so it says what it is and which
   // frame is on it.
@@ -329,7 +366,7 @@
   );
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
-  const hitZoom = $derived(Math.max(1e-6, (cssWidth * editor.view.zoom) / editor.doc.width));
+  const hitZoom = $derived(Math.max(1e-6, (sheetWidth * editor.view.zoom) / editor.doc.width));
   /**
    * Width the brush actually lands on the document with, in logical px. Each
    * dialect measures its brush on its own reference canvas, so the cursor and
@@ -338,14 +375,20 @@
   const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / brushCanvasScale);
   /** That width in screen pixels — what the ring, the square and the grid measure. */
   const cursorDiameter = $derived(
-    Math.max(1, (brushLogicalOnCanvas * cssWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
+    Math.max(1, (brushLogicalOnCanvas * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
   );
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
   const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
 
-  // The zoom buttons clamp against the canvas size, which only the view knows.
+  /** The sheet has been laid out once; after that the view is the user's. */
+  let placed = false;
+  // The zoom buttons clamp against the worktable, which only the view knows.
+  // The first measured workspace lays the sheet in the middle of it; later
+  // ones (a panel dragged, the window turned) only keep it within reach.
   $effect(() => {
-    editor.viewSize = { width: cssWidth, height: cssHeight };
+    editor.stage = stage;
+    editor.view = untrack(() => (placed ? clampPan(editor.view, stage) : fitView(stage)));
+    placed = wrapWidth > 0 && wrapHeight > 0;
   });
 
   function draw(): void {
@@ -356,10 +399,10 @@
     // the element, whatever the screen density — so its lines are rasterized
     // at one bitmap pixel per logical document pixel, never per device pixel.
     const dpr = editor.drawingProfile === 'toonio'
-      ? editor.doc.width / FIXED_POINT_SCALE / cssWidth
+      ? editor.doc.width / FIXED_POINT_SCALE / sheetWidth
       : window.devicePixelRatio || 1;
-    const pxWidth = Math.max(1, Math.round(cssWidth * dpr));
-    const pxHeight = Math.max(1, Math.round(cssHeight * dpr));
+    const pxWidth = Math.max(1, Math.round(stage.width * dpr));
+    const pxHeight = Math.max(1, Math.round(stage.height * dpr));
     if (canvasEl.width !== pxWidth) {
       canvasEl.width = pxWidth;
     }
@@ -368,7 +411,7 @@
     }
     const ctx = canvasEl.getContext('2d') as unknown as ViewCtx;
     const viewport = {
-      scale: (cssWidth / editor.doc.width) * editor.view.zoom,
+      scale: (sheetWidth / editor.doc.width) * editor.view.zoom,
       dpr,
       panX: editor.view.panX,
       panY: editor.view.panY,
@@ -384,10 +427,29 @@
       stackSize = { width: pxWidth, height: pxHeight };
     }
 
-    // Background once, then transparent stroke layers on top.
+    // The sheet, not the window: the table (the element's own background)
+    // shows through around the paper, which is filled where the view puts it.
+    const sheet = {
+      x: editor.view.panX * dpr,
+      y: editor.view.panY * dpr,
+      w: sheetWidth * editor.view.zoom * dpr,
+      h: sheetHeight * editor.view.zoom * dpr,
+    };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, pxWidth, pxHeight);
+    ctx.save();
+    ctx.shadowColor = 'rgba(15, 23, 60, 0.35)';
+    ctx.shadowBlur = 24 * dpr;
+    ctx.shadowOffsetY = 10 * dpr;
     ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, pxWidth, pxHeight);
+    ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
+    ctx.restore();
+    // Everything drawn stays on the paper — a stroke that runs off the edge
+    // is cut by it, the way it is on export.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
+    ctx.clip();
 
     // The live stroke belongs to the active layer: it composites with that
     // layer alone, so an eraser punches its alpha and not the layers below.
@@ -418,7 +480,9 @@
       lctx.globalCompositeOperation = 'destination-out';
       renderRawPolyline(
         megaGesture,
-        brushWidthDoc(editor.brushSizeLogical),
+        // The width the gesture really cuts with: the cut on release takes
+        // the same normalised radius, and so does the cursor ring.
+        brushWidthDoc(brushLogicalOnCanvas),
         BACKGROUND_COLOR,
         lctx,
         viewport,
@@ -453,6 +517,12 @@
     if (editor.tool === 'pixel' && !editor.playing) {
       drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
     }
+    ctx.restore();
+    // A hairline edge, so the paper reads as a sheet even over a white table.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.strokeStyle = 'rgba(11, 12, 16, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(sheet.x) + 0.5, Math.round(sheet.y) + 0.5, Math.round(sheet.w), Math.round(sheet.h));
   }
 
   /**
@@ -553,8 +623,8 @@
   /** Document units → CSS pixels inside the canvas element (the overlay's frame). */
   function toScreen(x: number, y: number): [number, number] {
     return [
-      editor.view.panX + (x / editor.doc.width) * cssWidth * editor.view.zoom,
-      editor.view.panY + (y / editor.doc.height) * cssHeight * editor.view.zoom,
+      editor.view.panX + (x / editor.doc.width) * sheetWidth * editor.view.zoom,
+      editor.view.panY + (y / editor.doc.height) * sheetHeight * editor.view.zoom,
     ];
   }
 
@@ -576,7 +646,15 @@
     if (session.profile === 'multator') {
       // The reference press is a bare moveTo: the dot appears on release.
       if (session.rawPoints.length < 4) return;
-      renderRawPolyline(session.rawPoints, session.descriptor.width, color, target, viewport);
+      renderRawPolyline(
+        session.rawPoints,
+        session.descriptor.width,
+        color,
+        target,
+        viewport,
+        // A feather fills what it encloses while it is being drawn too.
+        isFilledLineTool(session.descriptor) ? session.descriptor.fill : undefined,
+      );
     } else {
       renderResolvedPreview(previewStrokeSession(session), session.descriptor, color, target, viewport);
     }
@@ -603,7 +681,7 @@
     // Every document dependency the three buffers are built from: the frame,
     // the active layer, and each layer's identity, visibility and cell. Read
     // here so the subscription — not a digest — is what invalidates them.
-    void cssWidth;
+    void sheetWidth;
     void editor.displayedFrame;
     void editor.activeLayer;
     void editor.showOnionSkin;
@@ -644,7 +722,13 @@
 
   function toDocUnits(e: { clientX: number; clientY: number }): [number, number] {
     const rect = canvasEl.getBoundingClientRect();
-    return toDocument(e.clientX - rect.left, e.clientY - rect.top, rect, editor.doc, editor.view);
+    return toDocument(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+      { width: sheetWidth, height: sheetHeight },
+      editor.doc,
+      editor.view,
+    );
   }
 
   /**
@@ -722,18 +806,16 @@
   }
 
   function panBy(dx: number, dy: number): void {
-    const rect = canvasEl.getBoundingClientRect();
     editor.view = clampPan(
       { zoom: editor.view.zoom, panX: editor.view.panX + dx, panY: editor.view.panY + dy },
-      rect.width,
-      rect.height,
+      stage,
     );
     editor.flashScaleMenu();
   }
 
   function zoomTo(zoom: number, clientX: number, clientY: number): void {
     const rect = canvasEl.getBoundingClientRect();
-    editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, rect.width, rect.height);
+    editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, stage);
   }
 
   /**
@@ -749,11 +831,10 @@
     const rect = canvasEl.getBoundingClientRect();
     editor.view = zoomCentredOn(
       editor.view,
-      editor.view.zoom + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP),
+      editor.view.zoom + zoomDelta(editor.view.zoom, e.deltaY < 0 ? 1 : -1),
       e.clientX - rect.left,
       e.clientY - rect.top,
-      rect.width,
-      rect.height,
+      stage,
     );
   }
 
@@ -808,7 +889,7 @@
       }
       // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка);
       // the palette's pipette can arm the fill for the left button too.
-      const toFill = (e.button === 2 || editor.pipetteTarget === 'fill') && editor.ux.tools.includes('feather');
+      const toFill = e.button === 2 || editor.pipetteTarget === 'fill';
       editor.pickColor(picked, toFill ? 'fill' : 'outline');
       if (!toFill) {
         // Back to whatever was drawing — the pen stays a pen (ResetHelpTool).
@@ -1054,8 +1135,8 @@
     bind:this={canvasEl}
     role="img"
     aria-label={canvasLabel}
-    style:width="{cssWidth}px"
-    style:height="{cssHeight}px"
+    style:width="{stage.width}px"
+    style:height="{stage.height}px"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
     onwheel={onWheel}
@@ -1079,9 +1160,9 @@
   {#if displayedHandles}
     <svg
       class="overlay"
-      width={cssWidth}
-      height={cssHeight}
-      viewBox="0 0 {cssWidth} {cssHeight}"
+      width={stage.width}
+      height={stage.height}
+      viewBox="0 0 {stage.width} {stage.height}"
       aria-hidden="true"
     >
       <!-- The side midpoints sit on the sides, so all eight points trace the
@@ -1133,10 +1214,9 @@
   }
   canvas {
     display: block;
-    background: var(--canvas, #fff);
-    /* A defined frame on the paper worktable: hairline edge + soft plate shadow. */
-    border: 1px solid var(--hairline, #0b0c1024);
-    box-shadow: 0 10px 30px -14px rgba(15, 23, 60, 0.35);
+    /* The worktable itself: the sheet, its edge and its shadow are painted
+       into the canvas, wherever the view has put it. */
+    background: transparent;
     /* Page scroll/zoom must not hijack drawing. */
     touch-action: none;
     cursor: crosshair;
@@ -1146,10 +1226,9 @@
   }
   .overlay {
     position: absolute;
-    /* The canvas is centred in the wrap; the overlay sits exactly on it. */
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
+    /* The canvas fills the wrap; the overlay sits exactly on it. */
+    left: 0;
+    top: 0;
     pointer-events: none;
   }
   .overlay .frame {

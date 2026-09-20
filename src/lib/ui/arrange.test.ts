@@ -95,6 +95,7 @@ const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).tex
 const arranger = await Bun.file(new URL('./PanelArranger.svelte', import.meta.url)).text();
 const floatWindow = await Bun.file(new URL('./FloatWindow.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
+const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url)).text();
 
 describe('arranging happens in the editor itself', () => {
   test('the mode is a flag on the state, not a stored setting', () => {
@@ -181,5 +182,61 @@ describe('named arrangements', () => {
     expect(arranger).toContain('editor.deleteWorkspace(');
     // A name is typed in the bar, not into a browser prompt.
     expect(arranger).not.toContain('prompt(');
+  });
+});
+
+describe('an arrangement travels as a file', () => {
+  test('the state writes the picked one and reads a file back', () => {
+    expect(state).toContain('exportWorkspace(id?: number)');
+    expect(state).toContain('importWorkspaces(');
+  });
+
+  test('the arrange bar downloads one and loads one, under a latin name', () => {
+    expect(arranger).toContain('editor.exportWorkspace(');
+    expect(arranger).toContain('editor.importWorkspaces(');
+    expect(arranger).toContain("'layout.json'");
+    expect(arranger).toContain('workspaceFile');
+  });
+
+  test('the sheet keeps the file out of the settings list', () => {
+    expect(sheet).not.toContain('exportWorkspace');
+    expect(sheet).not.toContain('importWorkspaces');
+  });
+
+  test('the sheet no longer resets what the arrange bar resets', () => {
+    // The reset lives where the panels are being moved, not twice.
+    expect(sheet).not.toContain('resetPanels()');
+    expect(arranger).toContain('resetPanels()');
+  });
+});
+
+describe('the handle frames the item it grabs', () => {
+  test('the dashed box sits around the key, not across its edge', () => {
+    // outline-offset: -2px drew the frame over the key's own corners, so the
+    // frame read as smaller than what it holds.
+    const handle = editorUi.slice(editorUi.indexOf('.editor.arranging .arr {'));
+    expect(handle).not.toContain('outline-offset: -2px');
+    expect(handle.slice(0, handle.indexOf('}'))).toContain('calc(var(--r-sm) + 2px)');
+  });
+
+  test('the handle hugs the item rather than the cell it sits in', () => {
+    // Stretched to a grid cell, the frame stood off the key by whatever the
+    // cell had spare — wider on one side, taller than the key. Centred, the
+    // handle is the key plus its 2px, so the gap is the same all round.
+    const handle = editorUi.slice(editorUi.indexOf('.editor.arranging .arr {'));
+    expect(handle.slice(0, handle.indexOf('}'))).toContain('place-self: center');
+    // A full-width item (the strip, the palette box) still takes the row.
+    const wide = editorUi.slice(editorUi.indexOf('.editor.arranging .arr.wide {'));
+    expect(wide.slice(0, wide.indexOf('}'))).toContain('place-self: stretch');
+  });
+
+  test('the item keeps its own size inside the handle', () => {
+    const frozen = editorUi.slice(editorUi.indexOf('.editor.arranging .arr > :global(*) {'));
+    const block = frozen.slice(0, frozen.indexOf('}'));
+    expect(block).toContain('box-shadow: none');
+    // A zero basis, or a min-width of 0, squeezed the keys in the bar below
+    // their square footprint.
+    expect(block).not.toContain('min-width: 0');
+    expect(block).not.toContain('flex: 1;');
   });
 });

@@ -100,6 +100,15 @@ describe('resolveToolSelection with a profile toolset', () => {
     expect(resolveToolSelection('feather', '#000000', multator)).toBeNull();
     expect(resolveToolSelection('feather', '#000000', toonio)).toBe('feather');
   });
+
+  it('a tool the arrangement puts back is offered, whatever the preset started with', () => {
+    // The preset chooses the starting arrangement; what is on the panels
+    // after that is what the editor has (panels.ts `visibleTools`).
+    expect(resolveToolSelection('feather', '#000000', multator, true, ['pencil', 'feather']))
+      .toBe('feather');
+    expect(resolveToolSelection('lasso', '#000000', toonio, true, ['pencil']))
+      .toBeNull();
+  });
 });
 
 describe('nudgeBrushSize', () => {

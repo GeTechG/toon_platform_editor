@@ -21,7 +21,7 @@
   import { loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
-  import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './viewport';
+  import { zoomDelta } from './viewport';
   import { wrapIndex } from './frame-selection';
   import { draftEntries } from '../draft/restore';
   import {
@@ -117,12 +117,16 @@
   const lastThreeKeys = ['', '', ''];
 
   // --- Bottom panel divider ------------------------------------------------
-  // Keys whose meaning follows the preset's behaviour, not a layout: the
-  // toolset decides whether Alt+E and F are tools, the quick palette whether
-  // M opens the picker (Multator) or merges the buffer (Toonio/Toonop).
-  const hasMegaEraser = $derived(editor.ux.tools.includes('mega-eraser'));
-  const hasFeather = $derived(editor.ux.tools.includes('feather'));
+  // Alt+E and F are tools only while their keys are on the panels: put the
+  // feather back in a preset that started without it and F picks it up, take
+  // it away and F is fullscreen again. The quick palette (a preset's own
+  // behaviour) still decides whether M opens the picker (Multator) or merges
+  // the buffer (Toonio/Toonop).
+  const hasMegaEraser = $derived(editor.availableTools.includes('mega-eraser'));
+  const hasFeather = $derived(editor.availableTools.includes('feather'));
   const quickPalette = $derived(editor.ux.quickPalette !== null);
+  /** The pipette's source pair is on the panel always, live only under the pipette. */
+  const pipetteUp = $derived(editor.tool === 'pipette');
   /** Toonio keeps a project file behind Alt+S; the others export instead. */
   const hasProjectFile = $derived(editor.drawingProfile === 'toonio');
 
@@ -313,11 +317,11 @@
       switch (e.key) {
         case '+':
         case '=':
-          editor.zoomBy(ZOOM_STEP);
+          editor.zoomBy(zoomDelta(editor.view.zoom, 1));
           break;
         case '-':
         case '_':
-          editor.zoomBy(-ZOOM_STEP);
+          editor.zoomBy(zoomDelta(editor.view.zoom, -1));
           break;
         case 'ArrowLeft':
           editor.panBy(step, 0);
@@ -1133,23 +1137,6 @@
   {@const tool = toolOfItem(id)}
   {#if tool}
     <ToolKey {editor} {tool} />
-  {:else if id === 'pick-source'}
-    <!-- Reference: while the pipette is up, where it reads from. -->
-    {#if editor.tool === 'pipette'}
-      <div class="pick-source" role="group" aria-label="Источник пипетки">
-        {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
-          <button
-            class="key"
-            class:active={editor.pickSource === source}
-            aria-pressed={editor.pickSource === source}
-            onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
-            title={source === 'canvas'
-              ? 'Брать цвет с видимого холста (Alt — только активный слой)'
-              : 'Брать цвет только с активного слоя'}
-          >{label}</button>
-        {/each}
-      </div>
-    {/if}
   {:else if id === 'save'}
     <!-- Reference «Сохранить»: the draft goes to disk now rather than on the
          next turn of the autosave clock. Nothing to write, nothing to press. -->
@@ -1290,32 +1277,6 @@
         disabled={editor.playing}
       />
     </label>
-  {:else if id === 'zoom'}
-    <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
-         a control, and the readout says where we are. -->
-    <div class="zoom" role="group" aria-label="Масштаб холста">
-      <button
-        class="key"
-        disabled={editor.view.zoom <= ZOOM_MIN}
-        onclick={() => editor.zoomBy(-ZOOM_STEP)}
-        title="Уменьшить масштаб"
-        aria-label="Уменьшить масштаб"
-      >−</button>
-      <button
-        class="key zoom-value"
-        disabled={editor.view.zoom === ZOOM_MIN && editor.view.panX === 0 && editor.view.panY === 0}
-        onclick={() => editor.resetView()}
-        title="Вернуть 100%"
-        aria-label="Масштаб {Math.round(editor.view.zoom * 100)} процентов, вернуть 100%"
-      >{Math.round(editor.view.zoom * 100)}%</button>
-      <button
-        class="key"
-        disabled={editor.view.zoom >= ZOOM_MAX}
-        onclick={() => editor.zoomBy(ZOOM_STEP)}
-        title="Увеличить масштаб"
-        aria-label="Увеличить масштаб"
-      >+</button>
-    </div>
   {:else if id === 'audio'}
     <!-- The soundtrack lives behind its own key, beside layers and export:
          the wave belongs on the timeline, the file and its credits do not. -->
@@ -1469,16 +1430,40 @@
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
-    {#if editor.transform || editor.scaleMenuVisible}
+    {#if editor.transform || pipetteUp}
       <div class="tool-windows">
         {#if editor.transform}
           <TransformMenu {editor} />
         {/if}
-        {#if editor.scaleMenuVisible}
-          <ScaleMenu {editor} />
+        {#if pipetteUp}
+          <!-- Where the pipette reads from. It comes up with the pipette and
+               goes with it, like the zoom window with the hand: on a panel it
+               was a pair of keys sitting dead most of the time. -->
+          <div class="pick-window" role="group" aria-label="Источник пипетки">
+            <p class="pick-title">Пипетка</p>
+            <div class="pick-source">
+              {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
+                <button
+                  class="key"
+                  class:active={editor.pickSource === source}
+                  aria-pressed={editor.pickSource === source}
+                  onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
+                  title={source === 'canvas'
+                    ? 'Брать цвет с видимого холста (Alt — только активный слой)'
+                    : 'Брать цвет только с активного слоя'}
+                >{label}</button>
+              {/each}
+            </div>
+          </div>
         {/if}
       </div>
     {/if}
+    <!-- The only zoom control there is, so it is always on the canvas: in the
+         far corner, faded back until the hand is up, the wheel turns, or it is
+         hovered or focused. -->
+    <div class="scale-window" class:up={editor.scaleMenuVisible}>
+      <ScaleMenu {editor} />
+    </div>
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
     {/if}
@@ -1772,14 +1757,15 @@
     user-select: text;
     -webkit-user-select: text;
   }
-  /* Paper worktable so the white canvas floats on brand tone, not a bare
-     letterbox. Padding keeps the canvas off the bars. */
+  /* Paper worktable so the white sheet floats on brand tone, not a bare
+     letterbox. No padding: the table runs to the bars, and the air around the
+     sheet is the fit's own margin — otherwise a magnified sheet reads as cut
+     off by a grey frame. */
   .stage {
     position: relative;
     flex: 1;
     min-height: 0;
     background: var(--table);
-    padding: clamp(0.5rem, 2.2vw, 1.25rem);
     box-sizing: border-box;
   }
   .tool-windows {
@@ -1793,18 +1779,41 @@
     width: 13rem;
     max-height: calc(100% - 2 * clamp(0.5rem, 2.2vw, 1.25rem));
     overflow-y: auto;
-    /* Lifted off the paper the way a window is, not painted onto it. */
-    filter: drop-shadow(0 10px 24px rgba(15, 23, 60, 0.18));
+  }
+  /* Lifted off the paper the way a window is. A shadow, not a filter: a
+     filtered wrapper would become the frame of the window it holds once that
+     window goes `position: fixed` to be dragged. */
+  .tool-windows > :global(*),
+  .scale-window > :global(*) {
+    box-shadow: 0 10px 24px rgba(15, 23, 60, 0.18);
+  }
+  .scale-window {
+    position: absolute;
+    left: clamp(0.5rem, 2.2vw, 1.25rem);
+    bottom: clamp(0.5rem, 2.2vw, 1.25rem);
+    z-index: 3;
+    /* One row of keys — it takes the width it needs, not a panel's. */
+    width: max-content;
+    opacity: 0.55;
+    transition: opacity 120ms ease;
+  }
+  /* Faded is for the drawing's sake, never for the reader's: touching it, or
+     tabbing into it, brings it back to full. */
+  .scale-window.up,
+  .scale-window:hover,
+  .scale-window:focus-within {
+    opacity: 1;
   }
   /* On a phone the stage is short — a floating window would cover the drawing,
      so the windows sit under the canvas and span the width. */
   @media (max-width: 40rem) {
-    .tool-windows {
+    .tool-windows,
+    .scale-window {
       position: static;
       width: auto;
       max-height: none;
       margin-top: 0.5rem;
-      filter: none;
+      opacity: 1;
     }
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. */
@@ -1830,10 +1839,13 @@
     /* The divider owns the height: the strip scrolls its layers inside it and
        a row too tall for it scrolls too, rather than growing the panel over
        the canvas or past the bottom of the window. `clip` with a margin so a
-       key's shadow is not shaved off at the edge. */
+       key's shadow is not shaved off at the edge — and so the furniture that
+       straddles the seam on purpose survives it: the drag band 8px above the
+       edge and the fold tab 15px above it, plus that tab's focus ring (3px
+       at 2px offset). The margin is uniform, so it is the tallest of them. */
     max-height: 75vh;
     overflow: clip;
-    overflow-clip-margin: 6px;
+    overflow-clip-margin: 20px;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair
@@ -1864,7 +1876,7 @@
     left: 50%;
     transform: translateX(-50%);
     width: var(--key-h);
-    height: 14px;
+    height: 15px;
     border-bottom: none;
     border-radius: var(--r-sm) var(--r-sm) 0 0;
     box-shadow: none;
@@ -1943,14 +1955,31 @@
     align-items: center;
     gap: 0.3rem;
     padding: 2px;
-    border-radius: var(--r-sm);
+    /* The handle is the item plus 2px, centred in whatever cell it lands in:
+       stretched, it stood off the key by the cell's spare width and height
+       instead of framing it. */
+    place-self: center;
+    /* The frame goes round the key, not across it: the padding box is the
+       key plus 2px, and the radius follows it, so the corners clear the
+       key's own 7px ones. */
+    border-radius: calc(var(--r-sm) + 2px);
     outline: 2px dashed var(--electric);
-    outline-offset: -2px;
     cursor: grab;
     touch-action: none;
   }
+  /* Whatever takes the whole row — the strip, the palette box — still does. */
+  .editor.arranging .arr.wide {
+    place-self: stretch;
+  }
   .editor.arranging .arr > :global(*) {
     pointer-events: none;
+    /* The item grows into the whole handle, so the frame keeps its 2px on
+       every side where the grid cell is wider than the key — from its own
+       width, never below it, or the bar's keys lose their square. Its shadow
+       goes with it: nothing is pressed while things are being moved, and the
+       2px under the key read as a tighter gap there than at the top. */
+    flex: 1 1 auto;
+    box-shadow: none;
   }
   .editor.arranging :global([data-slot]) {
     outline: 1px dashed var(--hairline);
@@ -1986,25 +2015,28 @@
     align-items: center;
     gap: 0.4rem;
   }
-  /* The pipette's source pair, under the key that opened it. */
+  /* The pipette's source pair, in a tool window of the same make as the
+     zoom one (ScaleMenu). */
+  .pick-window {
+    padding: 0.5rem;
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: var(--canvas);
+    font-size: 13px;
+  }
+  .pick-title {
+    margin: 0 0 0.4rem;
+    font-weight: 600;
+  }
   .pick-source {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
   }
   .pick-source button {
+    flex: 1;
     padding: 0 10px;
     font-size: 13px;
-  }
-  .studio .pick-source {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
-    gap: 0.5rem;
-  }
-  .studio .pick-source button {
-    min-width: 0;
-    padding: 0 4px;
-    font-size: 12px;
   }
   /* Undo/redo (and whatever else the config puts beside them) stay a row —
      the studio column turns this into a grid below. */
@@ -2167,7 +2199,10 @@
     top: 1rem;
     display: grid;
     place-items: center;
-    width: 14px;
+    /* 15, not 14: the tab is border-box and drops the border on the side it
+       leans against, so a 14px lip leaves the 14px arrow 13px to sit in and
+       the panel paints over the pixel that sticks out. */
+    width: 15px;
     height: var(--key-h);
     padding: 0;
     border: 1px solid var(--hairline);
@@ -2380,16 +2415,6 @@
     height: 1px;
     opacity: 0;
     pointer-events: none;
-  }
-  .zoom {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-  }
-  .zoom-value {
-    min-width: 3.4rem;
-    font-size: 0.74rem;
-    font-variant-numeric: tabular-nums;
   }
   .layers {
     position: relative;

@@ -15,7 +15,6 @@
   /** The grid, for scrolling the chosen outline into view. */
   let gridEl = $state<HTMLElement | null>(null);
 
-  const twoColors = $derived(editor.ux.tools.includes('feather'));
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
   const DEFAULT: SavedPalette = { id: -1, name: 'По умолчанию', created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
@@ -28,7 +27,7 @@
       editor.removePaletteColor(color);
       return;
     }
-    editor.pickColor(color, e.button === 2 && twoColors ? 'fill' : 'outline', true);
+    editor.pickColor(color, e.button === 2 ? 'fill' : 'outline', true);
   }
 
   function openSection(next: 'colors' | 'saved' | 'edit'): void {
@@ -131,7 +130,7 @@
   function onPreviewCell(e: MouseEvent, color: string): void {
     if (e.button !== 0 && e.button !== 2) return;
     editor.addColorToPalette(color);
-    editor.pickColor(color, e.button === 2 && twoColors ? 'fill' : 'outline', true);
+    editor.pickColor(color, e.button === 2 ? 'fill' : 'outline', true);
   }
 </script>
 
@@ -153,28 +152,26 @@
         <button class="add" onclick={() => editor.addColorToPalette(editor.brushColor)} title="Добавить контур в палитру" aria-label="Добавить цвет контура в палитру"><Icon name="plus" size={16} /></button>
       {/if}
     </div>
-    {#if twoColors}
-      <div class="big" style:--swatch={editor.fillColor} style:color={contrastInk(editor.fillColor)}>
-        <button
-          class="face"
-          title="Цвет заливки (ПКМ)"
-          aria-label="Цвет заливки {editor.fillColor}"
-          aria-haspopup="dialog"
-          onclick={(e) => openPicker(e, 'fill')}
-        >
-          <span class="mark"><Icon name="feather" size={16} /></span>
-        </button>
-        {#if !fillInGrid}
-          <button class="add" onclick={() => editor.addColorToPalette(editor.fillColor)} title="Добавить заливку в палитру" aria-label="Добавить цвет заливки в палитру"><Icon name="plus" size={16} /></button>
-        {/if}
-      </div>
+    <div class="big" style:--swatch={editor.fillColor} style:color={contrastInk(editor.fillColor)}>
       <button
-        class="swap"
-        onclick={() => editor.swapColors()}
-        title="Поменять контур и заливку местами (X)"
-        aria-label="Поменять контур и заливку местами"
-      >⇄</button>
-    {/if}
+        class="face"
+        title="Цвет заливки (ПКМ)"
+        aria-label="Цвет заливки {editor.fillColor}"
+        aria-haspopup="dialog"
+        onclick={(e) => openPicker(e, 'fill')}
+      >
+        <span class="mark"><Icon name="feather" size={16} /></span>
+      </button>
+      {#if !fillInGrid}
+        <button class="add" onclick={() => editor.addColorToPalette(editor.fillColor)} title="Добавить заливку в палитру" aria-label="Добавить цвет заливки в палитру"><Icon name="plus" size={16} /></button>
+      {/if}
+    </div>
+    <button
+      class="swap"
+      onclick={() => editor.swapColors()}
+      title="Поменять контур и заливку местами (X)"
+      aria-label="Поменять контур и заливку местами"
+    >⇄</button>
   </div>
 
   {#if section === 'saved'}
@@ -200,7 +197,7 @@
     <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label="Палитра">
       {#each editor.palette as color (color)}
         {@const isOutline = editor.brushColor === color}
-        {@const isFill = twoColors && editor.fillColor === color}
+        {@const isFill = editor.fillColor === color}
         <button
           class="cell"
           data-color={color}

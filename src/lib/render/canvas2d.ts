@@ -140,12 +140,14 @@ export function renderRawPolyline(
   color: string,
   target: Canvas2DLike,
   viewport: Viewport,
+  /** Interior paint of a filled tool (the feather), the way the commit fills it. */
+  fill?: string,
 ): void {
   if (points.length < 2) {
     return;
   }
   applyDocTransform(target, viewport);
-  drawStrokePath(target, points, width, color, false);
+  drawStrokePath(target, points, width, color, false, fill);
 }
 
 /** Dialect-aware live preview for prepared profile geometry. */
@@ -293,6 +295,7 @@ function drawStrokePath(
   width: number,
   color: string,
   smooth: boolean,
+  fill?: string,
 ): void {
   target.beginPath();
   if (points.length === 2) {
@@ -313,6 +316,10 @@ function drawStrokePath(
     for (let i = 1; i < points.length / 2; i++) {
       target.lineTo(points[2 * i], points[2 * i + 1]);
     }
+  }
+  if (fill !== undefined) {
+    target.fillStyle = fill;
+    target.fill();
   }
   target.stroke();
 }

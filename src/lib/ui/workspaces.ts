@@ -19,6 +19,8 @@ export interface Workspace {
 }
 
 const STORAGE_KEY = 'toon-editor:workspaces';
+/** What the live arrangement is called when it is exported unnamed. */
+export const CURRENT_NAME = 'Текущее';
 
 function cleanFloatPos(value: unknown): FloatPositions {
   const out: FloatPositions = {};
@@ -105,4 +107,26 @@ export function saveWorkspaces(list: readonly Workspace[]): void {
   } catch {
     // private mode / blocked storage — degrade to no-op.
   }
+}
+
+/** One arrangement as a file — a list of one, so loading it is loading a file. */
+export function exportWorkspace(
+  name: string,
+  panels: PanelLayout,
+  floatPos: FloatPositions,
+): string {
+  return JSON.stringify(withWorkspace([], name, panels, floatPos), null, 2);
+}
+
+/** Reads such a file, merging by name; anything unreadable loads nothing. */
+export function importWorkspaces(
+  list: readonly Workspace[],
+  raw: string,
+): { workspaces: Workspace[]; loaded: number } {
+  const loaded = parseWorkspaces(raw);
+  let workspaces = [...list];
+  for (const workspace of loaded) {
+    workspaces = withWorkspace(workspaces, workspace.name, workspace.panels, workspace.floatPos);
+  }
+  return { workspaces, loaded: loaded.length };
 }

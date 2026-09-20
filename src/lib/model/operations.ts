@@ -418,7 +418,7 @@ export function copyTool(tool: ToolDescriptor): ToolDescriptor {
     case 'feather':
       return {
         kind: 'feather',
-        dialect: 'toonio',
+        dialect: tool.dialect,
         width: tool.width,
         color: tool.color,
         fill: tool.fill,

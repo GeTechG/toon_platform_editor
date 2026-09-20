@@ -11,14 +11,15 @@
   let { editor, tool }: { editor: EditorState; tool: SelectableTool } = $props();
 
   const spec = $derived(TOOL_KEYS[tool]);
-  // The preset owns the toolset; the pipette additionally only exists once the
-  // palette is enabled (reference ToolPanel.hx), and under Toonio it is not a
-  // rail button at all — the palette's foot holds it (reference `E:205-208`).
+  // A key is drawn wherever the arrangement puts it — the preset only decided
+  // where it started. The pipette is the one exception the references make of
+  // themselves: it exists only once the palette is enabled (ToolPanel.hx), and
+  // under Toonio it is not a rail button at all — the palette's foot holds it
+  // (reference `E:205-208`).
   const offered = $derived(
-    editor.ux.tools.includes(tool)
-      && (tool !== 'pipette'
-        || (!editor.ux.pipetteOffRail
-          && (!editor.ux.pipetteNeedsPalette || editor.paletteExpanded))),
+    tool !== 'pipette'
+      || (!editor.ux.pipetteOffRail
+        && (!editor.ux.pipetteNeedsPalette || editor.paletteExpanded)),
   );
 </script>
 

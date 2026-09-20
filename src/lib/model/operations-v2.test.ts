@@ -56,6 +56,21 @@ describe('internTool', () => {
     expect(target.tools[2]).toEqual({ kind: 'contour-eraser', dialect: 'multator' });
   });
 
+  it('keeps a feather\'s dialect — the same tool drawn two ways is two tools', () => {
+    // The table is written from the committed descriptor: flattening the
+    // dialect here would store a Multator feather as a Tonio one and render
+    // the curve the other way round.
+    const target = doc();
+    const ids = [
+      internTool!(target, { kind: 'feather', dialect: 'multator', width: 40, color: '#000000', fill: '#ff0000' }),
+      internTool!(target, { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' }),
+    ];
+    expect(ids).toEqual([0, 1]);
+    expect(target.tools[0]).toEqual({
+      kind: 'feather', dialect: 'multator', width: 40, color: '#000000', fill: '#ff0000',
+    });
+  });
+
   it('copies a new descriptor and never mutates an existing one', () => {
     const target = doc();
     const input = { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' } as const;

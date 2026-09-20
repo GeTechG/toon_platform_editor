@@ -71,10 +71,13 @@ export function beginStrokeSession(
   oldschool = false,
   zoom = 1,
 ): StrokeSession {
-  // Feather and pixel exist only in the Tonio dialect; everything else takes
-  // the profile the gesture started under.
+  // The pixel tool exists only in the Tonio dialect — its points are that
+  // tool's own grid cells, not a line anybody else draws. Everything else,
+  // the feather included, takes the profile the gesture started under: a
+  // preset is the algorithm, and a feather on a Multator panel is a Multator
+  // line that happens to be filled.
   const scale = positiveScale(coordinateScale);
-  const tonioOnlyTool = descriptor.kind === 'feather' || descriptor.kind === 'pixel';
+  const tonioOnlyTool = descriptor.kind === 'pixel';
   const base = tonioOnlyTool ? descriptor : { ...descriptor, dialect: profile };
   // Both dialects measure a width on their own reference canvas, so the
   // stroke covers the same share of the picture on a document of any size.
@@ -83,6 +86,9 @@ export function beginStrokeSession(
   // the Multator builder would smooth a pixel tool's cells into a polyline
   // the pixel renderer cannot draw.
   const sessionProfile: StrokeDialect = tonioOnlyTool ? 'toonio' : profile;
+  // The oldschool pen commits a closed contour, which carries one colour and
+  // no fill — so the easter egg stays the pen's and the eraser's.
+  const oldschoolPen = oldschool && frozenDescriptor.kind !== 'feather';
   if (sessionProfile === 'multator') {
     const builder = new StrokeBuilder({
       width: frozenDescriptor.width,
@@ -99,7 +105,7 @@ export function beginStrokeSession(
       tonioCoordinateScale: scale,
       zoom: 1,
       multator: builder,
-      oldschool,
+      oldschool: oldschoolPen,
     };
   }
   const session: StrokeSession = {
@@ -343,7 +349,11 @@ function copyLineTool(tool: LineToolDescriptor): LineToolDescriptor {
       return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
     case 'feather':
       return {
-        kind: 'feather', dialect: 'toonio', width: tool.width, color: tool.color, fill: tool.fill,
+        kind: 'feather',
+        dialect: tool.dialect,
+        width: tool.width,
+        color: tool.color,
+        fill: tool.fill,
       };
     case 'pixel':
       return { kind: 'pixel', dialect: 'toonio', width: tool.width, color: tool.color };

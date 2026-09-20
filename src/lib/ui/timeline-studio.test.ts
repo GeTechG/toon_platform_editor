@@ -283,12 +283,21 @@ describe('the fold tab sits on a corner, not in mid-air', () => {
 describe('the bottom panel folds like the sides', () => {
   it('its seam carries the same tab, lying on its side', () => {
     expect(editorUi).toContain('editor.togglePanel()');
-    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*height: 14px/s);
+    // The lip is as thick as the side tab is wide, and both are one pixel
+    // over the 14px arrow: the tab is border-box and drops the border on the
+    // side it leans against, so 14 would leave the arrow 13 and the panel
+    // would paint over the pixel that sticks out.
+    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*height: 15px/s);
+    expect(editorUi).toMatch(/\.fold \{[^}]*width: 15px/s);
     // Centred on its seam: at a corner it reads as a chip stuck to the
     // column above it rather than as the bar's own handle.
     expect(editorUi).toMatch(/\.fold\.lying \{[^}]*left: 50%/s);
     expect(editorUi).toMatch(/\.fold\.lying:hover \{[^}]*translate\(-50%/s);
     expect(editorUi).toMatch(/\.fold\.lying \{[^}]*width: var\(--key-h\)/s);
+    // The panel clips what its rows paint outside it, and the tab is the one
+    // thing that is meant to stick out: 15px of tab plus its focus ring (3px
+    // at 2px offset) have to clear that clip, or the arrow loses its head.
+    expect(editorUi).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin: 20px/s);
     expect(editorUi).toContain("chevron-down");
     expect(editorUi).toContain("chevron-up");
   });

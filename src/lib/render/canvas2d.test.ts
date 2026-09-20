@@ -667,4 +667,14 @@ describe('renderRawPolyline (live preview)', () => {
     expect(log).not.toContain('quadraticCurveTo');
     expect(log).toContain('stroke()');
   });
+
+  it('fills the path first when the tool is a filled one (the feather)', () => {
+    // The live Multator gesture is the raw polyline, but a feather fills what
+    // it encloses — without this the fill only appeared on release.
+    const ctx = new RecordingCtx();
+    renderRawPolyline([0, 0, 10, 20, 30, 40], 32, '#123456', ctx, viewport, '#ff0000');
+    const log = ctx.log.join('\n');
+    expect(log).toContain('fillStyle=#ff0000');
+    expect(log.indexOf('fill()')).toBeLessThan(log.indexOf('stroke()'));
+  });
 });

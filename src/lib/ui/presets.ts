@@ -230,12 +230,30 @@ export const PRESETS: {
     // canvas: frames, then the transport, then the drawing row — two colours
     // instead of the palette box, a row of dots instead of the sliders, and
     // none of the keys it never had (sound, GIF export, cell clipboard).
+    //
+    // Each line sits where the reference put it. The strip's line holds only
+    // what acts on frames — `+` and `×` right beside it. The next line opens
+    // the way its second line read, ▶ 💾 ◁, and ends on the send button, with
+    // what the reference had no key for (onion, fps, fullscreen, the
+    // gear) between them and the save note last, so it never splits the keys.
+    // The drawing line reads left to right the way the reference drew it:
+    // the tools, then the row of dots, then the two colour squares.
     panels: {
       base: {
         rows: [
-          ['history', 'add-frame', 'delete-frame', 'timeline'],
-          ['transport', 'onion', 'fps', 'zoom', 'saved', 'drafts', 'fullscreen', 'settings', 'publish'],
-          [...MULTATOR_TOOLS, 'color', 'brush-sizes'],
+          ['add-frame', 'delete-frame', 'timeline'],
+          [
+            'transport',
+            'drafts',
+            'history',
+            'onion',
+            'fps',
+            'fullscreen',
+            'settings',
+            'saved',
+            'publish',
+          ],
+          [...MULTATOR_TOOLS, 'brush-sizes', 'color'],
         ],
       },
     },

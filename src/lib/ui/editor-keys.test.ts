@@ -76,6 +76,19 @@ describe('one confirm for the whole editor', () => {
   });
 });
 
+describe('the pipette source is a tool window, not a panel key', () => {
+  it('comes up with the pipette and goes with it, like the zoom window', () => {
+    // On a panel it was a pair of keys that sat there dead whenever the
+    // pipette was down. A window that is only there while the tool is has
+    // nothing to disable.
+    expect(editorUi).toContain('{#if pipetteUp}');
+    expect(editorUi).not.toContain('disabled={!pipetteUp}');
+    expect(editorUi).not.toContain("id === 'pick-source'");
+    const windows = editorUi.match(/<div class="tool-windows">[^]*?<\/div>\s*\{\/if\}/)?.[0] ?? '';
+    expect(windows).toContain('editor.setPickSource');
+  });
+});
+
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 
 describe('the transport plays the range (Toonio parity)', () => {

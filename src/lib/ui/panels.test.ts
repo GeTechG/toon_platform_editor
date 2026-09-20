@@ -4,6 +4,7 @@ import {
   FEATURE_ITEM,
   TOOL_KEYS,
   anyToolVisible,
+  visibleTools,
   toolItem,
   toolOfItem,
   KIND_LABELS,
@@ -117,6 +118,19 @@ describe('the tool keys as a group', () => {
     }
     expect(anyToolVisible(bare)).toBe(false);
   });
+
+  test('the arrangement decides which tools the editor offers', () => {
+    // A preset only chooses what the arrangement starts with: put a key back
+    // and the editor has that tool, take it away and it does not.
+    const multator = presets.presetPanels('multator');
+    expect(visibleTools(multator)).toEqual(['pencil', 'eraser', 'pipette']);
+
+    const withFeather = showPanelItem(multator, toolItem('feather'));
+    expect(visibleTools(withFeather)).toContain('feather');
+
+    expect(visibleTools(hidePanelItem(defaultPanels(), toolItem('lasso'))))
+      .not.toContain('lasso');
+  });
 });
 
 describe('one arrangement for everybody', () => {
@@ -166,6 +180,24 @@ describe('one arrangement for everybody', () => {
     // The keys it never had stay on the shelf.
     expect(multator.hidden).toContain('export');
     expect(multator.hidden).toContain(toolItem('lasso'));
+  });
+
+  test('Multator places the rows where the reference put them', () => {
+    const { rows } = presets.presetPanels('multator');
+    // `+` and `×` sit immediately left of the strip, and nothing else is up there.
+    expect(rows[0]).toEqual(['add-frame', 'delete-frame', 'timeline']);
+    // The reference's second line reads ▶ 💾 ◁ — play, the saves, undo — and
+    // ends on the button that sends the film off.
+    expect(rows[1].slice(0, 3)).toEqual(['transport', 'drafts', 'history']);
+    expect(rows[1].at(-1)).toBe('publish');
+    // The drawing line reads left to right: the tools, the dots, the colours.
+    expect(rows[2]).toEqual([
+      toolItem('pencil'),
+      toolItem('eraser'),
+      toolItem('pipette'),
+      'brush-sizes',
+      'color',
+    ]);
   });
 });
 
@@ -291,14 +323,14 @@ describe('moving an item', () => {
   });
 
   test('hiding an item is a move to the hidden slot', () => {
-    expect(hidePanelItem(defaultPanels(), 'zoom').hidden).toContain('zoom');
+    expect(hidePanelItem(defaultPanels(), 'fps').hidden).toContain('fps');
   });
 });
 
 describe('showing an item again', () => {
   test('it goes back where its layout has it', () => {
-    const hidden = hidePanelItem(defaultPanels(), 'zoom');
-    expect(showPanelItem(hidden, 'zoom').rows.flat()).toContain('zoom');
+    const hidden = hidePanelItem(defaultPanels(), 'fps');
+    expect(showPanelItem(hidden, 'fps').rows.flat()).toContain('fps');
   });
 
   test('there is no layers popup any more — the strip carries the rows', () => {
@@ -371,9 +403,9 @@ describe('the editor is arranged from the config', () => {
     expect(editorUi).toContain('data-slot="row:{i}"');
   });
 
-  test('the settings sheet arranges the panels', () => {
-    expect(sheet).toContain('slotLabel(slot)');
-    expect(sheet).toContain('editor.movePanelItem');
+  test('the settings sheet only sends you to the arranger — the list is gone', () => {
     expect(sheet).toContain('Расположение');
+    expect(sheet).toContain('editor.arranging = true');
+    expect(sheet).not.toContain('editor.movePanelItem');
   });
 });

@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { defaultPanels, movePanelItem } from './panels';
-import { parseWorkspaces, removeWorkspace, withWorkspace } from './workspaces';
+import {
+  exportWorkspace,
+  importWorkspaces,
+  parseWorkspaces,
+  removeWorkspace,
+  withWorkspace,
+} from './workspaces';
 
 const panels = defaultPanels();
 
@@ -41,5 +47,28 @@ describe('saved arrangements', () => {
     // Every item still has a home, as with any normalized layout.
     expect(workspace.panels.left).toContain('tool:pencil');
     expect(workspace.floatPos).toEqual({});
+  });
+
+  test('the file carries the one arrangement it was given', () => {
+    const moved = movePanelItem(panels, 'onion', 'left', 0);
+    const file = parseWorkspaces(exportWorkspace('Планшет', moved, { palette: { x: 1, y: 2 } }));
+    expect(file.map((w) => w.name)).toEqual(['Планшет']);
+    expect(file[0].panels.left[0]).toBe('onion');
+    expect(file[0].floatPos.palette).toEqual({ x: 1, y: 2 });
+  });
+
+  test('loading a file adds its arrangements, replacing ones of the same name', () => {
+    const mine = withWorkspace(withWorkspace([], 'A', panels, {}), 'B', panels, {});
+    const moved = movePanelItem(panels, 'onion', 'left', 0);
+    const raw = exportWorkspace('B', moved, {});
+    const { workspaces, loaded } = importWorkspaces(mine, raw);
+    expect(loaded).toBe(1);
+    expect(workspaces.map((w) => w.name)).toEqual(['A', 'B']);
+    expect(workspaces[1].panels.left[0]).toBe('onion');
+  });
+
+  test('a file with no arrangements loads nothing', () => {
+    const mine = withWorkspace([], 'A', panels, {});
+    expect(importWorkspaces(mine, 'not json')).toEqual({ workspaces: mine, loaded: 0 });
   });
 });

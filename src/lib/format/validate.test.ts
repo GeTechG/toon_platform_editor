@@ -255,6 +255,28 @@ describe('loadDocument: version chain', () => {
   });
 });
 
+describe('the feather dialect by schema version', () => {
+  const feather = (version: number, dialect: string) => ({
+    schema_version: version,
+    width: 4800,
+    height: 2400,
+    frame_rate: 12,
+    tools: [{ kind: 'feather', dialect, width: 40, color: '#000000', fill: '#ff0000' }],
+    layers: [{ hidden: false, frames: [{ strokes: [{ points: [0, 0, 8, 8], tool_id: 0 }] }] }],
+  });
+
+  it('v5 takes a Multator feather — a preset is the algorithm', () => {
+    expect(validateDocument(feather(5, 'multator')).ok).toBe(true);
+    expect(validateDocument(feather(5, 'toonio')).ok).toBe(true);
+  });
+
+  it('v4 still refuses it: there the feather was Tonio-dialect only', () => {
+    const result = validateDocument(feather(4, 'multator'));
+    expect(result.ok).toBe(false);
+    expect(result.issues[0].category).toBe('schema');
+  });
+});
+
 describe('cross-language parity: number spelling', () => {
   it('accepts an integer spelled as a float — JSON.parse erases the difference', () => {
     // `1e2` and `100` are the same JSON number, so both spellings are valid.

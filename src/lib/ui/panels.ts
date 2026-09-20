@@ -134,7 +134,6 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
     kind: 'tool',
     label: TOOL_KEYS[tool].label,
   })),
-  { id: 'pick-source', kind: 'widget', label: 'Источник пипетки', wide: true },
   { id: 'save', kind: 'action', label: 'Сохранить черновик' },
   { id: 'history', kind: 'action', label: 'Отменить / вернуть', wide: true },
   { id: 'manual', kind: 'action', label: 'Мануал' },
@@ -151,7 +150,6 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'delete-frame', kind: 'action', label: 'Удалить кадр' },
   { id: 'onion', kind: 'action', label: 'Калька' },
   { id: 'fps', kind: 'widget', wide: true, label: 'Частота кадров' },
-  { id: 'zoom', kind: 'widget', wide: true, label: 'Масштаб' },
   { id: 'audio', kind: 'widget', label: 'Звук' },
   { id: 'export', kind: 'action', label: 'Экспорт' },
   { id: 'saved', kind: 'widget', wide: true, label: 'Отметка о сохранении' },
@@ -194,7 +192,7 @@ export const FEATURE_ITEM: Record<string, string> = {
  * layers popup, because the studio strip carries the rows itself.
  */
 const DEFAULT: Omit<PanelLayout, 'float' | 'hidden'> = {
-  left: [...TOOL_ORDER.map(toolItem), 'save', 'pick-source', 'history', 'manual', 'fullscreen', 'drafts'],
+  left: [...TOOL_ORDER.map(toolItem), 'save', 'history', 'manual', 'fullscreen', 'drafts'],
   right: ['palette', 'brush'],
   rows: [['timeline'], [
     'transport',
@@ -202,7 +200,6 @@ const DEFAULT: Omit<PanelLayout, 'float' | 'hidden'> = {
     'delete-frame',
     'onion',
     'fps',
-    'zoom',
     'audio',
     'export',
     'saved',
@@ -439,6 +436,16 @@ export function hidePanelItem(layout: PanelLayout, id: string): PanelLayout {
 /** Whether any tool key at all is still placed somewhere. */
 export function anyToolVisible(layout: PanelLayout): boolean {
   return PANEL_ITEMS.some((item) => toolOfItem(item.id) !== null && panelItemVisible(layout, item.id));
+}
+
+/**
+ * The tools the editor actually has: every tool key the arrangement still
+ * places. A preset chooses what that arrangement starts with (presets.ts) —
+ * after that it is the panels' business, so a key put back by hand draws and
+ * works, and one put away is gone from the hotkeys too.
+ */
+export function visibleTools(layout: PanelLayout): SelectableTool[] {
+  return TOOL_ORDER.filter((tool) => panelItemVisible(layout, toolItem(tool)));
 }
 
 /** Whether the item is drawn at all. */

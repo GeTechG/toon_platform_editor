@@ -9,7 +9,6 @@
   let { editor }: { editor: EditorState } = $props();
 
   const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
-  const twoColors = $derived(editor.ux.tools.includes('feather'));
 </script>
 
 {#if quickPalette}
@@ -34,21 +33,22 @@
       oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
     />
   </label>
-  {#if twoColors}
-    <label class="color fill" title="Цвет заливки пера (ПКМ пипеткой)" style:--swatch={editor.fillColor}>
-      <input
-        type="color"
-        value={editor.fillColor}
-        oninput={(e) => (editor.fillColor = e.currentTarget.value.toLowerCase())}
-      />
-    </label>
-    <button
-      class="key icon"
-      onclick={() => editor.swapColors()}
-      title="Поменять контур и заливку местами (X)"
-      aria-label="Поменять контур и заливку местами"
-    >⇄</button>
-  {/if}
+  <!-- Every preset draws with this one under the right button (CanvasView)
+       and swaps the two on X — so every preset gets to choose it, whether or
+       not it has the feather that also fills with it. -->
+  <label class="color fill" title="Цвет правой кнопки (ПКМ пипеткой)" style:--swatch={editor.fillColor}>
+    <input
+      type="color"
+      value={editor.fillColor}
+      oninput={(e) => (editor.fillColor = e.currentTarget.value.toLowerCase())}
+    />
+  </label>
+  <button
+    class="key icon"
+    onclick={() => editor.swapColors()}
+    title="Поменять контур и заливку местами (X)"
+    aria-label="Поменять контур и заливку местами"
+  >⇄</button>
   {#if editor.ux.colorGrid}
     <button
       class="key icon"

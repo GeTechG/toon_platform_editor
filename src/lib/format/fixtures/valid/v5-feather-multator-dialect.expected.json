@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,8,8],\"tool_id\":0}]}],\"hidden\":false}],\"schema_version\":5,\"tools\":[{\"color\":\"#000000\",\"dialect\":\"multator\",\"fill\":\"#ff0000\",\"kind\":\"feather\",\"width\":40}],\"width\":4800}",
+  "sha256": "8946ef9e279c9d4c7cb18f9ff2e9b87f9f13131b8068721548c452f2e5453b8b"
+}

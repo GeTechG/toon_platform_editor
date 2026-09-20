@@ -14,6 +14,33 @@
 
   let { editor }: { editor: EditorState } = $props();
 
+  /** The picker for «Загрузить…»; the visible key clicks it. */
+  let workspaceFile = $state<HTMLInputElement | undefined>();
+
+  /** Hands the browser the picked arrangement (or the live one) to save. */
+  function downloadWorkspace(): void {
+    const url = URL.createObjectURL(
+      new Blob([editor.exportWorkspace(picked ? Number(picked) : undefined)], {
+        type: 'application/json',
+      }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    // Latin, so the name survives any filesystem it lands on.
+    a.download = 'layout.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function onWorkspaceFile(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) {
+      editor.importWorkspaces(await file.text());
+    }
+  }
+
   /** How far the pointer travels before a press counts as a drag, in px. */
   const DRAG_THRESHOLD = 4;
 
@@ -303,6 +330,20 @@
       }}
       title="Удалить выбранное пространство"
     >Удалить</button>
+    <button class="key" onclick={downloadWorkspace} title="Сохранить расположение в файл">
+      Скачать
+    </button>
+    <button class="key" onclick={() => workspaceFile?.click()} title="Загрузить расположение из файла">
+      Загрузить…
+    </button>
+    <input
+      bind:this={workspaceFile}
+      class="ws-file"
+      type="file"
+      accept="application/json,.json"
+      aria-label="Файл расположения"
+      onchange={onWorkspaceFile}
+    />
     <button class="key" onclick={() => editor.resetPanels()} title="Вернуть раскладку набора">
       Сбросить
     </button>
@@ -313,6 +354,13 @@
 </div>
 
 <style>
+  .ws-file {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
   .ghost,
   .drop-line,
   .drop-panel {

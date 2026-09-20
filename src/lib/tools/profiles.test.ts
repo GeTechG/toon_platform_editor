@@ -340,6 +340,51 @@ describe('swapStrokeColours (a stroke drawn with the right button)', () => {
   });
 });
 
+describe('the feather under a Multator preset', () => {
+  it('draws the Multator way: its dialect and its builder follow the preset', () => {
+    // A preset is the algorithm. Tonio invented the feather, but a feather
+    // put on a Multator panel is a Multator line that happens to be filled.
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator',
+      descriptor: { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 80, 40));
+    controller.pointerUp(sample(1, 160, 0));
+    const stroke = controller.takeCommitted()!;
+    expect(stroke.tool).toEqual({
+      kind: 'feather', dialect: 'multator', width: 40, color: '#000000', fill: '#ff0000',
+    });
+  });
+
+  it('measures its width on the Multator canvas there', () => {
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
+      { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('multator', 600),
+    );
+    expect(session.descriptor.dialect).toBe('multator');
+    expect(session.descriptor.width).toBe(40);
+  });
+
+  it('keeps the Tonio dialect under a Tonio preset', () => {
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0),
+      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
+    );
+    expect(session.descriptor.dialect).toBe('toonio');
+  });
+
+  it('never becomes an oldschool contour — a contour carries no fill', () => {
+    const session = profiles.beginStrokeSession(
+      'multator', sample(1, 0, 0),
+      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
+      undefined, 1, true,
+    );
+    expect(session.oldschool).toBe(false);
+  });
+});
+
 describe('the pixel tool outside the Tonio preset', () => {
   it('collects grid cells even when the preset draws Multator lines', () => {
     // Toonop keeps the pixel tool but draws its pencil the Multator way. The

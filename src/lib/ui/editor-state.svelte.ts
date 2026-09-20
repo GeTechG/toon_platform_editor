@@ -82,7 +82,7 @@ import {
   withSavedPalette,
   type SavedPalette,
 } from './color-palette';
-import { IDENTITY_VIEW, clampPan, zoomAt, type Viewport2D } from './viewport';
+import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { eraseStrokes } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
@@ -120,6 +120,9 @@ import {
   type UxProfile,
 } from './ux-profile';
 import {
+  CURRENT_NAME,
+  exportWorkspace,
+  importWorkspaces,
   loadWorkspaces,
   removeWorkspace,
   saveWorkspaces,
@@ -130,6 +133,7 @@ import {
   anyToolVisible,
   hidePanelItem,
   movePanelItem,
+  visibleTools,
   panelItemVisible,
   showPanelItem,
   type PanelLayout,
@@ -256,8 +260,16 @@ export class EditorState {
   savedPalettes = $state<SavedPalette[]>(loadSavedPalettes());
   /** Canvas zoom and pan; view state only, never part of the document. */
   view = $state<Viewport2D>({ ...IDENTITY_VIEW });
-  /** Canvas size in CSS px, kept current by CanvasView — zoom clamps against it. */
-  viewSize = $state({ width: CANVAS_LOGICAL_WIDTH, height: CANVAS_LOGICAL_HEIGHT });
+  /**
+   * The worktable in CSS px — the workspace and the sheet lying on it, kept
+   * current by CanvasView. Zoom and pan clamp against it.
+   */
+  stage = $state<Stage>({
+    width: CANVAS_LOGICAL_WIDTH,
+    height: CANVAS_LOGICAL_HEIGHT,
+    sheetWidth: CANVAS_LOGICAL_WIDTH,
+    sheetHeight: CANVAS_LOGICAL_HEIGHT,
+  });
   /**
    * Where the cursor last was over the canvas, CSS px. The reference zooms
    * its buttons, slider and `+`/`-` around that point rather than the middle
@@ -383,6 +395,15 @@ export class EditorState {
     return anyToolVisible(this.panels);
   }
 
+  /**
+   * The tools this editor has right now: whatever the arrangement places. The
+   * preset only chose where it started — a key put back by hand is a tool the
+   * editor has, hotkeys included.
+   */
+  get availableTools(): SelectableTool[] {
+    return visibleTools(this.panels);
+  }
+
   constructor() {
     const saved = loadUiConfig();
     if (saved) {
@@ -501,7 +522,13 @@ export class EditorState {
    * palette. Unavailable requests are ignored.
    */
   selectTool(tool: Tool, pipetteTarget: 'outline' | 'fill' = 'outline'): void {
-    const resolved = resolveToolSelection(tool, this.brushColor, this.ux, this.paletteExpanded);
+    const resolved = resolveToolSelection(
+      tool,
+      this.brushColor,
+      this.ux,
+      this.paletteExpanded,
+      this.availableTools,
+    );
     if (!resolved || !this.leaveTransform()) {
       return;
     }
@@ -692,6 +719,25 @@ export class EditorState {
     const plain = $state.snapshot(workspace);
     this.floatPos = plain.floatPos;
     this.setPanels(plain.panels);
+  }
+
+  /** One arrangement as a file: the named one, or the live one by default. */
+  exportWorkspace(id?: number): string {
+    const picked = id === undefined ? undefined : this.workspaces.find((w) => w.id === id);
+    const workspace = picked ? $state.snapshot(picked) : undefined;
+    return exportWorkspace(
+      workspace?.name ?? CURRENT_NAME,
+      workspace?.panels ?? $state.snapshot(this.panels),
+      workspace?.floatPos ?? $state.snapshot(this.floatPos),
+    );
+  }
+
+  /** Reads such a file; returns how many arrangements landed, for the sheet. */
+  importWorkspaces(raw: string): number {
+    const { workspaces, loaded } = importWorkspaces(this.workspaces, raw);
+    this.workspaces = workspaces;
+    saveWorkspaces(this.workspaces);
+    return loaded;
   }
 
   deleteWorkspace(id: number): void {
@@ -930,18 +976,16 @@ export class EditorState {
 
   /** Zoom around the last cursor position, falling back to the canvas centre. */
   zoomBy(delta: number): void {
-    const { width, height } = this.viewSize;
+    const { width, height } = this.stage;
     const pivot = this.lastScalePivot ?? { x: width / 2, y: height / 2 };
-    this.view = zoomAt(this.view, this.view.zoom + delta, pivot.x, pivot.y, width, height);
+    this.view = zoomAt(this.view, this.view.zoom + delta, pivot.x, pivot.y, this.stage);
   }
 
-  /** Slides the view by CSS pixels (the hand's arrow keys), never past the edge. */
+  /** Slides the view by CSS pixels (the hand's arrow keys), never losing the sheet. */
   panBy(dx: number, dy: number): void {
-    const { width, height } = this.viewSize;
     this.view = clampPan(
       { zoom: this.view.zoom, panX: this.view.panX + dx, panY: this.view.panY + dy },
-      width,
-      height,
+      this.stage,
     );
   }
 
@@ -1035,9 +1079,9 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  /** Back to 100% with the document centered in the canvas. */
+  /** Back to 100% with the sheet centred on the worktable. */
   resetView(): void {
-    this.view = { ...IDENTITY_VIEW };
+    this.view = fitView(this.stage);
   }
 
   /** Replaces the document (restored draft); not a user edit, so `touched` stays as is. */

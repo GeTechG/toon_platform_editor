@@ -249,6 +249,7 @@
         },
         "dialect": {
           "enum": [
+            "multator",
             "toonio"
           ]
         },

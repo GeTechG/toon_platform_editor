@@ -71,10 +71,15 @@ export interface ContourEraserToolDescriptor {
 /**
  * Tonio's feather: the same midpoint curve as the pencil, but the path is
  * filled with `fill` before being stroked with `color` (tools.js Feather).
+ *
+ * Tonio invented it, but the curve under it is whichever the preset draws —
+ * a feather on a Multator panel is a Multator line that happens to be
+ * filled. Since `schema_version: 5` the dialect says which (v4 took `toonio`
+ * alone, and a v4 document is still read under that rule).
  */
 export interface FeatherToolDescriptor {
   readonly kind: 'feather';
-  readonly dialect: 'toonio';
+  readonly dialect: StrokeDialect;
   readonly width: number;
   readonly color: string;
   readonly fill: string;

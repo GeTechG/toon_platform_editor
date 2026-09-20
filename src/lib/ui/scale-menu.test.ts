@@ -1,28 +1,26 @@
 import { describe, expect, it } from 'bun:test';
 import { SCALE_MENU_MS, scaleMenuVisible } from './frame-selection';
+import { allPlaced, defaultPanels, PANEL_ITEMS } from './panels';
 
 const menu = await Bun.file(new URL('./ScaleMenu.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+const draggableSrc = await Bun.file(new URL('./draggable.ts', import.meta.url)).text();
 
 describe('ScaleMenu', () => {
-  it('shows the frame as a thumbnail instead of re-rendering it by hand', () => {
-    expect(menu).toContain('FrameThumb');
-    expect(menu).toContain('editor.displayedFrame');
-  });
-
-  it('marks the visible region on the thumbnail', () => {
-    expect(menu).toContain('class="viewport"');
+  it('is one compact row: minus, the current scale, plus — nothing else', () => {
     expect(menu).toContain('editor.view.zoom');
-    expect(menu).toContain('editor.view.panX');
+    expect(menu).toContain('zoomDelta(editor.view.zoom, -1)');
+    expect(menu).toContain('zoomDelta(editor.view.zoom, 1)');
+    // No preview, no slider, no typing field.
+    expect(menu).not.toContain('FrameThumb');
+    expect(menu).not.toContain('type="range"');
+    expect(menu).not.toContain('type="number"');
   });
 
-  it('gives the zoom a slider and a number field over the reference range', () => {
-    expect(menu).toContain('type="range"');
-    expect(menu).toContain('type="number"');
+  it('stops the steps at the ends of the zoom range', () => {
     expect(menu).toContain('ZOOM_MIN');
     expect(menu).toContain('ZOOM_MAX');
-    expect(menu).toContain('ZOOM_STEP');
   });
 
   it('names its controls and its window for a reader', () => {
@@ -30,9 +28,29 @@ describe('ScaleMenu', () => {
     expect(menu).toContain('aria-label');
   });
 
+  it('sits in the bottom-left corner of the canvas, faded back', () => {
+    expect(editorUi).toContain('class="scale-window"');
+    expect(editorUi).toMatch(/\.scale-window \{[^}]*bottom:/);
+    expect(editorUi).toMatch(/\.scale-window \{[^}]*opacity: 0\./);
+  });
+
+  it('comes back to full when hovered or focused', () => {
+    expect(editorUi).toContain('.scale-window:focus-within');
+  });
+
   it('opens with the hand, the tool it belongs to', () => {
     expect(editorUi).toContain('ScaleMenu');
     expect(editorUi).toContain("editor.tool === 'drag'");
+  });
+
+  it('is the only zoom control: the panel has no zoom widget left', () => {
+    expect(PANEL_ITEMS.map((item) => item.id)).not.toContain('zoom');
+    expect(allPlaced(defaultPanels())).not.toContain('zoom');
+    expect(editorUi).not.toContain("id === 'zoom'");
+  });
+
+  it('makes the scale itself the way back to 100%', () => {
+    expect(menu).toMatch(/class="value"[^]*?editor\.resetView\(\)/);
   });
 });
 
@@ -53,14 +71,25 @@ describe('when the zoom window is up', () => {
   });
 });
 
-describe('the slider steps in whole percent-free units', () => {
-  it('moves the zoom one step at a time', () => {
-    expect(menu).toContain('step={1}');
-  });
-});
-
 describe('the wheel raises the window', () => {
   it('the canvas asks the state to flash it', () => {
     expect(canvasView).toContain('editor.flashScaleMenu()');
+  });
+});
+
+describe('dragging a floating window', () => {
+  it('lifts the windows with a shadow, not a filter', () => {
+    // A filtered ancestor becomes the containing block of its fixed child, so
+    // the dragged window is re-anchored to it and flies off the screen.
+    expect(editorUi).not.toMatch(/\.scale-window \{[^}]*filter:/);
+    expect(editorUi).not.toMatch(/\.tool-windows \{[^}]*filter:/);
+  });
+
+  it('takes the zoom window anywhere on it, keys included', () => {
+    expect(menu).toMatch(/class="scale-menu"[^>]*data-drag-handle/);
+    // A press on a key stays a press until it travels: past the threshold it
+    // is a drag, and the pointer capture keeps the click from landing.
+    expect(draggableSrc).toContain('DRAG_THRESHOLD');
+    expect(draggableSrc).toContain('setPointerCapture');
   });
 });

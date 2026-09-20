@@ -239,6 +239,18 @@ describe('the cursor over the canvas', () => {
   });
 });
 
+describe('the mega eraser', () => {
+  it('previews the swath at the width it will really cut', () => {
+    // The cut takes `brushLogicalOnCanvas` — the width the brush lands with
+    // on this dialect's canvas. The preview drew the raw logical size, so
+    // under Multator (600-wide reference, 1280-wide document) the gesture
+    // swallowed 2.1× more than the smear on screen promised.
+    const preview = source.match(/renderRawPolyline\(\s*megaGesture,[^)]*\)/)?.[0] ?? '';
+    expect(preview).toContain('brushWidthDoc(brushLogicalOnCanvas)');
+    expect(handler('onPointerUp')).toContain('brushWidthDoc(brushLogicalOnCanvas) / 2');
+  });
+});
+
 describe('the wheel zoom', () => {
   it('recentres the view on the cursor instead of pinning the point', () => {
     expect(handler('onWheel')).toContain('zoomCentredOn(');
@@ -290,5 +302,30 @@ describe('the ghosts repaint when the selection changes', () => {
     const effect = redrawEffect();
     const ghostLoop = effect.slice(effect.indexOf('editor.onionSkinLayers'));
     expect(ghostLoop).not.toContain('activeLayer?.frames');
+  });
+});
+
+describe('the sheet lies on a worktable', () => {
+  it('gives the canvas element the whole workspace, with the sheet drawn on it', () => {
+    expect(source).toContain('style:width="{stage.width}px"');
+    expect(source).toContain('style:height="{stage.height}px"');
+    expect(source).toContain('sheetWidth');
+  });
+
+  it('paints the paper where the view puts it and keeps the drawing on it', () => {
+    const draw = handler('draw');
+    // The table shows through around the sheet instead of a full-bleed fill.
+    expect(draw).toContain('clearRect(0, 0, pxWidth, pxHeight)');
+    expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
+    expect(draw).toContain('ctx.clip()');
+  });
+
+  it('reads pointer positions against the sheet, not the workspace', () => {
+    expect(handler('toDocUnits')).toContain('sheetWidth');
+  });
+
+  it('keeps the sheet on the table when the workspace changes size', () => {
+    expect(source).toContain('editor.stage = stage');
+    expect(source).toContain('clampPan(');
   });
 });
