@@ -71,6 +71,28 @@ describe('every tool is its own item', () => {
   });
 });
 
+describe('the gear and the publish key', () => {
+  test('both are items like everything else, at the end of the bar', () => {
+    expect(panelItem('settings')?.kind).toBe('action');
+    expect(panelItem('publish')?.kind).toBe('action');
+    expect(defaultPanels('studio').bar.slice(-2)).toEqual(['settings', 'publish']);
+    expect(defaultPanels('bar').bar).toContain('settings');
+  });
+
+  test('the gear can be moved but never put away — it is the way back', () => {
+    const hidden = hidePanelItem(defaultPanels('studio'), 'settings');
+    expect(hidden.hidden).not.toContain('settings');
+    expect(hidden.bar).toContain('settings');
+    // …even when a stored layout claims otherwise.
+    const stored = { ...defaultPanels('studio'), bar: [], hidden: ['settings'] };
+    expect(normalizePanels(stored, 'studio').hidden).not.toContain('settings');
+  });
+
+  test('the gear moves to another panel like any item', () => {
+    expect(movePanelItem(defaultPanels('studio'), 'settings', 'left', 0).left[0]).toBe('settings');
+  });
+});
+
 describe('the tool keys as a group', () => {
   test('«есть ли вообще инструменты» is any tool key still placed', () => {
     expect(anyToolVisible(defaultPanels('studio'))).toBe(true);

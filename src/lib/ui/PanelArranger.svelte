@@ -46,6 +46,10 @@
   let target = $state<Target | null>(null);
 
   const dragLabel = $derived(drag ? panelItem(drag.id)?.label ?? drag.id : '');
+  /** Dropping the gear on the shelf does nothing, so the hint says why. */
+  const refused = $derived(
+    drag !== null && target?.slot === 'hidden' && (panelItem(drag.id)?.keep ?? false),
+  );
 
   function onPointerDown(e: PointerEvent): void {
     if (!e.isPrimary || drag) {
@@ -216,7 +220,9 @@
 
 <div class="arrange-bar" role="region" aria-label="Расположение панелей">
   <p class="arrange-hint">
-    {#if drag}
+    {#if refused}
+      «{dragLabel}» убрать нельзя — это дорога назад к настройкам; перенеси в панель
+    {:else if drag}
       Переносим «{dragLabel}» — отпусти над панелью, холстом или полкой
     {:else}
       Перетаскивай что угодно: в другую панель, на холст (будет окном) или на полку

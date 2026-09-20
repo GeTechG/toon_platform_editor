@@ -1368,6 +1368,43 @@
       title="Вставить с заменой ячеек (V)"
       aria-label="Вставить выделение"
     ><Icon name="paste" /></button>
+  {:else if id === 'settings'}
+    <!-- Movable, never hideable: this key is the way back to the settings. -->
+    <button
+      class="key icon"
+      aria-haspopup="dialog"
+      onclick={openSettingsSheet}
+      title="Настройки"
+      aria-label="Настройки"
+    >
+      <Icon name="gear" />
+    </button>
+  {:else if id === 'publish'}
+    {#if onPublish}
+      <!-- Publishing leaves the editor; it gets its own zone so it never reads
+           as one more tool toggle. -->
+      <div class="ship" role="group" aria-label="Публикация">
+        <button
+          class="key primary publish"
+          onclick={() =>
+            onPublish?.(
+              $state.snapshot(editor.doc),
+              editor.audio.blob
+                ? {
+                    blob: editor.audio.blob,
+                    name: editor.audio.name,
+                    author: editor.audio.author,
+                    sync: editor.audio.sync,
+                  }
+                : null,
+            )}
+          title="Опубликовать"
+          aria-label="Опубликовать"
+        >
+          <Icon name="send" />
+        </button>
+      </div>
+    {/if}
   {:else if id === 'merge'}
     <button
       class="key icon"
@@ -1521,44 +1558,10 @@
           </div>
         {/if}
 
-        <!-- Transport & output. The gear is never hideable, so this row is
-             always drawn: it is the way back to the settings. -->
+        <!-- Transport & output. Always drawn: the gear lives in this row by
+             default and it is the way back to the settings. -->
         <div class="row transport" role="group" aria-label="Просмотр и экспорт" data-slot="bar">
           {@render slot('bar')}
-          <button
-            class="key icon"
-            aria-haspopup="dialog"
-            onclick={openSettingsSheet}
-            title="Настройки"
-            aria-label="Настройки"
-          >
-            <Icon name="gear" />
-          </button>
-          {#if onPublish}
-            <!-- Publishing leaves the editor; it gets its own zone at the end of
-                 the row so it never reads as one more tool toggle. -->
-            <div class="ship" role="group" aria-label="Публикация">
-              <button
-                class="key primary publish"
-                onclick={() =>
-                  onPublish?.(
-                    $state.snapshot(editor.doc),
-                    editor.audio.blob
-                      ? {
-                          blob: editor.audio.blob,
-                          name: editor.audio.name,
-                          author: editor.audio.author,
-                          sync: editor.audio.sync,
-                        }
-                      : null,
-                  )}
-                title="Опубликовать"
-                aria-label="Опубликовать"
-              >
-                <Icon name="send" />
-              </button>
-            </div>
-          {/if}
         </div>
 
         <!-- Drawing row: tools · sizes · color, where the config puts them. -->
@@ -1886,8 +1889,18 @@
     flex: 1;
     min-height: 0;
   }
-  .studio .row.frames {
+  /* The strip is the row that takes the height the divider hands out — the
+     row it is in, not a fixed one: it can be moved. */
+  .studio .row:has(.timeline) {
     flex: 1;
+    min-height: 0;
+    /* The strip is a tall grid, so the keys beside it sit at its top rather
+       than floating in the middle of it — the strip itself stretches. */
+    align-items: flex-start;
+  }
+  .studio .row:has(.timeline) > .timeline,
+  .studio .row:has(.timeline) > .arr:has(.timeline) {
+    align-self: stretch;
     min-height: 0;
   }
   .studio .timeline {
@@ -2234,11 +2247,6 @@
   .studio .history :global(.key) {
     min-width: 0;
   }
-  /* The studio timeline is a tall grid, so the frame buttons beside it sit at
-     its top rather than floating in the middle of it. */
-  .studio .row.frames {
-    align-items: flex-start;
-  }
   .fps-inline {
     display: inline-flex;
     align-items: center;
@@ -2313,7 +2321,7 @@
       display: none;
     }
     .studio .toolbar,
-    .studio .row.frames,
+    .studio .row:has(.timeline),
     .studio .timeline {
       flex: none;
       height: auto;

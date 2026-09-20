@@ -106,6 +106,11 @@ export interface PanelItem {
    * cell of the key grid (the palette box, the strip, a slider pair).
    */
   readonly wide?: boolean;
+  /**
+   * Movable, but never put away: the gear holds the way back to the settings,
+   * so a layout that hides it could not be undone.
+   */
+  readonly keep?: boolean;
 }
 
 export const PANEL_ITEMS: readonly PanelItem[] = [
@@ -138,6 +143,8 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'copy', kind: 'action', label: 'Копировать' },
   { id: 'paste', kind: 'action', label: 'Вставить' },
   { id: 'merge', kind: 'action', label: 'Объединить' },
+  { id: 'settings', kind: 'action', label: 'Настройки', keep: true },
+  { id: 'publish', kind: 'action', label: 'Опубликовать' },
 ];
 
 export type PanelLayout = Record<PanelSlot, string[]>;
@@ -182,13 +189,28 @@ const STUDIO: Partial<PanelLayout> = {
     'copy',
     'paste',
     'merge',
+    'settings',
+    'publish',
   ],
 };
 
 /** One bar under the canvas (Multator): frames, transport, drawing. */
 const BAR: Partial<PanelLayout> = {
   bottom: ['history', 'add-frame', 'delete-frame', 'timeline'],
-  bar: ['transport', 'onion', 'fps', 'zoom', 'layers', 'audio', 'export', 'saved', 'drafts', 'fullscreen'],
+  bar: [
+    'transport',
+    'onion',
+    'fps',
+    'zoom',
+    'layers',
+    'audio',
+    'export',
+    'saved',
+    'drafts',
+    'fullscreen',
+    'settings',
+    'publish',
+  ],
   // Reference order: the keys, the hairline the brush draws, then its sizes,
   // then the two colour swatches.
   draw: [...TOOL_ORDER.map(toolItem), 'pick-source', 'brush', 'palette'],
@@ -233,6 +255,15 @@ export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout
       }
     }
   }
+  // A stored layout that put an item away which may not be put away (the
+  // gear) is read as "not placed": it comes back with its layout default.
+  next.hidden = next.hidden.filter((id) => {
+    if (!panelItem(id)?.keep) {
+      return true;
+    }
+    seen.delete(id);
+    return false;
+  });
   const fallback = defaultPanels(layout);
   for (const slot of PANEL_SLOTS) {
     for (const id of fallback[slot]) {
@@ -247,7 +278,8 @@ export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout
 
 /** The same layout with `id` at `index` of `slot` (the end, when no index is given). */
 export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, index?: number): PanelLayout {
-  if (!panelItem(id)) {
+  const item = panelItem(id);
+  if (!item || (slot === 'hidden' && item.keep)) {
     return layout;
   }
   const next = emptyLayout();
@@ -267,7 +299,7 @@ export function showPanelItem(layout: PanelLayout, id: string, kind: LayoutKind)
 }
 
 export function hidePanelItem(layout: PanelLayout, id: string): PanelLayout {
-  return movePanelItem(layout, id, 'hidden');
+  return panelItem(id)?.keep ? layout : movePanelItem(layout, id, 'hidden');
 }
 
 /** Whether any tool key at all is still placed somewhere. */
