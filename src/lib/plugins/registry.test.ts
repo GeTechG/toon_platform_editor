@@ -111,6 +111,20 @@ describe('PluginRegistry', () => {
     expect(registry.tool('a.halftone')?.key).toBe('H');
   });
 
+  test('a brush that commits its own stroke passes like any other', () => {
+    const registry = new PluginRegistry();
+    const commit = (points: readonly number[]) => ({
+      points: [...points],
+      tool: { kind: 'contour', dialect: 'multator', color: '#000000' } as const,
+    });
+
+    expect(registry.register(toolPlugin('a.oldschool', {
+      stroke: { kind: 'pencil', descriptor: () => ({ kind: 'pencil', dialect: 'multator', width: 4, color: '#000000' }), commit },
+    }))).toBeNull();
+
+    expect(registry.tool('a.oldschool')?.stroke?.commit).toBe(commit);
+  });
+
   test('built-in tools go in the same way external ones do', () => {
     const registry = new PluginRegistry();
 

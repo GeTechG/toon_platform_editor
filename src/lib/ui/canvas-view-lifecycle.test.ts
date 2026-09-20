@@ -14,7 +14,7 @@ describe('current Multator pointer lifecycle contract', () => {
     expect(down).toContain('editor.playing || !e.isPrimary || pointer.session');
     expect(down).toContain('setPointerCapture(e.pointerId)');
     expect(down).toContain('pointer.pointerDown(toPointerSample(e, true))');
-    expect(source).toContain("(pointer.session?.profile ?? editor.drawingProfile) === 'toonio'");
+    expect(source).toContain("(pointer.session?.profile ?? toolDialect()) === 'toonio'");
     expect(source).toContain('coordinateScale: brushCanvasScale');
     expect(source).toContain('canvasCoordinateScale(');
   });
@@ -22,7 +22,7 @@ describe('current Multator pointer lifecycle contract', () => {
   it('takes exactly one point from each pointermove without unpacking coalesced events', () => {
     const move = handler('onPointerMove');
     expect(move).toContain('pointer.pointerMove(toPointerSample(e, true))');
-    expect(source).toContain("(pointer.session?.profile ?? editor.drawingProfile) === 'toonio'");
+    expect(source).toContain("(pointer.session?.profile ?? toolDialect()) === 'toonio'");
   });
 
   it('commits existing geometry on pointerup without appending the up coordinate', () => {
@@ -330,5 +330,14 @@ describe('the sheet lies on a worktable', () => {
   it('keeps the sheet on the table when the workspace changes size', () => {
     expect(source).toContain('editor.stage = stage');
     expect(source).toContain('clampPan(');
+  });
+});
+
+describe('what the canvas asks whom', () => {
+  it('takes its rasterisation from the preset, never from the brush in hand', () => {
+    // A document has one bitmap: two brushes of two canvases cannot each have
+    // their own. The reference that rasterises at document scale is a preset.
+    expect(source).toContain("editor.ux.canvasDensity === 'document'");
+    expect(source).not.toContain("editor.defaultDialect === 'toonio'");
   });
 });

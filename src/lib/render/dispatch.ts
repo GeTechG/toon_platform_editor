@@ -22,6 +22,17 @@ export const LINE_PRIMITIVES: readonly LineToolDescriptor['kind'][] = [
   'stamp',
 ];
 
+/**
+ * Every kind a stroke may carry in the document — the line primitives plus the
+ * closed contours a commit may produce. A brush commits into one of these or
+ * its stroke does not land (see `editor-plugins`).
+ */
+export const DOCUMENT_PRIMITIVES: readonly ToolDescriptor['kind'][] = [
+  ...LINE_PRIMITIVES,
+  'contour',
+  'contour-eraser',
+];
+
 /** Whether a tool erases (alpha punch) rather than paints. */
 export function isEraserTool(tool: ToolDescriptor): boolean {
   return tool.kind === 'eraser' || tool.kind === 'contour-eraser';

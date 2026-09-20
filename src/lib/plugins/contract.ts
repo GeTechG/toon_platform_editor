@@ -9,6 +9,7 @@
  */
 
 import type { LineToolDescriptor, StrokeDialect } from '../format/types';
+import type { StrokeCommit } from '../tools/profiles';
 
 /** The contract major. A manifest asking for another one is not loaded. */
 export const PLUGIN_API = 1;
@@ -87,6 +88,14 @@ export interface PluginPrimitive {
   capture?(line: readonly number[], points: readonly number[], width: number): number[];
   /** Thins the captured points when the gesture ends. */
   prepare?(points: readonly number[], width: number, zoom: number): number[];
+  /**
+   * What the collected points become when the gesture ends. A brush that has
+   * one owns its stroke end to end and may hand back a descriptor of another
+   * kind than the one it drew with — the oldschool pen captures a line and
+   * commits a closed contour. The kind must still be one the format knows, or
+   * the stroke does not land in the frame.
+   */
+  readonly commit?: StrokeCommit;
 }
 
 /** A tool a plugin adds: how it is drawn, and what the gesture does. */
@@ -104,6 +113,12 @@ export interface PluginTool {
   readonly help?: boolean;
   /** The CSS cursor over the canvas while this tool is in hand. */
   readonly cursor?: string;
+  /**
+   * A tool the arrangement never offers: it is in the register like any other,
+   * but no panel and no shelf holds it, and something else takes it in hand —
+   * the "old" easter egg is the one such door the editor has.
+   */
+  readonly offPanel?: boolean;
   /** What it lays down, for a tool that draws rather than reshapes. */
   readonly stroke?: PluginPrimitive;
   readonly press?: (host: PluginHost, point: PluginPoint) => void;

@@ -1,8 +1,8 @@
 import { FIXED_POINT_SCALE, LANG_TOLERANCE_DOC, MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, StrokeDialect } from '../format/types';
+import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
-import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool';
 
 export interface PointerSample {
   pointerId: number;
@@ -44,7 +44,7 @@ export function strokeWidthOnCanvas(width: number, coordinateScale: number): num
 export interface StrokeSession {
   readonly profile: StrokeDialect;
   readonly pointerId: number;
-  /** The line tool the gesture is drawn with (an oldschool commit turns it into a contour). */
+  /** The line tool the gesture is drawn with (a brush's own commit may change its kind). */
   readonly descriptor: LineToolDescriptor;
   readonly rawPoints: number[];
   readonly tonio: Readonly<TonioSettings>;
@@ -52,10 +52,31 @@ export interface StrokeSession {
   /** Viewport zoom frozen at pointerdown — the reference divides m by it. */
   readonly zoom: number;
   readonly multator?: StrokeBuilder;
-  /** Oldschool easter-egg pen: the Multator commit produces a filled contour. */
-  readonly oldschool: boolean;
   /** Set when the tool collects its own points (see `OwnCapture`). */
   readonly own?: OwnCapture;
+  /** Set when the tool turns its own points into the stroke (see `StrokeCommit`). */
+  readonly commit?: StrokeCommit;
+}
+
+/**
+ * The rule that turns a gesture's points into what lands in the frame. A brush
+ * that has one may hand back a descriptor of another kind than the one it drew
+ * with — a line captured, a closed contour committed. Plain function, not a
+ * manifest: the engine knows strokes, never the register.
+ */
+export type StrokeCommit = (
+  points: readonly number[],
+  descriptor: LineToolDescriptor,
+  ctx: StrokeCommitContext,
+) => ResolvedStroke;
+
+/** What the engine knows at the end of a gesture that the brush cannot see. */
+export interface StrokeCommitContext {
+  /**
+   * Reference-canvas normalisation frozen at `pointerdown`: a tolerance
+   * written in the reference's own pixels is scaled by it.
+   */
+  readonly coordinateScale: number;
 }
 
 /**
@@ -80,9 +101,9 @@ export function beginStrokeSession(
   descriptor: LineToolDescriptor,
   tonio: TonioSettings = DEFAULT_TONIO_SETTINGS,
   coordinateScale = 1,
-  oldschool = false,
   zoom = 1,
   own?: OwnCapture,
+  commit?: StrokeCommit,
 ): StrokeSession {
   // A tool may fix the canvas its numbers are on — its points are then its
   // own, not a line anybody else draws. Everything else, the feather included,
@@ -98,9 +119,6 @@ export function beginStrokeSession(
   // A tool that fixed its canvas is collected that way whatever preset holds
   // it: the other dialect's builder would reshape points it never made.
   const sessionProfile: StrokeDialect = fixed ?? profile;
-  // The oldschool pen commits a closed contour, which carries one colour and
-  // no fill — so the easter egg stays the pen's and the eraser's.
-  const oldschoolPen = oldschool && frozenDescriptor.kind !== 'feather';
   if (sessionProfile === 'multator') {
     const builder = new StrokeBuilder({
       width: frozenDescriptor.width,
@@ -117,7 +135,7 @@ export function beginStrokeSession(
       tonioCoordinateScale: scale,
       zoom: 1,
       multator: builder,
-      oldschool: oldschoolPen,
+      commit,
       own,
     };
   }
@@ -129,7 +147,7 @@ export function beginStrokeSession(
     tonio: { smooth: clampInteger(tonio.smooth, 1, 100), minDistance: clampInteger(tonio.minDistance, 0, 30) },
     tonioCoordinateScale: scale,
     zoom: positiveScale(zoom),
-    oldschool: false,
+    commit,
     own,
   };
   appendTonioEventBatch(session, event);
@@ -163,8 +181,9 @@ export function appendStrokeEvent(session: StrokeSession, event: PointerSample):
 /**
  * Tonio uses a non-empty coalesced pointerup batch, otherwise the main event.
  * Multator (DrawField.onEndDraw) pushes the mouseup point too — unless the
- * gesture never moved and released where it pressed, which stays a dot. The
- * oldschool release (onOldEndDraw) adds nothing.
+ * gesture never moved and released where it pressed, which stays a dot. A
+ * brush that commits by its own rule owns its last point as well, and takes
+ * none from the release (reference `onOldEndDraw` adds nothing).
  */
 export function finishStrokeEvent(session: StrokeSession, event: PointerSample): void {
   if (!event.isPrimary || event.pointerId !== session.pointerId) return;
@@ -172,7 +191,7 @@ export function finishStrokeEvent(session: StrokeSession, event: PointerSample):
     appendTonioEventBatch(session, event);
     return;
   }
-  if (session.oldschool) return;
+  if (session.commit) return;
   const raw = session.rawPoints;
   if (raw.length === 2 && raw[0] === event.x && raw[1] === event.y) return;
   session.multator!.addPoint(event.x, event.y);
@@ -188,23 +207,15 @@ export function previewStrokeSession(session: StrokeSession): readonly number[] 
 }
 
 export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
+  // The brush's own rule, when it has one: it owns the stroke end to end and
+  // may hand back a kind other than the one it drew with.
+  if (session.commit) {
+    return session.commit(session.rawPoints, session.descriptor, {
+      coordinateScale: session.tonioCoordinateScale,
+    });
+  }
   // The reference measures its Lang tolerance on its own 600 px canvas, so
   // on a document of another size it scales the way the width does.
-  const langScale = FIXED_POINT_SCALE / session.tonioCoordinateScale;
-  if (session.oldschool && session.profile === 'multator') {
-    const descriptor = session.descriptor;
-    return {
-      points: commitOldschoolStroke(
-        session.rawPoints,
-        descriptor.width / FIXED_POINT_SCALE,
-        Math.random,
-        OLDSCHOOL_LANG_TOLERANCE_LOGICAL * langScale,
-      ),
-      tool: descriptor.kind === 'pencil'
-        ? { kind: 'contour', dialect: 'multator', color: descriptor.color }
-        : { kind: 'contour-eraser', dialect: 'multator' },
-    };
-  }
   if (session.own) {
     // The tool collected these points; only its own thinning applies.
     const points = session.own.prepare
@@ -267,10 +278,11 @@ export class PointerStrokeController {
       descriptor: LineToolDescriptor;
       tonio?: TonioSettings;
       coordinateScale?: number;
-      oldschool?: boolean;
       zoom?: number;
       /** Set when the tool collects its own points. */
       own?: OwnCapture;
+      /** Set when the tool turns them into the stroke itself. */
+      commit?: StrokeCommit;
     },
   ) {}
 
@@ -285,9 +297,9 @@ export class PointerStrokeController {
       selected.descriptor,
       selected.tonio,
       selected.coordinateScale,
-      selected.oldschool ?? false,
       selected.zoom ?? 1,
       selected.own,
+      selected.commit,
     );
     return true;
   }
@@ -301,15 +313,31 @@ export class PointerStrokeController {
   pointerUp(event: PointerSample): boolean {
     if (!this.#session || !event.isPrimary || event.pointerId !== this.#session.pointerId) return false;
     finishStrokeEvent(this.#session, event);
-    this.#committed = commitStrokeSession(this.#session);
+    this.#committed = this.#commit(this.#session);
     this.#session = null;
     return true;
+  }
+
+  /**
+   * A stroke reaches the frame only if the format knows its kind. A brush
+   * commits by its own rule, and a rule that hands back something the renderer
+   * cannot draw would make a frame nobody but this editor could show — so the
+   * stroke is dropped with a reason instead.
+   */
+  #commit(session: StrokeSession): ResolvedStroke | null {
+    const stroke = commitStrokeSession(session);
+    const kind = (stroke?.tool as { kind?: unknown } | undefined)?.kind;
+    if (!(DOCUMENT_PRIMITIVES as readonly unknown[]).includes(kind)) {
+      console.error(`кисть вернула вид, которого формат не знает: ${String(kind)}`);
+      return null;
+    }
+    return stroke;
   }
 
   pointerCancel(event: PointerSample): boolean {
     if (!this.#session || !event.isPrimary || event.pointerId !== this.#session.pointerId) return false;
     if (this.#session.profile === 'toonio') {
-      this.#committed = commitStrokeSession(this.#session);
+      this.#committed = this.#commit(this.#session);
     }
     this.#session = null;
     return true;

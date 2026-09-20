@@ -20,7 +20,12 @@ export function toolSpec(tool: string): RegisteredTool | undefined {
 
 /** Every tool the editor has now, in the order it was registered. */
 export function toolOrder(): string[] {
-  return plugins.tools().map((tool) => tool.id);
+  return onPanel().map((tool) => tool.id);
+}
+
+/** Every tool the arrangement may place — all but the ones reached by a gesture. */
+function onPanel(): readonly RegisteredTool[] {
+  return plugins.tools().filter((tool) => !tool.offPanel);
 }
 
 /** A tool's item id — one item per tool, so each key is placed on its own. */
@@ -138,7 +143,7 @@ const FIXED_ITEMS: readonly PanelItem[] = [
  */
 export function panelItems(): readonly PanelItem[] {
   return [
-    ...plugins.tools().map((tool): PanelItem => ({
+    ...onPanel().map((tool): PanelItem => ({
       id: toolItem(tool.id),
       kind: 'tool',
       label: tool.label,

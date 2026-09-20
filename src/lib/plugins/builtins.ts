@@ -10,6 +10,7 @@
 
 import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
 import { distortPlugin } from './distort';
+import { oldschoolPlugins } from './oldschool';
 import { pixelPlugin } from './pixel';
 
 /**
@@ -88,6 +89,7 @@ export const BUILTIN_TOOLS: readonly Plugin[] = [
   },
   distortPlugin,
   pixelPlugin,
+  ...oldschoolPlugins,
 ];
 
 /**

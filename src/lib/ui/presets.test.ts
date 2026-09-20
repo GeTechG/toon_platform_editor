@@ -14,7 +14,7 @@ import {
   SIDE_WIDTH_MIN,
   PALETTE_LIMIT_MAX,
   PALETTE_LIMIT_MIN,
-  presetDrawingProfile,
+  presetDefaultDialect,
   presetUx,
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
@@ -28,9 +28,9 @@ test('a preset is behaviour only — no set of buttons of its own', () => {
 });
 
 test('compatibility presets select their drawing profile through existing preset logic', () => {
-  expect(PRESETS.find((preset) => preset.id === 'toonop')?.drawingProfile).toBe('toonio');
-  expect(PRESETS.find((preset) => preset.id === 'multator')?.drawingProfile).toBe('multator');
-  expect(PRESETS.find((preset) => preset.id === 'toonio')?.drawingProfile).toBe('toonio');
+  expect(PRESETS.find((preset) => preset.id === 'toonop')?.defaultDialect).toBe('toonio');
+  expect(PRESETS.find((preset) => preset.id === 'multator')?.defaultDialect).toBe('multator');
+  expect(PRESETS.find((preset) => preset.id === 'toonio')?.defaultDialect).toBe('toonio');
 });
 
 test('each preset owns a UX profile: Multator reproduces the reference, others keep toonop', () => {
@@ -44,8 +44,8 @@ test('UX profile lookup falls back to toonop for an unknown preset', () => {
 });
 
 test('preset drawing profile lookup falls back to the Toonop profile', () => {
-  expect(presetDrawingProfile('toonio')).toBe('toonio');
-  expect(presetDrawingProfile('nope')).toBe('toonio');
+  expect(presetDefaultDialect('toonio')).toBe('toonio');
+  expect(presetDefaultDialect('nope')).toBe('toonio');
 });
 
 test('parseUiConfig round-trips a valid stored config', () => {
@@ -55,8 +55,8 @@ test('parseUiConfig round-trips a valid stored config', () => {
     floatPos: {},
     drawing: {
       activeProfile: 'multator' as const,
-      multatorWidth: 10,
       tonioByTool: { ...DEFAULT_DRAWING_UI_CONFIG.tonioByTool },
+      multatorByTool: { ...DEFAULT_DRAWING_UI_CONFIG.multatorByTool },
       pickSource: 'layer' as const,
       panelHeight: 200,
       sides: { ...DEFAULT_DRAWING_UI_CONFIG.sides },
@@ -94,10 +94,11 @@ test('drawing profile settings are clamped to supported ranges', () => {
     drawing: { activeProfile: 'bad', multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
   }));
   const clamped = { width: 500, smooth: 1, minDistance: 30 };
+  const multator = { width: 1, smooth: 3, minDistance: 3 };
   expect(parsed?.drawing).toEqual({
     activeProfile: 'toonio',
-    multatorWidth: 1,
     tonioByTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
+    multatorByTool: { pencil: multator, eraser: multator, feather: multator, 'mega-eraser': multator },
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
     sides: DEFAULT_DRAWING_UI_CONFIG.sides,
@@ -278,7 +279,7 @@ test('per-tool brushes are kept apart and clamped one by one', () => {
 
 test('a tool that draws no line borrows the pencil brush', () => {
   expect(BRUSH_TOOLS.map(brushToolOf)).toEqual([...BRUSH_TOOLS]);
-  for (const tool of ['pixel', 'pipette', 'drag', 'lasso', 'distort']) {
+  for (const tool of ['pipette', 'drag', 'lasso', 'distort']) {
     expect(brushToolOf(tool)).toBe('pencil');
   }
 });
@@ -363,4 +364,34 @@ test('a config saved before panels existed keeps the buttons it had turned off',
   }));
   expect(parsed?.panels.hidden).toContain('export');
   expect(parsed?.panels.rows.flat()).toContain('onion');
+});
+
+test('an old config’s one Multator width becomes every Multator brush’s own record', () => {
+  // Before the split the whole Multator canvas had one width; after it each
+  // brush has its own, and nobody’s jumps on the upgrade.
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'multator',
+    drawing: { activeProfile: 'multator', multatorWidth: 10 },
+  }));
+  expect(parsed?.drawing.multatorByTool.pencil.width).toBe(10);
+  expect(parsed?.drawing.multatorByTool.eraser.width).toBe(10);
+});
+
+test('two brushes of one canvas keep two records', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'multator',
+    drawing: {
+      activeProfile: 'multator',
+      multatorByTool: { pencil: { width: 20 }, eraser: { width: 3 } },
+    },
+  }));
+  expect(parsed?.drawing.multatorByTool.pencil.width).toBe(20);
+  expect(parsed?.drawing.multatorByTool.eraser.width).toBe(3);
+});
+
+test('a brush of the register gets its own record, a tool that draws nothing takes the pencil’s', () => {
+  expect(brushToolOf('pixel')).toBe('pixel');
+  expect(brushToolOf('oldschool')).toBe('oldschool');
+  expect(brushToolOf('pipette')).toBe('pencil');
+  expect(brushToolOf('mega-eraser')).toBe('mega-eraser');
 });

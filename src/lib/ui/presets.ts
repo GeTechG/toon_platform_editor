@@ -9,6 +9,8 @@
  * hide the way back.
  */
 
+import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import { plugins } from '../plugins';
 import type { PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
@@ -27,13 +29,43 @@ import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
 export type DrawingProfileId = 'multator' | 'toonio';
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
-export type BrushToolId = 'pencil' | 'eraser' | 'feather' | 'mega-eraser';
-export const BRUSH_TOOLS: readonly BrushToolId[] = ['pencil', 'eraser', 'feather', 'mega-eraser'];
+export type BrushToolId = string;
+/** The brushes a fresh config writes records for; the rest are filled in as they are used. */
+export const BRUSH_TOOLS: readonly string[] = ['pencil', 'eraser', 'feather', 'mega-eraser'];
 
-/** Whose brush record a tool uses; anything that draws no line takes the pencil's. */
+/**
+ * Whose brush record a tool uses. Every tool that lays down a stroke has its
+ * own — two brushes of one canvas are two brushes — and anything that draws no
+ * line (the pipette, the hand) takes the pencil's, because a slider still has
+ * to show something.
+ */
 export function brushToolOf(tool: string): BrushToolId {
-  return BRUSH_TOOLS.includes(tool as BrushToolId) ? tool as BrushToolId : 'pencil';
+  if (BRUSH_TOOLS.includes(tool)) {
+    return tool;
+  }
+  return plugins.tool(tool)?.stroke ? tool : 'pencil';
 }
+
+/** What a brush starts at on each canvas — the reference's own defaults. */
+export const DEFAULT_BRUSH: Record<DrawingProfileId, TonioBrush> = {
+  toonio: { width: 5, smooth: 3, minDistance: 3 },
+  multator: { width: 4, smooth: 3, minDistance: 3 },
+};
+
+/** The same record for each brush a fresh config writes down. */
+function byTool(brush: TonioBrush): Record<BrushToolId, TonioBrush> {
+  return Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, { ...brush }]));
+}
+
+/**
+ * What a brush width may be, in logical pixels of the canvas it is measured
+ * on. Tonio's slider goes to 500, Multator's row of dots to 300 — a property
+ * of the canvas, not of the brush that draws on it.
+ */
+export const BRUSH_RANGE: Record<DrawingProfileId, { min: number; max: number }> = {
+  toonio: { min: 1, max: 500 },
+  multator: { min: MIN_BRUSH_SIZE_LOGICAL, max: MAX_BRUSH_SIZE_LOGICAL },
+};
 
 export interface TonioBrush {
   width: number;
@@ -43,9 +75,13 @@ export interface TonioBrush {
 
 export interface DrawingUiConfig {
   activeProfile: DrawingProfileId;
-  multatorWidth: number;
-  /** Width, smoothing and minimum per tool; a tool keeps what it was left at. */
+  /**
+   * Width, smoothing and minimum per brush, on each canvas it draws on: five
+   * pixels of Tonio's 1280-wide canvas are not five of Multator's 600, so a
+   * brush keeps a record on each — and two brushes of one canvas keep two.
+   */
   tonioByTool: Record<BrushToolId, TonioBrush>;
+  multatorByTool: Record<BrushToolId, TonioBrush>;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
@@ -99,13 +135,8 @@ export const SIDE_WIDTH_MAX = 480;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   activeProfile: 'toonio',
-  multatorWidth: 4,
-  tonioByTool: {
-    pencil: { width: 5, smooth: 3, minDistance: 3 },
-    eraser: { width: 5, smooth: 3, minDistance: 3 },
-    feather: { width: 5, smooth: 3, minDistance: 3 },
-    'mega-eraser': { width: 5, smooth: 3, minDistance: 3 },
-  },
+  tonioByTool: byTool(DEFAULT_BRUSH.toonio),
+  multatorByTool: byTool(DEFAULT_BRUSH.multator),
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
   sides: {
@@ -174,12 +205,6 @@ export const AUTOSAVE_LABELS: Record<number, string> = {
  * «Режим мышки» is one checkbox with two meanings: the Multator line takes it
  * as the oldschool pen, the Tonio line as one point per event (`oldPen`).
  */
-export function mouseModeLabel(profile: DrawingProfileId): string {
-  return profile === 'toonio'
-    ? 'Режим мышки (точка на событие)'
-    : 'Режим мышки (старое перо)';
-}
-
 export const PALETTE_LIMIT_MIN = 30;
 export const PALETTE_LIMIT_MAX = 300;
 export const PALETTE_LIMIT_STEP = 10;
@@ -223,16 +248,16 @@ const MULTATOR_TOOLS = ['pencil', 'eraser', 'pipette'].map((tool) => `tool:${too
 export const PRESETS: {
   id: string;
   label: string;
-  drawingProfile: DrawingProfileId;
+  defaultDialect: DrawingProfileId;
   ux: UxProfileId;
   /** What it starts with, as a patch on the one arrangement. */
   panels?: PresetPanels;
 }[] = [
-  { id: 'toonop', label: 'Toonop', drawingProfile: 'toonio', ux: 'toonop' },
+  { id: 'toonop', label: 'Toonop', defaultDialect: 'toonio', ux: 'toonop' },
   {
     id: 'multator',
     label: 'Multator',
-    drawingProfile: 'multator',
+    defaultDialect: 'multator',
     ux: 'multator',
     // The reference is a smaller editor and keeps everything under the
     // canvas: frames, then the transport, then the drawing row — two colours
@@ -256,7 +281,7 @@ export const PRESETS: {
       },
     },
   },
-  { id: 'toonio', label: 'Toonio', drawingProfile: 'toonio', ux: 'toonio' },
+  { id: 'toonio', label: 'Toonio', defaultDialect: 'toonio', ux: 'toonio' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';
@@ -267,9 +292,12 @@ function presetById(id: string) {
 }
 
 
-/** Drawing profile owned by a preset, falling back to the Toonop default. */
-export function presetDrawingProfile(id: string): DrawingProfileId {
-  return presetById(id).drawingProfile;
+/**
+ * The canvas a preset hands to a brush that named none of its own, falling
+ * back to the Toonop default. A brush with an opinion never asks.
+ */
+export function presetDefaultDialect(id: string): DrawingProfileId {
+  return presetById(id).defaultDialect;
 }
 
 /**
@@ -330,7 +358,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     preset,
     panels,
     floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
-    drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),
+    drawing: normalizeDrawingConfig(drawing, presetDefaultDialect(preset)),
     settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
 }
@@ -382,25 +410,47 @@ export function snapPaletteLimit(value: unknown): number {
   return Math.min(PALETTE_LIMIT_MAX, Math.max(PALETTE_LIMIT_MIN, stepped));
 }
 
+/**
+ * Brush records as they come back from storage: what a brush was left at,
+ * falling back to what the whole canvas shared before the split, and then to
+ * the default. Records of brushes the register no longer holds ride along —
+ * a plugin taken away and put back finds its width where it left it.
+ */
+function normalizeBrushes(
+  value: unknown,
+  shared: Record<string, unknown>,
+  fallbacks: Record<BrushToolId, TonioBrush>,
+): Record<BrushToolId, TonioBrush> {
+  const stored = record(value);
+  const result: Record<BrushToolId, TonioBrush> = {};
+  for (const tool of new Set([...BRUSH_TOOLS, ...Object.keys(stored)])) {
+    const brush = record(stored[tool]);
+    const fallback = fallbacks[tool] ?? fallbacks.pencil;
+    const pick = (key: keyof TonioBrush) => brush[key] ?? shared[key];
+    result[tool] = {
+      width: clampNumber(pick('width'), 1, 500, fallback.width),
+      smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
+      minDistance: clampNumber(pick('minDistance'), 0, 30, fallback.minDistance),
+    };
+  }
+  return result;
+}
+
 function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   // A config from before the split holds one shared brush: every tool starts
   // from it, so nobody's width jumps on the upgrade.
   const shared = record(drawing.tonio);
-  const byTool = record(drawing.tonioByTool);
   return {
     activeProfile,
-    multatorWidth: clampNumber(drawing.multatorWidth, 1, 300, DEFAULT_DRAWING_UI_CONFIG.multatorWidth),
-    tonioByTool: Object.fromEntries(BRUSH_TOOLS.map((tool) => {
-      const stored = record(byTool[tool]);
-      const fallback = DEFAULT_DRAWING_UI_CONFIG.tonioByTool[tool];
-      const pick = (key: keyof TonioBrush) => stored[key] ?? shared[key];
-      return [tool, {
-        width: clampNumber(pick('width'), 1, 500, fallback.width),
-        smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
-        minDistance: clampNumber(pick('minDistance'), 0, 30, fallback.minDistance),
-      }];
-    })) as Record<BrushToolId, TonioBrush>,
+    tonioByTool: normalizeBrushes(drawing.tonioByTool, shared, DEFAULT_DRAWING_UI_CONFIG.tonioByTool),
+    // A config from before the split holds one width for the whole Multator
+    // canvas: every brush of that canvas starts from it.
+    multatorByTool: normalizeBrushes(
+      drawing.multatorByTool,
+      { width: drawing.multatorWidth },
+      DEFAULT_DRAWING_UI_CONFIG.multatorByTool,
+    ),
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
     panelHeight: clampNumber(
       drawing.panelHeight,

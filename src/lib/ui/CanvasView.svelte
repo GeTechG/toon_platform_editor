@@ -127,7 +127,7 @@
    * the preset's when it has no opinion.
    */
   function toolDialect(): StrokeDialect {
-    return toolSpec(editor.tool)?.stroke?.dialect ?? editor.drawingProfile;
+    return toolSpec(editor.tool)?.stroke?.dialect ?? editor.defaultDialect;
   }
 
   /**
@@ -151,7 +151,9 @@
   let strokeButton = 0;
 
   const pointer = new PointerStrokeController(() => ({
-    profile: editor.drawingProfile,
+    // The canvas the brush in hand measures on — its own when it named one,
+    // the preset's when it did not.
+    profile: toolDialect(),
     descriptor: strokeButton === 0
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
@@ -160,7 +162,9 @@
     own: ownCapture(),
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     coordinateScale: brushCanvasScale,
-    oldschool: editor.oldschool,
+    // A brush that turns its own points into the stroke hands the rule over;
+    // the engine knows strokes, never which tool is which.
+    commit: toolSpec(editor.tool)?.stroke?.commit,
     zoom: editor.view.zoom,
   }));
   /**
@@ -411,7 +415,9 @@
     // toonio.ru draws into a fixed 1280×720 bitmap the browser then scales to
     // the element, whatever the screen density — so its lines are rasterized
     // at one bitmap pixel per logical document pixel, never per device pixel.
-    const dpr = editor.drawingProfile === 'toonio'
+    // It is the preset's rasterisation: one document, one bitmap, whatever
+    // canvas the brush in hand measures on.
+    const dpr = editor.ux.canvasDensity === 'document'
       ? editor.doc.width / FIXED_POINT_SCALE / sheetWidth
       : window.devicePixelRatio || 1;
     const pxWidth = Math.max(1, Math.round(stage.width * dpr));
@@ -1118,9 +1124,12 @@
     // «Режим мышки» is the reference `oldPen`: one point per event, no
     // coalesced batch. In the Multator profile the same checkbox means the
     // oldschool pen instead, which never unpacks anyway.
+    // Before the session exists (the pointerdown event itself) the canvas is
+    // the tool's, not the preset's — or the first batch of a gesture would be
+    // collected by rules the rest of it never sees.
     const coalesced = unpackCoalesced
       && !editor.settings.mouseMode
-      && (pointer.session?.profile ?? editor.drawingProfile) === 'toonio'
+      && (pointer.session?.profile ?? toolDialect()) === 'toonio'
       ? e.getCoalescedEvents?.().map((sample) => {
           const [sampleX, sampleY] = toDocUnits(sample);
           return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };

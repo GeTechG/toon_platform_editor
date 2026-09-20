@@ -187,12 +187,42 @@ test('a tool that fixes its canvas says so itself', () => {
   // preset's.
   expect(plugins.tool('pixel')?.stroke?.dialect).toBe('toonio');
   expect(plugins.tool('pencil')?.stroke?.dialect).toBeUndefined();
-  expect(canvas).toContain('?.stroke?.dialect ?? editor.drawingProfile');
+  expect(canvas).toContain('?.stroke?.dialect ?? editor.defaultDialect');
 });
 
 test('a grid comes with the primitive, not with a name', () => {
   expect(canvas).not.toContain("editor.tool === 'pixel'");
   expect(canvas).toContain('.stroke?.grid');
+});
+
+test('a brush reached only by a gesture stands on no panel', () => {
+  // The oldschool pen is an easter egg: it is in the register like any brush,
+  // but the arrangement never offers it — the keys `o`, `l`, `d` do.
+  expect(toolOrder()).not.toContain('oldschool');
+  expect(panelItems().map((item) => item.id)).not.toContain(toolItem('oldschool'));
+  expect(defaultPanels().hidden).not.toContain(toolItem('oldschool'));
+  // Still a tool of the register, so what takes it in hand finds it.
+  expect(toolSpec('oldschool')?.stroke?.dialect).toBe('multator');
+});
+
+test('the «old» easter egg takes the brush in hand and gives the last one back', () => {
+  // It used to set a flag the engine read on every commit. Now it is what any
+  // other tool key is: a selection, and the way back when typed again.
+  expect(state).toMatch(/toggleOldschool\(\)[^]*?oldschoolSwap\([^]*?selectTool\(/);
+  expect(editorUi).toContain("lastThreeKeys.join('') === 'old'");
+  // The `d` that finishes the word is the word's, not the hand's — or the egg
+  // would hand over the brush and take it away in the same keystroke.
+  expect(editorUi).toMatch(/=== 'old'\) \{[^}]*?toggleOldschool\(\);[^}]*?return;/);
+});
+
+test('the preset is asked about the preset, the canvas about the line', () => {
+  // What is left of the old `drawingProfile` is one question: which line does
+  // a brush draw that named no canvas of its own. Rasterisation, the project
+  // file and the mouse-mode option are the preset's, and must not drift back.
+  expect(editorUi).toContain('editor.ux.projectFile');
+  expect(editorUi).not.toContain('defaultDialect');
+  expect(canvas).toContain('editor.ux.canvasDensity');
+  expect(canvas.match(/editor\.defaultDialect/g)).toHaveLength(1);
 });
 
 test('the stroke engine knows gestures, not tools', () => {
@@ -202,4 +232,7 @@ test('the stroke engine knows gestures, not tools', () => {
   expect(engine).not.toContain('plugins');
   expect(engine).not.toContain('editor.tool');
   expect(engine).toContain('OwnCapture');
+  // Not even the easter egg: what its gesture commits is the brush's rule.
+  expect(engine).not.toContain('oldschool');
+  expect(engine).not.toContain('Oldschool');
 });

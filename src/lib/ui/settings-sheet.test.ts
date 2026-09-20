@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AUTOSAVE_INTERVALS, AUTOSAVE_LABELS, mouseModeLabel } from './presets';
+import { AUTOSAVE_INTERVALS, AUTOSAVE_LABELS } from './presets';
 
 // EditorState and the sheets are runes/Svelte, so they are asserted as source
 // (same contract style as layers-panel.test.ts); the pure parts run for real.
@@ -97,9 +97,10 @@ describe('the settings live in the persisted UI config', () => {
     expect(state).toContain('settings: this.settings');
   });
 
-  it('the «old» easter egg and the sheet toggle the one mouse-mode option', () => {
-    expect(state).toMatch(/get oldschool\(\)[^]*?this\.settings\.mouseMode/);
-    expect(state).toMatch(/toggleOldschool\(\)[^]*?setSetting\('mouseMode'/);
+  it('the mouse-mode option is the coalesced switch alone, not the old pen', () => {
+    // The pen is a brush now (see plugin-tools), so the option means one thing.
+    expect(state).not.toContain('get oldschool()');
+    expect(state).not.toMatch(/toggleOldschool\(\)[^]*?setSetting\('mouseMode'/);
   });
 
   it('the transform lock the reference calls paranoid mode is that option', () => {
@@ -262,11 +263,16 @@ describe('the browser eyedropper option', () => {
   });
 });
 
-describe('«режим мышки» says what it does under the active preset', () => {
-  it('names the oldschool pen for Multator and the plain input for Tonio', () => {
-    expect(mouseModeLabel('multator')).toContain('перо');
-    expect(mouseModeLabel('toonio')).not.toBe(mouseModeLabel('multator'));
-    expect(sheet).toContain('mouseModeLabel(editor.drawingProfile)');
+describe('«режим мышки» is the coalesced switch, and nothing else', () => {
+  it('has one label, because it now means one thing', () => {
+    expect(sheet).not.toContain('mouseModeLabel');
+    expect(sheet).toContain('Режим мышки (точка на событие)');
+  });
+
+  it('is offered only where there is something to switch off', () => {
+    // Multator never unpacks a coalesced batch, so under its canvas the
+    // option had nothing left to do once the old pen became a brush.
+    expect(sheet).toContain("editor.defaultDialect === 'toonio'");
   });
 });
 

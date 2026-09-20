@@ -3,6 +3,7 @@
    * The brush box: thickness and smoothing as sliders. The plain row of dots
    * is its own widget (BrushSizes), colour another (ColorPanel/PaletteBox).
    */
+  import { isOldschool } from '../plugins/oldschool';
   import type { EditorState } from './editor-state.svelte';
 
   let { editor }: { editor: EditorState } = $props();
@@ -30,12 +31,12 @@
 
 <div class="box brush-box" aria-label="Кисть">
   <h3>Толщина</h3>
-  {@render slider('Толщина кисти', 1, editor.ux.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
+  {@render slider('Толщина кисти', 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
   <h3>Сглаживание</h3>
   {@render slider('Минимальное расстояние между точками', 0, 30, editor.tonioMinDistance, (v) => editor.setTonioMinDistance(v))}
   {@render slider('Общее сглаживание', 1, 100, editor.tonioSmooth, (v) => editor.setTonioSmooth(v))}
 </div>
-{#if editor.oldschool}
+{#if isOldschool(editor.tool)}
   <span class="old" title="Старая кисть — набери o, l, d ещё раз, чтобы вернуться">old</span>
 {/if}
 

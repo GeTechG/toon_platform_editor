@@ -114,6 +114,15 @@ export interface UxProfile {
   readonly brushSizeMax: number;
   /** Adaptive +/- step (1 below 10, 5 below 50, else 10) instead of a flat 1. */
   readonly adaptiveBrushStep: boolean;
+  /**
+   * How the editor's canvas is rasterised. `device` takes the screen's
+   * `devicePixelRatio`; `document` takes one bitmap pixel per document pixel,
+   * the way toonio.ru draws into a fixed 1280×720 bitmap the browser then
+   * scales. It is the preset's, not the brush's: a document has one bitmap.
+   */
+  readonly canvasDensity: 'device' | 'document';
+  /** Alt+S downloads the project as a file instead of opening the export. */
+  readonly projectFile: boolean;
 }
 
 export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
@@ -135,6 +144,8 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     defaultFps: DEFAULT_FPS,
     brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
+    canvasDensity: 'device',
+    projectFile: false,
     onionMode: 'history',
     colorGrid: true,
     fpsRange: [1, 30],
@@ -159,6 +170,9 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     defaultFps: DEFAULT_FPS,
     brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
+    // The reference draws into a 1280×720 bitmap and lets the browser scale it.
+    canvasDensity: 'document',
+    projectFile: true,
     onionMode: 'history',
     colorGrid: true,
     fpsRange: [1, 30],
@@ -188,6 +202,8 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps.
     brushSizeMax: 300,
     adaptiveBrushStep: true,
+    canvasDensity: 'device',
+    projectFile: false,
     onionMode: 'neighbors',
     colorGrid: false,
     fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],

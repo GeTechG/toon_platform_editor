@@ -7,6 +7,7 @@ import { addStroke, createDocument, removeLastStroke } from '../model/operations
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
 const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+const brushPanel = await Bun.file(new URL('./BrushPanel.svelte', import.meta.url)).text();
 
 function member(source: string, name: string): string {
   const match = source.match(new RegExp(`(get )?${name}\\([^]*?\\n  }`));
@@ -187,14 +188,31 @@ describe('the browser eyedropper', () => {
 });
 
 describe('the brush each tool remembers', () => {
-  it('the sliders read and write the active tool record, not one shared brush', () => {
-    expect(member(state, 'get tonioBrush')).toContain('this.tonioByTool[brushToolOf(this.tool)]');
-    expect(member(state, 'setTonioSmooth')).toContain('this.tonioBrush.smooth');
-    expect(member(state, 'setTonioMinDistance')).toContain('this.tonioBrush.minDistance');
-    expect(member(state, 'set brushSizeLogical')).toContain('this.tonioBrush.width');
+  it('the sliders read and write this brush on the canvas it draws on', () => {
+    expect(member(state, 'get brush')).toContain('brushToolOf(this.tool)');
+    expect(member(state, 'get brush')).toContain('brushCanvas');
+    expect(member(state, 'setTonioSmooth')).toContain('editBrush({ smooth');
+    expect(member(state, 'setTonioMinDistance')).toContain('editBrush({ minDistance');
+    expect(member(state, 'set brushSizeLogical')).toContain('editBrush({ width');
+    // The getter runs inside `$derived`: it may read a record, never write one
+    // (Svelte forbids touching state there — `state_unsafe_mutation`).
+    expect(member(state, 'get brush')).not.toContain('??=');
+    expect(member(state, 'get brush')).not.toMatch(/byTool\[[^\]]*\] =/);
   });
 
-  it('every record is persisted, so a tool keeps its brush across sessions', () => {
-    expect(member(state, 'private persistUiConfig')).toContain('tonioByTool:');
+  it('the width is not chosen by the preset: the record already belongs to a canvas', () => {
+    expect(member(state, 'get brushSizeLogical')).not.toContain('defaultDialect');
+    expect(state).not.toContain('multatorBrushSizeLogical');
+  });
+
+  it('the slider stops where the brush’s own canvas stops', () => {
+    expect(member(state, 'get brushSizeMax')).toContain('BRUSH_RANGE[this.brushCanvas]');
+    expect(brushPanel).toContain('editor.brushSizeMax');
+  });
+
+  it('every record is persisted, so a brush keeps its width across sessions', () => {
+    const persist = member(state, 'private persistUiConfig');
+    expect(persist).toContain('tonioByTool:');
+    expect(persist).toContain('multatorByTool:');
   });
 });

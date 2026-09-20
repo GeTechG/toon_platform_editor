@@ -13,6 +13,18 @@ const toonop = UX_PROFILES.toonop;
 const toonio = UX_PROFILES.toonio;
 
 describe('UX_PROFILES', () => {
+  it('the canvas density and the project file belong to the preset, not to the brush', () => {
+    // toonio.ru draws into a fixed bitmap the browser then scales, and keeps a
+    // project file behind Alt+S. Neither can follow a brush: one document has
+    // one rasterisation, and a file is the editor's, not the pen's.
+    expect(toonio.canvasDensity).toBe('document');
+    expect(toonio.projectFile).toBe(true);
+    expect(toonop.canvasDensity).toBe('device');
+    expect(toonop.projectFile).toBe(false);
+    expect(multator.canvasDensity).toBe('device');
+    expect(multator.projectFile).toBe(false);
+  });
+
   it('multator reproduces the reference editor defaults', () => {
     expect(multator.quickPalette).toEqual(['#000000', '#ff0000']);
     expect(multator.whiteIsEraser).toBe(true);

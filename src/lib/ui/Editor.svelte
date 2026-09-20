@@ -129,7 +129,7 @@
   /** The pipette's source pair is on the panel always, live only under the pipette. */
   const pipetteUp = $derived(editor.tool === 'pipette');
   /** Toonio keeps a project file behind Alt+S; the others export instead. */
-  const hasProjectFile = $derived(editor.drawingProfile === 'toonio');
+  const hasProjectFile = $derived(editor.ux.projectFile);
 
   // The studio bar is resizable from its top edge, and the timeline is the row
   // that grows with it — dragging down gives the grid more layers and frames.
@@ -417,7 +417,12 @@
     lastThreeKeys.shift();
     lastThreeKeys.push(e.key);
     if (lastThreeKeys.join('') === 'old') {
+      // The `d` that finishes the word belongs to the word: without this the
+      // same keystroke would hand over the oldschool brush and then pick up
+      // the hand, which is what D does on its own.
       editor.toggleOldschool();
+      e.preventDefault();
+      return;
     }
 
     let handled = true;

@@ -10,41 +10,6 @@ import { loadDocument } from '../format/validate';
 
 const pencil: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#123456' };
 
-describe('oldschool pen (easter egg)', () => {
-  it('a Multator session flagged oldschool commits a filled contour descriptor', () => {
-    const controller = new profiles.PointerStrokeController(() => ({
-      profile: 'multator', descriptor: { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' }, oldschool: true,
-    }));
-    controller.pointerDown(sample(1, 0, 0));
-    controller.pointerMove(sample(1, 800, 0));
-    controller.pointerUp(sample(1, 800, 0));
-    const stroke = controller.takeCommitted()!;
-    expect(stroke.tool).toEqual({ kind: 'contour', dialect: 'multator', color: '#ff0000' });
-    // capsule around the 100 px segment at half width 4 px: 10 points
-    expect(stroke.points).toHaveLength(20);
-    expect(stroke.points.every(Number.isInteger)).toBe(true);
-  });
-
-  it('the oldschool eraser commits a contour-eraser descriptor', () => {
-    const controller = new profiles.PointerStrokeController(() => ({
-      profile: 'multator', descriptor: { kind: 'eraser', dialect: 'multator', width: 64 }, oldschool: true,
-    }));
-    controller.pointerDown(sample(1, 0, 0));
-    controller.pointerUp(sample(1, 0, 0));
-    expect(controller.takeCommitted()!.tool).toEqual({ kind: 'contour-eraser', dialect: 'multator' });
-  });
-
-  it('oldschool is ignored for the Tonio profile', () => {
-    const descriptor: ToolDescriptor = { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' };
-    const controller = new profiles.PointerStrokeController(() => ({
-      profile: 'toonio', descriptor, tonio: { smooth: 1, minDistance: 0 }, oldschool: true,
-    }));
-    controller.pointerDown(sample(1, 0, 0));
-    controller.pointerUp(sample(1, 80, 0));
-    expect(controller.takeCommitted()!.tool).toEqual(descriptor);
-  });
-});
-
 describe('profile/session contract', () => {
   it('freezes profile and descriptor settings at begin', () => {
     const selected = { profile: 'multator' as const, descriptor: { ...pencil } };
@@ -149,7 +114,6 @@ describe('Tonio Smooth / Prepare golden behavior', () => {
         descriptor,
         { smooth: 1, minDistance: 3 },
         1,
-        false,
         zoom,
       );
       profiles.appendStrokeEvent(session, sample(1, 16, 0));
@@ -187,7 +151,7 @@ describe('Tonio feather and pixel sessions', () => {
     // nothing about it, the rules come from the tool itself (plugins/pixel.ts).
     const descriptor: ToolDescriptor = { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
     const session = profiles.beginStrokeSession(
-      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, false, 1, own,
+      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, 1, own,
     );
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     profiles.appendStrokeEvent(session, sample(1, 64, 0));
@@ -199,7 +163,7 @@ describe('Tonio feather and pixel sessions', () => {
   it('its preview shows the points as collected, unsmoothed', () => {
     const descriptor: ToolDescriptor = { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
     const session = profiles.beginStrokeSession(
-      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, false, 1, own,
+      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, 1, own,
     );
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 16, 0]);
@@ -386,14 +350,6 @@ describe('the feather under a Multator preset', () => {
     expect(session.descriptor.dialect).toBe('toonio');
   });
 
-  it('never becomes an oldschool contour — a contour carries no fill', () => {
-    const session = profiles.beginStrokeSession(
-      'multator', sample(1, 0, 0),
-      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
-      undefined, 1, true,
-    );
-    expect(session.oldschool).toBe(false);
-  });
 });
 
 describe('the pixel tool outside the Tonio preset', () => {
@@ -424,5 +380,65 @@ describe('the pixel tool outside the Tonio preset', () => {
       { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('toonio', 600),
     );
     expect(session.descriptor.width).toBe(8);
+  });
+});
+
+describe('commit comes from the brush', () => {
+  const capsule = (points: readonly number[], descriptor: ToolDescriptor) => ({
+    points: [...points],
+    tool: { kind: 'contour', dialect: 'multator', color: 'color' in descriptor ? descriptor.color : '#000000' } as ToolDescriptor,
+  });
+
+  it('lays down the stroke the tool returns, not the one it drew with', () => {
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator',
+      descriptor: { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' },
+      commit: capsule,
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 800, 0));
+    controller.pointerUp(sample(1, 800, 0));
+    const stroke = controller.takeCommitted()!;
+    expect(stroke.tool).toEqual({ kind: 'contour', dialect: 'multator', color: '#ff0000' });
+    // What the brush returned is what lands: the engine neither thins nor
+    // reshapes it, so the gesture's own points come through.
+    expect(stroke.points.slice(0, 4)).toEqual([0, 0, 800, 0]);
+  });
+
+  it('hands the commit the scale of its reference canvas', () => {
+    let seen = 0;
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'multator',
+      descriptor: { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' },
+      coordinateScale: 0.5,
+      commit: (points, descriptor, ctx) => {
+        seen = ctx.coordinateScale;
+        return capsule(points, descriptor);
+      },
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerUp(sample(1, 0, 0));
+    controller.takeCommitted();
+    expect(seen).toBe(0.5);
+  });
+
+  it('drops a stroke whose commit returned a kind the format does not know', () => {
+    const errors: unknown[][] = [];
+    const wasError = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      const controller = new profiles.PointerStrokeController(() => ({
+        profile: 'multator',
+        descriptor: { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' },
+        commit: (points) => ({ points: [...points], tool: { kind: 'sparkle' } as unknown as ToolDescriptor }),
+      }));
+      controller.pointerDown(sample(1, 0, 0));
+      controller.pointerUp(sample(1, 0, 0));
+      expect(controller.takeCommitted()).toBeNull();
+    } finally {
+      console.error = wasError;
+    }
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0].join(' '))).toContain('sparkle');
   });
 });

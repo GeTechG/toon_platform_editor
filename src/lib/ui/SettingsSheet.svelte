@@ -18,7 +18,6 @@
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
     PRESETS,
-    mouseModeLabel,
   } from './presets';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -167,15 +166,23 @@
 
   <div class="sheet-body">
     <p class="sheet-hint">Рисование</p>
-    <label class="toggle">
-      <span class="toggle-label">{mouseModeLabel(editor.drawingProfile)}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.mouseMode}
-        onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
-      />
-    </label>
+    <!--
+      The option is Tonio's `toonio_old_pen`: one point per event instead of
+      the coalesced batch. Multator never unpacks one, so under its canvas
+      there is nothing to switch off — and the old pen it used to mean here is
+      a brush of its own now, behind the `o`, `l`, `d` easter egg.
+    -->
+    {#if editor.defaultDialect === 'toonio'}
+      <label class="toggle">
+        <span class="toggle-label">Режим мышки (точка на событие)</span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={editor.settings.mouseMode}
+          onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
+        />
+      </label>
+    {/if}
     {#if hasEyeDropper}
       <label class="toggle">
         <span class="toggle-label">Пипетка браузера</span>

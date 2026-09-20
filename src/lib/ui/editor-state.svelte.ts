@@ -9,13 +9,10 @@ import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
-  DEFAULT_BRUSH_SIZE_LOGICAL,
-  MAX_BRUSH_SIZE_LOGICAL,
   MAX_FRAMES,
   MAX_LAYERS,
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
-  MIN_BRUSH_SIZE_LOGICAL,
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
@@ -96,6 +93,7 @@ import {
 import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
+import { oldschoolSwap } from '../plugins/oldschool';
 import { plugins } from '../plugins';
 import { loadPlugins } from '../plugins/load';
 import type { PluginHost, PluginStroke } from '../plugins/contract';
@@ -147,9 +145,11 @@ import {
   DEFAULT_DRAWING_UI_CONFIG,
   BRUSH_TOOLS,
   brushToolOf,
+  BRUSH_RANGE,
+  DEFAULT_BRUSH,
   DEFAULT_SETTINGS,
   loadUiConfig,
-  presetDrawingProfile,
+  presetDefaultDialect,
   presetPanels,
   presetUx,
   saveUiConfig,
@@ -202,6 +202,8 @@ export class EditorState {
   /** The one soundtrack: file, credits, envelope for the strip, playback. */
   readonly audio = new AudioTrackState();
   tool = $state<Tool>('pencil');
+  /** The brush the "old" easter egg took away, to give back when typed again. */
+  private beforeOldschool: Tool | null = null;
   /** What was drawing before a help tool (pipette, hand, lasso, distort) took over. */
   previousDrawingTool = $state<Tool>('pencil');
   /**
@@ -242,8 +244,13 @@ export class EditorState {
   playing = $state(false);
   /** Frame shown while playback is running. */
   playbackFrame = $state(0);
-  drawingProfile = $state<DrawingProfileId>(presetDrawingProfile(DEFAULT_PRESET));
-  multatorBrushSizeLogical = $state(DEFAULT_BRUSH_SIZE_LOGICAL);
+  /**
+   * The canvas a brush measures on when it named none of its own — the
+   * preset's. Nothing else hangs on it: how the canvas is rasterised and what
+   * Alt+S saves belong to the UX profile, and a width belongs to the brush.
+   */
+  defaultDialect = $state<DrawingProfileId>(presetDefaultDialect(DEFAULT_PRESET));
+  multatorByTool = $state<Record<BrushToolId, TonioBrush>>(copyBrushes(DEFAULT_DRAWING_UI_CONFIG.multatorByTool));
   /**
    * Tonio width, smoothing and minimum per tool: the reference keeps a brush
    * for the pencil, the eraser, the feather and the mega-eraser, and picking
@@ -352,15 +359,6 @@ export class EditorState {
   paletteExpanded = $state(true);
   /** Bumped on frame copy/paste so the view can flash a confirmation. */
   flashTick = $state(0);
-  /**
-   * The reference "old" easter egg: typing o, l, d toggles the oldschool pen
-   * (a filled contour of variable width instead of a line). Multator line
-   * profile only; Tonio strokes ignore it. The egg and the settings sheet
-   * are two doors into the same option.
-   */
-  get oldschool(): boolean {
-    return this.settings.mouseMode;
-  }
   /** When the draft was last written, for the panel's «Сохранено HH:MM». */
   lastSavedAt = $state<number | null>(null);
   /**
@@ -423,8 +421,8 @@ export class EditorState {
       this.preset = saved.preset;
       this.panels = saved.panels;
       this.floatPos = saved.floatPos;
-      this.drawingProfile = saved.drawing.activeProfile;
-      this.multatorBrushSizeLogical = saved.drawing.multatorWidth;
+      this.defaultDialect = saved.drawing.activeProfile;
+      this.multatorByTool = copyBrushes(saved.drawing.multatorByTool);
       this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
@@ -467,44 +465,66 @@ export class EditorState {
     return presetUx(this.preset);
   }
 
-  /** Brush record of the active tool — what the sliders read and write. */
-  get tonioBrush(): TonioBrush {
-    return this.tonioByTool[brushToolOf(this.tool)];
+  /**
+   * The canvas the brush in hand measures on: its own when it named one, the
+   * preset's when it did not. A width is pixels of that canvas, so it is what
+   * picks the record and the range.
+   */
+  get brushCanvas(): DrawingProfileId {
+    const own = plugins.tool(this.tool)?.stroke?.dialect;
+    return own === 'multator' || own === 'toonio' ? own : this.defaultDialect;
   }
 
-  get tonioBrushSizeLogical(): number {
-    return this.tonioBrush.width;
+  /**
+   * Brush record of the tool in hand on that canvas — what the sliders read.
+   * A brush met for the first time (a plugin's, the easter egg's) reads the
+   * canvas's default; the record itself is written only when a slider moves,
+   * because a getter runs inside `$derived` and MUST NOT touch state there.
+   */
+  get brush(): TonioBrush {
+    const byTool = this.brushCanvas === 'multator' ? this.multatorByTool : this.tonioByTool;
+    return byTool[brushToolOf(this.tool)] ?? DEFAULT_BRUSH[this.brushCanvas];
+  }
+
+  /** One slider move: the record of this brush on this canvas, written whole. */
+  private editBrush(patch: Partial<TonioBrush>): void {
+    const byTool = this.brushCanvas === 'multator' ? this.multatorByTool : this.tonioByTool;
+    byTool[brushToolOf(this.tool)] = { ...this.brush, ...patch };
+    this.persistUiConfig();
   }
 
   get tonioSmooth(): number {
-    return this.tonioBrush.smooth;
+    return this.brush.smooth;
   }
 
   get tonioMinDistance(): number {
-    return this.tonioBrush.minDistance;
+    return this.brush.minDistance;
   }
 
   get brushSizeLogical(): number {
-    return this.drawingProfile === 'toonio' ? this.tonioBrushSizeLogical : this.multatorBrushSizeLogical;
+    return this.brush.width;
+  }
+
+  /**
+   * Where the thickness slider stops: the narrower of what the preset offers
+   * and what the brush's own canvas holds — a Multator brush does not grow to
+   * 500 because a Tonio preset is open around it.
+   */
+  get brushSizeMax(): number {
+    return Math.min(this.ux.brushSizeMax, BRUSH_RANGE[this.brushCanvas].max);
   }
 
   set brushSizeLogical(value: number) {
-    if (this.drawingProfile === 'toonio') {
-      this.tonioBrush.width = Math.min(500, Math.max(1, Math.round(value)));
-    } else {
-      this.multatorBrushSizeLogical = Math.min(MAX_BRUSH_SIZE_LOGICAL, Math.max(MIN_BRUSH_SIZE_LOGICAL, Math.round(value)));
-    }
-    this.persistUiConfig();
+    const range = BRUSH_RANGE[this.brushCanvas];
+    this.editBrush({ width: Math.min(range.max, Math.max(range.min, Math.round(value))) });
   }
 
   setTonioSmooth(value: number): void {
-    this.tonioBrush.smooth = Math.min(100, Math.max(1, Math.round(value)));
-    this.persistUiConfig();
+    this.editBrush({ smooth: Math.min(100, Math.max(1, Math.round(value))) });
   }
 
   setTonioMinDistance(value: number): void {
-    this.tonioBrush.minDistance = Math.min(30, Math.max(0, Math.round(value)));
-    this.persistUiConfig();
+    this.editBrush({ minDistance: Math.min(30, Math.max(0, Math.round(value))) });
   }
 
   /**
@@ -518,7 +538,7 @@ export class EditorState {
     // own colour widget — on the same panels.
     this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
-    this.drawingProfile = presetDrawingProfile(id);
+    this.defaultDialect = presetDefaultDialect(id);
     this.paletteExpanded = this.ux.quickPalette === null;
     if (this.touched) {
       // A narrower profile range must not leave the document out of bounds.
@@ -534,13 +554,17 @@ export class EditorState {
    * with a white color is the eraser and the pipette needs the expanded
    * palette. Unavailable requests are ignored.
    */
-  selectTool(tool: Tool, pipetteTarget: 'outline' | 'fill' = 'outline'): void {
+  selectTool(
+    tool: Tool,
+    pipetteTarget: 'outline' | 'fill' = 'outline',
+    available: readonly Tool[] = this.availableTools,
+  ): void {
     const resolved = resolveToolSelection(
       tool,
       this.brushColor,
       this.ux,
       this.paletteExpanded,
-      this.availableTools,
+      available,
     );
     if (!resolved || !this.leaveTransform()) {
       return;
@@ -1044,13 +1068,15 @@ export class EditorState {
     const widths: Record<string, number> = {};
     const smooth: Record<string, number> = {};
     const minDistance: Record<string, number> = {};
-    for (const id of BRUSH_TOOLS) {
-      const brush = this.tonioByTool[id];
-      widths[id] = brush.width;
-      smooth[id] = brush.smooth;
-      minDistance[id] = brush.minDistance;
+    // Keyed by brush and canvas both: a record written for the Tonio pencil is
+    // not the Multator one. Plain keys are what older drafts wrote.
+    for (const [canvas, byTool] of [['toonio', this.tonioByTool], ['multator', this.multatorByTool]] as const) {
+      for (const [id, brush] of Object.entries(byTool)) {
+        widths[`${canvas}:${id}`] = brush.width;
+        smooth[`${canvas}:${id}`] = brush.smooth;
+        minDistance[`${canvas}:${id}`] = brush.minDistance;
+      }
     }
-    widths.multator = this.multatorBrushSizeLogical;
     return {
       frame: this.activeFrame,
       layer: this.activeLayer,
@@ -1067,15 +1093,19 @@ export class EditorState {
 
   /** Puts it back after a draft is opened. Anything missing is left as it is. */
   restoreState(saved: DraftState): void {
-    for (const id of BRUSH_TOOLS) {
-      this.tonioByTool[id] = {
-        width: saved.widths?.[id] ?? this.tonioByTool[id].width,
-        smooth: saved.smooth?.[id] ?? this.tonioByTool[id].smooth,
-        minDistance: saved.minDistance?.[id] ?? this.tonioByTool[id].minDistance,
-      };
-    }
-    if (typeof saved.widths?.multator === 'number') {
-      this.multatorBrushSizeLogical = saved.widths.multator;
+    for (const [canvas, byTool] of [['toonio', this.tonioByTool], ['multator', this.multatorByTool]] as const) {
+      const ids = new Set([...BRUSH_TOOLS, ...Object.keys(byTool)]);
+      for (const id of ids) {
+        // A draft written before the split keyed the Tonio records by tool
+        // alone and held one width for the whole Multator canvas.
+        const legacy = canvas === 'toonio' ? id : 'multator';
+        const was = byTool[id] ?? DEFAULT_BRUSH[canvas];
+        byTool[id] = {
+          width: saved.widths?.[`${canvas}:${id}`] ?? saved.widths?.[legacy] ?? was.width,
+          smooth: saved.smooth?.[`${canvas}:${id}`] ?? saved.smooth?.[legacy] ?? was.smooth,
+          minDistance: saved.minDistance?.[`${canvas}:${id}`] ?? saved.minDistance?.[legacy] ?? was.minDistance,
+        };
+      }
     }
     if (saved.outline) {
       this.brushColor = saved.outline;
@@ -1771,8 +1801,20 @@ export class EditorState {
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, -1, this.ux);
   }
 
+  /**
+   * The reference "old" easter egg (Main.hx keyDown: o, l, d). The oldschool
+   * pen is a brush like any other and stands on no panel, so the egg is its
+   * only door: typing the word takes it in hand, typing it again gives back
+   * the brush that was there.
+   */
   toggleOldschool(): void {
-    this.setSetting('mouseMode', !this.settings.mouseMode);
+    // The hand may be in hand: `o` selects it on the way through the word.
+    const from = isHelpTool(this.tool) ? this.previousDrawingTool : this.tool;
+    const swap = oldschoolSwap(from, this.beforeOldschool);
+    this.beforeOldschool = swap.back;
+    // A brush off the panels is not in `availableTools`, and that is the
+    // point: the arrangement never offers it, the gesture hands it over.
+    this.selectTool(swap.take, 'outline', [swap.take]);
   }
 
   /** One settings option, applied and persisted at once. */
@@ -1800,9 +1842,9 @@ export class EditorState {
         this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
       ) as Record<string, { x: number; y: number }>,
       drawing: {
-        activeProfile: this.drawingProfile,
-        multatorWidth: this.multatorBrushSizeLogical,
+        activeProfile: this.defaultDialect,
         tonioByTool: copyBrushes(this.tonioByTool),
+        multatorByTool: copyBrushes(this.multatorByTool),
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
         sides: $state.snapshot(this.sides),
