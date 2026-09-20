@@ -12,7 +12,6 @@
 
 import {
   DEFAULT_FPS,
-  MAX_BRUSH_SIZE_LOGICAL,
   MIN_BRUSH_SIZE_LOGICAL,
   PLAYER_FPS_MAX,
   PLAYER_FPS_MIN,
@@ -34,8 +33,24 @@ export type SelectableTool =
   | 'distort';
 
 const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];
-/** Toonop keeps the pixel tool the reference toolbar never showed. */
-const TOONOP_TOOLS: readonly SelectableTool[] = [...BASE_TOOLS, 'pixel'];
+/**
+ * Toonop started from the Tonio toolbar and keeps the pixel tool the
+ * reference never showed. Spelled out rather than built from TONIO_TOOLS:
+ * toonop is ours to change without moving the parity preset.
+ */
+const TOONOP_TOOLS: readonly SelectableTool[] = [
+  'pencil',
+  'eraser',
+  'feather',
+  'mega-eraser',
+  'pipette',
+  'drag',
+  'lasso',
+  'distort',
+  'pixel',
+];
+/** Toonop's own brush ceiling, inherited from the Tonio slider. */
+const TOONOP_MAX_BRUSH_SIZE_LOGICAL = 500;
 /** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, plus the picker — no pixel button. */
 const TONIO_TOOLS: readonly SelectableTool[] = [
   'pencil',
@@ -107,28 +122,31 @@ export interface UxProfile {
 }
 
 export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
+  // The editor's own mode: it took the toonio.ru behaviour whole, then went on
+  // by itself. Every value is written out here, never read from `toonio`, so a
+  // parity fix there never moves toonop and vice versa.
   toonop: {
     quickPalette: null,
     whiteIsEraser: false,
     pipetteNeedsPalette: false,
-    pipetteOffRail: false,
+    pipetteOffRail: true,
     onionSides: 'both',
     activeFrameAlpha: 1,
     afterRemove: 'next',
     playFromStart: false,
-    playbackRange: 'document',
-    newLayerPosition: 'above',
-    redoSurvivesStroke: false,
+    playbackRange: 'selection',
+    newLayerPosition: 'below',
+    redoSurvivesStroke: true,
     defaultFps: DEFAULT_FPS,
-    brushSizeMax: MAX_BRUSH_SIZE_LOGICAL,
+    brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
     adaptiveBrushStep: false,
-    onionMode: 'neighbors',
-    colorGrid: false,
-    fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
-    livePipettePreview: false,
-    crossCursor: false,
+    onionMode: 'history',
+    colorGrid: true,
+    fpsRange: [1, 30],
+    livePipettePreview: true,
+    crossCursor: true,
     tools: TOONOP_TOOLS,
-    layout: 'bar',
+    layout: 'studio',
   },
   // toonio.ru: onion over the last visited frames, saved color grid, fps 1–30,
   // a pipette that previews while it moves, brush up to 500.

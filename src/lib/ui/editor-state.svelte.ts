@@ -207,7 +207,7 @@ export class EditorState {
   playing = $state(false);
   /** Frame shown while playback is running. */
   playbackFrame = $state(0);
-  drawingProfile = $state<DrawingProfileId>('multator');
+  drawingProfile = $state<DrawingProfileId>(presetDrawingProfile(DEFAULT_PRESET));
   multatorBrushSizeLogical = $state(DEFAULT_BRUSH_SIZE_LOGICAL);
   /**
    * Tonio width, smoothing and minimum per tool: the reference keeps a brush

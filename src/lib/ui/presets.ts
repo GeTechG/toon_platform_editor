@@ -70,7 +70,7 @@ export const PANEL_HEIGHT_AUDIO = 22;
 export const PANEL_HEIGHT_MAX = 2000;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
-  activeProfile: 'multator',
+  activeProfile: 'toonio',
   multatorWidth: 4,
   tonioByTool: {
     pencil: { width: 5, smooth: 3, minDistance: 3 },
@@ -209,8 +209,9 @@ const allOn = (off: Partial<Features> = {}): Features => ({
 
 // A preset owns toolbar visibility, the compatibility profile used for the
 // next stroke, and the UX profile (palette, eraser rule, onion side, frame
-// and playback behavior). Toonop keeps the Multator-compatible line with the
-// editor's own UX; Multator reproduces the reference editor end to end.
+// and playback behavior). Toonop draws the Tonio line under its own UX
+// profile, which it owns outright; Multator and Toonio reproduce their
+// reference editors end to end.
 export const PRESETS: {
   id: string;
   label: string;
@@ -218,7 +219,7 @@ export const PRESETS: {
   drawingProfile: DrawingProfileId;
   ux: UxProfileId;
 }[] = [
-  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'multator', ux: 'toonop' },
+  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'toonio', ux: 'toonop' },
   { id: 'multator', label: 'Multator', features: allOn({ export: false, layers: false }), drawingProfile: 'multator', ux: 'multator' },
   { id: 'toonio', label: 'Toonio', features: allOn(), drawingProfile: 'toonio', ux: 'toonio' },
 ];

@@ -37,7 +37,7 @@ test('presetFeatures returns a fresh object each call (no shared mutation)', () 
 });
 
 test('compatibility presets select their drawing profile through existing preset logic', () => {
-  expect(PRESETS.find((preset) => preset.id === 'toonop')?.drawingProfile).toBe('multator');
+  expect(PRESETS.find((preset) => preset.id === 'toonop')?.drawingProfile).toBe('toonio');
   expect(PRESETS.find((preset) => preset.id === 'multator')?.drawingProfile).toBe('multator');
   expect(PRESETS.find((preset) => preset.id === 'toonio')?.drawingProfile).toBe('toonio');
 });
@@ -54,7 +54,7 @@ test('UX profile lookup falls back to toonop for an unknown preset', () => {
 
 test('preset drawing profile lookup falls back to the Toonop profile', () => {
   expect(presetDrawingProfile('toonio')).toBe('toonio');
-  expect(presetDrawingProfile('nope')).toBe('multator');
+  expect(presetDrawingProfile('nope')).toBe('toonio');
 });
 
 test('parseUiConfig round-trips a valid stored config', () => {
@@ -86,6 +86,10 @@ test('stored drawing profile is normalized to the selected preset', () => {
   expect(parsed?.drawing.activeProfile).toBe('toonio');
 });
 
+test('a fresh config draws the Tonio line, the way the default Toonop preset asks', () => {
+  expect(DEFAULT_DRAWING_UI_CONFIG.activeProfile).toBe('toonio');
+});
+
 test('old UI config migrates to independent safe profile defaults', () => {
   const old = { preset: 'toonop', features: presetFeatures('toonop') };
   expect(parseUiConfig(JSON.stringify(old))?.drawing).toEqual(DEFAULT_DRAWING_UI_CONFIG);
@@ -99,7 +103,7 @@ test('drawing profile settings are clamped to supported ranges', () => {
   }));
   const clamped = { width: 500, smooth: 1, minDistance: 30 };
   expect(parsed?.drawing).toEqual({
-    activeProfile: 'multator',
+    activeProfile: 'toonio',
     multatorWidth: 1,
     tonioByTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
     pickSource: 'canvas',

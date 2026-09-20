@@ -25,20 +25,32 @@ describe('UX_PROFILES', () => {
     expect(multator.brushSizeMax).toBe(300);
   });
 
-  it('toonop keeps the current editor behavior', () => {
+  it('toonop carries the toonio behavior as its own values', () => {
     expect(toonop.quickPalette).toBeNull();
     expect(toonop.whiteIsEraser).toBe(false);
     expect(toonop.pipetteNeedsPalette).toBe(false);
+    expect(toonop.pipetteOffRail).toBe(true);
     expect(toonop.onionSides).toBe('both');
     expect(toonop.activeFrameAlpha).toBe(1);
     expect(toonop.afterRemove).toBe('next');
     expect(toonop.playFromStart).toBe(false);
+    expect(toonop.playbackRange).toBe('selection');
+    expect(toonop.newLayerPosition).toBe('below');
+    expect(toonop.redoSurvivesStroke).toBe(true);
     expect(toonop.defaultFps).toBe(12);
-    expect(toonop.onionMode).toBe('neighbors');
-    expect(toonop.colorGrid).toBe(false);
-    expect(toonop.fpsRange).toEqual([5, 24]);
-    expect(toonop.livePipettePreview).toBe(false);
-    expect(toonop.crossCursor).toBe(false);
+    expect(toonop.brushSizeMax).toBe(500);
+    expect(toonop.adaptiveBrushStep).toBe(false);
+    expect(toonop.onionMode).toBe('history');
+    expect(toonop.colorGrid).toBe(true);
+    expect(toonop.fpsRange).toEqual([1, 30]);
+    expect(toonop.livePipettePreview).toBe(true);
+    expect(toonop.crossCursor).toBe(true);
+    expect(toonop.layout).toBe('studio');
+  });
+
+  it('holds those values separately from toonio, so editing one mode leaves the other alone', () => {
+    expect(toonop.tools).not.toBe(toonio.tools);
+    expect(toonop.fpsRange).not.toBe(toonio.fpsRange);
   });
 
   it('toonio reproduces the reference toonio.ru editor', () => {
@@ -55,13 +67,13 @@ describe('UX_PROFILES', () => {
     expect(toonio.activeFrameAlpha).toBe(1);
   });
 
-  it('only toonio takes the studio layout (tools left, panels right, timeline below)', () => {
+  it('multator alone keeps the one-bar chrome', () => {
     expect(toonio.layout).toBe('studio');
-    expect(toonop.layout).toBe('bar');
+    expect(toonop.layout).toBe('studio');
     expect(multator.layout).toBe('bar');
   });
 
-  it('offers the Tonio toolset only under Toonio', () => {
+  it('offers the Tonio toolset under Toonio and Toonop', () => {
     expect(toonio.tools).toEqual([
       'pencil', 'eraser', 'feather', 'mega-eraser', 'pipette',
       'drag', 'lasso', 'distort',
@@ -73,7 +85,10 @@ describe('UX_PROFILES', () => {
     // The reference toolbar has no pixel button, so parity means hiding it
     // there; Toonop is where it stays available.
     expect(toonio.tools).not.toContain('pixel');
-    expect(toonop.tools).toEqual(['pencil', 'eraser', 'pipette', 'pixel']);
+    expect(toonop.tools).toEqual([
+      'pencil', 'eraser', 'feather', 'mega-eraser', 'pipette',
+      'drag', 'lasso', 'distort', 'pixel',
+    ]);
     expect(multator.tools).not.toContain('pixel');
   });
 
@@ -109,6 +124,7 @@ describe('nudgeBrushSize', () => {
   });
 
   it('toonop steps by 1 within its own bounds', () => {
+    expect(toonop.brushSizeMax).toBe(500);
     expect(nudgeBrushSize(10, 1, toonop)).toBe(11);
     expect(nudgeBrushSize(1, -1, toonop)).toBe(1);
     expect(nudgeBrushSize(toonop.brushSizeMax, 1, toonop)).toBe(toonop.brushSizeMax);
@@ -124,7 +140,7 @@ describe('resolveToolSelection', () => {
 
   it('toonio keeps the pipette off the rail — it lives in the palette foot', () => {
     expect(toonio.pipetteOffRail).toBe(true);
-    expect(toonop.pipetteOffRail).toBe(false);
+    expect(toonop.pipetteOffRail).toBe(true);
     expect(multator.pipetteOffRail).toBe(false);
     // Off the rail, not out of the editor: P and the palette button still arm it.
     expect(resolveToolSelection('pipette', '#000000', toonio)).toBe('pipette');
@@ -160,16 +176,16 @@ describe('transform tools', () => {
     expect(toonio.tools).toContain('distort');
   });
 
-  it('the other presets keep their own toolsets', () => {
-    for (const ux of [toonop, multator]) {
-      expect(ux.tools).not.toContain('lasso');
-      expect(ux.tools).not.toContain('distort');
-      expect(ux.tools).not.toContain('drag');
+  it('toonop offers them too, multator does not', () => {
+    for (const tool of ['drag', 'lasso', 'distort'] as const) {
+      expect(toonop.tools).toContain(tool);
+      expect(multator.tools).not.toContain(tool);
     }
   });
 
   it('asking for a transform tool the preset has no button for is refused', () => {
-    expect(resolveToolSelection('lasso', '#000000', toonop)).toBeNull();
+    expect(resolveToolSelection('lasso', '#000000', multator)).toBeNull();
+    expect(resolveToolSelection('lasso', '#000000', toonop)).toBe('lasso');
     expect(resolveToolSelection('lasso', '#000000', toonio)).toBe('lasso');
   });
 });
@@ -189,17 +205,17 @@ describe('help tools and the drawing tool behind them', () => {
 });
 
 describe('timeline behaviour by profile', () => {
-  it('toonio plays the selection, puts a new layer under the active one and keeps redo alive', () => {
-    expect(toonio.playbackRange).toBe('selection');
-    expect(toonio.newLayerPosition).toBe('below');
-    expect(toonio.redoSurvivesStroke).toBe(true);
+  it('toonio and toonop play the selection, put a new layer under the active one and keep redo alive', () => {
+    for (const profile of [toonio, toonop]) {
+      expect(profile.playbackRange).toBe('selection');
+      expect(profile.newLayerPosition).toBe('below');
+      expect(profile.redoSurvivesStroke).toBe(true);
+    }
   });
 
-  it('toonop and multator keep playing the whole document and stacking layers upward', () => {
-    for (const profile of [toonop, multator]) {
-      expect(profile.playbackRange).toBe('document');
-      expect(profile.newLayerPosition).toBe('above');
-      expect(profile.redoSurvivesStroke).toBe(false);
-    }
+  it('multator keeps playing the whole document and stacking layers upward', () => {
+    expect(multator.playbackRange).toBe('document');
+    expect(multator.newLayerPosition).toBe('above');
+    expect(multator.redoSurvivesStroke).toBe(false);
   });
 });
