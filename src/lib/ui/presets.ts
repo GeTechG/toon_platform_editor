@@ -233,26 +233,16 @@ export const PRESETS: {
     //
     // Each line sits where the reference put it. The strip's line holds only
     // what acts on frames — `+` and `×` right beside it. The next line opens
-    // the way its second line read, ▶ 💾 ◁, and ends on the send button, with
-    // what the reference had no key for (onion, fps, fullscreen, the
-    // gear) between them and the save note last, so it never splits the keys.
+    // on play and ends on the send button, with what the reference had no key
+    // for (fullscreen, the gear) between them and the save note last. The
+    // saves, undo, onion and fps stay on the shelf, a gesture away.
     // The drawing line reads left to right the way the reference drew it:
     // the tools, then the row of dots, then the two colour squares.
     panels: {
       base: {
         rows: [
           ['add-frame', 'delete-frame', 'timeline'],
-          [
-            'transport',
-            'drafts',
-            'history',
-            'onion',
-            'fps',
-            'fullscreen',
-            'settings',
-            'saved',
-            'publish',
-          ],
+          ['transport', 'fullscreen', 'settings', 'saved', 'publish'],
           [...MULTATOR_TOOLS, 'brush-sizes', 'color'],
         ],
       },

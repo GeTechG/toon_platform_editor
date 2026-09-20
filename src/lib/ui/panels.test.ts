@@ -180,16 +180,19 @@ describe('one arrangement for everybody', () => {
     // The keys it never had stay on the shelf.
     expect(multator.hidden).toContain('export');
     expect(multator.hidden).toContain(toolItem('lasso'));
+    // The extras that are not in the reference's lines stay there too.
+    for (const id of ['drafts', 'history', 'onion', 'fps']) {
+      expect(multator.hidden).toContain(id);
+    }
   });
 
   test('Multator places the rows where the reference put them', () => {
     const { rows } = presets.presetPanels('multator');
     // `+` and `×` sit immediately left of the strip, and nothing else is up there.
     expect(rows[0]).toEqual(['add-frame', 'delete-frame', 'timeline']);
-    // The reference's second line reads ▶ 💾 ◁ — play, the saves, undo — and
-    // ends on the button that sends the film off.
-    expect(rows[1].slice(0, 3)).toEqual(['transport', 'drafts', 'history']);
-    expect(rows[1].at(-1)).toBe('publish');
+    // The second line is play, then the keys the reference had no place for,
+    // and it ends on the button that sends the film off.
+    expect(rows[1]).toEqual(['transport', 'fullscreen', 'settings', 'saved', 'publish']);
     // The drawing line reads left to right: the tools, the dots, the colours.
     expect(rows[2]).toEqual([
       toolItem('pencil'),
