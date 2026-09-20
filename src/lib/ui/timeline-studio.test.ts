@@ -125,6 +125,14 @@ describe('bottom panel divider', () => {
     expect(editorUi).toMatch(/\.editor input \{[^}]*user-select: text/s);
   });
 
+  it('the rows keep room for the paint outside their boxes', () => {
+    // A scroll box clips at its padding edge: without this the active ring
+    // and the key shadows are shaved off at the panel's edge.
+    expect(editorUi).toMatch(/\.studio \.toolbar \{[^}]*padding: var\(--bleed\);[^}]*margin: calc\(-1 \* var\(--bleed\)\);/s);
+    // The token is what a control paints outside its box — the focus ring.
+    expect(editorUi).toMatch(/--bleed: 6px;/);
+  });
+
   it('the floor grows with every row the arrangement adds', () => {
     // 151px is written for a strip and one row; a third row needs its own
     // height or it is cut off at the bottom edge.

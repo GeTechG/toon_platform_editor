@@ -1745,6 +1745,11 @@
     --r-md: 14px;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
     --key-h: 2.75rem;
+    /* How far a control paints outside its own box: the focus ring (3px at
+       2px offset) is the widest, then the active swatch's 2px ring and the
+       key's 2px shadow. Anything that scrolls has to leave this much room,
+       or it shaves those off at its edge. */
+    --bleed: 6px;
 
     /* Frame for the floating windows: they live over the whole editor, not
        over the canvas, so folding a column does not move them. */
@@ -1888,7 +1893,13 @@
     gap: 0.55rem;
   }
   .studio .toolbar {
+    /* The rows scroll when they have to, and a scroll box clips at its own
+       padding edge — which shaved the electric ring and the drop shadow off
+       the keys and swatches sitting against it. The padding gives that paint
+       its room; the negative margin puts the rows back where they were. */
     overflow-y: auto;
+    padding: var(--bleed);
+    margin: calc(-1 * var(--bleed));
   }
   /* The timeline is the row that takes the height the divider hands out. */
   .studio .toolbar {
