@@ -5,8 +5,10 @@
    * to put it away. Pointer Events, not HTML5 drag-and-drop, so a touch screen
    * can do it too (same call as LayerRows).
    *
-   * Nothing here is the only way to rearrange: the settings sheet holds the
-   * same moves as selects and arrows (WCAG 2.2 AA 2.5.7).
+   * This is the only way to rearrange: the settings sheet used to repeat the
+   * same moves as selects and arrows, and the list went (nobody used it).
+   * Deliberate — drawing needs a pointer anyway, so a keyboard path to the
+   * panels lets nobody in who was not already in.
    */
   import type { EditorState } from './editor-state.svelte';
   import { dropPlacement, rowEdge, type Box } from './arrange';
