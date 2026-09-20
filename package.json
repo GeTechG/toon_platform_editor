@@ -12,6 +12,11 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./icon": {
+      "types": "./src/lib/ui/Icon.svelte",
+      "svelte": "./src/lib/ui/Icon.svelte",
+      "default": "./src/lib/ui/Icon.svelte"
+    },
     "./player": {
       "types": "./src/player.ts",
       "svelte": "./src/player.ts",

@@ -5,6 +5,7 @@
    * palette box is its own item — PaletteBox.
    */
   import type { EditorState } from './editor-state.svelte';
+  import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -48,14 +49,14 @@
     onclick={() => editor.swapColors()}
     title="Поменять контур и заливку местами (X)"
     aria-label="Поменять контур и заливку местами"
-  >⇄</button>
+  ><Icon name="swap" /></button>
   {#if editor.ux.colorGrid}
     <button
       class="key icon"
       onclick={() => editor.addCurrentColorToPalette()}
       title="Добавить текущий цвет в палитру"
       aria-label="Добавить текущий цвет в палитру"
-    >+</button>
+    ><Icon name="plus" /></button>
     <div class="grid" role="group" aria-label="Палитра">
       {#each editor.palette as color (color)}
         <button

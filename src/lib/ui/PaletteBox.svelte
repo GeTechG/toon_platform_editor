@@ -171,7 +171,7 @@
       onclick={() => editor.swapColors()}
       title="Поменять контур и заливку местами (X)"
       aria-label="Поменять контур и заливку местами"
-    >⇄</button>
+    ><Icon name="swap" size={16} /></button>
   </div>
 
   {#if section === 'saved'}
@@ -270,7 +270,7 @@
   <div class="box preview" role="dialog" aria-label="Палитра {preview.name || 'Новая палитра'}">
     <div class="preview-head">
       <strong>{preview.name || 'Новая палитра'}</strong>
-      <button class="close" onclick={() => (preview = null)} aria-label="Закрыть">✕</button>
+      <button class="close" onclick={() => (preview = null)} aria-label="Закрыть"><Icon name="x" size={16} /></button>
     </div>
     <div class="grid preview-grid" role="group" aria-label="Цвета палитры">
       {#each preview.colours as c, i (i)}
@@ -375,6 +375,8 @@
   }
   .swap {
     position: absolute;
+    display: grid;
+    place-items: center;
     top: 50%;
     left: 50%;
     width: 28px;
@@ -514,6 +516,7 @@
     white-space: nowrap;
   }
   .close {
+    display: flex;
     padding: 0.1rem 0.4rem;
     border: none;
     background: transparent;

@@ -7,6 +7,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
   import { draggable } from './draggable';
+  import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -20,7 +21,7 @@
     onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, -1))}
     title="Отдалить"
     aria-label="Отдалить"
-  >−</button>
+  ><Icon name="minus" size={16} /></button>
   <button
     class="value"
     onclick={() => editor.resetView()}
@@ -33,7 +34,7 @@
     onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, 1))}
     title="Приблизить"
     aria-label="Приблизить"
-  >+</button>
+  ><Icon name="plus" size={16} /></button>
 </div>
 
 <style>
@@ -61,9 +62,9 @@
   }
   .step {
     flex: none;
+    display: grid;
+    place-items: center;
     width: 28px;
-    font-size: 15px;
-    line-height: 1;
   }
   .value {
     flex: 1;

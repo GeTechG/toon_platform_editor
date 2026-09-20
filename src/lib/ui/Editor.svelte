@@ -1198,14 +1198,14 @@
           onclick={() => editor.selectFrame(0)}
           title="На первый кадр"
           aria-label="На первый кадр"
-        >⏮</button>
+        ><Icon name="frame-first" /></button>
         <button
           class="key icon"
           disabled={editor.playing}
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
           title="Предыдущий кадр"
           aria-label="Предыдущий кадр"
-        >⏴</button>
+        ><Icon name="frame-prev" /></button>
       <PlayControls bind:this={playControls} {editor} />
         <button
           class="key icon"
@@ -1213,14 +1213,14 @@
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
           title="Следующий кадр"
           aria-label="Следующий кадр"
-        >⏵</button>
+        ><Icon name="frame-next" /></button>
         <button
           class="key icon ends"
           disabled={editor.playing || editor.activeFrame >= lastFrame}
           onclick={() => editor.selectFrame(lastFrame)}
           title="На последний кадр"
           aria-label="На последний кадр"
-        >⏭</button>
+        ><Icon name="frame-last" /></button>
     </div>
   {:else if id === 'add-frame'}
     <button

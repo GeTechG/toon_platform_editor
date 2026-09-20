@@ -4,7 +4,13 @@
   // on a 24-unit grid.
   export type IconName =
     | 'plus'
+    | 'minus'
     | 'x'
+    | 'swap'
+    | 'flip-h'
+    | 'flip-v'
+    | 'move-vertical'
+    | 'arrow-left'
     | 'trash'
     | 'pencil'
     | 'eraser'
@@ -16,7 +22,12 @@
     | 'download'
     | 'send'
     | 'play'
+    | 'pause'
     | 'stop'
+    | 'frame-first'
+    | 'frame-prev'
+    | 'frame-next'
+    | 'frame-last'
     | 'undo'
     | 'redo'
     | 'onion'
@@ -43,6 +54,17 @@
 
   const PATHS: Record<IconName, string> = {
     plus: 'M12 3v18M3 12h18',
+    minus: 'M3 12h18',
+    // Two arrows passing each other: outline and fill trade places.
+    swap: 'M4 9h13M14 6l3 3-3 3M20 15H7M10 12l-3 3 3 3',
+    // A sheet with its mirror across a dashed axis — the reference's ⇋ and ⇅.
+    'flip-h':
+      'M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 2v2M12 8v2M12 14v2M12 20v2',
+    'flip-v':
+      'M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3M2 12h2M8 12h2M14 12h2M20 12h2',
+    // The drag handle on a layer row: this moves up and down.
+    'move-vertical': 'M8 7l4-4 4 4M12 3v18M8 17l4 4 4-4',
+    'arrow-left': 'M19 12H5M12 19l-7-7 7-7',
     trash:
       'M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3',
     x: 'M6 6l12 12M18 6L6 18',
@@ -73,6 +95,12 @@
     note: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
     send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z',
     play: 'M8 5.5v13l11-6.5-11-6.5Z',
+    pause: 'M9 6v12M15 6v12',
+    // Transport: a step of one frame, and the jump to either end of the strip.
+    'frame-prev': 'M15 6v12l-9-6 9-6Z',
+    'frame-next': 'M9 6v12l9-6-9-6Z',
+    'frame-first': 'M6 6v12M19 6v12l-9-6 9-6Z',
+    'frame-last': 'M18 6v12M5 6v12l9-6-9-6Z',
     undo: 'M3 7v6h6M21 17a9 9 0 0 0-15-6.7L3 13',
     redo: 'M21 7v6h-6M3 17a9 9 0 0 1 15-6.7L21 13',
     stop: 'M6.5 6.5h11v11h-11Z',

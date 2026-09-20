@@ -62,8 +62,8 @@
     </div>
 
     <div class="row">
-      <button class="key" onclick={() => editor.mirrorTransform('horizontal')} aria-label="Отразить по горизонтали (H)" title="Отразить по горизонтали (H)">⇋</button>
-      <button class="key" onclick={() => editor.mirrorTransform('vertical')} aria-label="Отразить по вертикали (Shift+H)" title="Отразить по вертикали (Shift+H)">⇅</button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label="Отразить по горизонтали (H)" title="Отразить по горизонтали (H)"><Icon name="flip-h" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label="Отразить по вертикали (Shift+H)" title="Отразить по вертикали (Shift+H)"><Icon name="flip-v" /></button>
       <button class="key icon" onclick={() => editor.undoTransform()} disabled={!editor.canUndoTransform} aria-label="Шаг назад" title="Шаг назад"><Icon name="undo" /></button>
       <button class="key icon" onclick={() => editor.redoTransform()} disabled={!editor.canRedoTransform} aria-label="Шаг вперёд" title="Шаг вперёд"><Icon name="redo" /></button>
     </div>

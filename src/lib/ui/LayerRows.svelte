@@ -341,7 +341,7 @@
           role="presentation"
           title="Перетащить слой (Alt+↑ / Alt+↓)"
           onpointerdown={(e) => onHandleDown(e, layerIndex)}
-        >⇕</span>
+        ><Icon name="move-vertical" size={16} /></span>
 
         <button
           class="kill"
