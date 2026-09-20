@@ -14,17 +14,29 @@ export interface Box {
   bottom: number;
 }
 
+/** Which side of which box the drop line is drawn on. */
+export type Edge = 'left' | 'right' | 'top' | 'bottom';
+
+export interface Placement {
+  /** Index in the panel the item would take. */
+  index: number;
+  /** The box the line sits against, or null for an empty panel. */
+  box: Box | null;
+  edge: Edge;
+}
+
 /**
- * The index a drop at (x, y) should insert at, among boxes laid out in any
- * direction — a row, a column or a wrapping grid.
+ * Where a drop at (x, y) lands among boxes laid out in any direction — a row,
+ * a column or a wrapping grid.
  *
  * The nearest box decides, and the pointer goes before or after it along
  * whichever axis it is further from the middle on: past the right edge of a
- * tall key is "after", above the top of a wide strip is "before".
+ * tall key is "after", above the top of a wide strip is "before". That axis is
+ * also the one the line is drawn on, so what the eye sees is what the drop does.
  */
-export function insertIndex(boxes: readonly Box[], x: number, y: number): number {
+export function dropPlacement(boxes: readonly Box[], x: number, y: number): Placement {
   if (boxes.length === 0) {
-    return 0;
+    return { index: 0, box: null, edge: 'left' };
   }
   let best = 0;
   let bestDistance = Infinity;
@@ -42,6 +54,16 @@ export function insertIndex(boxes: readonly Box[], x: number, y: number): number
   const dy = y - (box.top + box.bottom) / 2;
   const width = Math.max(1, box.right - box.left);
   const height = Math.max(1, box.bottom - box.top);
-  const after = Math.abs(dx) / width >= Math.abs(dy) / height ? dx >= 0 : dy >= 0;
-  return after ? best + 1 : best;
+  const horizontal = Math.abs(dx) / width >= Math.abs(dy) / height;
+  const after = horizontal ? dx >= 0 : dy >= 0;
+  return {
+    index: after ? best + 1 : best,
+    box,
+    edge: horizontal ? (after ? 'right' : 'left') : (after ? 'bottom' : 'top'),
+  };
+}
+
+/** The index a drop at (x, y) should insert at. */
+export function insertIndex(boxes: readonly Box[], x: number, y: number): number {
+  return dropPlacement(boxes, x, y).index;
 }

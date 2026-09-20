@@ -9,23 +9,41 @@
    * same moves as selects and arrows (WCAG 2.2 AA 2.5.7).
    */
   import type { EditorState } from './editor-state.svelte';
-  import { insertIndex, type Box } from './arrange';
-  import { SLOT_LABELS, panelItem, type PanelLayout, type PanelSlot } from './panels';
+  import { dropPlacement, type Box } from './arrange';
+  import { SLOT_LABELS, panelItem, type PanelSlot } from './panels';
 
   let { editor }: { editor: EditorState } = $props();
 
-  /** The arrangement as it was when this drag began, so Escape can undo it. */
-  let before: PanelLayout | null = null;
-  let drag = $state<
-    | {
-        pointerId: number;
-        id: string;
-        /** Pointer offset inside the item, so a float lands under the hand. */
-        dx: number;
-        dy: number;
-      }
-    | null
-  >(null);
+  /** How far the pointer travels before a press counts as a drag, in px. */
+  const DRAG_THRESHOLD = 4;
+
+  interface Drag {
+    pointerId: number;
+    id: string;
+    /** Where the press started, for the threshold. */
+    fromX: number;
+    fromY: number;
+    /** Pointer offset inside the item, so a float lands under the hand. */
+    dx: number;
+    dy: number;
+    /** Live pointer position — the ghost follows it. */
+    x: number;
+    y: number;
+    /** Past the threshold: the ghost and the line are up. */
+    moved: boolean;
+  }
+
+  /** Where the item would land if the hand let go now. */
+  interface Target {
+    slot: PanelSlot;
+    index: number;
+    /** Viewport rectangle for the drop line, or the panel to outline. */
+    line: { left: number; top: number; width: number; height: number } | null;
+    panel: { left: number; top: number; width: number; height: number };
+  }
+
+  let drag = $state<Drag | null>(null);
+  let target = $state<Target | null>(null);
 
   const dragLabel = $derived(drag ? panelItem(drag.id)?.label ?? drag.id : '');
 
@@ -39,8 +57,17 @@
       return;
     }
     const rect = handle.getBoundingClientRect();
-    before = $state.snapshot(editor.panels);
-    drag = { pointerId: e.pointerId, id, dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+    drag = {
+      pointerId: e.pointerId,
+      id,
+      fromX: e.clientX,
+      fromY: e.clientY,
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+    };
     e.preventDefault();
   }
 
@@ -48,54 +75,84 @@
     if (!drag || e.pointerId !== drag.pointerId) {
       return;
     }
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    if (!drag.moved) {
+      const far = Math.abs(e.clientX - drag.fromX) > DRAG_THRESHOLD
+        || Math.abs(e.clientY - drag.fromY) > DRAG_THRESHOLD;
+      if (!far) {
+        return;
+      }
+      drag.moved = true;
+    }
     e.preventDefault();
-    drop(e.clientX, e.clientY, false);
+    // Nothing in the panels moves while the hand is travelling: re-sorting
+    // them under the pointer changes what is nearest and the item jitters
+    // between two places. Only the ghost and the line follow.
+    target = aim(e.clientX, e.clientY);
   }
 
   function onPointerUp(e: PointerEvent): void {
     if (!drag || e.pointerId !== drag.pointerId) {
       return;
     }
-    drop(e.clientX, e.clientY, true);
+    if (drag.moved && target) {
+      settle(target, e.clientX, e.clientY);
+    }
     drag = null;
-    before = null;
+    target = null;
   }
 
-  /** Puts the dragged item where the pointer is; `settle` also writes it down. */
-  function drop(x: number, y: number, settle: boolean): void {
+  /** The drop the pointer is over now — measured, never applied. */
+  function aim(x: number, y: number): Target | null {
+    if (!drag) {
+      return null;
+    }
+    const panelEl = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-slot]');
+    const slot = panelEl?.dataset.slot as PanelSlot | undefined;
+    if (!panelEl || !slot) {
+      return null;
+    }
+    const panel = box(panelEl.getBoundingClientRect());
+    if (slot === 'float') {
+      return { slot, index: 0, line: null, panel };
+    }
+    const siblings = [...panelEl.querySelectorAll<HTMLElement>(':scope > [data-item]')]
+      .filter((node) => node.dataset.item !== drag?.id);
+    const boxes: Box[] = siblings.map((node) => node.getBoundingClientRect());
+    const placement = dropPlacement(boxes, x, y);
+    if (!placement.box) {
+      return { slot, index: 0, line: null, panel };
+    }
+    const b = placement.box;
+    const vertical = placement.edge === 'left' || placement.edge === 'right';
+    return {
+      slot,
+      index: placement.index,
+      line: vertical
+        ? { left: (placement.edge === 'left' ? b.left : b.right) - 1.5, top: b.top, width: 3, height: b.bottom - b.top }
+        : { left: b.left, top: (placement.edge === 'top' ? b.top : b.bottom) - 1.5, width: b.right - b.left, height: 3 },
+      panel,
+    };
+  }
+
+  /** One move, once, when the hand lets go. */
+  function settle(to: Target, x: number, y: number): void {
     if (!drag) {
       return;
     }
-    const target = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-slot]');
-    const slot = target?.dataset.slot as PanelSlot | undefined;
-    if (!target || !slot) {
-      return;
-    }
-    if (slot === 'float') {
-      const stage = target.getBoundingClientRect();
-      const left = x - stage.left - drag.dx;
-      const top = y - stage.top - drag.dy;
-      // Every move would otherwise be a write to storage: the position is
-      // kept live and only put down when the hand lets go.
-      if (settle) {
-        editor.setFloatPos(drag.id, left, top);
-      } else {
-        editor.floatPos = { ...editor.floatPos, [drag.id]: { x: Math.round(left), y: Math.round(top) } };
-      }
+    if (to.slot === 'float') {
+      editor.setFloatPos(drag.id, x - to.panel.left - drag.dx, y - to.panel.top - drag.dy);
       if (!editor.panels.float.includes(drag.id)) {
         editor.movePanelItem(drag.id, 'float');
       }
       return;
     }
-    const siblings = [...target.querySelectorAll<HTMLElement>(':scope > [data-item]')]
-      .filter((node) => node.dataset.item !== drag?.id);
-    const boxes: Box[] = siblings.map((node) => node.getBoundingClientRect());
-    const index = insertIndex(boxes, x, y);
-    const current = editor.panels[slot].filter((id) => id !== drag?.id);
-    if (editor.panels[slot][index] === drag.id || current[index - 1] === drag.id) {
-      return; // already there — do not churn the layout under the pointer
-    }
-    editor.movePanelItem(drag.id, slot, index);
+    editor.movePanelItem(drag.id, to.slot, to.index);
+  }
+
+  function box(rect: DOMRect): { left: number; top: number; width: number; height: number } {
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
   }
 
   function onKeydown(e: KeyboardEvent): void {
@@ -103,10 +160,10 @@
       return;
     }
     e.preventDefault();
-    if (drag && before) {
-      editor.setPanels(before);
+    if (drag) {
+      // Nothing was applied, so letting go of the drag is the whole undo.
       drag = null;
-      before = null;
+      target = null;
       return;
     }
     editor.arranging = false;
@@ -138,6 +195,24 @@
   onpointercancel={onPointerUp}
   onkeydown={onKeydown}
 />
+
+{#if drag?.moved}
+  <!-- The ghost under the hand and the line where it would land; both are
+       see-through to the pointer, so the hit test reads the panels. -->
+  <span class="ghost" style="left: {drag.x + 12}px; top: {drag.y + 12}px">{dragLabel}</span>
+  {#if target}
+    <div
+      class="drop-panel"
+      style="left: {target.panel.left}px; top: {target.panel.top}px; width: {target.panel.width}px; height: {target.panel.height}px"
+    ></div>
+    {#if target.line}
+      <div
+        class="drop-line"
+        style="left: {target.line.left}px; top: {target.line.top}px; width: {target.line.width}px; height: {target.line.height}px"
+      ></div>
+    {/if}
+  {/if}
+{/if}
 
 <div class="arrange-bar" role="region" aria-label="Расположение панелей">
   <p class="arrange-hint">
@@ -207,6 +282,33 @@
 </div>
 
 <style>
+  .ghost,
+  .drop-line,
+  .drop-panel {
+    position: fixed;
+    z-index: 40;
+    pointer-events: none;
+  }
+  .ghost {
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: var(--electric);
+    color: var(--canvas);
+    font-size: 0.82rem;
+    font-weight: 650;
+    white-space: nowrap;
+    box-shadow: 0 6px 16px rgba(15, 23, 60, 0.3);
+  }
+  .drop-line {
+    border-radius: 2px;
+    background: var(--electric);
+  }
+  /* The panel that would take it, so a drop is never a guess. */
+  .drop-panel {
+    border: 2px solid var(--electric);
+    border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--electric) 8%, transparent);
+  }
   /* A strip over the editor, not a dialog: the panels behind it stay usable
      as drop targets, which is the whole point of the mode. */
   .arrange-bar {

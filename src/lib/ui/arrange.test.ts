@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { insertIndex, type Box } from './arrange';
+import { dropPlacement, insertIndex, type Box } from './arrange';
 
 /** A row of three 40px-wide boxes at y 0..40. */
 const row: Box[] = [
@@ -40,6 +40,29 @@ describe('where a dragged item lands', () => {
   });
 });
 
+describe('what the drop indicator draws', () => {
+  test('it names the edge the line goes on', () => {
+    expect(dropPlacement(row, 5, 20)).toMatchObject({ index: 0, edge: 'left' });
+    // Nearest is the middle box, and the pointer is past its right edge —
+    // the same gap as "before the third", drawn on the side the eye is on.
+    expect(dropPlacement(row, 75, 20)).toMatchObject({ index: 2, edge: 'right' });
+    expect(dropPlacement(row, 200, 20)).toMatchObject({ index: 3, edge: 'right' });
+    expect(dropPlacement(column, 20, 45)).toMatchObject({ index: 1, edge: 'top' });
+    expect(dropPlacement(column, 20, 300)).toMatchObject({ index: 3, edge: 'bottom' });
+  });
+
+  test('it hands back the box the line sits on, and none for an empty panel', () => {
+    expect(dropPlacement(row, 75, 20).box).toEqual(row[1]);
+    expect(dropPlacement([], 10, 10).box).toBeNull();
+  });
+
+  test('the index it gives is the one a drop uses', () => {
+    for (const [x, y] of [[5, 20], [45, 20], [75, 20], [200, 20]]) {
+      expect(dropPlacement(row, x, y).index).toBe(insertIndex(row, x, y));
+    }
+  });
+});
+
 // --- Wiring ---------------------------------------------------------------
 // Svelte/runes glue is asserted as source (the contract style this folder
 // uses); the geometry above runs for real.
@@ -67,10 +90,14 @@ describe('arranging happens in the editor itself', () => {
     expect(arranger).toContain('pointermove');
     expect(arranger).toContain('pointerup');
     expect(arranger).not.toContain('dragstart');
-    expect(arranger).toContain('insertIndex(');
     expect(arranger).toContain('elementFromPoint');
     // Escape puts the arrangement back the way it was.
     expect(arranger).toContain("'Escape'");
+    // Nothing moves until the hand lets go: a live-applied drag re-sorts the
+    // panel under the pointer and the item jitters between two places.
+    expect(arranger).toContain('dropPlacement(');
+    expect(arranger).toContain('DRAG_THRESHOLD');
+    expect(arranger).toContain('drop-line');
   });
 
   test('a window dropped on the canvas floats, and remembers where', () => {
