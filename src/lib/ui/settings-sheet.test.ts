@@ -280,3 +280,16 @@ describe('the mega-eraser warns once a session', () => {
     expect(block).toContain('saveNow()');
   });
 });
+
+describe('the tool rail wears one colour', () => {
+  it('no tool is singled out by a colour of its own', () => {
+    // The pencil used to carry the Signal Rule's red inside the rail, which
+    // put one odd-coloured key among identical neighbours.
+    expect(tools).not.toContain('class:draw');
+    expect(editorUi).not.toContain('.key.active.draw');
+  });
+
+  it('an active key is opaque, so nothing shows through its tint', () => {
+    expect(editorUi).toMatch(/\.key\.active\)\s*\{\s*background: color-mix\(in srgb, var\(--electric\) \d+%, var\(--canvas\)\)/);
+  });
+});

@@ -43,12 +43,9 @@
 {#if editor.features.tools}
   <div class="tools" role="group" aria-label="Инструменты">
     {#each tools as t (t.id)}
-      <!-- `draw` marks the one tool that *is* the "draw" action, so the
-           Signal Rule's single red lands on it and nowhere else. -->
       <button
         class="key icon"
         class:active={editor.tool === t.id}
-        class:draw={t.id === 'pencil'}
         aria-pressed={editor.tool === t.id}
         onclick={() => editor.selectTool(t.id)}
         data-key={t.key}

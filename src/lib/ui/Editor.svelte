@@ -2180,7 +2180,7 @@
     box-shadow: 0 2px 0 var(--hairline);
   }
   .editor :global(.key.active) {
-    background: var(--ghost-2);
+    background: color-mix(in srgb, var(--electric) 10%, var(--canvas));
     border-color: var(--electric);
     color: var(--electric);
     box-shadow: 0 2px 0 var(--electric-dark);
@@ -2190,23 +2190,6 @@
   }
   .editor :global(.key.active:active:not(:disabled)) {
     box-shadow: 0 0 0 var(--electric-dark);
-  }
-  /* The Signal Rule: the one red in the system belongs to "draw", and in the
-     editor that is the pencil — not the ship action, which stays electric.
-     Icon reads 3.63:1 on the tint (graphics need 3:1). */
-  .editor :global(.key.active.draw) {
-    background: color-mix(in srgb, var(--signal) 10%, transparent);
-    border-color: var(--signal-dark);
-    color: var(--signal-dark);
-    box-shadow: 0 2px 0 var(--signal-dark);
-  }
-  .editor :global(.key.active.draw:hover:not(:disabled)) {
-    background: color-mix(in srgb, var(--signal) 16%, transparent);
-    border-color: var(--signal-dark);
-    box-shadow: 0 1px 0 var(--signal-dark);
-  }
-  .editor :global(.key.active.draw:active:not(:disabled)) {
-    box-shadow: 0 0 0 var(--signal-dark);
   }
   /* Primary key: the one positive "ship" action — electric physical key. It
      keeps the shared footprint and is set apart by the electric fill and a
