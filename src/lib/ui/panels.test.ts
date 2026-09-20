@@ -140,34 +140,32 @@ describe('one arrangement for everybody', () => {
     expect(panels.hidden).toContain('brush-sizes');
   });
 
-  test('a preset starts from the same panels, with its own set in them', () => {
+  test('a preset starts from its own set, on the same machinery', () => {
     const toonop = presets.presetPanels('toonop');
     expect(toonop).toEqual(defaultPanels());
 
     const multator = presets.presetPanels('multator');
-    // Same slots, same machinery — fewer things placed.
-    expect(multator.left).toContain(toolItem('pencil'));
-    expect(multator.rows[0]).toEqual(['timeline']);
+    // Every item is accounted for in both, just placed differently.
     expect(allPlaced(multator).sort()).toEqual(allPlaced(toonop).sort());
     expect(multator.hidden.length).toBeGreaterThan(toonop.hidden.length);
   });
 
-  test('Multator swaps the palette box for its own colour widget', () => {
+  test('Multator keeps everything under the canvas, like the reference', () => {
     const multator = presets.presetPanels('multator');
+    expect(multator.left).toEqual([]);
+    expect(multator.right).toEqual([]);
+    expect(multator.rows).toHaveLength(3);
+    expect(multator.rows[0]).toContain('timeline');
+    expect(multator.rows[1]).toContain('transport');
+    // Its own widgets: the colour pair and the row of dots, not the boxes.
+    expect(multator.rows[2]).toContain('color');
+    expect(multator.rows[2]).toContain('brush-sizes');
+    expect(multator.rows[2][0]).toBe(toolItem('pencil'));
     expect(multator.hidden).toContain('palette');
-    expect(multator.right).toContain('color');
-    // …and the slider box for the reference's row of dots.
     expect(multator.hidden).toContain('brush');
-    expect(multator.right).toContain('brush-sizes');
     // The keys it never had stay on the shelf.
     expect(multator.hidden).toContain('export');
     expect(multator.hidden).toContain(toolItem('lasso'));
-  });
-
-  test('the swapped widget takes the place of the one it replaces', () => {
-    const multator = presets.presetPanels('multator');
-    const toonop = presets.presetPanels('toonop');
-    expect(multator.right.indexOf('color')).toBe(toonop.right.indexOf('palette'));
   });
 });
 

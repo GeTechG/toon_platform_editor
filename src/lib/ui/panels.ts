@@ -229,17 +229,7 @@ export function allPlaced(layout: PanelLayout): string[] {
  * the buttons are. Anything not placed here waits on the shelf.
  */
 export function defaultPanels(): PanelLayout {
-  const base = DEFAULT;
-  const next: PanelLayout = {
-    left: [...base.left],
-    right: [...base.right],
-    rows: base.rows.map((row) => [...row]),
-    float: [],
-    hidden: [],
-  };
-  const placed = new Set(allPlaced(next));
-  next.hidden = PANEL_ITEMS.filter((item) => !placed.has(item.id)).map((item) => item.id);
-  return next;
+  return layoutOf(DEFAULT);
 }
 
 /** What sits in a slot; a row that does not exist yet holds nothing. */
@@ -286,12 +276,14 @@ export function slotOf(layout: PanelLayout, id: string): { slot: PanelSlot; inde
  * own colour pair rather than the palette box).
  */
 export interface PresetPanels {
+  /** Its own starting arrangement, when the default is not the shape it wants. */
+  readonly base?: Partial<Omit<PanelLayout, 'hidden'>>;
   readonly hide?: readonly string[];
   readonly swap?: readonly (readonly [string, string])[];
 }
 
 export function panelsFrom(patch: PresetPanels = {}): PanelLayout {
-  let panels = defaultPanels();
+  let panels = patch.base ? layoutOf(patch.base) : defaultPanels();
   for (const [was, now] of patch.swap ?? []) {
     const at = slotOf(panels, was);
     if (!at) {
@@ -304,6 +296,20 @@ export function panelsFrom(patch: PresetPanels = {}): PanelLayout {
     panels = hidePanelItem(panels, id);
   }
   return panels;
+}
+
+/** A layout written out in full: everything it does not place waits on the shelf. */
+function layoutOf(base: Partial<Omit<PanelLayout, 'hidden'>>): PanelLayout {
+  const next: PanelLayout = {
+    left: [...(base.left ?? [])],
+    right: [...(base.right ?? [])],
+    rows: (base.rows ?? []).map((row) => [...row]),
+    float: [...(base.float ?? [])],
+    hidden: [],
+  };
+  const placed = new Set(allPlaced(next));
+  next.hidden = PANEL_ITEMS.filter((item) => !placed.has(item.id)).map((item) => item.id);
+  return next;
 }
 
 export function panelItem(id: string): PanelItem | undefined {

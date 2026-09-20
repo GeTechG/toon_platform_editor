@@ -203,6 +203,9 @@ export interface UiConfig {
 // profile, which it owns outright; Multator and Toonio reproduce their
 // reference editors end to end. A preset owns behaviour only — where the
 // buttons sit is the arrangement's business, and the same for all of them.
+/** The keys the reference draws, in its own order (`ToolPanel.hx`). */
+const MULTATOR_TOOLS = ['pencil', 'eraser', 'pipette'].map((tool) => `tool:${tool}`);
+
 export const PRESETS: {
   id: string;
   label: string;
@@ -217,12 +220,18 @@ export const PRESETS: {
     label: 'Multator',
     drawingProfile: 'multator',
     ux: 'multator',
-    // The reference is a smaller editor: two colours instead of the palette
-    // box, a row of dots instead of the sliders, and none of the keys it
-    // never had (sound, GIF export, cell clipboard, the manual).
+    // The reference is a smaller editor and keeps everything under the
+    // canvas: frames, then the transport, then the drawing row — two colours
+    // instead of the palette box, a row of dots instead of the sliders, and
+    // none of the keys it never had (sound, GIF export, cell clipboard).
     panels: {
-      swap: [['palette', 'color'], ['brush', 'brush-sizes']],
-      hide: ['export', 'audio', 'copy', 'paste', 'merge', 'pick-source', 'manual'],
+      base: {
+        rows: [
+          ['history', 'add-frame', 'delete-frame', 'timeline'],
+          ['transport', 'onion', 'fps', 'zoom', 'saved', 'drafts', 'fullscreen', 'settings', 'publish'],
+          [...MULTATOR_TOOLS, 'color', 'brush-sizes'],
+        ],
+      },
     },
   },
   { id: 'toonio', label: 'Toonio', drawingProfile: 'toonio', ux: 'toonio' },

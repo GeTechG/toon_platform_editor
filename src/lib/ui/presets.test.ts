@@ -126,9 +126,9 @@ test('an old config\'s flags become items put away, unknown ones ignored', () =>
 test('a preset starts from its own set on the same panels', () => {
   expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
   const multator = parseUiConfig('{"preset":"multator"}')?.panels;
-  // Same panels, fewer things in them, its own colour widget.
-  expect(multator?.rows[0]).toEqual(['timeline']);
-  expect(multator?.right).toContain('color');
+  // Everything under the canvas, its own widgets, fewer keys.
+  expect(multator?.left).toEqual([]);
+  expect(multator?.rows[2]).toContain('color');
   expect(multator?.hidden).toContain('export');
 });
 

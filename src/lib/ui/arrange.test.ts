@@ -102,6 +102,14 @@ describe('arranging happens in the editor itself', () => {
     expect(state).toContain('floatPos = $state');
   });
 
+  test('a panel with nothing in it is not drawn at all', () => {
+    // The columns already go; the bottom panel goes the same way, so an
+    // arrangement that empties it gives the canvas the room.
+    expect(editorUi).toContain('editor.panels.left.length > 0 || editor.arranging');
+    expect(editorUi).toContain('editor.panels.right.length > 0 || editor.arranging');
+    expect(editorUi).toContain('editor.panels.rows.length > 0 || editor.arranging');
+  });
+
   test('every panel is a drop target and every item is a handle', () => {
     for (const slot of ['left', 'right', 'float']) {
       expect(editorUi).toContain(`data-slot="${slot}"`);

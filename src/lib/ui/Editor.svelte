@@ -1494,6 +1494,8 @@
     </aside>
     {@render sideEdge('right', 'Палитра и кисть')}
   {/if}
+  <!-- A panel with nothing in it is not drawn — the canvas takes the room. -->
+  {#if editor.panels.rows.length > 0 || editor.arranging}
   <div
     class="panel"
     class:collapsed={panelFolded}
@@ -1544,6 +1546,7 @@
       </div>
     {/if}
   </div>
+  {/if}
 
   <!-- Items taken off the panels: windows over the whole editor — the canvas
        and the panels alike — so folding a column never moves them. -->
