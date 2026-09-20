@@ -71,6 +71,19 @@ describe('every tool is its own item', () => {
   });
 });
 
+describe('the transport is one item', () => {
+  test('the step keys travel with play, not as items of their own', () => {
+    expect(panelItem('steps-back')).toBeUndefined();
+    expect(panelItem('steps-forward')).toBeUndefined();
+    expect(panelItem('transport')?.label).toBe('Управление воспроизведением');
+  });
+
+  test('a layout saved when they were separate loses them, keeping play', () => {
+    const stored = { ...defaultPanels('studio'), bar: ['steps-back', 'transport', 'steps-forward'] };
+    expect(normalizePanels(stored, 'studio').bar[0]).toBe('transport');
+  });
+});
+
 describe('the gear and the publish key', () => {
   test('both are items like everything else, at the end of the bar', () => {
     expect(panelItem('settings')?.kind).toBe('action');
@@ -112,7 +125,7 @@ describe('the default layouts', () => {
     expect(studio.left).toContain(toolItem('pencil'));
     expect(studio.right).toContain('palette');
     expect(studio.bottom).toEqual(['timeline']);
-    expect(studio.bar[0]).toBe('steps-back');
+    expect(studio.bar[0]).toBe('transport');
   });
 
   test('the bar layout keeps its drawing row and leaves the columns empty', () => {

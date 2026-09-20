@@ -1180,38 +1180,44 @@
     <div class="timeline">
       <Timeline {editor} />
     </div>
-  {:else if id === 'steps-back'}
-    <button
-      class="key icon ends"
-      disabled={editor.playing || editor.activeFrame === 0}
-      onclick={() => editor.selectFrame(0)}
-      title="На первый кадр"
-      aria-label="На первый кадр"
-    >⏮</button>
-    <button
-      class="key icon"
-      disabled={editor.playing}
-      onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
-      title="Предыдущий кадр"
-      aria-label="Предыдущий кадр"
-    >⏴</button>
   {:else if id === 'transport'}
-    <PlayControls bind:this={playControls} {editor} />
-  {:else if id === 'steps-forward'}
-    <button
-      class="key icon"
-      disabled={editor.playing}
-      onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
-      title="Следующий кадр"
-      aria-label="Следующий кадр"
-    >⏵</button>
-    <button
-      class="key icon ends"
-      disabled={editor.playing || editor.activeFrame >= lastFrame}
-      onclick={() => editor.selectFrame(lastFrame)}
-      title="На последний кадр"
-      aria-label="На последний кадр"
-    >⏭</button>
+    <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads.
+         The bar layout has no step keys (the reference gives it play alone). -->
+    <div class="transport-keys" role="group" aria-label="Управление воспроизведением">
+      {#if studio}
+        <button
+          class="key icon ends"
+          disabled={editor.playing || editor.activeFrame === 0}
+          onclick={() => editor.selectFrame(0)}
+          title="На первый кадр"
+          aria-label="На первый кадр"
+        >⏮</button>
+        <button
+          class="key icon"
+          disabled={editor.playing}
+          onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
+          title="Предыдущий кадр"
+          aria-label="Предыдущий кадр"
+        >⏴</button>
+      {/if}
+      <PlayControls bind:this={playControls} {editor} />
+      {#if studio}
+        <button
+          class="key icon"
+          disabled={editor.playing}
+          onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
+          title="Следующий кадр"
+          aria-label="Следующий кадр"
+        >⏵</button>
+        <button
+          class="key icon ends"
+          disabled={editor.playing || editor.activeFrame >= lastFrame}
+          onclick={() => editor.selectFrame(lastFrame)}
+          title="На последний кадр"
+          aria-label="На последний кадр"
+        >⏭</button>
+      {/if}
+    </div>
   {:else if id === 'add-frame'}
     <button
       class="key"
@@ -1961,6 +1967,14 @@
   .editor.arranging .left,
   .editor.arranging .right {
     min-width: 4rem;
+  }
+  /* The transport is one control: its keys keep the row's own spacing so
+     nothing reads as a seam between them. */
+  .transport-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
   }
   /* The pipette's source pair, under the key that opened it. */
   .pick-source {
