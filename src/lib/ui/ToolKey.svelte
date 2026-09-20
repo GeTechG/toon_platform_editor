@@ -4,13 +4,12 @@
    * however many of these the config put in a panel — not a fixed group.
    */
   import type { EditorState } from './editor-state.svelte';
-  import type { SelectableTool } from './ux-profile';
-  import { TOOL_KEYS } from './panels';
+  import { toolSpec } from './panels';
   import Icon from './Icon.svelte';
 
-  let { editor, tool }: { editor: EditorState; tool: SelectableTool } = $props();
+  let { editor, tool }: { editor: EditorState; tool: string } = $props();
 
-  const spec = $derived(TOOL_KEYS[tool]);
+  const spec = $derived(toolSpec(tool));
   // A key is drawn wherever the arrangement puts it — the preset only decided
   // where it started. The pipette is the one exception the references make of
   // themselves: it exists only once the palette is enabled (ToolPanel.hx), and
@@ -23,13 +22,13 @@
   );
 </script>
 
-{#if offered}
+{#if offered && spec}
   <button
     class="key icon"
     class:active={editor.tool === tool}
     aria-pressed={editor.tool === tool}
     onclick={() => editor.selectTool(tool)}
-    data-key={spec.key}
+    data-key={spec.key || undefined}
     title={spec.title}
     aria-label={spec.label}
   >

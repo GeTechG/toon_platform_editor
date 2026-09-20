@@ -84,7 +84,7 @@ describe('the pipette source is a tool window, not a panel key', () => {
     expect(editorUi).toContain('{#if pipetteUp}');
     expect(editorUi).not.toContain('disabled={!pipetteUp}');
     expect(editorUi).not.toContain("id === 'pick-source'");
-    const windows = editorUi.match(/<div class="tool-windows">[^]*?<\/div>\s*\{\/if\}/)?.[0] ?? '';
+    const windows = editorUi.match(/<div class="tool-windows">[^]*?pipetteUp[^]*?<\/div>\s*\{\/if\}/)?.[0] ?? '';
     expect(windows).toContain('editor.setPickSource');
   });
 });

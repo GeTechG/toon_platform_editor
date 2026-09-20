@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
+  import { plugins } from '../plugins';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
@@ -567,13 +568,37 @@
       case ' ':
         playControls?.toggle({ fromActive: e.shiftKey });
         break;
-      default:
-        handled = false;
+      default: {
+        // A plugin's key comes from its manifest, not from a case here: the
+        // register already refused it if something above holds it.
+        const added = plugins.toolByKey(e.key);
+        if (added && !added.builtin) {
+          editor.selectTool(added.id);
+        } else {
+          handled = false;
+        }
+      }
     }
     if (handled) {
       e.preventDefault();
     }
   }
+
+  // Plugins come from the address in the settings, and follow it when it
+  // changes: an author pointing the editor at a local build should not have to
+  // reload the page to see their own tool.
+  $effect(() => {
+    void editor.reloadPlugins(editor.settings.pluginRegistry);
+  });
+
+  /** Where the body of a tool's own window is put; the tool owns what is in it. */
+  let pluginSlot = $state<HTMLDivElement | undefined>();
+  $effect(() => {
+    const window = editor.pluginWindow;
+    if (pluginSlot && window) {
+      pluginSlot.replaceChildren(window.el);
+    }
+  });
 
   /** Something has changed since the last write. The autosave clock clears it. */
   let dirty = $state(false);
@@ -1430,8 +1455,16 @@
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
-    {#if editor.transform || pipetteUp}
+    {#if editor.transform || pipetteUp || editor.pluginWindow}
       <div class="tool-windows">
+        {#if editor.pluginWindow}
+          <!-- A window a tool brought with it: the editor draws the frame and
+               the title, the tool fills the body with whatever it likes. -->
+          <div class="pick-window" role="group" aria-label={editor.pluginWindow.title}>
+            <p class="pick-title">{editor.pluginWindow.title}</p>
+            <div bind:this={pluginSlot}></div>
+          </div>
+        {/if}
         {#if editor.transform}
           <TransformMenu {editor} />
         {/if}

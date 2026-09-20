@@ -107,7 +107,7 @@ describe('validateDocument', () => {
 describe('loadDocument', () => {
   it('returns a typed document for valid JSON', () => {
     const doc = loadDocument(validDoc());
-    expect(doc.schema_version).toBe(5);
+    expect(doc.schema_version).toBe(6);
     expect(doc.tools).toEqual([
       { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
     ]);
@@ -130,9 +130,9 @@ describe('loadDocument', () => {
   });
 
   it('throws FormatError with the issue list for invalid input', () => {
-    expect(() => loadDocument({ schema_version: 6 })).toThrow(FormatError);
+    expect(() => loadDocument({ schema_version: 7 })).toThrow(FormatError);
     try {
-      loadDocument({ schema_version: 6 });
+      loadDocument({ schema_version: 7 });
     } catch (e) {
       expect((e as FormatError).issues[0].category).toBe('unsupported-version');
     }
@@ -215,7 +215,7 @@ describe('validateDocument: v3 layers', () => {
   });
 
   it('rejects schema_version above the supported maximum', () => {
-    const result = validateDocument({ ...(v3Doc() as object), schema_version: 6 });
+    const result = validateDocument({ ...(v3Doc() as object), schema_version: 7 });
     expect(result.issues[0].category).toBe('unsupported-version');
   });
 });
@@ -241,16 +241,16 @@ describe('migrateV2ToV3', () => {
 });
 
 describe('loadDocument: version chain', () => {
-  it('migrates v2 through to v5', () => {
+  it('migrates v2 through to v6', () => {
     const doc = loadDocument(v2Doc());
-    expect(doc.schema_version).toBe(5);
+    expect(doc.schema_version).toBe(6);
     expect(doc.layers[0].frames).toHaveLength(2);
   });
 
-  it('lifts a v3 document to v5 without touching its content (deep copy)', () => {
+  it('lifts a v3 document to v6 without touching its content (deep copy)', () => {
     const source = v3Doc(2, 3);
     const doc = loadDocument(source);
-    expect(doc).toEqual({ ...(source as object), schema_version: 5 } as never);
+    expect(doc).toEqual({ ...(source as object), schema_version: 6 } as never);
     expect(doc.layers).not.toBe((source as { layers: unknown }).layers);
   });
 });

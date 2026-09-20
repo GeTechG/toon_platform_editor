@@ -4,7 +4,7 @@ import { createDocument } from '../model/operations';
 
 describe('parseDraft', () => {
   it('parses a valid draft', () => {
-    expect(parseDraft(createDocument())?.schema_version).toBe(5);
+    expect(parseDraft(createDocument())?.schema_version).toBe(6);
   });
 
   it('discards a draft that fails format validation', () => {
@@ -38,7 +38,7 @@ describe('parseDraft', () => {
       frames: [{ strokes: [{ points: [10, 20], tool_id: 0 }] }],
     };
     const restored = parseDraft(draft);
-    expect(restored?.schema_version).toBe(5);
+    expect(restored?.schema_version).toBe(6);
     expect(restored?.tools).toEqual(draft.tools as never);
     expect(restored?.layers).toEqual([{ hidden: false, frames: draft.frames }] as never);
   });
@@ -56,7 +56,7 @@ describe('draftEntries', () => {
       { id: 'a', updated: 1, doc: createDocument() },
     ];
     expect(draftEntries(records).map((e) => e.id)).toEqual(['b', 'a']);
-    expect(draftEntries(records)[0].doc.schema_version).toBe(5);
+    expect(draftEntries(records)[0].doc.schema_version).toBe(6);
   });
 
   it('carries the session state, the screenshot and the size to the card', () => {

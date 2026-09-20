@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { canonicalize } from '../format/canonical';
 import { loadDocument } from '../format/validate';
+import { SQUARE_STAMP } from '../format/types';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import {
   Canvas2DFrameRenderer,
@@ -223,7 +224,7 @@ const sampleTools: ToolDescriptor[] = [
 
 function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 5,
+    schema_version: 6,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -593,7 +594,7 @@ describe('contour tools (oldschool pen)', () => {
 describe('Tonio feather and pixel tools', () => {
   const tools: ToolDescriptor[] = [
     { kind: 'feather', dialect: 'toonio', width: 32, color: '#000000', fill: '#ff0000' },
-    { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' },
+    { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP },
   ];
 
   it('the feather fills the path before stroking it (tools.js Feather.PostDraw)', () => {

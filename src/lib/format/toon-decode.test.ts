@@ -1,3 +1,4 @@
+import { SQUARE_STAMP } from './types';
 import { describe, expect, it } from 'bun:test';
 import { STROKE_COORD_MAX, STROKE_COORD_MIN } from './constants';
 import { TOONIO_CANVAS_HEIGHT, TOONIO_CANVAS_WIDTH, decodeLegacyJson, decodeToon } from './toon-decode';
@@ -77,7 +78,7 @@ describe('decodeToon: version 5', () => {
     ])));
     expect(doc.tools).toEqual([
       { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
-      { kind: 'pixel', dialect: 'toonio', width: 64, color: '#0026ff' },
+      { kind: 'stamp', dialect: 'toonio', width: 64, color: '#0026ff', shape: SQUARE_STAMP },
     ]);
 
     const rejected = decodeToon(encode([...header(1, 1), 1, 3, 5, 1, 0, 0, 0]));

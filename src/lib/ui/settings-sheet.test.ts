@@ -8,7 +8,7 @@ const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url))
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
 const tools = await Bun.file(new URL('./ToolKey.svelte', import.meta.url)).text();
-const panels = await Bun.file(new URL('./panels.ts', import.meta.url)).text();
+const panels = await Bun.file(new URL('../plugins/builtins.ts', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 
 /** The body of a class method, so a contract cannot be met by a later method. */
@@ -217,7 +217,7 @@ describe('the remaining reference keys', () => {
 
 describe('key hints on the buttons', () => {
   it('every tool carries its key', () => {
-    expect(tools).toContain('data-key={spec.key}');
+    expect(tools).toContain('data-key={spec.key || undefined}');
     for (const key of ['B', 'E', 'P', 'F', 'Q', 'D']) {
       expect(panels).toContain(`key: '${key}'`);
     }

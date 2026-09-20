@@ -1,16 +1,12 @@
-/**
- * Document migrations: v1 → v2 → v3, and nothing else. Kept apart from
- * ./validate so a consumer that only has to *read* an old document — the
- * read-only player on the public share page — does not drag ajv and the three
- * JSON schemas into its bundle.
- */
-
+import { SQUARE_STAMP } from './types';
 import type {
+  ToolDescriptor,
   ToonDocumentV1,
   ToonDocumentV2,
   ToonDocumentV3,
   ToonDocumentV4,
   ToonDocumentV5,
+  ToonDocumentV6,
 } from './types';
 
 type AnyDocument =
@@ -18,10 +14,11 @@ type AnyDocument =
   | ToonDocumentV2
   | ToonDocumentV3
   | ToonDocumentV4
-  | ToonDocumentV5;
+  | ToonDocumentV5
+  | ToonDocumentV6;
 
-/** Lifts any supported version to v5. Structure only — no validation. */
-export function upgradeDocument(doc: AnyDocument): ToonDocumentV5 {
+/** Lifts any supported version to v6. Structure only — no validation. */
+export function upgradeDocument(doc: AnyDocument): ToonDocumentV6 {
   if (doc.schema_version === 1) {
     doc = migrateV1ToV2(doc);
   }
@@ -31,7 +28,28 @@ export function upgradeDocument(doc: AnyDocument): ToonDocumentV5 {
   if (doc.schema_version === 3) {
     doc = migrateV3ToV4(doc);
   }
-  return doc.schema_version === 4 ? migrateV4ToV5(doc) : doc;
+  if (doc.schema_version === 4) {
+    doc = migrateV4ToV5(doc);
+  }
+  return doc.schema_version === 5 ? migrateV5ToV6(doc) : doc;
+}
+
+/**
+ * Lifts v5 to v6: the pixel tool becomes the general stamp, filling the unit
+ * square at every point it holds. Nothing moves and nothing is lost — the
+ * squares land exactly where they did, now described by the shape they always
+ * had.
+ */
+export function migrateV5ToV6(doc: ToonDocumentV5): ToonDocumentV6 {
+  return {
+    ...doc,
+    schema_version: 6,
+    tools: doc.tools.map((tool) => (
+      (tool as { kind: string }).kind === 'pixel'
+        ? { ...(tool as object), kind: 'stamp', shape: [...SQUARE_STAMP] } as unknown as ToolDescriptor
+        : tool
+    )),
+  };
 }
 
 /**

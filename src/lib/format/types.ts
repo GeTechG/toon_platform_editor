@@ -86,29 +86,39 @@ export interface FeatherToolDescriptor {
 }
 
 /**
- * Tonio's pixel tool: the points are grid cells of `width` document units,
- * filled as squares with no smoothing (tools.js Pixel).
+ * A stamped mark: the points are places, and `shape` is the polygon filled at
+ * each of them, `width` document units across. Tonio's pixel tool is this with
+ * a square (tools.js Pixel), and a brush with another outline is the same
+ * primitive with another polygon — the shape travels in the document as data,
+ * so the player draws it without knowing where it came from.
+ *
+ * The polygon is closed implicitly and given on the unit square: `[0,0, 1,0,
+ * 1,1, 0,1]` is the pixel cell.
  */
-export interface PixelToolDescriptor {
-  readonly kind: 'pixel';
+export interface StampToolDescriptor {
+  readonly kind: 'stamp';
   readonly dialect: 'toonio';
   readonly width: number;
   readonly color: string;
+  readonly shape: readonly number[];
 }
+
+/** The unit square — what the pixel tool stamps, and what a v5 pixel becomes. */
+export const SQUARE_STAMP: readonly number[] = [0, 0, 1, 0, 1, 1, 0, 1];
 
 /** Tools whose points a pointer session collects (line-like, one width). */
 export type LineToolDescriptor =
   | PencilToolDescriptor
   | EraserToolDescriptor
   | FeatherToolDescriptor
-  | PixelToolDescriptor;
+  | StampToolDescriptor;
 
 /** Immutable drawing attributes shared by v2 strokes through tool_id. */
 export type ToolDescriptor =
   | PencilToolDescriptor
   | EraserToolDescriptor
   | FeatherToolDescriptor
-  | PixelToolDescriptor
+  | StampToolDescriptor
   | ContourToolDescriptor
   | ContourEraserToolDescriptor;
 
@@ -164,8 +174,17 @@ export interface ToonDocumentV5 extends Omit<ToonDocumentV4, 'schema_version' | 
   layers: LayerV5[];
 }
 
+/**
+ * v6 turns the pixel tool into the general stamp: the points are places and
+ * the polygon filled at each of them rides along in the descriptor. Everything
+ * else is v5's.
+ */
+export interface ToonDocumentV6 extends Omit<ToonDocumentV5, 'schema_version'> {
+  schema_version: 6;
+}
+
 /** Current in-memory/editor model aliases. */
 export type Stroke = StrokeV2;
 export type Frame = FrameV2;
 export type Layer = LayerV5;
-export type ToonDocument = ToonDocumentV5;
+export type ToonDocument = ToonDocumentV6;

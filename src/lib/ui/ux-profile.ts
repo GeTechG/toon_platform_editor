@@ -10,6 +10,7 @@
  * behavior.
  */
 
+import { plugins } from '../plugins';
 import {
   DEFAULT_FPS,
   MIN_BRUSH_SIZE_LOGICAL,
@@ -215,12 +216,12 @@ export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number
  * `visibleTools`); without one, the profile's own starting set stands in.
  */
 export function resolveToolSelection(
-  tool: SelectableTool,
+  tool: string,
   color: string,
   ux: UxProfile,
   paletteExpanded = true,
-  available: readonly SelectableTool[] = ux.tools,
-): SelectableTool | null {
+  available: readonly string[] = ux.tools,
+): string | null {
   if (!available.includes(tool)) {
     return null;
   }
@@ -233,11 +234,13 @@ export function resolveToolSelection(
   return tool;
 }
 
-/** Tools that interrupt drawing instead of replacing it (reference `helpTool`). */
-const HELP_TOOLS: readonly SelectableTool[] = ['pipette', 'drag', 'lasso', 'distort'];
-
-export function isHelpTool(tool: SelectableTool): boolean {
-  return HELP_TOOLS.includes(tool);
+/**
+ * Whether a tool interrupts drawing instead of replacing it (reference
+ * `helpTool`). The trait comes from the tool's own manifest, not from a list
+ * of names here — a plugin says it about itself.
+ */
+export function isHelpTool(tool: string): boolean {
+  return plugins.tool(tool)?.help === true;
 }
 
 /**
@@ -245,7 +248,7 @@ export function isHelpTool(tool: SelectableTool): boolean {
  * eraser is not something a picked colour can be used with, so it becomes the
  * pencil; everything else returns as it was.
  */
-export function toolAfterHelp(previous: SelectableTool): SelectableTool {
+export function toolAfterHelp(previous: string): string {
   return previous === 'eraser' || previous === 'mega-eraser' ? 'pencil' : previous;
 }
 

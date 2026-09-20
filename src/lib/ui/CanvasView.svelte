@@ -1,8 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { toolSpec } from './panels';
+  import { PENCIL } from '../plugins';
   import type { EditorState } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
-  import type { Frame, Layer } from '../format/types';
+  import type { Frame, Layer, StrokeDialect } from '../format/types';
   import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
@@ -37,6 +39,7 @@
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
   import {
+    type OwnCapture,
     PointerStrokeController,
     canvasCoordinateScale,
     swapStrokeColours,
@@ -80,8 +83,8 @@
   let megaGesture = $state<number[] | null>(null);
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
-  /** Pointer holding a live distort drag; the state throttles the steps. */
-  let distortGrab: { pointerId: number } | null = null;
+  /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
+  let pluginGrab: { pointerId: number } | null = null;
   /**
    * Drag inside an open transform: which zone was pressed, the session it
    * started from, where it started (document units) and the axis shift locked.
@@ -105,33 +108,40 @@
   /** Reference-canvas normalisation of the active tool, by its own dialect. */
   const brushCanvasScale = $derived(
     canvasCoordinateScale(
-      // The pixel tool's cell is always a pixel of the Tonio canvas; every
+      // A tool whose primitive lives in one dialect says so in its manifest
+      // (the pixel cell is always a pixel of the Tonio canvas); every
       // other tool, the feather included, measures on its preset's canvas.
-      editor.tool === 'pixel' ? 'toonio' : editor.drawingProfile,
+      toolDialect(),
       editor.doc.width / FIXED_POINT_SCALE,
     ),
   );
 
-  /** Descriptor for the active tool, frozen into the session at pointerdown. */
+  /** The tool's own collection rules, when it has them. */
+  function ownCapture(): OwnCapture | undefined {
+    const stroke = toolSpec(editor.tool)?.stroke;
+    return stroke?.capture ? { ...stroke, capture: stroke.capture } : undefined;
+  }
+
+  /**
+   * The canvas the active tool is measured on: the one it fixed for itself, or
+   * the preset's when it has no opinion.
+   */
+  function toolDialect(): StrokeDialect {
+    return toolSpec(editor.tool)?.stroke?.dialect ?? editor.drawingProfile;
+  }
+
+  /**
+   * Descriptor for the active tool, frozen into the session at pointerdown.
+   * The tool builds it: the canvas hands over the brush in hand and knows
+   * nothing about which tool is which, nor what it lays down.
+   */
   function activeDescriptor(): LineToolDescriptor {
-    const width = brushWidthDoc(editor.brushSizeLogical);
-    switch (editor.tool) {
-      case 'eraser':
-        return { kind: 'eraser', dialect: editor.drawingProfile, width };
-      case 'feather':
-        // The preset's line, filled: the session freezes the same dialect.
-        return {
-          kind: 'feather',
-          dialect: editor.drawingProfile,
-          width,
-          color: editor.brushColor,
-          fill: editor.fillColor,
-        };
-      case 'pixel':
-        return { kind: 'pixel', dialect: 'toonio', width, color: editor.brushColor };
-      default:
-        return { kind: 'pencil', dialect: editor.drawingProfile, width, color: editor.brushColor };
-    }
+    return (toolSpec(editor.tool)?.stroke ?? PENCIL).descriptor({
+      width: brushWidthDoc(editor.brushSizeLogical),
+      color: editor.brushColor,
+      fill: editor.fillColor,
+      dialect: toolDialect(),
+    });
   }
 
   /**
@@ -145,6 +155,9 @@
     descriptor: strokeButton === 0
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
+    // A tool that collects its own points hands the engine its rules; the
+    // engine knows gestures and primitives, never the register.
+    own: ownCapture(),
     tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     coordinateScale: brushCanvasScale,
     oldschool: editor.oldschool,
@@ -356,8 +369,8 @@
   };
   /** A real CSS cursor while a transform or the distort brush owns the canvas. */
   const overlayCursor = $derived(
-    editor.tool === 'distort'
-      ? 'e-resize'
+    toolSpec(editor.tool)?.cursor
+      ? toolSpec(editor.tool)!.cursor!
       : editor.tool === 'drag'
         ? (panning ? 'grabbing' : 'grab')
         : editor.transform
@@ -514,7 +527,7 @@
     }
     // The grid is a drawing aid, not part of the picture: the preview shows
     // the frames as they will be exported.
-    if (editor.tool === 'pixel' && !editor.playing) {
+    if (toolSpec(editor.tool)?.stroke?.grid && !editor.playing) {
       drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
     }
     ctx.restore();
@@ -867,15 +880,19 @@
       }
       return;
     }
-    // The distort brush shakes the frame as the pointer travels sideways.
-    if (editor.tool === 'distort') {
+    // A tool that brought its own gesture runs it; the canvas knows only that
+    // there are callbacks, not which tool it is.
+    if (toolSpec(editor.tool)?.press) {
       if (editor.activeLayerHidden) {
         showHint(HIDDEN_LAYER_HINT);
         return;
       }
-      const [x] = toDocUnits(e);
-      editor.beginDistort(x);
-      distortGrab = { pointerId: e.pointerId };
+      if (!editor.beginPluginGesture()) {
+        return;
+      }
+      const [x, y] = toDocUnits(e);
+      toolSpec(editor.tool)?.press?.(editor.pluginHost(), { x, y });
+      pluginGrab = { pointerId: e.pointerId };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
       return;
@@ -938,11 +955,11 @@
       scheduleDraw();
       return;
     }
-    if (distortGrab && e.pointerId === gesturePointerId) {
-      // ponytail: the state throttles to every fifth reference pixel and
-      // rewrites the cells there. Batch by rAF if a big frame ever stutters.
-      const [x] = toDocUnits(e);
-      editor.distortStep(x);
+    if (pluginGrab && e.pointerId === gesturePointerId) {
+      // ponytail: the tool throttles its own writes (distort does it every
+      // fifth reference pixel). Batch by rAF if a big frame ever stutters.
+      const [x, y] = toDocUnits(e);
+      toolSpec(editor.tool)?.move?.(editor.pluginHost(), { x, y });
       return;
     }
     if (grab && e.pointerId === grab.pointerId) {
@@ -1005,9 +1022,10 @@
       grab = null;
       return;
     }
-    if (distortGrab && e.pointerId === gesturePointerId) {
-      editor.endDistort();
-      distortGrab = null;
+    if (pluginGrab && e.pointerId === gesturePointerId) {
+      toolSpec(editor.tool)?.release?.(editor.pluginHost());
+      editor.endPluginGesture();
+      pluginGrab = null;
       gesturePointerId = -1;
       return;
     }
@@ -1078,9 +1096,10 @@
     }
     if (e.pointerId === gesturePointerId) {
       megaGesture = null;
-      if (distortGrab) {
-        editor.endDistort();
-        distortGrab = null;
+      if (pluginGrab) {
+        toolSpec(editor.tool)?.release?.(editor.pluginHost());
+        editor.endPluginGesture();
+        pluginGrab = null;
       }
       gesturePointerId = -1;
       scheduleDraw();
@@ -1192,7 +1211,7 @@
       class:eraser={editor.tool === 'eraser'}
       class:cross={cursorParts.cross}
       class:ringless={!cursorParts.ring}
-      class:square={editor.tool === 'pixel'}
+      class:square={toolSpec(editor.tool)?.stroke?.grid}
       style:left="{cursorX}px"
       style:top="{cursorY}px"
       style:width="{cursorDiameter}px"

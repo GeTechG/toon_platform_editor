@@ -113,10 +113,13 @@ describe('transform tools on the canvas', () => {
     expect(handler('startNavigation')).toContain("editor.tool === 'drag'");
   });
 
-  it('the distort brush shakes the frame between press and release', () => {
-    expect(handler('onPointerDown')).toContain('editor.beginDistort(');
-    expect(handler('onPointerMove')).toContain('editor.distortStep(');
-    expect(handler('onPointerUp')).toContain('editor.endDistort()');
+  it('a tool with a gesture of its own runs between press and release', () => {
+    // Distort is one of these now (plugins/distort.ts); the canvas knows only
+    // that the tool brought callbacks, not which tool it is.
+    expect(handler('onPointerDown')).toContain('editor.beginPluginGesture(');
+    expect(handler('onPointerDown')).toContain('.press?.(');
+    expect(handler('onPointerMove')).toContain('.move?.(');
+    expect(handler('onPointerUp')).toContain('editor.endPluginGesture()');
   });
 
   it('a live transform takes the drag before the pencil does', () => {
@@ -235,7 +238,7 @@ describe('the cursor over the canvas', () => {
   });
 
   it('takes the grid away while the preview plays', () => {
-    expect(handler('draw')).toContain("editor.tool === 'pixel' && !editor.playing");
+    expect(handler('draw')).toContain("?.stroke?.grid && !editor.playing");
   });
 });
 

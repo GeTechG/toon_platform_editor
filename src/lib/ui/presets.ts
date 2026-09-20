@@ -12,11 +12,12 @@
 import type { PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
-  PANEL_ITEMS,
+  panelItems,
   hidePanelItem,
   normalizePanels,
   panelsFrom,
   toolOfItem,
+  toolSpec,
   type PanelLayout,
   type PresetPanels,
 } from './panels';
@@ -142,6 +143,12 @@ export interface EditorSettings {
   altLayout: boolean;
   /** The one-off hint on first entering the palette's remover mode has been shown. */
   removerTipShown: boolean;
+  /**
+   * Where plugins are read from (see `editor-plugins`). Empty — the default —
+   * means none are read at all: the editor behaves as if there were no such
+   * thing, and not a single request goes out.
+   */
+  pluginRegistry: string;
 }
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
@@ -189,6 +196,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   pickerModel: 'hsv',
   altLayout: false,
   removerTipShown: false,
+  pluginRegistry: '',
 };
 
 export interface UiConfig {
@@ -272,9 +280,12 @@ export function presetPanels(id: string): PanelLayout {
   const preset = presetById(id);
   let panels = panelsFrom(preset.panels);
   const ux = UX_PROFILES[preset.ux];
-  for (const item of PANEL_ITEMS) {
+  for (const item of panelItems()) {
     const tool = toolOfItem(item.id);
-    if (tool && !ux.tools.includes(tool)) {
+    // Only the editor's own tools: a parity profile describes a reference
+    // editor, and the reference knows nothing of plugins — a plugin one hides
+    // would be a plugin nobody could ever find.
+    if (tool && toolSpec(tool)?.builtin && !(ux.tools as readonly string[]).includes(tool)) {
       panels = hidePanelItem(panels, item.id);
     }
   }
@@ -358,6 +369,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
     removerTipShown: flag('removerTipShown'),
+    pluginRegistry: typeof raw.pluginRegistry === 'string' ? raw.pluginRegistry.trim() : '',
   };
 }
 

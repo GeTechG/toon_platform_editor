@@ -11,6 +11,7 @@ import schemaV2 from './schema/toon-v2.schema.json';
 import schemaV3 from './schema/toon-v3.schema.json';
 import schemaV4 from './schema/toon-v4.schema.json';
 import schemaV5 from './schema/toon-v5.schema.json';
+import schemaV6 from './schema/toon-v6.schema.json';
 import { MAX_SUPPORTED_SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
 import type {
   ToonDocumentV1,
@@ -18,6 +19,7 @@ import type {
   ToonDocumentV3,
   ToonDocumentV4,
   ToonDocumentV5,
+  ToonDocumentV6,
 } from './types';
 import { upgradeDocument } from './upgrade';
 
@@ -52,12 +54,14 @@ const validateSchemaV2 = ajv.compile(schemaV2);
 const validateSchemaV3 = ajv.compile(schemaV3);
 const validateSchemaV4 = ajv.compile(schemaV4);
 const validateSchemaV5 = ajv.compile(schemaV5);
+const validateSchemaV6 = ajv.compile(schemaV6);
 const SCHEMAS = [
   validateSchemaV1,
   validateSchemaV2,
   validateSchemaV3,
   validateSchemaV4,
   validateSchemaV5,
+  validateSchemaV6,
 ];
 
 /** Document load error; carries the list of validation issues. */
@@ -109,10 +113,11 @@ type AnyDocument =
   | ToonDocumentV2
   | ToonDocumentV3
   | ToonDocumentV4
-  | ToonDocumentV5;
+  | ToonDocumentV5
+  | ToonDocumentV6;
 
-/** Validates and types already-parsed JSON, migrating v1 → … → v5; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocumentV5 {
+/** Validates and types already-parsed JSON, migrating v1 → … → v6; throws FormatError. */
+export function loadDocument(data: unknown): ToonDocumentV6 {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);

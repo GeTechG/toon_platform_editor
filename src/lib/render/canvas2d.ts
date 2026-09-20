@@ -13,7 +13,7 @@ import {
   isContourTool,
   isEraserTool,
   isFilledLineTool,
-  isPixelTool,
+  isStampTool,
   resolveTool,
 } from './dispatch';
 
@@ -193,32 +193,57 @@ export function renderStrokesLayer(
   }
 }
 
+const UNIT_SQUARE: readonly number[] = [0, 0, 1, 0, 1, 1, 0, 1];
+
+function isUnitSquare(shape: readonly number[]): boolean {
+  return shape.length === UNIT_SQUARE.length && shape.every((value, i) => value === UNIT_SQUARE[i]);
+}
+
 function drawResolvedStroke(
   target: Canvas2DLike,
   points: readonly number[],
   tool: ToolDescriptor,
   color: string,
 ): void {
-  if (isPixelTool(tool)) {
-    // Tonio's pixel tool: every stored point is a grid cell drawn as a square
-    // of the tool's width, with the cells a fast drag skipped filled in by
-    // Bresenham between consecutive points — the capture side stores only
-    // what the pointer actually visited.
+  if (isStampTool(tool)) {
+    // Every stored point is a place the tool's polygon is stamped at, `width`
+    // document units across, with the places a fast drag skipped filled in by
+    // Bresenham between consecutive points — the capture side stores only what
+    // the pointer actually visited. The square of the pixel tool is one such
+    // polygon; a brush with another outline is the same code and other data,
+    // which is why the player can draw a shape it has never heard of.
     //
-    // ponytail: one fillRect per cell, exactly like the reference. A long
-    // stroke at a small cell size is thousands of calls — batch the cells into
-    // one path and a single fill() if a profile ever blames this.
+    // ponytail: one path per mark, as the reference fills one rect per cell. A
+    // long stroke at a small size is thousands of them — batch them into one
+    // path and a single fill() if a profile ever blames this.
     target.fillStyle = color;
+    // The square is the common case by far (it is the pixel tool), and the
+    // reference fills exactly one rect per cell — so it keeps the fast path,
+    // and only a shape that is not the unit square walks a path.
+    const square = isUnitSquare(tool.shape);
+    const stamp = (x: number, y: number): void => {
+      if (square) {
+        target.fillRect(x, y, tool.width, tool.width);
+        return;
+      }
+      target.beginPath();
+      target.moveTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
+      for (let i = 2; i < tool.shape.length; i += 2) {
+        target.lineTo(x + tool.shape[i] * tool.width, y + tool.shape[i + 1] * tool.width);
+      }
+      target.lineTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
+      target.fill();
+    };
     for (let i = 0; i < points.length; i += 2) {
       if (i >= 2) {
         const between = interpolatePixelLine(
           points[i - 2], points[i - 1], points[i], points[i + 1], tool.width,
         );
         for (let j = 0; j < between.length; j += 2) {
-          target.fillRect(between[j], between[j + 1], tool.width, tool.width);
+          stamp(between[j], between[j + 1]);
         }
       }
-      target.fillRect(points[i], points[i + 1], tool.width, tool.width);
+      stamp(points[i], points[i + 1]);
     }
     return;
   }
@@ -268,7 +293,7 @@ function toolColor(tool: ToolDescriptor): string {
   return tool.kind === 'pencil'
     || tool.kind === 'contour'
     || tool.kind === 'feather'
-    || tool.kind === 'pixel'
+    || tool.kind === 'stamp'
     ? tool.color
     : ERASE_PAINT;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { MAX_LAYER_NAME, MAX_SUPPORTED_SCHEMA_VERSION, SCHEMA_VERSION } from './constants';
+import { MAX_LAYER_NAME } from './constants';
 import { canonicalize } from './canonical';
 import { sha256Hex } from './hash';
 import schemaV5 from './schema/toon-v5.schema.json';
@@ -8,7 +8,7 @@ import { migrateV4ToV5 } from './upgrade';
 import { loadDocument, validateDocument } from './validate';
 
 const v5 = (layer: Record<string, unknown>): unknown => ({
-  schema_version: 5,
+  schema_version: 6,
   width: 4800,
   height: 2400,
   frame_rate: 12,
@@ -17,11 +17,6 @@ const v5 = (layer: Record<string, unknown>): unknown => ({
 });
 
 describe('schema version 5', () => {
-  it('is the version the editor writes', () => {
-    expect(SCHEMA_VERSION).toBe(5);
-    expect(MAX_SUPPORTED_SCHEMA_VERSION).toBe(5);
-  });
-
   it('caps a layer name at the reference MAX_LAYER_NAME', () => {
     expect(MAX_LAYER_NAME).toBe(12);
     expect(schemaV5.$defs.layer.properties.name.maxLength).toBe(MAX_LAYER_NAME);
@@ -80,7 +75,7 @@ describe('v4 → v5 migration', () => {
 
   it('loadDocument lifts a v4 document to v5 without touching its content', () => {
     const doc = loadDocument(structuredClone(v4));
-    expect(doc.schema_version).toBe(5);
+    expect(doc.schema_version).toBe(6);
     expect(doc.layers).toEqual(v4.layers as never);
   });
 

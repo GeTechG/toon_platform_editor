@@ -16,6 +16,7 @@ import {
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from './constants';
+import { SQUARE_STAMP } from './types';
 import type { Layer, ToolDescriptor, ToonDocument } from './types';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
@@ -232,7 +233,7 @@ function toolDescriptor(type: number, width: number, color: string, fill: string
     case FEATHER:
       return { kind: 'feather', dialect: 'toonio', width: clamped, color, fill };
     case PIXEL:
-      return { kind: 'pixel', dialect: 'toonio', width: clamped, color };
+      return { kind: 'stamp', dialect: 'toonio', width: clamped, color, shape: [...SQUARE_STAMP] };
     case MEGAERASER:
       throw new Error('файл содержит инструмент «мега-ластик», который не сохраняется как линия');
     default:

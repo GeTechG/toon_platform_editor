@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { SQUARE_STAMP } from '../format/types';
 import type { ToolDescriptor } from '../format/types';
 import * as profiles from './profiles';
+import { pixelPlugin } from '../plugins/pixel';
 import { addStroke, createDocument } from '../model/operations';
 import { canonicalize } from '../format/canonical';
 import { MAX_STROKE_WIDTH } from '../format/constants';
@@ -164,6 +166,9 @@ describe('Tonio Smooth / Prepare golden behavior', () => {
   });
 });
 
+/** The pixel tool's own rules, as the register hands them to the canvas. */
+const own = pixelPlugin.tool!.stroke as profiles.OwnCapture;
+
 describe('Tonio feather and pixel sessions', () => {
   it('the feather runs the pencil pipeline and keeps both colors', () => {
     const descriptor: ToolDescriptor = {
@@ -177,9 +182,13 @@ describe('Tonio feather and pixel sessions', () => {
     expect(committed.points).toEqual([0, 0, 40, 0, 40, 0, 40, 0]);
   });
 
-  it('the pixel tool snaps to its cell grid and commits without a sentinel', () => {
-    const descriptor: ToolDescriptor = { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' };
-    const session = profiles.beginStrokeSession('toonio', sample(1, 0, 0), descriptor);
+  it('a tool that collects its own points snaps them and commits without a sentinel', () => {
+    // The pixel tool, wired the way the editor wires it: the engine knows
+    // nothing about it, the rules come from the tool itself (plugins/pixel.ts).
+    const descriptor: ToolDescriptor = { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, false, 1, own,
+    );
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     profiles.appendStrokeEvent(session, sample(1, 64, 0));
     const committed = profiles.commitStrokeSession(session);
@@ -187,9 +196,11 @@ describe('Tonio feather and pixel sessions', () => {
     expect(committed.points).toEqual([0, 0, 16, 0, 64, 0]);
   });
 
-  it('the pixel preview shows the cells as collected, unsmoothed', () => {
-    const descriptor: ToolDescriptor = { kind: 'pixel', dialect: 'toonio', width: 16, color: '#0026ff' };
-    const session = profiles.beginStrokeSession('toonio', sample(1, 0, 0), descriptor);
+  it('its preview shows the points as collected, unsmoothed', () => {
+    const descriptor: ToolDescriptor = { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0), descriptor, undefined, undefined, false, 1, own,
+    );
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 16, 0]);
   });
@@ -392,13 +403,14 @@ describe('the pixel tool outside the Tonio preset', () => {
     // commit geometry the pixel renderer cannot draw.
     const controller = new profiles.PointerStrokeController(() => ({
       profile: 'multator',
-      descriptor: { kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' },
+      descriptor: { kind: 'stamp', dialect: 'toonio', width: 16, color: '#000000', shape: SQUARE_STAMP },
+      own,
     }));
     controller.pointerDown(sample(1, 0, 0));
     controller.pointerMove(sample(1, 20, 4));
     controller.pointerUp(sample(1, 40, 8));
     const stroke = controller.takeCommitted()!;
-    expect(stroke.tool).toEqual({ kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' });
+    expect(stroke.tool).toEqual({ kind: 'stamp', dialect: 'toonio', width: 16, color: '#000000', shape: SQUARE_STAMP });
     // Every committed point sits on the 16-unit grid.
     expect(stroke.points.every((v) => v % 16 === 0)).toBe(true);
   });
@@ -408,7 +420,7 @@ describe('the pixel tool outside the Tonio preset', () => {
     // a pixel of the 1280-wide canvas wherever the tool is offered.
     const session = profiles.beginStrokeSession(
       'multator', sample(1, 0, 0),
-      { kind: 'pixel', dialect: 'toonio', width: 16, color: '#000000' },
+      { kind: 'stamp', dialect: 'toonio', width: 16, color: '#000000', shape: SQUARE_STAMP },
       { smooth: 1, minDistance: 0 }, profiles.canvasCoordinateScale('toonio', 600),
     );
     expect(session.descriptor.width).toBe(8);

@@ -69,8 +69,12 @@ function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
         && left.width === right.width
         && left.color === right.color
         && left.fill === right.fill;
-    case 'pixel':
-      return right.kind === 'pixel' && left.width === right.width && left.color === right.color;
+    case 'stamp':
+      return right.kind === 'stamp'
+        && left.width === right.width
+        && left.color === right.color
+        && left.shape.length === right.shape.length
+        && left.shape.every((value, i) => value === right.shape[i]);
     case 'contour':
       return right.kind === 'contour' && left.color === right.color;
     case 'contour-eraser':
@@ -423,8 +427,8 @@ export function copyTool(tool: ToolDescriptor): ToolDescriptor {
         color: tool.color,
         fill: tool.fill,
       };
-    case 'pixel':
-      return { kind: 'pixel', dialect: 'toonio', width: tool.width, color: tool.color };
+    case 'stamp':
+      return { kind: 'stamp', dialect: 'toonio', width: tool.width, color: tool.color, shape: [...tool.shape] };
     case 'contour':
       return { kind: 'contour', dialect: 'multator', color: tool.color };
     case 'contour-eraser':
@@ -633,9 +637,9 @@ function mapStrokes(
  * exactly what apply writes.
  */
 export function quantizeStrokePoints(points: number[], tool: ToolDescriptor): void {
-  const pixel = tool.kind === 'pixel';
+  const stamped = tool.kind === 'stamp';
   for (let i = 0; i < points.length; i++) {
-    points[i] = clampCoord(pixel ? pixelCellNearest(points[i], tool.width) : points[i]);
+    points[i] = clampCoord(stamped ? pixelCellNearest(points[i], tool.width) : points[i]);
   }
 }
 

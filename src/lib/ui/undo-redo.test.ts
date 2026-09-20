@@ -90,9 +90,12 @@ describe('transform edits go on the same undo stack', () => {
     expect(mirror).toContain('this.pushEdit(');
   });
 
-  it('a distort gesture snapshots on press and files one step on release', () => {
-    expect(member(state, 'beginDistort')).toContain('this.snapshotCells(');
-    expect(member(state, 'endDistort')).toContain('this.pushEdit(');
+  it("a plugin's gesture snapshots on press and files one step on release", () => {
+    // However many times the plugin writes by the way: the history is the
+    // editor's business, never the plugin's.
+    expect(member(state, 'beginPluginGesture')).toContain('this.snapshotCells(');
+    expect(member(state, 'endPluginGesture')).toContain('this.pushEdit(');
+    expect(member(state, 'editPluginCells')).not.toContain('this.pushEdit(');
   });
 
   it('applying a transform snapshots every cell it writes', () => {
@@ -102,7 +105,7 @@ describe('transform edits go on the same undo stack', () => {
   });
 
   it('refuses to edit while playing or on a hidden layer, like the mega eraser', () => {
-    for (const name of ['mirrorSelectedLayers', 'applyTransform', 'beginDistort']) {
+    for (const name of ['mirrorSelectedLayers', 'applyTransform', 'beginPluginGesture']) {
       expect(member(state, name)).toContain('this.playing');
     }
     // Hidden layers never reach these: they are filtered out of the target list.

@@ -1,9 +1,8 @@
 import { FIXED_POINT_SCALE, LANG_TOLERANCE_DOC, MAX_STROKE_WIDTH } from '../format/constants';
-import type { LineToolDescriptor, PixelToolDescriptor, StrokeDialect } from '../format/types';
+import type { LineToolDescriptor, StrokeDialect } from '../format/types';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool';
-import { appendPixelCells, pixelPrepare } from './pixel';
 
 export interface PointerSample {
   pointerId: number;
@@ -55,11 +54,24 @@ export interface StrokeSession {
   readonly multator?: StrokeBuilder;
   /** Oldschool easter-egg pen: the Multator commit produces a filled contour. */
   readonly oldschool: boolean;
+  /** Set when the tool collects its own points (see `OwnCapture`). */
+  readonly own?: OwnCapture;
 }
 
-/** Tonio's pixel tool collects grid cells instead of a smoothed line. */
-function isPixelSession(session: StrokeSession): boolean {
-  return session.descriptor.kind === 'pixel';
+/**
+ * A tool that collects the pointer's points itself instead of letting the
+ * dialect do it. Such a session owns its points end to end: no smoothing of
+ * the dialect touches them, and the commit is `prepare` alone.
+ *
+ * Plain functions, not a manifest: the engine knows primitives and gestures,
+ * never the register. What fills this in is the caller (`CanvasView`), from
+ * whatever tool is in hand.
+ */
+export interface OwnCapture {
+  /** The canvas the points are measured on, whatever preset is active. */
+  readonly dialect?: StrokeDialect;
+  capture(line: readonly number[], points: readonly number[], width: number): number[];
+  prepare?(points: readonly number[], width: number, zoom: number): number[];
 }
 
 export function beginStrokeSession(
@@ -70,22 +82,22 @@ export function beginStrokeSession(
   coordinateScale = 1,
   oldschool = false,
   zoom = 1,
+  own?: OwnCapture,
 ): StrokeSession {
-  // The pixel tool exists only in the Tonio dialect — its points are that
-  // tool's own grid cells, not a line anybody else draws. Everything else,
-  // the feather included, takes the profile the gesture started under: a
-  // preset is the algorithm, and a feather on a Multator panel is a Multator
-  // line that happens to be filled.
+  // A tool may fix the canvas its numbers are on — its points are then its
+  // own, not a line anybody else draws. Everything else, the feather included,
+  // takes the profile the gesture started under: a preset is the algorithm,
+  // and a feather on a Multator panel is a Multator line that happens to be
+  // filled.
   const scale = positiveScale(coordinateScale);
-  const tonioOnlyTool = descriptor.kind === 'pixel';
-  const base = tonioOnlyTool ? descriptor : { ...descriptor, dialect: profile };
+  const fixed = own?.dialect;
+  const base = { ...descriptor, dialect: fixed ?? profile } as LineToolDescriptor;
   // Both dialects measure a width on their own reference canvas, so the
   // stroke covers the same share of the picture on a document of any size.
   const frozenDescriptor = copyLineTool({ ...base, width: strokeWidthOnCanvas(base.width, scale) });
-  // A Tonio-only tool is collected the Tonio way whatever preset holds it:
-  // the Multator builder would smooth a pixel tool's cells into a polyline
-  // the pixel renderer cannot draw.
-  const sessionProfile: StrokeDialect = tonioOnlyTool ? 'toonio' : profile;
+  // A tool that fixed its canvas is collected that way whatever preset holds
+  // it: the other dialect's builder would reshape points it never made.
+  const sessionProfile: StrokeDialect = fixed ?? profile;
   // The oldschool pen commits a closed contour, which carries one colour and
   // no fill — so the easter egg stays the pen's and the eraser's.
   const oldschoolPen = oldschool && frozenDescriptor.kind !== 'feather';
@@ -106,6 +118,7 @@ export function beginStrokeSession(
       zoom: 1,
       multator: builder,
       oldschool: oldschoolPen,
+      own,
     };
   }
   const session: StrokeSession = {
@@ -117,6 +130,7 @@ export function beginStrokeSession(
     tonioCoordinateScale: scale,
     zoom: positiveScale(zoom),
     oldschool: false,
+    own,
   };
   appendTonioEventBatch(session, event);
   return session;
@@ -128,15 +142,13 @@ export function beginStrokeSession(
  * The pencil carries no fill of its own, so the editor's one comes in.
  */
 export function swapStrokeColours(tool: LineToolDescriptor, fill: string): LineToolDescriptor {
-  switch (tool.kind) {
-    case 'pencil':
-    case 'pixel':
-      return { ...tool, color: fill };
-    case 'feather':
-      return { ...tool, color: tool.fill, fill: tool.color };
-    default:
-      return tool;
+  // By what the descriptor carries, not by which tool it is: one that has both
+  // trades them, one that only paints takes the fill as its colour, and an
+  // eraser, which has neither, is left alone.
+  if ('fill' in tool) {
+    return { ...tool, color: tool.fill, fill: tool.color };
   }
+  return 'color' in tool ? { ...tool, color: fill } : tool;
 }
 
 export function appendStrokeEvent(session: StrokeSession, event: PointerSample): void {
@@ -167,7 +179,7 @@ export function finishStrokeEvent(session: StrokeSession, event: PointerSample):
 }
 
 export function previewStrokeSession(session: StrokeSession): readonly number[] {
-  if (isPixelSession(session)) {
+  if (session.own) {
     return session.rawPoints;
   }
   return session.profile === 'toonio'
@@ -193,10 +205,12 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
         : { kind: 'contour-eraser', dialect: 'multator' },
     };
   }
-  if (isPixelSession(session)) {
-    // Reference Pixel: Smooth is the identity and Prepare thins by the width.
-    const width = (session.descriptor as PixelToolDescriptor).width;
-    return { points: pixelPrepare(session.rawPoints, width, session.zoom), tool: copyLineTool(session.descriptor) };
+  if (session.own) {
+    // The tool collected these points; only its own thinning applies.
+    const points = session.own.prepare
+      ? session.own.prepare(session.rawPoints, session.descriptor.width, session.zoom)
+      : session.rawPoints.slice();
+    return { points, tool: copyLineTool(session.descriptor) };
   }
   const points = session.profile === 'multator'
     ? session.multator!.commit(LANG_TOLERANCE_DOC / session.tonioCoordinateScale).points
@@ -255,6 +269,8 @@ export class PointerStrokeController {
       coordinateScale?: number;
       oldschool?: boolean;
       zoom?: number;
+      /** Set when the tool collects its own points. */
+      own?: OwnCapture;
     },
   ) {}
 
@@ -271,6 +287,7 @@ export class PointerStrokeController {
       selected.coordinateScale,
       selected.oldschool ?? false,
       selected.zoom ?? 1,
+      selected.own,
     );
     return true;
   }
@@ -319,15 +336,13 @@ export class PointerStrokeController {
 function appendTonioEventBatch(session: StrokeSession, event: PointerSample): void {
   const coalesced = event.coalesced?.filter((sample) => sample.pointerId === session.pointerId);
   const samples = coalesced && coalesced.length > 0 ? coalesced : [event];
-  if (isPixelSession(session)) {
-    // The pixel tool snaps to its own grid and drops cells the line already
-    // holds, so it never sees the line dedup above.
-    const width = (session.descriptor as PixelToolDescriptor).width;
+  if (session.own) {
+    // The tool takes the batch as it is: it never sees the line dedup below.
     const flat: number[] = [];
     for (const sample of samples) flat.push(sample.x, sample.y);
-    const cells = appendPixelCells(session.rawPoints, flat, width);
+    const collected = session.own.capture(session.rawPoints, flat, session.descriptor.width);
     session.rawPoints.length = 0;
-    session.rawPoints.push(...cells);
+    session.rawPoints.push(...collected);
     return;
   }
   let previousX: number | undefined;
@@ -341,23 +356,13 @@ function appendTonioEventBatch(session: StrokeSession, event: PointerSample): vo
   }
 }
 
+/**
+ * A copy of the descriptor, so a session never hands the document an object
+ * the caller still holds. A shallow copy is the whole of it: descriptors are
+ * flat records of numbers and strings, whatever primitive they name.
+ */
 function copyLineTool(tool: LineToolDescriptor): LineToolDescriptor {
-  switch (tool.kind) {
-    case 'pencil':
-      return { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color };
-    case 'eraser':
-      return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
-    case 'feather':
-      return {
-        kind: 'feather',
-        dialect: tool.dialect,
-        width: tool.width,
-        color: tool.color,
-        fill: tool.fill,
-      };
-    case 'pixel':
-      return { kind: 'pixel', dialect: 'toonio', width: tool.width, color: tool.color };
-  }
+  return { ...tool };
 }
 
 function clampInteger(value: number, min: number, max: number): number {

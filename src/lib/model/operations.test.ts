@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { SQUARE_STAMP } from '../format/types';
 import { validateDocument } from '../format/validate';
 import {
   addFrame,
@@ -30,7 +31,7 @@ import { transformMatrix } from './geom';
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(5);
+    expect(doc.schema_version).toBe(6);
     expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(10240);
     expect(doc.height).toBe(5760);
@@ -643,7 +644,7 @@ describe('transformStrokes and the pixel grid', () => {
     const doc = createDocument({ width: 4000, height: 4000 });
     addStroke(doc, 0, 0, {
       points: Array.from({ length: cells * 2 }, (_, i) => (i % 2 ? 0 : (i / 2) * width)),
-      tool: { kind: 'pixel', dialect: 'toonio', width, color: '#000000' },
+      tool: { kind: 'stamp', dialect: 'toonio', width, color: '#000000', shape: [...SQUARE_STAMP] },
     });
     return doc;
   }
@@ -673,7 +674,7 @@ describe('transformStrokes and the pixel grid', () => {
     transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.2, scaleY: 1.2 }, 50, 50), 1.2);
     const stroke = doc.layers[0].frames[0].strokes[0];
     const tool = doc.tools[stroke.tool_id];
-    expect(tool.kind === 'pixel' && tool.width).toBe(24);
+    expect(tool.kind === 'stamp' && tool.width).toBe(24);
     expect(steps(stroke.points)).toEqual([24, 24, 24, 24, 24]);
   });
 

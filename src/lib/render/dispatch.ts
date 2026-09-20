@@ -1,12 +1,26 @@
 import type {
   ContourEraserToolDescriptor,
+  LineToolDescriptor,
   ContourToolDescriptor,
   FeatherToolDescriptor,
-  PixelToolDescriptor,
+  StampToolDescriptor,
   StrokeV2,
   ToolDescriptor,
 } from '../format/types';
 import { emitMultatorClosedPath, emitMultatorPath, emitTonioPath, type PathSink } from './smoothing';
+
+/**
+ * The primitives a tool may lay down: what the renderer draws for a stroke a
+ * pointer session collects. A plugin picks one of these and cannot invent
+ * another (see `editor-plugins`) — the player draws the same document with
+ * this same renderer.
+ */
+export const LINE_PRIMITIVES: readonly LineToolDescriptor['kind'][] = [
+  'pencil',
+  'eraser',
+  'feather',
+  'stamp',
+];
 
 /** Whether a tool erases (alpha punch) rather than paints. */
 export function isEraserTool(tool: ToolDescriptor): boolean {
@@ -18,9 +32,9 @@ export function isFilledLineTool(tool: ToolDescriptor): tool is FeatherToolDescr
   return tool.kind === 'feather';
 }
 
-/** Whether a tool's points are grid cells filled as squares (Tonio pixel). */
-export function isPixelTool(tool: ToolDescriptor): tool is PixelToolDescriptor {
-  return tool.kind === 'pixel';
+/** Whether a tool's points are places its polygon is stamped at. */
+export function isStampTool(tool: ToolDescriptor): tool is StampToolDescriptor {
+  return tool.kind === 'stamp';
 }
 
 /** Whether a tool's points are a closed, filled contour (oldschool pen) rather than a line. */

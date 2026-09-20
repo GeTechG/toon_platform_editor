@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { SCALE_MENU_MS, scaleMenuVisible } from './frame-selection';
-import { allPlaced, defaultPanels, PANEL_ITEMS } from './panels';
+import { allPlaced, defaultPanels, panelItems } from './panels';
 
 const menu = await Bun.file(new URL('./ScaleMenu.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
@@ -44,7 +44,7 @@ describe('ScaleMenu', () => {
   });
 
   it('is the only zoom control: the panel has no zoom widget left', () => {
-    expect(PANEL_ITEMS.map((item) => item.id)).not.toContain('zoom');
+    expect(panelItems().map((item) => item.id)).not.toContain('zoom');
     expect(allPlaced(defaultPanels())).not.toContain('zoom');
     expect(editorUi).not.toContain("id === 'zoom'");
   });

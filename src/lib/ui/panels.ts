@@ -10,53 +10,28 @@
  * stays a thin caller. The layout is persisted with the rest of the UI config.
  */
 
-import type { IconName } from './Icon.svelte';
-import type { SelectableTool } from './ux-profile';
+import { plugins } from '../plugins';
+import type { RegisteredTool } from '../plugins/registry';
 
-/**
- * The tool keys, as the reference draws them. `key` is the shortcut the button
- * shows in place of its icon on hover (reference `.control p`); it is spelled
- * out in the title as well.
- */
-export const TOOL_KEYS: Record<SelectableTool, { icon: IconName; title: string; label: string; key: string }> = {
-  pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш', key: 'B' },
-  eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик', key: 'E' },
-  feather: { icon: 'feather', title: 'Перо (F) — обводка и заливка', label: 'Перо', key: 'F' },
-  'mega-eraser': {
-    icon: 'mega-eraser',
-    title: 'Мега-ластик (Alt+E) — режет линии целиком',
-    label: 'Мега-ластик',
-    key: 'Alt+E',
-  },
-  pipette: { icon: 'pipette', title: 'Пипетка (P) — ещё раз: взять цвет с экрана', label: 'Пипетка', key: 'P' },
-  drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D' },
-  lasso: { icon: 'lasso', title: 'Лассо (Q) — взять кадр и трансформировать', label: 'Лассо', key: 'Q' },
-  distort: { icon: 'distort', title: 'Искажение (~) — дребезг штрихов кадра', label: 'Искажение', key: '~' },
-  pixel: { icon: 'pixel', title: 'Пиксель — рисует по сетке', label: 'Пиксель', key: '' },
-};
+/** What the rail draws for a tool, whoever added it. */
+export function toolSpec(tool: string): RegisteredTool | undefined {
+  return plugins.tool(tool);
+}
 
-/** Rail order: every tool the editor has, the profile decides which are drawn. */
-const TOOL_ORDER: readonly SelectableTool[] = [
-  'pencil',
-  'eraser',
-  'feather',
-  'mega-eraser',
-  'pipette',
-  'drag',
-  'lasso',
-  'distort',
-  'pixel',
-];
+/** Every tool the editor has now, in the order it was registered. */
+export function toolOrder(): string[] {
+  return plugins.tools().map((tool) => tool.id);
+}
 
 /** A tool's item id — one item per tool, so each key is placed on its own. */
-export function toolItem(tool: SelectableTool): string {
+export function toolItem(tool: string): string {
   return `tool:${tool}`;
 }
 
 /** The tool an item selects, or null when the item is not a tool key. */
-export function toolOfItem(id: string): SelectableTool | null {
-  const tool = id.startsWith('tool:') ? id.slice(5) as SelectableTool : null;
-  return tool && tool in TOOL_KEYS ? tool : null;
+export function toolOfItem(id: string): string | null {
+  const tool = id.startsWith('tool:') ? id.slice(5) : null;
+  return tool && plugins.tool(tool) ? tool : null;
 }
 
 /**
@@ -128,12 +103,8 @@ export interface PanelItem {
   readonly keep?: boolean;
 }
 
-export const PANEL_ITEMS: readonly PanelItem[] = [
-  ...TOOL_ORDER.map((tool): PanelItem => ({
-    id: toolItem(tool),
-    kind: 'tool',
-    label: TOOL_KEYS[tool].label,
-  })),
+/** Everything that is not a tool: the tools come from the register. */
+const FIXED_ITEMS: readonly PanelItem[] = [
   { id: 'save', kind: 'action', label: 'Сохранить черновик' },
   { id: 'history', kind: 'action', label: 'Отменить / вернуть', wide: true },
   { id: 'manual', kind: 'action', label: 'Мануал' },
@@ -159,6 +130,22 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'settings', kind: 'action', label: 'Настройки', keep: true },
   { id: 'publish', kind: 'action', label: 'Опубликовать' },
 ];
+
+/**
+ * Every item the panels can hold: the tools the register has right now, then
+ * the rest. A function rather than a table, because a plugin can arrive (or
+ * go) after this module was loaded.
+ */
+export function panelItems(): readonly PanelItem[] {
+  return [
+    ...plugins.tools().map((tool): PanelItem => ({
+      id: toolItem(tool.id),
+      kind: 'tool',
+      label: tool.label,
+    })),
+    ...FIXED_ITEMS,
+  ];
+}
 
 export interface PanelLayout {
   left: string[];
@@ -191,8 +178,9 @@ export const FEATURE_ITEM: Record<string, string> = {
  * the right, the strip over a transport row. Anything left out is hidden — the
  * layers popup, because the studio strip carries the rows itself.
  */
-const DEFAULT: Omit<PanelLayout, 'float' | 'hidden'> = {
-  left: [...TOOL_ORDER.map(toolItem), 'save', 'history', 'manual', 'fullscreen', 'drafts'],
+function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
+  return {
+  left: [...toolOrder().map(toolItem), 'save', 'history', 'manual', 'fullscreen', 'drafts'],
   right: ['palette', 'brush'],
   rows: [['timeline'], [
     'transport',
@@ -209,7 +197,8 @@ const DEFAULT: Omit<PanelLayout, 'float' | 'hidden'> = {
     'settings',
     'publish',
   ]],
-};
+  };
+}
 
 function emptyLayout(): PanelLayout {
   return { left: [], right: [], rows: [], float: [], hidden: [] };
@@ -226,7 +215,7 @@ export function allPlaced(layout: PanelLayout): string[] {
  * the buttons are. Anything not placed here waits on the shelf.
  */
 export function defaultPanels(): PanelLayout {
-  return layoutOf(DEFAULT);
+  return layoutOf(defaultBase());
 }
 
 /** What sits in a slot; a row that does not exist yet holds nothing. */
@@ -305,12 +294,12 @@ function layoutOf(base: Partial<Omit<PanelLayout, 'hidden'>>): PanelLayout {
     hidden: [],
   };
   const placed = new Set(allPlaced(next));
-  next.hidden = PANEL_ITEMS.filter((item) => !placed.has(item.id)).map((item) => item.id);
+  next.hidden = panelItems().filter((item) => !placed.has(item.id)).map((item) => item.id);
   return next;
 }
 
 export function panelItem(id: string): PanelItem | undefined {
-  return PANEL_ITEMS.find((item) => item.id === id);
+  return panelItems().find((item) => item.id === id);
 }
 
 /**
@@ -435,7 +424,7 @@ export function hidePanelItem(layout: PanelLayout, id: string): PanelLayout {
 
 /** Whether any tool key at all is still placed somewhere. */
 export function anyToolVisible(layout: PanelLayout): boolean {
-  return PANEL_ITEMS.some((item) => toolOfItem(item.id) !== null && panelItemVisible(layout, item.id));
+  return panelItems().some((item) => toolOfItem(item.id) !== null && panelItemVisible(layout, item.id));
 }
 
 /**
@@ -444,8 +433,8 @@ export function anyToolVisible(layout: PanelLayout): boolean {
  * after that it is the panels' business, so a key put back by hand draws and
  * works, and one put away is gone from the hotkeys too.
  */
-export function visibleTools(layout: PanelLayout): SelectableTool[] {
-  return TOOL_ORDER.filter((tool) => panelItemVisible(layout, toolItem(tool)));
+export function visibleTools(layout: PanelLayout): string[] {
+  return toolOrder().filter((tool) => panelItemVisible(layout, toolItem(tool)));
 }
 
 /** Whether the item is drawn at all. */

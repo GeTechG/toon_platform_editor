@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { UX_PROFILES } from './ux-profile';
 import {
   FEATURE_ITEM,
-  TOOL_KEYS,
+  toolSpec,
   anyToolVisible,
   visibleTools,
   toolItem,
@@ -12,7 +12,7 @@ import {
   slotsOf,
   allPlaced,
   itemsOf,
-  PANEL_ITEMS,
+  panelItems,
   defaultPanels,
   hidePanelItem,
   movePanelItem,
@@ -22,12 +22,12 @@ import {
 } from './panels';
 import * as presets from './presets';
 
-const ids = () => PANEL_ITEMS.map((item) => item.id);
+const ids = () => panelItems().map((item) => item.id);
 
 describe('the item registry', () => {
   test('every item has a unique id, a kind and a label', () => {
-    expect(new Set(ids()).size).toBe(PANEL_ITEMS.length);
-    for (const item of PANEL_ITEMS) {
+    expect(new Set(ids()).size).toBe(panelItems().length);
+    for (const item of panelItems()) {
       expect(['tool', 'action', 'widget']).toContain(item.kind);
       expect(item.label.length).toBeGreaterThan(0);
     }
@@ -50,7 +50,7 @@ describe('every tool is its own item', () => {
     for (const tool of UX_PROFILES.toonop.tools) {
       const item = panelItem(toolItem(tool));
       expect(item?.kind).toBe('tool');
-      expect(item?.label).toBe(TOOL_KEYS[tool].label);
+      expect(item?.label).toBe(toolSpec(tool)?.label);
     }
   });
 
@@ -111,7 +111,7 @@ describe('the tool keys as a group', () => {
   test('«есть ли вообще инструменты» is any tool key still placed', () => {
     expect(anyToolVisible(defaultPanels())).toBe(true);
     let bare = defaultPanels();
-    for (const item of PANEL_ITEMS) {
+    for (const item of panelItems()) {
       if (toolOfItem(item.id)) {
         bare = hidePanelItem(bare, item.id);
       }
@@ -370,7 +370,7 @@ describe('the slots a layout offers', () => {
   });
 
   test('every kind of item has a word for it', () => {
-    for (const item of PANEL_ITEMS) {
+    for (const item of panelItems()) {
       expect(KIND_LABELS[item.kind].length).toBeGreaterThan(0);
     }
   });

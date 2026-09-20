@@ -93,10 +93,12 @@ import {
   sessionMatrix,
   sessionWidthScale,
 } from '../tools/lasso';
-import { distortRate, jitter } from '../tools/distort';
-import { TONIO_CANVAS_WIDTH } from '../tools/profiles';
 import type { Box } from '../model/geom';
-import { applyMatrix, clampCoord } from '../model/geom';
+import { applyMatrix } from '../model/geom';
+import { editCells, makeHost } from '../plugins/host';
+import { plugins } from '../plugins';
+import { loadPlugins } from '../plugins/load';
+import type { PluginHost, PluginStroke } from '../plugins/contract';
 
 /** An open transform: the cells the lasso took and how far they have been moved. */
 export interface TransformState {
@@ -116,7 +118,6 @@ import {
   resolveToolSelection,
   toolAfterColorChange,
   toolAfterHelp,
-  type SelectableTool,
   type UxProfile,
 } from './ux-profile';
 import {
@@ -133,6 +134,8 @@ import {
   anyToolVisible,
   hidePanelItem,
   movePanelItem,
+  normalizePanels,
+  toolSpec,
   visibleTools,
   panelItemVisible,
   showPanelItem,
@@ -161,7 +164,12 @@ import {
   type TonioBrush,
 } from './presets';
 
-export type Tool = SelectableTool;
+/**
+ * A tool is whatever the register has (plugins/registry.ts), so this is an id
+ * rather than a closed union: the editor asks the register for a tool's
+ * traits instead of reading them off its name.
+ */
+export type Tool = string;
 
 /** Fresh brush records, so a load or a save never shares objects with the config. */
 function copyBrushes(source: Record<BrushToolId, TonioBrush>): Record<BrushToolId, TonioBrush> {
@@ -177,8 +185,6 @@ function copyBrushes(source: Record<BrushToolId, TonioBrush>): Record<BrushToolI
  * rotation, bounded so a long drag cannot grow without end.
  */
 const TRANSFORM_HISTORY_LIMIT = 100;
-/** The distort brush writes once every this many pixels of the reference canvas. */
-const DISTORT_STEP_PX = 5;
 
 /** One cell of a block edit, as it was before the edit ran. */
 interface CellSnapshot {
@@ -207,9 +213,16 @@ export class EditorState {
   transform = $state<TransformState | null>(null);
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
   transformWidthWithScale = $state(false);
-  /** Live distort drag: the cells as they were on press, where it started, last step written. */
-  private distortGesture:
-    { snapshots: CellSnapshot[]; startX: number; lastStep: number } | null = null;
+  /** The live gesture of a tool that brought its own (plugins): the cells as they were on press. */
+  private pluginGesture: { snapshots: CellSnapshot[] } | null = null;
+  /**
+   * Bumped whenever the register changed. The register is plain data outside
+   * the runes (it is read by pure tests), so this is what tells the rail and
+   * the settings list that there is something new to draw.
+   */
+  pluginsVersion = $state(0);
+  /** The window a tool opened over the canvas; it goes when the tool is left. */
+  pluginWindow = $state<{ title: string; el: HTMLElement } | null>(null);
   /**
    * The reference's settings window, persisted with the rest of the UI config.
    * Everything here applies the moment it changes.
@@ -400,7 +413,7 @@ export class EditorState {
    * preset only chose where it started — a key put back by hand is a tool the
    * editor has, hotkeys included.
    */
-  get availableTools(): SelectableTool[] {
+  get availableTools(): Tool[] {
     return visibleTools(this.panels);
   }
 
@@ -542,7 +555,14 @@ export class EditorState {
     if (isHelpTool(resolved) && !isHelpTool(this.tool)) {
       this.previousDrawingTool = this.tool;
     }
+    if (resolved !== this.tool) {
+      // A tool that brought its own window takes it away with it, the way the
+      // pipette source and the zoom window come and go with theirs.
+      toolSpec(this.tool)?.deactivate?.(this.pluginHost());
+      this.closePluginWindow();
+    }
     this.tool = resolved;
+    toolSpec(resolved)?.activate?.(this.pluginHost());
     if (resolved === 'pipette') {
       this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
@@ -1433,7 +1453,10 @@ export class EditorState {
       return;
     }
     const before = cell.strokes;
-    const after = eraseStrokes(before, gesture, radius);
+    // How a stroke is cut is declared by the tool that lays that primitive
+    // down; the eraser knows only the contour, which no tool lays down.
+    const after = eraseStrokes(before, gesture, radius, this.doc.tools, (tool) =>
+      plugins.tools().find((entry) => entry.stroke?.kind === tool.kind)?.stroke?.cut);
     if (after.length === before.length
       && after.every((piece, i) => piece.points.length === before[i].points.length)) {
       return;
@@ -1627,64 +1650,93 @@ export class EditorState {
   }
 
   /**
-   * Distort (~): not a session but a destructive brush. The cells are
-   * snapshotted on press, shaken in place on every accepted move, and filed
-   * as one undo step on release (`tools.js` `Distort`).
+   * A tool that brought its own gesture (plugins/contract.ts) starts here: the
+   * cells it may rewrite are snapshotted once, and whatever it writes by the
+   * way becomes one step of undo on release. The plugin never sees the
+   * history — a plugin that could spoil it would.
    */
-  beginDistort(x: number): void {
+  beginPluginGesture(): boolean {
     const layers = this.visibleSelectedLayers;
     if (this.playing || layers.length === 0) {
-      return;
+      return false;
     }
-    this.distortGesture = {
-      snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }),
-      startX: x,
-      lastStep: NaN,
-    };
+    this.pluginGesture = { snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }) };
+    return true;
+  }
+
+  /** Pointer up: the whole gesture becomes one undo step. */
+  endPluginGesture(): void {
+    if (this.pluginGesture) {
+      this.pushEdit(this.pluginGesture.snapshots);
+      this.pluginGesture = null;
+    }
+  }
+
+  /** The strokes a plugin may rewrite: the current frame on the visible selected layers. */
+  pluginStrokes(): PluginStroke[] {
+    return this.visibleSelectedLayers.flatMap((layer) =>
+      this.doc.layers[layer].frames[this.activeFrame].strokes.map(
+        (stroke) => ({ ...stroke, points: [...stroke.points] }),
+      ));
   }
 
   /**
-   * One accepted move of the distort drag. `x` is in document units; the
-   * reference measures its strength on a 1280-wide canvas, so the travel goes
-   * into reference pixels and the kick comes back out of them.
+   * One write of the running gesture; the editor clamps what comes back. Done
+   * outside a gesture — a button in a plugin's own window — it is its own
+   * gesture, so that edit is one step of undo as well.
    */
-  distortStep(x: number): void {
-    const gesture = this.distortGesture;
+  editPluginCells(fn: (strokes: PluginStroke[]) => void): void {
+    const standalone = !this.pluginGesture;
+    if (standalone && !this.beginPluginGesture()) {
+      return;
+    }
+    const gesture = this.pluginGesture;
     if (!gesture) {
       return;
     }
-    // Everything here is measured on the reference's own 1280-wide canvas:
-    // the strength, and the every-fifth-pixel throttle (`~~x % 5`). Counting
-    // either in document units shakes the frame several times too often.
-    const perDocUnit = TONIO_CANVAS_WIDTH / this.doc.width;
-    const referenceX = x * perDocUnit;
-    const step = Math.trunc(referenceX / DISTORT_STEP_PX);
-    if (step === gesture.lastStep) {
-      return;
-    }
-    gesture.lastStep = step;
-    const rate = distortRate(referenceX, gesture.startX * perDocUnit) / perDocUnit;
-    if (rate === 0) {
-      return;
-    }
-    for (const { layer, frame } of gesture.snapshots) {
-      // A fresh cell object, not a shake in place: that identity change is
+    const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    const next = editCells(cells, fn);
+    gesture.snapshots.forEach(({ layer, frame }, i) => {
+      // A fresh cell object, not a rewrite in place: that identity change is
       // what tells the canvas its buffers are stale.
-      const shaken = this.doc.layers[layer].frames[frame].strokes.map((stroke) => ({
-        points: jitter(stroke.points, rate).map(clampCoord),
-        tool_id: stroke.tool_id,
-      }));
-      replaceStrokes(this.doc, layer, frame, shaken);
-    }
+      replaceStrokes(this.doc, layer, frame, next[i]);
+    });
     this.touched = true;
+    if (standalone) {
+      this.endPluginGesture();
+    }
   }
 
-  /** Pointer up: the whole shake becomes one undo step. */
-  endDistort(): void {
-    if (this.distortGesture) {
-      this.pushEdit(this.distortGesture.snapshots);
-      this.distortGesture = null;
+  /**
+   * Reads the plugins at `address`, dropping whatever the previous one gave.
+   * The arrangement is read again afterwards: a tool that arrived takes the
+   * place its preset has for it, and one that is gone leaves without taking
+   * the rest of the layout with it.
+   */
+  async reloadPlugins(address: string): Promise<void> {
+    plugins.resetExternal();
+    await loadPlugins(address, plugins);
+    this.panels = normalizePanels(this.panels);
+    this.pluginsVersion++;
+    if (!plugins.tool(this.tool)) {
+      this.selectTool('pencil');
     }
+  }
+
+  /** What a plugin is handed — never this object, which carries the runes state. */
+  pluginHost(): PluginHost {
+    return makeHost(this);
+  }
+
+  /** The node a plugin draws its own controls into, inside a window of the editor. */
+  openPluginWindow(title: string): HTMLElement {
+    const el = document.createElement('div');
+    this.pluginWindow = { title, el };
+    return el;
+  }
+
+  closePluginWindow(): void {
+    this.pluginWindow = null;
   }
 
   /**

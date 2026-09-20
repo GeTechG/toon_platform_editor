@@ -132,7 +132,13 @@
 </script>
 
 <script lang="ts">
-  let { name, size = 20 }: { name: IconName; size?: number } = $props();
+  /**
+   * A name from the vocabulary, or the markup itself — a plugin cannot write
+   * into this file, so it brings its own path. The leading `<` tells them
+   * apart; everything else about the drawing is the same.
+   */
+  let { name, size = 20 }: { name: IconName | string; size?: number } = $props();
+  const markup = $derived(name.trimStart().startsWith('<') ? name : null);
 </script>
 
 <svg
@@ -146,5 +152,10 @@
   stroke-linejoin="round"
   aria-hidden="true"
 >
-  <path d={PATHS[name]} />
+  {#if markup}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- reviewed plugin source, see editor-plugins -->
+    {@html markup}
+  {:else}
+    <path d={PATHS[name as IconName]} />
+  {/if}
 </svg>

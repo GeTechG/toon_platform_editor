@@ -7,6 +7,7 @@
    * A native <dialog> rather than a hand-rolled sheet — showModal() brings the
    * focus trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
+  import { plugins } from '../plugins';
   import { exportDrafts, importDrafts, listDrafts } from '../draft/store';
   import { draftEntries, type DraftEntry } from '../draft/restore';
   import { formatFileSize } from './file-size';
@@ -345,6 +346,28 @@
       >Редактировать панели</button>
     </div>
 
+    <p class="sheet-hint">Плагины</p>
+    <label class="field">
+      <span>Адрес реестра</span>
+      <input
+        type="url"
+        placeholder="пусто — плагины не грузятся"
+        value={editor.settings.pluginRegistry}
+        onchange={(e) => editor.setSetting('pluginRegistry', e.currentTarget.value.trim())}
+      />
+    </label>
+    <!-- The register is plain data; the version is what says it changed. -->
+    {#key editor.pluginsVersion}
+    <ul class="plugin-list">
+      {#each plugins.tools().filter((tool) => !tool.builtin) as tool (tool.id)}
+        <li>{tool.label} <span class="saved">{tool.id}</span></li>
+      {/each}
+      {#each plugins.failures as failure (failure.id + failure.reason)}
+        <li class="refused">{failure.id} <span class="saved">{failure.reason}</span></li>
+      {/each}
+    </ul>
+    {/key}
+
     {#if report}
       <p class="report" role="status">{report}</p>
     {/if}
@@ -461,6 +484,15 @@
     flex-wrap: wrap;
     gap: 0.4rem;
     padding: 0.3rem 0 0.1rem;
+  }
+  .plugin-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.85rem;
+  }
+  .plugin-list .refused {
+    color: var(--signal-dark);
   }
   .report {
     margin: 0.7rem 0 0.2rem;
