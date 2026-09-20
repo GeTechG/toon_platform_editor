@@ -122,7 +122,7 @@ describe('bottom panel divider', () => {
     // the grid gains rows and frames instead of the buttons drifting apart.
     // (arrange mode lets the bar size to its contents, hence the second term)
     expect(editorUi).toContain('style={!panelFolded && !editor.arranging ?');
-    expect(editorUi).toContain('${panelHeight}px');
+    expect(editorUi).toContain('min-height: ${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
   });
@@ -220,8 +220,9 @@ describe('side panels reflow instead of stretching', () => {
     expect(editorUi).toMatch(/\.studio \.left > :global\(\.key\)[^}]*min-width: 0/s);
   });
 
-  it('the history keys reflow with them', () => {
-    expect(editorUi).toMatch(/\.studio \.history \{[^}]*repeat\(auto-fit/s);
+  it('the history keys reflow with them in a column, and stay a row elsewhere', () => {
+    expect(editorUi).toMatch(/\.studio \.left \.history,[^{]*\{[^}]*repeat\(auto-fit/s);
+    expect(editorUi).toMatch(/\n  \.history \{[^}]*display: flex/s);
   });
 
   it('a wider palette column widens the palette itself', () => {

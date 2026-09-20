@@ -263,6 +263,49 @@ export function slotsOf(layout: PanelLayout): PanelSlot[] {
   ];
 }
 
+/** Where an item sits now, or null when it is nowhere (not even the shelf). */
+export function slotOf(layout: PanelLayout, id: string): { slot: PanelSlot; index: number } | null {
+  for (const slot of FIXED_SLOTS) {
+    const index = layout[slot].indexOf(id);
+    if (index >= 0) {
+      return { slot, index };
+    }
+  }
+  for (const [i, row] of layout.rows.entries()) {
+    const index = row.indexOf(id);
+    if (index >= 0) {
+      return { slot: rowSlot(i), index };
+    }
+  }
+  return null;
+}
+
+/**
+ * What a preset starts with: the one arrangement, with a few things taken out
+ * and a few swapped for another form of the same control (Multator draws its
+ * own colour pair rather than the palette box).
+ */
+export interface PresetPanels {
+  readonly hide?: readonly string[];
+  readonly swap?: readonly (readonly [string, string])[];
+}
+
+export function panelsFrom(patch: PresetPanels = {}): PanelLayout {
+  let panels = defaultPanels();
+  for (const [was, now] of patch.swap ?? []) {
+    const at = slotOf(panels, was);
+    if (!at) {
+      continue;
+    }
+    panels = hidePanelItem(panels, was);
+    panels = movePanelItem(panels, now, at.slot, at.index);
+  }
+  for (const id of patch.hide ?? []) {
+    panels = hidePanelItem(panels, id);
+  }
+  return panels;
+}
+
 export function panelItem(id: string): PanelItem | undefined {
   return PANEL_ITEMS.find((item) => item.id === id);
 }
@@ -289,11 +332,14 @@ export function normalizePanels(value: unknown): PanelLayout {
   };
   next.left = take(stored.left);
   next.right = take(stored.right);
-  // Rows as stored, or — for a layout written when the bottom panel had three
-  // fixed rows — those three, in the order they were drawn.
+  // Rows as stored, or — for a layout written when the bottom panel had fixed
+  // rows — those, in the order they were drawn. The old `draw` row is left
+  // out on purpose: it belonged to a layout with no side columns and held the
+  // boxes, which do not fit a row of the bottom panel. Its items fall through
+  // to the arrangement below, which puts them back in the columns.
   const rows = Array.isArray(stored.rows)
     ? stored.rows
-    : [stored.bottom, stored.bar, stored.draw];
+    : [stored.bottom, stored.bar];
   next.rows = rows.map(take).filter((row) => row.length > 0);
   next.float = take(stored.float);
   next.hidden = take(stored.hidden).filter((id) => {

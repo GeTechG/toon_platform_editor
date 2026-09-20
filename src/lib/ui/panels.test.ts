@@ -140,10 +140,34 @@ describe('one arrangement for everybody', () => {
     expect(panels.hidden).toContain('brush-sizes');
   });
 
-  test('a preset changes behaviour, never the arrangement', () => {
-    // There is nothing to ask a preset about the panels any more.
-    expect('presetPanels' in presets).toBe(false);
-    expect('presetFeatures' in presets).toBe(false);
+  test('a preset starts from the same panels, with its own set in them', () => {
+    const toonop = presets.presetPanels('toonop');
+    expect(toonop).toEqual(defaultPanels());
+
+    const multator = presets.presetPanels('multator');
+    // Same slots, same machinery — fewer things placed.
+    expect(multator.left).toContain(toolItem('pencil'));
+    expect(multator.rows[0]).toEqual(['timeline']);
+    expect(allPlaced(multator).sort()).toEqual(allPlaced(toonop).sort());
+    expect(multator.hidden.length).toBeGreaterThan(toonop.hidden.length);
+  });
+
+  test('Multator swaps the palette box for its own colour widget', () => {
+    const multator = presets.presetPanels('multator');
+    expect(multator.hidden).toContain('palette');
+    expect(multator.right).toContain('color');
+    // …and the slider box for the reference's row of dots.
+    expect(multator.hidden).toContain('brush');
+    expect(multator.right).toContain('brush-sizes');
+    // The keys it never had stay on the shelf.
+    expect(multator.hidden).toContain('export');
+    expect(multator.hidden).toContain(toolItem('lasso'));
+  });
+
+  test('the swapped widget takes the place of the one it replaces', () => {
+    const multator = presets.presetPanels('multator');
+    const toonop = presets.presetPanels('toonop');
+    expect(multator.right.indexOf('color')).toBe(toonop.right.indexOf('palette'));
   });
 });
 
@@ -217,20 +241,34 @@ describe('rows are made and unmade', () => {
 });
 
 describe('a layout saved before rows could be made', () => {
-  test('its three fixed rows become the first three rows', () => {
+  test('the drawing row of the old bar setup goes back to the columns', () => {
+    // That row held the tool keys and the two boxes; as a row of the bottom
+    // panel the boxes do not fit, so they return to where the arrangement
+    // keeps them.
+    const legacy = {
+      bottom: ['timeline'],
+      bar: ['transport'],
+      draw: [toolItem('pencil'), 'brush', 'palette'],
+    };
+    const panels = normalizePanels(legacy);
+    expect(panels.rows).toHaveLength(2);
+    expect(panels.left).toContain(toolItem('pencil'));
+    expect(panels.right).toContain('brush');
+    expect(panels.right).toContain('palette');
+  });
+
+  test('its two bottom rows become the first two rows', () => {
     const legacy = {
       left: [toolItem('pencil')],
       right: ['palette'],
       bottom: ['timeline'],
       bar: ['transport'],
-      draw: ['brush'],
       float: [],
       hidden: [],
     };
     const panels = normalizePanels(legacy);
     expect(panels.rows[0]).toEqual(['timeline']);
     expect(panels.rows[1][0]).toBe('transport');
-    expect(panels.rows[2][0]).toBe('brush');
     expect(panels.left[0]).toBe(toolItem('pencil'));
   });
 });

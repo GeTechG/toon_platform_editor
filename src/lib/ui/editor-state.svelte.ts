@@ -128,7 +128,6 @@ import {
 } from './workspaces';
 import {
   anyToolVisible,
-  defaultPanels,
   hidePanelItem,
   movePanelItem,
   panelItemVisible,
@@ -144,6 +143,7 @@ import {
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetDrawingProfile,
+  presetPanels,
   presetUx,
   saveUiConfig,
   PANEL_HEIGHT_MAX,
@@ -366,7 +366,7 @@ export class EditorState {
    * same arrangement whatever the preset — a preset changes how the editor
    * behaves (the brush above all), not where the keys are.
    */
-  panels = $state<PanelLayout>(defaultPanels());
+  panels = $state<PanelLayout>(presetPanels(DEFAULT_PRESET));
 
   /**
    * Arrange mode: the panels are being rearranged by hand, so every item is a
@@ -480,6 +480,9 @@ export class EditorState {
    */
   applyPreset(id: string): void {
     this.preset = id;
+    // A preset brings its own starting set — fewer keys under Multator, its
+    // own colour widget — on the same panels.
+    this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
     this.drawingProfile = presetDrawingProfile(id);
     this.paletteExpanded = this.ux.quickPalette === null;
@@ -874,9 +877,9 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  /** Back to the arrangement the editor ships with. */
+  /** Back to the arrangement this preset starts from. */
   resetPanels(): void {
-    this.setPanels(defaultPanels());
+    this.setPanels(presetPanels(this.preset));
   }
 
   /** The frame that should currently be on the canvas. */

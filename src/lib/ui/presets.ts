@@ -12,10 +12,13 @@
 import type { PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
-  defaultPanels,
+  PANEL_ITEMS,
   hidePanelItem,
   normalizePanels,
+  panelsFrom,
+  toolOfItem,
   type PanelLayout,
+  type PresetPanels,
 } from './panels';
 import type { PickerModel } from './picker-model';
 import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
@@ -78,11 +81,13 @@ export const PANEL_HEIGHT_AUDIO = 22;
 export const PANEL_HEIGHT_MAX = 2000;
 /**
  * Side-column range. Each side has its own floor: the tool keys reflow down
- * to a single narrow column, while the palette box is drawn at a fixed width
- * and only looks squashed under it. The ceiling keeps the canvas the widest
- * thing on the table.
+ * to a single narrow column, while the right one keeps room for a box that
+ * is drawn as a grid of swatches — though a column holding only the plain
+ * widgets (Multator's colour pair, the row of dots) may be narrowed further
+ * than the box would like. The ceiling keeps the canvas the widest thing on
+ * the table.
  */
-export const SIDE_WIDTH_MIN: Record<SideId, number> = { left: 56, right: 254 };
+export const SIDE_WIDTH_MIN: Record<SideId, number> = { left: 56, right: 120 };
 export const SIDE_WIDTH_MAX = 480;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
@@ -203,9 +208,23 @@ export const PRESETS: {
   label: string;
   drawingProfile: DrawingProfileId;
   ux: UxProfileId;
+  /** What it starts with, as a patch on the one arrangement. */
+  panels?: PresetPanels;
 }[] = [
   { id: 'toonop', label: 'Toonop', drawingProfile: 'toonio', ux: 'toonop' },
-  { id: 'multator', label: 'Multator', drawingProfile: 'multator', ux: 'multator' },
+  {
+    id: 'multator',
+    label: 'Multator',
+    drawingProfile: 'multator',
+    ux: 'multator',
+    // The reference is a smaller editor: two colours instead of the palette
+    // box, a row of dots instead of the sliders, and none of the keys it
+    // never had (sound, GIF export, cell clipboard, the manual).
+    panels: {
+      swap: [['palette', 'color'], ['brush', 'brush-sizes']],
+      hide: ['export', 'audio', 'copy', 'paste', 'merge', 'pick-source', 'manual'],
+    },
+  },
   { id: 'toonio', label: 'Toonio', drawingProfile: 'toonio', ux: 'toonio' },
 ];
 
@@ -220,6 +239,23 @@ function presetById(id: string) {
 /** Drawing profile owned by a preset, falling back to the Toonop default. */
 export function presetDrawingProfile(id: string): DrawingProfileId {
   return presetById(id).drawingProfile;
+}
+
+/**
+ * The arrangement a preset starts from: the one default, minus what this
+ * preset does not offer — including the tools its profile never draws.
+ */
+export function presetPanels(id: string): PanelLayout {
+  const preset = presetById(id);
+  let panels = panelsFrom(preset.panels);
+  const ux = UX_PROFILES[preset.ux];
+  for (const item of PANEL_ITEMS) {
+    const tool = toolOfItem(item.id);
+    if (tool && !ux.tools.includes(tool)) {
+      panels = hidePanelItem(panels, item.id);
+    }
+  }
+  return panels;
 }
 
 /** UX profile owned by a preset, falling back to the Toonop behavior. */
@@ -248,7 +284,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   // A config written before panels existed carried visibility in flags
   // instead: start from the arrangement and put away what was turned off.
   const storedPanels = (data as Record<string, unknown>).panels;
-  let panels = storedPanels === undefined ? defaultPanels() : normalizePanels(storedPanels);
+  let panels = storedPanels === undefined ? presetPanels(preset) : normalizePanels(storedPanels);
   if (storedPanels === undefined && typeof features === 'object' && features !== null) {
     for (const [key, id] of Object.entries(FEATURE_ITEM)) {
       if ((features as Record<string, unknown>)[key] === false) {

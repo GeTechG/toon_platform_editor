@@ -402,7 +402,7 @@
       </ul>
     {/each}
     <div class="actions">
-      <button class="key" onclick={() => editor.resetPanels()}>Сбросить расположение</button>
+      <button class="key" onclick={() => editor.resetPanels()}>Сбросить к набору</button>
     </div>
 
     {#if report}

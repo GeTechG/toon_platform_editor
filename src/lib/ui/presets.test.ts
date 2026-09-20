@@ -110,7 +110,7 @@ test('parseUiConfig rejects null, garbage, and non-config JSON', () => {
   expect(parseUiConfig('not json')).toBeNull();
   expect(parseUiConfig('42')).toBeNull();
   expect(parseUiConfig('{"features":{}}')).toBeNull(); // missing preset
-  // A config with nothing but a preset is fine: the arrangement has a default.
+  // A config with nothing but a preset is fine: the preset has a default.
   expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
 });
 
@@ -123,11 +123,13 @@ test('an old config\'s flags become items put away, unknown ones ignored', () =>
   expect(parsed?.panels.rows.flat()).toContain('transport');
 });
 
-test('every preset draws the same panels — Multator included', () => {
-  for (const id of ['toonop', 'toonio', 'multator']) {
-    const parsed = parseUiConfig(JSON.stringify({ preset: id }));
-    expect(parsed?.panels).toEqual(defaultPanels());
-  }
+test('a preset starts from its own set on the same panels', () => {
+  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
+  const multator = parseUiConfig('{"preset":"multator"}')?.panels;
+  // Same panels, fewer things in them, its own colour widget.
+  expect(multator?.rows[0]).toEqual(['timeline']);
+  expect(multator?.right).toContain('color');
+  expect(multator?.hidden).toContain('export');
 });
 
 test('a saved config from before the arrangement keeps what it had turned off', () => {
@@ -339,10 +341,8 @@ test('the bottom panel remembers being folded away, and a corrupted flag stays o
 
 // --- Panel contents -------------------------------------------------------
 
-test('the arrangement is the same one for every preset', () => {
-  for (const id of ['toonop', 'multator', 'toonio']) {
-    expect(parseUiConfig(JSON.stringify({ preset: id }))?.panels).toEqual(defaultPanels());
-  }
+test('an unknown preset falls back to the default arrangement', () => {
+  expect(parseUiConfig('{"preset":"nope"}')?.panels).toEqual(defaultPanels());
 });
 
 test('the stored arrangement travels with the rest of the config', () => {

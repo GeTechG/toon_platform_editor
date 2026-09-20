@@ -1498,7 +1498,7 @@
     class="panel"
     class:collapsed={panelFolded}
     class:dragging={resize?.side === 'panel'}
-    style={!panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
+    style={!panelFolded && !editor.arranging ? `min-height: ${panelHeight}px` : undefined}
   >
     <!-- The bar folds like the columns do: the same key-shaped tab, lying on
            its side at the corner of its seam. -->
@@ -1807,7 +1807,12 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    /* The divider sets the panel's floor, not its ceiling: a row holding a
+       box (the palette, the brush sliders) makes the panel as tall as it
+       needs, up to three quarters of the screen — past that the rows scroll
+       rather than eating the canvas. Nothing spills out of it either way. */
+    max-height: 75vh;
+    overflow: hidden;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair
@@ -1865,6 +1870,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.55rem;
+  }
+  .studio .toolbar {
+    overflow-y: auto;
   }
   /* The timeline is the row that takes the height the divider hands out. */
   .studio .toolbar {
@@ -1929,7 +1937,6 @@
   /* The bar sizes to its contents while things are being moved into it. */
   .editor.arranging .panel {
     max-height: 60vh;
-    overflow-y: auto;
   }
   .editor.arranging .slot-empty {
     padding: 0 0.4rem;
@@ -2216,9 +2223,10 @@
       justify-self: end;
     }
   }
-  /* The keys fill whatever width the column was dragged to: even columns when
-     there is room, one column when there is not, and narrower keys under that. */
-  .studio .history {
+  /* In a column the keys fill whatever width it was dragged to: even columns
+     when there is room, one when there is not. In a row they stay a row. */
+  .studio .left .history,
+  .studio .right .history {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
     gap: 0.5rem;
