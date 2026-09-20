@@ -52,13 +52,18 @@
   /**
    * Reference MergePalette (`bundle:10653-10685`): the overflow warning comes
    * before anything is applied, and the count afterwards names the limit the
-   * settings actually hold.
+   * settings actually hold. A grid already at the limit has nothing to ask
+   * about: it says so and stops, instead of confirming a merge of zero.
    */
   function mergePalette(p: SavedPalette): void {
     const limit = editor.settings.paletteLimit;
     const { added, skipped } = mergePalettes(editor.palette, p.colours, limit);
-    if (added === 0 && skipped === 0) {
-      alert('Все эти цвета уже есть в текущей палитре.');
+    if (added === 0) {
+      alert(
+        skipped === 0
+          ? 'Все эти цвета уже есть в текущей палитре.'
+          : `Палитра заполнена: лимит ${limit}. Ни один из ${skipped} цветов не поместится.`,
+      );
       return;
     }
     if (skipped > 0 && !confirm(`Не поместится ${skipped} — лимит палитры ${limit}.\nПродолжить?`)) {

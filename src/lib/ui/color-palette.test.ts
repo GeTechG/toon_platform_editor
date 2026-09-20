@@ -318,6 +318,11 @@ describe('the palette box follows the reference palette', () => {
     expect(paletteBox).not.toContain('PALETTE_LIMIT');
   });
 
+  it('says nothing fits when the grid is already full, instead of asking and reporting zero', () => {
+    expect(paletteBox).toMatch(/added === 0[^]{0,400}return;[^]{0,200}skipped > 0[^]{0,200}confirm\(/);
+    expect(paletteBox).toContain('Палитра заполнена');
+  });
+
   it('shows the remover hint once, then remembers that it did', () => {
     expect(paletteBox).toContain('removerTipShown');
     expect(paletteBox).toMatch(/alert\('[^']*цвет/);
