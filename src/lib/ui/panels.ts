@@ -10,7 +10,6 @@
  * stays a thin caller. The layout is persisted with the rest of the UI config.
  */
 
-import type { FeatureKey } from './presets';
 import type { IconName } from './Icon.svelte';
 import type { SelectableTool } from './ux-profile';
 
@@ -141,8 +140,11 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'manual', kind: 'action', label: 'Мануал' },
   { id: 'fullscreen', kind: 'action', label: 'Полный экран' },
   { id: 'drafts', kind: 'action', label: 'Локальные сохранения' },
-  { id: 'palette', kind: 'widget', wide: true, label: 'Цвет' },
+  { id: 'palette', kind: 'widget', wide: true, label: 'Палитра' },
   { id: 'brush', kind: 'widget', wide: true, label: 'Кисть' },
+  // The plain pair, for whoever wants a key instead of a box.
+  { id: 'color', kind: 'widget', label: 'Цвет' },
+  { id: 'brush-sizes', kind: 'widget', wide: true, label: 'Толщина кисти' },
   { id: 'timeline', kind: 'widget', wide: true, label: 'Лента кадров' },
   { id: 'transport', kind: 'widget', label: 'Управление воспроизведением' },
   { id: 'add-frame', kind: 'action', label: 'Добавить кадр' },
@@ -169,11 +171,12 @@ export interface PanelLayout {
   float: string[];
   hidden: string[];
 }
-/** Which layout the preset draws: the toonio.ru studio, or one bar under the canvas. */
-export type LayoutKind = 'studio' | 'bar';
 
-/** Feature flag ↔ item: a preset that drops a button starts with it hidden. */
-export const FEATURE_ITEM: Record<FeatureKey, string> = {
+/**
+ * Legacy flag ↔ item. Configs written before the arrangement existed carry
+ * a map of on/off flags; this is how they are read back (see parseUiConfig).
+ */
+export const FEATURE_ITEM: Record<string, string> = {
   addFrame: 'add-frame',
   deleteFrame: 'delete-frame',
   timeline: 'timeline',
@@ -190,7 +193,7 @@ export const FEATURE_ITEM: Record<FeatureKey, string> = {
  * the right, the strip over a transport row. Anything left out is hidden — the
  * layers popup, because the studio strip carries the rows itself.
  */
-const STUDIO: Omit<PanelLayout, 'float' | 'hidden'> = {
+const DEFAULT: Omit<PanelLayout, 'float' | 'hidden'> = {
   left: [...TOOL_ORDER.map(toolItem), 'save', 'pick-source', 'history', 'manual', 'fullscreen', 'drafts'],
   right: ['palette', 'brush'],
   rows: [['timeline'], [
@@ -211,31 +214,6 @@ const STUDIO: Omit<PanelLayout, 'float' | 'hidden'> = {
   ]],
 };
 
-/** One bar under the canvas (Multator): frames, transport, drawing. */
-const BAR: Omit<PanelLayout, 'float' | 'hidden'> = {
-  left: [],
-  right: [],
-  rows: [
-    ['history', 'add-frame', 'delete-frame', 'timeline'],
-    [
-      'transport',
-      'onion',
-      'fps',
-      'zoom',
-      'audio',
-      'export',
-      'saved',
-      'drafts',
-      'fullscreen',
-      'settings',
-      'publish',
-    ],
-    // Reference order: the keys, the hairline the brush draws, then its sizes,
-    // then the two colour swatches.
-    [...TOOL_ORDER.map(toolItem), 'pick-source', 'brush', 'palette'],
-  ],
-};
-
 function emptyLayout(): PanelLayout {
   return { left: [], right: [], rows: [], float: [], hidden: [] };
 }
@@ -245,9 +223,13 @@ export function allPlaced(layout: PanelLayout): string[] {
   return [...layout.left, ...layout.right, ...layout.rows.flat(), ...layout.float, ...layout.hidden];
 }
 
-/** The arrangement a layout starts from; every item it does not place is hidden. */
-export function defaultPanels(layout: LayoutKind): PanelLayout {
-  const base = layout === 'bar' ? BAR : STUDIO;
+/**
+ * The arrangement the editor starts from — the same one for every preset: a
+ * preset changes how the editor behaves (the brush above all), never where
+ * the buttons are. Anything not placed here waits on the shelf.
+ */
+export function defaultPanels(): PanelLayout {
+  const base = DEFAULT;
   const next: PanelLayout = {
     left: [...base.left],
     right: [...base.right],
@@ -270,10 +252,10 @@ export function itemsOf(layout: PanelLayout, slot: PanelSlot): string[] {
 }
 
 /** The slots this layout offers now: its rows, plus one more to make. */
-export function slotsOf(layout: PanelLayout, kind: LayoutKind): PanelSlot[] {
-  const columns: PanelSlot[] = kind === 'studio' ? ['left', 'right'] : [];
+export function slotsOf(layout: PanelLayout): PanelSlot[] {
   return [
-    ...columns,
+    'left',
+    'right',
     ...layout.rows.map((_, i) => rowSlot(i)),
     newRowSlot(layout.rows.length),
     'float',
@@ -291,7 +273,7 @@ export function panelItem(id: string): PanelItem | undefined {
  * a button added in a later version is not invisible to everyone who has
  * already arranged their panels once.
  */
-export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout {
+export function normalizePanels(value: unknown): PanelLayout {
   const stored = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const next = emptyLayout();
   const seen = new Set<string>();
@@ -323,7 +305,7 @@ export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout
     seen.delete(id);
     return false;
   });
-  const fallback = defaultPanels(layout);
+  const fallback = defaultPanels();
   const restore = (id: string, into: string[]): void => {
     if (!seen.has(id)) {
       seen.add(id);
@@ -382,8 +364,8 @@ export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, 
 }
 
 /** Back into the slot the layout default gives it. */
-export function showPanelItem(layout: PanelLayout, id: string, kind: LayoutKind): PanelLayout {
-  const home = defaultPanels(kind);
+export function showPanelItem(layout: PanelLayout, id: string): PanelLayout {
+  const home = defaultPanels();
   if (home.left.includes(id)) {
     return movePanelItem(layout, id, 'left');
   }

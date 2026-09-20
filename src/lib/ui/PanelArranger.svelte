@@ -303,7 +303,7 @@
       }}
       title="Удалить выбранное пространство"
     >Удалить</button>
-    <button class="key" onclick={() => editor.resetFeatures()} title="Вернуть раскладку набора">
+    <button class="key" onclick={() => editor.resetPanels()} title="Вернуть раскладку по умолчанию">
       Сбросить
     </button>
     <button class="key primary" onclick={() => (editor.arranging = false)}>

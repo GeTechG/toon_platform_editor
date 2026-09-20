@@ -3,7 +3,9 @@
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
+  import BrushSizes from './BrushSizes.svelte';
   import ColorPanel from './ColorPanel.svelte';
+  import PaletteBox from './PaletteBox.svelte';
   import ToolKey from './ToolKey.svelte';
   import FloatWindow from './FloatWindow.svelte';
   import PanelArranger from './PanelArranger.svelte';
@@ -53,9 +55,6 @@
   }: { onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void } = $props();
 
   const editor = new EditorState();
-  // Studio layout (toonio.ru): tools down the left, palette and brush boxes
-  // on the right, the timeline and transport under the canvas.
-  const studio = $derived(editor.ux.layout === 'studio');
   // The session being autosaved. Minted when the editor opens and kept for as
   // long as this sheet lives, so a visit overwrites its own record instead of
   // piling up a new draft per stroke (reference `autosave_worker.js:14-22`); a
@@ -112,6 +111,15 @@
   const lastThreeKeys = ['', '', ''];
 
   // --- Bottom panel divider ------------------------------------------------
+  // Keys whose meaning follows the preset's behaviour, not a layout: the
+  // toolset decides whether Alt+E and F are tools, the quick palette whether
+  // M opens the picker (Multator) or merges the buffer (Toonio/Toonop).
+  const hasMegaEraser = $derived(editor.ux.tools.includes('mega-eraser'));
+  const hasFeather = $derived(editor.ux.tools.includes('feather'));
+  const quickPalette = $derived(editor.ux.quickPalette !== null);
+  /** Toonio keeps a project file behind Alt+S; the others export instead. */
+  const hasProjectFile = $derived(editor.drawingProfile === 'toonio');
+
   // The studio bar is resizable from its top edge, and the timeline is the row
   // that grows with it — dragging down gives the grid more layers and frames.
   let viewportHeight = $state(0);
@@ -220,7 +228,7 @@
 
   /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
   function moveOrExtend(shift: boolean, frame: number, layer: number): void {
-    if (shift && studio) {
+    if (shift) {
       editor.selectCell(frame, layer, 'range');
       return;
     }
@@ -239,7 +247,7 @@
   function onKeydown(e: KeyboardEvent): void {
     // Alt+E is the reference's mega-eraser; every other modifier is the
     // browser's or the OS's.
-    if (e.altKey && (e.key === 'e' || e.key === 'E') && studio) {
+    if (e.altKey && (e.key === 'e' || e.key === 'E') && hasMegaEraser) {
       e.preventDefault();
       editor.selectTool('mega-eraser');
       return;
@@ -256,7 +264,7 @@
       e.preventDefault();
       // Reference Alt+S in Toonio saves the project to a file; the other
       // presets have no project file, so there it stays the export.
-      if (studio) {
+      if (hasProjectFile) {
         saveProjectFile();
       } else {
         exportButton?.start();
@@ -444,15 +452,15 @@
       case 'H':
         editor.mirrorSelectedLayers('vertical');
         break;
-      // The studio clipboard is the timeline selection (cells × layers); the
-      // bar has no selection, so there C/V stay whole-frame copy and paste.
+      // The clipboard is the timeline selection (cells × layers) — the strip
+      // carries layers in every preset now.
       case 'c':
       case 'C':
-        studio ? editor.copySelection() : editor.copyActiveFrame();
+        editor.copySelection();
         break;
       case 'v':
       case 'V':
-        studio ? editor.pasteSelection() : editor.pasteFrame();
+        editor.pasteSelection();
         break;
       case 'z':
       case 'Z':
@@ -464,17 +472,17 @@
       case 'Y':
         editor.redo();
         break;
-      // Reference M merges the buffer into the selected cells. The bar keeps
-      // Multator's meaning — M is the only way to its full color picker.
+      // Reference M merges the buffer into the selected cells. Under Multator
+      // it keeps its own meaning — M is the only way to its full colour picker.
       case 'm':
       case 'M':
-        studio ? editor.mergeSelection() : editor.togglePalette();
+        quickPalette ? editor.togglePalette() : editor.mergeSelection();
         break;
-      // The reference's F is the feather; ours is fullscreen. The studio
-      // takes the reference's meaning, fullscreen stays on the button.
+      // The reference's F is the feather where the preset has one; ours is
+      // fullscreen, which otherwise stays on the button.
       case 'f':
       case 'F':
-        if (studio) {
+        if (hasFeather) {
           editor.selectTool('feather');
         } else {
           toggleFullscreen();
@@ -971,7 +979,7 @@
     ['X', 'Поменять контур и заливку'],
     ['Space', 'Просмотр (в трансформации — применить)'],
     ['Ctrl + S', 'Сохранить черновик сейчас'],
-    ['Alt + S', studio ? 'Скачать проект (.toonop)' : 'Экспорт'],
+    ['Alt + S', hasProjectFile ? 'Скачать проект (.toonop)' : 'Экспорт'],
     ['Alt + Enter', 'Отключить предупреждения об удалении'],
     ['Alt + L', 'Скачать лог ошибок'],
   ]);
@@ -1171,18 +1179,20 @@
       <Icon name="drafts" />
     </button>
   {:else if id === 'palette'}
+    <PaletteBox {editor} />
+  {:else if id === 'color'}
     <ColorPanel {editor} />
   {:else if id === 'brush'}
     <BrushPanel {editor} />
+  {:else if id === 'brush-sizes'}
+    <BrushSizes {editor} />
   {:else if id === 'timeline'}
     <div class="timeline">
       <Timeline {editor} />
     </div>
   {:else if id === 'transport'}
-    <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads.
-         The bar layout has no step keys (the reference gives it play alone). -->
+    <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads. -->
     <div class="transport-keys" role="group" aria-label="Управление воспроизведением">
-      {#if studio}
         <button
           class="key icon ends"
           disabled={editor.playing || editor.activeFrame === 0}
@@ -1197,9 +1207,7 @@
           title="Предыдущий кадр"
           aria-label="Предыдущий кадр"
         >⏴</button>
-      {/if}
       <PlayControls bind:this={playControls} {editor} />
-      {#if studio}
         <button
           class="key icon"
           disabled={editor.playing}
@@ -1214,7 +1222,6 @@
           title="На последний кадр"
           aria-label="На последний кадр"
         >⏭</button>
-      {/if}
     </div>
   {:else if id === 'add-frame'}
     <button
@@ -1424,14 +1431,13 @@
 
 
 <div
-  class="editor"
-  class:studio
+  class="editor studio"
   class:alt={editor.settings.altLayout}
   class:arranging={editor.arranging}
   data-float-root
   bind:this={editorEl}
 >
-  {#if studio && (editor.panels.left.length > 0 || editor.arranging)}
+  {#if editor.panels.left.length > 0 || editor.arranging}
     <aside
       class="left"
       class:collapsed={folded('left')}
@@ -1473,7 +1479,7 @@
       </p>
     {/if}
   </div>
-  {#if studio && (editor.panels.right.length > 0 || editor.arranging)}
+  {#if editor.panels.right.length > 0 || editor.arranging}
     <aside
       class="right"
       class:collapsed={folded('right')}
@@ -1492,10 +1498,9 @@
     class="panel"
     class:collapsed={panelFolded}
     class:dragging={resize?.side === 'panel'}
-    style={studio && !panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
+    style={!panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
   >
-    {#if studio}
-      <!-- The bar folds like the columns do: the same key-shaped tab, lying on
+    <!-- The bar folds like the columns do: the same key-shaped tab, lying on
            its side at the corner of its seam. -->
       <button
         class="fold lying"
@@ -1506,8 +1511,7 @@
       >
         <Icon name={panelFolded ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>
-    {/if}
-    {#if studio && !panelFolded}
+    {#if !panelFolded}
       <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
            svelte-check's non-interactive rules do not model. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->

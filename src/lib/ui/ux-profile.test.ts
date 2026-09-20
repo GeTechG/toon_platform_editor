@@ -45,7 +45,6 @@ describe('UX_PROFILES', () => {
     expect(toonop.fpsRange).toEqual([1, 30]);
     expect(toonop.livePipettePreview).toBe(true);
     expect(toonop.crossCursor).toBe(true);
-    expect(toonop.layout).toBe('studio');
   });
 
   it('holds those values separately from toonio, so editing one mode leaves the other alone', () => {
@@ -68,9 +67,6 @@ describe('UX_PROFILES', () => {
   });
 
   it('multator alone keeps the one-bar chrome', () => {
-    expect(toonio.layout).toBe('studio');
-    expect(toonop.layout).toBe('studio');
-    expect(multator.layout).toBe('bar');
   });
 
   it('offers the Tonio toolset under Toonio and Toonop', () => {

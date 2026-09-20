@@ -23,11 +23,11 @@ describe('Alt+S saves the project as a file', () => {
   });
 
   it('is the export everywhere but in the Toonio preset', () => {
-    expect(editorUi).toMatch(/altKey && \(e\.key === 's'[^]*?studio[^]*?exportButton\?\.start\(\)/);
+    expect(editorUi).toMatch(/altKey && \(e\.key === 's'[^]*?hasProjectFile[^]*?exportButton\?\.start\(\)/);
   });
 
   it('the shortcut table says what the key does in this preset', () => {
-    expect(editorUi).toContain("['Alt + S', studio ? 'Скачать проект (.toonop)' : 'Экспорт']");
+    expect(editorUi).toContain("['Alt + S', hasProjectFile ? 'Скачать проект (.toonop)' : 'Экспорт']");
   });
 });
 

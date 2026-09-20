@@ -128,11 +128,11 @@ import {
 } from './workspaces';
 import {
   anyToolVisible,
+  defaultPanels,
   hidePanelItem,
   movePanelItem,
   panelItemVisible,
   showPanelItem,
-  FEATURE_ITEM,
   type PanelLayout,
   type PanelSlot,
 } from './panels';
@@ -144,8 +144,6 @@ import {
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetDrawingProfile,
-  FEATURE_ORDER,
-  presetPanels,
   presetUx,
   saveUiConfig,
   PANEL_HEIGHT_MAX,
@@ -155,9 +153,7 @@ import {
   type BrushToolId,
   type DrawingProfileId,
   type EditorSettings,
-  type FeatureKey,
   type SideId,
-  type Features,
   type TonioBrush,
 } from './presets';
 
@@ -366,10 +362,11 @@ export class EditorState {
   preset = $state(DEFAULT_PRESET);
   /**
    * What sits in each panel, in what order (persisted). This is the whole of
-   * button visibility: an item is offered exactly when a panel holds it, and
-   * `features` is the named view onto that, for the components that ask.
+   * button visibility: an item is offered exactly when a panel holds it. The
+   * same arrangement whatever the preset — a preset changes how the editor
+   * behaves (the brush above all), not where the keys are.
    */
-  panels = $state<PanelLayout>(presetPanels(DEFAULT_PRESET));
+  panels = $state<PanelLayout>(defaultPanels());
 
   /**
    * Arrange mode: the panels are being rearranged by hand, so every item is a
@@ -381,14 +378,9 @@ export class EditorState {
   /** Named arrangements, stored on their own key (they outlive a preset). */
   workspaces = $state<Workspace[]>([]);
 
-  get features(): Features {
-    return {
-      ...Object.fromEntries(
-        FEATURE_ORDER.map((key) => [key, panelItemVisible(this.panels, FEATURE_ITEM[key])]),
-      ) as Features,
-      // Every tool is its own item, so "there are tools" is any of them.
-      tools: anyToolVisible(this.panels),
-    };
+  /** Whether any tool key at all is still placed (the brush row asks). */
+  get hasToolKeys(): boolean {
+    return anyToolVisible(this.panels);
   }
 
   constructor() {
@@ -406,7 +398,7 @@ export class EditorState {
       this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
-    this.workspaces = loadWorkspaces(this.ux.layout);
+    this.workspaces = loadWorkspaces();
     this.watchErrors();
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -488,7 +480,6 @@ export class EditorState {
    */
   applyPreset(id: string): void {
     this.preset = id;
-    this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
     this.drawingProfile = presetDrawingProfile(id);
     this.paletteExpanded = this.ux.quickPalette === null;
@@ -658,11 +649,6 @@ export class EditorState {
     }
   }
 
-  /** Toggle one button's visibility, keeping the current preset id. */
-  toggleFeature(key: FeatureKey): void {
-    this.togglePanelItem(FEATURE_ITEM[key]);
-  }
-
   /** Put an item in a panel, at `index` or at its end. */
   movePanelItem(id: string, slot: PanelSlot, index?: number): void {
     this.panels = movePanelItem(this.panels, id, slot, index);
@@ -712,7 +698,7 @@ export class EditorState {
 
   /** Back into the panel this layout keeps it in. */
   showPanelItem(id: string): void {
-    this.panels = showPanelItem(this.panels, id, this.ux.layout);
+    this.panels = showPanelItem(this.panels, id);
     this.persistUiConfig();
   }
 
@@ -720,7 +706,7 @@ export class EditorState {
   togglePanelItem(id: string): void {
     this.panels = panelItemVisible(this.panels, id)
       ? hidePanelItem(this.panels, id)
-      : showPanelItem(this.panels, id, this.ux.layout);
+      : showPanelItem(this.panels, id);
     this.ensureActiveLayerVisible();
     this.persistUiConfig();
   }
@@ -731,10 +717,9 @@ export class EditorState {
    * other hidden layers stay hidden; this is a document change.
    */
   ensureActiveLayerVisible(): void {
-    // The rows live on the timeline, in every layout: with the timeline gone
-    // there is no way to unhide a layer, so a hidden active one is a dead
-    // canvas.
-    if (this.features.timeline) {
+    // The rows live on the timeline: with the timeline gone there is no way
+    // to unhide a layer, so a hidden active one is a dead canvas.
+    if (panelItemVisible(this.panels, 'timeline')) {
       return;
     }
     const layer = this.doc.layers[this.activeLayer];
@@ -889,9 +874,9 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  /** Reset the arrangement and drawing profile to the active preset defaults. */
-  resetFeatures(): void {
-    this.applyPreset(this.preset);
+  /** Back to the arrangement the editor ships with. */
+  resetPanels(): void {
+    this.setPanels(defaultPanels());
   }
 
   /** The frame that should currently be on the canvas. */
@@ -1709,7 +1694,6 @@ export class EditorState {
   private persistUiConfig(): void {
     saveUiConfig({
       preset: this.preset,
-      features: this.features,
       panels: $state.snapshot(this.panels),
       // Only the windows that are actually floating: a drag that passed over
       // the canvas must not leave a position behind for ever.

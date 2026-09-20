@@ -25,8 +25,7 @@ describe('one layer list, two placements', () => {
   it('the timeline is the only place the rows live', () => {
     expect(timeline).toContain('<LayerRows');
     // No popup around a second copy of the same list — in any layout.
-    expect(allPlaced(defaultPanels('studio'))).not.toContain('layers');
-    expect(allPlaced(defaultPanels('bar'))).not.toContain('layers');
+    expect(allPlaced(defaultPanels())).not.toContain('layers');
     expect(editorUi).not.toContain('LayersPanel');
   });
 });
@@ -121,8 +120,8 @@ describe('bottom panel divider', () => {
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.
-    // (arrange mode lets the bar size to its contents, hence the third term)
-    expect(editorUi).toContain('style={studio && !panelFolded && !editor.arranging ?');
+    // (arrange mode lets the bar size to its contents, hence the second term)
+    expect(editorUi).toContain('style={!panelFolded && !editor.arranging ?');
     expect(editorUi).toContain('${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
@@ -139,10 +138,12 @@ describe('copy, paste and merge on the studio transport', () => {
     expect(editorUi.match(/disabled=\{!editor\.canPasteCells\}/g)).toHaveLength(2);
   });
 
-  it('C, V and M drive the selection in the studio; M stays the palette in the bar', () => {
-    expect(editorUi).toContain('studio ? editor.copySelection() : editor.copyActiveFrame()');
-    expect(editorUi).toContain('studio ? editor.pasteSelection() : editor.pasteFrame()');
-    expect(editorUi).toContain('studio ? editor.mergeSelection() : editor.togglePalette()');
+  it('C and V drive the cell selection; M is the palette where the preset has a quick one', () => {
+    // One timeline for everybody, so the clipboard is the selection always.
+    expect(editorUi).toContain('editor.copySelection();');
+    expect(editorUi).toContain('editor.pasteSelection();');
+    // M keeps Multator's meaning, decided by the profile, not by a layout.
+    expect(editorUi).toContain('quickPalette ? editor.togglePalette() : editor.mergeSelection()');
   });
 
   it('Shift with the arrows extends the selection instead of moving the cell', () => {
@@ -155,7 +156,7 @@ describe('copy, paste and merge on the studio transport', () => {
 describe('frame buttons follow the reference bar', () => {
   it('add and delete frame sit on the studio transport, not beside the timeline', () => {
     // Reference: ⏮ ⏴ ▶ ⏵ ⏭ + × 👻 fps … — the frame keys are part of the bar.
-    const studio = defaultPanels('studio');
+    const studio = defaultPanels();
     expect(studio.rows[1]).toContain('add-frame');
     expect(studio.rows[1]).toContain('delete-frame');
     expect(studio.rows[0]).toEqual(['timeline']);

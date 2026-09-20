@@ -49,7 +49,7 @@
   // The sections to list: every panel the arrangement has. «Новая строка» is
   // not a section — it is only somewhere to send an item to.
   const slots = $derived(
-    slotsOf(editor.panels, editor.ux.layout).filter((slot) => !slotRow(slot)?.fresh),
+    slotsOf(editor.panels).filter((slot) => !slotRow(slot)?.fresh),
   );
 
   /** Without the API the option would be a switch that does nothing. */
@@ -376,7 +376,7 @@
               aria-label="Где «{panelItem(id)?.label}»"
               onchange={(e) => editor.movePanelItem(id, e.currentTarget.value as PanelSlot)}
             >
-              {#each slotsOf(editor.panels, editor.ux.layout) as target (target)}
+              {#each slotsOf(editor.panels) as target (target)}
                 <option value={target}>{slotLabel(target)}</option>
               {/each}
             </select>
@@ -402,7 +402,7 @@
       </ul>
     {/each}
     <div class="actions">
-      <button class="key" onclick={() => editor.resetFeatures()}>Сбросить к набору</button>
+      <button class="key" onclick={() => editor.resetPanels()}>Сбросить расположение</button>
     </div>
 
     {#if report}

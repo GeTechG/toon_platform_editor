@@ -12,28 +12,14 @@
 import type { PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
-  PANEL_ITEMS,
   defaultPanels,
   hidePanelItem,
   normalizePanels,
-  toolOfItem,
   type PanelLayout,
 } from './panels';
 import type { PickerModel } from './picker-model';
 import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
 
-export type FeatureKey =
-  | 'addFrame'
-  | 'deleteFrame'
-  | 'timeline'
-  | 'play'
-  | 'export'
-  | 'tools'
-  | 'sizes'
-  | 'color'
-  | 'onionSkin';
-
-export type Features = Record<FeatureKey, boolean>;
 export type DrawingProfileId = 'multator' | 'toonio';
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
@@ -196,7 +182,6 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
 
 export interface UiConfig {
   preset: string;
-  features: Features;
   /** What sits in each panel, in what order (see panels.ts). */
   panels: PanelLayout;
   /** Where each floating item sits, in stage coordinates. */
@@ -205,59 +190,23 @@ export interface UiConfig {
   settings: EditorSettings;
 }
 
-/** Render/checkbox order for the customization list. */
-export const FEATURE_ORDER: FeatureKey[] = [
-  'addFrame',
-  'deleteFrame',
-  'timeline',
-  'play',
-  'export',
-  'tools',
-  'sizes',
-  'color',
-  'onionSkin',
-];
 
-export const FEATURE_LABELS: Record<FeatureKey, string> = {
-  addFrame: 'Добавить кадр',
-  deleteFrame: 'Удалить кадр',
-  timeline: 'Лента кадров',
-  play: 'Проигрывание',
-  export: 'Экспорт в GIF',
-  tools: 'Инструменты',
-  sizes: 'Толщина кисти',
-  color: 'Цвет',
-  onionSkin: 'Калька',
-};
-
-const allOn = (off: Partial<Features> = {}): Features => ({
-  addFrame: true,
-  deleteFrame: true,
-  timeline: true,
-  play: true,
-  export: true,
-  tools: true,
-  sizes: true,
-  color: true,
-  onionSkin: true,
-  ...off,
-});
 
 // A preset owns toolbar visibility, the compatibility profile used for the
 // next stroke, and the UX profile (palette, eraser rule, onion side, frame
 // and playback behavior). Toonop draws the Tonio line under its own UX
 // profile, which it owns outright; Multator and Toonio reproduce their
-// reference editors end to end.
+// reference editors end to end. A preset owns behaviour only — where the
+// buttons sit is the arrangement's business, and the same for all of them.
 export const PRESETS: {
   id: string;
   label: string;
-  features: Features;
   drawingProfile: DrawingProfileId;
   ux: UxProfileId;
 }[] = [
-  { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'toonio', ux: 'toonop' },
-  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator', ux: 'multator' },
-  { id: 'toonio', label: 'Toonio', features: allOn(), drawingProfile: 'toonio', ux: 'toonio' },
+  { id: 'toonop', label: 'Toonop', drawingProfile: 'toonio', ux: 'toonop' },
+  { id: 'multator', label: 'Multator', drawingProfile: 'multator', ux: 'multator' },
+  { id: 'toonio', label: 'Toonio', drawingProfile: 'toonio', ux: 'toonio' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';
@@ -267,38 +216,10 @@ function presetById(id: string) {
     ?? PRESETS.find((preset) => preset.id === DEFAULT_PRESET)!;
 }
 
-/** Feature map for a preset id, falling back to the default preset. Fresh copy. */
-export function presetFeatures(id: string): Features {
-  return { ...presetById(id).features };
-}
 
 /** Drawing profile owned by a preset, falling back to the Toonop default. */
 export function presetDrawingProfile(id: string): DrawingProfileId {
   return presetById(id).drawingProfile;
-}
-
-/**
- * The arrangement a preset starts from: its layout's default, minus whatever
- * buttons the preset does not offer at all.
- */
-export function presetPanels(id: string): PanelLayout {
-  const features = presetFeatures(id);
-  const ux = presetUx(id);
-  let panels = defaultPanels(ux.layout);
-  for (const key of FEATURE_ORDER) {
-    if (!features[key]) {
-      panels = hidePanelItem(panels, FEATURE_ITEM[key]);
-    }
-  }
-  // A tool the profile does not draw starts put away rather than as a key
-  // that renders nothing.
-  for (const item of PANEL_ITEMS) {
-    const tool = toolOfItem(item.id);
-    if (tool && !ux.tools.includes(tool)) {
-      panels = hidePanelItem(panels, item.id);
-    }
-  }
-  return panels;
 }
 
 /** UX profile owned by a preset, falling back to the Toonop behavior. */
@@ -324,31 +245,19 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   if (typeof preset !== 'string') {
     return null;
   }
-  if (typeof features !== 'object' || features === null) {
-    return null;
-  }
-  // Rebuild from the preset base so missing keys are filled and unknown keys dropped.
-  const normalized = presetFeatures(preset);
-  for (const key of FEATURE_ORDER) {
-    const value = (features as Record<string, unknown>)[key];
-    if (typeof value === 'boolean') {
-      normalized[key] = value;
-    }
-  }
-  // A config written before panels existed carries visibility in the flags
-  // alone: start from the preset arrangement and hide what was turned off.
+  // A config written before panels existed carried visibility in flags
+  // instead: start from the arrangement and put away what was turned off.
   const storedPanels = (data as Record<string, unknown>).panels;
-  let panels = storedPanels === undefined ? presetPanels(preset) : normalizePanels(storedPanels, presetUx(preset).layout);
-  if (storedPanels === undefined) {
-    for (const key of FEATURE_ORDER) {
-      if (!normalized[key]) {
-        panels = hidePanelItem(panels, FEATURE_ITEM[key]);
+  let panels = storedPanels === undefined ? defaultPanels() : normalizePanels(storedPanels);
+  if (storedPanels === undefined && typeof features === 'object' && features !== null) {
+    for (const [key, id] of Object.entries(FEATURE_ITEM)) {
+      if ((features as Record<string, unknown>)[key] === false) {
+        panels = hidePanelItem(panels, id);
       }
     }
   }
   return {
     preset,
-    features: normalized,
     panels,
     floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
     drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),

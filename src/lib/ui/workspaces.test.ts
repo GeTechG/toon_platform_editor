@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { defaultPanels, movePanelItem } from './panels';
 import { parseWorkspaces, removeWorkspace, withWorkspace } from './workspaces';
 
-const panels = defaultPanels('studio');
+const panels = defaultPanels();
 
 describe('saved arrangements', () => {
   test('a workspace keeps the panels and where the windows sit', () => {
@@ -28,15 +28,15 @@ describe('saved arrangements', () => {
   });
 
   test('stored rubbish is not a workspace', () => {
-    expect(parseWorkspaces(null, 'studio')).toEqual([]);
-    expect(parseWorkspaces('not json', 'studio')).toEqual([]);
-    expect(parseWorkspaces('{"a":1}', 'studio')).toEqual([]);
-    expect(parseWorkspaces('[{"name":"","panels":{}}]', 'studio')).toEqual([]);
+    expect(parseWorkspaces(null)).toEqual([]);
+    expect(parseWorkspaces('not json')).toEqual([]);
+    expect(parseWorkspaces('{"a":1}')).toEqual([]);
+    expect(parseWorkspaces('[{"name":"","panels":{}}]')).toEqual([]);
   });
 
   test('a stored arrangement is cleaned the way a live one is', () => {
     const raw = JSON.stringify([{ id: 3, name: 'A', panels: { left: ['nope'] }, floatPos: { x: 'bad' } }]);
-    const [workspace] = parseWorkspaces(raw, 'studio');
+    const [workspace] = parseWorkspaces(raw);
     expect(workspace.panels.left).not.toContain('nope');
     // Every item still has a home, as with any normalized layout.
     expect(workspace.panels.left).toContain('tool:pencil');

@@ -1,23 +1,18 @@
 <script lang="ts">
   /**
-   * The colour item: the studio's palette box (outline/fill, saved grid, tool
-   * strip), or — under the one-bar layout — the reference's quick swatches and
-   * native picker. Split out of BrushPanel so colour and thickness are two
-   * items the user can put in two different panels.
+   * The plain colour widget: the outline swatch, the fill swatch and the swap
+   * between them (plus the quick pair, where the profile has one). The full
+   * palette box is its own item — PaletteBox.
    */
   import type { EditorState } from './editor-state.svelte';
-  import PaletteBox from './PaletteBox.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
   const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
-  const studio = $derived(editor.ux.layout === 'studio');
   const twoColors = $derived(editor.ux.tools.includes('feather'));
 </script>
 
-{#if studio}
-  <PaletteBox {editor} />
-{:else if quickPalette}
+{#if quickPalette}
   <div class="quick" role="group" aria-label="Цвет (M — вся палитра)">
     {#each quickPalette as color (color)}
       <button

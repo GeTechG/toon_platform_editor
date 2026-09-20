@@ -11,7 +11,6 @@
 
   let { editor }: { editor: EditorState } = $props();
 
-  const studio = $derived(editor.ux.layout === 'studio');
 
   let strip = $state<HTMLDivElement | undefined>();
 
@@ -167,7 +166,7 @@
 <svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} />
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
-<div class="board" class:capped={!studio}>
+<div class="board">
   <div class="body">
     <div
       class="layer-col"
@@ -265,12 +264,6 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-  }
-  /* The one-bar layout has no divider to give the grid a height, so it sizes
-     to its rows — up to a share of the screen, then it scrolls. */
-  .board.capped {
-    height: auto;
-    max-height: 40vh;
   }
   .body {
     display: flex;

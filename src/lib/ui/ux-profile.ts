@@ -92,12 +92,6 @@ export interface UxProfile {
   readonly crossCursor: boolean;
   /** Tools the preset offers, in toolbar order. */
   readonly tools: readonly SelectableTool[];
-  /**
-   * Where the chrome goes: one bar under the canvas, or the reference
-   * toonio.ru studio — tools left, palette and brush sliders right, timeline
-   * and transport below. The theme stays toonop's.
-   */
-  readonly layout: 'bar' | 'studio';
   /** Opacity the active frame (with its live stroke) is composited at. */
   readonly activeFrameAlpha: number;
   /** Which neighbor becomes active after deleting a frame. */
@@ -146,7 +140,6 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     livePipettePreview: true,
     crossCursor: true,
     tools: TOONOP_TOOLS,
-    layout: 'studio',
   },
   // toonio.ru: onion over the last visited frames, saved color grid, fps 1–30,
   // a pipette that previews while it moves, brush up to 500.
@@ -171,7 +164,6 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     livePipettePreview: true,
     crossCursor: true,
     tools: TONIO_TOOLS,
-    layout: 'studio',
   },
   multator: {
     // ToolPanel.hx: pc1 = 0x000000, pc2 = 0xFF0000; the full picker is behind M.
@@ -201,7 +193,6 @@ export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
     livePipettePreview: false,
     crossCursor: false,
     tools: BASE_TOOLS,
-    layout: 'bar',
   },
 };
 

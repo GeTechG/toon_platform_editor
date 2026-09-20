@@ -6,7 +6,6 @@ import {
   AUTOSAVE_INTERVALS,
   DEFAULT_PRESET,
   DEFAULT_SETTINGS,
-  FEATURE_ORDER,
   PRESETS,
   parseUiConfig,
   PANEL_HEIGHT_MAX,
@@ -16,28 +15,16 @@ import {
   PALETTE_LIMIT_MAX,
   PALETTE_LIMIT_MIN,
   presetDrawingProfile,
-  presetFeatures,
   presetUx,
-  presetPanels,
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
 import { UX_PROFILES } from './ux-profile';
 
-test('the default preset shows every button', () => {
-  const features = presetFeatures(DEFAULT_PRESET);
-  for (const key of FEATURE_ORDER) {
-    expect(features[key]).toBe(true);
+test('a preset is behaviour only — no set of buttons of its own', () => {
+  for (const preset of PRESETS) {
+    expect('features' in preset).toBe(false);
   }
-});
-
-test('an unknown preset falls back to the default preset', () => {
-  expect(presetFeatures('nope')).toEqual(presetFeatures(DEFAULT_PRESET));
-});
-
-test('presetFeatures returns a fresh object each call (no shared mutation)', () => {
-  const a = presetFeatures(DEFAULT_PRESET);
-  a.tools = false;
-  expect(presetFeatures(DEFAULT_PRESET).tools).toBe(true);
+  expect(DEFAULT_PRESET).toBe('toonop');
 });
 
 test('compatibility presets select their drawing profile through existing preset logic', () => {
@@ -64,8 +51,7 @@ test('preset drawing profile lookup falls back to the Toonop profile', () => {
 test('parseUiConfig round-trips a valid stored config', () => {
   const config = {
     preset: 'multator',
-    features: presetFeatures('multator'),
-    panels: presetPanels('multator'),
+    panels: defaultPanels(),
     floatPos: {},
     drawing: {
       activeProfile: 'multator' as const,
@@ -84,7 +70,6 @@ test('parseUiConfig round-trips a valid stored config', () => {
 test('stored drawing profile is normalized to the selected preset', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: {
       activeProfile: 'multator',
       multatorWidth: 4,
@@ -99,14 +84,13 @@ test('a fresh config draws the Tonio line, the way the default Toonop preset ask
 });
 
 test('old UI config migrates to independent safe profile defaults', () => {
-  const old = { preset: 'toonop', features: presetFeatures('toonop') };
+  const old = { preset: 'toonop', features: { tools: true } };
   expect(parseUiConfig(JSON.stringify(old))?.drawing).toEqual(DEFAULT_DRAWING_UI_CONFIG);
 });
 
 test('drawing profile settings are clamped to supported ranges', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    features: presetFeatures('toonop'),
     drawing: { activeProfile: 'bad', multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
   }));
   const clamped = { width: 500, smooth: 1, minDistance: 30 };
@@ -126,45 +110,35 @@ test('parseUiConfig rejects null, garbage, and non-config JSON', () => {
   expect(parseUiConfig('not json')).toBeNull();
   expect(parseUiConfig('42')).toBeNull();
   expect(parseUiConfig('{"features":{}}')).toBeNull(); // missing preset
-  expect(parseUiConfig('{"preset":"toonop"}')).toBeNull(); // missing features
+  // A config with nothing but a preset is fine: the arrangement has a default.
+  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
 });
 
-test('parseUiConfig normalizes missing/unknown keys against the preset base', () => {
+test('an old config\'s flags become items put away, unknown ones ignored', () => {
   const parsed = parseUiConfig(
-    JSON.stringify({ preset: 'toonop', features: { tools: false, bogus: true } }),
+    JSON.stringify({ preset: 'toonop', features: { onionSkin: false, bogus: false } }),
   );
   expect(parsed?.preset).toBe('toonop');
-  expect(parsed?.features.tools).toBe(false); // kept
-  expect(parsed?.features.play).toBe(true); // missing → filled from preset
-  expect('bogus' in (parsed?.features ?? {})).toBe(false); // unknown → dropped
+  expect(parsed?.panels.hidden).toContain('onion');
+  expect(parsed?.panels.rows.flat()).toContain('transport');
 });
 
-test('the layers live on the timeline in every preset, so there is no flag for them', () => {
-  // The rows are part of the strip now: a preset can drop the strip, never
-  // the layers by themselves.
-  expect(FEATURE_ORDER).not.toContain('layers');
+test('every preset draws the same panels — Multator included', () => {
   for (const id of ['toonop', 'toonio', 'multator']) {
-    expect(presetFeatures(id).timeline).toBe(true);
+    const parsed = parseUiConfig(JSON.stringify({ preset: id }));
+    expect(parsed?.panels).toEqual(defaultPanels());
   }
-  // The reference has an onion skin (Tab) — the preset must not hide it.
-  expect(presetFeatures('toonio').onionSkin).toBe(true);
 });
 
-test('a saved config from before the layers feature takes the preset default', () => {
-  const legacy = JSON.stringify({
-    preset: 'toonop',
-    features: { tools: false, play: true },
-  });
-  expect(parseUiConfig(legacy)?.features.timeline).toBe(true);
-  const legacyMultator = JSON.stringify({ preset: 'multator', features: { tools: false } });
-  expect(parseUiConfig(legacyMultator)?.features.export).toBe(false);
+test('a saved config from before the arrangement keeps what it had turned off', () => {
+  const legacy = JSON.stringify({ preset: 'toonop', features: { export: false } });
+  expect(parseUiConfig(legacy)?.panels.hidden).toContain('export');
 });
 
 test('the pipette source is part of the drawing config and defaults to the canvas', () => {
   expect(DEFAULT_DRAWING_UI_CONFIG.pickSource).toBe('canvas');
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    features: presetFeatures('toonop'),
     drawing: { pickSource: 'layer' },
   }));
   expect(parsed?.drawing.pickSource).toBe('layer');
@@ -173,7 +147,6 @@ test('the pipette source is part of the drawing config and defaults to the canva
 test('an unknown pipette source falls back to the canvas', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    features: presetFeatures('toonop'),
     drawing: { pickSource: 'nonsense' },
   }));
   expect(parsed?.drawing.pickSource).toBe('canvas');
@@ -183,7 +156,6 @@ test('an unknown pipette source falls back to the canvas', () => {
 test('panel height is clamped to the draggable range and falls back when absent', () => {
   const stored = (panelHeight: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: { activeProfile: 'toonio', tonio: {}, panelHeight },
   }))?.drawing.panelHeight;
 
@@ -194,7 +166,7 @@ test('panel height is clamped to the draggable range and falls back when absent'
 });
 
 test('settings fall back to the reference defaults when absent or corrupted', () => {
-  const base = { preset: 'toonio', features: presetFeatures('toonio') };
+  const base = { preset: 'toonio' };
   expect(parseUiConfig(JSON.stringify(base))?.settings).toEqual(DEFAULT_SETTINGS);
   expect(parseUiConfig(JSON.stringify({ ...base, settings: 'nope' }))?.settings).toEqual(DEFAULT_SETTINGS);
   expect(parseUiConfig(JSON.stringify({ ...base, settings: { paletteAutoAdd: 1 } }))?.settings)
@@ -217,7 +189,6 @@ test('settings round-trip through the stored config', () => {
   };
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     settings,
   }));
   expect(parsed?.settings).toEqual(settings);
@@ -226,7 +197,6 @@ test('settings round-trip through the stored config', () => {
 test('the picker model is one of the three, or the reference default', () => {
   const stored = (pickerModel: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     settings: { pickerModel },
   }))?.settings.pickerModel;
 
@@ -239,7 +209,6 @@ test('the picker model is one of the three, or the reference default', () => {
 test('the palette limit is clamped to 30..300 and snapped to the 10 step', () => {
   const stored = (paletteLimit: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     settings: { paletteLimit },
   }))?.settings.paletteLimit;
 
@@ -253,7 +222,6 @@ test('the palette limit is clamped to 30..300 and snapped to the 10 step', () =>
 test('an autosave interval outside the offered list falls back to the default', () => {
   const stored = (autosaveMs: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     settings: { autosaveMs },
   }))?.settings.autosaveMs;
 
@@ -282,7 +250,6 @@ test('every brush tool starts from the same Tonio defaults', () => {
 test('a config with one shared Tonio brush copies it into every tool', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: { activeProfile: 'toonio', tonio: { width: 7, smooth: 4, minDistance: 2 } },
   }));
   for (const tool of BRUSH_TOOLS) {
@@ -293,7 +260,6 @@ test('a config with one shared Tonio brush copies it into every tool', () => {
 test('per-tool brushes are kept apart and clamped one by one', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: {
       activeProfile: 'toonio',
       tonioByTool: {
@@ -318,7 +284,6 @@ test('the browser eyedropper is on by default and a corrupted flag falls back', 
   expect(DEFAULT_SETTINGS.chromePicker).toBe(true);
   const stored = (chromePicker: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     settings: { chromePicker },
   }))?.settings.chromePicker;
 
@@ -329,7 +294,6 @@ test('the browser eyedropper is on by default and a corrupted flag falls back', 
 test('side panel widths are clamped, and an untouched side keeps its natural width', () => {
   const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: { activeProfile: 'toonio', tonio: {}, sides },
   }))?.drawing.sides;
 
@@ -343,7 +307,6 @@ test('side panel widths are clamped, and an untouched side keeps its natural wid
 test('each side has its own floor: the tools shrink to one narrow column, the palette box never squashes', () => {
   const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: { activeProfile: 'toonio', tonio: {}, sides },
   }))?.drawing.sides;
 
@@ -365,7 +328,6 @@ test('a fresh config leaves both side panels open at their natural width', () =>
 test('the bottom panel remembers being folded away, and a corrupted flag stays open', () => {
   const stored = (panelCollapsed: unknown) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    features: presetFeatures('toonio'),
     drawing: { activeProfile: 'toonio', tonio: {}, panelCollapsed },
   }))?.drawing.panelCollapsed;
 
@@ -377,19 +339,16 @@ test('the bottom panel remembers being folded away, and a corrupted flag stays o
 
 // --- Panel contents -------------------------------------------------------
 
-test('a preset starts from the arrangement its layout draws', () => {
-  expect(presetPanels('toonop')).toEqual(defaultPanels('studio'));
-  const multator = presetPanels('multator');
-  expect(multator.rows[2]).toContain('tool:pencil');
-  // The preset drops these two buttons, so its arrangement starts without them.
-  expect(multator.hidden).toContain('export');
+test('the arrangement is the same one for every preset', () => {
+  for (const id of ['toonop', 'multator', 'toonio']) {
+    expect(parseUiConfig(JSON.stringify({ preset: id }))?.panels).toEqual(defaultPanels());
+  }
 });
 
 test('the stored arrangement travels with the rest of the config', () => {
-  const panels = movePanelItem(defaultPanels('studio'), 'onion', 'left', 0);
+  const panels = movePanelItem(defaultPanels(), 'onion', 'left', 0);
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    features: presetFeatures('toonop'),
     panels,
   }));
   expect(parsed?.panels.left[0]).toBe('onion');
@@ -399,7 +358,7 @@ test('the stored arrangement travels with the rest of the config', () => {
 test('a config saved before panels existed keeps the buttons it had turned off', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    features: { ...presetFeatures('toonop'), export: false },
+    features: { export: false },
   }));
   expect(parsed?.panels.hidden).toContain('export');
   expect(parsed?.panels.rows.flat()).toContain('onion');

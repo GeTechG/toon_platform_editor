@@ -5,7 +5,7 @@
  * they outlive any one preset.
  */
 
-import { normalizePanels, type LayoutKind, type PanelLayout } from './panels';
+import { normalizePanels, type PanelLayout } from './panels';
 
 export interface FloatPositions {
   [id: string]: { x: number; y: number };
@@ -35,7 +35,7 @@ function cleanFloatPos(value: unknown): FloatPositions {
 }
 
 /** Stored workspaces, cleaned; anything unreadable is simply not a workspace. */
-export function parseWorkspaces(raw: string | null, kind: LayoutKind): Workspace[] {
+export function parseWorkspaces(raw: string | null): Workspace[] {
   if (!raw) {
     return [];
   }
@@ -56,7 +56,7 @@ export function parseWorkspaces(raw: string | null, kind: LayoutKind): Workspace
     return [{
       id: typeof row.id === 'number' && Number.isFinite(row.id) ? row.id : i + 1,
       name: row.name,
-      panels: normalizePanels(row.panels, kind),
+      panels: normalizePanels(row.panels),
       floatPos: cleanFloatPos(row.floatPos),
     }];
   });
@@ -90,9 +90,9 @@ export function removeWorkspace(list: readonly Workspace[], id: number): Workspa
 }
 
 /** Loads the saved workspaces, or none on any failure. */
-export function loadWorkspaces(kind: LayoutKind): Workspace[] {
+export function loadWorkspaces(): Workspace[] {
   try {
-    return parseWorkspaces(localStorage.getItem(STORAGE_KEY), kind);
+    return parseWorkspaces(localStorage.getItem(STORAGE_KEY));
   } catch {
     return [];
   }
