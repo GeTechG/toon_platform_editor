@@ -578,6 +578,13 @@ export class EditorState {
     // one: hopping pipette → hand must not make the pipette the way back.
     if (isHelpTool(resolved) && !isHelpTool(this.tool)) {
       this.previousDrawingTool = this.tool;
+    } else if (!isHelpTool(resolved)) {
+      // Picking a brush by hand closes what the "old" easter egg remembered:
+      // typing the word again should take the twin of this brush, not give
+      // back the one the egg took before it. The egg sets it again itself,
+      // after this call. A detour does not count — `o` selects the hand on
+      // the way through the word.
+      this.beforeOldschool = null;
     }
     if (resolved !== this.tool) {
       // A tool that brought its own window takes it away with it, the way the
@@ -1811,10 +1818,11 @@ export class EditorState {
     // The hand may be in hand: `o` selects it on the way through the word.
     const from = isHelpTool(this.tool) ? this.previousDrawingTool : this.tool;
     const swap = oldschoolSwap(from, this.beforeOldschool);
-    this.beforeOldschool = swap.back;
     // A brush off the panels is not in `availableTools`, and that is the
     // point: the arrangement never offers it, the gesture hands it over.
     this.selectTool(swap.take, 'outline', [swap.take]);
+    // After the selection, which clears what a hand-picked brush closes.
+    this.beforeOldschool = swap.back;
   }
 
   /** One settings option, applied and persisted at once. */

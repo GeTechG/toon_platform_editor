@@ -117,6 +117,13 @@ test('a plugin can say its tool interrupts drawing rather than replacing it', ()
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
 
+/** One member of the runes class, as source — the same style as undo-redo.test.ts. */
+function member(source: string, name: string): string {
+  const match = source.match(new RegExp(`(get )?${name}\\([^]*?\\n  }`));
+  if (!match) throw new Error(`missing ${name}`);
+  return match[0];
+}
+
 test("a tool's own window comes up with it and goes with it", () => {
   // The same place the pipette source and the zoom window live: a window that
   // arrives with its tool and leaves with it, not an item of the panels.
@@ -213,6 +220,11 @@ test('the «old» easter egg takes the brush in hand and gives the last one back
   // The `d` that finishes the word is the word's, not the hand's — or the egg
   // would hand over the brush and take it away in the same keystroke.
   expect(editorUi).toMatch(/=== 'old'\) \{[^}]*?toggleOldschool\(\);[^}]*?return;/);
+  // Picking any other brush by hand closes the egg's memory, or typing the
+  // word again would give back what it took instead of taking the twin of
+  // what is in hand now. A help tool (the hand `o` selects on the way) does
+  // not count as picking one.
+  expect(member(state, 'selectTool')).toMatch(/isHelpTool\(resolved\)[^]*?beforeOldschool = null/);
 });
 
 test('the preset is asked about the preset, the canvas about the line', () => {
