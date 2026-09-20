@@ -57,6 +57,16 @@ describe('the oldschool pen is a brush', () => {
     expect(oldschoolSwap('feather', null)).toEqual({ take: 'oldschool', back: 'feather' });
   });
 
+  it('declares no cut policy, because the contour it commits carries its own', () => {
+    // The mega eraser reads the stored descriptor: a `contour` goes whole by
+    // itself. It finds a tool's policy by primitive kind, so a second brush of
+    // kind `pencil` declaring one would change how every pencil stroke is cut.
+    expect(plugins.tools().filter((t) => t.stroke?.kind === 'pencil').map((t) => t.stroke?.cut))
+      .toEqual([undefined, undefined]);
+    expect(plugins.tools().filter((t) => t.stroke?.kind === 'eraser').map((t) => t.stroke?.cut))
+      .toEqual([undefined, undefined]);
+  });
+
   it('measures its Lang tolerance on the reference canvas, not on the document', () => {
     // A zigzag shallow enough that the coarser tolerance flattens it away.
     const zigzag = [0, 0, 200, 60, 400, 0, 600, 60, 800, 0];

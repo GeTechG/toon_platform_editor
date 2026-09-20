@@ -36,12 +36,17 @@ const commit: StrokeCommit = (points, descriptor, { coordinateScale }) => ({
     : { kind: 'contour', dialect: 'multator', color: 'color' in descriptor ? descriptor.color : '#000000' },
 });
 
-/** The canvas is the pen's own: the contour is a Multator shape in any preset. */
+/**
+ * The canvas is the pen's own: the contour is a Multator shape in any preset.
+ *
+ * No `cut` here. The mega eraser reads the stored descriptor, and a closed
+ * filled contour already goes whole by itself; declaring a policy on a brush
+ * of kind `pencil` would instead describe every pencil stroke in the document,
+ * since the eraser looks a policy up by primitive.
+ */
 const OLDSCHOOL_PEN: PluginPrimitive = {
   kind: 'pencil',
   dialect: 'multator',
-  // A closed filled shape cannot be trimmed as a line: the mega eraser takes it whole.
-  cut: 'whole',
   descriptor: ({ width, color }) => ({ kind: 'pencil', dialect: 'multator', width, color }),
   commit,
 };
@@ -49,7 +54,6 @@ const OLDSCHOOL_PEN: PluginPrimitive = {
 const OLDSCHOOL_ERASER: PluginPrimitive = {
   kind: 'eraser',
   dialect: 'multator',
-  cut: 'whole',
   descriptor: ({ width }) => ({ kind: 'eraser', dialect: 'multator', width }),
   commit,
 };
