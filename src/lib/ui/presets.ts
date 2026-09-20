@@ -10,6 +10,15 @@
  */
 
 import type { PickSource } from './frame-selection';
+import {
+  FEATURE_ITEM,
+  PANEL_ITEMS,
+  defaultPanels,
+  hidePanelItem,
+  normalizePanels,
+  toolOfItem,
+  type PanelLayout,
+} from './panels';
 import type { PickerModel } from './picker-model';
 import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
 
@@ -189,6 +198,10 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
 export interface UiConfig {
   preset: string;
   features: Features;
+  /** What sits in each panel, in what order (see panels.ts). */
+  panels: PanelLayout;
+  /** Where each floating item sits, in stage coordinates. */
+  floatPos: Record<string, { x: number; y: number }>;
   drawing: DrawingUiConfig;
   settings: EditorSettings;
 }
@@ -268,6 +281,30 @@ export function presetDrawingProfile(id: string): DrawingProfileId {
   return presetById(id).drawingProfile;
 }
 
+/**
+ * The arrangement a preset starts from: its layout's default, minus whatever
+ * buttons the preset does not offer at all.
+ */
+export function presetPanels(id: string): PanelLayout {
+  const features = presetFeatures(id);
+  const ux = presetUx(id);
+  let panels = defaultPanels(ux.layout);
+  for (const key of FEATURE_ORDER) {
+    if (!features[key]) {
+      panels = hidePanelItem(panels, FEATURE_ITEM[key]);
+    }
+  }
+  // A tool the profile does not draw starts put away rather than as a key
+  // that renders nothing.
+  for (const item of PANEL_ITEMS) {
+    const tool = toolOfItem(item.id);
+    if (tool && !ux.tools.includes(tool)) {
+      panels = hidePanelItem(panels, item.id);
+    }
+  }
+  return panels;
+}
+
 /** UX profile owned by a preset, falling back to the Toonop behavior. */
 export function presetUx(id: string): UxProfile {
   return UX_PROFILES[presetById(id).ux];
@@ -302,12 +339,38 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
       normalized[key] = value;
     }
   }
+  // A config written before panels existed carries visibility in the flags
+  // alone: start from the preset arrangement and hide what was turned off.
+  const storedPanels = (data as Record<string, unknown>).panels;
+  let panels = storedPanels === undefined ? presetPanels(preset) : normalizePanels(storedPanels, presetUx(preset).layout);
+  if (storedPanels === undefined) {
+    for (const key of FEATURE_ORDER) {
+      if (!normalized[key]) {
+        panels = hidePanelItem(panels, FEATURE_ITEM[key]);
+      }
+    }
+  }
   return {
     preset,
     features: normalized,
+    panels,
+    floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
     drawing: normalizeDrawingConfig(drawing, presetDrawingProfile(preset)),
     settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
+}
+
+/** Stored float positions: finite numbers only, anything else dropped. */
+function normalizeFloatPos(value: unknown): Record<string, { x: number; y: number }> {
+  const stored = record(value);
+  const out: Record<string, { x: number; y: number }> = {};
+  for (const [id, pos] of Object.entries(stored)) {
+    const { x, y } = record(pos);
+    if (typeof x === 'number' && Number.isFinite(x) && typeof y === 'number' && Number.isFinite(y)) {
+      out[id] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+    }
+  }
+  return out;
 }
 
 function normalizeSettings(value: unknown): EditorSettings {

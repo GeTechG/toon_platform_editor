@@ -3,7 +3,10 @@
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
-  import ToolsPanel from './ToolsPanel.svelte';
+  import ColorPanel from './ColorPanel.svelte';
+  import ToolKey from './ToolKey.svelte';
+  import FloatWindow from './FloatWindow.svelte';
+  import PanelArranger from './PanelArranger.svelte';
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
   import ExportSheet from './ExportSheet.svelte';
@@ -35,6 +38,7 @@
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, SIDE_WIDTH_MAX, SIDE_WIDTH_MIN } from './presets';
+  import { panelItem as panelItemSpec, toolOfItem, type PanelSlot } from './panels';
   import type { SideId } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -1104,50 +1108,331 @@
   </div>
 {/snippet}
 
+<!-- Every movable piece of chrome, by id: which panel holds it, and in what
+     order, comes from the config (panels.ts) — not from its place in this
+     file. The gear and Publish are the two exceptions below. -->
+{#snippet panelItem(id: string)}
+  {@const tool = toolOfItem(id)}
+  {#if tool}
+    <ToolKey {editor} {tool} />
+  {:else if id === 'pick-source'}
+    <!-- Reference: while the pipette is up, where it reads from. -->
+    {#if editor.tool === 'pipette'}
+      <div class="pick-source" role="group" aria-label="Источник пипетки">
+        {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
+          <button
+            class="key"
+            class:active={editor.pickSource === source}
+            aria-pressed={editor.pickSource === source}
+            onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
+            title={source === 'canvas'
+              ? 'Брать цвет с видимого холста (Alt — только активный слой)'
+              : 'Брать цвет только с активного слоя'}
+          >{label}</button>
+        {/each}
+      </div>
+    {/if}
+  {:else if id === 'save'}
+    <!-- Reference «Сохранить»: the draft goes to disk now rather than on the
+         next turn of the autosave clock. Nothing to write, nothing to press. -->
+    <button
+      class="key icon"
+      onclick={saveNow}
+      disabled={!dirty}
+      data-key="Ctrl+S"
+      title="Сохранить черновик сейчас (Ctrl+S)"
+      aria-label="Сохранить черновик"
+    >
+      <Icon name="save" />
+    </button>
+  {:else if id === 'history'}
+    <div class="history">
+      {@render history()}
+    </div>
+  {:else if id === 'manual'}
+    <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
+    <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
+      <Icon name="help" />
+    </button>
+  {:else if id === 'fullscreen'}
+    {#if document.fullscreenEnabled}
+      <button
+        class="key icon"
+        class:active={isFullscreen}
+        aria-pressed={isFullscreen}
+        onclick={toggleFullscreen}
+        data-key="F"
+        title="Полный экран (F)"
+        aria-label="Полный экран"
+      >
+        <Icon name="expand" />
+      </button>
+    {/if}
+  {:else if id === 'drafts'}
+    <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
+      <Icon name="drafts" />
+    </button>
+  {:else if id === 'palette'}
+    <ColorPanel {editor} />
+  {:else if id === 'brush'}
+    <BrushPanel {editor} />
+  {:else if id === 'timeline'}
+    <div class="timeline">
+      <Timeline {editor} />
+    </div>
+  {:else if id === 'steps-back'}
+    <button
+      class="key icon ends"
+      disabled={editor.playing || editor.activeFrame === 0}
+      onclick={() => editor.selectFrame(0)}
+      title="На первый кадр"
+      aria-label="На первый кадр"
+    >⏮</button>
+    <button
+      class="key icon"
+      disabled={editor.playing}
+      onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
+      title="Предыдущий кадр"
+      aria-label="Предыдущий кадр"
+    >⏴</button>
+  {:else if id === 'transport'}
+    <PlayControls bind:this={playControls} {editor} />
+  {:else if id === 'steps-forward'}
+    <button
+      class="key icon"
+      disabled={editor.playing}
+      onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
+      title="Следующий кадр"
+      aria-label="Следующий кадр"
+    >⏵</button>
+    <button
+      class="key icon ends"
+      disabled={editor.playing || editor.activeFrame >= lastFrame}
+      onclick={() => editor.selectFrame(lastFrame)}
+      title="На последний кадр"
+      aria-label="На последний кадр"
+    >⏭</button>
+  {:else if id === 'add-frame'}
+    <button
+      class="key"
+      disabled={editor.playing}
+      onclick={onAddFrame}
+      data-key="A"
+      title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
+      aria-label="Добавить кадр"
+    >
+      <Icon name="plus" />
+    </button>
+  {:else if id === 'delete-frame'}
+    <button
+      class="key"
+      disabled={editor.playing}
+      onclick={() => editor.removeActiveFrame()}
+      data-key="Del"
+      title="Удалить текущий кадр (Del)"
+      aria-label="Удалить кадр"
+    >
+      <Icon name="trash" />
+    </button>
+  {:else if id === 'onion'}
+    <button
+      class="key"
+      class:active={editor.onionSkin}
+      aria-pressed={editor.onionSkin}
+      onclick={() => editor.toggleOnionSkin()}
+      data-key="K"
+      title={editor.onionSkin ? 'Калька (K) включена' : 'Калька (K) выключена'}
+      aria-label="Калька"
+    >
+      <Icon name="onion" />
+    </button>
+  {:else if id === 'fps'}
+    <!-- The reference keeps fps on the bar itself: a slider and a box. -->
+    <label class="fps-inline" title="Частота кадров">
+      <span class="sr-only">Частота кадров</span>
+      <input
+        type="range"
+        min={editor.ux.fpsRange[0]}
+        max={editor.ux.fpsRange[1]}
+        value={editor.doc.frame_rate}
+        oninput={onFpsChange}
+        disabled={editor.playing}
+      />
+      <input
+        type="number"
+        min={editor.ux.fpsRange[0]}
+        max={editor.ux.fpsRange[1]}
+        value={editor.doc.frame_rate}
+        onchange={onFpsChange}
+        disabled={editor.playing}
+      />
+    </label>
+  {:else if id === 'zoom'}
+    <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
+         a control, and the readout says where we are. -->
+    <div class="zoom" role="group" aria-label="Масштаб холста">
+      <button
+        class="key"
+        disabled={editor.view.zoom <= ZOOM_MIN}
+        onclick={() => editor.zoomBy(-ZOOM_STEP)}
+        title="Уменьшить масштаб"
+        aria-label="Уменьшить масштаб"
+      >−</button>
+      <button
+        class="key zoom-value"
+        disabled={editor.view.zoom === ZOOM_MIN && editor.view.panX === 0 && editor.view.panY === 0}
+        onclick={() => editor.resetView()}
+        title="Вернуть 100%"
+        aria-label="Масштаб {Math.round(editor.view.zoom * 100)} процентов, вернуть 100%"
+      >{Math.round(editor.view.zoom * 100)}%</button>
+      <button
+        class="key"
+        disabled={editor.view.zoom >= ZOOM_MAX}
+        onclick={() => editor.zoomBy(ZOOM_STEP)}
+        title="Увеличить масштаб"
+        aria-label="Увеличить масштаб"
+      >+</button>
+    </div>
+  {:else if id === 'layers'}
+    <!-- The studio timeline carries the layer list inline, so the popup
+         is the bar layout's form of it. -->
+    <div class="layers">
+      <button
+        class="key"
+        class:active={layersOpen}
+        aria-expanded={layersOpen}
+        aria-haspopup="dialog"
+        onclick={() => (layersOpen = !layersOpen)}
+        title="Слои"
+        aria-label="Слои"
+      >
+        <Icon name="layers" />
+      </button>
+      {#if layersOpen}
+        <LayersPanel {editor} onClose={() => (layersOpen = false)} />
+      {/if}
+    </div>
+  {:else if id === 'audio'}
+    <!-- The soundtrack lives behind its own key, beside layers and export:
+         the wave belongs on the timeline, the file and its credits do not. -->
+    <div class="layers">
+      <button
+        class="key"
+        class:active={audioOpen}
+        aria-expanded={audioOpen}
+        aria-haspopup="dialog"
+        onclick={() => (audioOpen = !audioOpen)}
+        title={editor.audio.hasTrack ? `Звук: ${editor.audio.name || 'без названия'}` : 'Звук'}
+        aria-label="Звук"
+      >
+        <Icon name="note" />
+      </button>
+      {#if audioOpen}
+        <AudioPanel {editor} onClose={() => (audioOpen = false)} />
+      {/if}
+    </div>
+  {:else if id === 'export'}
+    <ExportSheet
+      bind:this={exportButton}
+      {editor}
+      onOpen={() => {
+        saveNow();
+        leaveFullscreen();
+      }}
+    />
+  {:else if id === 'saved'}
+    {#if saveFailed}
+      <span class="saved too_big" role="status">
+        <Icon name="x" size={14} /> Ошибка локального сохранения
+      </span>
+    {:else if lastSaved}
+      <span class="saved {draftSizeClass(savedBytes)}" role="status">
+        сохранено локально {lastSaved} · {formatFileSize(savedBytes)}
+      </span>
+    {/if}
+  {:else if id === 'copy'}
+    <button
+      class="key icon"
+      disabled={editor.playing}
+      onclick={() => editor.copySelection()}
+      data-key="C"
+      title="Копировать выделенные ячейки (C)"
+      aria-label="Копировать выделение"
+    ><Icon name="copy" /></button>
+  {:else if id === 'paste'}
+    <button
+      class="key icon"
+      disabled={!editor.canPasteCells}
+      onclick={() => editor.pasteSelection()}
+      data-key="V"
+      title="Вставить с заменой ячеек (V)"
+      aria-label="Вставить выделение"
+    ><Icon name="paste" /></button>
+  {:else if id === 'merge'}
+    <button
+      class="key icon"
+      disabled={!editor.canPasteCells}
+      onclick={() => editor.mergeSelection()}
+      data-key="M"
+      title="Объединить: штрихи буфера поверх ячеек (M)"
+      aria-label="Объединить кадры"
+    ><Icon name="merge" /></button>
+  {/if}
+{/snippet}
+
+<!-- In arrange mode every item wears a handle: the wrapper takes the pointer
+     (its contents stop taking clicks) and carries the id the arranger drags. -->
+{#snippet slot(slotId: PanelSlot)}
+  {#each editor.panels[slotId] as id (id)}
+    {#if editor.arranging}
+      <div
+        class="arr"
+        class:wide={panelItemSpec(id)?.wide}
+        data-item={id}
+        title="Перетащи «{panelItemSpec(id)?.label ?? id}»"
+      >
+        {@render panelItem(id)}
+      </div>
+    {:else}
+      {@render panelItem(id)}
+    {/if}
+  {/each}
+  {#if editor.arranging && editor.panels[slotId].length === 0}
+    <span class="slot-empty">пусто</span>
+  {/if}
+{/snippet}
+
 <div
   class="editor"
   class:studio
   class:alt={editor.settings.altLayout}
+  class:arranging={editor.arranging}
   bind:this={editorEl}
 >
-  {#if studio}
+  {#if studio && (editor.panels.left.length > 0 || editor.arranging)}
     <aside
       class="left"
       class:collapsed={folded('left')}
       aria-label="Инструменты и история"
+      data-slot="left"
       style={sideStyle('left')}
       bind:clientWidth={sidePx.left}
     >
       {#if !folded('left')}
-        <ToolsPanel {editor} onSave={saveNow} {dirty} />
-        <div class="history">
-          {@render history()}
-          <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
-          <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
-            <Icon name="help" />
-          </button>
-          {#if document.fullscreenEnabled}
-            <button
-              class="key icon"
-              class:active={isFullscreen}
-              aria-pressed={isFullscreen}
-              onclick={toggleFullscreen}
-              title="Полный экран"
-              aria-label="Полный экран"
-            >
-              <Icon name="expand" />
-            </button>
-          {/if}
-          <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
-            <Icon name="drafts" />
-          </button>
-        </div>
+        {@render slot('left')}
       {/if}
     </aside>
     {@render sideEdge('left', 'Инструменты и история')}
   {/if}
-  <div class="stage">
+  <div class="stage" data-slot="float">
     <CanvasView {editor} />
+    <!-- Items taken off the panels: the reference's floating tool windows,
+         but for anything the config puts over the canvas. -->
+    {#each editor.panels.float as id (id)}
+      <FloatWindow {editor} {id}>
+        {@render panelItem(id)}
+      </FloatWindow>
+    {/each}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -1173,16 +1458,17 @@
       </p>
     {/if}
   </div>
-  {#if studio}
+  {#if studio && (editor.panels.right.length > 0 || editor.arranging)}
     <aside
       class="right"
       class:collapsed={folded('right')}
       aria-label="Палитра и кисть"
+      data-slot="right"
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
     >
       {#if !folded('right')}
-        <BrushPanel {editor} />
+        {@render slot('right')}
       {/if}
     </aside>
     {@render sideEdge('right', 'Палитра и кисть')}
@@ -1191,7 +1477,7 @@
     class="panel"
     class:collapsed={panelFolded}
     class:dragging={resize?.side === 'panel'}
-    style={studio && !panelFolded ? `height: ${panelHeight}px` : undefined}
+    style={studio && !panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
   >
     {#if studio}
       <!-- The bar folds like the columns do: the same key-shaped tab, lying on
@@ -1227,316 +1513,67 @@
     {/if}
     {#if !panelFolded}
       <div class="toolbar">
-      <!-- Row A — frames: taking a stroke back comes first, then add / delete
-           anchoring the timeline strip. -->
-      <div class="row frames" role="group" aria-label="Кадры">
-        {#if !studio}
-          {@render history()}
-        {/if}
-        {#if editor.features.addFrame && !studio}
-          <button
-            class="key"
-            disabled={editor.playing}
-            onclick={onAddFrame}
-            data-key="A"
-            title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
-            aria-label="Добавить кадр"
-          >
-            <Icon name="plus" />
-          </button>
-        {/if}
-        {#if editor.features.deleteFrame && !studio}
-          <button
-            class="key"
-            disabled={editor.playing}
-            onclick={() => editor.removeActiveFrame()}
-            data-key="Del"
-            title="Удалить текущий кадр (Del)"
-            aria-label="Удалить кадр"
-          >
-            <Icon name="trash" />
-          </button>
-        {/if}
-        {#if editor.features.timeline}
-          <div class="timeline">
-            <Timeline {editor} />
+        <!-- The row the divider grows: the frame strip and whatever else was
+             put beside it. -->
+        {#if editor.panels.bottom.length > 0 || editor.arranging}
+          <div class="row frames" role="group" aria-label="Кадры" data-slot="bottom">
+            {@render slot('bottom')}
           </div>
         {/if}
-      </div>
 
-      <!-- Row B — transport & output: play at left like the reference,
-           settings / export next to it, publish anchored right. -->
-      <div class="row transport" role="group" aria-label="Просмотр и экспорт">
-        {#if studio}
-          <button
-            class="key icon ends"
-            disabled={editor.playing || editor.activeFrame === 0}
-            onclick={() => editor.selectFrame(0)}
-            title="На первый кадр"
-            aria-label="На первый кадр"
-          >⏮</button>
+        <!-- Transport & output. The gear is never hideable, so this row is
+             always drawn: it is the way back to the settings. -->
+        <div class="row transport" role="group" aria-label="Просмотр и экспорт" data-slot="bar">
+          {@render slot('bar')}
           <button
             class="key icon"
-            disabled={editor.playing}
-            onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
-            title="Предыдущий кадр"
-            aria-label="Предыдущий кадр"
-          >⏴</button>
-        {/if}
-        {#if editor.features.play}
-          <PlayControls bind:this={playControls} {editor} />
-        {/if}
-        {#if studio}
-          <button
-            class="key icon"
-            disabled={editor.playing}
-            onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
-            title="Следующий кадр"
-            aria-label="Следующий кадр"
-          >⏵</button>
-          <button
-            class="key icon ends"
-            disabled={editor.playing || editor.activeFrame >= lastFrame}
-            onclick={() => editor.selectFrame(lastFrame)}
-            title="На последний кадр"
-            aria-label="На последний кадр"
-          >⏭</button>
-          <!-- The reference puts add/delete frame on the bar itself, right
-               after the transport keys, not beside the strip. -->
-          {#if editor.features.addFrame}
-            <button
-              class="key"
-              disabled={editor.playing}
-              onclick={onAddFrame}
-              data-key="A"
-            title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
-              aria-label="Добавить кадр"
-            >
-              <Icon name="plus" />
-            </button>
-          {/if}
-          {#if editor.features.deleteFrame}
-            <button
-              class="key"
-              disabled={editor.playing}
-              onclick={() => editor.removeActiveFrame()}
-              data-key="Del"
-            title="Удалить текущий кадр (Del)"
-              aria-label="Удалить кадр"
-            >
-              <Icon name="trash" />
-            </button>
-          {/if}
-        {/if}
-        {#if editor.features.onionSkin}
-          <button
-            class="key"
-            class:active={editor.onionSkin}
-            aria-pressed={editor.onionSkin}
-            onclick={() => editor.toggleOnionSkin()}
-            data-key="K"
-            title={editor.onionSkin ? 'Калька (K) включена' : 'Калька (K) выключена'}
-            aria-label="Калька"
-          >
-            <Icon name="onion" />
-          </button>
-        {/if}
-        <!-- The reference keeps fps on the bar itself: a slider and a box. -->
-        <label class="fps-inline" title="Частота кадров">
-            <span class="sr-only">Частота кадров</span>
-            <input
-              type="range"
-              min={editor.ux.fpsRange[0]}
-              max={editor.ux.fpsRange[1]}
-              value={editor.doc.frame_rate}
-              oninput={onFpsChange}
-              disabled={editor.playing}
-            />
-            <input
-              type="number"
-              min={editor.ux.fpsRange[0]}
-              max={editor.ux.fpsRange[1]}
-              value={editor.doc.frame_rate}
-              onchange={onFpsChange}
-              disabled={editor.playing}
-            />
-        </label>
-        <!-- Zoom: the wheel and pinch do this too, but a keyboard user needs
-             a control, and the readout says where we are. -->
-        <div class="zoom" role="group" aria-label="Масштаб холста">
-          <button
-            class="key"
-            disabled={editor.view.zoom <= ZOOM_MIN}
-            onclick={() => editor.zoomBy(-ZOOM_STEP)}
-            title="Уменьшить масштаб"
-            aria-label="Уменьшить масштаб"
-          >−</button>
-          <button
-            class="key zoom-value"
-            disabled={editor.view.zoom === ZOOM_MIN && editor.view.panX === 0 && editor.view.panY === 0}
-            onclick={() => editor.resetView()}
-            title="Вернуть 100%"
-            aria-label="Масштаб {Math.round(editor.view.zoom * 100)} процентов, вернуть 100%"
-          >{Math.round(editor.view.zoom * 100)}%</button>
-          <button
-            class="key"
-            disabled={editor.view.zoom >= ZOOM_MAX}
-            onclick={() => editor.zoomBy(ZOOM_STEP)}
-            title="Увеличить масштаб"
-            aria-label="Увеличить масштаб"
-          >+</button>
-        </div>
-        <!-- The studio timeline carries the layer list inline, so the popup
-             is the bar layout's form of it. -->
-        {#if editor.features.layers && !studio}
-          <div class="layers">
-            <button
-              class="key"
-              class:active={layersOpen}
-              aria-expanded={layersOpen}
-              aria-haspopup="dialog"
-              onclick={() => (layersOpen = !layersOpen)}
-              title="Слои"
-              aria-label="Слои"
-            >
-              <Icon name="layers" />
-            </button>
-            {#if layersOpen}
-              <LayersPanel {editor} onClose={() => (layersOpen = false)} />
-            {/if}
-          </div>
-        {/if}
-        <!-- The soundtrack lives behind its own key, beside layers and export:
-             the wave belongs on the timeline, the file and its credits do not. -->
-        <div class="layers">
-          <button
-            class="key"
-            class:active={audioOpen}
-            aria-expanded={audioOpen}
             aria-haspopup="dialog"
-            onclick={() => (audioOpen = !audioOpen)}
-            title={editor.audio.hasTrack ? `Звук: ${editor.audio.name || 'без названия'}` : 'Звук'}
-            aria-label="Звук"
+            onclick={openSettingsSheet}
+            title="Настройки"
+            aria-label="Настройки"
           >
-            <Icon name="note" />
+            <Icon name="gear" />
           </button>
-          {#if audioOpen}
-            <AudioPanel {editor} onClose={() => (audioOpen = false)} />
+          {#if onPublish}
+            <!-- Publishing leaves the editor; it gets its own zone at the end of
+                 the row so it never reads as one more tool toggle. -->
+            <div class="ship" role="group" aria-label="Публикация">
+              <button
+                class="key primary publish"
+                onclick={() =>
+                  onPublish?.(
+                    $state.snapshot(editor.doc),
+                    editor.audio.blob
+                      ? {
+                          blob: editor.audio.blob,
+                          name: editor.audio.name,
+                          author: editor.audio.author,
+                          sync: editor.audio.sync,
+                        }
+                      : null,
+                  )}
+                title="Опубликовать"
+                aria-label="Опубликовать"
+              >
+                <Icon name="send" />
+              </button>
+            </div>
           {/if}
         </div>
-        {#if editor.features.export}
-          <ExportSheet
-            bind:this={exportButton}
-            {editor}
-            onOpen={() => {
-              saveNow();
-              leaveFullscreen();
-            }}
-          />
-        {/if}
-        {#if saveFailed}
-          <span class="saved too_big" role="status">
-            <Icon name="x" size={14} /> Ошибка локального сохранения
-          </span>
-        {:else if lastSaved}
-          <span class="saved {draftSizeClass(savedBytes)}" role="status">
-            сохранено локально {lastSaved} · {formatFileSize(savedBytes)}
-          </span>
-        {/if}
-        <!-- The gear is never hideable, so the settings are always reachable. -->
-        <button
-          class="key icon"
-          aria-haspopup="dialog"
-          onclick={openSettingsSheet}
-          title="Настройки"
-          aria-label="Настройки"
-        >
-          <Icon name="gear" />
-        </button>
-        {#if !studio}
-          <!-- The rail holds these under the studio layout; the bar has no rail. -->
-          <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
-            <Icon name="drafts" />
-          </button>
-          {#if document.fullscreenEnabled}
-            <button
-              class="key icon"
-              class:active={isFullscreen}
-              aria-pressed={isFullscreen}
-              onclick={toggleFullscreen}
-              data-key="F"
-              title="Полный экран (F)"
-              aria-label="Полный экран"
-            >
-              <Icon name="expand" />
-            </button>
-          {/if}
-        {/if}
-        {#if studio}
-          <button
-            class="key icon"
-            disabled={editor.playing}
-            onclick={() => editor.copySelection()}
-            data-key="C"
-            title="Копировать выделенные ячейки (C)"
-            aria-label="Копировать выделение"
-          ><Icon name="copy" /></button>
-          <button
-            class="key icon"
-            disabled={!editor.canPasteCells}
-            onclick={() => editor.pasteSelection()}
-            data-key="V"
-            title="Вставить с заменой ячеек (V)"
-            aria-label="Вставить выделение"
-          ><Icon name="paste" /></button>
-          <button
-            class="key icon"
-            disabled={!editor.canPasteCells}
-            onclick={() => editor.mergeSelection()}
-            data-key="M"
-            title="Объединить: штрихи буфера поверх ячеек (M)"
-            aria-label="Объединить кадры"
-          ><Icon name="merge" /></button>
-        {/if}
-        {#if onPublish}
-          <!-- Publishing leaves the editor; it gets its own zone at the end of
-               the row so it never reads as one more tool toggle. -->
-          <div class="ship" role="group" aria-label="Публикация">
-            <button
-              class="key primary publish"
-              onclick={() =>
-                onPublish?.(
-                  $state.snapshot(editor.doc),
-                  editor.audio.blob
-                    ? {
-                        blob: editor.audio.blob,
-                        name: editor.audio.name,
-                        author: editor.audio.author,
-                        sync: editor.audio.sync,
-                      }
-                    : null,
-                )}
-              title="Опубликовать"
-              aria-label="Опубликовать"
-            >
-              <Icon name="send" />
-            </button>
+
+        <!-- Drawing row: tools · sizes · color, where the config puts them. -->
+        {#if editor.panels.draw.length > 0 || editor.arranging}
+          <div class="row draw" role="group" aria-label="Кисть" data-slot="draw">
+            {@render slot('draw')}
           </div>
         {/if}
-      </div>
-
-      <!-- Row C — drawing: tools · sizes · color. In the studio these live in
-           the side columns instead. -->
-      {#if !studio}
-        <div class="row draw" role="group" aria-label="Кисть">
-          <!-- The save key is the Toonio rail's; the other presets keep Ctrl+S. -->
-          <ToolsPanel {editor} />
-          <BrushPanel {editor} />
-        </div>
-      {/if}
       </div>
     {/if}
   </div>
+
+  {#if editor.arranging}
+    <PanelArranger {editor} />
+  {/if}
 
   <!-- Drafts sheet: every local save with its first frame, newest first. -->
   {#if draftsOpen}
@@ -1862,6 +1899,82 @@
     align-items: center;
     gap: 0.4rem;
     min-width: 0;
+    /* The rows hold whatever the config puts in them, so a full one wraps
+       rather than widening the page into a horizontal scroll. */
+    flex-wrap: wrap;
+  }
+  /* ---- Arrange mode ----
+     Every item becomes a handle: a dashed box that takes the pointer, with
+     its contents frozen underneath so a drag never presses a button. */
+  .editor.arranging .arr {
+    position: relative;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 2px;
+    border-radius: var(--r-sm);
+    outline: 2px dashed var(--electric);
+    outline-offset: -2px;
+    cursor: grab;
+    touch-action: none;
+  }
+  .editor.arranging .arr > :global(*) {
+    pointer-events: none;
+  }
+  .editor.arranging :global([data-slot]) {
+    outline: 1px dashed var(--hairline);
+    outline-offset: -1px;
+  }
+  /* A key the profile does not draw leaves an empty handle behind; there is
+     nothing to grab, so there is nothing to show. */
+  .editor.arranging .arr:not(:has(*)) {
+    display: none;
+  }
+  /* The bar sizes to its contents while things are being moved into it. */
+  .editor.arranging .panel {
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .editor.arranging .slot-empty {
+    padding: 0 0.4rem;
+    min-height: var(--key-h);
+    display: inline-flex;
+    align-items: center;
+    color: var(--ink-2);
+    font-size: 0.82rem;
+  }
+  /* A column with nothing in it still has to be a target one can hit. */
+  .editor.arranging .left,
+  .editor.arranging .right {
+    min-width: 4rem;
+  }
+  /* The pipette's source pair, under the key that opened it. */
+  .pick-source {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pick-source button {
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .studio .pick-source {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
+    gap: 0.5rem;
+  }
+  .studio .pick-source button {
+    min-width: 0;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  /* Undo/redo (and whatever else the config puts beside them) stay a row —
+     the studio column turns this into a grid below. */
+  .history {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
   }
   .timeline {
     flex: 1;
@@ -1922,16 +2035,30 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+  /* A column holds whatever the config puts in it, so it is a grid of keys:
+     loose keys pair up across the width the column was dragged to, and the
+     groups (tools, history, the palette and brush boxes) take a row each. */
   .studio .left,
   .studio .right {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
+    align-content: start;
     background: var(--paper);
-    flex-direction: column;
-    gap: 1rem;
+    gap: 0.6rem;
     min-height: 0;
     padding: 1rem 0.9rem;
     overflow-y: auto;
     box-sizing: border-box;
+  }
+  .studio .left > :global(*:not(.key):not(.arr)),
+  .studio .right > :global(*:not(.key):not(.arr)),
+  .studio .left > .arr.wide,
+  .studio .right > .arr.wide {
+    grid-column: 1 / -1;
+  }
+  .studio .left > :global(.key),
+  .studio .right > :global(.key) {
+    min-width: 0;
   }
   .studio .left {
     grid-column: 1;
@@ -1948,7 +2075,9 @@
        its default, so the box is never squashed, only widened. */
     width: 15.9rem;
   }
-  /* Dragging the column wider is meant to buy palette columns, not padding. */
+  /* Dragging a column wider is meant to buy palette columns, not padding —
+     and a box moved to the other column has to fit that one too. */
+  .studio .left :global(.box),
   .studio .right :global(.box) {
     width: 100%;
   }

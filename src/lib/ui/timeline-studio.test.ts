@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
+import { defaultPanels } from './panels';
 
 const rows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
 const panel = await Bun.file(new URL('./LayersPanel.svelte', import.meta.url)).text();
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
-const tools = await Bun.file(new URL('./ToolsPanel.svelte', import.meta.url)).text();
 
 describe('one layer list, two placements', () => {
   it('the rows and their operations live in one component', () => {
@@ -27,9 +27,9 @@ describe('one layer list, two placements', () => {
     expect(panel).toContain('<LayerRows');
     expect(panel).not.toContain('editor.moveLayerTo(');
     expect(timeline).toContain('<LayerRows');
-    // ...and the studio does not also offer the popup, which would be a
-    // second copy of the same list.
-    expect(editorUi).toContain('editor.features.layers && !studio');
+    // ...and the studio arrangement does not also place the popup, which
+    // would be a second copy of the same list.
+    expect(defaultPanels('studio').hidden).toContain('layers');
   });
 });
 
@@ -120,7 +120,8 @@ describe('bottom panel divider', () => {
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.
-    expect(editorUi).toContain('style={studio && !panelFolded ?');
+    // (arrange mode lets the bar size to its contents, hence the third term)
+    expect(editorUi).toContain('style={studio && !panelFolded && !editor.arranging ?');
     expect(editorUi).toContain('${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
@@ -153,12 +154,10 @@ describe('copy, paste and merge on the studio transport', () => {
 describe('frame buttons follow the reference bar', () => {
   it('add and delete frame sit on the studio transport, not beside the timeline', () => {
     // Reference: ⏮ ⏴ ▶ ⏵ ⏭ + × 👻 fps … — the frame keys are part of the bar.
-    const transport = editorUi.slice(
-      editorUi.indexOf('aria-label="Просмотр и экспорт"'),
-      editorUi.indexOf('aria-label="Кисть"'),
-    );
-    expect(transport).toContain('onAddFrame');
-    expect(transport).toContain('editor.removeActiveFrame()');
+    const studio = defaultPanels('studio');
+    expect(studio.bar).toContain('add-frame');
+    expect(studio.bar).toContain('delete-frame');
+    expect(studio.bottom).toEqual(['timeline']);
   });
 });
 
@@ -214,9 +213,9 @@ describe('side panel dividers', () => {
 
 describe('side panels reflow instead of stretching', () => {
   it('the tool keys fill the column in even columns, one when it is narrow', () => {
-    expect(tools).toContain('repeat(auto-fit, minmax(min(');
+    expect(editorUi).toMatch(/\.studio \.left,[^{]*\{[^}]*repeat\(auto-fit, minmax\(min\(/s);
     // A key may not hold a 44px floor open in a column narrower than that.
-    expect(tools).toMatch(/min-width: 0/);
+    expect(editorUi).toMatch(/\.studio \.left > :global\(\.key\)[^}]*min-width: 0/s);
   });
 
   it('the history keys reflow with them', () => {

@@ -7,7 +7,6 @@ import { describe, expect, it } from 'bun:test';
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
 const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url)).text();
-const tools = await Bun.file(new URL('./ToolsPanel.svelte', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 
 describe('Alt+S saves the project as a file', () => {
@@ -149,8 +148,8 @@ describe('persistent storage', () => {
   });
 
   it('the Toonio rail has a save key, dimmed while there is nothing to save', () => {
-    expect(tools).toContain('onSave');
-    expect(tools).toContain('disabled={!dirty}');
+    expect(editorUi).toContain('onclick={saveNow}');
+    expect(editorUi).toContain('disabled={!dirty}');
     expect(editorUi).toContain('dirty');
   });
 });

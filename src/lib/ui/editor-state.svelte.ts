@@ -120,6 +120,23 @@ import {
   type UxProfile,
 } from './ux-profile';
 import {
+  loadWorkspaces,
+  removeWorkspace,
+  saveWorkspaces,
+  withWorkspace,
+  type Workspace,
+} from './workspaces';
+import {
+  anyToolVisible,
+  hidePanelItem,
+  movePanelItem,
+  panelItemVisible,
+  showPanelItem,
+  FEATURE_ITEM,
+  type PanelLayout,
+  type PanelSlot,
+} from './panels';
+import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
   BRUSH_TOOLS,
@@ -127,7 +144,8 @@ import {
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetDrawingProfile,
-  presetFeatures,
+  FEATURE_ORDER,
+  presetPanels,
   presetUx,
   saveUiConfig,
   PANEL_HEIGHT_MAX,
@@ -344,15 +362,41 @@ export class EditorState {
   /** Set by the transport so a write deferred by playback lands on stop. */
   onStop: (() => void) | null = null;
 
-  /** Active UI preset id and the per-button visibility map (persisted). */
+  /** Active UI preset id (persisted). */
   preset = $state(DEFAULT_PRESET);
-  features = $state<Features>(presetFeatures(DEFAULT_PRESET));
+  /**
+   * What sits in each panel, in what order (persisted). This is the whole of
+   * button visibility: an item is offered exactly when a panel holds it, and
+   * `features` is the named view onto that, for the components that ask.
+   */
+  panels = $state<PanelLayout>(presetPanels(DEFAULT_PRESET));
+
+  /**
+   * Arrange mode: the panels are being rearranged by hand, so every item is a
+   * drag handle rather than a control. Session state — a mode, not a setting.
+   */
+  arranging = $state(false);
+  /** Where each floating item sits, in stage coordinates (persisted). */
+  floatPos = $state<Record<string, { x: number; y: number }>>({});
+  /** Named arrangements, stored on their own key (they outlive a preset). */
+  workspaces = $state<Workspace[]>([]);
+
+  get features(): Features {
+    return {
+      ...Object.fromEntries(
+        FEATURE_ORDER.map((key) => [key, panelItemVisible(this.panels, FEATURE_ITEM[key])]),
+      ) as Features,
+      // Every tool is its own item, so "there are tools" is any of them.
+      tools: anyToolVisible(this.panels),
+    };
+  }
 
   constructor() {
     const saved = loadUiConfig();
     if (saved) {
       this.preset = saved.preset;
-      this.features = saved.features;
+      this.panels = saved.panels;
+      this.floatPos = saved.floatPos;
       this.drawingProfile = saved.drawing.activeProfile;
       this.multatorBrushSizeLogical = saved.drawing.multatorWidth;
       this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
@@ -362,6 +406,7 @@ export class EditorState {
       this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
+    this.workspaces = loadWorkspaces(this.ux.layout);
     this.watchErrors();
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -443,7 +488,7 @@ export class EditorState {
    */
   applyPreset(id: string): void {
     this.preset = id;
-    this.features = presetFeatures(id);
+    this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
     this.drawingProfile = presetDrawingProfile(id);
     this.paletteExpanded = this.ux.quickPalette === null;
@@ -615,7 +660,67 @@ export class EditorState {
 
   /** Toggle one button's visibility, keeping the current preset id. */
   toggleFeature(key: FeatureKey): void {
-    this.features = { ...this.features, [key]: !this.features[key] };
+    this.togglePanelItem(FEATURE_ITEM[key]);
+  }
+
+  /** Put an item in a panel, at `index` or at its end. */
+  movePanelItem(id: string, slot: PanelSlot, index?: number): void {
+    this.panels = movePanelItem(this.panels, id, slot, index);
+    this.ensureActiveLayerVisible();
+    this.persistUiConfig();
+  }
+
+  setFloatPos(id: string, x: number, y: number): void {
+    this.floatPos = { ...this.floatPos, [id]: { x: Math.round(x), y: Math.round(y) } };
+    this.persistUiConfig();
+  }
+
+  /** Put the whole arrangement back at once (a workspace, or an undone drag). */
+  setPanels(panels: PanelLayout): void {
+    this.panels = panels;
+    this.ensureActiveLayerVisible();
+    this.persistUiConfig();
+  }
+
+  /** Saves the arrangement under a name, replacing one of the same name. */
+  saveWorkspace(name: string): void {
+    this.workspaces = withWorkspace(
+      this.workspaces,
+      name.trim(),
+      $state.snapshot(this.panels),
+      $state.snapshot(this.floatPos),
+    );
+    saveWorkspaces(this.workspaces);
+  }
+
+  applyWorkspace(id: number): void {
+    const workspace = this.workspaces.find((w) => w.id === id);
+    if (!workspace) {
+      return;
+    }
+    // A stored workspace is a runes proxy here, which structuredClone refuses:
+    // snapshot it back to plain data before it becomes the live arrangement.
+    const plain = $state.snapshot(workspace);
+    this.floatPos = plain.floatPos;
+    this.setPanels(plain.panels);
+  }
+
+  deleteWorkspace(id: number): void {
+    this.workspaces = removeWorkspace(this.workspaces, id);
+    saveWorkspaces(this.workspaces);
+  }
+
+  /** Back into the panel this layout keeps it in. */
+  showPanelItem(id: string): void {
+    this.panels = showPanelItem(this.panels, id, this.ux.layout);
+    this.persistUiConfig();
+  }
+
+  /** Hidden ↔ back where this layout puts it. */
+  togglePanelItem(id: string): void {
+    this.panels = panelItemVisible(this.panels, id)
+      ? hidePanelItem(this.panels, id)
+      : showPanelItem(this.panels, id, this.ux.layout);
     this.ensureActiveLayerVisible();
     this.persistUiConfig();
   }
@@ -626,7 +731,9 @@ export class EditorState {
    * other hidden layers stay hidden; this is a document change.
    */
   ensureActiveLayerVisible(): void {
-    if (this.features.layers) {
+    // The studio strip carries the layer rows itself, so the popup being gone
+    // there is not the same as having no way to unhide a layer.
+    if (this.features.layers || (this.ux.layout === 'studio' && this.features.timeline)) {
       return;
     }
     const layer = this.doc.layers[this.activeLayer];
@@ -781,7 +888,7 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  /** Reset toolbar visibility and drawing profile to the active preset defaults. */
+  /** Reset the arrangement and drawing profile to the active preset defaults. */
   resetFeatures(): void {
     this.applyPreset(this.preset);
   }
@@ -1602,6 +1709,12 @@ export class EditorState {
     saveUiConfig({
       preset: this.preset,
       features: this.features,
+      panels: $state.snapshot(this.panels),
+      // Only the windows that are actually floating: a drag that passed over
+      // the canvas must not leave a position behind for ever.
+      floatPos: Object.fromEntries(
+        this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
+      ) as Record<string, { x: number; y: number }>,
       drawing: {
         activeProfile: this.drawingProfile,
         multatorWidth: this.multatorBrushSizeLogical,

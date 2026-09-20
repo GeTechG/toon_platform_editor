@@ -18,7 +18,9 @@ import {
   presetDrawingProfile,
   presetFeatures,
   presetUx,
+  presetPanels,
 } from './presets';
+import { defaultPanels, movePanelItem } from './panels';
 import { UX_PROFILES } from './ux-profile';
 
 test('the default preset shows every button', () => {
@@ -63,6 +65,8 @@ test('parseUiConfig round-trips a valid stored config', () => {
   const config = {
     preset: 'multator',
     features: presetFeatures('multator'),
+    panels: presetPanels('multator'),
+    floatPos: {},
     drawing: {
       activeProfile: 'multator' as const,
       multatorWidth: 10,
@@ -367,4 +371,35 @@ test('the bottom panel remembers being folded away, and a corrupted flag stays o
   expect(stored(undefined)).toBe(false);
   expect(stored('yes')).toBe(false);
   expect(DEFAULT_DRAWING_UI_CONFIG.panelCollapsed).toBe(false);
+});
+
+// --- Panel contents -------------------------------------------------------
+
+test('a preset starts from the arrangement its layout draws', () => {
+  expect(presetPanels('toonop')).toEqual(defaultPanels('studio'));
+  const multator = presetPanels('multator');
+  expect(multator.draw).toContain('tool:pencil');
+  // The preset drops these two buttons, so its arrangement starts without them.
+  expect(multator.hidden).toContain('export');
+  expect(multator.hidden).toContain('layers');
+});
+
+test('the stored arrangement travels with the rest of the config', () => {
+  const panels = movePanelItem(defaultPanels('studio'), 'onion', 'left', 0);
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    features: presetFeatures('toonop'),
+    panels,
+  }));
+  expect(parsed?.panels.left[0]).toBe('onion');
+  expect(parsed?.panels.bar).not.toContain('onion');
+});
+
+test('a config saved before panels existed keeps the buttons it had turned off', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    features: { ...presetFeatures('toonop'), export: false },
+  }));
+  expect(parsed?.panels.hidden).toContain('export');
+  expect(parsed?.panels.bar).toContain('onion');
 });

@@ -7,7 +7,8 @@ const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url
 const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
-const tools = await Bun.file(new URL('./ToolsPanel.svelte', import.meta.url)).text();
+const tools = await Bun.file(new URL('./ToolKey.svelte', import.meta.url)).text();
+const panels = await Bun.file(new URL('./panels.ts', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 
 /** The body of a class method, so a contract cannot be met by a later method. */
@@ -75,7 +76,8 @@ describe('the rail and the chrome follow the reference studio', () => {
 
   it('keeps the panel section as the last one in the settings sheet', () => {
     expect(sheet).toContain('Панель');
-    expect(sheet).toContain('FEATURE_ORDER');
+    // The list of buttons is the arrangement itself now (panels.ts).
+    expect(sheet).toContain('slotsFor(editor.ux.layout)');
     expect(sheet.indexOf('Панель')).toBeGreaterThan(sheet.indexOf('Вид'));
   });
 
@@ -214,9 +216,9 @@ describe('the remaining reference keys', () => {
 
 describe('key hints on the buttons', () => {
   it('every tool carries its key', () => {
-    expect(tools).toContain('data-key={t.key}');
+    expect(tools).toContain('data-key={spec.key}');
     for (const key of ['B', 'E', 'P', 'F', 'Q', 'D']) {
-      expect(tools).toContain(`key: '${key}'`);
+      expect(panels).toContain(`key: '${key}'`);
     }
   });
 
