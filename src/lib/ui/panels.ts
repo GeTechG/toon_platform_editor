@@ -61,29 +61,45 @@ export function toolOfItem(id: string): SelectableTool | null {
 }
 
 /**
- * Where an item can go. `bottom` is the tall row of the bottom panel (the one
- * the divider grows), `bar` the transport row under it, `draw` the drawing row
- * the bar layout keeps for tools and colour.
+ * Where an item can go. The bottom panel is however many rows the user made:
+ * `row:N` is one of them, `newrow:N` is the gap between them — dropping there
+ * makes a row. The rest are the two side columns, the canvas and the shelf.
  */
-export type PanelSlot = 'left' | 'right' | 'bottom' | 'bar' | 'draw' | 'float' | 'hidden';
-export const PANEL_SLOTS: readonly PanelSlot[] = ['left', 'right', 'bottom', 'bar', 'draw', 'float', 'hidden'];
-/** The slots the customization list offers, in reading order. */
-export const SLOT_LABELS: Record<PanelSlot, string> = {
+export type PanelSlot = 'left' | 'right' | 'float' | 'hidden' | `row:${number}` | `newrow:${number}`;
+/** The slots that are always there, whatever the rows are doing. */
+export const FIXED_SLOTS = ['left', 'right', 'float', 'hidden'] as const;
+
+const FIXED_LABELS: Record<(typeof FIXED_SLOTS)[number], string> = {
   left: 'Слева',
   right: 'Справа',
-  bottom: 'Над строкой',
-  bar: 'Нижняя строка',
-  draw: 'Строка рисования',
   float: 'Поверх холста',
   hidden: 'Скрытые',
 };
 
-/** Which slots a layout actually draws; `hidden` is offered everywhere. */
-export function slotsFor(kind: LayoutKind): PanelSlot[] {
-  return kind === 'studio'
-    ? ['left', 'right', 'bottom', 'bar', 'float', 'hidden']
-    : ['bottom', 'bar', 'draw', 'float', 'hidden'];
+export function rowSlot(index: number): PanelSlot {
+  return `row:${index}`;
 }
+
+export function newRowSlot(index: number): PanelSlot {
+  return `newrow:${index}`;
+}
+
+/** The row a slot names, or null when it names something else. */
+export function slotRow(slot: PanelSlot): { index: number; fresh: boolean } | null {
+  const row = /^(new)?row:(\d+)$/.exec(slot);
+  return row ? { index: Number(row[2]), fresh: row[1] === 'new' } : null;
+}
+
+export function slotLabel(slot: PanelSlot): string {
+  const row = slotRow(slot);
+  if (row) {
+    return row.fresh ? 'Новая строка' : `Строка ${row.index + 1}`;
+  }
+  return FIXED_LABELS[slot as (typeof FIXED_SLOTS)[number]] ?? slot;
+}
+
+/** Kept for the settings list: the same label table, by slot. */
+export const SLOT_LABELS = FIXED_LABELS;
 
 /**
  * `tool` — picks up something to draw with; `action` — does a thing and hands
@@ -145,7 +161,15 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'publish', kind: 'action', label: 'Опубликовать' },
 ];
 
-export type PanelLayout = Record<PanelSlot, string[]>;
+export interface PanelLayout {
+  left: string[];
+  right: string[];
+  /** The bottom panel, top row first; a row that empties is removed. */
+  rows: string[][];
+  /** Windows over the canvas. */
+  float: string[];
+  hidden: string[];
+}
 /** Which layout the preset draws: the toonio.ru studio, or one bar under the canvas. */
 export type LayoutKind = 'studio' | 'bar';
 
@@ -168,11 +192,10 @@ export const FEATURE_ITEM: Record<FeatureKey, string> = {
  * the right, the strip over a transport row. Anything left out is hidden — the
  * layers popup, because the studio strip carries the rows itself.
  */
-const STUDIO: Partial<PanelLayout> = {
+const STUDIO: Omit<PanelLayout, 'float' | 'hidden'> = {
   left: [...TOOL_ORDER.map(toolItem), 'save', 'pick-source', 'history', 'manual', 'fullscreen', 'drafts'],
   right: ['palette', 'brush'],
-  bottom: ['timeline'],
-  bar: [
+  rows: [['timeline'], [
     'transport',
     'add-frame',
     'delete-frame',
@@ -187,45 +210,78 @@ const STUDIO: Partial<PanelLayout> = {
     'merge',
     'settings',
     'publish',
-  ],
+  ]],
 };
 
 /** One bar under the canvas (Multator): frames, transport, drawing. */
-const BAR: Partial<PanelLayout> = {
-  bottom: ['history', 'add-frame', 'delete-frame', 'timeline'],
-  bar: [
-    'transport',
-    'onion',
-    'fps',
-    'zoom',
-    'layers',
-    'audio',
-    'export',
-    'saved',
-    'drafts',
-    'fullscreen',
-    'settings',
-    'publish',
+const BAR: Omit<PanelLayout, 'float' | 'hidden'> = {
+  left: [],
+  right: [],
+  rows: [
+    ['history', 'add-frame', 'delete-frame', 'timeline'],
+    [
+      'transport',
+      'onion',
+      'fps',
+      'zoom',
+      'layers',
+      'audio',
+      'export',
+      'saved',
+      'drafts',
+      'fullscreen',
+      'settings',
+      'publish',
+    ],
+    // Reference order: the keys, the hairline the brush draws, then its sizes,
+    // then the two colour swatches.
+    [...TOOL_ORDER.map(toolItem), 'pick-source', 'brush', 'palette'],
   ],
-  // Reference order: the keys, the hairline the brush draws, then its sizes,
-  // then the two colour swatches.
-  draw: [...TOOL_ORDER.map(toolItem), 'pick-source', 'brush', 'palette'],
 };
 
 function emptyLayout(): PanelLayout {
-  return { left: [], right: [], bottom: [], bar: [], draw: [], float: [], hidden: [] };
+  return { left: [], right: [], rows: [], float: [], hidden: [] };
+}
+
+/** Every item the layout draws somewhere, in reading order. */
+export function allPlaced(layout: PanelLayout): string[] {
+  return [...layout.left, ...layout.right, ...layout.rows.flat(), ...layout.float, ...layout.hidden];
 }
 
 /** The arrangement a layout starts from; every item it does not place is hidden. */
 export function defaultPanels(layout: LayoutKind): PanelLayout {
   const base = layout === 'bar' ? BAR : STUDIO;
-  const next = emptyLayout();
-  for (const slot of PANEL_SLOTS) {
-    next[slot] = [...(base[slot] ?? [])];
-  }
-  const placed = new Set(PANEL_SLOTS.flatMap((slot) => next[slot]));
+  const next: PanelLayout = {
+    left: [...base.left],
+    right: [...base.right],
+    rows: base.rows.map((row) => [...row]),
+    float: [],
+    hidden: [],
+  };
+  const placed = new Set(allPlaced(next));
   next.hidden = PANEL_ITEMS.filter((item) => !placed.has(item.id)).map((item) => item.id);
   return next;
+}
+
+/** What sits in a slot; a row that does not exist yet holds nothing. */
+export function itemsOf(layout: PanelLayout, slot: PanelSlot): string[] {
+  const row = slotRow(slot);
+  if (row) {
+    return row.fresh ? [] : layout.rows[row.index] ?? [];
+  }
+  return layout[slot as 'left' | 'right' | 'float' | 'hidden'] ?? [];
+}
+
+/** The slots this layout offers now: its rows, plus one more to make. */
+export function slotsOf(layout: PanelLayout, kind: LayoutKind): PanelSlot[] {
+  const columns: PanelSlot[] = kind === 'studio' ? ['left', 'right'] : [];
+  return [
+    ...columns,
+    ...layout.rows.map((_, i) => rowSlot(i)),
+    newRowSlot(layout.rows.length),
+    'float',
+    'hidden',
+  ];
 }
 
 export function panelItem(id: string): PanelItem | undefined {
@@ -242,18 +298,28 @@ export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout
   const stored = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const next = emptyLayout();
   const seen = new Set<string>();
-  for (const slot of PANEL_SLOTS) {
-    const list = Array.isArray(stored[slot]) ? stored[slot] as unknown[] : [];
-    for (const id of list) {
+  const take = (list: unknown): string[] => {
+    const out: string[] = [];
+    for (const id of Array.isArray(list) ? list : []) {
       if (typeof id === 'string' && panelItem(id) && !seen.has(id)) {
         seen.add(id);
-        next[slot].push(id);
+        out.push(id);
       }
     }
-  }
-  // A stored layout that put an item away which may not be put away (the
-  // gear) is read as "not placed": it comes back with its layout default.
-  next.hidden = next.hidden.filter((id) => {
+    return out;
+  };
+  next.left = take(stored.left);
+  next.right = take(stored.right);
+  // Rows as stored, or — for a layout written when the bottom panel had three
+  // fixed rows — those three, in the order they were drawn.
+  const rows = Array.isArray(stored.rows)
+    ? stored.rows
+    : [stored.bottom, stored.bar, stored.draw];
+  next.rows = rows.map(take).filter((row) => row.length > 0);
+  next.float = take(stored.float);
+  next.hidden = take(stored.hidden).filter((id) => {
+    // An item that may not be put away (the gear) is read as "not placed":
+    // it comes back with its layout default.
     if (!panelItem(id)?.keep) {
       return true;
     }
@@ -261,37 +327,78 @@ export function normalizePanels(value: unknown, layout: LayoutKind): PanelLayout
     return false;
   });
   const fallback = defaultPanels(layout);
-  for (const slot of PANEL_SLOTS) {
-    for (const id of fallback[slot]) {
+  const restore = (id: string, into: string[]): void => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      into.push(id);
+    }
+  };
+  for (const id of fallback.left) restore(id, next.left);
+  for (const id of fallback.right) restore(id, next.right);
+  fallback.rows.forEach((row, i) => {
+    for (const id of row) {
       if (!seen.has(id)) {
-        seen.add(id);
-        next[slot].push(id);
+        next.rows[i] ??= [];
+        restore(id, next.rows[i]);
       }
     }
-  }
+  });
+  for (const id of fallback.hidden) restore(id, next.hidden);
+  next.rows = next.rows.filter((row) => row.length > 0);
   return next;
 }
 
-/** The same layout with `id` at `index` of `slot` (the end, when no index is given). */
+/**
+ * The same layout with `id` at `index` of `slot` (the end, when no index is
+ * given). A `newrow:` slot makes a row there; a row left empty by the move is
+ * removed, so an unreachable strip of nothing can never be left behind.
+ */
 export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, index?: number): PanelLayout {
   const item = panelItem(id);
   if (!item || (slot === 'hidden' && item.keep)) {
     return layout;
   }
-  const next = emptyLayout();
-  for (const key of PANEL_SLOTS) {
-    next[key] = layout[key].filter((other) => other !== id);
+  const without = (list: readonly string[]): string[] => list.filter((other) => other !== id);
+  const next: PanelLayout = {
+    left: without(layout.left),
+    right: without(layout.right),
+    rows: layout.rows.map(without),
+    float: without(layout.float),
+    hidden: without(layout.hidden),
+  };
+  const row = slotRow(slot);
+  if (row) {
+    // A fresh row, or one past the end, lands as a row of its own.
+    const at = Math.max(0, Math.min(next.rows.length, row.index));
+    if (row.fresh || at === next.rows.length) {
+      next.rows.splice(at, 0, [id]);
+    } else {
+      const into = next.rows[at];
+      into.splice(Math.max(0, Math.min(into.length, index ?? into.length)), 0, id);
+    }
+  } else {
+    const into = next[slot as 'left' | 'right' | 'float' | 'hidden'];
+    into.splice(Math.max(0, Math.min(into.length, index ?? into.length)), 0, id);
   }
-  const at = index ?? next[slot].length;
-  next[slot].splice(Math.max(0, Math.min(next[slot].length, at)), 0, id);
+  next.rows = next.rows.filter((list) => list.length > 0);
   return next;
 }
 
 /** Back into the slot the layout default gives it. */
 export function showPanelItem(layout: PanelLayout, id: string, kind: LayoutKind): PanelLayout {
   const home = defaultPanels(kind);
-  const slot = PANEL_SLOTS.find((s) => s !== 'hidden' && home[s].includes(id)) ?? 'bar';
-  return movePanelItem(layout, id, slot);
+  if (home.left.includes(id)) {
+    return movePanelItem(layout, id, 'left');
+  }
+  if (home.right.includes(id)) {
+    return movePanelItem(layout, id, 'right');
+  }
+  const rowIndex = home.rows.findIndex((row) => row.includes(id));
+  // Its row in the default may not exist here; the last row is close enough.
+  const at = rowIndex < 0
+    ? Math.max(0, layout.rows.length - 1)
+    : Math.min(rowIndex, Math.max(0, layout.rows.length - 1));
+  return movePanelItem(layout, id, rowSlot(at));
 }
 
 export function hidePanelItem(layout: PanelLayout, id: string): PanelLayout {

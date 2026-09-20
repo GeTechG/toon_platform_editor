@@ -7,9 +7,11 @@ import {
   toolItem,
   toolOfItem,
   KIND_LABELS,
-  slotsFor,
+  slotLabel,
+  slotsOf,
+  allPlaced,
+  itemsOf,
   PANEL_ITEMS,
-  PANEL_SLOTS,
   defaultPanels,
   hidePanelItem,
   movePanelItem,
@@ -20,8 +22,6 @@ import {
 import { FEATURE_ORDER, presetPanels } from './presets';
 
 const ids = () => PANEL_ITEMS.map((item) => item.id);
-const placed = (layout: Record<string, string[]>) =>
-  PANEL_SLOTS.flatMap((slot) => layout[slot]);
 
 describe('the item registry', () => {
   test('every item has a unique id, a kind and a label', () => {
@@ -67,7 +67,7 @@ describe('every tool is its own item', () => {
   test('a preset that does not offer a tool starts with it put away', () => {
     // Multator draws pencil, eraser and the pipette only.
     expect(presetPanels('multator').hidden).toContain(toolItem('lasso'));
-    expect(presetPanels('multator').draw).toContain(toolItem('pencil'));
+    expect(presetPanels('multator').rows[2]).toContain(toolItem('pencil'));
   });
 });
 
@@ -79,8 +79,8 @@ describe('the transport is one item', () => {
   });
 
   test('a layout saved when they were separate loses them, keeping play', () => {
-    const stored = { ...defaultPanels('studio'), bar: ['steps-back', 'transport', 'steps-forward'] };
-    expect(normalizePanels(stored, 'studio').bar[0]).toBe('transport');
+    const stored = { ...defaultPanels('studio'), rows: [['steps-back', 'transport', 'steps-forward']] };
+    expect(normalizePanels(stored, 'studio').rows[0][0]).toBe('transport');
   });
 });
 
@@ -88,16 +88,16 @@ describe('the gear and the publish key', () => {
   test('both are items like everything else, at the end of the bar', () => {
     expect(panelItem('settings')?.kind).toBe('action');
     expect(panelItem('publish')?.kind).toBe('action');
-    expect(defaultPanels('studio').bar.slice(-2)).toEqual(['settings', 'publish']);
-    expect(defaultPanels('bar').bar).toContain('settings');
+    expect(defaultPanels('studio').rows[1].slice(-2)).toEqual(['settings', 'publish']);
+    expect(defaultPanels('bar').rows[1]).toContain('settings');
   });
 
   test('the gear can be moved but never put away — it is the way back', () => {
     const hidden = hidePanelItem(defaultPanels('studio'), 'settings');
     expect(hidden.hidden).not.toContain('settings');
-    expect(hidden.bar).toContain('settings');
+    expect(hidden.rows.flat()).toContain('settings');
     // …even when a stored layout claims otherwise.
-    const stored = { ...defaultPanels('studio'), bar: [], hidden: ['settings'] };
+    const stored = { ...defaultPanels('studio'), rows: [], hidden: ['settings'] };
     expect(normalizePanels(stored, 'studio').hidden).not.toContain('settings');
   });
 
@@ -124,23 +124,25 @@ describe('the default layouts', () => {
     const studio = defaultPanels('studio');
     expect(studio.left).toContain(toolItem('pencil'));
     expect(studio.right).toContain('palette');
-    expect(studio.bottom).toEqual(['timeline']);
-    expect(studio.bar[0]).toBe('transport');
+    expect(studio.rows[0]).toEqual(['timeline']);
+    expect(studio.rows[1][0]).toBe('transport');
   });
 
-  test('the bar layout keeps its drawing row and leaves the columns empty', () => {
+  test('the bar layout keeps its three rows and leaves the columns empty', () => {
     const bar = defaultPanels('bar');
     expect(bar.left).toEqual([]);
     expect(bar.right).toEqual([]);
+    expect(bar.rows).toHaveLength(3);
     // Reference order (multator.ru ToolPanel): keys, thickness, colour.
-    expect(bar.draw.at(-2)).toBe('brush');
-    expect(bar.draw.at(-1)).toBe('palette');
-    expect(bar.draw[0]).toBe(toolItem('pencil'));
+    const draw = bar.rows[2];
+    expect(draw[0]).toBe(toolItem('pencil'));
+    expect(draw.at(-2)).toBe('brush');
+    expect(draw.at(-1)).toBe('palette');
   });
 
   test('every item is placed or hidden, once, in both layouts', () => {
     for (const layout of ['studio', 'bar'] as const) {
-      const all = placed(defaultPanels(layout));
+      const all = allPlaced(defaultPanels(layout));
       expect(all.slice().sort()).toEqual(ids().slice().sort());
     }
   });
@@ -168,7 +170,55 @@ describe('reading a stored layout', () => {
     const stored = hidePanelItem(defaultPanels('studio'), 'onion');
     const back = normalizePanels(stored, 'studio');
     expect(back.hidden).toContain('onion');
-    expect(back.bar).not.toContain('onion');
+    expect(back.rows.flat()).not.toContain('onion');
+  });
+});
+
+describe('rows are made and unmade', () => {
+  test('a drop between rows makes a row there and pushes the rest down', () => {
+    const start = defaultPanels('studio');
+    const next = movePanelItem(start, 'onion', 'newrow:1');
+    expect(next.rows).toHaveLength(start.rows.length + 1);
+    expect(next.rows[1]).toEqual(['onion']);
+    expect(next.rows[2][0]).toBe(start.rows[1][0]);
+  });
+
+  test('a row left empty goes away instead of sitting there unhittable', () => {
+    const start = defaultPanels('studio');
+    // rows[0] is the strip alone: moving it out empties that row.
+    const next = movePanelItem(start, 'timeline', 'row:1', 0);
+    expect(next.rows).toHaveLength(start.rows.length - 1);
+    expect(next.rows[0][0]).toBe('timeline');
+  });
+
+  test('a row past the end is a new row at the end', () => {
+    const start = defaultPanels('studio');
+    const next = movePanelItem(start, 'onion', `row:${start.rows.length + 5}`);
+    expect(next.rows.at(-1)).toEqual(['onion']);
+  });
+
+  test('a stored layout never keeps an empty row', () => {
+    const stored = { ...defaultPanels('studio'), rows: [[], ['onion'], []] };
+    expect(normalizePanels(stored, 'studio').rows.every((row) => row.length > 0)).toBe(true);
+  });
+});
+
+describe('a layout saved before rows could be made', () => {
+  test('its three fixed rows become the first three rows', () => {
+    const legacy = {
+      left: [toolItem('pencil')],
+      right: ['palette'],
+      bottom: ['timeline'],
+      bar: ['transport'],
+      draw: ['brush'],
+      float: [],
+      hidden: [],
+    };
+    const panels = normalizePanels(legacy, 'studio');
+    expect(panels.rows[0]).toEqual(['timeline']);
+    expect(panels.rows[1][0]).toBe('transport');
+    expect(panels.rows[2][0]).toBe('brush');
+    expect(panels.left[0]).toBe(toolItem('pencil'));
   });
 });
 
@@ -176,7 +226,7 @@ describe('moving an item', () => {
   test('it leaves the slot it came from and lands at the index given', () => {
     const next = movePanelItem(defaultPanels('studio'), 'onion', 'left', 0);
     expect(next.left[0]).toBe('onion');
-    expect(next.bar).not.toContain('onion');
+    expect(next.rows.flat()).not.toContain('onion');
   });
 
   test('no index means the end of the slot', () => {
@@ -186,9 +236,9 @@ describe('moving an item', () => {
 
   test('moving inside a slot reorders instead of duplicating', () => {
     const start = defaultPanels('studio');
-    const next = movePanelItem(start, start.bar[2], 'bar', 0);
-    expect(next.bar[0]).toBe(start.bar[2]);
-    expect(next.bar).toHaveLength(start.bar.length);
+    const next = movePanelItem(start, start.rows[1][2], 'row:1', 0);
+    expect(next.rows[1][0]).toBe(start.rows[1][2]);
+    expect(next.rows[1]).toHaveLength(start.rows[1].length);
   });
 
   test('hiding an item is a move to the hidden slot', () => {
@@ -199,23 +249,41 @@ describe('moving an item', () => {
 describe('showing an item again', () => {
   test('it goes back where its layout has it', () => {
     const hidden = hidePanelItem(defaultPanels('studio'), 'zoom');
-    expect(showPanelItem(hidden, 'zoom', 'studio').bar).toContain('zoom');
+    expect(showPanelItem(hidden, 'zoom', 'studio').rows.flat()).toContain('zoom');
   });
 
   test('the studio hides the layers popup — its strip carries the rows', () => {
     expect(defaultPanels('studio').hidden).toContain('layers');
-    expect(defaultPanels('bar').bar).toContain('layers');
+    expect(defaultPanels('bar').rows[1]).toContain('layers');
   });
 });
 
 describe('the slots a layout offers', () => {
   test('the studio has its two columns, the bar layout does not', () => {
-    expect(slotsFor('studio')).toContain('left');
-    expect(slotsFor('bar')).not.toContain('left');
+    expect(slotsOf(defaultPanels('studio'), 'studio')).toContain('left');
+    expect(slotsOf(defaultPanels('bar'), 'bar')).not.toContain('left');
     // Hidden is offered everywhere: it is how an item is put away.
     for (const kind of ['studio', 'bar'] as const) {
-      expect(slotsFor(kind).at(-1)).toBe('hidden');
+      expect(slotsOf(defaultPanels(kind), kind).at(-1)).toBe('hidden');
     }
+  });
+
+  test('itemsOf reads a slot, and a row to be made is empty', () => {
+    const studio = defaultPanels('studio');
+    expect(itemsOf(studio, 'row:0')).toEqual(['timeline']);
+    expect(itemsOf(studio, 'left')).toEqual(studio.left);
+    expect(itemsOf(studio, 'newrow:1')).toEqual([]);
+    expect(itemsOf(studio, 'row:99')).toEqual([]);
+  });
+
+  test('every row the layout has is a slot, and there is one more to make', () => {
+    const studio = defaultPanels('studio');
+    const slots = slotsOf(studio, 'studio');
+    expect(slots).toContain('row:0');
+    expect(slots).toContain('row:1');
+    expect(slots).toContain(`newrow:${studio.rows.length}`);
+    expect(slotLabel('row:0')).toBe('Строка 1');
+    expect(slotLabel('newrow:2')).toBe('Новая строка');
   });
 
   test('every kind of item has a word for it', () => {
@@ -248,15 +316,15 @@ describe('the editor is arranged from the config', () => {
   test('every panel draws the items the config puts in it', () => {
     expect(editorUi).toContain('{#snippet slot(');
     expect(editorUi).toContain('{#snippet panelItem(');
-    expect(editorUi).toContain("{@render slot('left')");
-    expect(editorUi).toContain("{@render slot('right')");
-    expect(editorUi).toContain("{@render slot('bottom')");
-    expect(editorUi).toContain("{@render slot('bar')");
-    expect(editorUi).toContain("{@render slot('draw')");
+    expect(editorUi).toContain('{@render slot(editor.panels.left)');
+    expect(editorUi).toContain('{@render slot(editor.panels.right)');
+    // The bottom panel is as many rows as the arrangement has.
+    expect(editorUi).toContain('{#each editor.panels.rows as row, i (i)}');
+    expect(editorUi).toContain('data-slot="row:{i}"');
   });
 
   test('the settings sheet arranges the panels', () => {
-    expect(sheet).toContain('SLOT_LABELS');
+    expect(sheet).toContain('slotLabel(slot)');
     expect(sheet).toContain('editor.movePanelItem');
     expect(sheet).toContain('Расположение');
   });

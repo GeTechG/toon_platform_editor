@@ -155,9 +155,9 @@ describe('frame buttons follow the reference bar', () => {
   it('add and delete frame sit on the studio transport, not beside the timeline', () => {
     // Reference: ⏮ ⏴ ▶ ⏵ ⏭ + × 👻 fps … — the frame keys are part of the bar.
     const studio = defaultPanels('studio');
-    expect(studio.bar).toContain('add-frame');
-    expect(studio.bar).toContain('delete-frame');
-    expect(studio.bottom).toEqual(['timeline']);
+    expect(studio.rows[1]).toContain('add-frame');
+    expect(studio.rows[1]).toContain('delete-frame');
+    expect(studio.rows[0]).toEqual(['timeline']);
   });
 });
 

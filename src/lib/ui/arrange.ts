@@ -63,6 +63,26 @@ export function dropPlacement(boxes: readonly Box[], x: number, y: number): Plac
   };
 }
 
+/**
+ * Whether a drop at `y` is past the top or bottom edge of a row — that is, a
+ * row of its own rather than a place in this one.
+ *
+ * The band is hand-sized (a third of the row, never more than a key's worth
+ * and never so wide that a row has no middle left), so dropping *into* a row
+ * stays the easy thing and a new row is a deliberate reach for the edge.
+ */
+export function rowEdge(box: Box, y: number): 'before' | 'after' | null {
+  const height = box.bottom - box.top;
+  const band = Math.min(14, height / 3);
+  if (y - box.top <= band) {
+    return 'before';
+  }
+  if (box.bottom - y <= band) {
+    return 'after';
+  }
+  return null;
+}
+
 /** The index a drop at (x, y) should insert at. */
 export function insertIndex(boxes: readonly Box[], x: number, y: number): number {
   return dropPlacement(boxes, x, y).index;

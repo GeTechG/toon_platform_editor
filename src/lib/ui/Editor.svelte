@@ -38,7 +38,7 @@
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
   import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, SIDE_WIDTH_MAX, SIDE_WIDTH_MIN } from './presets';
-  import { panelItem as panelItemSpec, toolOfItem, type PanelSlot } from './panels';
+  import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -1387,29 +1387,27 @@
     </button>
   {:else if id === 'publish'}
     {#if onPublish}
-      <!-- Publishing leaves the editor; it gets its own zone so it never reads
-           as one more tool toggle. -->
-      <div class="ship" role="group" aria-label="Публикация">
-        <button
-          class="key primary publish"
-          onclick={() =>
-            onPublish?.(
-              $state.snapshot(editor.doc),
-              editor.audio.blob
-                ? {
-                    blob: editor.audio.blob,
-                    name: editor.audio.name,
-                    author: editor.audio.author,
-                    sync: editor.audio.sync,
-                  }
-                : null,
-            )}
-          title="Опубликовать"
-          aria-label="Опубликовать"
-        >
-          <Icon name="send" />
-        </button>
-      </div>
+      <!-- One key like any other: where it sits is the arrangement's business,
+           not a zone fenced off in the markup. -->
+      <button
+        class="key primary publish"
+        onclick={() =>
+          onPublish?.(
+            $state.snapshot(editor.doc),
+            editor.audio.blob
+              ? {
+                  blob: editor.audio.blob,
+                  name: editor.audio.name,
+                  author: editor.audio.author,
+                  sync: editor.audio.sync,
+                }
+              : null,
+          )}
+        title="Опубликовать"
+        aria-label="Опубликовать"
+      >
+        <Icon name="send" />
+      </button>
     {/if}
   {:else if id === 'merge'}
     <button
@@ -1425,8 +1423,8 @@
 
 <!-- In arrange mode every item wears a handle: the wrapper takes the pointer
      (its contents stop taking clicks) and carries the id the arranger drags. -->
-{#snippet slot(slotId: PanelSlot)}
-  {#each editor.panels[slotId] as id (id)}
+{#snippet slot(items: string[])}
+  {#each items as id (id)}
     {#if editor.arranging}
       <div
         class="arr"
@@ -1440,16 +1438,18 @@
       {@render panelItem(id)}
     {/if}
   {/each}
-  {#if editor.arranging && editor.panels[slotId].length === 0}
+  {#if editor.arranging && items.length === 0}
     <span class="slot-empty">пусто</span>
   {/if}
 {/snippet}
+
 
 <div
   class="editor"
   class:studio
   class:alt={editor.settings.altLayout}
   class:arranging={editor.arranging}
+  data-float-root
   bind:this={editorEl}
 >
   {#if studio && (editor.panels.left.length > 0 || editor.arranging)}
@@ -1462,20 +1462,13 @@
       bind:clientWidth={sidePx.left}
     >
       {#if !folded('left')}
-        {@render slot('left')}
+        {@render slot(editor.panels.left)}
       {/if}
     </aside>
     {@render sideEdge('left', 'Инструменты и история')}
   {/if}
   <div class="stage" data-slot="float">
     <CanvasView {editor} />
-    <!-- Items taken off the panels: the reference's floating tool windows,
-         but for anything the config puts over the canvas. -->
-    {#each editor.panels.float as id (id)}
-      <FloatWindow {editor} {id}>
-        {@render panelItem(id)}
-      </FloatWindow>
-    {/each}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -1511,7 +1504,7 @@
       bind:clientWidth={sidePx.right}
     >
       {#if !folded('right')}
-        {@render slot('right')}
+        {@render slot(editor.panels.right)}
       {/if}
     </aside>
     {@render sideEdge('right', 'Палитра и кисть')}
@@ -1555,30 +1548,27 @@
       ></div>
     {/if}
     {#if !panelFolded}
+      <!-- However many rows the arrangement has, top to bottom. A row that
+           empties is gone (panels.ts), so no unreachable strip is left; a new
+           row is made by dragging past a row's top or bottom edge, so nothing
+           has to stand there holding a place open. -->
       <div class="toolbar">
-        <!-- The row the divider grows: the frame strip and whatever else was
-             put beside it. -->
-        {#if editor.panels.bottom.length > 0 || editor.arranging}
-          <div class="row frames" role="group" aria-label="Кадры" data-slot="bottom">
-            {@render slot('bottom')}
+        {#each editor.panels.rows as row, i (i)}
+          <div class="row" role="group" aria-label="Строка {i + 1}" data-slot="row:{i}">
+            {@render slot(row)}
           </div>
-        {/if}
-
-        <!-- Transport & output. Always drawn: the gear lives in this row by
-             default and it is the way back to the settings. -->
-        <div class="row transport" role="group" aria-label="Просмотр и экспорт" data-slot="bar">
-          {@render slot('bar')}
-        </div>
-
-        <!-- Drawing row: tools · sizes · color, where the config puts them. -->
-        {#if editor.panels.draw.length > 0 || editor.arranging}
-          <div class="row draw" role="group" aria-label="Кисть" data-slot="draw">
-            {@render slot('draw')}
-          </div>
-        {/if}
+        {/each}
       </div>
     {/if}
   </div>
+
+  <!-- Items taken off the panels: windows over the whole editor — the canvas
+       and the panels alike — so folding a column never moves them. -->
+  {#each editor.panels.float as id (id)}
+    <FloatWindow {editor} {id}>
+      {@render panelItem(id)}
+    </FloatWindow>
+  {/each}
 
   {#if editor.arranging}
     <PanelArranger {editor} />
@@ -1758,6 +1748,9 @@
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
     --key-h: 2.75rem;
 
+    /* Frame for the floating windows: they live over the whole editor, not
+       over the canvas, so folding a column does not move them. */
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -2007,14 +2000,6 @@
     flex: 1;
     min-width: 0;
   }
-  /* Publish leaves the editor, so it sits in its own zone at the end of the
-     row — pushed away from the tool toggles and fenced off by a hairline. */
-  .ship {
-    display: flex;
-    margin-left: auto;
-    padding-left: 0.75rem;
-    border-left: 1px solid var(--hairline);
-  }
   /* Phone: the toolbar is a wall between the drawing and the thumb, so it
      gives back every spare pixel it can — the stage keeps the rest. */
   @media (max-width: 40rem) {
@@ -2027,9 +2012,6 @@
     }
     .row {
       gap: 0.3rem;
-    }
-    .ship {
-      padding-left: 0.45rem;
     }
     /* The timeline's scroll arrows are a mouse affordance: a phone swipes the
        strip and Tab walks the frames, so they give their 88px back to the
@@ -2349,7 +2331,7 @@
        studio: a row that overflows widens the whole layout viewport, and the
        fixed sheets (drafts, settings) then hang their right edge — the delete
        key of a draft row — off the screen. */
-    .row.transport {
+    .row {
       flex-wrap: wrap;
     }
   }

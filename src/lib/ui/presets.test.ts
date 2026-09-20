@@ -378,7 +378,7 @@ test('the bottom panel remembers being folded away, and a corrupted flag stays o
 test('a preset starts from the arrangement its layout draws', () => {
   expect(presetPanels('toonop')).toEqual(defaultPanels('studio'));
   const multator = presetPanels('multator');
-  expect(multator.draw).toContain('tool:pencil');
+  expect(multator.rows[2]).toContain('tool:pencil');
   // The preset drops these two buttons, so its arrangement starts without them.
   expect(multator.hidden).toContain('export');
   expect(multator.hidden).toContain('layers');
@@ -392,7 +392,7 @@ test('the stored arrangement travels with the rest of the config', () => {
     panels,
   }));
   expect(parsed?.panels.left[0]).toBe('onion');
-  expect(parsed?.panels.bar).not.toContain('onion');
+  expect(parsed?.panels.rows.flat()).not.toContain('onion');
 });
 
 test('a config saved before panels existed keeps the buttons it had turned off', () => {
@@ -401,5 +401,5 @@ test('a config saved before panels existed keeps the buttons it had turned off',
     features: { ...presetFeatures('toonop'), export: false },
   }));
   expect(parsed?.panels.hidden).toContain('export');
-  expect(parsed?.panels.bar).toContain('onion');
+  expect(parsed?.panels.rows.flat()).toContain('onion');
 });

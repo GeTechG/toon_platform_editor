@@ -23,11 +23,35 @@
   let el = $state<HTMLDivElement | undefined>();
   let grab: { x: number; y: number; left: number; top: number } | null = null;
 
+  /** The editor, which is what the window's coordinates are measured against. */
+  function frame(): { width: number; height: number } {
+    const root = el?.offsetParent as HTMLElement | null;
+    return { width: root?.clientWidth ?? 0, height: root?.clientHeight ?? 0 };
+  }
+
+  /** Puts the window back inside after the editor changed size. */
+  function reframe(): void {
+    if (!el) {
+      return;
+    }
+    const inside = clampWindowPosition(
+      pos.x,
+      pos.y,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      frame(),
+    );
+    if (inside.left !== pos.x || inside.top !== pos.y) {
+      editor.setFloatPos(id, inside.left, inside.top);
+    }
+  }
+
   const pos = $derived(editor.floatPos[id] ?? { x: 24, y: 24 });
   const label = $derived(panelItem(id)?.label ?? id);
 
   function onDown(e: PointerEvent): void {
-    if (!e.isPrimary || editor.arranging) {
+    // A press on the close key is a press on the key, not a grab of the bar:
+    // swallowing it here is what stopped the × from ever firing.
+    if (!e.isPrimary || editor.arranging || (e.target as HTMLElement | null)?.closest('button')) {
       return;
     }
     grab = { x: e.clientX, y: e.clientY, left: pos.x, top: pos.y };
@@ -39,12 +63,11 @@
     if (!grab || !el) {
       return;
     }
-    const stage = el.offsetParent as HTMLElement | null;
     const next = clampWindowPosition(
       grab.left + e.clientX - grab.x,
       grab.top + e.clientY - grab.y,
       { width: el.offsetWidth, height: el.offsetHeight },
-      { width: stage?.clientWidth ?? 0, height: stage?.clientHeight ?? 0 },
+      frame(),
     );
     editor.setFloatPos(id, next.left, next.top);
   }
@@ -65,6 +88,8 @@
     editor.setFloatPos(id, pos.x + dx, pos.y + dy);
   }
 </script>
+
+<svelte:window onresize={reframe} />
 
 <div
   bind:this={el}
@@ -102,7 +127,9 @@
 <style>
   .float {
     position: absolute;
-    z-index: 4;
+    /* Over the panels as well as the canvas, under the sheets and the
+       arrange bar. */
+    z-index: 6;
     display: flex;
     flex-direction: column;
     max-width: min(90%, 28rem);

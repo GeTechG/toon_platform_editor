@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { dropPlacement, insertIndex, type Box } from './arrange';
+import { dropPlacement, insertIndex, rowEdge, type Box } from './arrange';
 
 /** A row of three 40px-wide boxes at y 0..40. */
 const row: Box[] = [
@@ -63,6 +63,31 @@ describe('what the drop indicator draws', () => {
   });
 });
 
+describe('a drop past the edge of a row', () => {
+  const band: Box = { left: 0, top: 100, right: 400, bottom: 144 };
+
+  test('near the top edge it is a row above, near the bottom a row below', () => {
+    expect(rowEdge(band, 102)).toBe('before');
+    expect(rowEdge(band, 142)).toBe('after');
+  });
+
+  test('the middle of the row is no edge at all — it just joins the row', () => {
+    expect(rowEdge(band, 122)).toBeNull();
+  });
+
+  test('a tall row keeps a hand-sized band, not a quarter of its height', () => {
+    const tall: Box = { left: 0, top: 0, right: 400, bottom: 600 };
+    expect(rowEdge(tall, 300)).toBeNull();
+    expect(rowEdge(tall, 4)).toBe('before');
+    expect(rowEdge(tall, 596)).toBe('after');
+  });
+
+  test('a row too thin to have a middle still takes items into it', () => {
+    const thin: Box = { left: 0, top: 0, right: 400, bottom: 8 };
+    expect(rowEdge(thin, 4)).toBeNull();
+  });
+});
+
 // --- Wiring ---------------------------------------------------------------
 // Svelte/runes glue is asserted as source (the contract style this folder
 // uses); the geometry above runs for real.
@@ -78,9 +103,15 @@ describe('arranging happens in the editor itself', () => {
   });
 
   test('every panel is a drop target and every item is a handle', () => {
-    for (const slot of ['left', 'right', 'bottom', 'bar', 'draw']) {
+    for (const slot of ['left', 'right', 'float']) {
       expect(editorUi).toContain(`data-slot="${slot}"`);
     }
+    // …and each row. A new row is made by dragging past a row's edge, so
+    // there are no permanent gap strips puffing the panel up.
+    expect(editorUi).toContain('data-slot="row:{i}"');
+    expect(editorUi).not.toContain('newrow:{at}');
+    expect(arranger).toContain('rowEdge(');
+    expect(arranger).toContain('newRowSlot(');
     expect(editorUi).toContain('data-item={id}');
     expect(editorUi).toContain('editor.arranging');
   });
@@ -104,6 +135,25 @@ describe('arranging happens in the editor itself', () => {
     expect(arranger).toContain("'float'");
     expect(floatWindow).toContain('clampWindowPosition');
     expect(floatWindow).toContain('setFloatPos');
+  });
+
+  test('the close key puts the window back in a panel, and is not a grab', () => {
+    expect(floatWindow).toContain('editor.showPanelItem(id)');
+    // The title bar's own pointerdown must not swallow the key's click.
+    expect(floatWindow).toContain("closest('button')");
+  });
+
+  test('a window floats over the whole editor, panels included', () => {
+    // Its frame is the editor, not the canvas: a window parked at the edge
+    // must not jump when a column folds and the stage changes size.
+    expect(editorUi).toContain('data-float-root');
+    const stage = editorUi.match(/<div class="stage"[^]*?\n  <\/div>/)?.[0] ?? '';
+    expect(stage).not.toContain('<FloatWindow');
+    expect(editorUi).toContain('<FloatWindow');
+    // …and a viewport that shrinks brings it back in rather than leaving it
+    // outside, where the first drag would snap it.
+    expect(floatWindow).toContain('svelte:window');
+    expect(floatWindow).toContain('onresize');
   });
 });
 

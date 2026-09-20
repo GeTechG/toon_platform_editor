@@ -9,8 +9,8 @@
    * same moves as selects and arrows (WCAG 2.2 AA 2.5.7).
    */
   import type { EditorState } from './editor-state.svelte';
-  import { dropPlacement, type Box } from './arrange';
-  import { SLOT_LABELS, panelItem, type PanelSlot } from './panels';
+  import { dropPlacement, rowEdge, type Box } from './arrange';
+  import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -46,6 +46,8 @@
   let target = $state<Target | null>(null);
 
   const dragLabel = $derived(drag ? panelItem(drag.id)?.label ?? drag.id : '');
+  /** The drop would make a row of its own. */
+  const newRow = $derived(drag?.moved === true && (slotRow(target?.slot ?? 'left')?.fresh ?? false));
   /** Dropping the gear on the shelf does nothing, so the hint says why. */
   const refused = $derived(
     drag !== null && target?.slot === 'hidden' && (panelItem(drag.id)?.keep ?? false),
@@ -117,9 +119,29 @@
     if (!panelEl || !slot) {
       return null;
     }
-    const panel = box(panelEl.getBoundingClientRect());
+    const rect = panelEl.getBoundingClientRect();
+    const panel = box(rect);
     if (slot === 'float') {
       return { slot, index: 0, line: null, panel };
+    }
+    // Past the top or bottom edge of a row: a row of its own, made on the
+    // drop. No standing gaps between the rows — they would puff the panel up
+    // every time anything is moved.
+    const row = slotRow(slot);
+    const edge = row && !row.fresh ? rowEdge(rect, y) : null;
+    if (row && edge) {
+      const at = edge === 'before' ? row.index : row.index + 1;
+      return {
+        slot: newRowSlot(at),
+        index: 0,
+        line: {
+          left: rect.left,
+          top: (edge === 'before' ? rect.top : rect.bottom) - 1.5,
+          width: rect.width,
+          height: 3,
+        },
+        panel,
+      };
     }
     const siblings = [...panelEl.querySelectorAll<HTMLElement>(':scope > [data-item]')]
       .filter((node) => node.dataset.item !== drag?.id);
@@ -222,16 +244,19 @@
   <p class="arrange-hint">
     {#if refused}
       «{dragLabel}» убрать нельзя — это дорога назад к настройкам; перенеси в панель
+    {:else if newRow}
+      Отпусти — «{dragLabel}» встанет новой строкой
     {:else if drag}
       Переносим «{dragLabel}» — отпусти над панелью, холстом или полкой
     {:else}
-      Перетаскивай что угодно: в другую панель, на холст (будет окном) или на полку
+      Перетаскивай что угодно: в другую панель, за верхнюю или нижнюю грань строки
+      (будет новая строка), на холст (будет окном) или на полку
     {/if}
   </p>
 
   <!-- The shelf: everything put away, and a place to drop things onto. -->
-  <div class="tray" data-slot="hidden" aria-label={SLOT_LABELS.hidden}>
-    <span class="tray-name">{SLOT_LABELS.hidden}</span>
+  <div class="tray" data-slot="hidden" aria-label={slotLabel('hidden')}>
+    <span class="tray-name">{slotLabel('hidden')}</span>
     {#each hidden as item (item.id)}
       <span class="chip" data-item={item.id}>{item.label}</span>
     {/each}

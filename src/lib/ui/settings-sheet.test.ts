@@ -77,7 +77,7 @@ describe('the rail and the chrome follow the reference studio', () => {
   it('keeps the panel section as the last one in the settings sheet', () => {
     expect(sheet).toContain('Панель');
     // The list of buttons is the arrangement itself now (panels.ts).
-    expect(sheet).toContain('slotsFor(editor.ux.layout)');
+    expect(sheet).toContain('slotsOf(editor.panels, editor.ux.layout)');
     expect(sheet.indexOf('Панель')).toBeGreaterThan(sheet.indexOf('Вид'));
   });
 

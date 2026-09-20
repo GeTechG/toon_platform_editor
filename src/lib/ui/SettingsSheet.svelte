@@ -19,7 +19,15 @@
     PRESETS,
     mouseModeLabel,
   } from './presets';
-  import { KIND_LABELS, SLOT_LABELS, panelItem, slotsFor, type PanelSlot } from './panels';
+  import {
+    KIND_LABELS,
+    itemsOf,
+    panelItem,
+    slotLabel,
+    slotRow,
+    slotsOf,
+    type PanelSlot,
+  } from './panels';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
@@ -37,6 +45,12 @@
     onOpenFile?: () => void;
     onOpenDrafts?: () => void;
   } = $props();
+
+  // The sections to list: every panel the arrangement has. «Новая строка» is
+  // not a section — it is only somewhere to send an item to.
+  const slots = $derived(
+    slotsOf(editor.panels, editor.ux.layout).filter((slot) => !slotRow(slot)?.fresh),
+  );
 
   /** Without the API the option would be a switch that does nothing. */
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
@@ -347,10 +361,11 @@
       >Переставить прямо в редакторе</button>
     </div>
     <p class="sheet-hint quiet">…или списком, если так удобнее:</p>
-    {#each slotsFor(editor.ux.layout) as slot (slot)}
-      <p class="slot-name">{SLOT_LABELS[slot]}</p>
+    {#each slots as slot (slot)}
+      {@const items = itemsOf(editor.panels, slot)}
+      <p class="slot-name">{slotLabel(slot)}</p>
       <ul class="arrange">
-        {#each editor.panels[slot] as id, i (id)}
+        {#each items as id, i (id)}
           <li>
             <span class="arrange-label">
               {panelItem(id)?.label}
@@ -361,8 +376,8 @@
               aria-label="Где «{panelItem(id)?.label}»"
               onchange={(e) => editor.movePanelItem(id, e.currentTarget.value as PanelSlot)}
             >
-              {#each slotsFor(editor.ux.layout) as target (target)}
-                <option value={target}>{SLOT_LABELS[target]}</option>
+              {#each slotsOf(editor.panels, editor.ux.layout) as target (target)}
+                <option value={target}>{slotLabel(target)}</option>
               {/each}
             </select>
             <button
@@ -374,14 +389,14 @@
             >↑</button>
             <button
               class="key icon"
-              disabled={i === editor.panels[slot].length - 1}
+              disabled={i === items.length - 1}
               onclick={() => editor.movePanelItem(id, slot, i + 1)}
               title="Ниже"
               aria-label="«{panelItem(id)?.label}» ниже"
             >↓</button>
           </li>
         {/each}
-        {#if editor.panels[slot].length === 0}
+        {#if items.length === 0}
           <li class="empty-slot">пусто</li>
         {/if}
       </ul>
