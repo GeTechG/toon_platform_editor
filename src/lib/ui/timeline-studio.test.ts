@@ -60,6 +60,33 @@ describe('studio timeline grid', () => {
   });
 });
 
+describe('layer column divider', () => {
+  it('a splitter sits between the layer column and the frames', () => {
+    expect(timeline).toContain('class="col-resizer"');
+    expect(timeline).toContain('role="separator"');
+    expect(timeline).toContain('aria-orientation="vertical"');
+    expect(timeline).toContain('cursor: ew-resize');
+  });
+
+  it('the column takes the width the drag hands out, between a floor and a ceiling', () => {
+    expect(timeline).toContain('onpointerdown={onColDown}');
+    expect(timeline).toContain('onpointermove={onColMove}');
+    expect(timeline).toContain('COL_MIN');
+    expect(timeline).toContain('COL_MAX');
+  });
+
+  it('narrows down to the icons, never into the eye', () => {
+    // The floor is the row without its name: eye, tag, handle, delete.
+    expect(timeline).toContain('const COL_MIN = 128;');
+  });
+
+  it('the arrows resize it too, so no pointer drag is required (WCAG 2.5.7)', () => {
+    expect(timeline).toContain('onkeydown={onColKey}');
+    expect(timeline).toContain("case 'ArrowLeft'");
+    expect(timeline).toContain("case 'ArrowRight'");
+  });
+});
+
 describe('bottom panel divider', () => {
   it('the divider sits on the panel, dragging and answering the arrows', () => {
     expect(editorUi).toContain('role="separator"');

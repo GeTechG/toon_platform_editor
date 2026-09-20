@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 const source = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
 const rows = source;
+const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
 
 function fn(name: string): string {
   const match = source.match(new RegExp(`function ${name}\\([^]*?\\n  }`));
@@ -76,8 +77,45 @@ describe('layer names and colour tags (Toonio parity)', () => {
     expect(rows).toContain("'Escape'");
   });
 
-  it('every row carries one of six cycling colour tags', () => {
-    expect(rows).toContain('% 6');
-    expect(rows).toContain('--layer-tag-');
+  it('every row carries one of the six colour tags', () => {
+    expect(rows).toContain('--layer-tag-{editor.layerColor(layerIndex)}');
+  });
+
+  it('the eye, the handle and the delete keep their size in a narrow column', () => {
+    // The column narrows down to the icons; squeezing them instead of the
+    // name would shrink the tap targets (WCAG 2.5.8).
+    const icons = rows.slice(rows.indexOf('.eye {'));
+    for (const rule of ['.eye {', '.handle {', '.kill {']) {
+      const block = icons.slice(icons.indexOf(rule), icons.indexOf('}', icons.indexOf(rule)));
+      expect(block).toContain('flex: none');
+    }
+  });
+});
+
+describe('the colour tag is pickable', () => {
+  it('the tag is a button that walks the six swatches', () => {
+    expect(rows).toContain('class="tag"');
+    expect(rows).toContain('editor.cycleLayerColor(layerIndex)');
+    expect(rows).toContain('Цвет слоя');
+    expect(rows).toContain('editor.layerColor(layerIndex)');
+  });
+
+  it('a fast double click on a control is not a rename', () => {
+    // The tag, the eye and the delete sit inside the row, whose double click
+    // opens the name for editing; two quick colour steps must not rename.
+    expect(rows).toContain('ondblclick={(e) => startRename(e, layerIndex)}');
+    expect(fn('startRename')).toContain("closest('button, .handle')");
+  });
+
+  it('the colours follow their layers through add, delete and reorder', () => {
+    expect(state).toContain('layerColors');
+    expect(state).toContain('this.layerColors.splice(at, 0,');
+    expect(state).toContain('this.layerColors.splice(removed, 1)');
+    expect(state).toContain('this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1))');
+  });
+
+  it('a draft carries them, since the file format has no field for them', () => {
+    expect(state).toContain('layerColors: this.layerColors.slice()');
+    expect(state).toContain('normalizeLayerColors(saved.layerColors');
   });
 });

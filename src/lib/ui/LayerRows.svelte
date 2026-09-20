@@ -6,20 +6,25 @@
   // shown top-down (topmost row first) — the order you see on the canvas.
   // A row shows the layer's stored name, or its position when it has none,
   // so moving an unnamed layer renumbers its row. The colour tag is a display
-  // aid — six of them, cycling by position, never written to the document.
+  // aid — six of them, picked per layer, never written to the document.
   import { onDestroy } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
   import { dragTargetIndex } from './frame-selection';
   import LayerThumb from './LayerThumb.svelte';
+  import { rowHeight } from './thumb-size';
   import Icon from './Icon.svelte';
 
   // `compact` drops the per-row thumbnail: the studio timeline already shows
   // every cell, so a second thumbnail in the layer column would be noise.
   let { editor, compact = false }: { editor: EditorState; compact?: boolean } = $props();
 
-  /** Row height in px — fixed, so a drag converts travel into whole rows. */
-  const ROW_HEIGHT = 44;
+  /**
+   * Row height in px — one number for the whole list, so a drag converts
+   * travel into whole rows. In the studio the rows line up with the timeline's
+   * cells, so both follow the frame the canvas asks for.
+   */
+  const ROW_HEIGHT = $derived(rowHeight(editor.doc));
   /** Distance from a list edge, in px, where the list auto-scrolls during a drag. */
   const AUTOSCROLL_EDGE = 32;
 
@@ -43,7 +48,15 @@
   /** Layer being renamed, and the text in its field. */
   let renaming = $state<{ layer: number; text: string } | null>(null);
 
-  function startRename(layerIndex: number): void {
+  /**
+   * A double click on the row opens its name — but the row is also where the
+   * eye, the colour tag, the handle and the delete live, and pressing one of
+   * those twice quickly is two presses, not a rename.
+   */
+  function startRename(e: MouseEvent | null, layerIndex: number): void {
+    if (e && (e.target as HTMLElement).closest('button, .handle')) {
+      return;
+    }
     renaming = { layer: layerIndex, text: editor.layerLabel(layerIndex) };
   }
 
@@ -103,7 +116,7 @@
     if (e.key === 'F2') {
       e.preventDefault();
       editor.selectLayer(layerIndex);
-      startRename(layerIndex);
+      startRename(null, layerIndex);
       return;
     }
     if (e.key === 'Enter' || e.key === ' ') {
@@ -266,13 +279,14 @@
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
       <div
         class="row"
+        style:height="{ROW_HEIGHT}px"
         class:active={layerIndex === editor.activeLayer}
         class:dragging={drag?.currentLayer === layerIndex}
         role="option"
         aria-selected={layerIndex === editor.activeLayer}
         tabindex="0"
         onclick={() => editor.selectLayer(layerIndex)}
-        ondblclick={() => startRename(layerIndex)}
+        ondblclick={(e) => startRename(e, layerIndex)}
         onkeydown={(e) => onRowKeydown(e, layerIndex)}
       >
         <button
@@ -290,11 +304,20 @@
 
         {#if !compact}
           <span class="thumb" class:hidden={editor.doc.layers[layerIndex].hidden}>
-            <LayerThumb doc={editor.doc} {layerIndex} frameIndex={editor.displayedFrame} height={28} />
+            <LayerThumb doc={editor.doc} {layerIndex} frameIndex={editor.displayedFrame} maxW={28} />
           </span>
         {/if}
 
-        <span class="tag" style="background: var(--layer-tag-{layerIndex % 6})"></span>
+        <button
+          class="tag"
+          style="background: var(--layer-tag-{editor.layerColor(layerIndex)})"
+          title="Цвет слоя (клик — следующий)"
+          aria-label="Цвет слоя {editor.layerLabel(layerIndex)}"
+          onclick={(e) => {
+            e.stopPropagation();
+            editor.cycleLayerColor(layerIndex);
+          }}
+        ></button>
 
         {#if renaming?.layer === layerIndex}
           <!-- svelte-ignore a11y_autofocus -->
@@ -349,7 +372,7 @@
     align-items: center;
     gap: 0.4rem;
     box-sizing: border-box;
-    height: 44px;
+    min-height: 32px;
     padding: 0 0.3rem 0 0.5rem;
     cursor: pointer;
   }
@@ -366,6 +389,7 @@
   .eye {
     display: grid;
     place-items: center;
+    flex: none;
     width: 28px;
     height: 28px;
     border: 0;
@@ -398,20 +422,31 @@
     font: inherit;
     font-size: 0.85rem;
   }
-  /* Six cycling tags, by position — the reference colours its rows the same
-     way, in the theme rather than in the document. */
+  /* Six tags, in the theme rather than in the document; a click walks them.
+     A 4px stripe would be a 4px tap target: the button is 14px wide with the
+     stripe painted in its middle, so the pointer and the finger both hit it. */
   .tag {
     flex: none;
+    box-sizing: content-box;
     width: 4px;
     height: 24px;
+    padding: 0 5px;
+    border: 0;
     border-radius: 2px;
+    background-clip: content-box;
+    cursor: pointer;
+  }
+  .tag:focus-visible {
+    outline: 2px solid var(--electric, #2f5bff);
+    outline-offset: 1px;
   }
   /* The handle is the only drag surface, so the list still scrolls by touch. */
   .handle {
     display: grid;
     place-items: center;
+    flex: none;
     width: 30px;
-    height: 44px;
+    align-self: stretch;
     touch-action: none;
     cursor: grab;
     user-select: none;

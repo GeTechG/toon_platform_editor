@@ -83,6 +83,7 @@ import {
   type SavedPalette,
 } from './color-palette';
 import { IDENTITY_VIEW, clampPan, zoomAt, type Viewport2D } from './viewport';
+import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { eraseStrokes } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
@@ -275,6 +276,12 @@ export class EditorState {
    * layer of a three-layer drawing is «Слой 4». Not stored in the document.
    */
   layerCounter = $state(1);
+  /**
+   * The colour tag of each layer, one entry per layer, bottom-up like
+   * `doc.layers`. Session state: the format has no field for it, so it travels
+   * in the draft record and not in a published document.
+   */
+  layerColors = $state<number[]>(defaultLayerColors(1));
   /**
    * Studio bottom-panel height in CSS px (persisted), set by dragging the
    * divider on its top edge. The timeline is the row that grows with it.
@@ -679,6 +686,7 @@ export class EditorState {
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
     this.activeLayer = addLayer(this.doc, at);
+    this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
     renameLayer(this.doc, at, `Слой ${this.layerCounter}`);
     this.touched = true;
@@ -712,6 +720,7 @@ export class EditorState {
     }
     const removed = this.activeLayer;
     removeLayer(this.doc, removed);
+    this.layerColors.splice(removed, 1);
     this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
     this.touched = true;
   }
@@ -727,7 +736,22 @@ export class EditorState {
       return;
     }
     moveLayer(this.doc, from, to);
+    this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1));
     this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
+    this.touched = true;
+  }
+
+  /** The swatch a row paints itself with; a layer added before this existed cycles. */
+  layerColor(index: number): number {
+    return this.layerColors[index] ?? index % LAYER_TAGS;
+  }
+
+  /** Click on the tag: the next of the six swatches. */
+  cycleLayerColor(index: number): void {
+    if (!this.doc.layers[index]) {
+      return;
+    }
+    this.layerColors[index] = (this.layerColor(index) + 1) % LAYER_TAGS;
     this.touched = true;
   }
 
@@ -865,6 +889,7 @@ export class EditorState {
       outline: this.brushColor,
       fill: this.fillColor,
       palette: this.palette.slice(),
+      layerColors: this.layerColors.slice(),
     };
   }
 
@@ -893,6 +918,7 @@ export class EditorState {
       this.paletteCursor = 0;
       savePalette(this.palette);
     }
+    this.layerColors = normalizeLayerColors(saved.layerColors, this.doc.layers.length);
     if (saved.tool) {
       this.selectTool(saved.tool as Tool);
     }
@@ -909,6 +935,7 @@ export class EditorState {
   /** Replaces the document (restored draft); not a user edit, so `touched` stays as is. */
   replaceDoc(doc: ToonDocument): void {
     this.doc = doc;
+    this.layerColors = defaultLayerColors(doc.layers.length);
     this.resetView();
     this.activeFrame = 0;
     this.activeLayer = 0;

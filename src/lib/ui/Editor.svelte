@@ -1430,7 +1430,7 @@
                            re-render, and it is what the drawing looked like. -->
                       <img src={thumbUrls[entry.id]} alt="" height="44" />
                     {:else}
-                      <FrameThumb doc={entry.doc} frameIndex={0} height={44} />
+                      <FrameThumb doc={entry.doc} frameIndex={0} maxW={44} />
                     {/if}
                   </span>
                   <span class="draft-meta">

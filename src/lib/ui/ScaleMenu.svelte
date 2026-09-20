@@ -13,7 +13,7 @@
 
   let { editor }: { editor: EditorState } = $props();
 
-  const THUMB_HEIGHT = 64;
+  const THUMB_SIZE = 64;
 
   function setZoom(raw: string | number): void {
     const value = Number(raw);
@@ -34,7 +34,7 @@
 <div class="scale-menu" role="group" aria-label="Масштаб" use:draggable>
   <p class="title" data-drag-handle>Масштаб</p>
   <div class="thumb">
-    <FrameThumb doc={editor.doc} frameIndex={editor.displayedFrame} height={THUMB_HEIGHT} />
+    <FrameThumb doc={editor.doc} frameIndex={editor.displayedFrame} maxW={THUMB_SIZE} />
     <span
       class="viewport"
       style:left="{viewport.left}%"

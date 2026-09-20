@@ -48,6 +48,8 @@ export interface DraftState {
   outline: string;
   fill: string;
   palette: string[];
+  /** Tag colour per layer, bottom-up; absent on records written before tags were pickable. */
+  layerColors?: number[];
 }
 
 /** One saved session: the document plus when it was last written. */

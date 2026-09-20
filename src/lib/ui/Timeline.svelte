@@ -6,6 +6,7 @@
   // right, filling whatever height the resizable bottom panel gives it.
   import type { EditorState } from './editor-state.svelte';
   import FrameThumb from './FrameThumb.svelte';
+  import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
@@ -116,9 +117,56 @@
   // fps changes — the wave stretches over the strip rather than being re-read
   // from the file.
   const barsPerFrame = (cellWidth: number) => Math.max(1, Math.round(cellWidth / 2));
-  // Bar-layout frames are as wide as their thumbnail (FrameThumb's 32px tall
-  // canvas at the document's aspect) plus the 1px border on each side.
-  const thumbWidth = $derived(Math.round(32 * (editor.doc.width / editor.doc.height)) + 2);
+  // The canvas max-fitted into one frame — the same caps for every project.
+  // `+2` is the 1px border on each side of the cell around the thumbnail; the
+  // row it sits in grows with it, down to the floor its name and icons need.
+  const cell = $derived(fitThumb(editor.doc.width, editor.doc.height, CELL_BOX.w, CELL_BOX.h));
+  const row = $derived(rowHeight(editor.doc));
+  const thumbWidth = $derived(cell.w + 2);
+
+  // --- Layer column width ---------------------------------------------------
+  // The divider between the layer list and the grid. Until it is dragged the
+  // column keeps its CSS width, so the phone layout stays narrow on its own.
+  /** The floor is a row without its name: eye, tag, handle, delete and the gaps. */
+  const COL_MIN = 128;
+  const COL_MAX = 320;
+  /** Keyboard step, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
+  const COL_STEP = 16;
+  let colPx = $state(0);
+  let colWidth = $state<number | null>(null);
+  let colDrag: { pointerId: number; startX: number; startWidth: number } | null = null;
+
+  function setCol(px: number): void {
+    colWidth = Math.min(COL_MAX, Math.max(COL_MIN, Math.round(px)));
+  }
+
+  function onColDown(e: PointerEvent): void {
+    if (!e.isPrimary) return;
+    colDrag = { pointerId: e.pointerId, startX: e.clientX, startWidth: colPx };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onColMove(e: PointerEvent): void {
+    if (!colDrag || e.pointerId !== colDrag.pointerId) return;
+    setCol(colDrag.startWidth + e.clientX - colDrag.startX);
+  }
+
+  function onColUp(e: PointerEvent): void {
+    if (colDrag && e.pointerId === colDrag.pointerId) colDrag = null;
+  }
+
+  function onColKey(e: KeyboardEvent): void {
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+        setCol((colWidth ?? colPx) - COL_STEP);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        setCol((colWidth ?? colPx) + COL_STEP);
+        break;
+    }
+  }
 
 </script>
 
@@ -150,9 +198,34 @@
   <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
   <div class="studio">
     <div class="body">
-      <div class="layer-col">
+      <div
+        class="layer-col"
+        bind:clientWidth={colPx}
+        style:width={colWidth === null ? undefined : `${colWidth}px`}
+      >
         <LayerRows {editor} compact />
       </div>
+
+      <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
+           svelte-check's non-interactive rules do not model. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="col-resizer"
+        role="separator"
+        aria-label="Ширина колонки слоёв"
+        aria-orientation="vertical"
+        aria-valuenow={colPx}
+        aria-valuemin={COL_MIN}
+        aria-valuemax={COL_MAX}
+        tabindex="0"
+        onpointerdown={onColDown}
+        onpointermove={onColMove}
+        onpointerup={onColUp}
+        onpointercancel={onColUp}
+        onkeydown={onColKey}
+        title="Ширина колонки слоёв (← / →)"
+      ></div>
 
       <!-- The press-to-deselect is a mouse convenience on top of the cells,
            which are ordinary buttons: nothing here is keyboard-only reachable
@@ -170,6 +243,7 @@
           {#each frames as _, i (i)}
             <span
               class="num"
+              style:width="{cell.w + 2}px"
               class:onion={onionFrames.includes(i)}
               class:copied={editor.copiedFrom?.frames.includes(i)}
               title={onionFrames.includes(i) ? `Кадр ${i + 1} — на кальке` : `Кадр ${i + 1}`}
@@ -177,10 +251,12 @@
           {/each}
         </div>
         {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-          <div class="cells">
+          <div class="cells" style:height="{row}px">
             {#each frames as _, i (i)}
               <button
                 class="cell"
+                style:width="{cell.w + 2}px"
+                style:height="{cell.h + 2}px"
                 class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
                 class:selected={isSelected(i, layerIndex)}
                 class:copied={editor.isCopiedCell(i, layerIndex)}
@@ -196,12 +272,18 @@
                 title="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
                 aria-label="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
               >
-                <LayerThumb doc={editor.doc} {layerIndex} frameIndex={i} height={28} />
+                <LayerThumb
+                  doc={editor.doc}
+                  {layerIndex}
+                  frameIndex={i}
+                  maxW={CELL_BOX.w}
+                  maxH={CELL_BOX.h}
+                />
               </button>
             {/each}
           </div>
         {/each}
-        {@render wave(46)}
+        {@render wave(thumbWidth)}
       </div>
     </div>
   </div>
@@ -229,7 +311,7 @@
           title="Кадр {i + 1}"
           aria-label="Кадр {i + 1}"
         >
-          <FrameThumb doc={editor.doc} frameIndex={i} />
+          <FrameThumb doc={editor.doc} frameIndex={i} maxW={CELL_BOX.w} maxH={CELL_BOX.h} />
           <span class="num">{i + 1}</span>
         </button>
       {/each}
@@ -330,6 +412,19 @@
     min-height: 0;
     border-right: 1px solid var(--hairline);
   }
+  /* A 7px band straddling that border, so the grab target is not the hairline. */
+  .col-resizer {
+    flex: none;
+    width: 7px;
+    margin: 0 -3px 0 -4px;
+    z-index: 1;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+  .col-resizer:focus-visible {
+    outline: 2px solid var(--electric, #2f5bff);
+    outline-offset: -2px;
+  }
   .grid {
     flex: 1;
     min-width: 0;
@@ -349,7 +444,6 @@
   }
   .num {
     flex: none;
-    width: 46px;
     text-align: center;
     font-size: 0.6rem;
     line-height: 32px;
@@ -368,15 +462,12 @@
   .cells {
     display: flex;
     gap: 2px;
-    height: 44px;
     padding: 2px;
     align-items: center;
   }
   .cell {
     flex: none;
     box-sizing: border-box;
-    width: 46px;
-    height: 100%;
     display: grid;
     place-items: center;
     padding: 0;
