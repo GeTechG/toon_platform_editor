@@ -10,9 +10,10 @@
  *
  * How a stroke is cut belongs to its primitive, not to the eraser. A polyline
  * is cut into pieces; a row of grid cells loses the cells the capsule covers
- * and keeps the rest exactly where they were; a closed filled contour goes
- * whole, because cutting it into open pieces would have the renderer close and
- * fill each piece on its own — a shape nobody drew.
+ * and keeps the rest exactly where they were; a closed filled contour is cut
+ * by the same capsule as a polyline, but around its ring — and each surviving
+ * piece is closed into a shape of its own, because an open piece would be
+ * closed and filled by the renderer into a shape nobody drew.
  */
 
 import type { ToolDescriptor } from '../format/types';
@@ -25,19 +26,18 @@ export interface ErasableStroke {
 }
 
 /** What the capsule does to a stroke of this primitive. */
-export type CutPolicy = 'line' | 'cells' | 'whole';
+export type CutPolicy = 'line' | 'cells' | 'closed';
 
 /**
  * How a primitive is cut, when nothing said otherwise.
  *
- * A closed filled shape goes whole — cutting it into open pieces would have
- * the renderer close and fill each piece on its own. This is the only case the
- * eraser knows by itself, because a contour is committed by the oldschool
- * rule, not laid down by a tool that could say so; everything else is a
- * polyline unless its tool declares another policy.
+ * A closed filled shape is cut around its ring and its pieces are closed
+ * again. This is the only case the eraser knows by itself, because a contour
+ * is committed by a brush's own rule, not laid down by a tool that could say
+ * so; everything else is a polyline unless its tool declares another policy.
  */
 function defaultCut(tool: ToolDescriptor): CutPolicy {
-  return isContourTool(tool) ? 'whole' : 'line';
+  return isContourTool(tool) ? 'closed' : 'line';
 }
 
 function policyOf(
@@ -119,19 +119,45 @@ function eraseCells(
 }
 
 /**
- * Whether the capsule touched a shape that is taken whole.
+ * A closed shape cut around its ring: the same capsule pass as a polyline,
+ * over the points with the first one repeated at the end, and every surviving
+ * piece closed into a shape of its own.
  *
- * ponytail: its stored points, not its filled area — a capsule entirely inside
- * a large contour, touching no part of the outline, leaves it alone. Test the
- * filled path if that ever turns out to matter in hand.
+ * Two things make the ring a ring. The list starts at a point of the outline,
+ * not at a corner of the shape, so a piece that begins at the first point and
+ * one that ends at the last are two halves of the same survivor and are joined.
+ * And a piece of fewer than three points is dropped — no polygon comes of it.
+ *
+ * ponytail: the outline, not the filled area — a capsule entirely inside a
+ * large shape touches no part of the ring and leaves it alone. Subtracting it
+ * properly would leave a shape with a hole, which is not a shape `contour` can
+ * hold, so this stays until the format grows one.
  */
-function touches(stroke: ErasableStroke, gesture: readonly number[], radius: number): boolean {
-  for (let i = 0; i < stroke.points.length; i += 2) {
-    if (inside(stroke.points[i], stroke.points[i + 1], gesture, radius)) {
-      return true;
-    }
+function eraseClosed(
+  stroke: ErasableStroke,
+  gesture: readonly number[],
+  radius: number,
+): ErasableStroke[] {
+  const { points } = stroke;
+  const ring = { points: [...points, points[0], points[1]], tool_id: stroke.tool_id };
+  const pieces = eraseStroke(ring, gesture, radius);
+  // Nothing was cut: give back the shape as it was, without the point the ring
+  // borrowed from its own start.
+  if (pieces.length === 1 && pieces[0].points.every((value, i) => value === ring.points[i])
+    && pieces[0].points.length === ring.points.length) {
+    return [{ points: points.slice(), tool_id: stroke.tool_id }];
   }
-  return false;
+  const startSurvived = !inside(points[0], points[1], gesture, radius);
+  if (startSurvived && pieces.length > 1) {
+    // The tail ends where the head begins — on the repeated first point, which
+    // the head already carries.
+    const tail = pieces.pop()!;
+    pieces[0] = {
+      points: [...tail.points.slice(0, -2), ...pieces[0].points],
+      tool_id: stroke.tool_id,
+    };
+  }
+  return pieces.filter((piece) => piece.points.length >= 6);
 }
 
 /** Squared distance from (px,py) to the segment (ax,ay)-(bx,by). */
@@ -259,10 +285,8 @@ export function eraseStrokes(
       continue;
     }
     const { policy, width } = policyOf(tools, cutOf, stroke);
-    if (policy === 'whole') {
-      if (!touches(stroke, gesture, radius)) {
-        result.push({ points: stroke.points.slice(), tool_id: stroke.tool_id });
-      }
+    if (policy === 'closed') {
+      result.push(...eraseClosed(stroke, gesture, radius));
       continue;
     }
     if (policy === 'cells') {

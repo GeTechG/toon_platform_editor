@@ -74,10 +74,10 @@ export interface PluginPrimitive {
   readonly grid?: boolean;
   /**
    * What the mega eraser does to such a stroke: cut the polyline into the
-   * pieces that survive, take the marks the capsule covered, or take the whole
-   * stroke (a closed filled shape cannot be trimmed as a line). Default `line`.
+   * pieces that survive, take the marks the capsule covered, or cut it around
+   * its ring and close each piece again (a closed filled shape). Default `line`.
    */
-  readonly cut?: 'line' | 'cells' | 'whole';
+  readonly cut?: 'line' | 'cells' | 'closed';
   /** The descriptor frozen into the session, built from the brush in hand. */
   descriptor(brush: PluginBrush): LineToolDescriptor;
   /**

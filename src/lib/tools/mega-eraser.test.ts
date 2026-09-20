@@ -105,17 +105,60 @@ describe('eraseStrokes by primitive', () => {
     expect(result[0].points).toEqual([0, 0, 10, 0]);
   });
 
-  it('takes a contour away whole, and only the one it touched', () => {
-    const contour = line([0, 0, 100, 0, 100, 100, 0, 100], 0);
+  /** A square contour: the ring the renderer closes and fills. */
+  const square = () => line([0, 0, 100, 0, 100, 100, 0, 100], 0);
+
+  it('cuts a contour across into two shapes, each closed on its own', () => {
     const pencil = line([200, 0, 300, 0], 1);
 
-    const result = eraseStrokes([contour, pencil], [100, 100, 100, 100], 5, contourTools);
+    const result = eraseStrokes([square(), pencil], [50, -50, 50, 150], 6, contourTools);
 
-    expect(result).toEqual([pencil]);
+    const shapes = result.filter((piece) => piece.tool_id === 0);
+    expect(shapes).toHaveLength(2);
+    // Each piece is a shape in its own right, not an open leftover.
+    for (const shape of shapes) {
+      expect(shape.points.length).toBeGreaterThanOrEqual(6);
+    }
+    const xs = (piece: { points: number[] }) => piece.points.filter((_, i) => i % 2 === 0);
+    expect(Math.max(...xs(shapes[0]))).toBeLessThanOrEqual(50);
+    expect(Math.min(...xs(shapes[1]))).toBeGreaterThanOrEqual(50);
+    // The pencil beside it is cut by its own rule, untouched here.
+    expect(result).toContainEqual(pencil);
+  });
+
+  it('joins the pieces that meet at the start of the list', () => {
+    // The first point is a point of the ring, not a corner of the shape: a cut
+    // that leaves survivors on both sides of it must not make two of them.
+    const result = eraseStrokes([square()], [-50, 50, 150, 50], 6, contourTools);
+
+    expect(result).toHaveLength(2);
+    expect(result.every((piece) => piece.points.length >= 6)).toBe(true);
+  });
+
+  it('leaves one dented shape when the capsule only bites an edge', () => {
+    const result = eraseStrokes([square()], [50, 0, 50, 0], 6, contourTools);
+
+    expect(result).toHaveLength(1);
+    // The dent is two new points on the edge the capsule reached.
+    expect(result[0].points).toHaveLength(square().points.length + 4);
+  });
+
+  it('bites a corner without splitting the shape', () => {
+    const result = eraseStrokes([square()], [0, 0, 0, 0], 20, contourTools);
+
+    expect(result).toHaveLength(1);
+  });
+
+  it('leaves a contour the capsule passed inside of', () => {
+    // A hole is not a shape the format can hold: `contour` is one closed ring.
+    expect(eraseStrokes([square()], [40, 50, 60, 50], 6, contourTools)).toEqual([square()]);
+  });
+
+  it('drops a contour the capsule swallowed', () => {
+    expect(eraseStrokes([square()], [50, 50, 50, 50], 500, contourTools)).toEqual([]);
   });
 
   it('keeps a contour the capsule never reached', () => {
-    const contour = line([0, 0, 100, 0, 100, 100, 0, 100], 0);
-    expect(eraseStrokes([contour], [500, 500, 500, 500], 5, contourTools)).toEqual([contour]);
+    expect(eraseStrokes([square()], [500, 500, 500, 500], 5, contourTools)).toEqual([square()]);
   });
 });
