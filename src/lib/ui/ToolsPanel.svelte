@@ -107,8 +107,15 @@
   :global(.editor.studio) .tools,
   :global(.editor.studio) .pick-source {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* Even columns for whatever width the column was dragged to: two by
+       default, more as it widens, one when it narrows — and under that the
+       keys themselves shrink rather than hold a 44px floor open. */
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
     gap: 0.5rem;
+  }
+  :global(.editor.studio) .tools .key,
+  :global(.editor.studio) .pick-source .key {
+    min-width: 0;
   }
   :global(.editor.studio) .pick-source {
     margin-top: 0.5rem;

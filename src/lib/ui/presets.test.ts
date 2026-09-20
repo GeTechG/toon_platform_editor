@@ -11,6 +11,8 @@ import {
   parseUiConfig,
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
+  SIDE_WIDTH_MAX,
+  SIDE_WIDTH_MIN,
   PALETTE_LIMIT_MAX,
   PALETTE_LIMIT_MIN,
   presetDrawingProfile,
@@ -67,6 +69,8 @@ test('parseUiConfig round-trips a valid stored config', () => {
       tonioByTool: { ...DEFAULT_DRAWING_UI_CONFIG.tonioByTool },
       pickSource: 'layer' as const,
       panelHeight: 200,
+      sides: { ...DEFAULT_DRAWING_UI_CONFIG.sides },
+      panelCollapsed: false,
     },
     settings: { ...DEFAULT_SETTINGS },
   };
@@ -108,6 +112,8 @@ test('drawing profile settings are clamped to supported ranges', () => {
     tonioByTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
+    sides: DEFAULT_DRAWING_UI_CONFIG.sides,
+    panelCollapsed: false,
   });
 });
 
@@ -312,4 +318,53 @@ test('the browser eyedropper is on by default and a corrupted flag falls back', 
 
   expect(stored(false)).toBe(false);
   expect(stored('yes')).toBe(true);
+});
+
+test('side panel widths are clamped, and an untouched side keeps its natural width', () => {
+  const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: { activeProfile: 'toonio', tonio: {}, sides },
+  }))?.drawing.sides;
+
+  expect(stored({ left: { width: 200, collapsed: true }, right: { width: 9999, collapsed: false } }))
+    .toEqual({ left: { width: 200, collapsed: true }, right: { width: SIDE_WIDTH_MAX, collapsed: false } });
+  expect(stored({ left: { width: 1, collapsed: 'yes' } })?.left)
+    .toEqual({ width: SIDE_WIDTH_MIN.left, collapsed: false });
+  expect(stored(undefined)).toEqual(DEFAULT_DRAWING_UI_CONFIG.sides);
+});
+
+test('each side has its own floor: the tools shrink to one narrow column, the palette box never squashes', () => {
+  const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: { activeProfile: 'toonio', tonio: {}, sides },
+  }))?.drawing.sides;
+
+  expect(SIDE_WIDTH_MIN.right).toBeGreaterThan(SIDE_WIDTH_MIN.left);
+  expect(stored({ left: { width: 20 }, right: { width: 20 } }))
+    .toEqual({
+      left: { width: SIDE_WIDTH_MIN.left, collapsed: false },
+      right: { width: SIDE_WIDTH_MIN.right, collapsed: false },
+    });
+});
+
+test('a fresh config leaves both side panels open at their natural width', () => {
+  expect(DEFAULT_DRAWING_UI_CONFIG.sides).toEqual({
+    left: { width: null, collapsed: false },
+    right: { width: null, collapsed: false },
+  });
+});
+
+test('the bottom panel remembers being folded away, and a corrupted flag stays open', () => {
+  const stored = (panelCollapsed: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonio',
+    features: presetFeatures('toonio'),
+    drawing: { activeProfile: 'toonio', tonio: {}, panelCollapsed },
+  }))?.drawing.panelCollapsed;
+
+  expect(stored(true)).toBe(true);
+  expect(stored(undefined)).toBe(false);
+  expect(stored('yes')).toBe(false);
+  expect(DEFAULT_DRAWING_UI_CONFIG.panelCollapsed).toBe(false);
 });

@@ -52,6 +52,20 @@ export interface DrawingUiConfig {
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
   panelHeight: number;
+  /** The two studio side columns, each resizable from its inner edge. */
+  sides: Record<SideId, SidePanelConfig>;
+  /** The bottom bar folded away to its strip. */
+  panelCollapsed: boolean;
+}
+
+export type SideId = 'left' | 'right';
+export const SIDE_IDS: readonly SideId[] = ['left', 'right'];
+
+export interface SidePanelConfig {
+  /** Width in CSS px, or null while the column still sizes to its contents. */
+  width: number | null;
+  /** Folded away to a strip with an arrow on it. */
+  collapsed: boolean;
 }
 
 /**
@@ -68,6 +82,14 @@ export const PANEL_HEIGHT_MIN = 151;
  */
 export const PANEL_HEIGHT_AUDIO = 22;
 export const PANEL_HEIGHT_MAX = 2000;
+/**
+ * Side-column range. Each side has its own floor: the tool keys reflow down
+ * to a single narrow column, while the palette box is drawn at a fixed width
+ * and only looks squashed under it. The ceiling keeps the canvas the widest
+ * thing on the table.
+ */
+export const SIDE_WIDTH_MIN: Record<SideId, number> = { left: 56, right: 254 };
+export const SIDE_WIDTH_MAX = 480;
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   activeProfile: 'toonio',
@@ -80,6 +102,11 @@ export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   },
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
+  sides: {
+    left: { width: null, collapsed: false },
+    right: { width: null, collapsed: false },
+  },
+  panelCollapsed: false,
 };
 
 /**
@@ -342,7 +369,22 @@ function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId)
       PANEL_HEIGHT_MAX,
       DEFAULT_DRAWING_UI_CONFIG.panelHeight,
     ),
+    sides: parseSides(drawing.sides),
+    panelCollapsed: drawing.panelCollapsed === true,
   };
+}
+
+function parseSides(value: unknown): Record<SideId, SidePanelConfig> {
+  const stored = record(value);
+  return Object.fromEntries(SIDE_IDS.map((side) => {
+    const saved = record(stored[side]);
+    return [side, {
+      width: typeof saved.width === 'number' && Number.isFinite(saved.width)
+        ? clampNumber(saved.width, SIDE_WIDTH_MIN[side], SIDE_WIDTH_MAX, SIDE_WIDTH_MIN[side])
+        : null,
+      collapsed: saved.collapsed === true,
+    }];
+  })) as Record<SideId, SidePanelConfig>;
 }
 
 function record(value: unknown): Record<string, unknown> {

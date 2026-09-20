@@ -34,7 +34,8 @@
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import FrameThumb from './FrameThumb.svelte';
-  import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN } from './presets';
+  import { PANEL_HEIGHT_AUDIO, PANEL_HEIGHT_MIN, SIDE_WIDTH_MAX, SIDE_WIDTH_MIN } from './presets';
+  import type { SideId } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
 
@@ -112,6 +113,7 @@
   // The studio bar is resizable from its top edge, and the timeline is the row
   // that grows with it — dragging down gives the grid more layers and frames.
   let viewportHeight = $state(0);
+  let viewportWidth = $state(0);
   /**
    * The floor grows with a soundtrack: the strip and the wave lane are part of
    * the timeline, so a panel sitting at its minimum has to make room for them
@@ -124,17 +126,40 @@
   );
   /** Keyboard step for the divider, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const PANEL_STEP = 22;
-  let resize: { pointerId: number; startY: number; startHeight: number } | null = null;
+  /**
+   * The drag in progress on any of the three dividers. `sign` is which way the
+   * pointer has to travel for the panel to grow: the bottom bar and the column
+   * on the right grow as the pointer comes back towards the canvas.
+   */
+  let resize = $state<
+    | {
+        pointerId: number;
+        from: number;
+        size: number;
+        sign: number;
+        axis: 'x' | 'y';
+        side: SideId | 'panel' | null;
+        apply: (px: number) => void;
+      }
+    | null
+  >(null);
 
-  function onDividerDown(e: PointerEvent): void {
+  function startResize(
+    e: PointerEvent,
+    axis: 'x' | 'y',
+    sign: number,
+    size: number,
+    apply: (px: number) => void,
+    side: SideId | 'panel' | null = null,
+  ): void {
     if (!e.isPrimary) return;
-    resize = { pointerId: e.pointerId, startY: e.clientY, startHeight: panelHeight };
+    resize = { pointerId: e.pointerId, from: axis === 'y' ? e.clientY : e.clientX, size, sign, axis, side, apply };
   }
 
   function onDividerMove(e: PointerEvent): void {
     if (!resize || e.pointerId !== resize.pointerId) return;
-    // The panel sits at the bottom, so dragging up makes it taller.
-    editor.setPanelHeight(resize.startHeight + (resize.startY - e.clientY));
+    const now = resize.axis === 'y' ? e.clientY : e.clientX;
+    resize.apply(resize.size + (now - resize.from) * resize.sign);
   }
 
   function onDividerUp(e: PointerEvent): void {
@@ -152,6 +177,43 @@
         editor.setPanelHeight(panelHeight - PANEL_STEP);
         break;
     }
+  }
+
+  // --- Side columns --------------------------------------------------------
+  // Both side columns resize from their inner edge and fold away to a strip
+  // with an arrow on it. Which edge that is depends on the alternative layout,
+  // where the two columns swap places.
+  /** What each column measures now, so an undragged one starts from its own width. */
+  const sidePx = $state({ left: 0, right: 0 });
+  /** Keyboard step for a column divider, in px (WCAG 2.2 AA 2.5.7). */
+  const SIDE_STEP = 16;
+  /** Whether the column is the one on the screen's left, after the alt swap. */
+  const atLeft = (id: SideId): boolean => (id === 'left') !== editor.settings.altLayout;
+  /**
+   * Folded away — but never on a phone, where the columns are rows across the
+   * screen and the strip they would fold to has nowhere to sit. A fold made on
+   * a desktop must not leave the tools unreachable there.
+   */
+  const folded = (id: SideId): boolean => editor.sides[id].collapsed && viewportWidth > 640;
+  /** The bottom bar, folded away by the same rule. */
+  const panelFolded = $derived(editor.panelCollapsed && viewportWidth > 640);
+  const sideWidth = (id: SideId): number => editor.sides[id].width ?? sidePx[id];
+  /** A folded column is sized by its strip rule, not by the width it remembers. */
+  const sideStyle = (id: SideId): string | undefined =>
+    !folded(id) && editor.sides[id].width ? `width: ${editor.sides[id].width}px` : undefined;
+  /** Collapse points away from the canvas, expand points back towards it. */
+  const foldIcon = (id: SideId, collapsed: boolean): 'chevron-left' | 'chevron-right' =>
+    atLeft(id) === collapsed ? 'chevron-right' : 'chevron-left';
+
+  function onSideDown(e: PointerEvent, id: SideId): void {
+    startResize(e, 'x', atLeft(id) ? 1 : -1, sideWidth(id), (px) => editor.setSideWidth(id, px), id);
+  }
+
+  function onSideKey(e: KeyboardEvent, id: SideId): void {
+    const step = e.key === 'ArrowRight' ? SIDE_STEP : e.key === 'ArrowLeft' ? -SIDE_STEP : 0;
+    if (!step) return;
+    e.preventDefault();
+    editor.setSideWidth(id, sideWidth(id) + step * (atLeft(id) ? 1 : -1));
   }
 
   /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
@@ -946,6 +1008,7 @@
 
 <svelte:window
   bind:innerHeight={viewportHeight}
+  bind:innerWidth={viewportWidth}
   onkeydown={onKeydown}
   onpointermove={onDividerMove}
   onpointerup={onDividerUp}
@@ -999,6 +1062,48 @@
   </button>
 {/snippet}
 
+<!-- The column's inner edge: the border line, the drag band on top of it and
+     the round fold handle in the middle of it. It is a grid item of its own —
+     inside the column, its own scrolling would cut the circle in half. -->
+{#snippet sideEdge(id: SideId, label: string)}
+  <div
+    class="side-edge edge-{id}"
+    class:folded={folded(id)}
+    class:at-left={atLeft(id)}
+    class:dragging={resize?.side === id}
+  >
+    {#if !folded(id)}
+      <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
+           svelte-check's non-interactive rules do not model. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="side-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Ширина панели: {label}"
+        aria-valuenow={sideWidth(id)}
+        aria-valuemin={SIDE_WIDTH_MIN[id]}
+        aria-valuemax={SIDE_WIDTH_MAX}
+        tabindex="0"
+        onpointerdown={(e) => onSideDown(e, id)}
+        onkeydown={(e) => onSideKey(e, id)}
+        title="Ширина панели (← / →)"
+      ></div>
+    {/if}
+    <!-- The arrow points the way the panel is about to travel. -->
+    <button
+      class="fold"
+      onclick={() => editor.toggleSide(id)}
+      aria-expanded={!folded(id)}
+      title={folded(id) ? 'Развернуть панель' : 'Свернуть панель'}
+      aria-label="{folded(id) ? 'Развернуть' : 'Свернуть'} панель: {label}"
+    >
+      <Icon name={foldIcon(id, folded(id))} size={14} />
+    </button>
+  </div>
+{/snippet}
+
 <div
   class="editor"
   class:studio
@@ -1006,31 +1111,40 @@
   bind:this={editorEl}
 >
   {#if studio}
-    <aside class="left" aria-label="Инструменты и история">
-      <ToolsPanel {editor} onSave={saveNow} {dirty} />
-      <div class="history">
-        {@render history()}
-        <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
-        <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
-          <Icon name="help" />
-        </button>
-        {#if document.fullscreenEnabled}
-          <button
-            class="key icon"
-            class:active={isFullscreen}
-            aria-pressed={isFullscreen}
-            onclick={toggleFullscreen}
-            title="Полный экран"
-            aria-label="Полный экран"
-          >
-            <Icon name="expand" />
+    <aside
+      class="left"
+      class:collapsed={folded('left')}
+      aria-label="Инструменты и история"
+      style={sideStyle('left')}
+      bind:clientWidth={sidePx.left}
+    >
+      {#if !folded('left')}
+        <ToolsPanel {editor} onSave={saveNow} {dirty} />
+        <div class="history">
+          {@render history()}
+          <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
+          <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
+            <Icon name="help" />
           </button>
-        {/if}
-        <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
-          <Icon name="drafts" />
-        </button>
-      </div>
+          {#if document.fullscreenEnabled}
+            <button
+              class="key icon"
+              class:active={isFullscreen}
+              aria-pressed={isFullscreen}
+              onclick={toggleFullscreen}
+              title="Полный экран"
+              aria-label="Полный экран"
+            >
+              <Icon name="expand" />
+            </button>
+          {/if}
+          <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
+            <Icon name="drafts" />
+          </button>
+        </div>
+      {/if}
     </aside>
+    {@render sideEdge('left', 'Инструменты и история')}
   {/if}
   <div class="stage">
     <CanvasView {editor} />
@@ -1060,12 +1174,39 @@
     {/if}
   </div>
   {#if studio}
-    <aside class="right" aria-label="Палитра и кисть">
-      <BrushPanel {editor} />
+    <aside
+      class="right"
+      class:collapsed={folded('right')}
+      aria-label="Палитра и кисть"
+      style={sideStyle('right')}
+      bind:clientWidth={sidePx.right}
+    >
+      {#if !folded('right')}
+        <BrushPanel {editor} />
+      {/if}
     </aside>
+    {@render sideEdge('right', 'Палитра и кисть')}
   {/if}
-  <div class="panel" style={studio ? `height: ${panelHeight}px` : undefined}>
+  <div
+    class="panel"
+    class:collapsed={panelFolded}
+    class:dragging={resize?.side === 'panel'}
+    style={studio && !panelFolded ? `height: ${panelHeight}px` : undefined}
+  >
     {#if studio}
+      <!-- The bar folds like the columns do: the same key-shaped tab, lying on
+           its side at the corner of its seam. -->
+      <button
+        class="fold lying"
+        onclick={() => editor.togglePanel()}
+        aria-expanded={!panelFolded}
+        title={panelFolded ? 'Развернуть панель' : 'Свернуть панель'}
+        aria-label="{panelFolded ? 'Развернуть' : 'Свернуть'} нижнюю панель"
+      >
+        <Icon name={panelFolded ? 'chevron-up' : 'chevron-down'} size={14} />
+      </button>
+    {/if}
+    {#if studio && !panelFolded}
       <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
            svelte-check's non-interactive rules do not model. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -1078,12 +1219,14 @@
         aria-valuenow={panelHeight}
         aria-valuemin={panelFloor}
         tabindex="0"
-        onpointerdown={onDividerDown}
+        onpointerdown={(e) =>
+          startResize(e, 'y', -1, panelHeight, (px) => editor.setPanelHeight(px), 'panel')}
         onkeydown={onDividerKey}
         title="Высота нижней панели (↑ / ↓)"
       ></div>
     {/if}
-    <div class="toolbar">
+    {#if !panelFolded}
+      <div class="toolbar">
       <!-- Row A — frames: taking a stroke back comes first, then add / delete
            anchoring the timeline strip. -->
       <div class="row frames" role="group" aria-label="Кадры">
@@ -1391,7 +1534,8 @@
           <BrushPanel {editor} />
         </div>
       {/if}
-    </div>
+      </div>
+    {/if}
   </div>
 
   <!-- Drafts sheet: every local save with its first frame, newest first. -->
@@ -1540,6 +1684,10 @@
     --ink: #0b0c10;
     --ink-2: #333a48;
     --paper: #eaeef7;
+    /* The worktable: one tonal step under the chrome, same blue bias. Four
+       surfaces read apart without a single extra line — panels on paper, the
+       drawing on white, the table between them. */
+    --table: #d7dfee;
     --canvas: #ffffff;
     --sky: #e4f1fb;
     --electric: #1b5cff;
@@ -1588,7 +1736,7 @@
     position: relative;
     flex: 1;
     min-height: 0;
-    background: var(--paper);
+    background: var(--table);
     padding: clamp(0.5rem, 2.2vw, 1.25rem);
     box-sizing: border-box;
   }
@@ -1650,12 +1798,46 @@
     height: 16px;
     cursor: ns-resize;
     touch-action: none;
-    background:
-      linear-gradient(var(--hairline), var(--hairline)) center / 3rem 2px no-repeat;
+  }
+  /* Same seam language as the columns: drawn only while it is in use. */
+  .resizer:hover,
+  .panel.dragging .resizer {
+    background: linear-gradient(var(--electric), var(--electric)) center / 100% 2px no-repeat;
   }
   .resizer:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
-    outline-offset: -2px;
+    outline: none;
+    background: linear-gradient(var(--electric), var(--electric)) center / 100% 3px no-repeat;
+  }
+  /* The bar's own tab: the side tab turned on its side, at the corner of the
+     seam where the tools column ends. */
+  .fold.lying {
+    top: auto;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: var(--key-h);
+    height: 14px;
+    border-bottom: none;
+    border-radius: var(--r-sm) var(--r-sm) 0 0;
+    box-shadow: none;
+  }
+  .fold.lying:hover {
+    transform: translate(-50%, -1px);
+  }
+  .fold.lying:active {
+    transform: translateX(-50%);
+  }
+  /* Folded, the bar is a strip with its tab on it. */
+  .studio .panel.collapsed {
+    height: 0.75rem;
+    padding: 0;
+  }
+  .panel.collapsed .fold {
+    opacity: 0.55;
+  }
+  .panel.collapsed .fold:hover,
+  .panel.collapsed .fold:focus-visible {
+    opacity: 1;
   }
   .toolbar {
     display: flex;
@@ -1731,6 +1913,10 @@
   .studio .stage {
     grid-column: 2;
     grid-row: 1;
+    /* A 1fr track still refuses to go under its content's min width, and the
+       canvas is as wide as the drawing: without this the side columns get
+       squeezed, or pushed off the screen, instead of the canvas re-fitting. */
+    min-width: 0;
   }
   .studio .panel {
     grid-column: 1 / -1;
@@ -1739,6 +1925,7 @@
   .studio .left,
   .studio .right {
     display: flex;
+    background: var(--paper);
     flex-direction: column;
     gap: 1rem;
     min-height: 0;
@@ -1750,11 +1937,140 @@
     grid-column: 1;
     grid-row: 1;
     width: 8.4rem;
+    border-right: 1px solid var(--hairline);
   }
   .studio .right {
     grid-column: 3;
     grid-row: 1;
     align-items: stretch;
+    border-left: 1px solid var(--hairline);
+    /* The palette box's own 225px plus the column padding: its floor is also
+       its default, so the box is never squashed, only widened. */
+    width: 15.9rem;
+  }
+  /* Dragging the column wider is meant to buy palette columns, not padding. */
+  .studio .right :global(.box) {
+    width: 100%;
+  }
+  /* The column's inner edge: the drag band and the fold handle, on a line the
+     stage does not have to carry — it is drawn only under the cursor, where it
+     says what the band does. A grid item, not a child of the column: the
+     column scrolls, and would cut the handle in half. */
+  .side-edge {
+    grid-row: 1;
+    align-self: stretch;
+    position: relative;
+    width: 1px;
+    z-index: 4;
+    background: transparent;
+    /* Only the line's own controls take the pointer; the strip does not sit
+       between the canvas and the cursor. */
+    pointer-events: none;
+  }
+  .side-edge > * {
+    pointer-events: auto;
+  }
+  .side-edge:hover {
+    background: var(--hairline);
+  }
+  .side-edge.edge-left {
+    grid-column: 1;
+    justify-self: end;
+  }
+  .side-edge.edge-right {
+    grid-column: 3;
+    justify-self: start;
+  }
+  /* A 9px band straddling the seam, so the grab target is not a hairline. The
+     seam itself is drawn only while that band is in use: a permanent rule down
+     the stage is a seam the drawing does not need. */
+  .side-resizer {
+    position: absolute;
+    inset: 0 -4px;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+  .side-resizer:hover,
+  .side-edge.dragging .side-resizer {
+    background: linear-gradient(var(--electric), var(--electric)) center / 2px 100% no-repeat;
+  }
+  /* Focus lands on the seam itself, so it is the seam that has to show it —
+     an outline on a 1px box is a hairline halo nobody can see. */
+  .side-resizer:focus-visible {
+    outline: none;
+    background: linear-gradient(var(--electric), var(--electric)) center / 3px 100% no-repeat;
+  }
+  /* The fold tab: the editor's own key — hairline, 7px radius, 2px of travel
+     under the press — grown sideways out of the panel edge. Square where it
+     meets the panel, rounded where it meets the stage. */
+  .fold {
+    position: absolute;
+    /* Over the drag band it overlaps: the tab is a button, not a grab area. */
+    z-index: 2;
+    /* On the corner, level with the first key in the column — floating at
+       half height it belongs to nothing. */
+    top: 1rem;
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: var(--key-h);
+    padding: 0;
+    border: 1px solid var(--hairline);
+    background: var(--canvas);
+    color: var(--ink-2);
+    box-shadow: 0 2px 0 var(--hairline);
+    cursor: pointer;
+    transition:
+      transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
+      opacity 0.13s ease,
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+  /* The tab leans out over the stage, never over the panel's own contents. */
+  .at-left .fold {
+    left: 0;
+    border-left: none;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  }
+  .side-edge:not(.at-left) .fold {
+    right: 0;
+    border-right: none;
+    border-radius: var(--r-sm) 0 0 var(--r-sm);
+  }
+  .fold:hover {
+    background: var(--sky);
+    border-color: var(--electric);
+    color: var(--ink);
+    box-shadow: 0 1px 0 var(--hairline);
+  }
+  .fold:hover {
+    transform: translateY(1px);
+  }
+  .fold:active {
+    box-shadow: 0 0 0 var(--hairline);
+    transform: translateY(2px);
+  }
+  .fold:focus-visible {
+    outline: 3px solid var(--electric, #2f5bff);
+    outline-offset: 2px;
+  }
+  /* Folded, the tab is all that is left of the column: it waits at the screen
+     edge, quiet until the cursor comes for it. */
+  .side-edge.folded .fold {
+    opacity: 0.55;
+  }
+  .side-edge.folded .fold:hover,
+  .side-edge.folded .fold:focus-visible {
+    opacity: 1;
+  }
+  /* Folded: the column is a bare strip at the screen edge, wide enough to
+     carry the circle and nothing else. */
+  .studio .left.collapsed,
+  .studio .right.collapsed {
+    width: 0.75rem;
+    padding: 0;
+    overflow: visible;
   }
   /* Reference «альтернативная раскладка» (`S:2321-2331`): the two side columns
      swap places. Classes only — the DOM order, and so the tab order, is
@@ -1762,15 +2078,32 @@
   @media (min-width: 40.0625rem) {
     .studio.alt .left {
       grid-column: 3;
+      border-right: none;
+      border-left: 1px solid var(--hairline);
     }
     .studio.alt .right {
       grid-column: 1;
+      border-left: none;
+      border-right: 1px solid var(--hairline);
+    }
+    .studio.alt .side-edge.edge-left {
+      grid-column: 3;
+      justify-self: start;
+    }
+    .studio.alt .side-edge.edge-right {
+      grid-column: 1;
+      justify-self: end;
     }
   }
+  /* The keys fill whatever width the column was dragged to: even columns when
+     there is room, one column when there is not, and narrower keys under that. */
   .studio .history {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
     gap: 0.5rem;
+  }
+  .studio .history :global(.key) {
+    min-width: 0;
   }
   /* The studio timeline is a tall grid, so the frame buttons beside it sit at
      its top rather than floating in the middle of it. */
@@ -1820,9 +2153,12 @@
     .studio .history {
       display: flex;
       flex-direction: row;
-      width: auto;
+      width: auto !important;
       padding: 0.4rem 0.5rem;
       gap: 0.4rem;
+    }
+    .side-edge {
+      display: none;
     }
     .studio .right :global(.box) {
       flex: 1;
@@ -1843,7 +2179,8 @@
       height: auto !important;
       padding-top: 0.4rem;
     }
-    .resizer {
+    .resizer,
+    .fold {
       display: none;
     }
     .studio .toolbar,

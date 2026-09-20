@@ -132,10 +132,13 @@ import {
   saveUiConfig,
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
+  SIDE_WIDTH_MAX,
+  SIDE_WIDTH_MIN,
   type BrushToolId,
   type DrawingProfileId,
   type EditorSettings,
   type FeatureKey,
+  type SideId,
   type Features,
   type TonioBrush,
 } from './presets';
@@ -288,6 +291,13 @@ export class EditorState {
    */
   panelHeight = $state(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
   /**
+   * The two studio side columns (persisted): the width each was dragged to,
+   * and whether it is folded away to its arrow strip.
+   */
+  sides = $state(structuredClone(DEFAULT_DRAWING_UI_CONFIG.sides));
+  /** The bottom bar folded away to its strip (persisted). */
+  panelCollapsed = $state(DEFAULT_DRAWING_UI_CONFIG.panelCollapsed);
+  /**
    * Which swatch the pipette fills. A plain pick arms the outline; the right
    * button on the palette's pipette arms the fill (`bundle:7009-7016`), and
    * the right button on the canvas still overrides it for one click.
@@ -348,6 +358,8 @@ export class EditorState {
       this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
+      this.sides = saved.drawing.sides;
+      this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
     this.watchErrors();
@@ -1113,6 +1125,21 @@ export class EditorState {
     this.persistUiConfig();
   }
 
+  setSideWidth(side: SideId, px: number): void {
+    this.sides[side].width = Math.min(SIDE_WIDTH_MAX, Math.max(SIDE_WIDTH_MIN[side], Math.round(px)));
+    this.persistUiConfig();
+  }
+
+  togglePanel(): void {
+    this.panelCollapsed = !this.panelCollapsed;
+    this.persistUiConfig();
+  }
+
+  toggleSide(side: SideId): void {
+    this.sides[side].collapsed = !this.sides[side].collapsed;
+    this.persistUiConfig();
+  }
+
   /** Cell contents as they are now, to be pushed once the edit has run. */
   private snapshotCells(target: CellRange): CellSnapshot[] {
     const snapshots: CellSnapshot[] = [];
@@ -1581,6 +1608,8 @@ export class EditorState {
         tonioByTool: copyBrushes(this.tonioByTool),
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
+        sides: $state.snapshot(this.sides),
+        panelCollapsed: this.panelCollapsed,
       },
       settings: this.settings,
     });

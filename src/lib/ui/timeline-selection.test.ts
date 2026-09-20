@@ -223,3 +223,25 @@ describe('adding or removing a frame leaves a ghost behind', () => {
     expect(member(state, 'removeActiveFrame')).toContain('pushVisited(');
   });
 });
+
+describe('side panel state', () => {
+  it('a dragged side keeps its width inside the supported range, and remembers it', () => {
+    expect(member(state, 'setSideWidth')).toContain('SIDE_WIDTH_MIN');
+    expect(member(state, 'setSideWidth')).toContain('SIDE_WIDTH_MAX');
+    expect(member(state, 'setSideWidth')).toContain('this.persistUiConfig()');
+  });
+
+  it('collapsing a side is a toggle, and it is remembered too', () => {
+    expect(member(state, 'toggleSide')).toContain('collapsed = !');
+    expect(member(state, 'toggleSide')).toContain('this.persistUiConfig()');
+    expect(state).toContain('sides: ');
+  });
+});
+
+describe('bottom panel state', () => {
+  it('folding the bottom panel is a toggle, and it is remembered', () => {
+    expect(member(state, 'togglePanel')).toContain('this.panelCollapsed = !');
+    expect(member(state, 'togglePanel')).toContain('this.persistUiConfig()');
+    expect(state).toContain('panelCollapsed: this.panelCollapsed');
+  });
+});

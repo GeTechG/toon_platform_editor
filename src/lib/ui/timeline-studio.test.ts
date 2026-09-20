@@ -4,6 +4,7 @@ const rows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text
 const panel = await Bun.file(new URL('./LayersPanel.svelte', import.meta.url)).text();
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+const tools = await Bun.file(new URL('./ToolsPanel.svelte', import.meta.url)).text();
 
 describe('one layer list, two placements', () => {
   it('the rows and their operations live in one component', () => {
@@ -119,7 +120,7 @@ describe('bottom panel divider', () => {
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.
-    expect(editorUi).toContain('class="panel" style={studio ?');
+    expect(editorUi).toContain('style={studio && !panelFolded ?');
     expect(editorUi).toContain('${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
@@ -158,5 +159,131 @@ describe('frame buttons follow the reference bar', () => {
     );
     expect(transport).toContain('onAddFrame');
     expect(transport).toContain('editor.removeActiveFrame()');
+  });
+});
+
+describe('side panel dividers', () => {
+  it('both side columns resize from their inner edge, by drag or by arrow', () => {
+    expect(editorUi).toContain('aria-orientation="vertical"');
+    expect(editorUi).toContain('editor.setSideWidth(');
+    expect(editorUi).toContain("case 'ArrowLeft'");
+    expect(editorUi).toContain("case 'ArrowRight'");
+    expect(editorUi).toContain('class="side-resizer"');
+  });
+
+  it('the seam shows itself only under the cursor, and stays lit for the whole drag', () => {
+    // No hairline down the stage: the tab marks the edge. The seam lights up
+    // electric while it is hovered, focused or being dragged — and the drag
+    // keeps it lit after the pointer has left the 9px band.
+    expect(editorUi).toContain('class="side-edge');
+    expect(editorUi).toMatch(/\.side-edge \{[^}]*background: transparent/s);
+    expect(editorUi).toMatch(
+      /\.side-resizer:hover,\s*\.side-edge\.dragging \.side-resizer \{[^}]*var\(--electric\)/s,
+    );
+    expect(editorUi).toContain('class:dragging={');
+  });
+
+  it('the fold handle is a key-shaped tab growing out of the panel edge', () => {
+    // The editor speaks in physical keys: 7px radius, hairline, 2px key
+    // shadow, sky on hover. A tab is one of them, rounded on the stage side
+    // and square where it meets the panel.
+    expect(editorUi).toContain('editor.toggleSide(');
+    const fold = editorUi.match(/\n  \.fold \{[^}]*\}/s)?.[0] ?? '';
+    expect(fold).toContain('height: var(--key-h)');
+    expect(fold).toContain('box-shadow: 0 2px 0 var(--hairline)');
+    expect(fold).not.toContain('border-radius: 50%');
+    expect(editorUi).toMatch(/\.at-left \.fold \{[^}]*border-radius: 0 var\(--r-sm\) var\(--r-sm\) 0/s);
+    expect(editorUi).toMatch(/\.fold:hover \{[^}]*background: var\(--sky\)/s);
+  });
+
+  it('the tab that brings a folded column back waits pale at the screen edge', () => {
+    expect(editorUi).toMatch(/\.side-edge\.folded \.fold \{[^}]*opacity: 0\.55/s);
+    expect(editorUi).toMatch(/\.side-edge\.folded \.fold:hover[^{]*\{[^}]*opacity: 1/s);
+  });
+
+  it('a folded column is a bare strip at the screen edge, with the circle still on it', () => {
+    expect(editorUi).toMatch(/\.studio \.left\.collapsed,\n  \.studio \.right\.collapsed \{[^}]*padding: 0/s);
+    expect(editorUi).not.toContain('class="expand"');
+  });
+
+  it('the stored width drives the column, and the phone layout ignores it', () => {
+    expect(editorUi).toContain('width: ${');
+    expect(editorUi).toMatch(/@media \(max-width: 40rem\)[^]*width: auto !important/);
+  });
+});
+
+describe('side panels reflow instead of stretching', () => {
+  it('the tool keys fill the column in even columns, one when it is narrow', () => {
+    expect(tools).toContain('repeat(auto-fit, minmax(min(');
+    // A key may not hold a 44px floor open in a column narrower than that.
+    expect(tools).toMatch(/min-width: 0/);
+  });
+
+  it('the history keys reflow with them', () => {
+    expect(editorUi).toMatch(/\.studio \.history \{[^}]*repeat\(auto-fit/s);
+  });
+
+  it('a wider palette column widens the palette itself', () => {
+    expect(editorUi).toMatch(/\.studio \.right :global\(\.box\) \{[^}]*width: 100%/s);
+  });
+});
+
+describe('four surfaces, not one field', () => {
+  it('the worktable is a tone below the panels, so the canvas floats on it', () => {
+    // DESIGN §: depth comes from tonal plates, not shadows. The chrome keeps
+    // the paper it always had; the table the drawing sits on steps down.
+    expect(editorUi).toMatch(/--table: #/);
+    expect(editorUi).toMatch(/\n  \.stage \{[^}]*background: var\(--table\)/s);
+    expect(editorUi).toMatch(/\n  \.panel \{[^}]*background: var\(--paper\)/s);
+  });
+
+  it('each side panel closes with a hairline on the edge the canvas is on', () => {
+    expect(editorUi).toMatch(/\.studio \.left \{[^}]*border-right: 1px solid var\(--hairline\)/s);
+    expect(editorUi).toMatch(/\.studio \.right \{[^}]*border-left: 1px solid var\(--hairline\)/s);
+    // The alternative layout swaps the columns, so it swaps the edges too.
+    expect(editorUi).toMatch(/\.studio\.alt \.left \{[^}]*border-left: 1px solid var\(--hairline\)/s);
+    expect(editorUi).toMatch(/\.studio\.alt \.right \{[^}]*border-right: 1px solid var\(--hairline\)/s);
+  });
+});
+
+describe('the fold tab sits on a corner, not in mid-air', () => {
+  it('rides at the top of the seam, level with the first key in the column', () => {
+    const fold = editorUi.match(/\n  \.fold \{[^}]*\}/s)?.[0] ?? '';
+    expect(fold).toContain('top: 1rem');
+    expect(fold).not.toContain('top: 50%');
+    // No -50% left anywhere in the tab's press travel.
+    expect(editorUi).not.toMatch(/\.fold[^{]*\{[^}]*calc\(-50%/s);
+  });
+});
+
+describe('the bottom panel folds like the sides', () => {
+  it('its seam carries the same tab, lying on its side', () => {
+    expect(editorUi).toContain('editor.togglePanel()');
+    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*height: 14px/s);
+    // Centred on its seam: at a corner it reads as a chip stuck to the
+    // column above it rather than as the bar's own handle.
+    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*left: 50%/s);
+    expect(editorUi).toMatch(/\.fold\.lying:hover \{[^}]*translate\(-50%/s);
+    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*width: var\(--key-h\)/s);
+    expect(editorUi).toContain("chevron-down");
+    expect(editorUi).toContain("chevron-up");
+  });
+
+  it('the seam shows itself only under the cursor, like the side ones', () => {
+    expect(editorUi).toMatch(
+      /\.resizer:hover,\s*\.panel\.dragging \.resizer \{[^}]*var\(--electric\)/s,
+    );
+    expect(editorUi).not.toMatch(/\.resizer \{[^}]*3rem 2px no-repeat/s);
+  });
+
+  it('a phone has no folding at all, so it carries none of the tabs', () => {
+    // The columns are rows there and the bar sizes to its contents; a tab
+    // that folds nothing is a dead control.
+    expect(editorUi).toMatch(/@media \(max-width: 40rem\)[^]*\.fold \{\n      display: none;/);
+  });
+
+  it('folded, the bar is a strip with the tab still on it and no toolbar behind it', () => {
+    expect(editorUi).toContain('{#if !panelFolded}');
+    expect(editorUi).toMatch(/\.panel\.collapsed \{[^}]*height: 0\.75rem/s);
   });
 });

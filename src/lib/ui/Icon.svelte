@@ -25,6 +25,8 @@
     | 'eye-off'
     | 'chevron-left'
     | 'chevron-right'
+    | 'chevron-up'
+    | 'chevron-down'
     | 'palette'
     | 'edit'
     | 'copy'
@@ -82,6 +84,8 @@
       'M10.7 6.2A9.9 9.9 0 0 1 12 6c6.3 0 9.8 6 9.8 6a17 17 0 0 1-2.5 3.2M6.6 7.6A17 17 0 0 0 2.2 12s3.5 6 9.8 6a9.4 9.4 0 0 0 4.2-1M9.9 9.9a3 3 0 0 0 4.2 4.2M3 3l18 18',
     'chevron-left': 'M15 6l-6 6 6 6',
     'chevron-right': 'M9 6l6 6-6 6',
+    'chevron-up': 'M6 15l6-6 6 6',
+    'chevron-down': 'M6 9l6 6 6-6',
     // A painter's palette with three wells: the saved-palettes list.
     palette:
       'M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8zM8.5 10.5h.01M12.5 6.5h.01M16.5 9.5h.01',
