@@ -252,9 +252,11 @@ describe('showing an item again', () => {
     expect(showPanelItem(hidden, 'zoom', 'studio').rows.flat()).toContain('zoom');
   });
 
-  test('the studio hides the layers popup — its strip carries the rows', () => {
-    expect(defaultPanels('studio').hidden).toContain('layers');
-    expect(defaultPanels('bar').rows[1]).toContain('layers');
+  test('there is no layers popup any more — the strip carries the rows', () => {
+    expect(panelItem('layers')).toBeUndefined();
+    for (const kind of ['studio', 'bar'] as const) {
+      expect(allPlaced(defaultPanels(kind))).not.toContain('layers');
+    }
   });
 });
 

@@ -731,9 +731,10 @@ export class EditorState {
    * other hidden layers stay hidden; this is a document change.
    */
   ensureActiveLayerVisible(): void {
-    // The studio strip carries the layer rows itself, so the popup being gone
-    // there is not the same as having no way to unhide a layer.
-    if (this.features.layers || (this.ux.layout === 'studio' && this.features.timeline)) {
+    // The rows live on the timeline, in every layout: with the timeline gone
+    // there is no way to unhide a layer, so a hidden active one is a dead
+    // canvas.
+    if (this.features.timeline) {
       return;
     }
     const layer = this.doc.layers[this.activeLayer];

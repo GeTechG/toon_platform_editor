@@ -10,7 +10,6 @@
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
   import ExportSheet from './ExportSheet.svelte';
-  import LayersPanel from './LayersPanel.svelte';
   import AudioPanel from './AudioPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
@@ -66,7 +65,6 @@
 
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
-  let layersOpen = $state(false);
   let audioOpen = $state(false);
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
@@ -1299,25 +1297,6 @@
         aria-label="Увеличить масштаб"
       >+</button>
     </div>
-  {:else if id === 'layers'}
-    <!-- The studio timeline carries the layer list inline, so the popup
-         is the bar layout's form of it. -->
-    <div class="layers">
-      <button
-        class="key"
-        class:active={layersOpen}
-        aria-expanded={layersOpen}
-        aria-haspopup="dialog"
-        onclick={() => (layersOpen = !layersOpen)}
-        title="Слои"
-        aria-label="Слои"
-      >
-        <Icon name="layers" />
-      </button>
-      {#if layersOpen}
-        <LayersPanel {editor} onClose={() => (layersOpen = false)} />
-      {/if}
-    </div>
   {:else if id === 'audio'}
     <!-- The soundtrack lives behind its own key, beside layers and export:
          the wave belongs on the timeline, the file and its credits do not. -->
@@ -2322,7 +2301,7 @@
       flex: none;
       height: auto;
     }
-    .studio .timeline :global(.studio) {
+    .studio .timeline :global(.board) {
       height: auto;
       max-height: 40vh;
     }

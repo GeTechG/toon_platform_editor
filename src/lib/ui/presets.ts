@@ -31,8 +31,7 @@ export type FeatureKey =
   | 'tools'
   | 'sizes'
   | 'color'
-  | 'onionSkin'
-  | 'layers';
+  | 'onionSkin';
 
 export type Features = Record<FeatureKey, boolean>;
 export type DrawingProfileId = 'multator' | 'toonio';
@@ -217,7 +216,6 @@ export const FEATURE_ORDER: FeatureKey[] = [
   'sizes',
   'color',
   'onionSkin',
-  'layers',
 ];
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
@@ -230,7 +228,6 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   sizes: 'Толщина кисти',
   color: 'Цвет',
   onionSkin: 'Калька',
-  layers: 'Слои',
 };
 
 const allOn = (off: Partial<Features> = {}): Features => ({
@@ -243,7 +240,6 @@ const allOn = (off: Partial<Features> = {}): Features => ({
   sizes: true,
   color: true,
   onionSkin: true,
-  layers: true,
   ...off,
 });
 
@@ -260,7 +256,7 @@ export const PRESETS: {
   ux: UxProfileId;
 }[] = [
   { id: 'toonop', label: 'Toonop', features: allOn(), drawingProfile: 'toonio', ux: 'toonop' },
-  { id: 'multator', label: 'Multator', features: allOn({ export: false, layers: false }), drawingProfile: 'multator', ux: 'multator' },
+  { id: 'multator', label: 'Multator', features: allOn({ export: false }), drawingProfile: 'multator', ux: 'multator' },
   { id: 'toonio', label: 'Toonio', features: allOn(), drawingProfile: 'toonio', ux: 'toonio' },
 ];
 

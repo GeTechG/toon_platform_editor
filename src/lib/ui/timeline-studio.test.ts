@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { defaultPanels } from './panels';
+import { allPlaced, defaultPanels } from './panels';
 
 const rows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
-const panel = await Bun.file(new URL('./LayersPanel.svelte', import.meta.url)).text();
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 
@@ -23,21 +22,23 @@ describe('one layer list, two placements', () => {
     expect(rows).toContain('removeLayer(layerIndex)');
   });
 
-  it('the popup is chrome around those rows, and the studio timeline uses the same ones', () => {
-    expect(panel).toContain('<LayerRows');
-    expect(panel).not.toContain('editor.moveLayerTo(');
+  it('the timeline is the only place the rows live', () => {
     expect(timeline).toContain('<LayerRows');
-    // ...and the studio arrangement does not also place the popup, which
-    // would be a second copy of the same list.
-    expect(defaultPanels('studio').hidden).toContain('layers');
+    // No popup around a second copy of the same list — in any layout.
+    expect(allPlaced(defaultPanels('studio'))).not.toContain('layers');
+    expect(allPlaced(defaultPanels('bar'))).not.toContain('layers');
+    expect(editorUi).not.toContain('LayersPanel');
   });
 });
 
 
 describe('studio timeline grid', () => {
-  it('keeps the bar layout as one strip and the studio as a layer-by-frame grid', () => {
-    expect(timeline).toContain("editor.ux.layout === 'studio'");
+  it('is one layer-by-frame grid, in the bar layout as well', () => {
     expect(timeline).toContain('<LayerThumb');
+    // The one-strip-of-frames version is gone: layers are always on the
+    // timeline, so the bar layout gets the same grid, capped in height.
+    expect(timeline).not.toContain('class="scroller"');
+    expect(timeline).not.toContain('<FrameThumb');
   });
 
   it('a cell click carries the modifier that decides the selection', () => {

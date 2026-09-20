@@ -5,43 +5,15 @@
   // list on the left and a layer-by-frame grid of cell thumbnails on the
   // right, filling whatever height the resizable bottom panel gives it.
   import type { EditorState } from './editor-state.svelte';
-  import FrameThumb from './FrameThumb.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
-  import Icon from './Icon.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
   const studio = $derived(editor.ux.layout === 'studio');
 
   let strip = $state<HTMLDivElement | undefined>();
-  let scrollLeft = $state(0);
-  let scrollWidth = $state(0);
-  let clientWidth = $state(0);
-
-  // Native overflow-x already scrolls (wheel/trackpad/touch); the arrows are
-  // for mouse users on desktop, so they only light up when there's overflow.
-  const canLeft = $derived(scrollLeft > 1);
-  const canRight = $derived(scrollLeft < scrollWidth - clientWidth - 1);
-
-  function sync(): void {
-    if (!strip) return;
-    scrollLeft = strip.scrollLeft;
-    scrollWidth = strip.scrollWidth;
-    clientWidth = strip.clientWidth;
-  }
-
-  function nudge(dir: 1 | -1): void {
-    strip?.scrollBy({ left: dir * clientWidth * 0.8, behavior: 'smooth' });
-  }
-
-  // Recompute reachability whenever the frame count or the strip width changes.
-  $effect(() => {
-    void editor.doc.layers[0].frames.length;
-    void clientWidth;
-    sync();
-  });
 
   // Keep the active frame in view (the reference list re-centers on it):
   // after add/delete/paste/hotkeys the strip scrolls just enough to show it.
@@ -194,206 +166,111 @@
      so the drag always ends on the window rather than on a cell. -->
 <svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} />
 
-{#if studio}
-  <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
-  <div class="studio">
-    <div class="body">
-      <div
-        class="layer-col"
-        bind:clientWidth={colPx}
-        style:width={colWidth === null ? undefined : `${colWidth}px`}
-      >
-        <LayerRows {editor} compact />
+<!-- The bottom panel owns the height; the timeline fills the row it is given. -->
+<div class="board" class:capped={!studio}>
+  <div class="body">
+    <div
+      class="layer-col"
+      bind:clientWidth={colPx}
+      style:width={colWidth === null ? undefined : `${colWidth}px`}
+    >
+      <LayerRows {editor} compact />
+    </div>
+
+    <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
+         svelte-check's non-interactive rules do not model. -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="col-resizer"
+      role="separator"
+      aria-label="Ширина колонки слоёв"
+      aria-orientation="vertical"
+      aria-valuenow={colPx}
+      aria-valuemin={COL_MIN}
+      aria-valuemax={COL_MAX}
+      tabindex="0"
+      onpointerdown={onColDown}
+      onpointermove={onColMove}
+      onpointerup={onColUp}
+      onpointercancel={onColUp}
+      onkeydown={onColKey}
+      title="Ширина колонки слоёв (← / →)"
+    ></div>
+
+    <!-- The press-to-deselect is a mouse convenience on top of the cells,
+         which are ordinary buttons: nothing here is keyboard-only reachable
+         through the container, so it stays a labelled group. -->
+    <div
+      class="grid"
+      role="group"
+      aria-label="Кадры и слои"
+      bind:this={strip}
+      onpointerdown={resetSelection}
+    >
+      <div class="head">
+        {#each frames as _, i (i)}
+          <span
+            class="num"
+            style:width="{cell.w + 2}px"
+            class:onion={onionFrames.includes(i)}
+            class:copied={editor.copiedFrom?.frames.includes(i)}
+            title={onionFrames.includes(i) ? `Кадр ${i + 1} — на кальке` : `Кадр ${i + 1}`}
+          >{i + 1}</span>
+        {/each}
       </div>
-
-      <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
-           svelte-check's non-interactive rules do not model. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <div
-        class="col-resizer"
-        role="separator"
-        aria-label="Ширина колонки слоёв"
-        aria-orientation="vertical"
-        aria-valuenow={colPx}
-        aria-valuemin={COL_MIN}
-        aria-valuemax={COL_MAX}
-        tabindex="0"
-        onpointerdown={onColDown}
-        onpointermove={onColMove}
-        onpointerup={onColUp}
-        onpointercancel={onColUp}
-        onkeydown={onColKey}
-        title="Ширина колонки слоёв (← / →)"
-      ></div>
-
-      <!-- The press-to-deselect is a mouse convenience on top of the cells,
-           which are ordinary buttons: nothing here is keyboard-only reachable
-           through the container, so it stays a labelled group. -->
-      <div
-        class="grid"
-        role="group"
-        aria-label="Кадры и слои"
-        bind:this={strip}
-        bind:clientWidth
-        onscroll={sync}
-        onpointerdown={resetSelection}
-      >
-        <div class="head">
+      {#each rows as layerIndex (editor.doc.layers[layerIndex])}
+        <div class="cells" style:height="{row}px">
           {#each frames as _, i (i)}
-            <span
-              class="num"
+            <button
+              class="cell"
               style:width="{cell.w + 2}px"
-              class:onion={onionFrames.includes(i)}
-              class:copied={editor.copiedFrom?.frames.includes(i)}
-              title={onionFrames.includes(i) ? `Кадр ${i + 1} — на кальке` : `Кадр ${i + 1}`}
-            >{i + 1}</span>
+              style:height="{cell.h + 2}px"
+              class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
+              class:selected={isSelected(i, layerIndex)}
+              class:copied={editor.isCopiedCell(i, layerIndex)}
+              class:dim={editor.doc.layers[layerIndex].hidden}
+              data-frame={i}
+              disabled={editor.playing}
+              aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
+                ? 'true'
+                : undefined}
+              onclick={(e) => onCellClick(e, i, layerIndex)}
+              onpointerdown={(e) => onCellDown(e, i, layerIndex)}
+              onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
+              title="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
+              aria-label="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
+            >
+              <LayerThumb
+                doc={editor.doc}
+                {layerIndex}
+                frameIndex={i}
+                maxW={CELL_BOX.w}
+                maxH={CELL_BOX.h}
+              />
+            </button>
           {/each}
         </div>
-        {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-          <div class="cells" style:height="{row}px">
-            {#each frames as _, i (i)}
-              <button
-                class="cell"
-                style:width="{cell.w + 2}px"
-                style:height="{cell.h + 2}px"
-                class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
-                class:selected={isSelected(i, layerIndex)}
-                class:copied={editor.isCopiedCell(i, layerIndex)}
-                class:dim={editor.doc.layers[layerIndex].hidden}
-                data-frame={i}
-                disabled={editor.playing}
-                aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
-                  ? 'true'
-                  : undefined}
-                onclick={(e) => onCellClick(e, i, layerIndex)}
-                onpointerdown={(e) => onCellDown(e, i, layerIndex)}
-                onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
-                title="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
-                aria-label="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
-              >
-                <LayerThumb
-                  doc={editor.doc}
-                  {layerIndex}
-                  frameIndex={i}
-                  maxW={CELL_BOX.w}
-                  maxH={CELL_BOX.h}
-                />
-              </button>
-            {/each}
-          </div>
-        {/each}
-        {@render wave(thumbWidth)}
-      </div>
-    </div>
-  </div>
-{:else}
-  <div class="scroller">
-    <button
-      class="key icon arrow"
-      disabled={!canLeft}
-      onclick={() => nudge(-1)}
-      aria-label="Прокрутить кадры влево"
-      title="Прокрутить кадры влево"
-    >
-      <Icon name="chevron-left" size={18} />
-    </button>
-
-    <div class="frames" bind:this={strip} bind:clientWidth onscroll={sync}>
-      <div class="row">
-      {#each editor.doc.layers[0].frames as frame, i (frame)}
-        <button
-          class="frame"
-          class:active={i === editor.displayedFrame}
-          data-frame={i}
-          disabled={editor.playing}
-          onclick={() => editor.selectFrame(i)}
-          title="Кадр {i + 1}"
-          aria-label="Кадр {i + 1}"
-        >
-          <FrameThumb doc={editor.doc} frameIndex={i} maxW={CELL_BOX.w} maxH={CELL_BOX.h} />
-          <span class="num">{i + 1}</span>
-        </button>
       {/each}
-      </div>
       {@render wave(thumbWidth)}
     </div>
-
-    <button
-      class="key icon arrow"
-      disabled={!canRight}
-      onclick={() => nudge(1)}
-      aria-label="Прокрутить кадры вправо"
-      title="Прокрутить кадры вправо"
-    >
-      <Icon name="chevron-right" size={18} />
-    </button>
   </div>
-{/if}
+</div>
 
 <style>
-  .scroller {
-    display: flex;
-    align-items: stretch;
-    gap: 0.3rem;
-    min-width: 0;
-  }
-  .arrow {
-    flex: none;
-    height: auto;
-  }
-  .frames {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    overflow-x: auto;
-    scrollbar-width: thin;
-    background: var(--canvas);
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    padding: 3px;
-  }
-  .row {
-    display: flex;
-    gap: 2px;
-  }
-  .frame {
-    position: relative;
-    flex: none;
-    /* Tap floor: the thumbnail stays 32px tall, the button around it does not. */
-    min-height: var(--key-h);
-    padding: 0;
-    border: 1px solid var(--hairline);
-    border-radius: 5px;
-    overflow: hidden;
-    background: var(--canvas);
-    cursor: pointer;
-  }
-  .frame.active {
-    border-color: var(--electric);
-    box-shadow: inset 0 0 0 1px var(--electric);
-  }
-  .frame .num {
-    position: absolute;
-    top: 1px;
-    right: 2px;
-    font-size: 0.6rem;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    color: var(--electric);
-  }
-  .frame:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
 
-  /* --- Studio grid -------------------------------------------------------- */
-  .studio {
+  /* --- The layer × frame grid, in both layouts ---------------------------- */
+  .board {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
+  }
+  /* The one-bar layout has no divider to give the grid a height, so it sizes
+     to its rows — up to a share of the screen, then it scrolls. */
+  .board.capped {
+    height: auto;
+    max-height: 40vh;
   }
   .body {
     display: flex;

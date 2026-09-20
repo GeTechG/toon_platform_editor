@@ -139,13 +139,15 @@ test('parseUiConfig normalizes missing/unknown keys against the preset base', ()
   expect('bogus' in (parsed?.features ?? {})).toBe(false); // unknown → dropped
 });
 
-test('the layers panel is on in Toonop and Toonio, off in Multator', () => {
-  expect(presetFeatures('toonop').layers).toBe(true);
-  expect(presetFeatures('toonio').layers).toBe(true);
+test('the layers live on the timeline in every preset, so there is no flag for them', () => {
+  // The rows are part of the strip now: a preset can drop the strip, never
+  // the layers by themselves.
+  expect(FEATURE_ORDER).not.toContain('layers');
+  for (const id of ['toonop', 'toonio', 'multator']) {
+    expect(presetFeatures(id).timeline).toBe(true);
+  }
   // The reference has an onion skin (Tab) — the preset must not hide it.
   expect(presetFeatures('toonio').onionSkin).toBe(true);
-  expect(presetFeatures('multator').layers).toBe(false);
-  expect(FEATURE_ORDER).toContain('layers');
 });
 
 test('a saved config from before the layers feature takes the preset default', () => {
@@ -153,9 +155,9 @@ test('a saved config from before the layers feature takes the preset default', (
     preset: 'toonop',
     features: { tools: false, play: true },
   });
-  expect(parseUiConfig(legacy)?.features.layers).toBe(true);
+  expect(parseUiConfig(legacy)?.features.timeline).toBe(true);
   const legacyMultator = JSON.stringify({ preset: 'multator', features: { tools: false } });
-  expect(parseUiConfig(legacyMultator)?.features.layers).toBe(false);
+  expect(parseUiConfig(legacyMultator)?.features.export).toBe(false);
 });
 
 test('the pipette source is part of the drawing config and defaults to the canvas', () => {
@@ -381,7 +383,6 @@ test('a preset starts from the arrangement its layout draws', () => {
   expect(multator.rows[2]).toContain('tool:pencil');
   // The preset drops these two buttons, so its arrangement starts without them.
   expect(multator.hidden).toContain('export');
-  expect(multator.hidden).toContain('layers');
 });
 
 test('the stored arrangement travels with the rest of the config', () => {

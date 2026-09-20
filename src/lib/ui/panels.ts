@@ -150,7 +150,6 @@ export const PANEL_ITEMS: readonly PanelItem[] = [
   { id: 'onion', kind: 'action', label: 'Калька' },
   { id: 'fps', kind: 'widget', wide: true, label: 'Частота кадров' },
   { id: 'zoom', kind: 'widget', wide: true, label: 'Масштаб' },
-  { id: 'layers', kind: 'widget', label: 'Слои' },
   { id: 'audio', kind: 'widget', label: 'Звук' },
   { id: 'export', kind: 'action', label: 'Экспорт' },
   { id: 'saved', kind: 'widget', wide: true, label: 'Отметка о сохранении' },
@@ -184,7 +183,6 @@ export const FEATURE_ITEM: Record<FeatureKey, string> = {
   sizes: 'brush',
   color: 'palette',
   onionSkin: 'onion',
-  layers: 'layers',
 };
 
 /**
@@ -224,7 +222,6 @@ const BAR: Omit<PanelLayout, 'float' | 'hidden'> = {
       'onion',
       'fps',
       'zoom',
-      'layers',
       'audio',
       'export',
       'saved',
