@@ -6,10 +6,16 @@
  * already installed goes on working from its cache.
  */
 
-import { PLUGIN_API } from './contract';
+import { PLUGIN_API, pluginNamespace, pluginText } from './contract';
 import { t } from '../i18n';
 
-/** A plugin offered by the catalog; `url` is its bundle, already resolved. */
+/**
+ * A plugin offered by the catalog; `url` is its bundle, already resolved.
+ *
+ * Its words are resolved here, on reading: the list is shown before anything
+ * is installed, so the plugin's own catalogue is not loaded yet and a record
+ * localises itself the only way it can — by carrying the strings (`{ ru, en }`).
+ */
 export interface CatalogEntry {
   readonly id: string;
   readonly name: string;
@@ -41,6 +47,11 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** A record's own words, in the language in hand. */
+function localized(value: unknown, id: string): string {
+  return pluginText(value, pluginNamespace(id)) ?? '';
+}
+
 /** `1.10.0` is above `1.9.0`: the parts are numbers, not text. */
 export function compareVersions(a: string, b: string): number {
   const left = a.split('.');
@@ -61,9 +72,9 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
   }
   return {
     id: text(record.id),
-    name: text(record.name) || text(record.id),
+    name: localized(record.name, text(record.id)) || text(record.id),
     version: text(record.version) || '0.0.0',
-    description: text(record.description),
+    description: localized(record.description, text(record.id)),
     icon: text(record.icon),
     url: new URL(text(record.entry), base).href,
   };

@@ -86,3 +86,20 @@ describe('compareVersions', () => {
     expect(compareVersions('1.2', '1.1.9')).toBeGreaterThan(0);
   });
 });
+
+// The list is read before anything is installed, so a plugin's own catalogue
+// is not loaded yet — a record localises itself the only way it can, by
+// carrying the words themselves.
+test('a record may name itself in several languages', async () => {
+  const catalog = await readCatalog('https://plugins.example/', {
+    fetch: fakeFetch({
+      api: PLUGIN_API,
+      plugins: [
+        { ...entry('halftone'), name: { en: 'Halftone', ru: 'Полутон' }, description: { ru: 'Полутоновая кисть' } },
+      ],
+    }),
+  });
+
+  expect(catalog.plugins[0].name).toBe('Полутон');
+  expect(catalog.plugins[0].description).toBe('Полутоновая кисть');
+});
