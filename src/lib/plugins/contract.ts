@@ -246,6 +246,8 @@ export interface Plugin {
   readonly name?: string;
   readonly version?: string;
   readonly description?: string;
+  /** SVG markup on the 24-unit grid, drawn beside the name in the list. */
+  readonly icon?: string;
   /**
    * The tools it brings, keyed by the id each takes in the register. One
    * plugin may bring several; a manifest that brings no tool, no preset and

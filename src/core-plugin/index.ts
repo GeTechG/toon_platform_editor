@@ -28,6 +28,7 @@ import {
   type StrokeRules,
 } from '../lib/plugins/contract';
 import { ERASER_ICON, PENCIL_ICON, PIXEL_ICON } from './icons';
+import { MASCOTS_ICON } from './mascot';
 import { MULTATOR_RULES } from './multator';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool-geometry';
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
@@ -157,7 +158,8 @@ const twin = (label: string, icon: string, stroke: PluginPrimitive): PluginTool 
 const plugin: Plugin = {
   id: 'core',
   api: PLUGIN_API,
-  name: 'Внутренний',
+  name: 'Мультунио',
+  icon: MASCOTS_ICON,
   version: '1.0.0',
   description: 'Кисти, пресеты и прочее необязательное, что приезжает с редактором — тем же контрактом, что и любой плагин.',
   tools: {

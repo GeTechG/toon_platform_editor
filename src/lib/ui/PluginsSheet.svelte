@@ -45,7 +45,7 @@
     name: BUNDLED_PLUGIN.name ?? BUNDLED_PLUGIN.id,
     version: BUNDLED_PLUGIN.version ?? '',
     description: BUNDLED_PLUGIN.description ?? '',
-    icon: '',
+    icon: BUNDLED_PLUGIN.icon ?? '',
     code: '',
     source: 'bundled',
     installed: 0,
@@ -216,7 +216,7 @@
         {#each catalog as entry (entry.id)}
           <li>
             <span class="icon">
-              {#if entry.icon}<img src={iconUrl(entry.icon)} alt="" width="20" height="20" />{/if}
+              {#if entry.icon}<img src={iconUrl(entry.icon)} alt="" width="48" height="48" />{/if}
             </span>
             <span class="about">
               <span class="name">{entry.name} <span class="saved">{entry.version}</span></span>
@@ -294,11 +294,18 @@
   .plugins li.off .name {
     color: var(--signal-dark);
   }
+  /* The plugin's face, big enough to read: the row grows to it. */
   .icon {
     display: inline-flex;
-    width: 20px;
+    width: 48px;
+    height: 48px;
     justify-content: center;
     flex: none;
+  }
+  .icon :global(svg),
+  .icon img {
+    width: 100%;
+    height: 100%;
   }
   .about {
     display: flex;
