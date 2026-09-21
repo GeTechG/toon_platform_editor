@@ -140,6 +140,28 @@ describe('installFromFile', () => {
     ]);
   });
 
+  test('draws the record with the first tool\'s icon when the manifest brings none', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    await installFromFile('своя сборка', registry, ports({ 'своя сборка': manifest('mine') }));
+
+    expect(await listInstalled()).toMatchObject([{ id: 'mine', icon: '<path />' }]);
+  });
+
+  test('the manifest\'s own icon wins over the tool\'s', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    await installFromFile(
+      'своя сборка',
+      registry,
+      ports({ 'своя сборка': manifest('mine', { icon: '<circle r="2" />' }) }),
+    );
+
+    expect(await listInstalled()).toMatchObject([{ id: 'mine', icon: '<circle r="2" />' }]);
+  });
+
   test('a file that is not a plugin installs nothing', async () => {
     setIndexedDB(fakeIndexedDB(new Map(), 1));
     const registry = new PluginRegistry();
@@ -243,7 +265,7 @@ describe('the plugin the editor ships with', () => {
   const delivery = {
     id: 'core',
     api: PLUGIN_API,
-    name: 'Внутренний',
+    name: 'Мультунио',
     version: '1.2.3',
     tools: { 'core.pen': { label: 'Перо', title: 'Перо', key: '', icon: '<path />' } },
   };
@@ -276,7 +298,7 @@ describe('the plugin the editor ships with', () => {
     await putInstalled({
       id: 'core',
       version: '1.2.3',
-      name: 'Внутренний',
+      name: 'Мультунио',
       description: '',
       icon: '',
       code: '',

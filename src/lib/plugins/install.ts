@@ -127,7 +127,10 @@ export async function installFromFile(
     return refused;
   }
   const id = text(manifest.id);
-  const icon = text(manifest.icon) || text((manifest.tool as { icon?: unknown } | undefined)?.icon);
+  // Its own icon, or the first tool's: a plugin that draws one thing has
+  // already said what it looks like.
+  const icon =
+    text(manifest.icon) || text(Object.values(manifest.tools ?? {})[0]?.icon);
   await putInstalled({
     id,
     version: text(manifest.version) || '0.0.0',
