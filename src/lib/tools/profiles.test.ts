@@ -2,19 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { SQUARE_STAMP } from '../format/types';
 import type { ToolDescriptor } from '../format/types';
 import * as profiles from './profiles';
-import { MULTATOR_RULES, MULTATOR_CANVAS_WIDTH } from '../plugins/brushes/multator';
-import {
-  TONIO_CANVAS_WIDTH,
-  toonioPrepare,
-  toonioRules,
-  toonioSmooth,
-  truncateToPixel,
-} from '../plugins/brushes/toonio';
-
-/** The two brushes a preset may hand the engine, as the tests hold them. */
-const multator = MULTATOR_RULES;
-const toonio = (smooth = 3, minDistance = 3) => toonioRules({ smooth, minDistance });
-import { pixelPlugin } from '../plugins/pixel';
+import { toonopRules, TOONOP_CANVAS_WIDTH } from './brush';
+import { simplifyLang } from './simplify';
 import { addStroke, createDocument } from '../model/operations';
 import { canonicalize } from '../format/canonical';
 import { MAX_STROKE_WIDTH } from '../format/constants';
@@ -22,11 +11,51 @@ import { loadDocument } from '../format/validate';
 
 const pencil: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' };
 
+/**
+ * Two brushes the engine is run with, and a stamp. They are fixtures, not
+ * anybody's brush: what is under test here is the engine, which never learns
+ * whose rules it is running, so the rules are written out in the test.
+ */
+const COARSE_CANVAS = 600;
+/** One point per event, a polyline under the hand, Lang-thinned on commit. */
+const coarse: profiles.StrokeRules = {
+  canvas: COARSE_CANVAS,
+  capture: (line, batch) =>
+    batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
+  prepare: (points, _width, _zoom, canvasScale) =>
+    simplifyLang(points, 5, 80 / canvasScale).map(Math.round),
+  previewGeometry: 'line',
+};
+/** The editor's own brush, at the settings a test asks for. */
+const fine = (smooth = 3, minDistance = 3) =>
+  toonopRules({ width: 0, color: '#000000', fill: '#ffffff', smooth, minDistance });
+/** A brush that stamps a mark per cell of its own grid. */
+const stamp: profiles.StrokeRules = {
+  canvas: 1280,
+  capture: (line, batch, width) => {
+    const out = [...line];
+    for (let i = 0; i + 1 < batch.length; i += 2) {
+      const x = width * Math.trunc(batch[i] / width);
+      const y = width * Math.trunc(batch[i + 1] / width);
+      if (!hasCell(out, x, y)) out.push(x, y);
+    }
+    return out;
+  },
+  prepare: (points) => [...points],
+};
+
+function hasCell(points: readonly number[], x: number, y: number): boolean {
+  for (let i = 0; i + 1 < points.length; i += 2) {
+    if (points[i] === x && points[i + 1] === y) return true;
+  }
+  return false;
+}
+
 describe('profile/session contract', () => {
   it('freezes the rules and the descriptor at begin', () => {
-    const selected = { rules: multator, descriptor: { ...pencil } };
+    const selected = { rules: coarse, descriptor: { ...pencil } };
     const session = profiles.beginStrokeSession(sample(1, 10.4, 20.6), selected.descriptor, selected.rules);
-    selected.rules = toonio();
+    selected.rules = fine();
     selected.descriptor.width = 80;
     profiles.appendStrokeEvent(session, sample(1, 30.2, 40.4));
     expect(profiles.commitStrokeSession(session)).toEqual({
@@ -37,7 +66,7 @@ describe('profile/session contract', () => {
 
   it('a brush that loses a cancelled gesture leaves nothing committed', () => {
     const controller = new profiles.PointerStrokeController(() => ({
-      rules: multator, descriptor: pencil,
+      rules: coarse, descriptor: pencil,
     }));
     expect(controller.pointerDown(sample(1, 10, 20))).toBe(true);
     controller.pointerMove(sample(1, 30, 40));
@@ -48,7 +77,7 @@ describe('profile/session contract', () => {
   it('discard drops a session whole — a second finger means the stroke never happened', () => {
     const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' };
     const controller = new profiles.PointerStrokeController(() => ({
-      profile: 'toonio', descriptor, rules: toonio(1, 0),
+      descriptor, rules: fine(1, 0),
     }));
     expect(controller.pointerDown(sample(1, 0, 0))).toBe(true);
     controller.pointerMove(sample(1, 16, 0));
@@ -61,7 +90,7 @@ describe('profile/session contract', () => {
   it('a brush that asked for it lands a cancelled gesture, minus the cancel event', () => {
     const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' };
     const controller = new profiles.PointerStrokeController(() => ({
-      profile: 'toonio', descriptor, rules: toonio(1, 0),
+      descriptor, rules: fine(1, 0),
     }));
     expect(controller.pointerDown(sample(1, 0, 0))).toBe(true);
     controller.pointerMove(sample(1, 16, 0));
@@ -73,84 +102,16 @@ describe('profile/session contract', () => {
   });
 });
 
-describe('the Tonio brush through the engine', () => {
-  it('Smooth keeps first, every s-th point, last, and an endpoint sentinel', () => {
-    expect(toonioSmooth([0, 0, 8, 8, 16, 16, 24, 24, 32, 32], 2)).toEqual([
-      0, 0, 8, 8, 24, 24, 32, 32, 32, 32,
-    ]);
-    expect(toonioSmooth([8, 16], 3)).toEqual([8, 16, 8, 16, 8, 16]);
-  });
-
-  it('Prepare uses original adjacent distances, strict > m/zoom, and adds a sentinel', () => {
-    expect(toonioPrepare([0, 0, 16, 0, 40, 0, 40, 0], 2, 1)).toEqual([
-      0, 0, 40, 0, 40, 0, 40, 0,
-    ]);
-    expect(toonioPrepare([5, 6], 3, 1)).toEqual([5, 6]);
-  });
-
-  it('normalizes min-distance from the 1280px Tonio canvas to the 600px editor canvas', () => {
-    expect(toonioPrepare(
-      [0, 0, 16, 0, 40, 0, 40, 0],
-      3,
-      1,
-      1280 / 600,
-    )).toEqual([0, 0, 16, 0, 40, 0, 40, 0, 40, 0]);
-  });
-
-  it('uses the captured Tonio coordinate scale when committing a session', () => {
-    const descriptor: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 40 };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      descriptor,
-      toonio(1, 3),
-      1280 / 600,
-    );
-    profiles.appendStrokeEvent(session, sample(1, 16, 0));
-    profiles.appendStrokeEvent(session, sample(1, 40, 0));
-
-    expect(profiles.commitStrokeSession(session).points).toEqual([
-      0, 0, 0, 0, 16, 0, 40, 0, 40, 0, 40, 0,
-    ]);
-  });
-
-  it('divides the threshold by the zoom captured at pointerdown (reference m / scale)', () => {
-    // m = 3 logical px over a 600px canvas normalised from 1280: at zoom 1 the
-    // 16-unit step is dropped, at zoom 4 the threshold is four times smaller
-    // and the same step survives.
-    const descriptor: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 40 };
-    const draw = (zoom: number) => {
-      const session = profiles.beginStrokeSession(sample(1, 0, 0),
-        descriptor,
-        toonio(1, 3),
-        1,
-        zoom,
-      );
-      profiles.appendStrokeEvent(session, sample(1, 16, 0));
-      profiles.appendStrokeEvent(session, sample(1, 40, 0));
-      return profiles.commitStrokeSession(session).points;
-    };
-
-    expect(draw(1)).toEqual([0, 0, 0, 0, 40, 0, 40, 0]);
-    expect(draw(4)).toEqual([0, 0, 0, 0, 16, 0, 40, 0, 40, 0, 40, 0]);
-  });
-
-  it('truncates logical coordinates before converting to fixed-point ×8', () => {
-    expect(truncateToPixel(19.9, -19.9)).toEqual([16, -16]);
-  });
-});
-
-/** The pixel tool's own rules, as the register hands them to the engine. */
-const own = pixelPlugin.tool!.stroke!.rules!()!;
-
 describe('the feather and the pixel through the engine', () => {
   it('the feather runs the pencil pipeline and keeps both colors', () => {
     const descriptor: ToolDescriptor = {
       kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000',
     };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, toonio(1, 0));
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, fine(1, 0));
     profiles.appendStrokeEvent(session, sample(1, 40, 0));
     const committed = profiles.commitStrokeSession(session);
     expect(committed.tool).toEqual(descriptor);
-    // Same Smooth + Prepare output as a Tonio pencil would give.
+    // Same two thinning stages the editor brush gives.
     expect(committed.points).toEqual([0, 0, 0, 0, 40, 0, 40, 0, 40, 0]);
   });
 
@@ -158,7 +119,7 @@ describe('the feather and the pixel through the engine', () => {
     // The pixel tool, wired the way the editor wires it: the engine knows
     // nothing about it, the rules come from the tool itself (plugins/pixel.ts).
     const descriptor: ToolDescriptor = { kind: 'stamp', geometry: 'line', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, own, 1, 1);
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1, 1);
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     profiles.appendStrokeEvent(session, sample(1, 64, 0));
     const committed = profiles.commitStrokeSession(session);
@@ -168,16 +129,16 @@ describe('the feather and the pixel through the engine', () => {
 
   it('its preview shows the points as collected, unsmoothed', () => {
     const descriptor: ToolDescriptor = { kind: 'stamp', geometry: 'line', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, own, 1, 1);
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1, 1);
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 16, 0]);
   });
 });
 
-describe('how the Tonio brush collects a pointer batch', () => {
+describe('how the editor brush collects a pointer batch', () => {
   it('filters pointerId, preserves order, removes duplicates, and appends pointerup', () => {
     const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' };
-    const session = profiles.beginStrokeSession(sample(7, 8, 8), descriptor, toonio(1, 0));
+    const session = profiles.beginStrokeSession(sample(7, 8, 8), descriptor, fine(1, 0));
     profiles.appendStrokeEvent(session, sample(7, 99, 99, [
       sample(7, 16, 16), sample(8, 500, 500), sample(7, 16, 16), sample(7, 24, 24),
     ]));
@@ -187,14 +148,14 @@ describe('how the Tonio brush collects a pointer batch', () => {
 
   it('falls back to the event itself when coalesced input is unavailable or empty', () => {
     const descriptor: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 40 };
-    const session = profiles.beginStrokeSession(sample(2, 0, 0), descriptor, toonio());
+    const session = profiles.beginStrokeSession(sample(2, 0, 0), descriptor, fine());
     profiles.appendStrokeEvent(session, sample(2, 8, 8, []));
     expect(session.rawPoints).toEqual([0, 0, 8, 8]);
   });
 
   it('removes duplicates inside one event batch but preserves a duplicate across batches', () => {
     const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, toonio());
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, fine());
     profiles.appendStrokeEvent(session, sample(1, 0, 0));
     profiles.appendStrokeEvent(session, sample(1, 99, 99, [
       sample(1, 8, 8), sample(1, 8, 8), sample(1, 16, 16),
@@ -204,15 +165,15 @@ describe('how the Tonio brush collects a pointer batch', () => {
 
   it('uses a non-empty coalesced pointerup batch instead of appending the main event', () => {
     const descriptor: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 40 };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, toonio());
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, fine());
     profiles.finishStrokeEvent(session, sample(1, 32, 32, [sample(1, 8, 8), sample(1, 16, 16)]));
     expect(session.rawPoints).toEqual([0, 0, 8, 8, 16, 16]);
   });
 });
 
-it('round-trips Multator → Tonio → Multator strokes in one frame', () => {
+it('round-trips coarse → fine → coarse strokes in one frame', () => {
   const doc = createDocument();
-  for (const [rules, x] of [[multator, 0], [toonio(1, 0), 80], [multator, 160]] as const) {
+  for (const [rules, x] of [[coarse, 0], [fine(1, 0), 80], [coarse, 160]] as const) {
     const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' };
     const session = profiles.beginStrokeSession(sample(1, x, 0), descriptor, rules);
     profiles.appendStrokeEvent(session, sample(1, x + 40, 40));
@@ -232,21 +193,21 @@ function sample(pointerId: number, x: number, y: number, coalesced?: profiles.Po
 }
 
 describe('brush width in reference-canvas pixels', () => {
-  const scale600 = TONIO_CANVAS_WIDTH / 600;
+  const scale600 = TOONOP_CANVAS_WIDTH / 600;
 
-  it('each dialect measures its brush on its own reference canvas', () => {
-    expect(profiles.canvasCoordinateScale(TONIO_CANVAS_WIDTH, 1280)).toBe(1);
-    expect(profiles.canvasCoordinateScale(TONIO_CANVAS_WIDTH, 600)).toBe(1280 / 600);
-    expect(profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 600)).toBe(1);
-    expect(profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 1280)).toBe(600 / 1280);
+  it('each brush measures on the canvas it named', () => {
+    expect(profiles.canvasCoordinateScale(TOONOP_CANVAS_WIDTH, 1280)).toBe(1);
+    expect(profiles.canvasCoordinateScale(TOONOP_CANVAS_WIDTH, 600)).toBe(1280 / 600);
+    expect(profiles.canvasCoordinateScale(COARSE_CANVAS, 600)).toBe(1);
+    expect(profiles.canvasCoordinateScale(COARSE_CANVAS, 1280)).toBe(600 / 1280);
   });
 
-  it('a Multator stroke grows with a canvas wider than its own', () => {
-    // 4 logical px = 32 doc units on Multator's 600-wide canvas; on 1280 the
+  it('a coarse-canvas stroke grows with a canvas wider than its own', () => {
+    // 4 logical px = 32 doc units on the 600-wide canvas; on 1280 the
     // same stroke has to cover the same share of the picture.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' },
-      toonio(1, 0), profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 1280),
+      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 1280),
     );
     expect(session.descriptor.width).toBe(68);
   });
@@ -254,7 +215,7 @@ describe('brush width in reference-canvas pixels', () => {
   it('never widens a stroke past what the format can hold', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 2400, color: '#123456' },
-      toonio(1, 0), profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 1280),
+      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 1280),
     );
     expect(session.descriptor.width).toBe(MAX_STROKE_WIDTH);
   });
@@ -263,7 +224,7 @@ describe('brush width in reference-canvas pixels', () => {
     // 5 logical px = 40 doc units on a 600-wide canvas: 40 / (1280 / 600) = 18.75 → 19.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      toonio(1, 0), scale600,
+      fine(1, 0), scale600,
     );
     expect(session.descriptor.width).toBe(19);
   });
@@ -271,15 +232,15 @@ describe('brush width in reference-canvas pixels', () => {
   it('a 1280-wide document keeps the width it was given', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      toonio(1, 0), 1,
+      fine(1, 0), 1,
     );
     expect(session.descriptor.width).toBe(40);
   });
 
-  it('Multator keeps its width on the canvas it was drawn for', () => {
+  it('a brush keeps its width on the canvas it was drawn for', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      toonio(1, 0), profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 600),
+      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 600),
     );
     expect(session.descriptor.width).toBe(40);
   });
@@ -287,7 +248,7 @@ describe('brush width in reference-canvas pixels', () => {
   it('the scaled width never falls below one document unit', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'eraser', geometry: 'smooth', width: 1 },
-      toonio(1, 0), 100,
+      fine(1, 0), 100,
     );
     expect(session.descriptor.width).toBe(1);
   });
@@ -312,12 +273,12 @@ describe('swapStrokeColours (a stroke drawn with the right button)', () => {
   });
 });
 
-describe('the feather under a Multator preset', () => {
-  it('draws the Multator way: its builder follows the preset', () => {
-    // A preset is the algorithm. Tonio invented the feather, but a feather
-    // put on a Multator panel is a Multator line that happens to be filled.
+describe('the feather under a coarse-canvas brush', () => {
+  it('draws that brush\'s way: the feather follows the preset', () => {
+    // The brush is the algorithm: a feather under a coarse-canvas brush is
+    // that brush's line that happens to be filled.
     const controller = new profiles.PointerStrokeController(() => ({
-      rules: multator,
+      rules: coarse,
       descriptor: { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
     }));
     controller.pointerDown(sample(1, 0, 0));
@@ -329,17 +290,17 @@ describe('the feather under a Multator preset', () => {
     });
   });
 
-  it('measures its width on the Multator canvas there', () => {
+  it('measures its width on the coarse canvas there', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
-      multator, profiles.canvasCoordinateScale(MULTATOR_CANVAS_WIDTH, 600),
+      coarse, profiles.canvasCoordinateScale(COARSE_CANVAS, 600),
     );
-    expect(session.rules).toBe(multator);
+    expect(session.rules).toBe(coarse);
     expect(session.descriptor.width).toBe(40);
   });
 
-  it('runs under the Tonio rules when the Tonio preset holds it', () => {
-    const rules = toonio();
+  it('runs under the fine rules when the fine preset holds it', () => {
+    const rules = fine();
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
       rules,
@@ -351,13 +312,13 @@ describe('the feather under a Multator preset', () => {
 
 });
 
-describe('the pixel tool outside the Tonio preset', () => {
-  it('collects grid cells even when the preset draws Multator lines', () => {
-    // Toonop keeps the pixel tool but draws its pencil the Multator way. The
-    // Multator builder would smooth the cells into an ordinary polyline and
+describe('the pixel tool outside the fine preset', () => {
+  it('collects grid cells even when the preset draws coarse lines', () => {
+    // Toonop keeps the pixel tool but draws its pencil the coarse way. The
+    // coarse builder would smooth the cells into an ordinary polyline and
     // commit geometry the pixel renderer cannot draw.
     const controller = new profiles.PointerStrokeController(() => ({
-      rules: own,
+      rules: stamp,
       descriptor: { kind: 'stamp', geometry: 'line', width: 16, color: '#000000', shape: SQUARE_STAMP },
     }));
     controller.pointerDown(sample(1, 0, 0));
@@ -369,12 +330,12 @@ describe('the pixel tool outside the Tonio preset', () => {
     expect(stroke.points.every((v) => v % 16 === 0)).toBe(true);
   });
 
-  it('measures its cell on the Tonio canvas whatever preset draws it', () => {
+  it('measures its cell on the fine canvas whatever preset draws it', () => {
     // The scale follows the tool's own canvas, not the preset's: a cell is a
     // pixel of the 1280-wide canvas wherever the tool is offered.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'stamp', geometry: 'line', width: 16, color: '#000000', shape: SQUARE_STAMP },
-      own, profiles.canvasCoordinateScale(own.canvas, 600),
+      stamp, profiles.canvasCoordinateScale(stamp.canvas, 600),
     );
     expect(session.descriptor.width).toBe(8);
   });
@@ -388,7 +349,7 @@ describe('commit comes from the brush', () => {
 
   it('lays down the stroke the tool returns, not the one it drew with', () => {
     const controller = new profiles.PointerStrokeController(() => ({
-      rules: { ...multator, commit: capsule },
+      rules: { ...coarse, commit: capsule },
       descriptor: { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' },
     }));
     controller.pointerDown(sample(1, 0, 0));
@@ -405,7 +366,7 @@ describe('commit comes from the brush', () => {
     let seen = 0;
     const controller = new profiles.PointerStrokeController(() => ({
       rules: {
-        ...multator,
+        ...coarse,
         commit: (points, descriptor, ctx) => {
           seen = ctx.coordinateScale;
           return capsule(points, descriptor);
@@ -427,7 +388,7 @@ describe('commit comes from the brush', () => {
     try {
       const controller = new profiles.PointerStrokeController(() => ({
         rules: {
-          ...multator,
+          ...coarse,
           commit: (points) => ({ points: [...points], tool: { kind: 'sparkle' } as unknown as ToolDescriptor }),
         },
         descriptor: { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' },
@@ -446,12 +407,12 @@ describe('commit comes from the brush', () => {
 describe('what reaches the document', () => {
   /** A brush collecting raw pointer positions, as a plugin may. */
   const rawRules: profiles.StrokeRules = {
-    canvas: MULTATOR_CANVAS_WIDTH,
+    canvas: COARSE_CANVAS,
     capture: (line, points) => [...line, ...points],
   };
 
   it('lands exactly what the brush laid down — the engine adds no convention', () => {
-    // The endpoint sentinel a Tonio line carries is that brush's own doing,
+    // The endpoint sentinel a fine line carries is that brush's own doing,
     // written by its thinning; a brush that collects its own points gets
     // nothing added behind its back.
     const controller = new profiles.PointerStrokeController(() => ({
@@ -468,7 +429,7 @@ describe('what reaches the document', () => {
   it('shows under the hand the very line it will store', () => {
     // Preview and commit run the brush's own lay-down, so the line cannot
     // change shape on release.
-    const rules = toonio(1, 0);
+    const rules = fine(1, 0);
     const session = profiles.beginStrokeSession(sample(1, 0, 0), { ...pencil, geometry: 'smooth' }, rules);
     profiles.appendStrokeEvent(session, sample(1, 300, 150));
 

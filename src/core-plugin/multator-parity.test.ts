@@ -9,18 +9,18 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FIXED_POINT_SCALE } from '../format/constants';
-import type { Frame, ToolDescriptor } from '../format/types';
-import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
-import { emitGeometry } from '../render/smoothing';
-import { MULTATOR_RULES } from '../plugins/brushes/multator';
-import { simplifyLang } from './simplify';
+import { FIXED_POINT_SCALE } from '../lib/format/constants';
+import type { Frame, ToolDescriptor } from '../lib/format/types';
+import { renderStrokesLayer, type Canvas2DLike } from '../lib/render/canvas2d';
+import { emitGeometry } from '../lib/render/smoothing';
+import { MULTATOR_RULES } from './multator';
+import { simplifyLang } from '../lib/tools/simplify';
 import {
   appendStrokeEvent,
   beginStrokeSession,
   commitStrokeSession,
   finishStrokeEvent,
-} from './profiles';
+} from '../lib/tools/profiles';
 
 const REF = process.env.TOONATOR_REF ?? '/home/sergey/Documents/toonator';
 const BUILD = join(REF, 'Export/html5/bin/ToonatorEditor.js');

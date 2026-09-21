@@ -13,15 +13,20 @@ import {
   MAX_STROKE_COORDS,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
-} from '../../format/constants';
-import { simplifyLang } from '../../tools/simplify';
-import type { StrokeRules } from '../contract';
+} from '../lib/format/constants';
+import { simplifyLang } from '../lib/tools/simplify';
+import type { StrokeRules } from '../lib/plugins/contract';
 
 /** Native width of the source Multator drawing canvas. */
 export const MULTATOR_CANVAS_WIDTH = 600;
 
 export const MULTATOR_RULES: StrokeRules = {
   canvas: MULTATOR_CANVAS_WIDTH,
+  // The reference's row of dots goes to 300, and neither of its two numbers
+  // reaches this brush: Lang thins it, not the smoothing pair.
+  range: { min: 1, max: 300 },
+  defaults: { width: 4, smooth: 3, minDistance: 3 },
+  smoothing: false,
   // One point per event, repeats and all: the reference pushes every mousemove
   // as it comes, and a trailing repeat changes both the Lang window and the
   // last curve segment. The samples a browser coalesced between frames are not

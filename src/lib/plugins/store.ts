@@ -24,8 +24,12 @@ export interface InstalledPlugin {
   readonly icon: string;
   /** The bundle, as text — what the editor builds a module out of. */
   readonly code: string;
-  /** `local` is a bundle picked from disk: the catalog never updates it. */
-  readonly source: 'catalog' | 'local';
+  /**
+   * `local` is a bundle picked from disk: the catalog never updates it.
+   * `bundled` is the one the editor ships with: it is never in the store at
+   * all, and the list shows it from the register instead.
+   */
+  readonly source: 'catalog' | 'local' | 'bundled';
   readonly installed: number;
 }
 

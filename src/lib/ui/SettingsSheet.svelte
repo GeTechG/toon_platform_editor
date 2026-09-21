@@ -16,7 +16,7 @@
     PALETTE_LIMIT_MAX,
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
-    PRESETS,
+    presets,
   } from './presets';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -169,21 +169,20 @@
     <p class="sheet-hint">Рисование</p>
     <!--
       The option is Tonio's `toonio_old_pen`: one point per event instead of
-      the coalesced batch. Multator never unpacks one, so under its canvas
-      there is nothing to switch off — and the old pen it used to mean here is
-      a type of the brush now, picked in the brush box.
+      the coalesced batch. It is the editor's own, not a brush's — the batch
+      is what every brush is handed, so the switch is offered whatever is in
+      hand. (The old pen it used to mean here is a type of the brush now,
+      picked in the brush box.)
     -->
-    {#if editor.defaultBrush === 'toonio'}
-      <label class="toggle">
-        <span class="toggle-label">Режим мышки (точка на событие)</span>
-        <input
-          type="checkbox"
-          role="switch"
-          checked={editor.settings.mouseMode}
-          onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
-        />
-      </label>
-    {/if}
+    <label class="toggle">
+      <span class="toggle-label">Режим мышки (точка на событие)</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.settings.mouseMode}
+        onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
+      />
+    </label>
     {#if hasEyeDropper}
       <label class="toggle">
         <span class="toggle-label">Пипетка браузера</span>
@@ -331,7 +330,7 @@
          reachable. Last, because it is a set-once concern. -->
     <p class="sheet-hint">Панель</p>
     <div class="presets" role="group" aria-label="Набор">
-      {#each PRESETS as p (p.id)}
+      {#each presets() as p (p.id)}
         <button
           class="preset-chip"
           class:active={editor.preset === p.id}

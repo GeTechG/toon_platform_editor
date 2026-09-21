@@ -18,7 +18,7 @@ import {
 } from './constants';
 import { SQUARE_STAMP } from './types';
 import type { Layer, ToolDescriptor, ToonDocument } from './types';
-import { layToonioPoints } from '../plugins/brushes/toonio';
+import { laySmoothPoints } from '../render/smoothing';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
 export const TOONIO_CANVAS_WIDTH = 1280;
@@ -203,7 +203,7 @@ function readStrokes(
       // An imported line is the reference's own, so it is laid down by the
       // rule of the brush that drew it — the geometry is not recomputed, only
       // written the way the shared reader reads it.
-      strokes.push({ points: layToonioPoints(points), tool_id: toolId });
+      strokes.push({ points: laySmoothPoints(points), tool_id: toolId });
     }
   }
   return strokes;
@@ -309,7 +309,7 @@ export function decodeLegacyJson(text: string): ToonImportResult {
         typeof raw?.Color === 'string' ? raw.Color : '#000000',
         '#000000',
       );
-      return [{ points: layToonioPoints(points), tool_id: internLegacyTool(tool, tools) }];
+      return [{ points: laySmoothPoints(points), tool_id: internLegacyTool(tool, tools) }];
     }),
   }));
 

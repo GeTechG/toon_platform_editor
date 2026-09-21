@@ -7,22 +7,22 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FIXED_POINT_SCALE } from '../format/constants';
-import { emitGeometry } from '../render/smoothing';
+import { FIXED_POINT_SCALE } from '../lib/format/constants';
+import { emitGeometry } from '../lib/render/smoothing';
 import {
   layToonioPoints,
   toonioPrepare,
   toonioRules,
   toonioSmooth,
-} from '../plugins/brushes/toonio';
-import { toDocument } from '../ui/viewport';
+} from './toonio';
+import { toDocument } from '../lib/ui/viewport';
 import {
   beginStrokeSession,
   appendStrokeEvent,
   finishStrokeEvent,
   commitStrokeSession,
   previewStrokeSession,
-} from './profiles';
+} from '../lib/tools/profiles';
 
 const REF = process.env.TOONIO_REF ?? '/home/sergey/Documents/toonio_editor';
 const available = existsSync(join(REF, 'js/app/src/tools.js'));

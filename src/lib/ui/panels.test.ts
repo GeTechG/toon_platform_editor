@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { UX_PROFILES } from './ux-profile';
+import { PLUGIN_API } from '../plugins/contract';
+import { plugins } from '../plugins';
+import { TOONOP_UX } from './ux-profile';
 import {
   FEATURE_ITEM,
   toolSpec,
@@ -45,9 +47,37 @@ describe('the item registry', () => {
   });
 });
 
+/**
+ * A preset of somebody else's editor, as a plugin brings one: a smaller
+ * toolset and its own rows. It stands in for the shipped parity presets —
+ * what the editor is tested on here is the machinery, not their layout.
+ */
+plugins.register({
+  id: 'test.bar',
+  api: PLUGIN_API,
+  presets: {
+    bar: {
+      label: 'Bar',
+      brush: 'toonop-brush',
+      ux: { ...TOONOP_UX, tools: ['pencil', 'eraser', 'pipette'] },
+      panels: {
+        base: {
+          rows: [
+            ['add-frame', 'delete-frame', 'timeline'],
+            ['transport', 'fullscreen', 'settings', 'saved', 'publish'],
+            [toolItem('pencil'), toolItem('eraser'), toolItem('pipette'), 'brush-sizes', 'color'],
+          ],
+        },
+      },
+    },
+  },
+});
+
 describe('every tool is its own item', () => {
   test('the registry carries one item per selectable tool, with its key', () => {
-    for (const tool of UX_PROFILES.toonop.tools) {
+    // Only what the register actually holds: a profile may name a tool of a
+    // plugin that is not installed, and no panel places what is not there.
+    for (const tool of TOONOP_UX.tools.filter((id) => toolSpec(id))) {
       const item = panelItem(toolItem(tool));
       expect(item?.kind).toBe('tool');
       expect(item?.label).toBe(toolSpec(tool)?.label);
@@ -122,10 +152,10 @@ describe('the tool keys as a group', () => {
   test('the arrangement decides which tools the editor offers', () => {
     // A preset only chooses what the arrangement starts with: put a key back
     // and the editor has that tool, take it away and it does not.
-    const multator = presets.presetPanels('multator');
-    expect(visibleTools(multator)).toEqual(['pencil', 'eraser', 'pipette']);
+    const bar = presets.presetPanels('bar');
+    expect(visibleTools(bar)).toEqual(['pencil', 'eraser', 'pipette']);
 
-    const withFeather = showPanelItem(multator, toolItem('feather'));
+    const withFeather = showPanelItem(bar, toolItem('feather'));
     expect(visibleTools(withFeather)).toContain('feather');
 
     expect(visibleTools(hidePanelItem(defaultPanels(), toolItem('lasso'))))
@@ -158,50 +188,19 @@ describe('one arrangement for everybody', () => {
     const toonop = presets.presetPanels('toonop');
     expect(toonop).toEqual(defaultPanels());
 
-    const multator = presets.presetPanels('multator');
+    const bar = presets.presetPanels('bar');
     // Every item is accounted for in both, just placed differently.
-    expect(allPlaced(multator).sort()).toEqual(allPlaced(toonop).sort());
-    expect(multator.hidden.length).toBeGreaterThan(toonop.hidden.length);
+    expect(allPlaced(bar).sort()).toEqual(allPlaced(toonop).sort());
+    expect(bar.hidden.length).toBeGreaterThan(toonop.hidden.length);
   });
 
-  test('Multator keeps everything under the canvas, like the reference', () => {
-    const multator = presets.presetPanels('multator');
-    expect(multator.left).toEqual([]);
-    expect(multator.right).toEqual([]);
-    expect(multator.rows).toHaveLength(3);
-    expect(multator.rows[0]).toContain('timeline');
-    expect(multator.rows[1]).toContain('transport');
-    // Its own widgets: the colour pair and the row of dots, not the boxes.
-    expect(multator.rows[2]).toContain('color');
-    expect(multator.rows[2]).toContain('brush-sizes');
-    expect(multator.rows[2][0]).toBe(toolItem('pencil'));
-    expect(multator.hidden).toContain('palette');
-    expect(multator.hidden).toContain('brush');
-    // The keys it never had stay on the shelf.
-    expect(multator.hidden).toContain('export');
-    expect(multator.hidden).toContain(toolItem('lasso'));
-    // The extras that are not in the reference's lines stay there too.
-    for (const id of ['drafts', 'history', 'onion', 'fps']) {
-      expect(multator.hidden).toContain(id);
-    }
+  test('a preset hides the editor tools its own profile leaves out', () => {
+    const bar = presets.presetPanels('bar');
+    expect(bar.hidden).toContain(toolItem('feather'));
+    expect(bar.hidden).toContain(toolItem('lasso'));
+    expect(bar.rows[2][0]).toBe(toolItem('pencil'));
   });
 
-  test('Multator places the rows where the reference put them', () => {
-    const { rows } = presets.presetPanels('multator');
-    // `+` and `×` sit immediately left of the strip, and nothing else is up there.
-    expect(rows[0]).toEqual(['add-frame', 'delete-frame', 'timeline']);
-    // The second line is play, then the keys the reference had no place for,
-    // and it ends on the button that sends the film off.
-    expect(rows[1]).toEqual(['transport', 'fullscreen', 'settings', 'saved', 'publish']);
-    // The drawing line reads left to right: the tools, the dots, the colours.
-    expect(rows[2]).toEqual([
-      toolItem('pencil'),
-      toolItem('eraser'),
-      toolItem('pipette'),
-      'brush-sizes',
-      'color',
-    ]);
-  });
 });
 
 describe('the default layouts', () => {

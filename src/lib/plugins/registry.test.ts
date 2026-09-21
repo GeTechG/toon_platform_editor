@@ -3,12 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import { PLUGIN_API, type StrokeRules } from './contract';
 import { PluginRegistry } from './registry';
 
-/** The smallest manifest the registry accepts — a tool and nothing else. */
+/** The smallest manifest the registry accepts — one tool and nothing else. */
 function toolPlugin(id: string, patch: Record<string, unknown> = {}): unknown {
   return {
     id,
     api: PLUGIN_API,
-    tool: { label: 'Полутон', title: 'Полутон', icon: '<path d="M4 4h16" />', ...patch },
+    tools: { [id]: { label: 'Полутон', title: 'Полутон', icon: '<path d="M4 4h16" />', ...patch } },
   };
 }
 
@@ -32,13 +32,13 @@ describe('PluginRegistry', () => {
     expect(registry.register({ ...toolPlugin('a.future') as object, api: PLUGIN_API + 1 })).toContain('api');
 
     expect(registry.tools().map((entry) => entry.id)).toEqual(['a.one']);
-    expect(registry.failures).toEqual([{ id: 'a.future', reason: 'чужой мажор api: 2' }]);
+    expect(registry.failures).toEqual([{ id: 'a.future', reason: `чужой мажор api: ${PLUGIN_API + 1}` }]);
   });
 
   test('a manifest without the fields a tool needs is skipped', () => {
     const registry = new PluginRegistry();
 
-    expect(registry.register({ id: 'a.bare', api: PLUGIN_API, tool: { label: 'Без иконки' } })).not.toBeNull();
+    expect(registry.register({ id: 'a.bare', api: PLUGIN_API, tools: { 'a.bare': { label: 'Без иконки' } } })).not.toBeNull();
     expect(registry.register({ api: PLUGIN_API })).not.toBeNull();
     expect(registry.register('не модуль')).not.toBeNull();
 
@@ -126,8 +126,92 @@ describe('PluginRegistry', () => {
     // Not the same function: an external plugin's is wrapped so its throw
     // costs the plugin and not the editor. What it commits is what matters.
     expect(
-      registry.tool('a.oldschool')?.stroke?.rules?.()?.commit?.([1, 2], {} as never, { coordinateScale: 1 }),
+      registry.probeRules('a.oldschool')?.commit?.([1, 2], {} as never, { coordinateScale: 1 }),
     ).toEqual(commit([1, 2]));
+  });
+
+  test('a manifest brings several tools, each under its own id', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register({
+      id: 'core',
+      api: PLUGIN_API,
+      tools: {
+        'core.pen': { label: 'Перо', title: 'Перо', icon: '<path />', key: '' },
+        'core.eraser': { label: 'Ластик', title: 'Ластик', icon: '<path />', key: '' },
+      },
+    })).toBeNull();
+
+    expect(registry.tools().map((tool) => tool.id)).toEqual(['core.pen', 'core.eraser']);
+    expect(registry.tools().every((tool) => tool.plugin === 'core')).toBe(true);
+  });
+
+  test('a tool id already taken is skipped, the rest of the manifest loads', () => {
+    const registry = new PluginRegistry();
+    registry.register(toolPlugin('core.pen'));
+
+    expect(registry.register({
+      id: 'other',
+      api: PLUGIN_API,
+      tools: {
+        'core.pen': { label: 'Чужое перо', title: 'Чужое перо', icon: '<path />', key: '' },
+        'other.pen': { label: 'Своё перо', title: 'Своё перо', icon: '<path />', key: '' },
+      },
+    })).toBeNull();
+
+    expect(registry.tool('core.pen')?.label).toBe('Полутон');
+    expect(registry.tool('other.pen')?.label).toBe('Своё перо');
+    expect(registry.failures.map((failure) => failure.reason)).toEqual(['такой id уже загружен: core.pen']);
+  });
+
+  test('taking a plugin off takes every tool it brought', () => {
+    const registry = new PluginRegistry();
+    registry.register({
+      id: 'core',
+      api: PLUGIN_API,
+      tools: {
+        'core.pen': { label: 'Перо', title: 'Перо', icon: '<path />', key: 'H' },
+        'core.eraser': { label: 'Ластик', title: 'Ластик', icon: '<path />', key: '' },
+      },
+    });
+
+    registry.remove('core');
+
+    expect(registry.tools()).toEqual([]);
+    expect(registry.tool('core.pen')).toBeUndefined();
+  });
+
+  test('a manifest that brings nothing at all is skipped', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register({ id: 'a.empty', api: PLUGIN_API })).toContain('ничего');
+  });
+
+  test('presets and brush types are register records, and leave with their plugin', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register({
+      id: 'core',
+      api: PLUGIN_API,
+      tools: { 'core.pen': { label: 'Перо', title: 'Перо', icon: '<path />', key: '' } },
+      presets: {
+        multator: { label: 'Multator', brush: 'core.pen', brushType: 'core.old', ux: { tools: ['pencil'] } },
+      },
+      brushTypes: {
+        'core.old': { label: 'Старая', twins: { pencil: 'core.pen' } },
+      },
+    })).toBeNull();
+
+    expect(registry.preset('multator')?.label).toBe('Multator');
+    expect(registry.preset('multator')?.plugin).toBe('core');
+    expect(registry.presets().map((preset) => preset.id)).toEqual(['multator']);
+    expect(registry.brushType('core.old')?.twins).toEqual({ pencil: 'core.pen' });
+    expect(registry.brushTypes().map((type) => type.id)).toEqual(['core.old']);
+
+    registry.remove('core');
+
+    expect(registry.presets()).toEqual([]);
+    expect(registry.brushTypes()).toEqual([]);
   });
 
   test('built-in tools go in the same way external ones do', () => {
@@ -144,7 +228,7 @@ describe('a plugin that throws', () => {
   const broken = (id: string, tool: Record<string, unknown>) => ({
     id,
     api: PLUGIN_API,
-    tool: { label: id, title: id, key: '', icon: '<path />', ...tool },
+    tools: { [id]: { label: id, title: id, key: '', icon: '<path />', ...tool } },
   });
 
   /** The console is the plugin's error report; the test keeps it out of the run. */
@@ -177,7 +261,7 @@ describe('a plugin that throws', () => {
     }));
 
     const stroke = registry.tool('a.bad')!.stroke!;
-    const descriptor = quiet(() => stroke.descriptor({ width: 3, color: '#000', fill: '#fff' }));
+    const descriptor = quiet(() => stroke.descriptor({ width: 3, color: '#000', fill: '#fff', smooth: 3, minDistance: 3 }));
 
     expect(descriptor).toEqual({ kind: 'pencil', geometry: 'smooth', width: 3, color: '#000' });
     expect(registry.tool('a.bad')).toBeUndefined();

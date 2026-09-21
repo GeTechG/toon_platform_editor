@@ -12,7 +12,7 @@ import { DEFAULT_BRUSH_SIZE_LOGICAL } from '../lib/format/constants';
 import type { ToonDocument } from '../lib/format/types';
 import { addFrame, addLayer, addStroke, createDocument } from '../lib/model/operations';
 import { StrokeBuilder, brushWidthDoc } from '../lib/tools/stroke-builder';
-import { layToonioPoints } from '../lib/plugins/brushes/toonio';
+import { laySmoothPoints } from '../lib/render/smoothing';
 
 export interface CorpusOptions {
   /** L — layers in the corpus. Default 1 (Multator class); 5 is the Toonio profile. */
@@ -48,7 +48,7 @@ export function buildCorpus(opts: CorpusOptions): ToonDocument {
           addStroke(doc, l, f, {
             // Laid down the way the Tonio brush lays a line: its endpoint
             // sentinel, and its first point repeated for the phase.
-            points: layToonioPoints([...stroke.points, ...last]),
+            points: laySmoothPoints([...stroke.points, ...last]),
             tool: { kind: 'pencil', geometry: 'smooth', width, color },
           });
         } else {

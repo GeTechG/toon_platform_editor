@@ -8,7 +8,6 @@
  */
 
 import { clampCoord } from '../model/geom';
-import { TONIO_CANVAS_WIDTH } from './brushes/toonio';
 import type { Stroke } from '../format/types';
 import type { PluginHost, PluginStroke } from './contract';
 
@@ -56,8 +55,8 @@ export function makeHost(owner: HostOwner): PluginHost {
     window: ({ title }) => owner.openPluginWindow(title),
     strokes: () => owner.pluginStrokes(),
     edit: (fn) => owner.editPluginCells(fn),
-    // The reference measures on its own 1280-wide canvas; a document of any
-    // other size is converted here rather than in every plugin.
-    referencePx: (value) => value * TONIO_CANVAS_WIDTH / owner.doc.width,
+    // Whose canvas it is, the tool says itself: the host converts, it does not
+    // know any reference width of its own.
+    referencePx: (value, canvas) => value * canvas / owner.doc.width,
   };
 }

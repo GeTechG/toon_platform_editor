@@ -1,7 +1,6 @@
 import { SQUARE_STAMP } from '../format/types';
 import { describe, expect, it } from 'bun:test';
 import { eraseStrokes } from './mega-eraser';
-import { pixelPlugin } from '../plugins/pixel';
 
 const line = (points: number[], tool_id = 0) => ({ points, tool_id });
 
@@ -52,9 +51,10 @@ describe('eraseStrokes', () => {
 
 describe('eraseStrokes by primitive', () => {
   // What the tool that lays down the primitive says about being cut — the
-  // eraser itself knows only the contour, which no tool lays down.
-  const cutOf = (tool: { kind: string }) =>
-    tool.kind === pixelPlugin.tool?.stroke?.kind ? pixelPlugin.tool?.stroke?.cut : undefined;
+  // eraser itself knows only the contour, which no tool lays down. A tool
+  // that stamps independent marks asks for its cells to be taken; which tool
+  // that is the eraser never learns, so the test stands in for one.
+  const cutOf = (tool: { kind: string }) => (tool.kind === 'stamp' ? 'cells' : undefined);
 
   const pixelTools = [{ kind: 'stamp', geometry: 'line', width: 10, color: '#000000', shape: SQUARE_STAMP }] as const;
   const contourTools = [

@@ -10,12 +10,13 @@
 
 import { plugins } from '../plugins';
 import { PENCIL } from '../plugins/builtins';
-import { presetBrushRules } from '../plugins/brushes';
+import type { PluginBrush } from '../plugins/contract';
 import { emitPathForTool, isContourTool, isStampTool } from '../render/dispatch';
 import type { PathSink } from '../render/smoothing';
+import { toonopRules } from '../tools/brush';
 import { PointerStrokeController } from '../tools/profiles';
 import { brushWidthDoc } from '../tools/stroke-builder';
-import type { BrushId, TonioBrush } from './presets';
+import type { BrushRecord } from './presets';
 
 /** The sample box, in document units. */
 export const PREVIEW_BOX = { width: 768, height: 192 };
@@ -63,17 +64,22 @@ export interface BrushPreview {
  */
 export function brushPreview(
   tool: string,
-  brush: BrushId,
+  brush: string,
   widthLogical: number,
-  tonio: TonioBrush,
+  tuning: BrushRecord,
 ): BrushPreview {
   const stroke = plugins.tool(tool)?.stroke ?? PENCIL;
-  const rules = stroke.rules?.() ?? presetBrushRules(brush, tonio);
-  const descriptor = stroke.descriptor({
+  const hand: PluginBrush = {
     width: brushWidthDoc(widthLogical),
     color: '#000000',
     fill: '#ffffff',
-  });
+    smooth: tuning.smooth,
+    minDistance: tuning.minDistance,
+  };
+  const rules = stroke.rules?.(hand)
+    ?? plugins.tool(brush)?.stroke?.rules?.(hand)
+    ?? toonopRules(hand);
+  const descriptor = stroke.descriptor(hand);
   const pointer = new PointerStrokeController(() => ({
     descriptor,
     rules,

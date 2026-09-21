@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { emitGeometry, type PathSink } from '../../render/smoothing';
+import { emitGeometry, type PathSink } from '../lib/render/smoothing';
 import { layToonioPoints, toonioRules } from './toonio';
 
 class Sink implements PathSink {

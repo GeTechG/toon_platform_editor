@@ -136,3 +136,19 @@ export function emitGeometry(
     );
   }
 }
+
+/**
+ * Lays collected points down for the `smooth` reader.
+ *
+ * The reader takes a stored point as the control of its quadratic; an emitter
+ * that used the *previous* point as the control started half a segment behind
+ * it. Repeating the first point shifts the phase back, so both draw the same
+ * line. It is a property of this reader, not of any one brush: the editor's
+ * own brush and the importer of foreign files both lay points down this way.
+ */
+export function laySmoothPoints(points: readonly number[]): number[] {
+  if (points.length < 2) {
+    return points.slice();
+  }
+  return [points[0], points[1], ...points];
+}

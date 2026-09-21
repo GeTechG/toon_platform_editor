@@ -20,7 +20,7 @@ const manifest = (id: string, extra: Record<string, unknown> = {}) => ({
   default: {
     id,
     api: PLUGIN_API,
-    tool: { label: id, title: id, key: '', icon: '<path />' },
+    tools: { [id]: { label: id, title: id, key: '', icon: '<path />' } },
     ...extra,
   },
 });
@@ -236,5 +236,64 @@ describe('updateInstalled', () => {
     expect((await listInstalled())[0].version).toBe('1.0.0');
     expect(registry.tool('halftone')).toBeDefined();
     expect(registry.failures.map((f) => f.reason).join()).toContain('сеть отвалилась');
+  });
+});
+
+describe('the plugin the editor ships with', () => {
+  const delivery = {
+    id: 'core',
+    api: PLUGIN_API,
+    name: 'Эталоны',
+    version: '1.2.3',
+    tools: { 'core.pen': { label: 'Перо', title: 'Перо', key: '', icon: '<path />' } },
+  };
+
+  test('goes through the same door as any other, and is not stored', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const registry = new PluginRegistry();
+
+    expect(registry.register(delivery, { bundled: true })).toBeNull();
+
+    expect(registry.tool('core.pen')?.plugin).toBe('core');
+    expect(registry.isBundled('core')).toBe(true);
+    // The editor carries it: there is nothing to keep in the store.
+    expect(await listInstalled()).toEqual([]);
+  });
+
+  test('cannot be taken off', () => {
+    const registry = new PluginRegistry();
+    registry.register(delivery, { bundled: true });
+
+    registry.remove('core');
+
+    expect(registry.tool('core.pen')).toBeDefined();
+  });
+
+  test('is never updated from the catalog, whatever version it offers', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const registry = new PluginRegistry();
+    registry.register(delivery, { bundled: true });
+    await putInstalled({
+      id: 'core',
+      version: '1.2.3',
+      name: 'Эталоны',
+      description: '',
+      icon: '',
+      code: '',
+      source: 'bundled',
+      installed: 0,
+    });
+
+    const updated = await updateInstalled([entry('core', '9.9.9')], registry, ports({}));
+
+    expect(updated).toEqual([]);
+    expect(registry.tool('core.pen')).toBeDefined();
+  });
+
+  test('a delivery that will not load costs the delivery, not the editor', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register({ id: 'core', api: PLUGIN_API }, { bundled: true })).toContain('ничего');
+    expect(registry.failures.map((failure) => failure.id)).toEqual(['core']);
   });
 });

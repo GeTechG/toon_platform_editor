@@ -15,7 +15,8 @@ import {
   toolSpec,
 } from './panels';
 import { DEFAULT_SETTINGS, parseUiConfig, presetPanels } from './presets';
-import { isHelpTool } from './ux-profile';
+import { isHelpTool } from '../plugins';
+import { TOONOP_UX } from './ux-profile';
 
 const HALFTONE = 'a.halftone';
 
@@ -23,9 +24,49 @@ function install(): void {
   plugins.register({
     id: HALFTONE,
     api: PLUGIN_API,
-    tool: { label: 'Полутон', title: 'Полутон (H)', key: 'H', icon: '<path d="M4 4h16" />' },
+    tools: { [HALFTONE]: { label: 'Полутон', title: 'Полутон (H)', key: 'H', icon: '<path d="M4 4h16" />' } },
   });
 }
+
+/**
+ * A plugin like the one the editor ships with: a preset of somebody else's
+ * editor, a brush of its own canvas and a brush type built on it.
+ */
+const SHIPPED = 'test.tools';
+plugins.register({
+  id: SHIPPED,
+  api: PLUGIN_API,
+  tools: {
+    'test.tools.coarse': {
+      label: 'Грубая', title: 'Грубая', key: '', icon: '<path />', offPanel: true,
+      stroke: {
+        kind: 'pencil',
+        rules: () => ({ canvas: 600, capture: (line: readonly number[]) => [...line] }),
+        descriptor: ({ width, color }: { width: number; color: string }) =>
+          ({ kind: 'pencil', geometry: 'smooth', width, color }),
+      },
+    },
+  },
+  presets: {
+    'test.tools.bar': {
+      label: 'Bar',
+      brush: 'test.tools.coarse',
+      brushType: 'test.tools.old',
+      ux: { ...TOONOP_UX, tools: ['pencil', 'eraser', 'pipette'] },
+      panels: { base: { rows: [['timeline'], ['transport'], [toolItem('pencil'), toolItem('eraser')]] } },
+    },
+    // The same profile without a layout of its own: it starts from the one
+    // arrangement and only puts away what it does not offer.
+    'test.tools.plain': {
+      label: 'Plain',
+      brush: 'test.tools.coarse',
+      ux: { ...TOONOP_UX, tools: ['pencil', 'eraser', 'pipette'] },
+    },
+  },
+  brushTypes: {
+    'test.tools.old': { label: 'Грубая', hint: 'Линия другого холста', twins: { pencil: 'test.tools.coarse' } },
+  },
+});
 
 afterEach(() => {
   plugins.remove(HALFTONE);
@@ -53,23 +94,23 @@ test('a plugin tool starts on the rail, next to the tools of the editor', () => 
   expect(defaultPanels().left).toContain(toolItem(HALFTONE));
 });
 
-test('a parity profile hides the tools its reference lacks, but not a plugin', () => {
+test("a preset hides the editor's tools it lacks, but not a stranger's plugin", () => {
   install();
 
-  const panels = presetPanels('toonio');
+  const panels = presetPanels('test.tools.plain');
 
-  // tools.js has no pixel button; the reference knows nothing of plugins, so a
-  // plugin it "lacks" is a plugin nobody could ever find.
-  expect(panels.hidden).toContain(toolItem('pixel'));
+  // Its profile has no feather; a plugin it "lacks" is a plugin nobody could
+  // ever find, so that one stays where the arrangement put it.
+  expect(panels.hidden).toContain(toolItem('feather'));
   expect(panels.hidden).not.toContain(toolItem(HALFTONE));
 });
 
-test('Multator starts from its own rows, so anything outside them waits on the shelf', () => {
+test('a preset starting from its own rows leaves anything outside them on the shelf', () => {
   install();
 
-  // The reference draws one fixed toolbar and nothing else — a plugin joins it
-  // the way any other key does, by being put on a panel by hand.
-  expect(presetPanels('multator').hidden).toContain(toolItem(HALFTONE));
+  // A preset that brings its own rows draws exactly those — a plugin joins
+  // them the way any other key does, by being put on a panel by hand.
+  expect(presetPanels('test.tools.bar').hidden).toContain(toolItem(HALFTONE));
 });
 
 test('a layout stored with a plugin that is gone loses the key, not the layout', () => {
@@ -105,7 +146,7 @@ test('a plugin can say its tool interrupts drawing rather than replacing it', ()
   plugins.register({
     id: 'a.ruler',
     api: PLUGIN_API,
-    tool: { label: 'Линейка', title: 'Линейка', key: '', icon: '<path d="M4 4h16" />', help: true },
+    tools: { 'a.ruler': { label: 'Линейка', title: 'Линейка', key: '', icon: '<path d="M4 4h16" />', help: true } },
   });
 
   expect(isHelpTool('a.ruler')).toBe(true);
@@ -192,6 +233,39 @@ test('the editor is locked only while an update is actually downloading', () => 
   expect(editorUi).toMatch(/if \(editor\.updating\) \{?\s*return/);
 });
 
+test('a preset whose plugin was not there yet comes up when it arrives', () => {
+  // The choice is kept, not rewritten: an editor that opened on `toonop`
+  // because a plugin had not loaded opens the way it was left once it does.
+  const from = state.indexOf('refreshPlugins(): void');
+  const refresh = state.slice(from, state.indexOf('\n  }', from));
+  expect(refresh).toContain('presetPending');
+  expect(refresh).toContain('applyPreset(this.preset)');
+});
+
+test('the plugin the editor ships with goes through the register like any other', async () => {
+  const index = await Bun.file(new URL('../plugins/index.ts', import.meta.url)).text();
+  expect(index).toContain('plugins.register(corePlugin, { bundled: true })');
+  // It cannot be taken off, and the catalog has no say over it.
+  expect(plugins.isBundled('core')).toBe(true);
+  expect(plugins.tool('multator-pencil')).toBeDefined();
+});
+
+test('the editor reads nothing from the delivery but the line that registers it', async () => {
+  // The folder travels with the editor, but it is not of it: one import in
+  // one file. Anything under `lib/` reaching into it would be the parity
+  // creeping back in, one convenience at a time.
+  const lib = new URL('..', import.meta.url).pathname;
+  const reaching: string[] = [];
+  for (const file of new Bun.Glob('**/*.{ts,svelte}').scanSync({ cwd: lib })) {
+    // This test names the folder to check for it; the check is about the code.
+    if (file.endsWith('.test.ts')) continue;
+    if ((await Bun.file(`${lib}${file}`).text()).includes('core-plugin')) {
+      reaching.push(file);
+    }
+  }
+  expect(reaching).toEqual(['plugins/index.ts']);
+});
+
 test('what the register knows reaches the rail only through the version', () => {
   const from = state.indexOf('refreshPlugins(): void');
   const refresh = state.slice(from, state.indexOf('\n  }', from));
@@ -240,9 +314,9 @@ test('a tool that fixes its canvas says so itself', () => {
   // The editor holds no table of which primitive belongs to which canvas: the
   // tool that lays one down names it, and a tool with no opinion draws on the
   // preset's.
-  expect(plugins.tool('pixel')?.stroke?.rules?.()?.canvas).toBe(1280);
+  expect(plugins.probeRules('test.tools.coarse')?.canvas).toBe(600);
   expect(plugins.tool('pencil')?.stroke?.rules).toBeUndefined();
-  expect(canvas).toContain('?.stroke?.rules?.()');
+  expect(state).toContain('plugins.probeRules(');
 });
 
 test('a grid comes with the primitive, not with a name', () => {
@@ -251,13 +325,13 @@ test('a grid comes with the primitive, not with a name', () => {
 });
 
 test('a brush that is a type of another stands on no panel', () => {
-  // The oldschool pen is not a key of its own: it is what the brush in hand
-  // draws when its type is «Старая», so no panel and no shelf offers it.
-  expect(toolOrder()).not.toContain('oldschool');
-  expect(panelItems().map((item) => item.id)).not.toContain(toolItem('oldschool'));
-  expect(defaultPanels().hidden).not.toContain(toolItem('oldschool'));
+  // A twin is not a key of its own: it is what the brush in hand draws when
+  // its type is picked, so no panel and no shelf offers it.
+  expect(toolOrder()).not.toContain('test.tools.coarse');
+  expect(panelItems().map((item) => item.id)).not.toContain(toolItem('test.tools.coarse'));
+  expect(defaultPanels().hidden).not.toContain(toolItem('test.tools.coarse'));
   // Still a tool of the register, so what draws with it finds it.
-  expect(toolSpec('oldschool')?.stroke?.rules?.()?.canvas).toBe(600);
+  expect(plugins.probeRules('test.tools.coarse')?.canvas).toBe(600);
 });
 
 test('the brush type is picked in the brush box, not typed as a word', () => {
@@ -267,7 +341,6 @@ test('the brush type is picked in the brush box, not typed as a word', () => {
   expect(state).not.toContain('toggleOldschool');
   expect(state).not.toContain('beforeOldschool');
   expect(brushPanel).toContain("editor.brushType = ");
-  expect(brushPanel).toContain('Старая');
 });
 
 test('the type decides which brush draws, the tool in hand stays the tool', () => {
@@ -283,11 +356,11 @@ test('both types of a brush share one width', () => {
   // the canvas a width is measured on is the tool's in hand, not the one the
   // type resolves to — the old pen's contour is a Multator shape, but its
   // thickness is the same brush record the everyday line draws with.
-  expect(member(state, 'brushCanvas')).toContain('plugins.tool(this.tool)?.stroke?.rules?.()');
+  expect(member(state, 'brushCanvas')).toContain('plugins.probeRules(this.tool)');
   expect(member(state, 'brushCanvas')).not.toContain('brushTool');
   // The cursor ring is measured on that same canvas, or it would be twice
-  // the line the old brush lays down.
-  expect(canvas).toContain('presetBrushRules(editor.brushCanvas');
+  // the line a twin of another canvas lays down.
+  expect(canvas).toContain('editor.widthRules?.canvas');
   // And the width handed to the brush is converted into the canvas the
   // stroke is laid on — the old contour is a Multator shape whatever canvas
   // the slider counts in.
@@ -302,7 +375,9 @@ test('the preset is asked about the preset, the canvas about the line', () => {
   expect(editorUi).toContain('editor.ux.projectFile');
   expect(editorUi).not.toContain('defaultBrush');
   expect(canvas).toContain('editor.ux.canvasDensity');
-  expect(canvas.match(/editor\.defaultBrush/g)).toHaveLength(1);
+  // Which brush an unopinionated tool follows is the state's question now:
+  // the canvas asks for rules, never for the name of a brush.
+  expect(canvas).not.toContain('editor.defaultBrush');
 });
 
 test('the stroke engine knows gestures, not tools', () => {
@@ -320,15 +395,17 @@ test('the stroke engine knows gestures, not tools', () => {
   expect(engine).not.toContain('Oldschool');
 });
 
-test('the multator type is offered in the box and comes up with its preset', () => {
-  // A third type beside «Обычная» and «Старая»: the multator line, in any
-  // preset — and the Multator preset opens with it in hand.
-  expect(brushPanel).toContain('Мультатор');
+test('the types on offer come from the register, and a preset opens with its own', () => {
+  // The box holds no table of types: what a tool can be switched to is
+  // whatever the register knows about it, and a preset names the one it
+  // opens with.
+  expect(brushPanel).toContain('brushTypesFor(editor.tool)');
+  expect(brushPanel).not.toContain('Мультатор');
   expect(member(state, 'applyPreset')).toContain('presetBrushType(id)');
 });
 
 test('the types are picked from a list that nothing can clip', () => {
-  // Three names never fit the box's width, and the box sits in a column with
+  // Several names never fit the box's width, and the box sits in a column with
   // its own scroll — a list opened inside it would be cut off at its edge.
   expect(brushPanel).toContain('popover');
   // Hidden by the browser when closed: a layout declared unconditionally

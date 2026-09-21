@@ -7,7 +7,8 @@ import {
   AUTOSAVE_INTERVALS,
   DEFAULT_PRESET,
   DEFAULT_SETTINGS,
-  PRESETS,
+  defaultBrushOf,
+  presets,
   parseUiConfig,
   PANEL_HEIGHT_MAX,
   PANEL_HEIGHT_MIN,
@@ -20,45 +21,87 @@ import {
   presetUx,
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
-import { UX_PROFILES } from './ux-profile';
+import { TOONOP_UX } from './ux-profile';
+import { plugins } from '../plugins';
+import { PLUGIN_API } from '../plugins/contract';
+
+/** The editor's own brush and a plugin's, on a canvas of its own. */
+const OWN = 'toonop-brush';
+const COARSE = 'test.coarse';
+
+plugins.register({
+  id: 'test.shipped',
+  api: PLUGIN_API,
+  tools: {
+    [COARSE]: {
+      label: 'Грубая', title: 'Грубая', key: '', icon: '<path />', offPanel: true,
+      stroke: {
+        kind: 'pencil',
+        rules: () => ({
+          canvas: 600,
+          range: { min: 1, max: 300 },
+          defaults: { width: 4, smooth: 3, minDistance: 3 },
+          capture: (line: readonly number[]) => [...line],
+        }),
+        descriptor: ({ width, color }: { width: number; color: string }) =>
+          ({ kind: 'pencil', geometry: 'smooth', width, color }),
+      },
+    },
+  },
+  presets: {
+    'test.bar': {
+      label: 'Bar',
+      brush: COARSE,
+      brushType: 'test.old',
+      ux: { ...TOONOP_UX, tools: ['pencil', 'eraser', 'pipette'] },
+    },
+  },
+  brushTypes: {
+    'test.old': { label: 'Грубая', twins: { pencil: COARSE } },
+  },
+});
 
 test('a preset is behaviour only — no set of buttons of its own', () => {
-  for (const preset of PRESETS) {
+  for (const preset of presets()) {
     expect('features' in preset).toBe(false);
   }
   expect(DEFAULT_PRESET).toBe('toonop');
 });
 
-test('compatibility presets select their drawing profile through existing preset logic', () => {
-  expect(PRESETS.find((preset) => preset.id === 'toonop')?.defaultBrush).toBe('toonio');
-  expect(PRESETS.find((preset) => preset.id === 'multator')?.defaultBrush).toBe('multator');
-  expect(PRESETS.find((preset) => preset.id === 'toonio')?.defaultBrush).toBe('toonio');
+test('the list of presets is the register: the editor holds only its own', () => {
+  expect(presets().map((preset) => preset.id)).toContain('toonop');
+  expect(presets().find((preset) => preset.id === 'toonop')?.plugin).toBe('toonop');
+  // Whatever a plugin brought stands beside it, named by nothing in the editor.
+  expect(presets().find((preset) => preset.id === 'test.bar')?.plugin).toBe('test.shipped');
 });
 
-test('each preset owns a UX profile: Multator reproduces the reference, others keep toonop', () => {
-  expect(presetUx('multator')).toBe(UX_PROFILES.multator);
-  expect(presetUx('toonop')).toBe(UX_PROFILES.toonop);
-  expect(presetUx('toonio')).toBe(UX_PROFILES.toonio);
+test('a preset names the brush a tool without its own follows', () => {
+  expect(presetDefaultBrush('toonop')).toBe(OWN);
+  expect(presetDefaultBrush('test.bar')).toBe(COARSE);
 });
 
-test('UX profile lookup falls back to toonop for an unknown preset', () => {
-  expect(presetUx('nope')).toBe(UX_PROFILES.toonop);
+test('each preset owns a UX profile, and an unknown one falls back to the editor’s', () => {
+  expect(presetUx('toonop')).toBe(TOONOP_UX);
+  expect(presetUx('nope')).toBe(TOONOP_UX);
+  expect(presetUx('test.bar').tools).toEqual(['pencil', 'eraser', 'pipette']);
 });
 
-test('preset drawing profile lookup falls back to the Toonop profile', () => {
-  expect(presetDefaultBrush('toonio')).toBe('toonio');
-  expect(presetDefaultBrush('nope')).toBe('toonio');
+test('a preset whose plugin is not there falls back without rewriting the choice', () => {
+  expect(presetDefaultBrush('nope')).toBe(OWN);
 });
 
 test('parseUiConfig round-trips a valid stored config', () => {
   const config = {
-    preset: 'multator',
+    preset: 'test.bar',
     panels: defaultPanels(),
     floatPos: {},
     drawing: {
-      activeProfile: 'multator' as const,
-      tonioByTool: { ...DEFAULT_DRAWING_UI_CONFIG.tonioByTool },
-      multatorByTool: { ...DEFAULT_DRAWING_UI_CONFIG.multatorByTool },
+      defaultBrush: COARSE,
+      byCanvas: {
+        '600': Object.fromEntries(
+          BRUSH_TOOLS.map((tool) => [tool, { width: 4, smooth: 3, minDistance: 3 }]),
+        ),
+      },
       pickSource: 'layer' as const,
       panelHeight: 200,
       sides: { ...DEFAULT_DRAWING_UI_CONFIG.sides },
@@ -69,20 +112,17 @@ test('parseUiConfig round-trips a valid stored config', () => {
   expect(parseUiConfig(JSON.stringify(config))).toEqual(config);
 });
 
-test('stored drawing profile is normalized to the selected preset', () => {
+test('the brush of a stored config is the one its preset names', () => {
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'toonio',
-    drawing: {
-      activeProfile: 'multator',
-      multatorWidth: 4,
-      tonio: { width: 7, smooth: 4, minDistance: 2 },
-    },
+    preset: 'test.bar',
+    drawing: { multatorWidth: 4, tonio: { width: 7, smooth: 4, minDistance: 2 } },
   }));
-  expect(parsed?.drawing.activeProfile).toBe('toonio');
+  expect(parsed?.drawing.defaultBrush).toBe(COARSE);
 });
 
-test('a fresh config draws the Tonio line, the way the default Toonop preset asks', () => {
-  expect(DEFAULT_DRAWING_UI_CONFIG.activeProfile).toBe('toonio');
+test('a fresh config draws with the editor’s own brush', () => {
+  expect(DEFAULT_DRAWING_UI_CONFIG.defaultBrush).toBe(OWN);
+  expect(DEFAULT_DRAWING_UI_CONFIG.byCanvas).toEqual({});
 });
 
 test('old UI config migrates to independent safe profile defaults', () => {
@@ -90,17 +130,21 @@ test('old UI config migrates to independent safe profile defaults', () => {
   expect(parseUiConfig(JSON.stringify(old))?.drawing).toEqual(DEFAULT_DRAWING_UI_CONFIG);
 });
 
-test('drawing profile settings are clamped to supported ranges', () => {
+test('brush records are clamped to supported ranges', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
-    drawing: { activeProfile: 'bad', multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
+    drawing: { multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
   }));
   const clamped = { width: 500, smooth: 1, minDistance: 30 };
-  const multator = { width: 1, smooth: 3, minDistance: 3 };
+  const coarse = { width: 1, smooth: 3, minDistance: 3 };
   expect(parsed?.drawing).toEqual({
-    activeProfile: 'toonio',
-    tonioByTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
-    multatorByTool: { pencil: multator, eraser: multator, feather: multator, 'mega-eraser': multator },
+    defaultBrush: OWN,
+    byCanvas: {
+      // A config written when the records were keyed by the name of an editor
+      // arrives under the width of the canvas that editor measured on.
+      '1280': { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
+      '600': { pencil: coarse, eraser: coarse, feather: coarse, 'mega-eraser': coarse },
+    },
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
     sides: DEFAULT_DRAWING_UI_CONFIG.sides,
@@ -128,11 +172,10 @@ test('an old config\'s flags become items put away, unknown ones ignored', () =>
 
 test('a preset starts from its own set on the same panels', () => {
   expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
-  const multator = parseUiConfig('{"preset":"multator"}')?.panels;
-  // Everything under the canvas, its own widgets, fewer keys.
-  expect(multator?.left).toEqual([]);
-  expect(multator?.rows[2]).toContain('color');
-  expect(multator?.hidden).toContain('export');
+  // A preset with a smaller toolset puts the editor's other keys away.
+  const bar = parseUiConfig('{"preset":"test.bar"}')?.panels;
+  expect(bar?.hidden).toContain('tool:feather');
+  expect(bar?.left).toContain('tool:pencil');
 });
 
 test('a saved config from before the arrangement keeps what it had turned off', () => {
@@ -244,39 +287,38 @@ test('the reference defaults: autosave every minute, drafts offered, palette cap
   expect(DEFAULT_SETTINGS).not.toContainKey('theme');
 });
 
-test('every brush tool starts from the same Tonio defaults', () => {
-  expect(DEFAULT_DRAWING_UI_CONFIG.tonioByTool).toEqual({
-    pencil: { width: 5, smooth: 3, minDistance: 3 },
-    eraser: { width: 5, smooth: 3, minDistance: 3 },
-    feather: { width: 5, smooth: 3, minDistance: 3 },
-    'mega-eraser': { width: 5, smooth: 3, minDistance: 3 },
-  });
+test('what a brush starts at comes from the brush, not from a table here', () => {
+  expect(defaultBrushOf(OWN)).toEqual({ width: 5, smooth: 3, minDistance: 3 });
+  expect(defaultBrushOf(COARSE)).toEqual({ width: 4, smooth: 3, minDistance: 3 });
+  // A brush that declares nothing still has somewhere to start from.
+  expect(defaultBrushOf('pencil')).toEqual({ width: 4, smooth: 3, minDistance: 3 });
 });
 
-test('a config with one shared Tonio brush copies it into every tool', () => {
+test('a config with one shared brush copies it into every tool', () => {
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'toonio',
-    drawing: { activeProfile: 'toonio', tonio: { width: 7, smooth: 4, minDistance: 2 } },
+    preset: 'toonop',
+    drawing: { tonio: { width: 7, smooth: 4, minDistance: 2 } },
   }));
   for (const tool of BRUSH_TOOLS) {
-    expect(parsed?.drawing.tonioByTool[tool]).toEqual({ width: 7, smooth: 4, minDistance: 2 });
+    expect(parsed?.drawing.byCanvas['1280'][tool]).toEqual({ width: 7, smooth: 4, minDistance: 2 });
   }
 });
 
 test('per-tool brushes are kept apart and clamped one by one', () => {
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: {
-      activeProfile: 'toonio',
-      tonioByTool: {
-        pencil: { width: 20, smooth: 3, minDistance: 3 },
-        eraser: { width: 999, smooth: 0, minDistance: 99 },
+      byCanvas: {
+        '1280': {
+          pencil: { width: 20, smooth: 3, minDistance: 3 },
+          eraser: { width: 999, smooth: 0, minDistance: 99 },
+        },
       },
     },
   }));
-  expect(parsed?.drawing.tonioByTool.pencil).toEqual({ width: 20, smooth: 3, minDistance: 3 });
-  expect(parsed?.drawing.tonioByTool.eraser).toEqual({ width: 500, smooth: 1, minDistance: 30 });
-  expect(parsed?.drawing.tonioByTool.feather).toEqual(DEFAULT_DRAWING_UI_CONFIG.tonioByTool.feather);
+  expect(parsed?.drawing.byCanvas['1280'].pencil).toEqual({ width: 20, smooth: 3, minDistance: 3 });
+  expect(parsed?.drawing.byCanvas['1280'].eraser).toEqual({ width: 500, smooth: 1, minDistance: 30 });
+  expect(parsed?.drawing.byCanvas['1280'].feather).toEqual({ width: 4, smooth: 3, minDistance: 3 });
 });
 
 test('a tool that draws no line borrows the pencil brush', () => {
@@ -368,50 +410,42 @@ test('a config saved before panels existed keeps the buttons it had turned off',
   expect(parsed?.panels.rows.flat()).toContain('onion');
 });
 
-test('an old config’s one Multator width becomes every Multator brush’s own record', () => {
-  // Before the split the whole Multator canvas had one width; after it each
-  // brush has its own, and nobody’s jumps on the upgrade.
+test('an old config’s one width for a canvas becomes every brush’s own record', () => {
+  // Before the split a whole canvas had one width; after it each brush has
+  // its own, and nobody’s jumps on the upgrade.
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'multator',
-    drawing: { activeProfile: 'multator', multatorWidth: 10 },
+    preset: 'test.bar',
+    drawing: { multatorWidth: 10 },
   }));
-  expect(parsed?.drawing.multatorByTool.pencil.width).toBe(10);
-  expect(parsed?.drawing.multatorByTool.eraser.width).toBe(10);
+  expect(parsed?.drawing.byCanvas['600'].pencil.width).toBe(10);
+  expect(parsed?.drawing.byCanvas['600'].eraser.width).toBe(10);
 });
 
 test('two brushes of one canvas keep two records', () => {
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'multator',
-    drawing: {
-      activeProfile: 'multator',
-      multatorByTool: { pencil: { width: 20 }, eraser: { width: 3 } },
-    },
+    preset: 'test.bar',
+    drawing: { byCanvas: { '600': { pencil: { width: 20 }, eraser: { width: 3 } } } },
   }));
-  expect(parsed?.drawing.multatorByTool.pencil.width).toBe(20);
-  expect(parsed?.drawing.multatorByTool.eraser.width).toBe(3);
+  expect(parsed?.drawing.byCanvas['600'].pencil.width).toBe(20);
+  expect(parsed?.drawing.byCanvas['600'].eraser.width).toBe(3);
 });
 
 test('a brush of the register gets its own record, a tool that draws nothing takes the pencil’s', () => {
-  expect(brushToolOf('pixel')).toBe('pixel');
-  expect(brushToolOf('oldschool')).toBe('oldschool');
+  expect(brushToolOf(COARSE)).toBe(COARSE);
   expect(brushToolOf('pipette')).toBe('pencil');
   expect(brushToolOf('mega-eraser')).toBe('mega-eraser');
 });
 
-test('opening Multator puts the multator brush in hand, the others the everyday one', () => {
-  expect(presetBrushType('multator')).toBe('multator');
+test('a preset opens with the brush type it names, others with the everyday one', () => {
+  expect(presetBrushType('test.bar')).toBe('test.old');
   expect(presetBrushType('toonop')).toBe('normal');
-  expect(presetBrushType('toonio')).toBe('normal');
   expect(presetBrushType('нет такого')).toBe('normal');
 });
 
-test('the smoothing sliders are only for the brushes they reach', () => {
-  // Tonio's smoothing and minimum distance are applied by the Tonio commit
-  // alone: a brush on the Multator canvas is simplified by Lang instead, and
-  // one that collects or commits its own points never sees either number.
-  expect(brushUsesSmoothing('pencil', 'toonio')).toBe(true);
-  expect(brushUsesSmoothing('pencil', 'multator')).toBe(false);
-  expect(brushUsesSmoothing('multator-pencil', 'toonio')).toBe(false);
-  expect(brushUsesSmoothing('oldschool', 'toonio')).toBe(false);
-  expect(brushUsesSmoothing('pixel', 'toonio')).toBe(false);
+test('the smoothing sliders are only for the brushes that say they reach them', () => {
+  // The two numbers are the brush's own: one that thins by something else
+  // never sees them, and says so rather than being named in a list here.
+  expect(brushUsesSmoothing('pencil', OWN)).toBe(true);
+  expect(brushUsesSmoothing('pencil', COARSE)).toBe(false);
+  expect(brushUsesSmoothing(COARSE, OWN)).toBe(false);
 });

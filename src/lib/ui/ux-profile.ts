@@ -1,45 +1,25 @@
 /**
- * UX profile of a toolbar preset: everything a preset changes about how the
- * editor *behaves* beyond the stroke algorithm (which lives in
- * tools/profiles.ts). Pure data + pure functions, so `bun test` covers the
+ * The editor's own UX profile: everything a preset changes about how the
+ * editor *behaves* beyond the line its brush draws (that lives in
+ * `tools/brush.ts`). Pure data + pure functions, so `bun test` covers the
  * branching and the runes state stays a thin caller.
  *
- * `multator` reproduces the reference multator.ru editor (Main.hx /
- * DrawField.hx / ToolPanel.hx), `toonio` the reference toonio.ru editor
- * (toonio.bundle.js / tools.js / editor.html); `toonop` is the editor's own
- * behavior.
+ * Only `toonop` is here. A preset that reproduces somebody else's editor
+ * brings its own profile in its plugin — the editor holds no table of them.
  */
 
-import { plugins } from '../plugins';
-import {
-  DEFAULT_FPS,
-  MIN_BRUSH_SIZE_LOGICAL,
-  PLAYER_FPS_MAX,
-  PLAYER_FPS_MIN,
-} from '../format/constants';
+import type { UxProfile } from '../plugins/contract';
+import { DEFAULT_FPS, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
 
-export type UxProfileId = 'toonop' | 'multator' | 'toonio';
-export type SelectableTool =
-  | 'pencil'
-  | 'eraser'
-  | 'pipette'
-  | 'feather'
-  | 'pixel'
-  | 'mega-eraser'
-  /** Hand: drags the canvas under a zoom window (reference `Drag`). */
-  | 'drag'
-  /** Lasso: takes the frame on every selected layer and opens the transform window. */
-  | 'lasso'
-  /** Distort: shakes the frame's points as the pointer travels (reference `Distort`). */
-  | 'distort';
+export type { UxProfile };
 
-const BASE_TOOLS: readonly SelectableTool[] = ['pencil', 'eraser', 'pipette'];
 /**
  * Toonop started from the Tonio toolbar and keeps the pixel tool the
- * reference never showed. Spelled out rather than built from TONIO_TOOLS:
- * toonop is ours to change without moving the parity preset.
+ * reference never showed. The pixel comes from the shipped plugin; naming it
+ * here costs nothing when it is absent — a tool the register does not hold is
+ * simply not placed.
  */
-const TOONOP_TOOLS: readonly SelectableTool[] = [
+const TOONOP_TOOLS: readonly string[] = [
   'pencil',
   'eraser',
   'feather',
@@ -50,167 +30,38 @@ const TOONOP_TOOLS: readonly SelectableTool[] = [
   'distort',
   'pixel',
 ];
+
 /** Toonop's own brush ceiling, inherited from the Tonio slider. */
 const TOONOP_MAX_BRUSH_SIZE_LOGICAL = 500;
-/** tools.js: ERASER, PENCIL, FEATHER, MEGAERASER, plus the picker — no pixel button. */
-const TONIO_TOOLS: readonly SelectableTool[] = [
-  'pencil',
-  'eraser',
-  'feather',
-  'mega-eraser',
-  'pipette',
-  'drag',
-  'lasso',
-  'distort',
-];
 
-/** Tonio's brush ceiling (editor.html slider max). */
-const TONIO_MAX_BRUSH_SIZE_LOGICAL = 500;
-
-export interface UxProfile {
-  /** Two-swatch quick palette shown while the full picker is collapsed; null = always the full picker. */
-  readonly quickPalette: readonly string[] | null;
-  /** White is the eraser marker: choosing it (or the pencil while white) arms the eraser. */
-  readonly whiteIsEraser: boolean;
-  /** The pipette is only offered while the full palette is expanded. */
-  readonly pipetteNeedsPalette: boolean;
-  /**
-   * The pipette is not a rail button: the reference keeps it in the palette's
-   * foot alone (`E:205-208`). It stays reachable by P and by that button.
-   */
-  readonly pipetteOffRail: boolean;
-  /** Which neighbors the onion skin shows (only read in the 'neighbors' mode). */
-  readonly onionSides: 'both' | 'previous';
-  /** Onion model: fading neighbors, or Tonio's last visited frames. */
-  readonly onionMode: 'neighbors' | 'history';
-  /** A persistent grid of saved colors next to the picker (Tonio). */
-  readonly colorGrid: boolean;
-  /** Allowed player fps range. */
-  readonly fpsRange: readonly [number, number];
-  /** The pipette follows the pointer with a live color swatch (Tonio). */
-  readonly livePipettePreview: boolean;
-  /** Cursor draws a crosshair for very thin and very thick brushes (Tonio). */
-  readonly crossCursor: boolean;
-  /** Tools the preset's starting arrangement places, in toolbar order. */
-  readonly tools: readonly SelectableTool[];
-  /** Opacity the active frame (with its live stroke) is composited at. */
-  readonly activeFrameAlpha: number;
-  /** Which neighbor becomes active after deleting a frame. */
-  readonly afterRemove: 'next' | 'previous';
-  /** Playback starts from the first frame instead of the active one. */
-  readonly playFromStart: boolean;
-  /**
-   * What Space plays: the whole document, or (Tonio) the frame selection when
-   * it spans more than one frame — with a one-frame document refusing to play.
-   */
-  readonly playbackRange: 'document' | 'selection';
-  /** Where a new layer lands relative to the active one; Ctrl inverts it. */
-  readonly newLayerPosition: 'above' | 'below';
-  /** A new stroke leaves the redo buffer alone (Tonio) instead of clearing it. */
-  readonly redoSurvivesStroke: boolean;
-  /** Frame rate a fresh document gets under this preset. */
-  readonly defaultFps: number;
-  /** Upper bound for the +/- brush nudge (logical px). */
-  readonly brushSizeMax: number;
-  /** Adaptive +/- step (1 below 10, 5 below 50, else 10) instead of a flat 1. */
-  readonly adaptiveBrushStep: boolean;
-  /**
-   * How the editor's canvas is rasterised. `device` takes the screen's
-   * `devicePixelRatio`; `document` takes one bitmap pixel per document pixel,
-   * the way toonio.ru draws into a fixed 1280×720 bitmap the browser then
-   * scales. It is the preset's, not the brush's: a document has one bitmap.
-   */
-  readonly canvasDensity: 'device' | 'document';
-  /** Alt+S downloads the project as a file instead of opening the export. */
-  readonly projectFile: boolean;
-}
-
-export const UX_PROFILES: Readonly<Record<UxProfileId, UxProfile>> = {
-  // The editor's own mode: it took the toonio.ru behaviour whole, then went on
-  // by itself. Every value is written out here, never read from `toonio`, so a
-  // parity fix there never moves toonop and vice versa.
-  toonop: {
-    quickPalette: null,
-    whiteIsEraser: false,
-    pipetteNeedsPalette: false,
-    pipetteOffRail: true,
-    onionSides: 'both',
-    activeFrameAlpha: 1,
-    afterRemove: 'next',
-    playFromStart: false,
-    playbackRange: 'selection',
-    newLayerPosition: 'below',
-    redoSurvivesStroke: true,
-    defaultFps: DEFAULT_FPS,
-    brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
-    adaptiveBrushStep: false,
-    canvasDensity: 'device',
-    projectFile: false,
-    onionMode: 'history',
-    colorGrid: true,
-    fpsRange: [1, 30],
-    livePipettePreview: true,
-    crossCursor: true,
-    tools: TOONOP_TOOLS,
-  },
-  // toonio.ru: onion over the last visited frames, saved color grid, fps 1–30,
-  // a pipette that previews while it moves, brush up to 500.
-  toonio: {
-    quickPalette: null,
-    whiteIsEraser: false,
-    pipetteNeedsPalette: false,
-    pipetteOffRail: true,
-    onionSides: 'both',
-    activeFrameAlpha: 1,
-    afterRemove: 'next',
-    playFromStart: false,
-    playbackRange: 'selection',
-    newLayerPosition: 'below',
-    redoSurvivesStroke: true,
-    defaultFps: DEFAULT_FPS,
-    brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
-    adaptiveBrushStep: false,
-    // The reference draws into a 1280×720 bitmap and lets the browser scale it.
-    canvasDensity: 'document',
-    projectFile: true,
-    onionMode: 'history',
-    colorGrid: true,
-    fpsRange: [1, 30],
-    livePipettePreview: true,
-    crossCursor: true,
-    tools: TONIO_TOOLS,
-  },
-  multator: {
-    // ToolPanel.hx: pc1 = 0x000000, pc2 = 0xFF0000; the full picker is behind M.
-    quickPalette: ['#000000', '#ff0000'],
-    whiteIsEraser: true,
-    pipetteNeedsPalette: true,
-    pipetteOffRail: false,
-    // DrawField.hx: backContainerSprite (0.3) and backContainerSprite2 (0.1)
-    // hold the previous frames; containerSprite.alpha = 0.8 is the drawing.
-    onionSides: 'previous',
-    activeFrameAlpha: 0.8,
-    // Main.hx onDelFrame: curFrame-- unless already at 0.
-    afterRemove: 'previous',
-    // Main.hx onPlayMovie: playFrame = 0.
-    playFromStart: true,
-    playbackRange: 'document',
-    newLayerPosition: 'above',
-    redoSurvivesStroke: false,
-    // draw31.fla stage is 30 fps, doPlay runs every 6th tick → 5 fps.
-    defaultFps: 5,
-    // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps.
-    brushSizeMax: 300,
-    adaptiveBrushStep: true,
-    canvasDensity: 'device',
-    projectFile: false,
-    onionMode: 'neighbors',
-    colorGrid: false,
-    fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
-    livePipettePreview: false,
-    crossCursor: false,
-    tools: BASE_TOOLS,
-  },
+/**
+ * The editor's own mode: it took the toonio.ru behaviour whole, then went on
+ * by itself. Every value is written out here, never read from a parity
+ * profile, so a parity fix never moves toonop and vice versa.
+ */
+export const TOONOP_UX: UxProfile = {
+  quickPalette: null,
+  whiteIsEraser: false,
+  pipetteNeedsPalette: false,
+  pipetteOffRail: true,
+  onionSides: 'both',
+  activeFrameAlpha: 1,
+  afterRemove: 'next',
+  playFromStart: false,
+  playbackRange: 'selection',
+  newLayerPosition: 'below',
+  redoSurvivesStroke: true,
+  defaultFps: DEFAULT_FPS,
+  brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
+  adaptiveBrushStep: false,
+  canvasDensity: 'device',
+  projectFile: false,
+  onionMode: 'history',
+  colorGrid: true,
+  fpsRange: [1, 30],
+  livePipettePreview: true,
+  crossCursor: true,
+  tools: TOONOP_TOOLS,
 };
 
 /** Brush size after a +/- nudge (dir = ±1) under the profile's stepping rule. */
@@ -248,15 +99,6 @@ export function resolveToolSelection(
     return 'eraser';
   }
   return tool;
-}
-
-/**
- * Whether a tool interrupts drawing instead of replacing it (reference
- * `helpTool`). The trait comes from the tool's own manifest, not from a list
- * of names here — a plugin says it about itself.
- */
-export function isHelpTool(tool: string): boolean {
-  return plugins.tool(tool)?.help === true;
 }
 
 /**

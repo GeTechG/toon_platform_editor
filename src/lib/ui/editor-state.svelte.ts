@@ -13,6 +13,7 @@ import {
   MAX_LAYERS,
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
+  MIN_BRUSH_SIZE_LOGICAL,
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
@@ -93,8 +94,10 @@ import {
 import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
-import { plugins } from '../plugins';
-import { brushIdForCanvas } from '../plugins/brushes';
+import { isHelpTool, plugins } from '../plugins';
+import type { PluginBrush } from '../plugins/contract';
+import { toonopRules } from '../tools/brush';
+import type { StrokeRules } from '../tools/profiles';
 import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
 import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from '../plugins/install';
 import { listInstalled, removeInstalled } from '../plugins/store';
@@ -115,7 +118,6 @@ export interface TransformState {
 }
 import {
   nudgeBrushSize,
-  isHelpTool,
   resolveToolSelection,
   toolAfterColorChange,
   toolAfterHelp,
@@ -148,13 +150,15 @@ import {
   DEFAULT_DRAWING_UI_CONFIG,
   BRUSH_TOOLS,
   brushToolOf,
+  FALLBACK_BRUSH,
   brushUsesSmoothing,
-  BRUSH_RANGE,
-  DEFAULT_BRUSH,
+  canvasKeyOf,
+  defaultBrushOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetBrushType,
   presetDefaultBrush,
+  presetExists,
   presetPanels,
   presetUx,
   saveUiConfig,
@@ -163,10 +167,9 @@ import {
   SIDE_WIDTH_MAX,
   SIDE_WIDTH_MIN,
   type BrushToolId,
-  type BrushId,
   type EditorSettings,
   type SideId,
-  type TonioBrush,
+  type BrushRecord,
 } from './presets';
 
 /**
@@ -177,11 +180,11 @@ import {
 export type Tool = string;
 
 /** Fresh brush records, so a load or a save never shares objects with the config. */
-function copyBrushes(source: Record<BrushToolId, TonioBrush>): Record<BrushToolId, TonioBrush> {
+function copyBrushes(source: Record<BrushToolId, BrushRecord>): Record<BrushToolId, BrushRecord> {
   return BRUSH_TOOLS.reduce((all, tool) => {
     all[tool] = { ...source[tool] };
     return all;
-  }, {} as Record<BrushToolId, TonioBrush>);
+  }, {} as Record<BrushToolId, BrushRecord>);
 }
 
 /**
@@ -264,14 +267,14 @@ export class EditorState {
    * preset's. Nothing else hangs on it: how the canvas is rasterised and what
    * Alt+S saves belong to the UX profile, and a width belongs to the brush.
    */
-  defaultBrush = $state<BrushId>(presetDefaultBrush(DEFAULT_PRESET));
-  multatorByTool = $state<Record<BrushToolId, TonioBrush>>(copyBrushes(DEFAULT_DRAWING_UI_CONFIG.multatorByTool));
+  defaultBrush = $state<string>(presetDefaultBrush(DEFAULT_PRESET));
   /**
-   * Tonio width, smoothing and minimum per tool: the reference keeps a brush
-   * for the pencil, the eraser, the feather and the mega-eraser, and picking
-   * a tool puts its own numbers back in the sliders.
+   * Width, smoothing and minimum per brush, bucketed by the width of the
+   * canvas it measures on: a brush keeps one record per canvas, and picking a
+   * tool puts its own numbers back in the sliders. A bucket appears the first
+   * time a slider moves on that canvas.
    */
-  tonioByTool = $state<Record<BrushToolId, TonioBrush>>(copyBrushes(DEFAULT_DRAWING_UI_CONFIG.tonioByTool));
+  byCanvas = $state<Record<string, Record<BrushToolId, BrushRecord>>>({});
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Second color: the feather fills with it, the pipette takes it on right-click. */
   fillColor = $state(DEFAULT_FILL_COLOR);
@@ -411,6 +414,8 @@ export class EditorState {
    * drag handle rather than a control. Session state — a mode, not a setting.
    */
   arranging = $state(false);
+  /** The saved preset is not in the register yet; its plugin may still arrive. */
+  private presetPending = false;
   /** Where each floating item sits, in stage coordinates (persisted). */
   floatPos = $state<Record<string, { x: number; y: number }>>({});
   /** Named arrangements, stored on their own key (they outlive a preset). */
@@ -434,11 +439,13 @@ export class EditorState {
     const saved = loadUiConfig();
     if (saved) {
       this.preset = saved.preset;
+      this.presetPending = !presetExists(saved.preset);
       this.panels = saved.panels;
       this.floatPos = saved.floatPos;
-      this.defaultBrush = saved.drawing.activeProfile;
-      this.multatorByTool = copyBrushes(saved.drawing.multatorByTool);
-      this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
+      this.defaultBrush = saved.drawing.defaultBrush;
+      this.byCanvas = Object.fromEntries(
+        Object.entries(saved.drawing.byCanvas).map(([canvas, byTool]) => [canvas, copyBrushes(byTool)]),
+      );
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
       this.sides = saved.drawing.sides;
@@ -506,9 +513,43 @@ export class EditorState {
    * different brush to the person drawing — switching it MUST NOT move the
    * slider or its ceiling.
    */
-  get brushCanvas(): BrushId {
-    const own = plugins.tool(this.tool)?.stroke?.rules?.()?.canvas;
-    return own === undefined ? this.defaultBrush : brushIdForCanvas(own, this.defaultBrush);
+  get brushCanvas(): string {
+    return canvasKeyOf(plugins.probeRules(this.tool)?.canvas ?? plugins.probeRules(this.defaultBrush)?.canvas);
+  }
+
+  /** The brush record as a plugin sees it: what `rules()` and `descriptor()` get. */
+  get pluginBrush(): PluginBrush {
+    const brush = this.brush;
+    return {
+      width: brush.width,
+      color: this.brushColor,
+      fill: this.fillColor,
+      smooth: brush.smooth,
+      minDistance: brush.minDistance,
+    };
+  }
+
+  /**
+   * The rules the width is measured by: the tool in hand when it named its
+   * own, the preset's brush otherwise. The tool in hand and not the twin a
+   * type resolves to — switching a type MUST NOT move the slider.
+   */
+  get widthRules(): StrokeRules | undefined {
+    return plugins.tool(this.tool)?.stroke?.rules?.(this.pluginBrush)
+      ?? plugins.tool(this.defaultBrush)?.stroke?.rules?.(this.pluginBrush);
+  }
+
+  /** The rules the gesture actually runs under: those of the brush that draws. */
+  get brushRules(): StrokeRules {
+    return plugins.tool(this.brushTool)?.stroke?.rules?.(this.pluginBrush)
+      ?? plugins.tool(this.defaultBrush)?.stroke?.rules?.(this.pluginBrush)
+      // Nothing registered at all: the editor still draws with its own brush.
+      ?? toonopRules(this.pluginBrush);
+  }
+
+  /** What a width may be on the canvas in hand — the brush says, else the profile. */
+  get brushRange(): { min: number; max: number } {
+    return this.widthRules?.range ?? { min: MIN_BRUSH_SIZE_LOGICAL, max: this.ux.brushSizeMax };
   }
 
   /**
@@ -517,15 +558,19 @@ export class EditorState {
    * canvas's default; the record itself is written only when a slider moves,
    * because a getter runs inside `$derived` and MUST NOT touch state there.
    */
-  get brush(): TonioBrush {
-    const byTool = this.brushCanvas === 'multator' ? this.multatorByTool : this.tonioByTool;
-    return byTool[brushToolOf(this.tool)] ?? DEFAULT_BRUSH[this.brushCanvas];
+  get brush(): BrushRecord {
+    return this.byCanvas[this.brushCanvas]?.[brushToolOf(this.tool)] ?? defaultBrushOf(this.brushSource);
+  }
+
+  /** Whose defaults a brush met for the first time reads: its own, else the preset's. */
+  private get brushSource(): string {
+    return plugins.probeRules(this.tool) ? this.tool : this.defaultBrush;
   }
 
   /** One slider move: the record of this brush on this canvas, written whole. */
-  private editBrush(patch: Partial<TonioBrush>): void {
-    const byTool = this.brushCanvas === 'multator' ? this.multatorByTool : this.tonioByTool;
-    byTool[brushToolOf(this.tool)] = { ...this.brush, ...patch };
+  private editBrush(patch: Partial<BrushRecord>): void {
+    const canvas = this.brushCanvas;
+    this.byCanvas[canvas] = { ...this.byCanvas[canvas], [brushToolOf(this.tool)]: { ...this.brush, ...patch } };
     this.persistUiConfig();
   }
 
@@ -538,11 +583,11 @@ export class EditorState {
     return brushUsesSmoothing(this.brushTool, this.defaultBrush);
   }
 
-  get tonioSmooth(): number {
+  get brushSmooth(): number {
     return this.brush.smooth;
   }
 
-  get tonioMinDistance(): number {
+  get brushMinDistance(): number {
     return this.brush.minDistance;
   }
 
@@ -556,19 +601,19 @@ export class EditorState {
    * 500 because a Tonio preset is open around it.
    */
   get brushSizeMax(): number {
-    return Math.min(this.ux.brushSizeMax, BRUSH_RANGE[this.brushCanvas].max);
+    return Math.min(this.ux.brushSizeMax, this.brushRange.max);
   }
 
   set brushSizeLogical(value: number) {
-    const range = BRUSH_RANGE[this.brushCanvas];
+    const range = this.brushRange;
     this.editBrush({ width: Math.min(range.max, Math.max(range.min, Math.round(value))) });
   }
 
-  setTonioSmooth(value: number): void {
+  setBrushSmooth(value: number): void {
     this.editBrush({ smooth: Math.min(100, Math.max(1, Math.round(value))) });
   }
 
-  setTonioMinDistance(value: number): void {
+  setBrushMinDistance(value: number): void {
     this.editBrush({ minDistance: Math.min(30, Math.max(0, Math.round(value))) });
   }
 
@@ -1116,9 +1161,9 @@ export class EditorState {
     const widths: Record<string, number> = {};
     const smooth: Record<string, number> = {};
     const minDistance: Record<string, number> = {};
-    // Keyed by brush and canvas both: a record written for the Tonio pencil is
-    // not the Multator one. Plain keys are what older drafts wrote.
-    for (const [canvas, byTool] of [['toonio', this.tonioByTool], ['multator', this.multatorByTool]] as const) {
+    // Keyed by brush and canvas both: a record written for a brush of one
+    // canvas is not the record of a brush of another.
+    for (const [canvas, byTool] of Object.entries(this.byCanvas)) {
       for (const [id, brush] of Object.entries(byTool)) {
         widths[`${canvas}:${id}`] = brush.width;
         smooth[`${canvas}:${id}`] = brush.smooth;
@@ -1141,19 +1186,24 @@ export class EditorState {
 
   /** Puts it back after a draft is opened. Anything missing is left as it is. */
   restoreState(saved: DraftState): void {
-    for (const [canvas, byTool] of [['toonio', this.tonioByTool], ['multator', this.multatorByTool]] as const) {
+    // Whatever canvases the draft wrote down, plus the ones already in hand:
+    // a brush met for the first time takes its own defaults.
+    const canvases = new Set([
+      ...Object.keys(this.byCanvas),
+      ...Object.keys(saved.widths ?? {}).map((key) => key.split(':')[0]),
+    ]);
+    for (const canvas of canvases) {
+      const byTool = { ...this.byCanvas[canvas] };
       const ids = new Set([...BRUSH_TOOLS, ...Object.keys(byTool)]);
       for (const id of ids) {
-        // A draft written before the split keyed the Tonio records by tool
-        // alone and held one width for the whole Multator canvas.
-        const legacy = canvas === 'toonio' ? id : 'multator';
-        const was = byTool[id] ?? DEFAULT_BRUSH[canvas];
+        const was = byTool[id] ?? FALLBACK_BRUSH;
         byTool[id] = {
-          width: saved.widths?.[`${canvas}:${id}`] ?? saved.widths?.[legacy] ?? was.width,
-          smooth: saved.smooth?.[`${canvas}:${id}`] ?? saved.smooth?.[legacy] ?? was.smooth,
-          minDistance: saved.minDistance?.[`${canvas}:${id}`] ?? saved.minDistance?.[legacy] ?? was.minDistance,
+          width: saved.widths?.[`${canvas}:${id}`] ?? was.width,
+          smooth: saved.smooth?.[`${canvas}:${id}`] ?? was.smooth,
+          minDistance: saved.minDistance?.[`${canvas}:${id}`] ?? was.minDistance,
         };
       }
+      this.byCanvas[canvas] = byTool;
     }
     if (saved.outline) {
       this.brushColor = saved.outline;
@@ -1830,6 +1880,13 @@ export class EditorState {
    * cannot stay in hand.
    */
   refreshPlugins(): void {
+    // A preset whose plugin was not there when the config was read: the
+    // choice was kept, so the moment the plugin arrives the editor opens the
+    // way it was left.
+    if (this.presetPending && presetExists(this.preset)) {
+      this.presetPending = false;
+      this.applyPreset(this.preset);
+    }
     this.panels = normalizePanels(this.panels);
     this.pluginsVersion++;
     if (!plugins.tool(this.tool)) {
@@ -1937,9 +1994,10 @@ export class EditorState {
         this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
       ) as Record<string, { x: number; y: number }>,
       drawing: {
-        activeProfile: this.defaultBrush,
-        tonioByTool: copyBrushes(this.tonioByTool),
-        multatorByTool: copyBrushes(this.multatorByTool),
+        defaultBrush: this.defaultBrush,
+        byCanvas: Object.fromEntries(
+          Object.entries(this.byCanvas).map(([canvas, byTool]) => [canvas, copyBrushes(byTool)]),
+        ),
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
         sides: $state.snapshot(this.sides),

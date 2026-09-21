@@ -7,7 +7,7 @@
    * native <dialog>, like the settings sheet: showModal() brings the focus
    * trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
-  import { plugins } from '../plugins';
+  import { BUNDLED_PLUGIN, plugins } from '../plugins';
   import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
@@ -35,13 +35,32 @@
     installed = await listInstalled();
   }
 
+  /**
+   * The delivery first, then what was installed. It is a plugin like any
+   * other — the same register, the same breakage — but not a choice anybody
+   * made, so there is nothing to take off.
+   */
+  const delivery: InstalledPlugin = {
+    id: BUNDLED_PLUGIN.id,
+    name: BUNDLED_PLUGIN.name ?? BUNDLED_PLUGIN.id,
+    version: BUNDLED_PLUGIN.version ?? '',
+    description: BUNDLED_PLUGIN.description ?? '',
+    icon: '',
+    code: '',
+    source: 'bundled',
+    installed: 0,
+  };
+  const listed = $derived([delivery, ...installed]);
+
   // The catalog is read when the window opens and again whenever the address
   // changes — an author pointing the editor at their own build sees it at once.
   $effect(() => {
     const address = editor.settings.pluginCatalog;
     void (async () => {
       const read = await readCatalog(address);
-      catalog = read.plugins;
+      // A record under the delivery's id is not on offer: the delivery
+      // changes with the editor, not past it.
+      catalog = read.plugins.filter((entry) => !plugins.isBundled(entry.id));
       catalogError = read.error ?? '';
     })();
   });
@@ -159,9 +178,10 @@
       </div>
       {#if installed.length === 0}
         <p class="empty">Ничего не установлено. Поставьте плагин из каталога или своим файлом.</p>
-      {:else}
+      {/if}
+      {#if listed.length > 0}
         <ul class="plugins">
-          {#each installed as plugin (plugin.id)}
+          {#each listed as plugin (plugin.id)}
             <li class:off={broken(plugin.id)}>
               <span class="icon" aria-hidden="true">
                 {#if plugin.icon}<Icon name={plugin.icon} />{/if}
@@ -169,7 +189,9 @@
               <span class="about">
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
                 <small>
-                  {plugin.source === 'local' ? 'поставлен файлом' : 'из каталога'}
+                  {plugin.source === 'bundled'
+                    ? 'в поставке'
+                    : plugin.source === 'local' ? 'поставлен файлом' : 'из каталога'}
                   {#if broken(plugin.id)}
                     — отключён после ошибки, подробности в консоли
                   {/if}
@@ -178,7 +200,9 @@
               {#if broken(plugin.id)}
                 <button class="key" onclick={() => editor.enablePlugin(plugin.id)}>Включить</button>
               {/if}
-              <button class="key" onclick={() => remove(plugin)}>Удалить</button>
+              {#if plugin.source !== 'bundled'}
+                <button class="key" onclick={() => remove(plugin)}>Удалить</button>
+              {/if}
             </li>
           {/each}
         </ul>

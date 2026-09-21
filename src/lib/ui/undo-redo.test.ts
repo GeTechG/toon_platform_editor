@@ -191,8 +191,8 @@ describe('the brush each tool remembers', () => {
   it('the sliders read and write this brush on the canvas it draws on', () => {
     expect(member(state, 'get brush')).toContain('brushToolOf(this.tool)');
     expect(member(state, 'get brush')).toContain('brushCanvas');
-    expect(member(state, 'setTonioSmooth')).toContain('editBrush({ smooth');
-    expect(member(state, 'setTonioMinDistance')).toContain('editBrush({ minDistance');
+    expect(member(state, 'setBrushSmooth')).toContain('editBrush({ smooth');
+    expect(member(state, 'setBrushMinDistance')).toContain('editBrush({ minDistance');
     expect(member(state, 'set brushSizeLogical')).toContain('editBrush({ width');
     // The getter runs inside `$derived`: it may read a record, never write one
     // (Svelte forbids touching state there — `state_unsafe_mutation`).
@@ -206,13 +206,17 @@ describe('the brush each tool remembers', () => {
   });
 
   it('the slider stops where the brush’s own canvas stops', () => {
-    expect(member(state, 'get brushSizeMax')).toContain('BRUSH_RANGE[this.brushCanvas]');
+    expect(member(state, 'get brushSizeMax')).toContain('this.brushRange');
+    expect(member(state, 'get brushRange')).toContain('this.widthRules?.range');
     expect(brushPanel).toContain('editor.brushSizeMax');
   });
 
   it('every record is persisted, so a brush keeps its width across sessions', () => {
     const persist = member(state, 'private persistUiConfig');
-    expect(persist).toContain('tonioByTool:');
-    expect(persist).toContain('multatorByTool:');
+    expect(persist).toContain('byCanvas:');
+    // Keyed by the canvas a brush measures on, never by the name of anyone's
+    // editor: that name is not something the editor knows any more.
+    expect(persist).not.toContain('tonio');
+    expect(persist).not.toContain('multator');
   });
 });

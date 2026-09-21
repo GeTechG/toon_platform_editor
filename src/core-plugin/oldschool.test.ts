@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { LineToolDescriptor } from '../format/types';
-import { plugins } from '.';
-import { brushOfType } from './brush-types';
-import { OLDSCHOOL_TWIN } from './oldschool';
+import type { LineToolDescriptor } from '../lib/format/types';
+import { plugins } from '../lib/plugins';
+import { brushOfType } from '../lib/plugins/brush-types';
+import corePlugin from '.';
 
 const PENCIL: LineToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' };
 const ERASER: LineToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 64 };
 
 function commit(id: string, descriptor: LineToolDescriptor, points: readonly number[], coordinateScale = 1) {
-  const stroke = plugins.tool(id)?.stroke?.rules?.()?.commit;
+  const stroke = plugins.probeRules(id)?.commit;
   if (!stroke) throw new Error(`${id} commits nothing`);
   return stroke(points, descriptor, { coordinateScale });
 }
 
 describe('the oldschool pen is a brush', () => {
   it('fixes the Multator canvas, whatever preset holds it', () => {
-    expect(plugins.tool('oldschool')?.stroke?.rules?.()?.canvas).toBe(600);
-    expect(plugins.tool('oldschool-eraser')?.stroke?.rules?.()?.canvas).toBe(600);
+    expect(plugins.probeRules('oldschool')?.canvas).toBe(600);
+    expect(plugins.probeRules('oldschool-eraser')?.canvas).toBe(600);
   });
 
   it('is on no preset panel — it is a type of the brush in hand, not a key', () => {
@@ -41,8 +41,8 @@ describe('the oldschool pen is a brush', () => {
   it('has no twin for the feather — a contour carries no fill', () => {
     // The reference ignored its flag for the feather; here the protection is
     // structural: there is no oldschool feather to pick as a type.
-    expect(Object.keys(OLDSCHOOL_TWIN)).toEqual(['pencil', 'eraser']);
-    expect(plugins.tool('feather')?.stroke?.rules?.()).toBeUndefined();
+    expect(Object.keys(corePlugin.brushTypes!.old.twins)).toEqual(['pencil', 'eraser']);
+    expect(plugins.probeRules('feather')).toBeUndefined();
   });
 
   it('is the old type of the brush in hand, not a tool of its own', () => {
@@ -63,7 +63,7 @@ describe('the oldschool pen is a brush', () => {
     // itself. It finds a tool's policy by primitive kind, so a second brush of
     // kind `pencil` declaring one would change how every pencil stroke is cut.
     expect(plugins.tools().filter((t) => t.stroke?.kind === 'pencil').map((t) => t.id))
-      .toEqual(['pencil', 'oldschool', 'multator-pencil']);
+      .toEqual(['pencil', 'toonop-brush', 'multator-pencil', 'oldschool', 'toonio-brush']);
     expect(plugins.tools()
       .filter((t) => t.stroke?.kind === 'pencil' || t.stroke?.kind === 'eraser')
       .filter((t) => t.stroke?.cut !== undefined))

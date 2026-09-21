@@ -13,8 +13,13 @@
  * Geometry is pure and takes the RNG as a parameter, so it is testable.
  */
 
-import { FIXED_POINT_SCALE, LANG_LOOK_AHEAD, STROKE_COORD_MAX, STROKE_COORD_MIN } from '../format/constants';
-import { simplifyLang } from './simplify';
+import {
+  FIXED_POINT_SCALE,
+  LANG_LOOK_AHEAD,
+  STROKE_COORD_MAX,
+  STROKE_COORD_MIN,
+} from '../lib/format/constants';
+import { simplifyLang } from '../lib/tools/simplify';
 
 /** Lang tolerance the oldschool pen uses, in logical px (the normal pen uses 10). */
 export const OLDSCHOOL_LANG_TOLERANCE_LOGICAL = 5;

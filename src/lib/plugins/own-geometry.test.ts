@@ -40,15 +40,17 @@ const ribbonRules: StrokeRules = {
 const ribbon: Plugin = {
   id: 'ribbon',
   api: PLUGIN_API,
-  tool: {
-    icon: '<svg viewBox="0 0 16 16"></svg>',
-    title: 'Лента',
-    label: 'Лента',
-    key: 'R',
-    stroke: {
-      kind: 'pencil',
-      rules: () => ribbonRules,
-      descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'cubic', width, color }),
+  tools: {
+    ribbon: {
+      icon: '<svg viewBox="0 0 16 16"></svg>',
+      title: 'Лента',
+      label: 'Лента',
+      key: 'R',
+      stroke: {
+        kind: 'pencil',
+        rules: () => ribbonRules,
+        descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'cubic', width, color }),
+      },
     },
   },
 };
@@ -86,7 +88,7 @@ describe('a brush the editor never heard of', () => {
   it('registers like any other and brings its own rules', () => {
     const registry = new PluginRegistry();
     expect(registry.register(ribbon)).toBeNull();
-    expect(registry.tool('ribbon')?.stroke?.rules?.()?.canvas).toBe(800);
+    expect(registry.probeRules('ribbon')?.canvas).toBe(800);
   });
 
   it('lands a stroke of its own geometry that the format accepts', () => {

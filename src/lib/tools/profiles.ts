@@ -77,6 +77,16 @@ export interface StrokeRules {
    * share of the picture whatever the document.
    */
   readonly canvas: number;
+  /**
+   * What a width may be on this canvas, in its logical pixels. Absent means
+   * "whatever the preset's UX profile allows" — the editor holds no table of
+   * ceilings per brush.
+   */
+  readonly range?: { readonly min: number; readonly max: number };
+  /** What a fresh record of this brush starts at. */
+  readonly defaults?: { readonly width: number; readonly smooth: number; readonly minDistance: number };
+  /** Whether the smoothing pair reaches this brush at all. */
+  readonly smoothing?: boolean;
   /** Folds a batch of pointer samples into the points collected so far. */
   capture(line: readonly number[], batch: readonly number[], width: number): number[];
   /** The line under the hand, before the thinning the commit does. */

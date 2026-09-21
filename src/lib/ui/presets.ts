@@ -9,10 +9,9 @@
  * hide the way back.
  */
 
-import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
-import type { BrushType } from '../plugins/brush-types';
-import type { BrushId } from '../plugins/brushes';
+import { NORMAL_BRUSH_TYPE, type BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
+import type { RegisteredPreset } from '../plugins/registry';
 import type { PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
@@ -23,12 +22,9 @@ import {
   toolOfItem,
   toolSpec,
   type PanelLayout,
-  type PresetPanels,
 } from './panels';
 import type { PickerModel } from './picker-model';
-import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
-
-export type { BrushId };
+import { type UxProfile } from './ux-profile';
 
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
@@ -50,56 +46,56 @@ export function brushToolOf(tool: string): BrushToolId {
 }
 
 /**
- * Whether the smoothing pair reaches a brush at all. Both numbers are applied
- * by the Tonio commit and by nothing else: a brush of the Multator canvas is
- * simplified by Lang instead, and one that collects its own points or commits
- * by its own rule never passes through either.
+ * Whether the smoothing pair reaches a brush at all: the brush says so itself.
+ * A tool without rules of its own follows the brush the preset named.
  */
-export function brushUsesSmoothing(tool: string, brush: BrushId): boolean {
-  // A brush that brought its own rules is thinned by them, whatever the panel
-  // is set to; only a tool drawing by the preset's brush follows the sliders.
-  if (plugins.tool(tool)?.stroke?.rules?.()) {
-    return false;
-  }
-  return brush === 'toonio';
+export function brushUsesSmoothing(tool: string, brush: string): boolean {
+  return brushRulesOf(tool, brush)?.smoothing === true;
 }
 
-/** What a brush starts at on each canvas — the reference's own defaults. */
-export const DEFAULT_BRUSH: Record<BrushId, TonioBrush> = {
-  toonio: { width: 5, smooth: 3, minDistance: 3 },
-  multator: { width: 4, smooth: 3, minDistance: 3 },
-};
+/** The rules the tool in hand draws by: its own, else the preset's brush. */
+export function brushRulesOf(tool: string, brush: string) {
+  return plugins.probeRules(tool) ?? plugins.probeRules(brush);
+}
+
+/** What a brush starts at when it declares nothing of its own. */
+export const FALLBACK_BRUSH: BrushRecord = { width: 4, smooth: 3, minDistance: 3 };
+
+/** What a brush of this canvas starts at, as the brush itself says. */
+export function defaultBrushOf(brush: string): BrushRecord {
+  return { ...FALLBACK_BRUSH, ...plugins.probeRules(brush)?.defaults };
+}
 
 /** The same record for each brush a fresh config writes down. */
-function byTool(brush: TonioBrush): Record<BrushToolId, TonioBrush> {
+function byTool(brush: BrushRecord): Record<BrushToolId, BrushRecord> {
   return Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, { ...brush }]));
 }
 
 /**
- * What a brush width may be, in logical pixels of the canvas it is measured
- * on. Tonio's slider goes to 500, Multator's row of dots to 300 — a property
- * of the canvas, not of the brush that draws on it.
+ * The bucket a brush's records live in: the width of the canvas it measures
+ * on. Five pixels of a 1280-wide canvas are not five of a 600-wide one, so
+ * each keeps its own record — and the key is the number, never a name.
  */
-export const BRUSH_RANGE: Record<BrushId, { min: number; max: number }> = {
-  toonio: { min: 1, max: 500 },
-  multator: { min: MIN_BRUSH_SIZE_LOGICAL, max: MAX_BRUSH_SIZE_LOGICAL },
-};
+export function canvasKeyOf(canvas: number | undefined): string {
+  return String(canvas ?? 0);
+}
 
-export interface TonioBrush {
+export interface BrushRecord {
   width: number;
   smooth: number;
   minDistance: number;
 }
 
 export interface DrawingUiConfig {
-  activeProfile: BrushId;
+  /** The brush the preset named: the tool whose rules an unopinionated one follows. */
+  defaultBrush: string;
   /**
    * Width, smoothing and minimum per brush, on each canvas it draws on: five
-   * pixels of Tonio's 1280-wide canvas are not five of Multator's 600, so a
-   * brush keeps a record on each — and two brushes of one canvas keep two.
+   * pixels of a 1280-wide canvas are not five of a 600-wide one, so a brush
+   * keeps a record on each — and two brushes of one canvas keep two. The key
+   * is the canvas width, never the name of somebody's editor.
    */
-  tonioByTool: Record<BrushToolId, TonioBrush>;
-  multatorByTool: Record<BrushToolId, TonioBrush>;
+  byCanvas: Record<string, Record<BrushToolId, BrushRecord>>;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
@@ -151,10 +147,13 @@ export const PANEL_HEIGHT_MAX = 2000;
 export const SIDE_WIDTH_MIN: Record<SideId, number> = { left: 56, right: 120 };
 export const SIDE_WIDTH_MAX = 480;
 
+export const DEFAULT_PRESET = 'toonop';
+/** The editor's own brush; a preset names its own, which may be another. */
+const DEFAULT_BRUSH_TOOL = 'toonop-brush';
+
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
-  activeProfile: 'toonio',
-  tonioByTool: byTool(DEFAULT_BRUSH.toonio),
-  multatorByTool: byTool(DEFAULT_BRUSH.multator),
+  defaultBrush: DEFAULT_BRUSH_TOOL,
+  byCanvas: {},
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
   sides: {
@@ -258,78 +257,44 @@ export interface UiConfig {
 
 
 
-// A preset owns toolbar visibility, the compatibility profile used for the
-// next stroke, and the UX profile (palette, eraser rule, onion side, frame
-// and playback behavior). Toonop draws the Tonio line under its own UX
-// profile, which it owns outright; Multator and Toonio reproduce their
-// reference editors end to end. A preset owns behaviour only — where the
-// buttons sit is the arrangement's business, and the same for all of them.
-/** The keys the reference draws, in its own order (`ToolPanel.hx`). */
-const MULTATOR_TOOLS = ['pencil', 'eraser', 'pipette'].map((tool) => `tool:${tool}`);
+// A preset owns toolbar visibility, the brush drawn with next, and the UX
+// profile (palette, eraser rule, onion side, frame and playback behavior).
+// The editor holds its own, `toonop`, and nothing else: a preset that
+// reproduces somebody else's editor arrives as a register record, brought by
+// the plugin that also brings its brushes.
 
-export const PRESETS: {
-  id: string;
-  label: string;
-  defaultBrush: BrushId;
-  ux: UxProfileId;
-  /** The brush type it opens with; the everyday one when it names none. */
-  brushType?: BrushType;
-  /** What it starts with, as a patch on the one arrangement. */
-  panels?: PresetPanels;
-}[] = [
-  { id: 'toonop', label: 'Toonop', defaultBrush: 'toonio', ux: 'toonop' },
-  {
-    id: 'multator',
-    label: 'Multator',
-    defaultBrush: 'multator',
-    ux: 'multator',
-    // Its line is a brush type of its own now, so opening the preset is
-    // picking it: the multator canvas, whatever tool is in hand.
-    brushType: 'multator',
-    // The reference is a smaller editor and keeps everything under the
-    // canvas: frames, then the transport, then the drawing row — two colours
-    // instead of the palette box, a row of dots instead of the sliders, and
-    // none of the keys it never had (sound, GIF export, cell clipboard).
-    //
-    // Each line sits where the reference put it. The strip's line holds only
-    // what acts on frames — `+` and `×` right beside it. The next line opens
-    // on play and ends on the send button, with what the reference had no key
-    // for (fullscreen, the gear) between them and the save note last. The
-    // saves, undo, onion and fps stay on the shelf, a gesture away.
-    // The drawing line reads left to right the way the reference drew it:
-    // the tools, then the row of dots, then the two colour squares.
-    panels: {
-      base: {
-        rows: [
-          ['add-frame', 'delete-frame', 'timeline'],
-          ['transport', 'fullscreen', 'settings', 'saved', 'publish'],
-          [...MULTATOR_TOOLS, 'brush-sizes', 'color'],
-        ],
-      },
-    },
-  },
-  { id: 'toonio', label: 'Toonio', defaultBrush: 'toonio', ux: 'toonio' },
-];
+/** Every preset on offer: the editor's own and whatever the register holds. */
+export function presets(): readonly RegisteredPreset[] {
+  return plugins.presets();
+}
 
-export const DEFAULT_PRESET = 'toonop';
+/**
+ * The preset behind an id. One whose plugin has not arrived (or has been
+ * taken away) falls back to the editor's own rather than leaving it without
+ * behaviour; the choice itself is not rewritten, so the plugin coming back
+ * brings the preset back with it.
+ */
+function presetById(id: string): RegisteredPreset {
+  return plugins.preset(id) ?? plugins.preset(DEFAULT_PRESET)!;
+}
 
-function presetById(id: string) {
-  return PRESETS.find((preset) => preset.id === id)
-    ?? PRESETS.find((preset) => preset.id === DEFAULT_PRESET)!;
+/** Whether the register actually holds this preset. */
+export function presetExists(id: string): boolean {
+  return plugins.preset(id) !== undefined;
 }
 
 
 /**
- * The canvas a preset hands to a brush that named none of its own, falling
- * back to the Toonop default. A brush with an opinion never asks.
+ * The brush a preset hands to a tool that named none of its own. A tool with
+ * an opinion never asks.
  */
-export function presetDefaultBrush(id: string): BrushId {
-  return presetById(id).defaultBrush;
+export function presetDefaultBrush(id: string): string {
+  return presetById(id).brush;
 }
 
 /** The brush type a preset opens with. */
 export function presetBrushType(id: string): BrushType {
-  return presetById(id).brushType ?? 'normal';
+  return presetById(id).brushType ?? NORMAL_BRUSH_TYPE;
 }
 
 /**
@@ -339,13 +304,17 @@ export function presetBrushType(id: string): BrushType {
 export function presetPanels(id: string): PanelLayout {
   const preset = presetById(id);
   let panels = panelsFrom(preset.panels);
-  const ux = UX_PROFILES[preset.ux];
+  const ux = preset.ux;
   for (const item of panelItems()) {
     const tool = toolOfItem(item.id);
-    // Only the editor's own tools: a parity profile describes a reference
-    // editor, and the reference knows nothing of plugins — a plugin one hides
-    // would be a plugin nobody could ever find.
-    if (tool && toolSpec(tool)?.builtin && !(ux.tools as readonly string[]).includes(tool)) {
+    if (!tool || (ux.tools as readonly string[]).includes(tool)) {
+      continue;
+    }
+    // Its own and the editor's, never a stranger's: a preset describes the
+    // editor it reproduces, and hiding a tool the user installed themselves
+    // would be hiding a tool nobody could ever find again.
+    const spec = toolSpec(tool);
+    if (spec && (spec.builtin || spec.plugin === preset.plugin)) {
       panels = hidePanelItem(panels, item.id);
     }
   }
@@ -354,7 +323,7 @@ export function presetPanels(id: string): PanelLayout {
 
 /** UX profile owned by a preset, falling back to the Toonop behavior. */
 export function presetUx(id: string): UxProfile {
-  return UX_PROFILES[presetById(id).ux];
+  return presetById(id).ux;
 }
 
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
@@ -468,14 +437,14 @@ export function snapPaletteLimit(value: unknown): number {
 function normalizeBrushes(
   value: unknown,
   shared: Record<string, unknown>,
-  fallbacks: Record<BrushToolId, TonioBrush>,
-): Record<BrushToolId, TonioBrush> {
+  fallbacks: Record<BrushToolId, BrushRecord>,
+): Record<BrushToolId, BrushRecord> {
   const stored = record(value);
-  const result: Record<BrushToolId, TonioBrush> = {};
+  const result: Record<BrushToolId, BrushRecord> = {};
   for (const tool of new Set([...BRUSH_TOOLS, ...Object.keys(stored)])) {
     const brush = record(stored[tool]);
     const fallback = fallbacks[tool] ?? fallbacks.pencil;
-    const pick = (key: keyof TonioBrush) => brush[key] ?? shared[key];
+    const pick = (key: keyof BrushRecord) => brush[key] ?? shared[key];
     result[tool] = {
       width: clampNumber(pick('width'), 1, 500, fallback.width),
       smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
@@ -485,21 +454,35 @@ function normalizeBrushes(
   return result;
 }
 
-function normalizeDrawingConfig(value: unknown, activeProfile: BrushId): DrawingUiConfig {
+/**
+ * A config written when the brush records were keyed by the name of the
+ * editor each reference brush came from. Nothing else here turns a name into
+ * a number; this is the migration, and it ends the moment the config is
+ * written back.
+ */
+const LEGACY: readonly { canvas: string; byTool: string; shared: string }[] = [
+  { canvas: '1280', byTool: 'tonioByTool', shared: 'tonio' },
+  { canvas: '600', byTool: 'multatorByTool', shared: 'multatorWidth' },
+];
+
+function normalizeDrawingConfig(value: unknown, defaultBrush: string): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
-  // A config from before the split holds one shared brush: every tool starts
-  // from it, so nobody's width jumps on the upgrade.
-  const shared = record(drawing.tonio);
+  const byCanvas: Record<string, Record<BrushToolId, BrushRecord>> = {};
+  for (const [canvas, stored] of Object.entries(record(drawing.byCanvas))) {
+    byCanvas[canvas] = normalizeBrushes(stored, {}, byTool(FALLBACK_BRUSH));
+  }
+  for (const { canvas, byTool: legacy, shared } of LEGACY) {
+    // A config from before the split holds one brush for the whole canvas:
+    // every tool starts from it, so nobody's width jumps on the upgrade.
+    const one = shared === 'tonio' ? record(drawing.tonio) : { width: drawing.multatorWidth };
+    if (drawing[legacy] === undefined && drawing[shared] === undefined) {
+      continue;
+    }
+    byCanvas[canvas] = normalizeBrushes(drawing[legacy], one, byTool(FALLBACK_BRUSH));
+  }
   return {
-    activeProfile,
-    tonioByTool: normalizeBrushes(drawing.tonioByTool, shared, DEFAULT_DRAWING_UI_CONFIG.tonioByTool),
-    // A config from before the split holds one width for the whole Multator
-    // canvas: every brush of that canvas starts from it.
-    multatorByTool: normalizeBrushes(
-      drawing.multatorByTool,
-      { width: drawing.multatorWidth },
-      DEFAULT_DRAWING_UI_CONFIG.multatorByTool,
-    ),
+    defaultBrush,
+    byCanvas,
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
     panelHeight: clampNumber(
       drawing.panelHeight,

@@ -4,19 +4,19 @@
    * sliders. The plain row of dots is its own widget (BrushSizes), colour
    * another (ColorPanel/PaletteBox).
    */
-  import { brushOfType, hasBrushTypes, type BrushType } from '../plugins/brush-types';
+  import { brushOfType, brushTypesFor, hasBrushTypes } from '../plugins/brush-types';
   import { brushPreview, PREVIEW_BOX } from './brush-preview';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
   let { editor }: { editor: EditorState } = $props();
 
-  /** The types, as the list offers them: the sample, the name, what it does. */
-  const TYPES: { id: BrushType; label: string; hint: string }[] = [
-    { id: 'normal', label: 'Обычная', hint: 'Точнее, гладкость настраивается' },
-    { id: 'old', label: 'Старая', hint: 'Контур переменной толщины, как старым пером' },
-    { id: 'multator', label: 'Мультатор', hint: 'Сглаженная, дрожь руки почти не видно' },
-  ];
+  /**
+   * The types, as the list offers them: the everyday one and whatever the
+   * register holds for the tool in hand. What each is called and what it
+   * draws comes from its own record, never from a table here.
+   */
+  const types = $derived(brushTypesFor(editor.tool));
 
   /**
    * The list is a popover: the box is a narrow column with its own scroll, so
@@ -60,12 +60,12 @@
   function preview(tool: string) {
     return brushPreview(tool, editor.defaultBrush, Math.min(editor.brushSizeLogical, 16), {
       width: editor.brushSizeLogical,
-      smooth: editor.tonioSmooth,
-      minDistance: editor.tonioMinDistance,
+      smooth: editor.brushSmooth,
+      minDistance: editor.brushMinDistance,
     });
   }
 
-  const current = $derived(TYPES.find(({ id }) => id === editor.brushType) ?? TYPES[0]);
+  const current = $derived(types.find(({ id }) => id === editor.brushType) ?? types[0]);
 
 
 </script>
@@ -141,7 +141,7 @@
       style:top="{at.y}px"
       ontoggle={(e) => opened((e as ToggleEvent).newState === 'open')}
     >
-      {#each TYPES as option (option.id)}
+      {#each types as option (option.id)}
         <button
           class="type"
           class:active={editor.brushType === option.id}
@@ -175,9 +175,9 @@
        «what should I set». -->
   {#if editor.brushSmooths}
     {@render heading('Сглаживание', 'Больше — ровнее линия, но сильнее отстаёт от руки')}
-    {@render slider('Сглаживание', 1, 100, editor.tonioSmooth, (v) => editor.setTonioSmooth(v))}
+    {@render slider('Сглаживание', 1, 100, editor.brushSmooth, (v) => editor.setBrushSmooth(v))}
     {@render heading('Упрощение', 'Больше — мелкие детали и острые углы срезаются')}
-    {@render slider('Упрощение — минимальное расстояние между точками', 0, 30, editor.tonioMinDistance, (v) => editor.setTonioMinDistance(v))}
+    {@render slider('Упрощение — минимальное расстояние между точками', 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v))}
   {/if}
 </div>
 <style>

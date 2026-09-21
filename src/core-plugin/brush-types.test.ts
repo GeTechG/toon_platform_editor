@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import { plugins } from '.';
-import { brushOfType, hasBrushTypes } from './brush-types';
+import { plugins } from '../lib/plugins';
+import { brushOfType, hasBrushTypes } from '../lib/plugins/brush-types';
 
 describe('the multator type is a brush of the multator canvas', () => {
   it('is the multator type of the brush in hand, not a tool of its own', () => {
@@ -17,20 +17,20 @@ describe('the multator type is a brush of the multator canvas', () => {
   });
 
   it('fixes the multator canvas, whatever preset holds it', () => {
-    expect(plugins.tool('multator-pencil')?.stroke?.rules?.()?.canvas).toBe(600);
-    expect(plugins.tool('multator-eraser')?.stroke?.rules?.()?.canvas).toBe(600);
+    expect(plugins.probeRules('multator-pencil')?.canvas).toBe(600);
+    expect(plugins.probeRules('multator-eraser')?.canvas).toBe(600);
   });
 
   it('draws the plain multator line: no capture and no commit of its own', () => {
     for (const id of ['multator-pencil', 'multator-eraser']) {
-      expect(plugins.tool(id)?.stroke?.rules?.()?.commit).toBeUndefined();
-      expect(plugins.tool(id)?.stroke?.rules?.()?.preview).toBeUndefined();
+      expect(plugins.probeRules(id)?.commit).toBeUndefined();
+      expect(plugins.probeRules(id)?.preview).toBeUndefined();
     }
     expect(plugins.tool('multator-pencil')?.stroke?.descriptor({
-      width: 64, color: '#ff0000', fill: '#ffffff',
+      width: 64, color: '#ff0000', fill: '#ffffff', smooth: 3, minDistance: 3,
     })).toEqual({ kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' });
     expect(plugins.tool('multator-eraser')?.stroke?.descriptor({
-      width: 64, color: '#ff0000', fill: '#ffffff',
+      width: 64, color: '#ff0000', fill: '#ffffff', smooth: 3, minDistance: 3,
     })).toEqual({ kind: 'eraser', geometry: 'smooth', width: 64 });
   });
 

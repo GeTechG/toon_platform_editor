@@ -1,9 +1,11 @@
 /**
- * Tonio's pixel tool (tools.js `Pixel`): points are grid cells of the tool's
- * width, not a smoothed line. Faithful port, quirks included — the capture
- * dedup scans only the points the line already had, so a repeat inside one
- * pointer batch survives, and `Prepare` thins by the tool width without the
- * duplicated endpoint the pencil adds.
+ * The grid a stamped mark lands on: what the renderer and the transform need
+ * to draw and move a run of cells.
+ *
+ * The tool that *makes* them lives in the shipped plugin, along with its
+ * capture and its thinning — nothing here knows a tool at all. A stamp is a
+ * primitive of the format, so the player must be able to draw one without a
+ * line of plugin code anywhere near it.
  */
 
 /**
@@ -25,37 +27,6 @@ export function pixelCell(value: number, width: number): number {
  */
 export function pixelCellNearest(value: number, width: number): number {
   return width * Math.round(value / width) || 0;
-}
-
-/**
- * Appends the snapped cells of one pointer batch. Returns a new array; cells
- * already present in `line` before this call are dropped.
- */
-export function appendPixelCells(
-  line: readonly number[],
-  points: readonly number[],
-  width: number,
-): number[] {
-  const result = line.slice();
-  if (points.length % 2 !== 0) {
-    return result;
-  }
-  const known = line.length;
-  for (let i = 0; i < points.length; i += 2) {
-    const x = pixelCell(points[i], width);
-    const y = pixelCell(points[i + 1], width);
-    let exists = false;
-    for (let k = 0; k < known; k += 2) {
-      if (line[k] === x && line[k + 1] === y) {
-        exists = true;
-        break;
-      }
-    }
-    if (!exists) {
-      result.push(x, y);
-    }
-  }
-  return result;
 }
 
 /** Bresenham over cells, `step` units per pixel (reference `InterpolateLine`). */
@@ -121,26 +92,4 @@ export function interpolatePixelLine(
     pixels.push(x, y);
   }
   return pixels;
-}
-
-/**
- * Commit-time thinning (reference `Pixel.Prepare`): drops a cell closer than
- * `width / zoom` to the previous kept one, `>=` rejects, and the true endpoint
- * is appended once — no sentinel. Zoomed in, the hand moves more document
- * units per screen pixel, so the reference lowers the threshold to match.
- */
-export function pixelPrepare(points: readonly number[], width: number, zoom = 1): number[] {
-  if (points.length <= 2) {
-    return points.slice();
-  }
-  const threshold = width / (Number.isFinite(zoom) && zoom > 0 ? zoom : 1);
-  const result = [points[0], points[1]];
-  for (let i = 2; i < points.length - 2; i += 2) {
-    const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
-    if (distance >= threshold) {
-      result.push(points[i], points[i + 1]);
-    }
-  }
-  result.push(points[points.length - 2], points[points.length - 1]);
-  return result;
 }

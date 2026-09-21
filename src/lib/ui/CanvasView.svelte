@@ -46,7 +46,6 @@
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
-  import { presetBrushRules } from '../plugins/brushes';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -114,7 +113,7 @@
   /** Reference-canvas normalisation of the canvas the width is measured on. */
   const widthCanvasScale = $derived(
     canvasCoordinateScale(
-      presetBrushRules(editor.brushCanvas, brushTuning()).canvas,
+      editor.widthRules?.canvas ?? activeRules().canvas,
       editor.doc.width / FIXED_POINT_SCALE,
     ),
   );
@@ -128,21 +127,13 @@
     editor.brushSizeLogical * (brushCanvasScale / widthCanvasScale),
   );
 
-  /** What the editor holds for the brush in hand, for a brush that uses it. */
-  function brushTuning() {
-    return { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance };
-  }
-
   /**
    * The rules the gesture runs under: the tool's own when it declared some,
    * the preset's brush otherwise. Which brush that is, is the preset's
    * business — the canvas only asks for the rules.
    */
   function activeRules(): StrokeRules {
-    return (
-      toolSpec(editor.brushTool)?.stroke?.rules?.()
-      ?? presetBrushRules(editor.defaultBrush, brushTuning())
-    );
+    return editor.brushRules;
   }
 
   /**
@@ -152,9 +143,8 @@
    */
   function activeDescriptor(): LineToolDescriptor {
     return (toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
+      ...editor.pluginBrush,
       width: brushWidthDoc(strokeBrushSizeLogical),
-      color: editor.brushColor,
-      fill: editor.fillColor,
     });
   }
 
@@ -392,8 +382,8 @@
   /**
    * Width the brush actually lands on the document with, in logical px. A
    * width is measured on the canvas of the tool in hand (`editor.brushCanvas`)
-   * — which is the stroke's own canvas for every tool but the old brush type,
-   * whose contour is a Multator shape drawn at the everyday brush's width.
+   * — which is the stroke's own canvas for every tool but a brush type whose
+   * twin measures on another one, drawn at the everyday brush's width.
    */
   const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / widthCanvasScale);
   /** That width in screen pixels — what the ring, the square and the grid measure. */

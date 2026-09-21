@@ -1,24 +1,25 @@
 /**
- * The tools the editor ships with, as manifests.
+ * The tools the editor ships with, as one manifest.
  *
- * They go through the same register as anything loaded from outside — a
+ * It goes through the same register as anything loaded from outside — a
  * separate door "for ours" would leave the contract untested by the people who
  * use it every day. `icon` here is a name from the editor's vocabulary
  * (`Icon.svelte`); a plugin, which cannot write into that file, brings markup
  * instead, and the two are told apart by the leading `<`.
  */
 
-import { multatorPlugins } from './brush-types';
-import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
-import { distortPlugin } from './distort';
-import { oldschoolPlugins } from './oldschool';
-import { pixelPlugin } from './pixel';
+import { toonopRules } from '../tools/brush';
+import { PLUGIN_API, type Plugin, type PluginPreset, type PluginPrimitive, type PluginTool } from './contract';
+import { distortTool } from './distort';
+import { TOONOP_UX } from '../ui/ux-profile';
 
 /**
  * The three line primitives of the format, as the editor's own tools lay them
  * down. They go through the same block a plugin fills in: the points are read
  * as the one smooth chain, and the eraser cuts them as polylines — which is
- * the default, so none of that is spelled out.
+ * the default, so none of that is spelled out. None of them declares rules:
+ * they draw by the brush the preset named, which is what "the everyday pencil
+ * follows the panel" means.
  */
 export const PENCIL: PluginPrimitive = {
   kind: 'pencil',
@@ -34,65 +35,69 @@ const FEATHER: PluginPrimitive = {
   descriptor: ({ width, color, fill }) => ({ kind: 'feather', geometry: 'smooth', width, color, fill }),
 };
 
+/** The editor's own brush: nobody takes it in hand, the preset points at it. */
+const TOONOP_BRUSH: PluginPrimitive = {
+  kind: 'pencil',
+  rules: toonopRules,
+  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
+};
+
 /** In the order the rail draws them. */
-export const BUILTIN_TOOLS: readonly Plugin[] = [
-  {
-    id: 'pencil',
-    api: PLUGIN_API,
-    tool: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш', key: 'B', stroke: PENCIL },
+const TOOLS: Readonly<Record<string, PluginTool>> = {
+  pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш', key: 'B', stroke: PENCIL },
+  eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик', key: 'E', stroke: ERASER },
+  feather: {
+    icon: 'feather',
+    title: 'Перо (F) — обводка и заливка',
+    label: 'Перо',
+    key: 'F',
+    stroke: FEATHER,
   },
-  {
-    id: 'eraser',
-    api: PLUGIN_API,
-    tool: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик', key: 'E', stroke: ERASER },
+  'mega-eraser': {
+    icon: 'mega-eraser',
+    title: 'Мега-ластик (Alt+E) — режет линии целиком',
+    label: 'Мега-ластик',
+    key: 'Alt+E',
   },
-  {
-    id: 'feather',
-    api: PLUGIN_API,
-    tool: {
-      icon: 'feather',
-      title: 'Перо (F) — обводка и заливка',
-      label: 'Перо',
-      key: 'F',
-      stroke: FEATHER,
-    },
+  pipette: {
+    icon: 'pipette',
+    title: 'Пипетка (P) — ещё раз: взять цвет с экрана',
+    label: 'Пипетка',
+    key: 'P',
+    help: true,
   },
-  {
-    id: 'mega-eraser',
-    api: PLUGIN_API,
-    tool: {
-      icon: 'mega-eraser',
-      title: 'Мега-ластик (Alt+E) — режет линии целиком',
-      label: 'Мега-ластик',
-      key: 'Alt+E',
-    },
+  drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D', help: true },
+  lasso: {
+    icon: 'lasso',
+    title: 'Лассо (Q) — взять кадр и трансформировать',
+    label: 'Лассо',
+    key: 'Q',
+    help: true,
   },
-  {
-    id: 'pipette',
-    api: PLUGIN_API,
-    tool: {
-      icon: 'pipette',
-      title: 'Пипетка (P) — ещё раз: взять цвет с экрана',
-      label: 'Пипетка',
-      key: 'P',
-      help: true,
-    },
+  distort: distortTool,
+  'toonop-brush': {
+    icon: 'pencil',
+    title: 'Кисть редактора',
+    label: 'Кисть редактора',
+    key: '',
+    offPanel: true,
+    stroke: TOONOP_BRUSH,
   },
-  {
-    id: 'drag',
-    api: PLUGIN_API,
-    tool: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D', help: true },
-  },
-  {
-    id: 'lasso',
-    api: PLUGIN_API,
-    tool: { icon: 'lasso', title: 'Лассо (Q) — взять кадр и трансформировать', label: 'Лассо', key: 'Q', help: true },
-  },
-  distortPlugin,
-  pixelPlugin,
-  ...oldschoolPlugins,
-  ...multatorPlugins,
-];
+};
+
+/** The editor's own preset — the only one it holds; the rest come from plugins. */
+const TOONOP_PRESET: PluginPreset = {
+  label: 'Toonop',
+  brush: 'toonop-brush',
+  ux: TOONOP_UX,
+};
+
+export const BUILTIN_PLUGIN: Plugin = {
+  id: 'toonop',
+  api: PLUGIN_API,
+  tools: TOOLS,
+  presets: { toonop: TOONOP_PRESET },
+};
 
 /**
  * Keys the editor holds for itself, so a plugin cannot quietly take one.

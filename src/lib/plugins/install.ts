@@ -170,6 +170,10 @@ export async function updateInstalled(
 ): Promise<string[]> {
   const updated: string[] = [];
   for (const plugin of await listInstalled()) {
+    // The delivery changes with the editor, not past it.
+    if (registry.isBundled(plugin.id)) {
+      continue;
+    }
     // A plugin installed from a file is the author's own build: the catalog
     // has no say over it until they take it off themselves.
     if (plugin.source !== 'catalog') {

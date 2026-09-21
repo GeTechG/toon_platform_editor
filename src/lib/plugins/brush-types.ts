@@ -1,75 +1,34 @@
 /**
- * The types the brush in hand can be switched to, and the brushes they
- * resolve to.
+ * The types the brush in hand can be switched to.
  *
  * A type is never a flag on the session: it picks another brush of the
  * register, and that brush says for itself which canvas it draws on and what
- * its points become. «Старая» is the oldschool pen (`oldschool.ts`, its own
- * geometry); «Мультатор» is the plain multator line — the same brush the
- * Multator preset holds, in whatever preset it is picked.
+ * its points become. «Обычная» is the editor's own and means «no twins»;
+ * every other type is a register record a plugin brought.
  */
 
-import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
-import { MULTATOR_RULES } from './brushes/multator';
-import { OLDSCHOOL_TWIN } from './oldschool';
+import { plugins } from './index';
 
-/** Nothing of its own: the everyday brush with the multator canvas fixed. */
-const MULTATOR_PENCIL: PluginPrimitive = {
-  kind: 'pencil',
-  rules: () => MULTATOR_RULES,
-  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
-};
+/** The id of a brush type; `normal` is the editor's own. */
+export type BrushType = string;
 
-const MULTATOR_ERASER: PluginPrimitive = {
-  kind: 'eraser',
-  rules: () => MULTATOR_RULES,
-  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
-};
+export const NORMAL_BRUSH_TYPE = 'normal';
 
-/** Neither brush asks for a key: the brush box is the door. */
-export const multatorPlugins: readonly Plugin[] = [
-  {
-    id: 'multator-pencil',
-    api: PLUGIN_API,
-    tool: {
-      icon: 'pencil',
-      title: 'Мультаторовский карандаш',
-      label: 'Мультаторовский карандаш',
-      key: '',
-      offPanel: true,
-      stroke: MULTATOR_PENCIL,
-    },
-  },
-  {
-    id: 'multator-eraser',
-    api: PLUGIN_API,
-    tool: {
-      icon: 'eraser',
-      title: 'Мультаторовский ластик',
-      label: 'Мультаторовский ластик',
-      key: '',
-      offPanel: true,
-      stroke: MULTATOR_ERASER,
-    },
-  },
-];
-
-/** Which brush stands in for which everyday one, per type. */
-const MULTATOR_TWIN: Readonly<Record<string, string>> = {
-  pencil: 'multator-pencil',
-  eraser: 'multator-eraser',
-};
-
-export type BrushType = 'normal' | 'old' | 'multator';
-
-const TWINS: Readonly<Record<Exclude<BrushType, 'normal'>, Readonly<Record<string, string>>>> = {
-  old: OLDSCHOOL_TWIN,
-  multator: MULTATOR_TWIN,
-};
-
-/** Whether the tool in hand has other forms at all (the feather and the pixel do not). */
+/** Whether the tool in hand has other forms at all (the feather has none). */
 export function hasBrushTypes(tool: string): boolean {
-  return tool in OLDSCHOOL_TWIN;
+  return plugins.brushTypes().some((type) => tool in type.twins);
+}
+
+/** Every type offered for this tool, the everyday one first. */
+export function brushTypesFor(tool: string): { id: BrushType; label: string; hint: string }[] {
+  return [
+    { id: NORMAL_BRUSH_TYPE, label: 'Обычная', hint: 'Точнее, гладкость настраивается' },
+    ...plugins.brushTypes().filter((type) => tool in type.twins).map((type) => ({
+      id: type.id,
+      label: type.label,
+      hint: type.hint ?? '',
+    })),
+  ];
 }
 
 /**
@@ -78,5 +37,5 @@ export function hasBrushTypes(tool: string): boolean {
  * says — the choice is only offered where there is something to switch to.
  */
 export function brushOfType(tool: string, type: BrushType): string {
-  return type === 'normal' ? tool : TWINS[type][tool] ?? tool;
+  return type === NORMAL_BRUSH_TYPE ? tool : plugins.brushType(type)?.twins[tool] ?? tool;
 }

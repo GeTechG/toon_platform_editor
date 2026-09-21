@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { FIXED_POINT_SCALE } from '../format/constants';
-import { commitOldschoolStroke, oldschoolContour, oldschoolJitter } from './oldschool';
+import { FIXED_POINT_SCALE } from '../lib/format/constants';
+import { commitOldschoolStroke, oldschoolContour, oldschoolJitter } from './oldschool-geometry';
 
 /** RNG that always lands mid-range: the jitter term (random·j − j/2) is 0. */
 const midRandom = () => 0.5;
