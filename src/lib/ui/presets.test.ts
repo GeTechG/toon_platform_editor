@@ -191,7 +191,7 @@ test('settings round-trip through the stored config', () => {
     pickerModel: 'wheel' as const,
     altLayout: true,
     removerTipShown: true,
-    pluginRegistry: 'https://plugins.example/',
+    pluginCatalog: 'https://plugins.example/',
   };
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',

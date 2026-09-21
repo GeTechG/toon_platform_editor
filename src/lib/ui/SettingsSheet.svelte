@@ -369,8 +369,8 @@
       <input
         type="url"
         placeholder="пусто — каталога нет"
-        value={editor.settings.pluginRegistry}
-        onchange={(e) => editor.setSetting('pluginRegistry', e.currentTarget.value.trim())}
+        value={editor.settings.pluginCatalog}
+        onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
       />
     </label>
 

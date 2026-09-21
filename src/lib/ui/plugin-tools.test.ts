@@ -145,15 +145,23 @@ test('leaving a tool tells it so, and taking one up tells it too', () => {
 const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url)).text();
 
 test('the address of the catalog is a setting, and it points at the build branch', () => {
-  expect(DEFAULT_SETTINGS.pluginRegistry).toContain('toonop_plugins');
-  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: 42 } }))?.settings.pluginRegistry).toBe(DEFAULT_SETTINGS.pluginRegistry);
-  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: ' x ' } }))?.settings.pluginRegistry).toBe('x');
+  expect(DEFAULT_SETTINGS.pluginCatalog).toContain('toonop_plugins');
+  const parsed = (settings: Record<string, unknown>) =>
+    parseUiConfig(JSON.stringify({ preset: 'toonop', settings }))?.settings.pluginCatalog;
+
+  expect(parsed({ pluginCatalog: 42 })).toBe(DEFAULT_SETTINGS.pluginCatalog);
+  expect(parsed({ pluginCatalog: ' x ' })).toBe('x');
   // An emptied address is a choice — no catalog at all — and survives as one.
-  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: '' } }))?.settings.pluginRegistry).toBe('');
+  expect(parsed({ pluginCatalog: '' })).toBe('');
+  // A config written while the setting was still the register's address, whose
+  // default was empty: there was no catalog to name then, so it gets ours.
+  expect(parsed({ pluginRegistry: '' })).toBe(DEFAULT_SETTINGS.pluginCatalog);
+  // Unless something was actually typed into it — that is an address.
+  expect(parsed({ pluginRegistry: 'https://plugins.example/' })).toBe('https://plugins.example/');
 });
 
 test('the settings sheet sends you to the plugins window instead of listing plugins itself', () => {
-  expect(sheet).toContain('pluginRegistry');
+  expect(sheet).toContain('pluginCatalog');
   expect(sheet).toContain('Плагины');
   // What is installed, what broke and what can be installed is one list, in
   // one window; the sheet showing it too would be the same thing twice.

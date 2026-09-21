@@ -1792,7 +1792,7 @@ export class EditorState {
   async startPlugins(): Promise<void> {
     await loadInstalled(plugins);
     this.refreshPlugins();
-    const address = this.settings.pluginRegistry;
+    const address = this.settings.pluginCatalog;
     if (!address.trim()) {
       return;
     }

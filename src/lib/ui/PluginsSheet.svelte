@@ -38,7 +38,7 @@
   // The catalog is read when the window opens and again whenever the address
   // changes — an author pointing the editor at their own build sees it at once.
   $effect(() => {
-    const address = editor.settings.pluginRegistry;
+    const address = editor.settings.pluginCatalog;
     void (async () => {
       const read = await readCatalog(address);
       catalog = read.plugins;

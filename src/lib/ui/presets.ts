@@ -195,7 +195,7 @@ export interface EditorSettings {
    * request goes out — what is already installed goes on working from its
    * cache either way.
    */
-  pluginRegistry: string;
+  pluginCatalog: string;
 }
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
@@ -240,7 +240,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   pickerModel: 'hsv',
   altLayout: false,
   removerTipShown: false,
-  pluginRegistry: PLUGIN_CATALOG,
+  pluginCatalog: PLUGIN_CATALOG,
 };
 
 export interface UiConfig {
@@ -355,6 +355,23 @@ export function presetUx(id: string): UxProfile {
 }
 
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
+/**
+ * The catalog address of a saved config.
+ *
+ * Before there was a catalog the setting was the address of a register, and
+ * its default was empty — there was nothing to point at. Such a config says
+ * nothing about a catalog, so it gets ours; an address someone actually typed
+ * is kept, and an emptied `pluginCatalog` stays empty, which is how one says
+ * «no catalog» now.
+ */
+function readCatalogAddress(raw: Record<string, unknown>): string {
+  if (typeof raw.pluginCatalog === 'string') {
+    return raw.pluginCatalog.trim();
+  }
+  const register = typeof raw.pluginRegistry === 'string' ? raw.pluginRegistry.trim() : '';
+  return register || PLUGIN_CATALOG;
+}
+
 export function parseUiConfig(raw: string | null): UiConfig | null {
   if (!raw) {
     return null;
@@ -426,7 +443,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
     removerTipShown: flag('removerTipShown'),
-    pluginRegistry: typeof raw.pluginRegistry === 'string' ? raw.pluginRegistry.trim() : PLUGIN_CATALOG,
+    pluginCatalog: readCatalogAddress(raw),
   };
 }
 
