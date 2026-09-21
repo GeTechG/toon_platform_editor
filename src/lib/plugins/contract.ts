@@ -116,7 +116,7 @@ export interface PluginTool {
   /**
    * A tool the arrangement never offers: it is in the register like any other,
    * but no panel and no shelf holds it, and something else takes it in hand —
-   * the "old" easter egg is the one such door the editor has.
+   * the old brushes, picked as a type in the brush box, are the editor's own.
    */
   readonly offPanel?: boolean;
   /** What it lays down, for a tool that draws rather than reshapes. */
@@ -131,5 +131,13 @@ export interface PluginTool {
 export interface Plugin {
   readonly id: string;
   readonly api: number;
+  /**
+   * What the list calls it. A plugin from the catalog is described by the
+   * catalog record; these are read from the manifest only for a bundle put in
+   * from disk, which has no record anywhere.
+   */
+  readonly name?: string;
+  readonly version?: string;
+  readonly description?: string;
   readonly tool?: PluginTool;
 }

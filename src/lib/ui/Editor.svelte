@@ -17,6 +17,7 @@
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
+  import PluginsSheet from './PluginsSheet.svelte';
   import Icon from './Icon.svelte';
   import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
   import { loadDocument } from '../format/validate';
@@ -112,10 +113,6 @@
     a.click();
     URL.revokeObjectURL(url);
   }
-
-  // Last three typed characters, for the reference's "old" easter egg
-  // (Main.hx keyDown: charCodes 111,108,100 toggle the oldschool pen).
-  const lastThreeKeys = ['', '', ''];
 
   // --- Bottom panel divider ------------------------------------------------
   // Alt+E and F are tools only while their keys are on the panels: put the
@@ -262,6 +259,10 @@
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
+    // An update is downloading: the editor is not there to be typed at.
+    if (editor.updating) {
+      return;
+    }
     // Alt+E is the reference's mega-eraser; every other modifier is the
     // browser's or the OS's.
     if (e.altKey && (e.key === 'e' || e.key === 'E') && hasMegaEraser) {
@@ -412,17 +413,6 @@
         e.preventDefault();
         return;
       }
-    }
-
-    lastThreeKeys.shift();
-    lastThreeKeys.push(e.key);
-    if (lastThreeKeys.join('') === 'old') {
-      // The `d` that finishes the word belongs to the word: without this the
-      // same keystroke would hand over the oldschool brush and then pick up
-      // the hand, which is what D does on its own.
-      editor.toggleOldschool();
-      e.preventDefault();
-      return;
     }
 
     let handled = true;
@@ -589,11 +579,21 @@
     }
   }
 
-  // Plugins come from the address in the settings, and follow it when it
-  // changes: an author pointing the editor at a local build should not have to
-  // reload the page to see their own tool.
+  // Installed plugins come up from their cache, and only then does the
+  // catalog get asked whether any of them has a newer version. Once, on
+  // start: installing, removing and updating go through the plugins window.
+  onMount(() => {
+    void editor.startPlugins();
+  });
+
+  /** The lock over the editor while an update is downloading. */
+  let updatingEl = $state<HTMLDialogElement | undefined>();
   $effect(() => {
-    void editor.reloadPlugins(editor.settings.pluginRegistry);
+    if (editor.updating) {
+      updatingEl?.showModal();
+    } else {
+      updatingEl?.close();
+    }
   });
 
   /** Where the body of a tool's own window is put; the tool owns what is in it. */
@@ -987,6 +987,9 @@
     leaveFullscreen();
     settingsSheetOpen = true;
   }
+
+  /** Installed plugins and the catalog — its own window, off the settings sheet. */
+  let pluginsSheetOpen = $state(false);
 
   /**
    * «сохранено локально <дата> <размер>» on the panel — the reference names
@@ -1689,8 +1692,19 @@
       onSaveNow={saveNow}
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
+      onOpenPlugins={() => (pluginsSheetOpen = true)}
     />
   {/if}
+
+  {#if pluginsSheetOpen}
+    <PluginsSheet {editor} onClose={() => (pluginsSheetOpen = false)} />
+  {/if}
+
+  <!-- The lock: an update is coming down, and nothing else is to be touched
+       while it does. Esc does not call it off — there is nothing to call off. -->
+  <dialog class="updating" bind:this={updatingEl} oncancel={(e) => e.preventDefault()}>
+    <p>Обновляются плагины…</p>
+  </dialog>
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
   <!-- (SHORTCUTS is declared in the script block above.) -->
@@ -2462,6 +2476,20 @@
      Global, because the sheets are not all in this file any more: the settings
      sheet is its own component and wears the same head / body / hint / foot /
      toggle vocabulary. */
+  /* The update lock: a plain card in the middle, nothing to press on it. */
+  .updating {
+    margin: auto;
+    padding: 1rem 1.4rem;
+    border: none;
+    border-radius: var(--r-md);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 650;
+  }
+  .updating::backdrop {
+    background: rgba(11, 12, 16, 0.42);
+  }
   .sheet-backdrop {
     position: fixed;
     inset: 0;

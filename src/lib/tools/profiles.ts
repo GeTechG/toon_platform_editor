@@ -331,7 +331,10 @@ export class PointerStrokeController {
       console.error(`кисть вернула вид, которого формат не знает: ${String(kind)}`);
       return null;
     }
-    return stroke;
+    // The document stores whole coordinates. The dialects quantize on their own
+    // way here, but a tool that collects or commits its own points hands back
+    // whatever the pointer gave — and a fraction would cost the whole stroke.
+    return { ...stroke, points: stroke.points.map(Math.round) };
   }
 
   pointerCancel(event: PointerSample): boolean {

@@ -7,8 +7,12 @@ import { Glob } from 'bun';
 // sits beside the drawn icons looking like a different product.
 const UI = new URL('.', import.meta.url).pathname;
 
-/** A control whose whole label is punctuation — the glyph-as-icon shape. */
-const GLYPH_LABEL = />\s*[^<>{}\w\s]{1,3}\s*<\/(?:button|span|div)>/g;
+/**
+ * A control whose whole label is punctuation — the glyph-as-icon shape.
+ * Letters are letters in any alphabet: `\w` would call a short Cyrillic word
+ * («Мои») a glyph, so the class is written out with unicode properties.
+ */
+const GLYPH_LABEL = />\s*[^<>{}\s\p{L}\p{N}_]{1,3}\s*<\/(?:button|span|div)>/gu;
 
 async function glyphControls(): Promise<string[]> {
   const found: string[] = [];

@@ -144,26 +144,65 @@ test('leaving a tool tells it so, and taking one up tells it too', () => {
 
 const sheet = await Bun.file(new URL('./SettingsSheet.svelte', import.meta.url)).text();
 
-test('the address of the register is a setting, empty until someone types one', () => {
-  expect(DEFAULT_SETTINGS.pluginRegistry).toBe('');
-  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: 42 } }))?.settings.pluginRegistry).toBe('');
+test('the address of the catalog is a setting, and it points at the build branch', () => {
+  expect(DEFAULT_SETTINGS.pluginRegistry).toContain('toonop_plugins');
+  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: 42 } }))?.settings.pluginRegistry).toBe(DEFAULT_SETTINGS.pluginRegistry);
   expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: ' x ' } }))?.settings.pluginRegistry).toBe('x');
+  // An emptied address is a choice — no catalog at all — and survives as one.
+  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { pluginRegistry: '' } }))?.settings.pluginRegistry).toBe('');
 });
 
-test('the sheet shows the address and what came of it', () => {
+test('the settings sheet sends you to the plugins window instead of listing plugins itself', () => {
   expect(sheet).toContain('pluginRegistry');
-  expect(sheet).toContain('plugins.failures');
+  expect(sheet).toContain('Плагины');
+  // What is installed, what broke and what can be installed is one list, in
+  // one window; the sheet showing it too would be the same thing twice.
+  expect(sheet).not.toContain('plugins.failures');
 });
 
-test('changing the address rereads the register, without a reload', () => {
-  expect(editorUi).toContain('editor.settings.pluginRegistry');
-  expect(editorUi).toContain('reloadPlugins(');
-  const reload = state.slice(state.indexOf('async reloadPlugins('));
-  expect(reload).toContain('resetExternal()');
-  // The register is plain data, outside the runes: what was loaded reaches the
-  // rail and the settings list only if the state says something changed.
-  expect(reload).toContain('normalizePanels(');
-  expect(reload).toContain('pluginsVersion');
+test('the editor starts by bringing installed plugins up from the cache', () => {
+  const start = member(state, 'async startPlugins');
+  expect(start).toContain('loadInstalled(');
+  // The cache first, the catalog after: drawing never waits on the network.
+  expect(start.indexOf('loadInstalled(')).toBeLessThan(start.indexOf('readCatalog('));
+  expect(start).toContain('updateInstalled(');
+  expect(state).toContain('updating = $state(false)');
+  expect(editorUi).toContain('startPlugins(');
+});
+
+test('the editor is locked only while an update is actually downloading', () => {
+  const start = member(state, 'async startPlugins');
+  // Nothing to download, nothing to lock: the flag goes up between the
+  // version check and the download, not around the check.
+  expect(start.indexOf('readCatalog(')).toBeLessThan(start.indexOf('this.updating = true'));
+  expect(start).toContain('finally');
+  expect(start).toContain('this.updating = false');
+  expect(editorUi).toContain('editor.updating');
+  // A modal dialog, not a sheet of glass over the canvas: it takes the focus
+  // and the keyboard with it, which a backdrop does not.
+  expect(editorUi).toContain('updatingEl?.showModal()');
+  expect(editorUi).toMatch(/if \(editor\.updating\) \{?\s*return/);
+});
+
+test('what the register knows reaches the rail only through the version', () => {
+  const from = state.indexOf('refreshPlugins(): void');
+  const refresh = state.slice(from, state.indexOf('\n  }', from));
+  expect(refresh).toContain('normalizePanels(');
+  expect(refresh).toContain('pluginsVersion');
+  // A tool that is gone — removed, broken, refused — cannot stay in hand.
+  expect(refresh).toContain("selectTool('pencil')");
+});
+
+test('a broken plugin drops out of the hand by itself', () => {
+  expect(state).toContain('plugins.onBreak');
+  expect(state.slice(state.indexOf('plugins.onBreak'))).toContain('refreshPlugins()');
+});
+
+test('taking a plugin off frees its storage, its key and its window', () => {
+  const remove = member(state, 'async removePlugin');
+  expect(remove).toContain('removeInstalled(');
+  expect(remove).toContain('plugins.remove(');
+  expect(remove).toContain('refreshPlugins()');
 });
 
 const toolKey = await Bun.file(new URL('./ToolKey.svelte', import.meta.url)).text();

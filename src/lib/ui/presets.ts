@@ -190,14 +190,22 @@ export interface EditorSettings {
   /** The one-off hint on first entering the palette's remover mode has been shown. */
   removerTipShown: boolean;
   /**
-   * Where plugins are read from (see `editor-plugins`). Empty — the default —
-   * means none are read at all: the editor behaves as if there were no such
-   * thing, and not a single request goes out.
+   * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
+   * there is no catalog: nothing can be installed from one and not a single
+   * request goes out — what is already installed goes on working from its
+   * cache either way.
    */
   pluginRegistry: string;
 }
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
+
+/**
+ * The catalog the editor opens with: the build branch of the plugin
+ * repository, read straight from GitHub — no hosting to set up, and a cache of
+ * minutes rather than of hours.
+ */
+export const PLUGIN_CATALOG = 'https://raw.githubusercontent.com/GeTechG/toonop_plugins/build/';
 
 /** Offered autosave intervals, reference order; 0 is "never". */
 export const AUTOSAVE_INTERVALS: readonly number[] = [
@@ -232,7 +240,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   pickerModel: 'hsv',
   altLayout: false,
   removerTipShown: false,
-  pluginRegistry: '',
+  pluginRegistry: PLUGIN_CATALOG,
 };
 
 export interface UiConfig {
@@ -418,7 +426,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
     removerTipShown: flag('removerTipShown'),
-    pluginRegistry: typeof raw.pluginRegistry === 'string' ? raw.pluginRegistry.trim() : '',
+    pluginRegistry: typeof raw.pluginRegistry === 'string' ? raw.pluginRegistry.trim() : PLUGIN_CATALOG,
   };
 }
 

@@ -93,9 +93,11 @@ import {
 import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
-import { oldschoolSwap } from '../plugins/oldschool';
 import { plugins } from '../plugins';
-import { loadPlugins } from '../plugins/load';
+import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
+import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from '../plugins/install';
+import { listInstalled, removeInstalled } from '../plugins/store';
+import { brushOfType, type BrushType } from '../plugins/brush-types';
 import type { PluginHost, PluginStroke } from '../plugins/contract';
 
 /** An open transform: the cells the lasso took and how far they have been moved. */
@@ -145,10 +147,12 @@ import {
   DEFAULT_DRAWING_UI_CONFIG,
   BRUSH_TOOLS,
   brushToolOf,
+  brushUsesSmoothing,
   BRUSH_RANGE,
   DEFAULT_BRUSH,
   DEFAULT_SETTINGS,
   loadUiConfig,
+  presetBrushType,
   presetDefaultDialect,
   presetPanels,
   presetUx,
@@ -202,10 +206,14 @@ export class EditorState {
   /** The one soundtrack: file, credits, envelope for the strip, playback. */
   readonly audio = new AudioTrackState();
   tool = $state<Tool>('pencil');
-  /** The brush the "old" easter egg took away, to give back when typed again. */
-  private beforeOldschool: Tool | null = null;
   /** What was drawing before a help tool (pipette, hand, lasso, distort) took over. */
   previousDrawingTool = $state<Tool>('pencil');
+  /**
+   * Which brush of the tool in hand draws: the everyday one, the oldschool
+   * pen that commits a wobbly closed contour, or the multator line. Session
+   * state, like the tool — a preset only says what it opens with.
+   */
+  brushType = $state<BrushType>('normal');
   /**
    * Whether the mega-eraser has already warned this session. Session state,
    * not a setting: the reference warns again in the next tab.
@@ -223,6 +231,12 @@ export class EditorState {
    * the settings list that there is something new to draw.
    */
   pluginsVersion = $state(0);
+  /**
+   * An update is downloading: the editor is locked behind it. Up only while
+   * something is actually coming down the wire — a check that finds nothing
+   * new is not something anyone should notice.
+   */
+  updating = $state(false);
   /** The window a tool opened over the canvas; it goes when the tool is left. */
   pluginWindow = $state<{ title: string; el: HTMLElement } | null>(null);
   /**
@@ -431,6 +445,12 @@ export class EditorState {
       this.settings = saved.settings;
     }
     this.workspaces = loadWorkspaces();
+    // A plugin that threw is off already; what is left is to drop it from the
+    // hand and the rail, which the register knows nothing about. Out of the
+    // current task: the throw may come from inside a derived — the brush
+    // preview asks the tool for its descriptor — and runes state MUST NOT be
+    // written while one is being computed.
+    plugins.onBreak = () => queueMicrotask(() => this.refreshPlugins());
     this.watchErrors();
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
@@ -466,9 +486,24 @@ export class EditorState {
   }
 
   /**
+   * The brush that lays the stroke down: the tool in hand, or the twin of
+   * the picked type — the old pen, the multator line. The tool itself never
+   * changes — the rail,
+   * the width record and what a preset offers all stay with it.
+   */
+  get brushTool(): Tool {
+    return brushOfType(this.tool, this.brushType);
+  }
+
+  /**
    * The canvas the brush in hand measures on: its own when it named one, the
    * preset's when it did not. A width is pixels of that canvas, so it is what
    * picks the record and the range.
+   *
+   * The tool in hand, not the brush the type resolves to: the old pen lays a
+   * Multator contour down whatever preset holds it, but a type is not a
+   * different brush to the person drawing — switching it MUST NOT move the
+   * slider or its ceiling.
    */
   get brushCanvas(): DrawingProfileId {
     const own = plugins.tool(this.tool)?.stroke?.dialect;
@@ -477,7 +512,7 @@ export class EditorState {
 
   /**
    * Brush record of the tool in hand on that canvas — what the sliders read.
-   * A brush met for the first time (a plugin's, the easter egg's) reads the
+   * A brush met for the first time (a plugin's, the old pen's) reads the
    * canvas's default; the record itself is written only when a slider moves,
    * because a getter runs inside `$derived` and MUST NOT touch state there.
    */
@@ -491,6 +526,15 @@ export class EditorState {
     const byTool = this.brushCanvas === 'multator' ? this.multatorByTool : this.tonioByTool;
     byTool[brushToolOf(this.tool)] = { ...this.brush, ...patch };
     this.persistUiConfig();
+  }
+
+  /**
+   * Whether the smoothing sliders reach the brush that draws. They belong to
+   * the Tonio commit, so on a Multator line, the old pen or the pixel they
+   * would be two numbers that change nothing — and the panel leaves them out.
+   */
+  get brushSmooths(): boolean {
+    return brushUsesSmoothing(this.brushTool, this.defaultDialect);
   }
 
   get tonioSmooth(): number {
@@ -539,6 +583,9 @@ export class EditorState {
     this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
     this.defaultDialect = presetDefaultDialect(id);
+    // Multator opens with its own line in hand; the other presets with the
+    // everyday brush. A type picked afterwards stays until the next preset.
+    this.brushType = presetBrushType(id);
     this.paletteExpanded = this.ux.quickPalette === null;
     if (this.touched) {
       // A narrower profile range must not leave the document out of bounds.
@@ -578,13 +625,6 @@ export class EditorState {
     // one: hopping pipette → hand must not make the pipette the way back.
     if (isHelpTool(resolved) && !isHelpTool(this.tool)) {
       this.previousDrawingTool = this.tool;
-    } else if (!isHelpTool(resolved)) {
-      // Picking a brush by hand closes what the "old" easter egg remembered:
-      // typing the word again should take the twin of this brush, not give
-      // back the one the egg took before it. The egg sets it again itself,
-      // after this call. A detour does not count — `o` selects the hand on
-      // the way through the word.
-      this.beforeOldschool = null;
     }
     if (resolved !== this.tool) {
       // A tool that brought its own window takes it away with it, the way the
@@ -1745,19 +1785,82 @@ export class EditorState {
   }
 
   /**
-   * Reads the plugins at `address`, dropping whatever the previous one gave.
-   * The arrangement is read again afterwards: a tool that arrived takes the
-   * place its preset has for it, and one that is gone leaves without taking
-   * the rest of the layout with it.
+   * The start of the plugins: what is installed comes up from the cache first,
+   * so drawing never waits on the network, and only then does the catalog get
+   * asked whether any of it has a newer version.
    */
-  async reloadPlugins(address: string): Promise<void> {
-    plugins.resetExternal();
-    await loadPlugins(address, plugins);
+  async startPlugins(): Promise<void> {
+    await loadInstalled(plugins);
+    this.refreshPlugins();
+    const address = this.settings.pluginRegistry;
+    if (!address.trim()) {
+      return;
+    }
+    const catalog = await readCatalog(address);
+    if (catalog.error) {
+      console.warn(catalog.error);
+      return;
+    }
+    // Lock only around the download itself: a check that finds nothing new
+    // must be invisible.
+    if (!(await this.hasUpdates(catalog.plugins))) {
+      return;
+    }
+    this.updating = true;
+    try {
+      await updateInstalled(catalog.plugins, plugins);
+    } finally {
+      this.updating = false;
+      this.refreshPlugins();
+    }
+  }
+
+  /** Whether anything installed has a newer version in the catalog. */
+  private async hasUpdates(catalog: readonly CatalogEntry[]): Promise<boolean> {
+    const installed = await listInstalled();
+    return installed.some((plugin) => plugin.source === 'catalog'
+      && catalog.some((entry) => entry.id === plugin.id && compareVersions(entry.version, plugin.version) > 0));
+  }
+
+  /**
+   * The register changed. The arrangement is read again — a tool that arrived
+   * takes the place its preset has for it, and one that is gone leaves without
+   * taking the rest of the layout with it — and a tool that is no longer there
+   * cannot stay in hand.
+   */
+  refreshPlugins(): void {
     this.panels = normalizePanels(this.panels);
     this.pluginsVersion++;
     if (!plugins.tool(this.tool)) {
       this.selectTool('pencil');
     }
+  }
+
+  /** Installs one plugin of the catalog; the reason comes back when it did not. */
+  async installPlugin(entry: CatalogEntry): Promise<string | null> {
+    const failed = await installFromCatalog(entry, plugins);
+    this.refreshPlugins();
+    return failed;
+  }
+
+  /** Installs a bundle picked from disk. */
+  async installPluginFile(code: string): Promise<string | null> {
+    const failed = await installFromFile(code, plugins);
+    this.refreshPlugins();
+    return failed;
+  }
+
+  /** Takes a plugin off: out of storage, off the panel, and out of the hand. */
+  async removePlugin(id: string): Promise<void> {
+    plugins.remove(id);
+    await removeInstalled(id);
+    this.refreshPlugins();
+  }
+
+  /** Switches a plugin that broke back on — the button beside it in the list. */
+  enablePlugin(id: string): void {
+    plugins.enable(id);
+    this.refreshPlugins();
   }
 
   /** What a plugin is handed — never this object, which carries the runes state. */
@@ -1806,23 +1909,6 @@ export class EditorState {
   /** Shrinks the brush by the profile's step (- hotkey), down to the minimum. */
   decreaseBrushSize(): void {
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, -1, this.ux);
-  }
-
-  /**
-   * The reference "old" easter egg (Main.hx keyDown: o, l, d). The oldschool
-   * pen is a brush like any other and stands on no panel, so the egg is its
-   * only door: typing the word takes it in hand, typing it again gives back
-   * the brush that was there.
-   */
-  toggleOldschool(): void {
-    // The hand may be in hand: `o` selects it on the way through the word.
-    const from = isHelpTool(this.tool) ? this.previousDrawingTool : this.tool;
-    const swap = oldschoolSwap(from, this.beforeOldschool);
-    // A brush off the panels is not in `availableTools`, and that is the
-    // point: the arrangement never offers it, the gesture hands it over.
-    this.selectTool(swap.take, 'outline', [swap.take]);
-    // After the selection, which clears what a hand-picked brush closes.
-    this.beforeOldschool = swap.back;
   }
 
   /** One settings option, applied and persisted at once. */

@@ -442,3 +442,25 @@ describe('commit comes from the brush', () => {
     expect(String(errors[0].join(' '))).toContain('sparkle');
   });
 });
+
+describe('what reaches the document', () => {
+  /** A tool collecting its own points, as a plugin may: raw pointer positions. */
+  const rawOwn: profiles.OwnCapture = {
+    capture: (line, points) => [...line, ...points],
+  };
+
+  it('quantizes a tool\'s own points instead of dropping the stroke', () => {
+    // The document stores integers; the dialect's own capture quantizes, and a
+    // tool that collects its points itself would otherwise have to know that.
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'toonio', descriptor: pencil, own: rawOwn,
+    }));
+    controller.pointerDown(sample(1, 10.4, 20.6));
+    controller.pointerMove(sample(1, 30.2, 40.9));
+    controller.pointerUp(sample(1, 30.2, 40.9));
+
+    const committed = controller.takeCommitted();
+    expect(committed).not.toBeNull();
+    expect(committed!.points.every((coord) => Number.isInteger(coord))).toBe(true);
+  });
+});

@@ -1,0 +1,240 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+
+import type { CatalogEntry } from './catalog';
+import { PLUGIN_API } from './contract';
+import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from './install';
+import { PluginRegistry } from './registry';
+import { listInstalled, putInstalled, type InstalledPlugin } from './store';
+import { fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
+
+const entry = (id: string, version = '1.0.0'): CatalogEntry => ({
+  id,
+  name: `Плагин ${id}`,
+  version,
+  description: 'что-то делает',
+  icon: '<path d="M4 4h16" />',
+  url: `https://plugins.example/${id}/plugin.js`,
+});
+
+const manifest = (id: string, extra: Record<string, unknown> = {}) => ({
+  default: {
+    id,
+    api: PLUGIN_API,
+    tool: { label: id, title: id, key: '', icon: '<path />' },
+    ...extra,
+  },
+});
+
+/** The bundle is text to the editor; what it evaluates to is the port's business. */
+function ports(modules: Record<string, unknown>, fetched: string[] = []) {
+  return {
+    fetch: async (url: string) => {
+      fetched.push(url);
+      return { text: async () => `code:${url}` };
+    },
+    evaluate: async (code: string) => {
+      const module = modules[code];
+      if (!module) {
+        throw new Error(`не разбирается: ${code}`);
+      }
+      return module as Record<string, unknown>;
+    },
+  };
+}
+
+const installed = (id: string, version: string, source: 'catalog' | 'local' = 'catalog'): InstalledPlugin => ({
+  id,
+  version,
+  name: id,
+  description: '',
+  icon: '',
+  code: `old:${id}`,
+  source,
+  installed: 1,
+});
+
+afterEach(() => {
+  delete (globalThis as { indexedDB?: unknown }).indexedDB;
+});
+
+describe('installFromCatalog', () => {
+  test('downloads the bundle, registers the tool and keeps the code', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+    const fetched: string[] = [];
+
+    const failed = await installFromCatalog(
+      entry('halftone'),
+      registry,
+      ports({ 'code:https://plugins.example/halftone/plugin.js': manifest('halftone') }, fetched),
+    );
+
+    expect(failed).toBeNull();
+    expect(fetched).toEqual(['https://plugins.example/halftone/plugin.js']);
+    expect(registry.tool('halftone')).toBeDefined();
+    const stored = await listInstalled();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ id: 'halftone', version: '1.0.0', name: 'Плагин halftone', source: 'catalog' });
+    expect(stored[0].code).toBe('code:https://plugins.example/halftone/plugin.js');
+  });
+
+  test('refuses a bundle whose manifest is a different plugin', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    const failed = await installFromCatalog(
+      entry('halftone'),
+      registry,
+      ports({ 'code:https://plugins.example/halftone/plugin.js': manifest('other') }),
+    );
+
+    expect(failed).toContain('halftone');
+    expect(registry.tool('other')).toBeUndefined();
+    expect(await listInstalled()).toEqual([]);
+  });
+
+  test('a bundle the register refuses is not stored', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    const failed = await installFromCatalog(
+      entry('halftone'),
+      registry,
+      ports({ 'code:https://plugins.example/halftone/plugin.js': { default: { id: 'halftone', api: PLUGIN_API + 1 } } }),
+    );
+
+    expect(failed).toContain('мажор');
+    expect(await listInstalled()).toEqual([]);
+  });
+
+  test('an unreachable bundle is a reason, not a throw', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    const failed = await installFromCatalog(entry('halftone'), registry, {
+      fetch: async () => {
+        throw new Error('сеть недоступна');
+      },
+      evaluate: async () => ({}),
+    });
+
+    expect(failed).toContain('сеть недоступна');
+    expect(await listInstalled()).toEqual([]);
+  });
+});
+
+describe('installFromFile', () => {
+  test('takes its name and version from the manifest and marks it local', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    const failed = await installFromFile(
+      'своя сборка',
+      registry,
+      ports({ 'своя сборка': manifest('mine', { name: 'Моё перо', version: '0.3.0', description: 'проба' }) }),
+    );
+
+    expect(failed).toBeNull();
+    expect(await listInstalled()).toMatchObject([
+      { id: 'mine', name: 'Моё перо', version: '0.3.0', description: 'проба', source: 'local' },
+    ]);
+  });
+
+  test('a file that is not a plugin installs nothing', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+
+    const failed = await installFromFile('мусор', registry, ports({}));
+
+    expect(failed).toBeTruthy();
+    expect(await listInstalled()).toEqual([]);
+  });
+});
+
+describe('loadInstalled', () => {
+  test('brings every stored plugin into the register', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('a', '1.0.0'));
+    await putInstalled(installed('b', '1.0.0'));
+    const registry = new PluginRegistry();
+
+    await loadInstalled(registry, ports({ 'old:a': manifest('a'), 'old:b': manifest('b') }));
+
+    expect(registry.tools().map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  test('one broken bundle does not stop the others', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('good', '1.0.0'));
+    await putInstalled(installed('bad', '1.0.0'));
+    const registry = new PluginRegistry();
+
+    await loadInstalled(registry, ports({ 'old:good': manifest('good') }));
+
+    expect(registry.tools().map((t) => t.id)).toEqual(['good']);
+    expect(registry.failures.map((f) => f.id)).toEqual(['bad']);
+  });
+});
+
+describe('updateInstalled', () => {
+  test('takes the newer version, replaces the code and re-registers the tool', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('halftone', '1.0.0'));
+    const registry = new PluginRegistry();
+    const port = ports({
+      'old:halftone': manifest('halftone'),
+      'code:https://plugins.example/halftone/plugin.js': manifest('halftone'),
+    });
+    await loadInstalled(registry, port);
+
+    const updated = await updateInstalled([entry('halftone', '1.1.0')], registry, port);
+
+    expect(updated).toEqual(['halftone']);
+    expect((await listInstalled())[0]).toMatchObject({ version: '1.1.0' });
+    expect(registry.tool('halftone')).toBeDefined();
+  });
+
+  test('leaves an up-to-date plugin alone and downloads nothing', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('halftone', '1.1.0'));
+    const registry = new PluginRegistry();
+    const fetched: string[] = [];
+
+    const updated = await updateInstalled([entry('halftone', '1.1.0')], registry, ports({}, fetched));
+
+    expect(updated).toEqual([]);
+    expect(fetched).toEqual([]);
+  });
+
+  test('never touches a plugin installed from a file', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('mine', '0.1.0', 'local'));
+    const registry = new PluginRegistry();
+    const fetched: string[] = [];
+
+    const updated = await updateInstalled([entry('mine', '9.0.0')], registry, ports({}, fetched));
+
+    expect(updated).toEqual([]);
+    expect(fetched).toEqual([]);
+    expect((await listInstalled())[0].version).toBe('0.1.0');
+  });
+
+  test('a download that fails leaves the working version in place', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    await putInstalled(installed('halftone', '1.0.0'));
+    const registry = new PluginRegistry();
+    await loadInstalled(registry, ports({ 'old:halftone': manifest('halftone') }));
+
+    const updated = await updateInstalled([entry('halftone', '1.1.0')], registry, {
+      fetch: async () => {
+        throw new Error('сеть отвалилась');
+      },
+      evaluate: async () => ({}),
+    });
+
+    expect(updated).toEqual([]);
+    expect((await listInstalled())[0].version).toBe('1.0.0');
+    expect(registry.tool('halftone')).toBeDefined();
+    expect(registry.failures.map((f) => f.reason).join()).toContain('сеть отвалилась');
+  });
+});

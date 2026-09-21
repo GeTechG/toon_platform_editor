@@ -96,17 +96,14 @@ describe('PluginRegistry', () => {
     expect(registry.toolByKey('')).toBeUndefined();
   });
 
-  test('rereading the address drops what came from it, and nothing else', () => {
+  test('taking a plugin off frees its key for the one that comes next', () => {
     const registry = new PluginRegistry();
     registry.register(toolPlugin('pencil', { key: 'B' }), { builtin: true });
     registry.register(toolPlugin('a.halftone', { key: 'H' }));
-    registry.fail('a.broken', 'сеть');
 
-    registry.resetExternal();
+    registry.remove('a.halftone');
 
     expect(registry.tools().map((tool) => tool.id)).toEqual(['pencil']);
-    expect(registry.failures).toEqual([]);
-    // The key it held is free again, so a reread can take it back.
     expect(registry.register(toolPlugin('a.halftone', { key: 'H' }))).toBeNull();
     expect(registry.tool('a.halftone')?.key).toBe('H');
   });
@@ -122,7 +119,10 @@ describe('PluginRegistry', () => {
       stroke: { kind: 'pencil', descriptor: () => ({ kind: 'pencil', dialect: 'multator', width: 4, color: '#000000' }), commit },
     }))).toBeNull();
 
-    expect(registry.tool('a.oldschool')?.stroke?.commit).toBe(commit);
+    // Not the same function: an external plugin's is wrapped so its throw
+    // costs the plugin and not the editor. What it commits is what matters.
+    expect(registry.tool('a.oldschool')?.stroke?.commit?.([1, 2], {} as never, { coordinateScale: 1 }))
+      .toEqual(commit([1, 2]));
   });
 
   test('built-in tools go in the same way external ones do', () => {
@@ -132,5 +132,79 @@ describe('PluginRegistry', () => {
 
     expect(registry.tool('pencil')?.key).toBe('B');
     expect(registry.tools()[0].builtin).toBe(true);
+  });
+});
+
+describe('a plugin that throws', () => {
+  const broken = (id: string, tool: Record<string, unknown>) => ({
+    id,
+    api: PLUGIN_API,
+    tool: { label: id, title: id, key: '', icon: '<path />', ...tool },
+  });
+
+  /** The console is the plugin's error report; the test keeps it out of the run. */
+  function quiet<T>(run: () => T): T {
+    const original = console.error;
+    console.error = () => {};
+    try {
+      return run();
+    } finally {
+      console.error = original;
+    }
+  }
+
+  test('a gesture callback that throws disables the plugin instead of the editor', () => {
+    const registry = new PluginRegistry();
+    registry.register(broken('a.bad', { move: () => { throw new Error('ой'); } }));
+
+    const tool = registry.tool('a.bad')!;
+    quiet(() => tool.move!({} as never, { x: 0, y: 0 }));
+
+    expect(registry.tools().map((t) => t.id)).toEqual([]);
+    expect(registry.tool('a.bad')).toBeUndefined();
+    expect(registry.brokenReason('a.bad')).toContain('ой');
+  });
+
+  test('a descriptor that throws draws as a pencil and the plugin is off', () => {
+    const registry = new PluginRegistry();
+    registry.register(broken('a.bad', {
+      stroke: { kind: 'pencil', descriptor: () => { throw new Error('ой'); } },
+    }));
+
+    const stroke = registry.tool('a.bad')!.stroke!;
+    const descriptor = quiet(() => stroke.descriptor({ width: 3, color: '#000', fill: '#fff', dialect: 'toonio' }));
+
+    expect(descriptor).toEqual({ kind: 'pencil', dialect: 'toonio', width: 3, color: '#000' });
+    expect(registry.tool('a.bad')).toBeUndefined();
+  });
+
+  test('tells whoever is holding the tool that it broke', () => {
+    const registry = new PluginRegistry();
+    const told: string[] = [];
+    registry.onBreak = (id) => told.push(id);
+    registry.register(broken('a.bad', { press: () => { throw new Error('ой'); } }));
+
+    quiet(() => registry.tool('a.bad')!.press!({} as never, { x: 0, y: 0 }));
+
+    expect(told).toEqual(['a.bad']);
+  });
+
+  test('comes back when it is switched on again', () => {
+    const registry = new PluginRegistry();
+    registry.register(broken('a.bad', { release: () => { throw new Error('ой'); } }));
+    quiet(() => registry.tool('a.bad')!.release!({} as never));
+
+    registry.enable('a.bad');
+
+    expect(registry.tool('a.bad')).toBeDefined();
+    expect(registry.brokenReason('a.bad')).toBeUndefined();
+  });
+
+  test('a built-in tool is not wrapped: its throw is the editor\'s bug, not a plugin failure', () => {
+    const registry = new PluginRegistry();
+    registry.register(broken('pencil', { move: () => { throw new Error('баг'); } }), { builtin: true });
+
+    expect(() => registry.tool('pencil')!.move!({} as never, { x: 0, y: 0 })).toThrow('баг');
+    expect(registry.tool('pencil')).toBeDefined();
   });
 });
