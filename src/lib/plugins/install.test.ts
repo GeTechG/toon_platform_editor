@@ -243,7 +243,7 @@ describe('the plugin the editor ships with', () => {
   const delivery = {
     id: 'core',
     api: PLUGIN_API,
-    name: 'Эталоны',
+    name: 'Внутренний',
     version: '1.2.3',
     tools: { 'core.pen': { label: 'Перо', title: 'Перо', key: '', icon: '<path />' } },
   };
@@ -276,7 +276,7 @@ describe('the plugin the editor ships with', () => {
     await putInstalled({
       id: 'core',
       version: '1.2.3',
-      name: 'Эталоны',
+      name: 'Внутренний',
       description: '',
       icon: '',
       code: '',

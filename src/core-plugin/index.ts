@@ -157,9 +157,9 @@ const twin = (label: string, icon: string, stroke: PluginPrimitive): PluginTool 
 const plugin: Plugin = {
   id: 'core',
   api: PLUGIN_API,
-  name: 'Эталоны',
+  name: 'Внутренний',
   version: '1.0.0',
-  description: 'Кисти и пресеты Multator и Toonio — то, чем редактор повторяет два эталонных редактора.',
+  description: 'Кисти, пресеты и прочее необязательное, что приезжает с редактором — тем же контрактом, что и любой плагин.',
   tools: {
     'multator-pencil': twin('Мультаторовский карандаш', PENCIL_ICON, MULTATOR_PENCIL),
     'multator-eraser': twin('Мультаторовский ластик', ERASER_ICON, MULTATOR_ERASER),
