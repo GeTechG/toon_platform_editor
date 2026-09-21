@@ -377,13 +377,13 @@
     cursor: pointer;
   }
   .row.active {
-    background: color-mix(in srgb, var(--electric, #2f5bff) 12%, transparent);
+    background: color-mix(in srgb, var(--electric, #1b5cff) 12%, transparent);
   }
   .row.dragging {
     opacity: 0.7;
   }
   .row:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
+    outline: 2px solid var(--electric, #1b5cff);
     outline-offset: -2px;
   }
   .eye {
@@ -393,7 +393,7 @@
     width: 28px;
     height: 28px;
     border: 0;
-    border-radius: var(--r-sm, 6px);
+    border-radius: var(--r-sm, 7px);
     background: transparent;
     cursor: pointer;
   }
@@ -414,8 +414,8 @@
     text-overflow: ellipsis;
   }
   .rename {
-    border: 1px solid var(--electric, #2f5bff);
-    border-radius: var(--r-sm, 6px);
+    border: 1px solid var(--electric, #1b5cff);
+    border-radius: var(--r-sm, 7px);
     padding: 0 0.25rem;
     background: var(--canvas, #fff);
     color: inherit;
@@ -426,6 +426,7 @@
      A 4px stripe would be a 4px tap target: the button is 14px wide with the
      stripe painted in its middle, so the pointer and the finger both hit it. */
   .tag {
+    position: relative;
     flex: none;
     box-sizing: content-box;
     width: 4px;
@@ -436,8 +437,22 @@
     background-clip: content-box;
     cursor: pointer;
   }
+  /* The stripe is 4px wide on purpose — a column of them reads as a margin
+     beside the names, not as a row of buttons. The thing being pressed is not
+     the stripe, though: 14px was the narrowest target in the editor. The press
+     target grows to the 24px floor without the drawing growing with it, and
+     stays inside the 6px gap to the eye, so no neighbour loses its own press. */
+  .tag::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 24px;
+    height: 100%;
+    transform: translate(-50%, -50%);
+  }
   .tag:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
+    outline: 2px solid var(--electric, #1b5cff);
     outline-offset: 1px;
   }
   /* The handle is the only drag surface, so the list still scrolls by touch. */
@@ -450,7 +465,7 @@
     touch-action: none;
     cursor: grab;
     user-select: none;
-    color: var(--ink-muted, #6b7280);
+    color: var(--ink-2);
   }
   .head {
     display: flex;
@@ -467,7 +482,7 @@
     height: 26px;
     padding: 0 0.4rem;
     border: 0;
-    border-radius: var(--r-sm, 6px);
+    border-radius: var(--r-sm, 7px);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -485,9 +500,9 @@
     height: 26px;
     flex: none;
     border: 0;
-    border-radius: var(--r-sm, 6px);
+    border-radius: var(--r-sm, 7px);
     background: transparent;
-    color: var(--ink-muted, #6b7280);
+    color: var(--ink-2);
     cursor: pointer;
   }
   .kill:disabled {

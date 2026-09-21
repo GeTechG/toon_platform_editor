@@ -1228,13 +1228,13 @@
   }
   .overlay .frame {
     fill: none;
-    stroke: var(--electric, #2f6fed);
+    stroke: var(--electric, #1b5cff);
     stroke-width: 1;
     stroke-dasharray: 5 3;
   }
   .overlay .handle {
     fill: var(--canvas, #fff);
-    stroke: var(--electric, #2f6fed);
+    stroke: var(--electric, #1b5cff);
     stroke-width: 2;
   }
   .brush-cursor {

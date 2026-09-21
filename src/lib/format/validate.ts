@@ -1,12 +1,16 @@
 /**
- * Document validation: JSON Schema (ajv, draft 2020-12) plus semantic
- * checks the schema cannot express. The schema is the single source of
- * structural validation, shared with the future Rust implementation
- * (phase 2).
+ * Document validation: JSON Schema (draft 2020-12) plus semantic checks the
+ * schema cannot express. The schema is the single source of structural
+ * validation, shared with the future Rust implementation (phase 2).
+ *
+ * The validator is generated from that schema at build time
+ * (`scripts/build-schema-validator.ts`, `bun run schema`) rather than compiled
+ * by ajv on import: compiling cost 33ms before the editor could draw anything,
+ * put the compiler itself in the browser's chunk, and did its work through
+ * `new Function`, which a strict CSP does not allow.
  */
 
-import Ajv2020 from 'ajv/dist/2020';
-import schema from './schema/toon-v7.schema.json';
+import validateSchema from './schema/toon-v7.validate.js';
 import { SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
 import type { ToolDescriptor, ToonDocument } from './types';
 
@@ -23,9 +27,6 @@ export interface ValidationResult {
   ok: boolean;
   issues: ValidationIssue[];
 }
-
-const ajv = new Ajv2020({ allErrors: true });
-const validateSchema = ajv.compile(schema);
 
 /** Document load error; carries the list of validation issues. */
 export class FormatError extends Error {

@@ -322,3 +322,16 @@ describe('the bottom panel folds like the sides', () => {
     expect(editorUi).toMatch(/\.panel\.collapsed \{[^}]*height: 0\.75rem/s);
   });
 });
+
+describe('the strip only pays for the cells it shows', () => {
+  // Sixty frames meant sixty live 2D contexts, of which a 1280px screen shows
+  // about twenty; the format allows 4096. A canvas is free until `getContext`,
+  // so the cell waits until it is in view. Measured after: 61 cells, 23 drawn.
+  it('a cell thumbnail takes its context when it comes into view', async () => {
+    const thumb = await Bun.file(new URL('./LayerThumb.svelte', import.meta.url)).text();
+    expect(thumb).toContain('IntersectionObserver');
+    expect(thumb).toContain('!onScreen');
+    // No observer in the engine is a reason to draw, not a reason to go blank.
+    expect(thumb).toContain('onScreen = true;');
+  });
+});

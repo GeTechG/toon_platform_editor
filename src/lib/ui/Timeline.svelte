@@ -302,6 +302,7 @@
   }
   /* A 7px band straddling that border, so the grab target is not the hairline. */
   .col-resizer {
+    position: relative;
     flex: none;
     width: 7px;
     margin: 0 -3px 0 -4px;
@@ -309,8 +310,21 @@
     cursor: ew-resize;
     touch-action: none;
   }
+  /* A splitter is a hairline by nature — drawn wider it becomes a bar between
+     the names and the grid. So the drawn width stays 7px and the band a finger
+     can catch is 24: it reaches over the list and the grid, neither of which is
+     a target of its own, so nothing else loses its press to it. */
+  .col-resizer::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 24px;
+    transform: translateX(-50%);
+  }
   .col-resizer:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
+    outline: 2px solid var(--electric, #1b5cff);
     outline-offset: -2px;
   }
   .grid {
@@ -336,7 +350,7 @@
     font-size: 0.6rem;
     line-height: 32px;
     font-variant-numeric: tabular-nums;
-    color: var(--ink-muted, #6b7280);
+    color: var(--ink-2);
   }
   /* Onion and copied frames are named in the header, not only tinted. */
   .num.onion {
@@ -372,19 +386,19 @@
      dotted one — three shapes, so colour is never the only signal. */
   .cell.selected {
     border-style: dashed;
-    border-color: var(--electric, #2f5bff);
-    background: color-mix(in srgb, var(--electric, #2f5bff) 10%, transparent);
+    border-color: var(--electric, #1b5cff);
+    background: color-mix(in srgb, var(--electric, #1b5cff) 10%, transparent);
   }
   .cell.copied {
     border-style: dotted;
   }
   .cell.active {
     border-style: solid;
-    border-color: var(--electric, #2f5bff);
-    box-shadow: inset 0 0 0 2px var(--electric, #2f5bff);
+    border-color: var(--electric, #1b5cff);
+    box-shadow: inset 0 0 0 2px var(--electric, #1b5cff);
   }
   .cell:focus-visible {
-    outline: 2px solid var(--electric, #2f5bff);
+    outline: 2px solid var(--electric, #1b5cff);
     outline-offset: 1px;
   }
   .cell:disabled {
@@ -402,8 +416,8 @@
     margin-top: 2px;
     padding: 2px;
     align-items: flex-end;
-    background: color-mix(in srgb, var(--electric, #2f5bff) 7%, transparent);
-    border-radius: var(--r-sm, 5px);
+    background: color-mix(in srgb, var(--electric, #1b5cff) 7%, transparent);
+    border-radius: var(--r-sm, 7px);
   }
   .bar {
     flex: none;
@@ -414,7 +428,7 @@
   }
   .bar > span {
     flex: 1;
-    background: var(--electric, #2f5bff);
+    background: var(--electric, #1b5cff);
     opacity: 0.6;
     border-radius: 1px;
   }

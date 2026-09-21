@@ -1,0 +1,42 @@
+/* --- toonop tokens (DESIGN.md) -------------------------------------------
+   Чернила, холст, ток, действие — плюс наследственный синий, и лестница
+   скруглений. Один файл на оба пакета: таблица была написана дважды, на
+   `.editor` здесь и на `:root` в app.css площадки, и правка хью в одном месте
+   оставляла редактор и страницу вокруг него при разных цветах.
+
+   `:where()` — нулевая специфичность нарочно. Редактор встраивают исходниками
+   в чужое приложение; файл предлагает токены, но не навязывает их: хост, у
+   которого свой `--ink`, оставляет свой. */
+:where(.editor, :root) {
+  --ink: #0b0c10; /* line & primary text — the editor's own stroke */
+  --ink-2: #333a48; /* secondary text, ≥7:1 on paper */
+  --paper: #eaeef7; /* cool off-white bg — never cream (Never-Cream Rule) */
+  --canvas: #ffffff; /* surfaces / cards — the clean frame */
+  --sky: #e4f1fb;
+
+  /* Electric comes in two weights. `--electric` fills and draws (focus rings,
+     borders, backgrounds) where 3:1 is the bar. Text takes `--electric-dark`,
+     because #1B5CFF on paper measures 4.49:1 and misses WCAG AA by a hair —
+     the same token that already keys the blue button, doing double duty rather
+     than spawning a near-duplicate. Same hue: Bloodline-Blue Rule intact. */
+  --electric: #1b5cff; /* bloodline blue: fills, active state, onion-skin */
+  --electric-dark: #134bd6; /* key shadow AND link ink — 6.01:1 on paper */
+
+  /* Signal, likewise, in a bright brand weight and a working weight.
+     `--signal` #FF4326 is the logotype red — the wordmark dot and the key
+     shadow — where WCAG exempts brand lettering and non-text alike. Anything
+     that is *read* uses `--signal-dark`: white on #FF4326 is only 3.45:1. */
+  --signal: #ff4326; /* Signal Rule: reserved for the "draw" action only */
+  --signal-dark: #d8331c; /* the working red: 4.76:1 both ways on canvas */
+  --signal-deep: #b02a15; /* key under prime + its hover ink (ramp step) */
+
+  --hairline: #0b0c1024; /* 14% ink — dividers, structure without shadow */
+  --hairline-soft: #0b0c1012; /* 7% ink */
+  --ghost-2: #1b5cff1a; /* onion-skin's far step (0.1) */
+
+  --r-sm: 7px;
+  --r-md: 14px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+}

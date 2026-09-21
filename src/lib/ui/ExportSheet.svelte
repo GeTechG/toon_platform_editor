@@ -306,7 +306,7 @@
   .note {
     margin: 0.2rem 0;
     font-size: 0.82rem;
-    color: var(--ink-2, #555);
+    color: var(--ink-2, #333a48);
   }
   progress {
     width: 100%;

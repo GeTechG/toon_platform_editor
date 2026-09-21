@@ -19,6 +19,7 @@
   import SettingsSheet from './SettingsSheet.svelte';
   import PluginsSheet from './PluginsSheet.svelte';
   import Icon from './Icon.svelte';
+  import './tokens.css';
   import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
   import { loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
@@ -77,6 +78,18 @@
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
   let exportButton = $state<ExportSheet | undefined>();
+
+  // The two sheets the editor draws itself. `showModal()` is what makes them
+  // modal in fact and not only in the accessibility tree; `onclose` puts the
+  // flag back, so Esc and the close buttons end at the same place.
+  let draftsDialog = $state<HTMLDialogElement | undefined>();
+  let manualDialog = $state<HTMLDialogElement | undefined>();
+  $effect(() => {
+    draftsDialog?.showModal();
+  });
+  $effect(() => {
+    manualDialog?.showModal();
+  });
 
   /** Mirrors `document.fullscreenElement`, so the button can show it is on. */
   let isFullscreen = $state(false);
@@ -1592,20 +1605,21 @@
     <PanelArranger {editor} />
   {/if}
 
-  <!-- Drafts sheet: every local save with its first frame, newest first. -->
+  <!-- Drafts sheet: every local save with its first frame, newest first.
+       A native <dialog>, like the settings and plugins sheets: showModal()
+       brings the focus trap, the Esc key and an inert page behind it. The
+       hand-rolled version claimed `aria-modal` without any of the three, and
+       its Esc was bound to a backdrop that never received a key. -->
   {#if draftsOpen}
-    <div
-      class="sheet-backdrop"
-      role="button"
-      tabindex="-1"
-      aria-label={t('editor.drafts_close')}
-      onclick={() => (draftsOpen = false)}
-      onkeydown={(e) => e.key === 'Escape' && (draftsOpen = false)}
-    ></div>
-    <div class="sheet" role="dialog" aria-label={t('editor.drafts')} aria-modal="true">
+    <dialog
+      bind:this={draftsDialog}
+      class="sheet sheet-dialog"
+      aria-label={t('editor.drafts')}
+      onclose={() => (draftsOpen = false)}
+    >
       <header class="sheet-head">
         <h2>{t('editor.drafts')}</h2>
-        <button class="key icon" onclick={() => (draftsOpen = false)} aria-label={t('editor.close')}>
+        <button class="key icon" onclick={() => draftsDialog?.close()} aria-label={t('editor.close')}>
           <Icon name="x" />
         </button>
       </header>
@@ -1674,9 +1688,9 @@
         {#if drafts.length > 0}
           <button class="key" onclick={removeAllDrafts}>{t('editor.drafts_wipe')}</button>
         {/if}
-        <button class="key primary" onclick={() => (draftsOpen = false)}>{t('editor.close')}</button>
+        <button class="key primary" onclick={() => draftsDialog?.close()}>{t('editor.close')}</button>
       </footer>
-    </div>
+    </dialog>
   {/if}
 
   {#if settingsSheetOpen}
@@ -1703,18 +1717,15 @@
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
   <!-- (SHORTCUTS is declared in the script block above.) -->
   {#if manualOpen}
-    <div
-      class="sheet-backdrop"
-      role="button"
-      tabindex="-1"
-      aria-label={t('editor.manual_close')}
-      onclick={() => (manualOpen = false)}
-      onkeydown={(e) => e.key === 'Escape' && (manualOpen = false)}
-    ></div>
-    <div class="sheet" role="dialog" aria-label={t('editor.manual')} aria-modal="true">
+    <dialog
+      bind:this={manualDialog}
+      class="sheet sheet-dialog"
+      aria-label={t('editor.manual')}
+      onclose={() => (manualOpen = false)}
+    >
       <header class="sheet-head">
         <h2>{t('editor.manual')}</h2>
-        <button class="key icon" onclick={() => (manualOpen = false)} aria-label={t('editor.close')}>
+        <button class="key icon" onclick={() => manualDialog?.close()} aria-label={t('editor.close')}>
           <Icon name="x" />
         </button>
       </header>
@@ -1735,34 +1746,24 @@
       </div>
 
       <footer class="sheet-foot">
-        <button class="key primary" onclick={() => (manualOpen = false)}>{t('editor.done')}</button>
+        <button class="key primary" onclick={() => manualDialog?.close()}>{t('editor.done')}</button>
       </footer>
-    </div>
+    </dialog>
   {/if}
 </div>
 
 <style>
-  /* toonop tokens (DESIGN.md): ink / paper / canvas / electric / signal.
-     Defined on the root so every child component inherits them through the
-     DOM — scoped styles still resolve `var(--…)` at runtime. */
+  /* The brand table (ink / paper / canvas / electric / signal) comes from
+     `tokens.css`, imported above: one file, read by the editor and by the site
+     that embeds it. What is left here is the editor's own chrome — the
+     worktable tone, the key height, the bleed — which no other surface has.
+     Declared on `.editor` so every child inherits through the DOM; scoped
+     styles still resolve `var(--…)` at runtime. */
   .editor {
-    --ink: #0b0c10;
-    --ink-2: #333a48;
-    --paper: #eaeef7;
     /* The worktable: one tonal step under the chrome, same blue bias. Four
        surfaces read apart without a single extra line — panels on paper, the
        drawing on white, the table between them. */
     --table: #d7dfee;
-    --canvas: #ffffff;
-    --sky: #e4f1fb;
-    --electric: #1b5cff;
-    --electric-dark: #134bd6;
-    --signal: #ff4326;
-    --signal-dark: #d8331c; /* the working red: what gets read, 4.76:1 */
-    --signal-deep: #b02a15;
-    --hairline: #0b0c1024;
-    --hairline-soft: #0b0c1012;
-    --ghost-2: #1b5cff1a;
     /* Layer tags: six hues cycling by row position, a display aid only — the
        document stores no colour. Kept muted so a column of them reads as
        stripes beside the names rather than competing with the drawing. */
@@ -1772,8 +1773,6 @@
     --layer-tag-3: #c0392b;
     --layer-tag-4: #7d3cc7;
     --layer-tag-5: #0f7d9e;
-    --r-sm: 7px;
-    --r-md: 14px;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
     --key-h: 2.75rem;
     /* How far a control paints outside its own box: the focus ring (3px at
@@ -2223,6 +2222,24 @@
     cursor: ew-resize;
     touch-action: none;
   }
+  /* A seam and a tab are drawn thin on purpose — wider, they stop being a
+     seam and become furniture. The band that catches the pointer is separate
+     from the line that is drawn, and reaches the 24px floor WCAG 2.2 AA asks
+     for. Each one borders panel surface, not another control, so nothing else
+     loses its own press to it. (Same move as the timeline's column splitter.) */
+  .side-resizer::after,
+  .resizer::after,
+  .fold::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    min-width: 24px;
+    min-height: 24px;
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%);
+  }
   .side-resizer:hover,
   .side-edge.dragging .side-resizer {
     background: linear-gradient(var(--electric), var(--electric)) center / 2px 100% no-repeat;
@@ -2288,7 +2305,7 @@
     transform: translateY(2px);
   }
   .fold:focus-visible {
-    outline: 3px solid var(--electric, #2f5bff);
+    outline: 3px solid var(--electric, #1b5cff);
     outline-offset: 2px;
   }
   /* Folded, the tab is all that is left of the column: it waits at the screen
@@ -2352,7 +2369,10 @@
     width: 6rem;
     margin: 0;
     accent-color: var(--electric);
-  }
+      /* 16px is the native height of a range and too thin to catch; the track
+       stays where it is drawn, the band around it is a finger deep. */
+    height: 1.5rem;
+}
   .fps-inline input[type='number'] {
     width: 3.2rem;
     height: var(--key-h);
@@ -2388,6 +2408,31 @@
       width: auto !important;
       padding: 0.4rem 0.5rem;
       gap: 0.4rem;
+      /* A rail takes a slice of the screen it cannot exceed and scrolls what
+         does not fit inside itself. Holding its content height was how the
+         canvas ended up with nothing: `.right` alone measured 379px of 676. */
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+    }
+    .studio .left,
+    .studio .history {
+      max-height: 26dvh;
+    }
+    .studio .right {
+      max-height: 22dvh;
+    }
+    /* A key is 44 wide or it is not a key (DESIGN §5). The desktop columns
+       drop that floor so loose keys fill the width they were dragged to; here
+       there is no width to fill, and nine keys split 360px into 17px slivers —
+       under the 24px WCAG 2.2 AA asks for, and closer together (6.4px) than the
+       spacing exception forgives. The rail scrolls sideways instead. */
+    .studio .left > :global(.key),
+    .studio .right > :global(.key),
+    .studio .history :global(.key) {
+      flex: none;
+      min-width: var(--key-h);
     }
     .side-edge {
       display: none;
@@ -2410,6 +2455,18 @@
     .studio .panel {
       height: auto !important;
       padding-top: 0.4rem;
+      flex: 0 1 auto;
+      min-height: 0;
+      max-height: 26dvh;
+    }
+    /* The floor the canvas never gives up. It is the last child to be sized
+       and the only one that grows, so without a floor it takes whatever the
+       others leave — which, when they leave nothing, is nothing: `.stage`
+       measured 0 on a phone and the drawing painted outside it, over the
+       toolbar. There was nowhere to draw. */
+    .studio .stage {
+      flex: 1 1 auto;
+      min-height: 38dvh;
     }
     .resizer,
     .fold {
@@ -2484,11 +2541,16 @@
   .updating::backdrop {
     background: rgba(11, 12, 16, 0.42);
   }
-  .sheet-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 10;
+  /* The shape comes from the shared `.sheet` chrome; a <dialog> only needs its
+     own defaults cleared and a backdrop of its own (as in the settings sheet). */
+  .editor :global(.sheet-dialog) {
+    margin: 0;
+    padding: 0;
+    max-width: none;
     border: none;
+    color: var(--ink);
+  }
+  .editor :global(.sheet-dialog)::backdrop {
     background: rgba(11, 12, 16, 0.42);
   }
   /* Bottom sheet on mobile, centered card on wider screens. */
@@ -2506,7 +2568,7 @@
     border-top-right-radius: var(--r-md);
     box-shadow: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);
   }
-  @media (min-width: 40rem) {
+  @media (min-width: 40.0625rem) {
     .editor :global(.sheet) {
       left: 50%;
       right: auto;

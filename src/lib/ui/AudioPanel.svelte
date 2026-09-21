@@ -149,7 +149,7 @@
     flex-direction: column;
     gap: 0.2rem;
     font-size: 0.78rem;
-    color: var(--ink-2, #555);
+    color: var(--ink-2, #333a48);
   }
   .field input {
     height: var(--key-h);
@@ -159,10 +159,10 @@
     color: var(--ink);
     background: var(--canvas);
     border: 1px solid var(--hairline);
-    border-radius: var(--r-sm, 5px);
+    border-radius: var(--r-sm, 7px);
   }
   .field input:focus {
-    border-color: var(--electric, #2f5bff);
+    border-color: var(--electric, #1b5cff);
     outline: none;
   }
   .toggle {
@@ -178,7 +178,7 @@
     margin-top: 0.1rem;
     font-size: 0.74rem;
     line-height: 1.3;
-    color: var(--ink-2, #555);
+    color: var(--ink-2, #333a48);
     text-wrap: pretty;
   }
   .toggle input {
@@ -188,7 +188,7 @@
   .lengths {
     margin: 0;
     font-size: 0.82rem;
-    color: var(--ink-2, #555);
+    color: var(--ink-2, #333a48);
     font-variant-numeric: tabular-nums;
   }
   .lengths b {
@@ -198,7 +198,7 @@
     margin: 0;
     font-size: 0.78rem;
     line-height: 1.35;
-    color: var(--ink-2, #555);
+    color: var(--ink-2, #333a48);
     text-wrap: pretty;
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */

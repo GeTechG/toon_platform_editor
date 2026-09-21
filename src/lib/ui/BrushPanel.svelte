@@ -255,7 +255,7 @@
     cursor: pointer;
   }
   .type:hover {
-    background: var(--paper-2, rgba(0, 0, 0, 0.04));
+    background: var(--paper);
   }
   .type.active {
     border-color: var(--electric);
@@ -316,10 +316,15 @@
   .info:focus-visible ~ .note {
     display: block;
   }
+  /* 1.1rem was the drawn size of the glyph and the size of the target with it —
+     18px, under the 24px floor. The circle stays the glyph's, the box around it
+     is a finger's. */
   .info {
     display: inline-flex;
-    width: 1.1rem;
-    height: 1.1rem;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
     padding: 0;
     vertical-align: -0.2rem;
     border: none;
@@ -350,6 +355,10 @@
   }
   .brush-box input[type='range'] {
     width: 100%;
+    /* A native range is 16px tall, and these three are the most-pressed
+       controls in the panel. The track is drawn where it was; the band a
+       thumb can be caught in is a finger deep. */
+    height: 1.5rem;
     margin: 0;
     accent-color: var(--electric);
   }
