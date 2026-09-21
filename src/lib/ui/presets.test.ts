@@ -18,6 +18,7 @@ import {
   PALETTE_LIMIT_MIN,
   presetBrushType,
   presetDefaultBrush,
+  presetPanels,
   presetUx,
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
@@ -152,7 +153,7 @@ test('parseUiConfig rejects null, garbage, and non-config JSON', () => {
   expect(parseUiConfig('42')).toBeNull();
   expect(parseUiConfig('{"features":{}}')).toBeNull(); // missing preset
   // A config with nothing but a preset is fine: the preset has a default.
-  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
+  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(presetPanels('toonop'));
 });
 
 test('an old config\'s flags become items put away, unknown ones ignored', () => {
@@ -165,7 +166,7 @@ test('an old config\'s flags become items put away, unknown ones ignored', () =>
 });
 
 test('a preset starts from its own set on the same panels', () => {
-  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(defaultPanels());
+  expect(parseUiConfig('{"preset":"toonop"}')?.panels).toEqual(presetPanels('toonop'));
   // A preset with a smaller toolset puts the editor's other keys away.
   const bar = parseUiConfig('{"preset":"test.bar"}')?.panels;
   expect(bar?.hidden).toContain('tool:feather');
@@ -393,7 +394,7 @@ test('the bottom panel remembers being folded away, and a corrupted flag stays o
 // --- Panel contents -------------------------------------------------------
 
 test('an unknown preset falls back to the default arrangement', () => {
-  expect(parseUiConfig('{"preset":"nope"}')?.panels).toEqual(defaultPanels());
+  expect(parseUiConfig('{"preset":"nope"}')?.panels).toEqual(presetPanels('toonop'));
 });
 
 test('the stored arrangement travels with the rest of the config', () => {

@@ -179,29 +179,39 @@ export const FEATURE_ITEM: Record<string, string> = {
 };
 
 /**
- * The studio arrangement (toonio.ru): tools down the left, colour and brush on
- * the right, the strip over a transport row. Anything left out is hidden — the
- * layers popup, because the studio strip carries the rows itself.
+ * The studio arrangement: tools down the left with what leaves the editor
+ * under them (draft, export, publish) and what is about the editor itself at
+ * the bottom, colour and brush on the right, the keys over the strip — the
+ * strip sits right above the canvas, where the hand leaves it. Anything left
+ * out is hidden — the plain colour and thickness pair, because the boxes are
+ * on the right, and the layers popup, because the strip carries the rows.
  */
 function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
   return {
-  left: [...toolOrder().map(toolItem), 'save', 'history', 'manual', 'fullscreen', 'drafts'],
+  left: [
+    ...toolOrder().map(toolItem),
+    'save',
+    'export',
+    'publish',
+    'history',
+    'fullscreen',
+    'manual',
+  ],
   right: ['palette', 'brush'],
-  rows: [['timeline'], [
+  rows: [[
+    'fps',
     'transport',
     'add-frame',
     'delete-frame',
-    'onion',
-    'fps',
-    'audio',
-    'export',
-    'saved',
     'copy',
     'paste',
     'merge',
+    'onion',
+    'audio',
     'settings',
-    'publish',
-  ]],
+    'drafts',
+    'saved',
+  ], ['timeline']],
   };
 }
 

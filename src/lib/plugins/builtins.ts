@@ -90,6 +90,9 @@ const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
   brush: 'toonop-brush',
   ux: TOONOP_UX,
+  // The pixel draws on a grid nobody asked for until they ask: the profile
+  // holds it, the rail starts without it, and a key from the shelf brings it.
+  panels: { hide: ['tool:pixel'] },
 };
 
 export const BUILTIN_PLUGIN: Plugin = {

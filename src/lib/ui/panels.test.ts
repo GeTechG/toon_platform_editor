@@ -117,10 +117,11 @@ describe('the transport is one item', () => {
 });
 
 describe('the gear and the publish key', () => {
-  test('both are items like everything else, at the end of the bar', () => {
+  test('both are items like everything else, placed like the rest', () => {
     expect(panelItem('settings')?.kind).toBe('action');
     expect(panelItem('publish')?.kind).toBe('action');
-    expect(defaultPanels().rows[1].slice(-2)).toEqual(['settings', 'publish']);
+    expect(defaultPanels().rows[0]).toContain('settings');
+    expect(defaultPanels().left).toContain('publish');
   });
 
   test('the gear can be moved but never put away — it is the way back', () => {
@@ -167,7 +168,7 @@ describe('one arrangement for everybody', () => {
   test('there is a single default layout — no second setup per preset', () => {
     const panels = defaultPanels();
     expect(panels.left).toContain(toolItem('pencil'));
-    expect(panels.rows[0]).toEqual(['timeline']);
+    expect(panels.rows[1]).toEqual(['timeline']);
   });
 
   test('colour and thickness each come in two widgets: the box and the plain one', () => {
@@ -185,8 +186,10 @@ describe('one arrangement for everybody', () => {
   });
 
   test('a preset starts from its own set, on the same machinery', () => {
+    // The editor's own preset is the default arrangement itself, bar the one
+    // key it keeps on the shelf.
     const toonop = presets.presetPanels('toonop');
-    expect(toonop).toEqual(defaultPanels());
+    expect(toonop).toEqual(hidePanelItem(defaultPanels(), toolItem('pixel')));
 
     const bar = presets.presetPanels('bar');
     // Every item is accounted for in both, just placed differently.
@@ -204,12 +207,20 @@ describe('one arrangement for everybody', () => {
 });
 
 describe('the default layouts', () => {
-  test('the studio puts the tools left, the colour right and the strip in its own row', () => {
-    const studio = defaultPanels();
-    expect(studio.left).toContain(toolItem('pencil'));
-    expect(studio.right).toContain('palette');
-    expect(studio.rows[0]).toEqual(['timeline']);
-    expect(studio.rows[1][0]).toBe('transport');
+  test('the studio opens with the keys over the strip, the pixel on the shelf', () => {
+    const studio = presets.presetPanels('toonop');
+    expect(studio.left).toEqual([
+      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso', 'distort']
+        .map(toolItem),
+      'save', 'export', 'publish', 'history', 'fullscreen', 'manual',
+    ]);
+    expect(studio.right).toEqual(['palette', 'brush']);
+    expect(studio.rows).toEqual([
+      ['fps', 'transport', 'add-frame', 'delete-frame', 'copy', 'paste', 'merge',
+        'onion', 'audio', 'settings', 'drafts', 'saved'],
+      ['timeline'],
+    ]);
+    expect(studio.hidden).toEqual(['color', 'brush-sizes', toolItem('pixel')]);
   });
 
   test('every item is placed or hidden, exactly once', () => {
@@ -254,8 +265,8 @@ describe('rows are made and unmade', () => {
 
   test('a row left empty goes away instead of sitting there unhittable', () => {
     const start = defaultPanels();
-    // rows[0] is the strip alone: moving it out empties that row.
-    const next = movePanelItem(start, 'timeline', 'row:1', 0);
+    // The last row is the strip alone: moving it out empties that row.
+    const next = movePanelItem(start, 'timeline', 'row:0', 0);
     expect(next.rows).toHaveLength(start.rows.length - 1);
     expect(next.rows[0][0]).toBe('timeline');
   });
@@ -299,8 +310,8 @@ describe('a layout saved before rows could be made', () => {
       hidden: [],
     };
     const panels = normalizePanels(legacy);
-    expect(panels.rows[0]).toEqual(['timeline']);
-    expect(panels.rows[1][0]).toBe('transport');
+    expect(panels.rows[0][0]).toBe('timeline');
+    expect(panels.rows[1]).toEqual(['transport']);
     expect(panels.left[0]).toBe(toolItem('pencil'));
   });
 });
@@ -319,9 +330,9 @@ describe('moving an item', () => {
 
   test('moving inside a slot reorders instead of duplicating', () => {
     const start = defaultPanels();
-    const next = movePanelItem(start, start.rows[1][2], 'row:1', 0);
-    expect(next.rows[1][0]).toBe(start.rows[1][2]);
-    expect(next.rows[1]).toHaveLength(start.rows[1].length);
+    const next = movePanelItem(start, start.rows[0][2], 'row:0', 0);
+    expect(next.rows[0][0]).toBe(start.rows[0][2]);
+    expect(next.rows[0]).toHaveLength(start.rows[0].length);
   });
 
   test('hiding an item is a move to the hidden slot', () => {
@@ -352,7 +363,7 @@ describe('the slots a layout offers', () => {
 
   test('itemsOf reads a slot, and a row to be made is empty', () => {
     const studio = defaultPanels();
-    expect(itemsOf(studio, 'row:0')).toEqual(['timeline']);
+    expect(itemsOf(studio, 'row:1')).toEqual(['timeline']);
     expect(itemsOf(studio, 'left')).toEqual(studio.left);
     expect(itemsOf(studio, 'newrow:1')).toEqual([]);
     expect(itemsOf(studio, 'row:99')).toEqual([]);
