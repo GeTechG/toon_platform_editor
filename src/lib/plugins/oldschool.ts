@@ -1,11 +1,11 @@
 /**
- * The reference's "old" easter egg, as a brush.
+ * The oldschool pen, as a type the brush in hand can be switched to.
  *
- * It was a flag on the session for as long as the canvas owned the line: the
- * Multator pen drew as usual and the commit turned it into a closed contour.
- * Nothing about it was ever the preset's — the tolerance, the canvas and the
- * contour are the pen's own — so it is a brush, and works wherever it is
- * taken in hand.
+ * The reference hid it behind the word `old` typed on the keyboard, and kept
+ * it as a flag on the session. Here it is two brushes of the register — the
+ * pen and the eraser — and the brush box picks between them and the everyday
+ * pair. Nothing about them was ever the preset's: the tolerance, the canvas
+ * and the contour are the pen's own, so they draw the same in any preset.
  *
  * The geometry is untouched (`tools/oldschool.ts`), a faithful port of
  * `DrawField.hx onOldEndDraw` with its own tests. What lives here is only the
@@ -25,12 +25,15 @@ import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
 const commit: StrokeCommit = (points, descriptor, { coordinateScale }) => ({
   points: commitOldschoolStroke(
     points,
+    // Document units already: the engine normalises a width on the canvas it
+    // was measured on when the gesture starts (`strokeWidthOnCanvas`), so
+    // dividing by the scale again would thicken the contour by that much.
     descriptor.width / FIXED_POINT_SCALE,
     Math.random,
     OLDSCHOOL_LANG_TOLERANCE_LOGICAL * (FIXED_POINT_SCALE / coordinateScale),
   ),
   // A contour carries one colour and no fill, so the pen paints and the
-  // eraser punches — which is the whole of the easter egg's vocabulary.
+  // eraser punches — which is the whole of this brush type's vocabulary.
   tool: descriptor.kind === 'eraser'
     ? { kind: 'contour-eraser', dialect: 'multator' }
     : { kind: 'contour', dialect: 'multator', color: 'color' in descriptor ? descriptor.color : '#000000' },
@@ -61,38 +64,14 @@ const OLDSCHOOL_ERASER: PluginPrimitive = {
 /**
  * Which oldschool brush stands in for which everyday one. The reference's flag
  * applied to the pen and the eraser alike, so there are two — and the pairing
- * belongs here, beside them, not in whatever types the word `old`.
+ * belongs here, beside them, not in whatever offers the choice.
  */
 export const OLDSCHOOL_TWIN: Readonly<Record<string, string>> = {
   pencil: 'oldschool',
   eraser: 'oldschool-eraser',
 };
 
-/** Whether the brush in hand is one of them — what the egg toggles, and what the panel badges. */
-export function isOldschool(tool: string): boolean {
-  return Object.values(OLDSCHOOL_TWIN).includes(tool);
-}
-
-/**
- * What typing the word does from here: which brush to take, and which one to
- * give back next time. `back` is what the last swap remembered, `null` when
- * the egg is not open.
- *
- * The three letters are three tool keys on the way — `o` is the hand — so the
- * way back cannot be read off whatever is in hand when the word ends. It is
- * what was remembered when the egg opened.
- */
-export function oldschoolSwap(
-  tool: string,
-  back: string | null,
-): { take: string; back: string | null } {
-  if (back !== null || isOldschool(tool)) {
-    return { take: back ?? 'pencil', back: null };
-  }
-  return { take: OLDSCHOOL_TWIN[tool] ?? 'oldschool', back: tool };
-}
-
-/** Neither brush asks for a key: the easter egg is the door. */
+/** Neither brush asks for a key: the brush box is the door. */
 export const oldschoolPlugins: readonly Plugin[] = [
   {
     id: 'oldschool',

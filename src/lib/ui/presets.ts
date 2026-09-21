@@ -10,6 +10,7 @@
  */
 
 import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import type { BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
 import type { PickSource } from './frame-selection';
 import {
@@ -44,6 +45,20 @@ export function brushToolOf(tool: string): BrushToolId {
     return tool;
   }
   return plugins.tool(tool)?.stroke ? tool : 'pencil';
+}
+
+/**
+ * Whether the smoothing pair reaches a brush at all. Both numbers are applied
+ * by the Tonio commit and by nothing else: a brush of the Multator canvas is
+ * simplified by Lang instead, and one that collects its own points or commits
+ * by its own rule never passes through either.
+ */
+export function brushUsesSmoothing(tool: string, dialect: DrawingProfileId): boolean {
+  const stroke = plugins.tool(tool)?.stroke;
+  if (stroke?.capture || stroke?.commit) {
+    return false;
+  }
+  return (stroke?.dialect ?? dialect) === 'toonio';
 }
 
 /** What a brush starts at on each canvas — the reference's own defaults. */
@@ -152,7 +167,7 @@ export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
  * config; a corrupted value falls back to the reference default.
  */
 export interface EditorSettings {
-  /** Oldschool pen for good, not only behind the "old" easter egg. */
+  /** One point per pointer event: the coalesced batch is not unpacked. */
   mouseMode: boolean;
   /** Crosshair on the brush cursor at very thin and very thick widths. */
   crossCursor: boolean;
@@ -201,10 +216,6 @@ export const AUTOSAVE_LABELS: Record<number, string> = {
   0: 'никогда',
 };
 
-/**
- * «Режим мышки» is one checkbox with two meanings: the Multator line takes it
- * as the oldschool pen, the Tonio line as one point per event (`oldPen`).
- */
 export const PALETTE_LIMIT_MIN = 30;
 export const PALETTE_LIMIT_MAX = 300;
 export const PALETTE_LIMIT_STEP = 10;
@@ -250,6 +261,8 @@ export const PRESETS: {
   label: string;
   defaultDialect: DrawingProfileId;
   ux: UxProfileId;
+  /** The brush type it opens with; the everyday one when it names none. */
+  brushType?: BrushType;
   /** What it starts with, as a patch on the one arrangement. */
   panels?: PresetPanels;
 }[] = [
@@ -259,6 +272,9 @@ export const PRESETS: {
     label: 'Multator',
     defaultDialect: 'multator',
     ux: 'multator',
+    // Its line is a brush type of its own now, so opening the preset is
+    // picking it: the multator canvas, whatever tool is in hand.
+    brushType: 'multator',
     // The reference is a smaller editor and keeps everything under the
     // canvas: frames, then the transport, then the drawing row — two colours
     // instead of the palette box, a row of dots instead of the sliders, and
@@ -298,6 +314,11 @@ function presetById(id: string) {
  */
 export function presetDefaultDialect(id: string): DrawingProfileId {
   return presetById(id).defaultDialect;
+}
+
+/** The brush type a preset opens with. */
+export function presetBrushType(id: string): BrushType {
+  return presetById(id).brushType ?? 'normal';
 }
 
 /**

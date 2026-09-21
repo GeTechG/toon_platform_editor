@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import {
   BRUSH_TOOLS,
   brushToolOf,
+  brushUsesSmoothing,
   DEFAULT_DRAWING_UI_CONFIG,
   AUTOSAVE_INTERVALS,
   DEFAULT_PRESET,
@@ -14,6 +15,7 @@ import {
   SIDE_WIDTH_MIN,
   PALETTE_LIMIT_MAX,
   PALETTE_LIMIT_MIN,
+  presetBrushType,
   presetDefaultDialect,
   presetUx,
 } from './presets';
@@ -394,4 +396,22 @@ test('a brush of the register gets its own record, a tool that draws nothing tak
   expect(brushToolOf('oldschool')).toBe('oldschool');
   expect(brushToolOf('pipette')).toBe('pencil');
   expect(brushToolOf('mega-eraser')).toBe('mega-eraser');
+});
+
+test('opening Multator puts the multator brush in hand, the others the everyday one', () => {
+  expect(presetBrushType('multator')).toBe('multator');
+  expect(presetBrushType('toonop')).toBe('normal');
+  expect(presetBrushType('toonio')).toBe('normal');
+  expect(presetBrushType('нет такого')).toBe('normal');
+});
+
+test('the smoothing sliders are only for the brushes they reach', () => {
+  // Tonio's smoothing and minimum distance are applied by the Tonio commit
+  // alone: a brush on the Multator canvas is simplified by Lang instead, and
+  // one that collects or commits its own points never sees either number.
+  expect(brushUsesSmoothing('pencil', 'toonio')).toBe(true);
+  expect(brushUsesSmoothing('pencil', 'multator')).toBe(false);
+  expect(brushUsesSmoothing('multator-pencil', 'toonio')).toBe(false);
+  expect(brushUsesSmoothing('oldschool', 'toonio')).toBe(false);
+  expect(brushUsesSmoothing('pixel', 'toonio')).toBe(false);
 });

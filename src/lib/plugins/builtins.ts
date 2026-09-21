@@ -8,6 +8,7 @@
  * instead, and the two are told apart by the leading `<`.
  */
 
+import { multatorPlugins } from './brush-types';
 import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
 import { distortPlugin } from './distort';
 import { oldschoolPlugins } from './oldschool';
@@ -90,6 +91,7 @@ export const BUILTIN_TOOLS: readonly Plugin[] = [
   distortPlugin,
   pixelPlugin,
   ...oldschoolPlugins,
+  ...multatorPlugins,
 ];
 
 /**

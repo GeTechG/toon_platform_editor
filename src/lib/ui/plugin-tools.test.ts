@@ -116,6 +116,7 @@ test('a plugin can say its tool interrupts drawing rather than replacing it', ()
 
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
+const brushPanel = await Bun.file(new URL('./BrushPanel.svelte', import.meta.url)).text();
 
 /** One member of the runes class, as source — the same style as undo-redo.test.ts. */
 function member(source: string, name: string): string {
@@ -202,29 +203,49 @@ test('a grid comes with the primitive, not with a name', () => {
   expect(canvas).toContain('.stroke?.grid');
 });
 
-test('a brush reached only by a gesture stands on no panel', () => {
-  // The oldschool pen is an easter egg: it is in the register like any brush,
-  // but the arrangement never offers it — the keys `o`, `l`, `d` do.
+test('a brush that is a type of another stands on no panel', () => {
+  // The oldschool pen is not a key of its own: it is what the brush in hand
+  // draws when its type is «Старая», so no panel and no shelf offers it.
   expect(toolOrder()).not.toContain('oldschool');
   expect(panelItems().map((item) => item.id)).not.toContain(toolItem('oldschool'));
   expect(defaultPanels().hidden).not.toContain(toolItem('oldschool'));
-  // Still a tool of the register, so what takes it in hand finds it.
+  // Still a tool of the register, so what draws with it finds it.
   expect(toolSpec('oldschool')?.stroke?.dialect).toBe('multator');
 });
 
-test('the «old» easter egg takes the brush in hand and gives the last one back', () => {
-  // It used to set a flag the engine read on every commit. Now it is what any
-  // other tool key is: a selection, and the way back when typed again.
-  expect(state).toMatch(/toggleOldschool\(\)[^]*?oldschoolSwap\([^]*?selectTool\(/);
-  expect(editorUi).toContain("lastThreeKeys.join('') === 'old'");
-  // The `d` that finishes the word is the word's, not the hand's — or the egg
-  // would hand over the brush and take it away in the same keystroke.
-  expect(editorUi).toMatch(/=== 'old'\) \{[^}]*?toggleOldschool\(\);[^}]*?return;/);
-  // Picking any other brush by hand closes the egg's memory, or typing the
-  // word again would give back what it took instead of taking the twin of
-  // what is in hand now. A help tool (the hand `o` selects on the way) does
-  // not count as picking one.
-  expect(member(state, 'selectTool')).toMatch(/isHelpTool\(resolved\)[^]*?beforeOldschool = null/);
+test('the brush type is picked in the brush box, not typed as a word', () => {
+  // It used to be the reference's `o`, `l`, `d` easter egg. Now the box that
+  // holds thickness and smoothing holds the type as well.
+  expect(editorUi).not.toContain('lastThreeKeys');
+  expect(state).not.toContain('toggleOldschool');
+  expect(state).not.toContain('beforeOldschool');
+  expect(brushPanel).toContain("editor.brushType = ");
+  expect(brushPanel).toContain('Старая');
+});
+
+test('the type decides which brush draws, the tool in hand stays the tool', () => {
+  // One resolution: the rail, the brush records and what the presets offer
+  // all stay on the pencil — only the stroke comes from the old twin.
+  expect(member(state, 'brushTool')).toContain('brushOfType(this.tool, this.brushType)');
+  expect(canvas).toContain('toolSpec(editor.brushTool)?.stroke');
+  expect(canvas).not.toContain('toolSpec(editor.tool)?.stroke');
+});
+
+test('both types of a brush share one width', () => {
+  // Switching «Обычная» → «Старая» must not jump the slider or its ceiling:
+  // the canvas a width is measured on is the tool's in hand, not the one the
+  // type resolves to — the old pen's contour is a Multator shape, but its
+  // thickness is the same brush record the everyday line draws with.
+  expect(member(state, 'brushCanvas')).toContain('plugins.tool(this.tool)?.stroke?.dialect');
+  expect(member(state, 'brushCanvas')).not.toContain('brushTool');
+  // The cursor ring is measured on that same canvas, or it would be twice
+  // the line the old brush lays down.
+  expect(canvas).toContain('canvasCoordinateScale(editor.brushCanvas');
+  // And the width handed to the brush is converted into the canvas the
+  // stroke is laid on — the old contour is a Multator shape whatever canvas
+  // the slider counts in.
+  expect(canvas).toContain('brushWidthDoc(strokeBrushSizeLogical)');
+  expect(canvas).toMatch(/strokeBrushSizeLogical = \$derived\([^]*?brushCanvasScale \/ widthCanvasScale/);
 });
 
 test('the preset is asked about the preset, the canvas about the line', () => {
@@ -247,4 +268,42 @@ test('the stroke engine knows gestures, not tools', () => {
   // Not even the easter egg: what its gesture commits is the brush's rule.
   expect(engine).not.toContain('oldschool');
   expect(engine).not.toContain('Oldschool');
+});
+
+test('the multator type is offered in the box and comes up with its preset', () => {
+  // A third type beside «Обычная» and «Старая»: the multator line, in any
+  // preset — and the Multator preset opens with it in hand.
+  expect(brushPanel).toContain('Мультатор');
+  expect(member(state, 'applyPreset')).toContain('presetBrushType(id)');
+});
+
+test('the types are picked from a list that nothing can clip', () => {
+  // Three names never fit the box's width, and the box sits in a column with
+  // its own scroll — a list opened inside it would be cut off at its edge.
+  expect(brushPanel).toContain('popover');
+  // Hidden by the browser when closed: a layout declared unconditionally
+  // would override that and leave the list on screen for good.
+  expect(brushPanel).toContain(':popover-open');
+  // The sample is drawn by the engine that draws the stroke, not by hand.
+  expect(brushPanel).toContain('brushPreview(');
+});
+
+test('a slider that reaches nothing is not shown', () => {
+  // The smoothing pair belongs to the Tonio commit: on a Multator brush, on
+  // the old pen and on the pixel it would be two numbers that change nothing.
+  expect(brushPanel).toContain('editor.brushSmooths');
+  expect(member(state, 'brushSmooths')).toContain('brushUsesSmoothing(this.brushTool');
+});
+
+test('the box shows what the numbers do, not only the numbers', () => {
+  // «Что выставить» is not answerable from two figures: the box draws the
+  // brush in hand with the settings as they stand, and each slider says in
+  // words which way it pulls.
+  expect(brushPanel).toContain('preview(editor.brushTool)');
+  expect(brushPanel).toContain('отстаёт от руки');
+  expect(brushPanel).toContain('мелкие детали и острые углы');
+  // Behind an «i», not under everyone's nose: the box is a working panel,
+  // and the words come up over it on hover, from CSS alone.
+  expect(brushPanel).toContain("name=\"info\"");
+  expect(brushPanel).toContain('.info:hover ~ .note');
 });

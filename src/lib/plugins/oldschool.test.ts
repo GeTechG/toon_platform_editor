@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import type { LineToolDescriptor } from '../format/types';
 import { plugins } from '.';
-import { OLDSCHOOL_TWIN, oldschoolSwap } from './oldschool';
+import { brushOfType } from './brush-types';
+import { OLDSCHOOL_TWIN } from './oldschool';
 
 const PENCIL: LineToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' };
 const ERASER: LineToolDescriptor = { kind: 'eraser', dialect: 'multator', width: 64 };
@@ -19,8 +20,9 @@ describe('the oldschool pen is a brush', () => {
     expect(plugins.tool('oldschool-eraser')?.stroke?.dialect).toBe('multator');
   });
 
-  it('is on no preset panel — the easter egg is its only door', () => {
+  it('is on no preset panel — it is a type of the brush in hand, not a key', () => {
     expect(plugins.tool('oldschool')?.key).toBe('');
+    expect(plugins.tool('oldschool')?.offPanel).toBe(true);
   });
 
   it('commits the line it drew as a filled contour of the pencil colour', () => {
@@ -38,33 +40,47 @@ describe('the oldschool pen is a brush', () => {
 
   it('has no twin for the feather — a contour carries no fill', () => {
     // The reference ignored its flag for the feather; here the protection is
-    // structural: there is no oldschool feather for the egg to swap in.
+    // structural: there is no oldschool feather to pick as a type.
     expect(Object.keys(OLDSCHOOL_TWIN)).toEqual(['pencil', 'eraser']);
     expect(plugins.tool('feather')?.stroke?.commit).toBeUndefined();
   });
 
-  it('swaps the brush in hand for its twin, and back', () => {
-    expect(oldschoolSwap('pencil', null)).toEqual({ take: 'oldschool', back: 'pencil' });
-    expect(oldschoolSwap('eraser', null)).toEqual({ take: 'oldschool-eraser', back: 'eraser' });
-    expect(oldschoolSwap('oldschool', 'pencil')).toEqual({ take: 'pencil', back: null });
+  it('is the old type of the brush in hand, not a tool of its own', () => {
+    expect(brushOfType('pencil', 'old')).toBe('oldschool');
+    expect(brushOfType('eraser', 'old')).toBe('oldschool-eraser');
+    expect(brushOfType('pencil', 'normal')).toBe('pencil');
   });
 
-  it('gives the brush back even when the word’s own keys moved the hand', () => {
-    // Typing o, l, d presses three tool keys on the way: `o` is the hand. The
-    // way back is what was remembered, not whatever the last key selected.
-    expect(oldschoolSwap('drag', 'eraser')).toEqual({ take: 'eraser', back: null });
-    // A brush with no twin of its own (the feather) still opens the pen.
-    expect(oldschoolSwap('feather', null)).toEqual({ take: 'oldschool', back: 'feather' });
+  it('leaves a brush with no old form alone, whatever the type says', () => {
+    // The feather and the pixel keep drawing their own line: the type is
+    // offered where there is something to switch to.
+    expect(brushOfType('feather', 'old')).toBe('feather');
+    expect(brushOfType('drag', 'old')).toBe('drag');
   });
 
   it('declares no cut policy, because the contour it commits carries its own', () => {
     // The mega eraser reads the stored descriptor: a `contour` goes whole by
     // itself. It finds a tool's policy by primitive kind, so a second brush of
     // kind `pencil` declaring one would change how every pencil stroke is cut.
-    expect(plugins.tools().filter((t) => t.stroke?.kind === 'pencil').map((t) => t.stroke?.cut))
-      .toEqual([undefined, undefined]);
-    expect(plugins.tools().filter((t) => t.stroke?.kind === 'eraser').map((t) => t.stroke?.cut))
-      .toEqual([undefined, undefined]);
+    expect(plugins.tools().filter((t) => t.stroke?.kind === 'pencil').map((t) => t.id))
+      .toEqual(['pencil', 'oldschool', 'multator-pencil']);
+    expect(plugins.tools()
+      .filter((t) => t.stroke?.kind === 'pencil' || t.stroke?.kind === 'eraser')
+      .filter((t) => t.stroke?.cut !== undefined))
+      .toEqual([]);
+  });
+
+  it('is as thick as the line that was drawn, whatever the canvas scale', () => {
+    // The width arrives in document units: the engine normalised it on the
+    // canvas it was measured on when the gesture started. Scaling it again
+    // here would make the contour jump thicker the moment the pointer is
+    // released, since the live line is drawn at the width itself.
+    const left = (scale: number) =>
+      Math.min(...commit('oldschool', PENCIL, [0, 0, 800, 0], scale).points.filter((_, i) => i % 2 === 0));
+    // Width 64 = 8 document px: radius 4 px, and the scale only moves the
+    // tolerance the points are simplified with.
+    expect(left(1)).toBe(-32);
+    expect(left(0.5)).toBe(-32);
   });
 
   it('measures its Lang tolerance on the reference canvas, not on the document', () => {

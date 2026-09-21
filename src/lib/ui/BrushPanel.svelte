@@ -1,12 +1,72 @@
 <script lang="ts">
   /**
-   * The brush box: thickness and smoothing as sliders. The plain row of dots
-   * is its own widget (BrushSizes), colour another (ColorPanel/PaletteBox).
+   * The brush box: the type of brush, then thickness and smoothing as
+   * sliders. The plain row of dots is its own widget (BrushSizes), colour
+   * another (ColorPanel/PaletteBox).
    */
-  import { isOldschool } from '../plugins/oldschool';
+  import { brushOfType, hasBrushTypes, type BrushType } from '../plugins/brush-types';
+  import { brushPreview, PREVIEW_BOX } from './brush-preview';
+  import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
 
   let { editor }: { editor: EditorState } = $props();
+
+  /** The types, as the list offers them: the sample, the name, what it does. */
+  const TYPES: { id: BrushType; label: string; hint: string }[] = [
+    { id: 'normal', label: 'Обычная', hint: 'Точнее, гладкость настраивается' },
+    { id: 'old', label: 'Старая', hint: 'Контур переменной толщины, как старым пером' },
+    { id: 'multator', label: 'Мультатор', hint: 'Сглаженная, дрожь руки почти не видно' },
+  ];
+
+  /**
+   * The list is a popover: the box is a narrow column with its own scroll, so
+   * anything that opened inside it would be cut off at its edge. In the top
+   * layer it is clipped by nothing, and the browser closes it on Escape and
+   * on a click elsewhere by itself.
+   */
+  const listId = $props.id();
+  let list = $state<HTMLDivElement | null>(null);
+  let trigger = $state<HTMLButtonElement | null>(null);
+  let picking = $state(false);
+  let at = $state({ x: 0, y: 0 });
+
+  /** Under the button, or above it when the bottom of the window is too near. */
+  function place(): void {
+    if (!list || !trigger) return;
+    const anchor = trigger.getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    const below = anchor.bottom + 4;
+    at = {
+      x: Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8)),
+      y: below + box.height > window.innerHeight - 8
+        ? Math.max(8, anchor.top - box.height - 4)
+        : below,
+    };
+  }
+
+  function opened(open: boolean): void {
+    picking = open;
+    if (!open) return;
+    place();
+    list?.querySelector<HTMLButtonElement>('.type.active')?.focus();
+  }
+
+  /**
+   * The sample of one brush, drawn by the engine that draws its real stroke —
+   * with the settings as they stand, so the box answers «what do these
+   * numbers do» by showing it. A very thick brush would fill the whole
+   * sample, so it stops at a width where the shape of the line still reads.
+   */
+  function preview(tool: string) {
+    return brushPreview(tool, editor.defaultDialect, Math.min(editor.brushSizeLogical, 16), {
+      width: editor.brushSizeLogical,
+      smooth: editor.tonioSmooth,
+      minDistance: editor.tonioMinDistance,
+    });
+  }
+
+  const current = $derived(TYPES.find(({ id }) => id === editor.brushType) ?? TYPES[0]);
+
 
 </script>
 
@@ -29,27 +89,98 @@
   />
 {/snippet}
 
+<!-- The words come up over the box on hover or focus, and go with the
+     pointer: the panel is for working, not for reading. No state and no
+     script — the bubble is a sibling of the «i», shown by CSS. The reader
+     that cannot hover gets the same words from the button's own label. -->
+{#snippet heading(title: string, note: string)}
+  <h3 class="field">
+    {title}
+    <button class="info" type="button" aria-label="{title}: {note}"><Icon name="info" /></button>
+    <span class="note" aria-hidden="true">{note}</span>
+  </h3>
+{/snippet}
+
+{#snippet sample(tool: string)}
+  {@const shape = preview(tool)}
+  <svg class="sample" viewBox="0 0 {PREVIEW_BOX.width} {PREVIEW_BOX.height}" aria-hidden="true">
+    <path
+      d={shape.d}
+      fill={shape.fill ? 'currentColor' : 'none'}
+      stroke={shape.fill ? 'none' : 'currentColor'}
+      stroke-width={shape.width}
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+{/snippet}
+
 <div class="box brush-box" aria-label="Кисть">
+  <!-- Only where there is something to switch to: the feather and the pixel
+       have no other form, so the list would offer a choice of one. -->
+  {#if hasBrushTypes(editor.tool)}
+    <h3>Тип</h3>
+    <!-- A list that drops down, not a row of keys: three names never fit the
+         box's width, and each one is worth a sample of what it draws. -->
+    <button
+      class="trigger"
+      bind:this={trigger}
+      popovertarget={listId}
+      aria-label="Тип кисти: {current.label}"
+    >
+      {@render sample(brushOfType('pencil', current.id))}
+      <span class="name">{current.label}</span>
+      <span class="caret"><Icon name={picking ? 'chevron-up' : 'chevron-down'} /></span>
+    </button>
+    <div
+      class="types"
+      id={listId}
+      popover
+      bind:this={list}
+      style:left="{at.x}px"
+      style:top="{at.y}px"
+      ontoggle={(e) => opened((e as ToggleEvent).newState === 'open')}
+    >
+      {#each TYPES as option (option.id)}
+        <button
+          class="type"
+          class:active={editor.brushType === option.id}
+          aria-pressed={editor.brushType === option.id}
+          onclick={() => {
+            editor.brushType = option.id;
+            list?.hidePopover();
+          }}
+        >
+          <span class="name">{option.label}</span>
+          <span class="hint">{option.hint}</span>
+          {@render sample(brushOfType('pencil', option.id))}
+        </button>
+      {/each}
+    </div>
+  {/if}
+  <!-- The brush in hand, with the settings as they stand: the numbers below
+       are hard to read as a line, and this is that line. A brush that stamps
+       marks instead of drawing one hands back nothing, and then there is
+       nothing to show. -->
+  {#if preview(editor.brushTool).d}
+    <figure class="live" aria-label="Образец линии этой кисти">
+      {@render sample(editor.brushTool)}
+    </figure>
+  {/if}
   <h3>Толщина</h3>
   {@render slider('Толщина кисти', 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
-  <h3>Сглаживание</h3>
-  {@render slider('Минимальное расстояние между точками', 0, 30, editor.tonioMinDistance, (v) => editor.setTonioMinDistance(v))}
-  {@render slider('Общее сглаживание', 1, 100, editor.tonioSmooth, (v) => editor.setTonioSmooth(v))}
+  <!-- Only for the brushes the two numbers actually reach: the Multator line,
+       the old pen and the pixel are smoothed by their own rule or by none.
+       Each one says which way it pulls: a number alone is not an answer to
+       «what should I set». -->
+  {#if editor.brushSmooths}
+    {@render heading('Сглаживание', 'Больше — ровнее линия, но сильнее отстаёт от руки')}
+    {@render slider('Сглаживание', 1, 100, editor.tonioSmooth, (v) => editor.setTonioSmooth(v))}
+    {@render heading('Упрощение', 'Больше — мелкие детали и острые углы срезаются')}
+    {@render slider('Упрощение — минимальное расстояние между точками', 0, 30, editor.tonioMinDistance, (v) => editor.setTonioMinDistance(v))}
+  {/if}
 </div>
-{#if isOldschool(editor.tool)}
-  <span class="old" title="Старая кисть — набери o, l, d ещё раз, чтобы вернуться">old</span>
-{/if}
-
 <style>
-  .old {
-    padding: 0.1rem 0.45rem;
-    border-radius: 999px;
-    background: var(--signal);
-    color: var(--canvas);
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
   .box {
     width: 225px;
     max-width: 100%;
@@ -73,6 +204,148 @@
     font-size: 1rem;
     font-weight: 400;
     color: var(--ink-2);
+  }
+  .trigger {
+    grid-column: 1 / 3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 2rem;
+    padding: 0 8px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+  }
+  .caret {
+    margin-left: auto;
+    display: flex;
+    color: var(--ink-2);
+  }
+  .types {
+    position: fixed;
+    margin: 0;
+    width: 240px;
+    max-width: calc(100vw - 16px);
+    padding: 6px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--canvas);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+  }
+  /* A closed popover is hidden by the browser's own `display: none`, which
+     any layout declared here would quietly override. */
+  .types:popover-open {
+    display: grid;
+    gap: 4px;
+  }
+  .type {
+    display: grid;
+    gap: 2px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .type:hover {
+    background: var(--paper-2, rgba(0, 0, 0, 0.04));
+  }
+  .type.active {
+    border-color: var(--electric);
+  }
+  .type .name {
+    font-weight: 600;
+  }
+  .type.active .name {
+    color: var(--electric);
+  }
+  .hint {
+    font-size: 0.75rem;
+    color: var(--ink-2);
+  }
+  .trigger:focus-visible,
+  .type:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+  .sample {
+    color: var(--ink);
+    overflow: visible;
+  }
+  .live {
+    grid-column: 1 / 3;
+    margin: 0;
+    padding: 2px 6px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+  }
+  .live .sample {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 1;
+  }
+  .field {
+    position: relative;
+  }
+  .note {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 2;
+    display: none;
+    padding: 6px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+    font-size: 0.75rem;
+    line-height: 1.25;
+    text-align: left;
+    color: var(--ink-2);
+  }
+  .info:hover ~ .note,
+  .info:focus-visible ~ .note {
+    display: block;
+  }
+  .info {
+    display: inline-flex;
+    width: 1.1rem;
+    height: 1.1rem;
+    padding: 0;
+    vertical-align: -0.2rem;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .info:hover,
+  .info:focus-visible {
+    color: var(--electric);
+  }
+  .info:focus-visible {
+    outline: 3px solid var(--electric);
+    outline-offset: 2px;
+  }
+  /* The sample keeps the box's own proportions: a line squeezed into another
+     aspect would be drawn at a thickness the brush does not have. */
+  .trigger .sample {
+    width: 52px;
+    aspect-ratio: 4 / 1;
+    flex: none;
+  }
+  .type .sample {
+    width: 100%;
+    aspect-ratio: 4 / 1;
+    margin-top: 2px;
   }
   .brush-box input[type='range'] {
     width: 100%;

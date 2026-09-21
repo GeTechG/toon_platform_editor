@@ -116,9 +116,23 @@
     ),
   );
 
+  /** Reference-canvas normalisation of the canvas the width is measured on. */
+  const widthCanvasScale = $derived(
+    canvasCoordinateScale(editor.brushCanvas, editor.doc.width / FIXED_POINT_SCALE),
+  );
+  /**
+   * The brush width in pixels of the canvas the stroke is laid on. The two
+   * canvases are the same for every tool but the old brush type, whose
+   * contour is a Multator shape drawn at the width the everyday brush of the
+   * tool in hand is set to.
+   */
+  const strokeBrushSizeLogical = $derived(
+    editor.brushSizeLogical * (brushCanvasScale / widthCanvasScale),
+  );
+
   /** The tool's own collection rules, when it has them. */
   function ownCapture(): OwnCapture | undefined {
-    const stroke = toolSpec(editor.tool)?.stroke;
+    const stroke = toolSpec(editor.brushTool)?.stroke;
     return stroke?.capture ? { ...stroke, capture: stroke.capture } : undefined;
   }
 
@@ -127,7 +141,7 @@
    * the preset's when it has no opinion.
    */
   function toolDialect(): StrokeDialect {
-    return toolSpec(editor.tool)?.stroke?.dialect ?? editor.defaultDialect;
+    return toolSpec(editor.brushTool)?.stroke?.dialect ?? editor.defaultDialect;
   }
 
   /**
@@ -136,8 +150,8 @@
    * nothing about which tool is which, nor what it lays down.
    */
   function activeDescriptor(): LineToolDescriptor {
-    return (toolSpec(editor.tool)?.stroke ?? PENCIL).descriptor({
-      width: brushWidthDoc(editor.brushSizeLogical),
+    return (toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
+      width: brushWidthDoc(strokeBrushSizeLogical),
       color: editor.brushColor,
       fill: editor.fillColor,
       dialect: toolDialect(),
@@ -164,7 +178,7 @@
     coordinateScale: brushCanvasScale,
     // A brush that turns its own points into the stroke hands the rule over;
     // the engine knows strokes, never which tool is which.
-    commit: toolSpec(editor.tool)?.stroke?.commit,
+    commit: toolSpec(editor.brushTool)?.stroke?.commit,
     zoom: editor.view.zoom,
   }));
   /**
@@ -385,11 +399,12 @@
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (sheetWidth * editor.view.zoom) / editor.doc.width));
   /**
-   * Width the brush actually lands on the document with, in logical px. Each
-   * dialect measures its brush on its own reference canvas, so the cursor and
-   * the mega-eraser radius take the same normalisation as the stroke.
+   * Width the brush actually lands on the document with, in logical px. A
+   * width is measured on the canvas of the tool in hand (`editor.brushCanvas`)
+   * — which is the stroke's own canvas for every tool but the old brush type,
+   * whose contour is a Multator shape drawn at the everyday brush's width.
    */
-  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / brushCanvasScale);
+  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / widthCanvasScale);
   /** That width in screen pixels — what the ring, the square and the grid measure. */
   const cursorDiameter = $derived(
     Math.max(1, (brushLogicalOnCanvas * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
@@ -533,7 +548,7 @@
     }
     // The grid is a drawing aid, not part of the picture: the preview shows
     // the frames as they will be exported.
-    if (toolSpec(editor.tool)?.stroke?.grid && !editor.playing) {
+    if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
       drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
     }
     ctx.restore();
@@ -1220,7 +1235,7 @@
       class:eraser={editor.tool === 'eraser'}
       class:cross={cursorParts.cross}
       class:ringless={!cursorParts.ring}
-      class:square={toolSpec(editor.tool)?.stroke?.grid}
+      class:square={toolSpec(editor.brushTool)?.stroke?.grid}
       style:left="{cursorX}px"
       style:top="{cursorY}px"
       style:width="{cursorDiameter}px"

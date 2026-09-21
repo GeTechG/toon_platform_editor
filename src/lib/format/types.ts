@@ -53,7 +53,7 @@ export interface EraserToolDescriptor {
 }
 
 /**
- * Oldschool pen (the reference "old" easter egg): the stroke's points are a
+ * Oldschool pen (the brush box's «Старая»): the stroke's points are a
  * closed contour of variable width, filled as a closed midpoint multicurve.
  * No width — the thickness is baked into the geometry.
  */
