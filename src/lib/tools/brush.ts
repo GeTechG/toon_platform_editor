@@ -24,8 +24,7 @@ export function toonopRules({ smooth, minDistance }: PluginBrush): StrokeRules {
     capture: (line, batch) => [...line, ...collect(batch)],
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => thinBySmooth(points, smooth),
-    prepare: (points, _width, zoom, documentScale) =>
-      thinByDistance(thinBySmooth(points, smooth), minDistance, zoom, documentScale),
+    prepare: (points, _width, zoom) => thinByDistance(thinBySmooth(points, smooth), minDistance, zoom),
     path: laySmoothPoints,
     // An interrupted gesture lands what it has rather than being thrown away.
     commitOnCancel: true,
@@ -76,12 +75,11 @@ function thinByDistance(
   points: readonly number[],
   minDistance: number,
   zoom: number,
-  documentScale = 1,
 ): number[] {
   if (points.length <= 2) return points.slice();
   const result = [points[0], points[1]];
   const threshold =
-    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(documentScale));
+    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / positive(zoom);
   for (let i = 2; i < points.length - 2; i += 2) {
     const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
     if (distance > threshold) result.push(points[i], points[i + 1]);

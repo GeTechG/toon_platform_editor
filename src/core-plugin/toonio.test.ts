@@ -92,7 +92,7 @@ describe('the Tonio brush carries its own rules', () => {
   it('shows the first thinning stage under the hand and both on commit', () => {
     const line = [0, 0, 8, 0, 16, 0, 24, 0, 32, 0, 40, 0, 48, 0];
     const live = rules.preview!(line);
-    const committed = rules.prepare!(line, 40, 1, 1);
+    const committed = rules.prepare!(line, 40, 1);
     expect(live.length).toBeLessThan(line.length);
     expect(committed.length).toBeLessThanOrEqual(live.length);
     // Both stages end on the duplicated endpoint the reference writes.

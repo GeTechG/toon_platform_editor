@@ -8,10 +8,10 @@ import corePlugin from '.';
 const PENCIL: LineToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' };
 const ERASER: LineToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 64 };
 
-function commit(id: string, descriptor: LineToolDescriptor, points: readonly number[], coordinateScale = 1) {
+function commit(id: string, descriptor: LineToolDescriptor, points: readonly number[]) {
   const stroke = plugins.probeRules(id)?.commit;
   if (!stroke) throw new Error(`${id} commits nothing`);
-  return stroke(points, descriptor, { coordinateScale });
+  return stroke(points, descriptor);
 }
 
 describe('the oldschool pen is a brush', () => {
@@ -83,24 +83,14 @@ describe('the oldschool pen is a brush', () => {
       .toEqual([]);
   });
 
-  it('is as thick as the line that was drawn, whatever the canvas scale', () => {
-    // The width arrives in document units: the engine normalised it on the
-    // canvas it was measured on when the gesture started. Scaling it again
-    // here would make the contour jump thicker the moment the pointer is
-    // released, since the live line is drawn at the width itself.
-    const left = (scale: number) =>
-      Math.min(...commit('oldschool', PENCIL, [0, 0, 800, 0], scale).points.filter((_, i) => i % 2 === 0));
-    // Width 64 = 8 document px: radius 4 px, and the scale only moves the
-    // tolerance the points are simplified with.
-    expect(left(1)).toBe(-32);
-    expect(left(0.5)).toBe(-32);
-  });
-
-  it('scales its Lang tolerance by the document, not by the gesture', () => {
-    // A zigzag shallow enough that the coarser tolerance flattens it away.
-    const zigzag = [0, 0, 200, 200, 400, 0, 600, 200, 800, 0];
-    const near = commit('oldschool', PENCIL, zigzag, 1).points.length;
-    const far = commit('oldschool', PENCIL, zigzag, 0.25).points.length;
-    expect(far).toBeLessThan(near);
+  it('is as thick as the line that was drawn', () => {
+    // The width arrives in document units and lands as it is: a contour that
+    // scaled it again would jump thicker the moment the pointer is released,
+    // since the live line is drawn at the width itself.
+    const left = Math.min(
+      ...commit('oldschool', PENCIL, [0, 0, 800, 0]).points.filter((_, i) => i % 2 === 0),
+    );
+    // Width 64 = 8 document px: radius 4 px, so the cap reaches -32 units.
+    expect(left).toBe(-32);
   });
 });

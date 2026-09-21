@@ -1,6 +1,10 @@
 /**
  * The stroke engine: one gesture, one path.
  *
+ * Numbers are logical pixels of the document, and nothing here rescales them
+ * by its size: a pixel is a pixel, so a brush set to 9 lays a nine-pixel line
+ * in a document of any shape.
+ *
  * Everything that differs between brushes — how the pointer's samples are
  * collected, what the release event
  * contributes, how the points are thinned, how they are laid down for the
@@ -10,7 +14,7 @@
  * application: a preset picks a brush, and the brush brings its rules.
  */
 
-import { CANVAS_LOGICAL_WIDTH, MAX_STROKE_WIDTH } from '../format/constants';
+import { MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import type { ResolvedStroke } from '../model/operations';
@@ -26,19 +30,13 @@ export interface PointerSample {
 }
 
 /**
- * A brush width is a pixel of the editor's logical canvas — one canvas for
- * every brush, whoever's line it reproduces — so on a document of another
- * size it is divided by this scale, the same normalisation the thinning
- * thresholds get.
+ * A width as the format stores it: whole document units inside the range the
+ * schema takes. A pixel is a pixel — the size of the document it lands on is
+ * not in this arithmetic, so the same brush draws the same line wherever it
+ * is used.
  */
-export function documentCoordinateScale(documentLogicalWidth: number): number {
-  return CANVAS_LOGICAL_WIDTH / positive(documentLogicalWidth);
-}
-
-/** That width in document units, kept inside what the format can store. */
-export function strokeWidthOnCanvas(width: number, coordinateScale: number): number {
-  const scaled = Math.round(width / positive(coordinateScale));
-  return Math.min(MAX_STROKE_WIDTH, Math.max(1, scaled));
+export function storedStrokeWidth(width: number): number {
+  return Math.min(MAX_STROKE_WIDTH, Math.max(1, Math.round(width)));
 }
 
 /**
@@ -51,17 +49,7 @@ export function strokeWidthOnCanvas(width: number, coordinateScale: number): num
 export type StrokeCommit = (
   points: readonly number[],
   descriptor: LineToolDescriptor,
-  ctx: StrokeCommitContext,
 ) => ResolvedStroke;
-
-/** What the engine knows at the end of a gesture that the brush cannot see. */
-export interface StrokeCommitContext {
-  /**
-   * Document normalisation frozen at `pointerdown`: a threshold written in
-   * pixels of the logical canvas is scaled by it.
-   */
-  readonly coordinateScale: number;
-}
 
 /**
  * A brush's own rules for turning a gesture into stored points.
@@ -92,12 +80,7 @@ export interface StrokeRules {
    */
   readonly previewGeometry?: StrokeGeometry;
   /** Thins the collected points when the gesture ends. */
-  prepare?(
-    points: readonly number[],
-    width: number,
-    zoom: number,
-    documentScale: number,
-  ): number[];
+  prepare?(points: readonly number[], width: number, zoom: number): number[];
   /**
    * Lays the collected points down as the descriptor's `geometry` reads them.
    * The same function runs for the line under the hand and for the committed
@@ -125,7 +108,6 @@ export interface StrokeSession {
   readonly rawPoints: number[];
   /** The brush's rules, frozen at `pointerdown` along with everything else. */
   readonly rules: StrokeRules;
-  readonly coordinateScale: number;
   /** Viewport zoom frozen at pointerdown — a brush's threshold may divide by it. */
   readonly zoom: number;
 }
@@ -134,18 +116,13 @@ export function beginStrokeSession(
   event: PointerSample,
   descriptor: LineToolDescriptor,
   rules: StrokeRules,
-  coordinateScale = 1,
   zoom = 1,
 ): StrokeSession {
-  const scale = positive(coordinateScale);
   const session: StrokeSession = {
     pointerId: event.pointerId,
-    // A width is a pixel of the logical canvas, so the stroke covers the
-    // same share of the picture on a document of any size.
-    descriptor: { ...descriptor, width: strokeWidthOnCanvas(descriptor.width, scale) },
+    descriptor: { ...descriptor, width: storedStrokeWidth(descriptor.width) },
     rawPoints: [],
     rules,
-    coordinateScale: scale,
     zoom: positive(zoom),
   };
   collect(session, event, rules.capture);
@@ -198,12 +175,10 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
   // The brush's own rule, when it has one: it owns the stroke end to end and
   // may hand back a kind other than the one it drew with.
   if (commit) {
-    return commit(session.rawPoints, session.descriptor, {
-      coordinateScale: session.coordinateScale,
-    });
+    return commit(session.rawPoints, session.descriptor);
   }
   const thinned = prepare
-    ? prepare(session.rawPoints, session.descriptor.width, session.zoom, session.coordinateScale)
+    ? prepare(session.rawPoints, session.descriptor.width, session.zoom)
     : session.rawPoints.slice();
   return { points: path ? path(thinned) : thinned, tool: { ...session.descriptor } };
 }
@@ -216,7 +191,6 @@ export class PointerStrokeController {
     private readonly selection: () => {
       descriptor: LineToolDescriptor;
       rules: StrokeRules;
-      coordinateScale?: number;
       zoom?: number;
     },
   ) {}
@@ -226,13 +200,7 @@ export class PointerStrokeController {
   pointerDown(event: PointerSample): boolean {
     if (!event.isPrimary || this.#session) return false;
     const selected = this.selection();
-    this.#session = beginStrokeSession(
-      event,
-      selected.descriptor,
-      selected.rules,
-      selected.coordinateScale,
-      selected.zoom ?? 1,
-    );
+    this.#session = beginStrokeSession(event, selected.descriptor, selected.rules, selected.zoom ?? 1);
     return true;
   }
 

@@ -56,19 +56,16 @@ const MULTATOR_ERASER: PluginPrimitive = {
 // ---------------------------------------------------------------------------
 
 /**
- * Lang tolerance, contour, jitter: pixels of the editor's canvas like every
- * other number, so on a document of another size they scale the way the width
- * does.
+ * Lang tolerance, contour, jitter: logical pixels of the document, the same
+ * ones the slider counts in. Nothing here is scaled by the document's size.
  */
-const oldschoolCommit: NonNullable<StrokeRules['commit']> = (points, descriptor, { coordinateScale }) => ({
+const oldschoolCommit: NonNullable<StrokeRules['commit']> = (points, descriptor) => ({
   points: commitOldschoolStroke(
     points,
-    // Document units already: the engine normalises a width on the canvas it
-    // was measured on when the gesture starts, so dividing by the scale again
-    // would thicken the contour by that much.
+    // The descriptor carries document units; the contour wants the width.
     descriptor.width / FIXED_POINT_SCALE,
     Math.random,
-    OLDSCHOOL_LANG_TOLERANCE_LOGICAL * (FIXED_POINT_SCALE / coordinateScale),
+    OLDSCHOOL_LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE,
   ),
   // A contour carries one colour and no fill, so the pen paints and the
   // eraser punches — which is the whole of this brush type's vocabulary.

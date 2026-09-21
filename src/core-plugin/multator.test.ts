@@ -27,7 +27,7 @@ describe('the Multator brush carries its own rules', () => {
   it('thins with Lang and stores whole coordinates, keeping the ends', () => {
     const line: number[] = [];
     for (let i = 0; i <= 20; i++) line.push(i * 8, Math.sin(i) * 0.4);
-    const prepared = MULTATOR_RULES.prepare!(line, 32, 1, 1);
+    const prepared = MULTATOR_RULES.prepare!(line, 32, 1);
     expect(prepared.length).toBeLessThan(line.length);
     expect(prepared.slice(0, 2)).toEqual([0, 0]);
     expect(prepared.slice(-2)).toEqual([160, Math.round(Math.sin(20) * 0.4)]);

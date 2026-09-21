@@ -20,8 +20,7 @@ const pencil: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, 
 const coarse: profiles.StrokeRules = {
   capture: (line, batch) =>
     batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
-  prepare: (points, _width, _zoom, documentScale) =>
-    simplifyLang(points, 5, 80 / documentScale).map(Math.round),
+  prepare: (points) => simplifyLang(points, 5, 80).map(Math.round),
   previewGeometry: 'line',
 };
 /** The editor's own brush, at the settings a test asks for. */
@@ -116,7 +115,7 @@ describe('the feather and the pixel through the engine', () => {
     // The pixel tool, wired the way the editor wires it: the engine knows
     // nothing about it, the rules come from the tool itself (plugins/pixel.ts).
     const descriptor: ToolDescriptor = { kind: 'stamp', geometry: 'line', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1, 1);
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1);
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     profiles.appendStrokeEvent(session, sample(1, 64, 0));
     const committed = profiles.commitStrokeSession(session);
@@ -126,7 +125,7 @@ describe('the feather and the pixel through the engine', () => {
 
   it('its preview shows the points as collected, unsmoothed', () => {
     const descriptor: ToolDescriptor = { kind: 'stamp', geometry: 'line', width: 16, color: '#0026ff', shape: SQUARE_STAMP };
-    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1, 1);
+    const session = profiles.beginStrokeSession(sample(1, 0, 0), descriptor, stamp, 1);
     profiles.appendStrokeEvent(session, sample(1, 20, 4));
     expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 16, 0]);
   });
@@ -189,64 +188,33 @@ function sample(pointerId: number, x: number, y: number, coalesced?: profiles.Po
   return { pointerId, isPrimary: true, x, y, coalesced };
 }
 
-describe('brush width in logical-canvas pixels', () => {
+describe('a pixel is a pixel', () => {
+  const frozen = (width: number) => profiles.beginStrokeSession(sample(1, 0, 0),
+    { kind: 'pencil', geometry: 'smooth', width, color: '#123456' }, fine(1, 0),
+  ).descriptor.width;
 
-  it('every brush measures on the editor\'s own canvas, the document scales it', () => {
-    expect(profiles.documentCoordinateScale(1280)).toBe(1);
-    expect(profiles.documentCoordinateScale(640)).toBe(2);
-    expect(profiles.documentCoordinateScale(2560)).toBe(0.5);
+  it('freezes the width it was given, whatever the document', () => {
+    // The document's own size is not in the arithmetic at all: 40 units is
+    // 40 units on a 640-wide document and on a 1920-wide one.
+    expect(frozen(40)).toBe(40);
+    expect(frozen(32)).toBe(32);
+    expect(profiles.beginStrokeSession(sample(1, 0, 0),
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' }, fine(1, 0),
+    ).descriptor.width).toBe(40);
   });
 
-  it('a stroke grows with a document narrower than the logical canvas', () => {
-    // 4 logical px = 32 doc units; on a 600-wide document the same stroke
-    // has to cover the same share of the picture.
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' },
-      fine(1, 0), profiles.documentCoordinateScale(600),
-    );
-    expect(session.descriptor.width).toBe(15);
+  it('never lands a stroke wider than the format can hold', () => {
+    expect(frozen(MAX_STROKE_WIDTH * 2)).toBe(MAX_STROKE_WIDTH);
   });
 
-  it('never widens a stroke past what the format can hold', () => {
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'pencil', geometry: 'smooth', width: 2400, color: '#123456' },
-      fine(1, 0), profiles.documentCoordinateScale(2560),
-    );
-    expect(session.descriptor.width).toBe(MAX_STROKE_WIDTH);
+  it('never lets a width fall below one document unit', () => {
+    expect(profiles.beginStrokeSession(sample(1, 0, 0),
+      { kind: 'eraser', geometry: 'smooth', width: 0 }, fine(1, 0),
+    ).descriptor.width).toBe(1);
   });
 
-  it('divides the frozen width by the document normalisation', () => {
-    // 5 logical px = 40 doc units; on a 600-wide document 40 / (1280 / 600)
-    // = 18.75 → 19.
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      fine(1, 0), profiles.documentCoordinateScale(600),
-    );
-    expect(session.descriptor.width).toBe(19);
-  });
-
-  it('a 1280-wide document keeps the width it was given', () => {
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      fine(1, 0), 1,
-    );
-    expect(session.descriptor.width).toBe(40);
-  });
-
-  it('a brush keeps its width on a document of the logical canvas', () => {
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      fine(1, 0), profiles.documentCoordinateScale(1280),
-    );
-    expect(session.descriptor.width).toBe(40);
-  });
-
-  it('the scaled width never falls below one document unit', () => {
-    const session = profiles.beginStrokeSession(sample(1, 0, 0),
-      { kind: 'eraser', geometry: 'smooth', width: 1 },
-      fine(1, 0), 100,
-    );
-    expect(session.descriptor.width).toBe(1);
+  it('hands the document scale to nobody: the engine has none', () => {
+    expect('documentCoordinateScale' in profiles).toBe(false);
   });
 });
 
@@ -289,7 +257,7 @@ describe('the feather under a coarse brush', () => {
   it('measures its width the way every other brush does', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
-      coarse, profiles.documentCoordinateScale(1280),
+      coarse,
     );
     expect(session.rules).toBe(coarse);
     expect(session.descriptor.width).toBe(40);
@@ -327,13 +295,13 @@ describe('the pixel tool outside the fine preset', () => {
   });
 
   it('measures its cell the way every other brush does', () => {
-    // A cell is a pixel of the logical canvas wherever the tool is offered,
-    // so on a 640-wide document sixteen units become eight.
+    // A cell is the tool's width in document units wherever the tool is
+    // offered, and the document's own size does not touch it.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'stamp', geometry: 'line', width: 16, color: '#000000', shape: SQUARE_STAMP },
-      stamp, profiles.documentCoordinateScale(640),
+      stamp,
     );
-    expect(session.descriptor.width).toBe(8);
+    expect(session.descriptor.width).toBe(16);
   });
 });
 
@@ -358,23 +326,23 @@ describe('commit comes from the brush', () => {
     expect(stroke.points.slice(0, 4)).toEqual([0, 0, 800, 0]);
   });
 
-  it('hands the commit the scale of the document', () => {
-    let seen = 0;
+  it('hands the commit the points and the frozen descriptor, and nothing else', () => {
+    let seen: unknown[] = [];
     const controller = new profiles.PointerStrokeController(() => ({
       rules: {
         ...coarse,
-        commit: (points, descriptor, ctx) => {
-          seen = ctx.coordinateScale;
-          return capsule(points, descriptor);
+        commit: (...args) => {
+          seen = args;
+          return capsule(args[0], args[1]);
         },
       },
       descriptor: { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' },
-      coordinateScale: 0.5,
     }));
     controller.pointerDown(sample(1, 0, 0));
     controller.pointerUp(sample(1, 0, 0));
     controller.takeCommitted();
-    expect(seen).toBe(0.5);
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toEqual({ kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' });
   });
 
   it('drops a stroke whose commit returned a kind the format does not know', () => {

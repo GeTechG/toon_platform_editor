@@ -25,8 +25,7 @@ export function toonioRules({ smooth, minDistance }: ToonioTuning): StrokeRules 
     capture: (line, batch) => [...line, ...collect(batch)],
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => toonioSmooth(points, smooth),
-    prepare: (points, _width, zoom, documentScale) =>
-      toonioPrepare(toonioSmooth(points, smooth), minDistance, zoom, documentScale),
+    prepare: (points, _width, zoom) => toonioPrepare(toonioSmooth(points, smooth), minDistance, zoom),
     path: layToonioPoints,
     // The reference commits what it has when a gesture is interrupted, rather
     // than throwing the line away.
@@ -87,12 +86,11 @@ export function toonioPrepare(
   points: readonly number[],
   minDistance: number,
   zoom: number,
-  documentScale = 1,
 ): number[] {
   if (points.length <= 2) return points.slice();
   const result = [points[0], points[1]];
   const threshold =
-    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(documentScale));
+    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / positive(zoom);
   for (let i = 2; i < points.length - 2; i += 2) {
     const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
     if (distance > threshold) result.push(points[i], points[i + 1]);

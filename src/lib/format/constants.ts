@@ -24,10 +24,11 @@ export const PLAYER_FPS_MIN = 5;
 export const PLAYER_FPS_MAX = 24;
 
 /**
- * The row of dots of the Multator panel, in pixels of the editor's logical
- * canvas — `documentCoordinateScale` maps them onto the document. The
- * reference's own 2, 4, 6, 10, 20 measured on its 600-wide canvas; here they
- * are ×1280/600, rounded to whole pixels of ours.
+ * The row of dots of the Multator panel, in logical pixels — which is what a
+ * width is everywhere: a pixel is a pixel, and no document rescales it. The
+ * reference's own 2, 4, 6, 10, 20 were measured on its 600-wide canvas; here
+ * they are ×1280/600, rounded, so the line is the width it always was on the
+ * canvas this editor opens with.
  */
 export const BRUSH_SIZES_LOGICAL = [4, 9, 13, 21, 43] as const;
 /** The reference's starting 4 of that canvas. */
@@ -36,10 +37,9 @@ export const DEFAULT_BRUSH_COLOR = '#000000';
 /** Second color of the Tonio palette (`fill`, right mouse button). */
 export const DEFAULT_FILL_COLOR = '#ff0000';
 /**
- * Bounds a stored width is kept inside, in logical canvas px. The ceiling is
- * the widest a brush may declare — the Multator cap of 300 on its 600-wide
- * canvas, which is 640 of ours; a brush's own `range` stops the slider
- * earlier.
+ * Bounds a stored width is kept inside, in logical px. The ceiling is the
+ * widest a brush may declare — the Multator cap of 300 on its 600-wide
+ * canvas, which is 640 here; a brush's own `range` stops the slider earlier.
  */
 export const MIN_BRUSH_SIZE_LOGICAL = 1;
 export const MAX_BRUSH_SIZE_LOGICAL = 640;

@@ -359,10 +359,9 @@ test('both types of a brush share one width', () => {
   expect(member(state, 'get brush')).toContain('brushToolOf(this.tool)');
   expect(member(state, 'get brush')).not.toContain('brushTool)');
   expect(canvas).toContain('brushWidthDoc(editor.brushSizeLogical)');
-  expect(canvas).toContain('brushLogicalOnCanvas = $derived(editor.brushSizeLogical / documentScale)');
-  // One normalisation, and it comes from the document, not from a brush.
-  expect(canvas).not.toContain('widthCanvasScale');
-  expect(canvas).not.toContain('brushCanvasScale');
+  // No normalisation at all: a pixel is a pixel, whatever the document.
+  expect(canvas).not.toContain('CanvasScale');
+  expect(canvas).not.toContain('documentScale');
 });
 
 test('the preset is asked about the preset, the canvas about the line', () => {

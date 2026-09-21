@@ -200,7 +200,7 @@ describe.skipIf(!available)('Tonio drawing parity with the reference checkout', 
         });
         return { pointerId: e.pointerId, isPrimary: true, x: sx, y: sy, coalesced };
       };
-      const session = beginStrokeSession(sample(events[0]), { kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }, toonioRules({ smooth: 3, minDistance: 3 }), 1, zoom);
+      const session = beginStrokeSession(sample(events[0]), { kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }, toonioRules({ smooth: 3, minDistance: 3 }), zoom);
       for (const e of events.slice(1, -1)) appendStrokeEvent(session, sample(e));
       if (events.length > 1) finishStrokeEvent(session, sample(events[events.length - 1]));
 

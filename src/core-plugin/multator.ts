@@ -46,10 +46,9 @@ export const MULTATOR_RULES: StrokeRules = {
   // joins the line.
   capture: (line, batch) =>
     batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
-  // The tolerance is in pixels of the editor's canvas like every other
-  // number, so on a document of another size it scales the way the width does.
-  prepare: (points, _width, _zoom, documentScale) =>
-    quantize(simplifyLang(points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC / documentScale)),
+  // The tolerance is document units like every other number here: the size
+  // of the document it lands on does not enter into it.
+  prepare: (points) => quantize(simplifyLang(points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC)),
   // The reference shows the raw polyline while the hand is down and curves it
   // only on release, so the line under the hand is read as a polyline.
   previewGeometry: 'line',

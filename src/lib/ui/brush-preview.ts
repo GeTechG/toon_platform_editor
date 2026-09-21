@@ -83,9 +83,6 @@ export function brushPreview(
   const pointer = new PointerStrokeController(() => ({
     descriptor,
     rules,
-    // The sample is written in document units of its own box, so there is
-    // nothing to normalise: it is the shape of the line that is on show.
-    coordinateScale: 1,
     zoom: 1,
   }));
   for (let i = 0; i < PREVIEW_GESTURE.length; i += 2) {

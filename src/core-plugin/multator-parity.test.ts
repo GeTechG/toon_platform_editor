@@ -9,11 +9,11 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../lib/format/constants';
+import { FIXED_POINT_SCALE } from '../lib/format/constants';
 import type { Frame, ToolDescriptor } from '../lib/format/types';
 import { renderStrokesLayer, type Canvas2DLike } from '../lib/render/canvas2d';
 import { emitGeometry } from '../lib/render/smoothing';
-import { MULTATOR_RULES } from './multator';
+import { MULTATOR_RULES, MULTATOR_SCALE } from './multator';
 import { simplifyLang } from '../lib/tools/simplify';
 import {
   appendStrokeEvent,
@@ -133,15 +133,16 @@ function referenceCommit(ref: Ref, g: ReturnType<typeof gesture>): Pt[] {
 const sample = (p: Pt, k: number) => ({ pointerId: 1, isPrimary: true, x: p.x * FIXED_POINT_SCALE * k, y: p.y * FIXED_POINT_SCALE * k });
 
 /**
- * The gesture as the editor sees it on a document of `documentWidth` logical
- * px. The reference drew on 600, so its points are stretched to that document
- * and the engine is handed the document's own normalisation.
+ * The gesture as the editor sees it: the same picture drawn on the editor's
+ * canvas. The reference drew on 600 and we draw on 1280, so its points are
+ * stretched by that ratio — which is the same ratio its numbers were brought
+ * over by, and Lang thins on distances, so the thinning is untouched.
+ *
+ * Nothing is handed to the engine about the document: a pixel is a pixel.
  */
-function ourCommit(g: ReturnType<typeof gesture>, documentWidth = 600): number[] {
-  const k = documentWidth / 600;
-  const coordinateScale = CANVAS_LOGICAL_WIDTH / documentWidth;
+function ourCommit(g: ReturnType<typeof gesture>, k = MULTATOR_SCALE): number[] {
   const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
-  const session = beginStrokeSession(sample(g.down, k), descriptor, MULTATOR_RULES, coordinateScale);
+  const session = beginStrokeSession(sample(g.down, k), descriptor, MULTATOR_RULES);
   for (const m of g.moves) appendStrokeEvent(session, sample(m, k));
   finishStrokeEvent(session, sample(g.up, k));
   return commitStrokeSession(session).points;
@@ -166,18 +167,17 @@ describe.skipIf(!available)('Multator drawing parity with the reference build', 
     }
   });
 
-  it('a whole gesture commits the reference points, on the 600px canvas and on a wider document', () => {
+  it('a whole gesture commits the reference points, on the editor canvas', () => {
     for (let run = 0; run < 300; run++) {
       const g = gesture(rand);
       const expected = referenceCommit(ref, g).flatMap((p) => [p.x, p.y]);
-      expect(ourCommit(g)).toEqual(expected.map((v) => Math.round(v * FIXED_POINT_SCALE)));
+      const ours = ourCommit(g);
 
-      // A 1280-wide document: the same gesture, the same share of the picture.
-      const wide = ourCommit(g, CANVAS_LOGICAL_WIDTH);
-      expect(wide.length).toBe(expected.length);
-      for (let i = 0; i < wide.length; i++) {
-        expect(Math.abs(wide[i] * (600 / CANVAS_LOGICAL_WIDTH) / FIXED_POINT_SCALE - expected[i]))
-          .toBeLessThan(0.1);
+      // The same points the reference kept, at the editor's scale: only the
+      // rounding into whole document units stands between them.
+      expect(ours.length).toBe(expected.length);
+      for (let i = 0; i < ours.length; i++) {
+        expect(Math.abs(ours[i] / MULTATOR_SCALE / FIXED_POINT_SCALE - expected[i])).toBeLessThan(0.1);
       }
     }
   });

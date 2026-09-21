@@ -18,8 +18,8 @@ describe('the pointer lifecycle the canvas drives', () => {
     // longer decides for one by name.
     expect(source).not.toContain("=== 'toonio'");
     expect(source).toContain('rules: activeRules()');
-    expect(source).toContain('coordinateScale: documentScale');
-    expect(source).toContain('documentCoordinateScale(');
+    expect(source).not.toContain('coordinateScale');
+    expect(source).not.toContain('documentScale');
   });
 
   it('hands every pointermove to the brush, coalesced samples and all', () => {
@@ -230,9 +230,9 @@ describe('the cursor over the canvas', () => {
   });
 
   it('measures the ring by the width the stroke really lands at', () => {
-    // After the reference-canvas normalisation a Tonio width of 5 draws
-    // thinner than 5 logical px, and the ring has to follow it.
-    expect(source).toContain('brushLogicalOnCanvas');
+    // A pixel is a pixel: the ring is the slider's own number through the
+    // view (fit × zoom), with nothing about the document's size in between.
+    expect(source).toContain('(editor.brushSizeLogical * sheetWidth * editor.view.zoom)');
   });
 
   it('squares the cursor and lays a difference grid under the pixel tool', () => {
@@ -248,13 +248,12 @@ describe('the cursor over the canvas', () => {
 
 describe('the mega eraser', () => {
   it('previews the swath at the width it will really cut', () => {
-    // The cut takes `brushLogicalOnCanvas` — the width the brush lands with
-    // on this dialect's canvas. The preview drew the raw logical size, so
-    // under Multator (600-wide reference, 1280-wide document) the gesture
-    // swallowed 2.1× more than the smear on screen promised.
+    // The smear on screen and the cut on release take the same number the
+    // slider shows — one of them scaled and the other not is how the gesture
+    // used to swallow more than it promised.
     const preview = source.match(/renderRawPolyline\(\s*megaGesture,[^)]*\)/)?.[0] ?? '';
-    expect(preview).toContain('brushWidthDoc(brushLogicalOnCanvas)');
-    expect(handler('onPointerUp')).toContain('brushWidthDoc(brushLogicalOnCanvas) / 2');
+    expect(preview).toContain('brushWidthDoc(editor.brushSizeLogical)');
+    expect(handler('onPointerUp')).toContain('brushWidthDoc(editor.brushSizeLogical) / 2');
   });
 });
 

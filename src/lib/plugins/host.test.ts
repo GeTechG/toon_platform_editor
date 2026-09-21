@@ -9,18 +9,17 @@ const cells = () => [
 ];
 
 describe('the unit a plugin measures in', () => {
-  const host = (logicalWidth: number) => makeHost({
-    doc: { width: logicalWidth * FIXED_POINT_SCALE },
-    pluginStrokes: () => [],
-    editPluginCells: () => {},
-    openPluginWindow: () => ({}) as HTMLElement,
-  });
-
-  test('document units become pixels of the one logical canvas', () => {
-    // A document of the logical canvas: one unit is 1/8 of a pixel.
-    expect(host(CANVAS_LOGICAL_WIDTH).referencePx(8)).toBe(1);
-    // Half as wide a document: the same picture, so a unit is worth double.
-    expect(host(CANVAS_LOGICAL_WIDTH / 2).referencePx(8)).toBe(2);
+  test('the host offers no conversion: a unit is a fixed fraction of a pixel', () => {
+    // There is nothing to ask about — `FIXED_POINT_SCALE` is a constant of
+    // the contract and means the same on a document of any size — so the
+    // host does not carry a method that would suggest otherwise.
+    const host = makeHost({
+      doc: { width: CANVAS_LOGICAL_WIDTH * FIXED_POINT_SCALE },
+      pluginStrokes: () => [],
+      editPluginCells: () => {},
+      openPluginWindow: () => ({}) as HTMLElement,
+    });
+    expect('referencePx' in host).toBe(false);
   });
 });
 

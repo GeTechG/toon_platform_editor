@@ -40,7 +40,6 @@
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
-    documentCoordinateScale,
     swapStrokeColours,
     previewStrokeSession,
     type PointerSample,
@@ -106,13 +105,6 @@
   let hint = $state('');
   let hintTimer = 0;
   /**
-   * What a pixel of the logical canvas is worth on this document. Every
-   * brush measures on that one canvas, whoever's line it reproduces, so this
-   * is the only normalisation there is.
-   */
-  const documentScale = $derived(documentCoordinateScale(editor.doc.width / FIXED_POINT_SCALE));
-
-  /**
    * The rules the gesture runs under: the tool's own when it declared some,
    * the preset's brush otherwise. Which brush that is, is the preset's
    * business — the canvas only asks for the rules.
@@ -144,7 +136,6 @@
     descriptor: strokeButton === 0
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
-    coordinateScale: documentScale,
     zoom: editor.view.zoom,
   }));
   /**
@@ -364,11 +355,13 @@
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (sheetWidth * editor.view.zoom) / editor.doc.width));
-  /** Width the brush lands on the document with, in logical px of it. */
-  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / documentScale);
-  /** That width in screen pixels — what the ring, the square and the grid measure. */
+  /**
+   * The brush width in screen pixels — what the ring, the square and the grid
+   * measure. A pixel is a pixel: the width the slider shows is the width that
+   * lands, and only the view (fit and zoom) stands between them.
+   */
   const cursorDiameter = $derived(
-    Math.max(1, (brushLogicalOnCanvas * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
+    Math.max(1, (editor.brushSizeLogical * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
   );
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
   const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
@@ -477,7 +470,7 @@
         megaGesture,
         // The width the gesture really cuts with: the cut on release takes
         // the same normalised radius, and so does the cursor ring.
-        brushWidthDoc(brushLogicalOnCanvas),
+        brushWidthDoc(editor.brushSizeLogical),
         BACKGROUND_COLOR,
         lctx,
         viewport,
@@ -1012,7 +1005,7 @@
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
-      editor.applyMegaEraser(megaGesture, brushWidthDoc(brushLogicalOnCanvas) / 2);
+      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
       megaGesture = null;
       gesturePointerId = -1;
       stackDirty = true;

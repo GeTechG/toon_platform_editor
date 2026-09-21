@@ -126,7 +126,7 @@ describe('PluginRegistry', () => {
     // Not the same function: an external plugin's is wrapped so its throw
     // costs the plugin and not the editor. What it commits is what matters.
     expect(
-      registry.probeRules('a.oldschool')?.commit?.([1, 2], {} as never, { coordinateScale: 1 }),
+      registry.probeRules('a.oldschool')?.commit?.([1, 2], {} as never),
     ).toEqual(commit([1, 2]));
   });
 

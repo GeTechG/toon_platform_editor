@@ -27,7 +27,7 @@ describe('the editor brush', () => {
   it('shows the first thinning stage under the hand and both on commit', () => {
     const line = [0, 0, 8, 0, 16, 0, 24, 0, 32, 0, 40, 0, 48, 0];
     const live = rules.preview!(line);
-    const committed = rules.prepare!(line, 40, 1, 1);
+    const committed = rules.prepare!(line, 40, 1);
 
     expect(live.length).toBeLessThan(line.length);
     expect(committed.length).toBeLessThanOrEqual(live.length);
@@ -40,7 +40,7 @@ describe('the editor brush', () => {
     const line = [0, 0, 8, 0, 16, 0, 24, 0, 32, 0, 40, 0, 48, 0];
     const dense = toonopRules({ width: 5, color: '#000', fill: '#fff', smooth: 1, minDistance: 0 });
 
-    expect(dense.prepare!(line, 40, 1, 1).length).toBeGreaterThan(rules.prepare!(line, 40, 1, 1).length);
+    expect(dense.prepare!(line, 40, 1).length).toBeGreaterThan(rules.prepare!(line, 40, 1).length);
   });
 
   it('lands a cancelled gesture rather than throwing it away', () => {
