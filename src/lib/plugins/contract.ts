@@ -16,6 +16,11 @@ export type { StrokeRules };
 /**
  * The contract major. A manifest asking for another one is not loaded.
  *
+ * A plugin of the catalog writes this number out rather than importing it —
+ * a substituted major reflects the contract instead of declaring anything.
+ * The editor's own tools and the plugin of its delivery may read it: they are
+ * changed by the same commit as the contract and cannot drift from it.
+ *
  * It holds where it is while the contract is still being shaped: a breaking
  * change arrives without a new number, because there is nothing out there to
  * break — the plugins are ours and there is one of them. Moving it earns its
