@@ -17,9 +17,6 @@ import type { PluginHost, PluginTool } from './contract';
 /** The reference writes once every this many pixels of its own canvas. */
 const STEP_PX = 5;
 
-/** Everything here is measured on the reference's own canvas; it says so itself. */
-const REFERENCE_CANVAS = 1280;
-
 /** The live drag; one gesture runs at a time, so it can live here. */
 let drag: { startX: number; lastStep: number } | null = null;
 
@@ -36,15 +33,15 @@ export const distortTool: PluginTool = {
   },
 
   /**
-   * Everything here is measured on the reference's own canvas: the strength,
-   * and the every-fifth-pixel throttle (`~~x % 5`). Counting either in
-   * document units shakes the frame several times too often.
+   * Everything here is measured in pixels of the logical canvas — the
+   * strength, and the every-fifth-pixel throttle (`~~x % 5`). Counting either
+   * in document units shakes the frame several times too often.
    */
   move(host: PluginHost, point) {
     if (!drag) {
       return;
     }
-    const perDocUnit = host.referencePx(1, REFERENCE_CANVAS);
+    const perDocUnit = host.referencePx(1);
     const referenceX = point.x * perDocUnit;
     const step = Math.trunc(referenceX / STEP_PX);
     if (step === drag.lastStep) {

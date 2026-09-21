@@ -60,8 +60,9 @@ export class StrokeBuilder {
    * reference stores them, and `[…, X, P, P]` curves through the midpoint of
    * X–P where `[…, X, P]` would not.
    *
-   * `tolerance` is the Lang tolerance in document units — the reference's
-   * 10 px of its 600 px canvas, scaled to the document by the caller.
+   * `tolerance` is the Lang tolerance in document units, scaled to the
+   * document by the caller. The brush that thins with it brings the
+   * reference's own 10 px to the editor's canvas first.
    */
   commit(tolerance = LANG_TOLERANCE_DOC): BuiltStroke {
     if (this.#points.length === 0) {

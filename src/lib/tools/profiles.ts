@@ -1,8 +1,8 @@
 /**
  * The stroke engine: one gesture, one path.
  *
- * Everything that differs between brushes — the canvas their numbers are
- * measured on, how the pointer's samples are collected, what the release event
+ * Everything that differs between brushes — how the pointer's samples are
+ * collected, what the release event
  * contributes, how the points are thinned, how they are laid down for the
  * reader, and whether a cancelled gesture still lands — arrives here as plain
  * functions in a `StrokeRules` and is run without being named. There is no
@@ -10,7 +10,7 @@
  * application: a preset picks a brush, and the brush brings its rules.
  */
 
-import { MAX_STROKE_WIDTH } from '../format/constants';
+import { CANVAS_LOGICAL_WIDTH, MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import type { ResolvedStroke } from '../model/operations';
@@ -26,12 +26,13 @@ export interface PointerSample {
 }
 
 /**
- * A brush width is a pixel of the canvas the brush measures on, so on a
- * document of another size it is divided by this scale — the same
- * normalisation the brush's own thinning thresholds get.
+ * A brush width is a pixel of the editor's logical canvas — one canvas for
+ * every brush, whoever's line it reproduces — so on a document of another
+ * size it is divided by this scale, the same normalisation the thinning
+ * thresholds get.
  */
-export function canvasCoordinateScale(canvas: number, documentLogicalWidth: number): number {
-  return canvas / positive(documentLogicalWidth);
+export function documentCoordinateScale(documentLogicalWidth: number): number {
+  return CANVAS_LOGICAL_WIDTH / positive(documentLogicalWidth);
 }
 
 /** That width in document units, kept inside what the format can store. */
@@ -56,8 +57,8 @@ export type StrokeCommit = (
 /** What the engine knows at the end of a gesture that the brush cannot see. */
 export interface StrokeCommitContext {
   /**
-   * Reference-canvas normalisation frozen at `pointerdown`: a tolerance
-   * written in the reference's own pixels is scaled by it.
+   * Document normalisation frozen at `pointerdown`: a threshold written in
+   * pixels of the logical canvas is scaled by it.
    */
   readonly coordinateScale: number;
 }
@@ -71,16 +72,9 @@ export interface StrokeCommitContext {
  */
 export interface StrokeRules {
   /**
-   * Width of the canvas this brush measures its numbers on, in its own pixels.
-   * On a document of another size the width and the thinning thresholds are
-   * divided by `canvas / documentLogicalWidth`, so a stroke covers the same
-   * share of the picture whatever the document.
-   */
-  readonly canvas: number;
-  /**
-   * What a width may be on this canvas, in its logical pixels. Absent means
-   * "whatever the preset's UX profile allows" — the editor holds no table of
-   * ceilings per brush.
+   * What a width may be, in pixels of the editor's logical canvas. Absent
+   * means "whatever the preset's UX profile allows" — the editor holds no
+   * table of ceilings per brush.
    */
   readonly range?: { readonly min: number; readonly max: number };
   /** What a fresh record of this brush starts at. */
@@ -102,7 +96,7 @@ export interface StrokeRules {
     points: readonly number[],
     width: number,
     zoom: number,
-    canvasScale: number,
+    documentScale: number,
   ): number[];
   /**
    * Lays the collected points down as the descriptor's `geometry` reads them.
@@ -146,7 +140,7 @@ export function beginStrokeSession(
   const scale = positive(coordinateScale);
   const session: StrokeSession = {
     pointerId: event.pointerId,
-    // A width is a pixel of the brush's own canvas, so the stroke covers the
+    // A width is a pixel of the logical canvas, so the stroke covers the
     // same share of the picture on a document of any size.
     descriptor: { ...descriptor, width: strokeWidthOnCanvas(descriptor.width, scale) },
     rawPoints: [],

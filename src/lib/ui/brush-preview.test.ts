@@ -28,7 +28,6 @@ test('a brush with rules of its own previews its own line, not the preset one', 
           kind: 'pencil',
           // One point per event and nothing else: a line of its own shape.
           rules: () => ({
-            canvas: 600,
             capture: (line: readonly number[], batch: readonly number[]) =>
               batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
           }),

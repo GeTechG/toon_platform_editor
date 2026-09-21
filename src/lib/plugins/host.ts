@@ -7,6 +7,7 @@
  * the way. A plugin that could spoil the history is a plugin that will.
  */
 
+import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
 import { clampCoord } from '../model/geom';
 import type { Stroke } from '../format/types';
 import type { PluginHost, PluginStroke } from './contract';
@@ -55,8 +56,8 @@ export function makeHost(owner: HostOwner): PluginHost {
     window: ({ title }) => owner.openPluginWindow(title),
     strokes: () => owner.pluginStrokes(),
     edit: (fn) => owner.editPluginCells(fn),
-    // Whose canvas it is, the tool says itself: the host converts, it does not
-    // know any reference width of its own.
-    referencePx: (value, canvas) => value * canvas / owner.doc.width,
+    // One canvas under every brush, so there is nothing to ask about: the
+    // host converts into pixels of the editor's logical canvas.
+    referencePx: (value) => value * CANVAS_LOGICAL_WIDTH / owner.doc.width,
   };
 }

@@ -18,8 +18,8 @@ describe('the pointer lifecycle the canvas drives', () => {
     // longer decides for one by name.
     expect(source).not.toContain("=== 'toonio'");
     expect(source).toContain('rules: activeRules()');
-    expect(source).toContain('coordinateScale: brushCanvasScale');
-    expect(source).toContain('canvasCoordinateScale(');
+    expect(source).toContain('coordinateScale: documentScale');
+    expect(source).toContain('documentCoordinateScale(');
   });
 
   it('hands every pointermove to the brush, coalesced samples and all', () => {

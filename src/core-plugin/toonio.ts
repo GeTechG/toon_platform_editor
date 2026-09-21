@@ -1,15 +1,12 @@
 /**
  * The Tonio brush's own rules — everything the core used to know about the
- * Tonio canvas lives here instead: the canvas its numbers are measured on,
- * how the pointer's samples are collected, the two thinning stages, and how
- * the result is laid down for the shared reader.
+ * Tonio line lives here instead: how the pointer's samples are collected,
+ * the two thinning stages, and how the result is laid down for the shared
+ * reader.
  */
 
 import { FIXED_POINT_SCALE } from '../lib/format/constants';
 import type { StrokeRules } from '../lib/plugins/contract';
-
-/** Native width of the source Tonio drawing canvas. */
-export const TONIO_CANVAS_WIDTH = 1280;
 
 /** The tuning the editor holds for this brush (reference `s` and `m`). */
 export interface ToonioTuning {
@@ -19,16 +16,17 @@ export interface ToonioTuning {
 
 export function toonioRules({ smooth, minDistance }: ToonioTuning): StrokeRules {
   return {
-    canvas: TONIO_CANVAS_WIDTH,
-    // The reference's own slider and its starting numbers.
+    // The reference's own slider and its starting numbers. It drew on a
+    // 1280-wide canvas, the same one the editor draws on, so they carry over
+    // as they are.
     range: { min: 1, max: 500 },
     defaults: { width: 5, smooth: 3, minDistance: 3 },
     smoothing: true,
     capture: (line, batch) => [...line, ...collect(batch)],
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => toonioSmooth(points, smooth),
-    prepare: (points, _width, zoom, canvasScale) =>
-      toonioPrepare(toonioSmooth(points, smooth), minDistance, zoom, canvasScale),
+    prepare: (points, _width, zoom, documentScale) =>
+      toonioPrepare(toonioSmooth(points, smooth), minDistance, zoom, documentScale),
     path: layToonioPoints,
     // The reference commits what it has when a gesture is interrupted, rather
     // than throwing the line away.
@@ -89,12 +87,12 @@ export function toonioPrepare(
   points: readonly number[],
   minDistance: number,
   zoom: number,
-  canvasScale = 1,
+  documentScale = 1,
 ): number[] {
   if (points.length <= 2) return points.slice();
   const result = [points[0], points[1]];
   const threshold =
-    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(canvasScale));
+    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(documentScale));
   for (let i = 2; i < points.length - 2; i += 2) {
     const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
     if (distance > threshold) result.push(points[i], points[i + 1]);

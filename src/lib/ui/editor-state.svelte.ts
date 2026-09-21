@@ -150,9 +150,9 @@ import {
   DEFAULT_DRAWING_UI_CONFIG,
   BRUSH_TOOLS,
   brushToolOf,
+  copyBrushes,
   FALLBACK_BRUSH,
   brushUsesSmoothing,
-  canvasKeyOf,
   defaultBrushOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
@@ -178,14 +178,6 @@ import {
  * traits instead of reading them off its name.
  */
 export type Tool = string;
-
-/** Fresh brush records, so a load or a save never shares objects with the config. */
-function copyBrushes(source: Record<BrushToolId, BrushRecord>): Record<BrushToolId, BrushRecord> {
-  return BRUSH_TOOLS.reduce((all, tool) => {
-    all[tool] = { ...source[tool] };
-    return all;
-  }, {} as Record<BrushToolId, BrushRecord>);
-}
 
 /**
  * Steps kept inside one transform session. A drag writes one per pointermove,
@@ -269,12 +261,11 @@ export class EditorState {
    */
   defaultBrush = $state<string>(presetDefaultBrush(DEFAULT_PRESET));
   /**
-   * Width, smoothing and minimum per brush, bucketed by the width of the
-   * canvas it measures on: a brush keeps one record per canvas, and picking a
-   * tool puts its own numbers back in the sliders. A bucket appears the first
-   * time a slider moves on that canvas.
+   * Width, smoothing and minimum per brush: picking a tool puts its own
+   * numbers back in the sliders. A record appears the first time a slider
+   * moves for that tool; until then the brush's own defaults stand.
    */
-  byCanvas = $state<Record<string, Record<BrushToolId, BrushRecord>>>({});
+  byTool = $state<Record<BrushToolId, BrushRecord>>({});
   brushColor = $state(DEFAULT_BRUSH_COLOR);
   /** Second color: the feather fills with it, the pipette takes it on right-click. */
   fillColor = $state(DEFAULT_FILL_COLOR);
@@ -443,9 +434,7 @@ export class EditorState {
       this.panels = saved.panels;
       this.floatPos = saved.floatPos;
       this.defaultBrush = saved.drawing.defaultBrush;
-      this.byCanvas = Object.fromEntries(
-        Object.entries(saved.drawing.byCanvas).map(([canvas, byTool]) => [canvas, copyBrushes(byTool)]),
-      );
+      this.byTool = copyBrushes(saved.drawing.byTool);
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
       this.sides = saved.drawing.sides;
@@ -503,20 +492,6 @@ export class EditorState {
     return brushOfType(this.tool, this.brushType);
   }
 
-  /**
-   * The canvas the brush in hand measures on: its own when it named one, the
-   * preset's when it did not. A width is pixels of that canvas, so it is what
-   * picks the record and the range.
-   *
-   * The tool in hand, not the brush the type resolves to: the old pen lays a
-   * Multator contour down whatever preset holds it, but a type is not a
-   * different brush to the person drawing — switching it MUST NOT move the
-   * slider or its ceiling.
-   */
-  get brushCanvas(): string {
-    return canvasKeyOf(plugins.probeRules(this.tool)?.canvas ?? plugins.probeRules(this.defaultBrush)?.canvas);
-  }
-
   /** The brush record as a plugin sees it: what `rules()` and `descriptor()` get. */
   get pluginBrush(): PluginBrush {
     const brush = this.brush;
@@ -553,13 +528,13 @@ export class EditorState {
   }
 
   /**
-   * Brush record of the tool in hand on that canvas — what the sliders read.
-   * A brush met for the first time (a plugin's, the old pen's) reads the
-   * canvas's default; the record itself is written only when a slider moves,
-   * because a getter runs inside `$derived` and MUST NOT touch state there.
+   * Brush record of the tool in hand — what the sliders read. A brush met for
+   * the first time (a plugin's, the old pen's) reads its own defaults; the
+   * record itself is written only when a slider moves, because a getter runs
+   * inside `$derived` and MUST NOT touch state there.
    */
   get brush(): BrushRecord {
-    return this.byCanvas[this.brushCanvas]?.[brushToolOf(this.tool)] ?? defaultBrushOf(this.brushSource);
+    return this.byTool[brushToolOf(this.tool)] ?? defaultBrushOf(this.brushSource);
   }
 
   /** Whose defaults a brush met for the first time reads: its own, else the preset's. */
@@ -567,10 +542,9 @@ export class EditorState {
     return plugins.probeRules(this.tool) ? this.tool : this.defaultBrush;
   }
 
-  /** One slider move: the record of this brush on this canvas, written whole. */
+  /** One slider move: the record of the tool in hand, written whole. */
   private editBrush(patch: Partial<BrushRecord>): void {
-    const canvas = this.brushCanvas;
-    this.byCanvas[canvas] = { ...this.byCanvas[canvas], [brushToolOf(this.tool)]: { ...this.brush, ...patch } };
+    this.byTool = { ...this.byTool, [brushToolOf(this.tool)]: { ...this.brush, ...patch } };
     this.persistUiConfig();
   }
 
@@ -1161,14 +1135,10 @@ export class EditorState {
     const widths: Record<string, number> = {};
     const smooth: Record<string, number> = {};
     const minDistance: Record<string, number> = {};
-    // Keyed by brush and canvas both: a record written for a brush of one
-    // canvas is not the record of a brush of another.
-    for (const [canvas, byTool] of Object.entries(this.byCanvas)) {
-      for (const [id, brush] of Object.entries(byTool)) {
-        widths[`${canvas}:${id}`] = brush.width;
-        smooth[`${canvas}:${id}`] = brush.smooth;
-        minDistance[`${canvas}:${id}`] = brush.minDistance;
-      }
+    for (const [id, brush] of Object.entries(this.byTool)) {
+      widths[id] = brush.width;
+      smooth[id] = brush.smooth;
+      minDistance[id] = brush.minDistance;
     }
     return {
       frame: this.activeFrame,
@@ -1186,25 +1156,18 @@ export class EditorState {
 
   /** Puts it back after a draft is opened. Anything missing is left as it is. */
   restoreState(saved: DraftState): void {
-    // Whatever canvases the draft wrote down, plus the ones already in hand:
+    // Whatever brushes the draft wrote down, plus the ones already in hand:
     // a brush met for the first time takes its own defaults.
-    const canvases = new Set([
-      ...Object.keys(this.byCanvas),
-      ...Object.keys(saved.widths ?? {}).map((key) => key.split(':')[0]),
-    ]);
-    for (const canvas of canvases) {
-      const byTool = { ...this.byCanvas[canvas] };
-      const ids = new Set([...BRUSH_TOOLS, ...Object.keys(byTool)]);
-      for (const id of ids) {
-        const was = byTool[id] ?? FALLBACK_BRUSH;
-        byTool[id] = {
-          width: saved.widths?.[`${canvas}:${id}`] ?? was.width,
-          smooth: saved.smooth?.[`${canvas}:${id}`] ?? was.smooth,
-          minDistance: saved.minDistance?.[`${canvas}:${id}`] ?? was.minDistance,
-        };
-      }
-      this.byCanvas[canvas] = byTool;
+    const byTool = { ...this.byTool };
+    for (const id of new Set([...BRUSH_TOOLS, ...Object.keys(byTool), ...Object.keys(saved.widths ?? {})])) {
+      const was = byTool[id] ?? FALLBACK_BRUSH;
+      byTool[id] = {
+        width: saved.widths?.[id] ?? was.width,
+        smooth: saved.smooth?.[id] ?? was.smooth,
+        minDistance: saved.minDistance?.[id] ?? was.minDistance,
+      };
     }
+    this.byTool = byTool;
     if (saved.outline) {
       this.brushColor = saved.outline;
     }
@@ -1995,9 +1958,7 @@ export class EditorState {
       ) as Record<string, { x: number; y: number }>,
       drawing: {
         defaultBrush: this.defaultBrush,
-        byCanvas: Object.fromEntries(
-          Object.entries(this.byCanvas).map(([canvas, byTool]) => [canvas, copyBrushes(byTool)]),
-        ),
+        byTool: copyBrushes(this.byTool),
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
         sides: $state.snapshot(this.sides),

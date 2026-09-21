@@ -12,24 +12,20 @@ import { laySmoothPoints } from '../render/smoothing';
 import type { PluginBrush } from '../plugins/contract';
 import type { StrokeRules } from './profiles';
 
-/** The canvas this brush measures its numbers on. */
-export const TOONOP_CANVAS_WIDTH = 1280;
-
 /** What the brush starts at, and how far its slider goes. */
 const DEFAULTS = { width: 5, smooth: 3, minDistance: 3 } as const;
 const RANGE = { min: 1, max: 500 } as const;
 
 export function toonopRules({ smooth, minDistance }: PluginBrush): StrokeRules {
   return {
-    canvas: TOONOP_CANVAS_WIDTH,
     range: RANGE,
     defaults: DEFAULTS,
     smoothing: true,
     capture: (line, batch) => [...line, ...collect(batch)],
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => thinBySmooth(points, smooth),
-    prepare: (points, _width, zoom, canvasScale) =>
-      thinByDistance(thinBySmooth(points, smooth), minDistance, zoom, canvasScale),
+    prepare: (points, _width, zoom, documentScale) =>
+      thinByDistance(thinBySmooth(points, smooth), minDistance, zoom, documentScale),
     path: laySmoothPoints,
     // An interrupted gesture lands what it has rather than being thrown away.
     commitOnCancel: true,
@@ -80,12 +76,12 @@ function thinByDistance(
   points: readonly number[],
   minDistance: number,
   zoom: number,
-  canvasScale = 1,
+  documentScale = 1,
 ): number[] {
   if (points.length <= 2) return points.slice();
   const result = [points[0], points[1]];
   const threshold =
-    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(canvasScale));
+    (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / (zoom * positive(documentScale));
   for (let i = 2; i < points.length - 2; i += 2) {
     const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
     if (distance > threshold) result.push(points[i], points[i + 1]);

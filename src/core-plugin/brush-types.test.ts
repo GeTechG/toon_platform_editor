@@ -3,7 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { plugins } from '../lib/plugins';
 import { brushOfType, hasBrushTypes } from '../lib/plugins/brush-types';
 
-describe('the multator type is a brush of the multator canvas', () => {
+describe('the multator type is a brush of its own', () => {
   it('is the multator type of the brush in hand, not a tool of its own', () => {
     expect(brushOfType('pencil', 'multator')).toBe('multator-pencil');
     expect(brushOfType('eraser', 'multator')).toBe('multator-eraser');
@@ -16,9 +16,11 @@ describe('the multator type is a brush of the multator canvas', () => {
     expect(brushOfType('drag', 'multator')).toBe('drag');
   });
 
-  it('fixes the multator canvas, whatever preset holds it', () => {
-    expect(plugins.probeRules('multator-pencil')?.canvas).toBe(600);
-    expect(plugins.probeRules('multator-eraser')?.canvas).toBe(600);
+  it('carries the multator numbers, whatever preset holds it', () => {
+    for (const id of ['multator-pencil', 'multator-eraser']) {
+      expect(plugins.probeRules(id)?.range).toEqual({ min: 1, max: 640 });
+      expect(plugins.probeRules(id)?.defaults?.width).toBe(9);
+    }
   });
 
   it('draws the plain multator line: no capture and no commit of its own', () => {

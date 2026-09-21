@@ -41,7 +41,7 @@ plugins.register({
       label: 'Грубая', title: 'Грубая', key: '', icon: '<path />', offPanel: true,
       stroke: {
         kind: 'pencil',
-        rules: () => ({ canvas: 600, capture: (line: readonly number[]) => [...line] }),
+        rules: () => ({ range: { min: 1, max: 300 }, capture: (line: readonly number[]) => [...line] }),
         descriptor: ({ width, color }: { width: number; color: string }) =>
           ({ kind: 'pencil', geometry: 'smooth', width, color }),
       },
@@ -314,7 +314,7 @@ test('a tool that fixes its canvas says so itself', () => {
   // The editor holds no table of which primitive belongs to which canvas: the
   // tool that lays one down names it, and a tool with no opinion draws on the
   // preset's.
-  expect(plugins.probeRules('test.tools.coarse')?.canvas).toBe(600);
+  expect(plugins.probeRules('test.tools.coarse')?.range).toEqual({ min: 1, max: 300 });
   expect(plugins.tool('pencil')?.stroke?.rules).toBeUndefined();
   expect(state).toContain('plugins.probeRules(');
 });
@@ -331,7 +331,7 @@ test('a brush that is a type of another stands on no panel', () => {
   expect(panelItems().map((item) => item.id)).not.toContain(toolItem('test.tools.coarse'));
   expect(defaultPanels().hidden).not.toContain(toolItem('test.tools.coarse'));
   // Still a tool of the register, so what draws with it finds it.
-  expect(plugins.probeRules('test.tools.coarse')?.canvas).toBe(600);
+  expect(plugins.probeRules('test.tools.coarse')?.range).toEqual({ min: 1, max: 300 });
 });
 
 test('the brush type is picked in the brush box, not typed as a word', () => {
@@ -352,20 +352,17 @@ test('the type decides which brush draws, the tool in hand stays the tool', () =
 });
 
 test('both types of a brush share one width', () => {
-  // Switching «Обычная» → «Старая» must not jump the slider or its ceiling:
-  // the canvas a width is measured on is the tool's in hand, not the one the
-  // type resolves to — the old pen's contour is a Multator shape, but its
-  // thickness is the same brush record the everyday line draws with.
-  expect(member(state, 'brushCanvas')).toContain('plugins.probeRules(this.tool)');
-  expect(member(state, 'brushCanvas')).not.toContain('brushTool');
-  // The cursor ring is measured on that same canvas, or it would be twice
-  // the line a twin of another canvas lays down.
-  expect(canvas).toContain('editor.widthRules?.canvas');
-  // And the width handed to the brush is converted into the canvas the
-  // stroke is laid on — the old contour is a Multator shape whatever canvas
-  // the slider counts in.
-  expect(canvas).toContain('brushWidthDoc(strokeBrushSizeLogical)');
-  expect(canvas).toMatch(/strokeBrushSizeLogical = \$derived\([^]*?brushCanvasScale \/ widthCanvasScale/);
+  // Switching «Обычная» → «Старая» must not jump the slider or its ceiling.
+  // With one canvas under every brush there is nothing to convert: the
+  // record of the tool in hand is the width the stroke is laid with, and the
+  // cursor ring measures the same number.
+  expect(member(state, 'get brush')).toContain('brushToolOf(this.tool)');
+  expect(member(state, 'get brush')).not.toContain('brushTool)');
+  expect(canvas).toContain('brushWidthDoc(editor.brushSizeLogical)');
+  expect(canvas).toContain('brushLogicalOnCanvas = $derived(editor.brushSizeLogical / documentScale)');
+  // One normalisation, and it comes from the document, not from a brush.
+  expect(canvas).not.toContain('widthCanvasScale');
+  expect(canvas).not.toContain('brushCanvasScale');
 });
 
 test('the preset is asked about the preset, the canvas about the line', () => {

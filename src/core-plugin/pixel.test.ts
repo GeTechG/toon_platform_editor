@@ -15,10 +15,9 @@ test('the pixel tool brings its own everything', () => {
   const stroke = corePlugin.tools!.pixel.stroke;
   // The primitive is the general stamp; the tool's own shape is the square.
   expect(stroke?.kind).toBe('stamp');
-  // The canvas its numbers are on, how points are captured, how they are
-  // thinned on commit, what the mega eraser does to them, and the grid — all
-  // of it is here, in the plugin.
-  expect(stroke?.rules?.(HAND)?.canvas).toBe(1280);
+  // How points are captured, how they are thinned on commit, what the mega
+  // eraser does to them, and the grid — all of it is here, in the plugin.
+  expect(stroke?.rules?.(HAND)?.range).toEqual({ min: 1, max: 500 });
   expect(stroke?.cut).toBe('cells');
   expect(stroke?.grid).toBe(true);
   expect(typeof stroke?.descriptor).toBe('function');

@@ -68,7 +68,10 @@ export const TOONOP_UX: UxProfile = {
 export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number {
   let step = 1;
   if (ux.adaptiveBrushStep) {
-    step = size < 10 ? 1 : size < 50 ? 5 : 10;
+    // The reference's ladder (1 below 10, 5 below 50, 10 above) measured on
+    // its 600-wide canvas; on the editor's 1280 that is ×2.13(3), rounded to
+    // numbers a hand can read.
+    step = size < 20 ? 2 : size < 100 ? 10 : 20;
   }
   const next = size + dir * step;
   return Math.min(ux.brushSizeMax, Math.max(MIN_BRUSH_SIZE_LOGICAL, next));

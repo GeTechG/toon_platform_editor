@@ -23,7 +23,7 @@ import {
 
 /** A curve of explicit control points: every segment bulges to one side. */
 const ribbonRules: StrokeRules = {
-  canvas: 800,
+  range: { min: 1, max: 80 },
   capture: (line, batch) => [...line, ...batch],
   path: (points) => {
     if (points.length < 4) return [...points];
@@ -88,7 +88,7 @@ describe('a brush the editor never heard of', () => {
   it('registers like any other and brings its own rules', () => {
     const registry = new PluginRegistry();
     expect(registry.register(ribbon)).toBeNull();
-    expect(registry.probeRules('ribbon')?.canvas).toBe(800);
+    expect(registry.probeRules('ribbon')?.range).toEqual({ min: 1, max: 80 });
   });
 
   it('lands a stroke of its own geometry that the format accepts', () => {

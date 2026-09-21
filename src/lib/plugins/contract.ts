@@ -55,8 +55,8 @@ export interface PluginHost {
   strokes(): readonly PluginStroke[];
   /** One edit of the document. Undo is the editor's business, never the plugin's. */
   edit(fn: (strokes: PluginStroke[]) => void): void;
-  /** Document units → pixels of the reference canvas the caller names. */
-  referencePx(value: number, canvas: number): number;
+  /** Document units → pixels of the editor's logical canvas, the one every brush measures on. */
+  referencePx(value: number): number;
 }
 
 /**

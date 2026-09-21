@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'bun:test';
-import { MULTATOR_RULES } from './multator';
+import { MULTATOR_RULES, MULTATOR_SCALE } from './multator';
 
 describe('the Multator brush carries its own rules', () => {
-  it('measures its width on its own 600 px canvas', () => {
-    expect(MULTATOR_RULES.canvas).toBe(600);
+  it('carries the reference numbers brought to the editor\'s canvas', () => {
+    // The reference measured on a 600-wide canvas; the editor draws on 1280.
+    expect(MULTATOR_SCALE).toBe(1280 / 600);
+    expect(MULTATOR_RULES.range).toEqual({ min: 1, max: 640 });
+    expect(MULTATOR_RULES.defaults?.width).toBe(9);
+    expect('canvas' in MULTATOR_RULES).toBe(false);
   });
 
   it('collects one point per event, repeats and all', () => {

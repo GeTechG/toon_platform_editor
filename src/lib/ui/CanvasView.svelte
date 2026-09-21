@@ -40,7 +40,7 @@
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
-    canvasCoordinateScale,
+    documentCoordinateScale,
     swapStrokeColours,
     previewStrokeSession,
     type PointerSample,
@@ -105,27 +105,12 @@
   const HIDDEN_LAYER_HINT = 'Слой скрыт';
   let hint = $state('');
   let hintTimer = 0;
-  /** Reference-canvas normalisation of the brush in hand, by its own rules. */
-  const brushCanvasScale = $derived(
-    canvasCoordinateScale(activeRules().canvas, editor.doc.width / FIXED_POINT_SCALE),
-  );
-
-  /** Reference-canvas normalisation of the canvas the width is measured on. */
-  const widthCanvasScale = $derived(
-    canvasCoordinateScale(
-      editor.widthRules?.canvas ?? activeRules().canvas,
-      editor.doc.width / FIXED_POINT_SCALE,
-    ),
-  );
   /**
-   * The brush width in pixels of the canvas the stroke is laid on. The two
-   * canvases are the same for every tool but the old brush type, whose
-   * contour is a Multator shape drawn at the width the everyday brush of the
-   * tool in hand is set to.
+   * What a pixel of the logical canvas is worth on this document. Every
+   * brush measures on that one canvas, whoever's line it reproduces, so this
+   * is the only normalisation there is.
    */
-  const strokeBrushSizeLogical = $derived(
-    editor.brushSizeLogical * (brushCanvasScale / widthCanvasScale),
-  );
+  const documentScale = $derived(documentCoordinateScale(editor.doc.width / FIXED_POINT_SCALE));
 
   /**
    * The rules the gesture runs under: the tool's own when it declared some,
@@ -144,7 +129,7 @@
   function activeDescriptor(): LineToolDescriptor {
     return (toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
       ...editor.pluginBrush,
-      width: brushWidthDoc(strokeBrushSizeLogical),
+      width: brushWidthDoc(editor.brushSizeLogical),
     });
   }
 
@@ -159,7 +144,7 @@
     descriptor: strokeButton === 0
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
-    coordinateScale: brushCanvasScale,
+    coordinateScale: documentScale,
     zoom: editor.view.zoom,
   }));
   /**
@@ -379,13 +364,8 @@
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (sheetWidth * editor.view.zoom) / editor.doc.width));
-  /**
-   * Width the brush actually lands on the document with, in logical px. A
-   * width is measured on the canvas of the tool in hand (`editor.brushCanvas`)
-   * — which is the stroke's own canvas for every tool but a brush type whose
-   * twin measures on another one, drawn at the everyday brush's width.
-   */
-  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / widthCanvasScale);
+  /** Width the brush lands on the document with, in logical px of it. */
+  const brushLogicalOnCanvas = $derived(editor.brushSizeLogical / documentScale);
   /** That width in screen pixels — what the ring, the square and the grid measure. */
   const cursorDiameter = $derived(
     Math.max(1, (brushLogicalOnCanvas * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),

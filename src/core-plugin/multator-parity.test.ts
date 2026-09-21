@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { FIXED_POINT_SCALE } from '../lib/format/constants';
+import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../lib/format/constants';
 import type { Frame, ToolDescriptor } from '../lib/format/types';
 import { renderStrokesLayer, type Canvas2DLike } from '../lib/render/canvas2d';
 import { emitGeometry } from '../lib/render/smoothing';
@@ -132,8 +132,14 @@ function referenceCommit(ref: Ref, g: ReturnType<typeof gesture>): Pt[] {
 
 const sample = (p: Pt, k: number) => ({ pointerId: 1, isPrimary: true, x: p.x * FIXED_POINT_SCALE * k, y: p.y * FIXED_POINT_SCALE * k });
 
-function ourCommit(g: ReturnType<typeof gesture>, coordinateScale = 1): number[] {
-  const k = 1 / coordinateScale;
+/**
+ * The gesture as the editor sees it on a document of `documentWidth` logical
+ * px. The reference drew on 600, so its points are stretched to that document
+ * and the engine is handed the document's own normalisation.
+ */
+function ourCommit(g: ReturnType<typeof gesture>, documentWidth = 600): number[] {
+  const k = documentWidth / 600;
+  const coordinateScale = CANVAS_LOGICAL_WIDTH / documentWidth;
   const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
   const session = beginStrokeSession(sample(g.down, k), descriptor, MULTATOR_RULES, coordinateScale);
   for (const m of g.moves) appendStrokeEvent(session, sample(m, k));
@@ -167,11 +173,11 @@ describe.skipIf(!available)('Multator drawing parity with the reference build', 
       expect(ourCommit(g)).toEqual(expected.map((v) => Math.round(v * FIXED_POINT_SCALE)));
 
       // A 1280-wide document: the same gesture, the same share of the picture.
-      const scale = 600 / 1280;
-      const wide = ourCommit(g, scale);
+      const wide = ourCommit(g, CANVAS_LOGICAL_WIDTH);
       expect(wide.length).toBe(expected.length);
       for (let i = 0; i < wide.length; i++) {
-        expect(Math.abs(wide[i] * scale / FIXED_POINT_SCALE - expected[i])).toBeLessThan(0.1);
+        expect(Math.abs(wide[i] * (600 / CANVAS_LOGICAL_WIDTH) / FIXED_POINT_SCALE - expected[i]))
+          .toBeLessThan(0.1);
       }
     }
   });

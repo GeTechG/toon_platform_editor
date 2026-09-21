@@ -9,6 +9,7 @@
  * hide the way back.
  */
 
+import { CANVAS_LOGICAL_WIDTH, MAX_BRUSH_SIZE_LOGICAL } from '../format/constants';
 import { NORMAL_BRUSH_TYPE, type BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
 import type { RegisteredPreset } from '../plugins/registry';
@@ -58,6 +59,17 @@ export function brushRulesOf(tool: string, brush: string) {
   return plugins.probeRules(tool) ?? plugins.probeRules(brush);
 }
 
+/**
+ * A copy of the brush records, to hand over or to store. Only the records
+ * somebody set are in it: a brush nobody touched reads its own defaults, and
+ * an empty record written for it would pin it to the editor's fallback
+ * instead. A record of a brush the register no longer holds rides along — a
+ * plugin taken away and put back finds its width where it left it.
+ */
+export function copyBrushes(source: Record<BrushToolId, BrushRecord>): Record<BrushToolId, BrushRecord> {
+  return Object.fromEntries(Object.entries(source).map(([tool, brush]) => [tool, { ...brush }]));
+}
+
 /** What a brush starts at when it declares nothing of its own. */
 export const FALLBACK_BRUSH: BrushRecord = { width: 4, smooth: 3, minDistance: 3 };
 
@@ -71,15 +83,6 @@ function byTool(brush: BrushRecord): Record<BrushToolId, BrushRecord> {
   return Object.fromEntries(BRUSH_TOOLS.map((tool) => [tool, { ...brush }]));
 }
 
-/**
- * The bucket a brush's records live in: the width of the canvas it measures
- * on. Five pixels of a 1280-wide canvas are not five of a 600-wide one, so
- * each keeps its own record — and the key is the number, never a name.
- */
-export function canvasKeyOf(canvas: number | undefined): string {
-  return String(canvas ?? 0);
-}
-
 export interface BrushRecord {
   width: number;
   smooth: number;
@@ -90,12 +93,11 @@ export interface DrawingUiConfig {
   /** The brush the preset named: the tool whose rules an unopinionated one follows. */
   defaultBrush: string;
   /**
-   * Width, smoothing and minimum per brush, on each canvas it draws on: five
-   * pixels of a 1280-wide canvas are not five of a 600-wide one, so a brush
-   * keeps a record on each — and two brushes of one canvas keep two. The key
-   * is the canvas width, never the name of somebody's editor.
+   * Width, smoothing and minimum per brush. Every brush measures on the one
+   * logical canvas, so the key is the tool and nothing else: five pixels are
+   * five pixels whoever's line they are.
    */
-  byCanvas: Record<string, Record<BrushToolId, BrushRecord>>;
+  byTool: Record<BrushToolId, BrushRecord>;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
@@ -153,7 +155,7 @@ const DEFAULT_BRUSH_TOOL = 'toonop-brush';
 
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   defaultBrush: DEFAULT_BRUSH_TOOL,
-  byCanvas: {},
+  byTool: {},
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
   sides: {
@@ -446,7 +448,7 @@ function normalizeBrushes(
     const fallback = fallbacks[tool] ?? fallbacks.pencil;
     const pick = (key: keyof BrushRecord) => brush[key] ?? shared[key];
     result[tool] = {
-      width: clampNumber(pick('width'), 1, 500, fallback.width),
+      width: clampNumber(pick('width'), 1, MAX_BRUSH_SIZE_LOGICAL, fallback.width),
       smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
       minDistance: clampNumber(pick('minDistance'), 0, 30, fallback.minDistance),
     };
@@ -456,33 +458,76 @@ function normalizeBrushes(
 
 /**
  * A config written when the brush records were keyed by the name of the
- * editor each reference brush came from. Nothing else here turns a name into
- * a number; this is the migration, and it ends the moment the config is
- * written back.
+ * editor each reference brush came from, and then by the width of its canvas.
+ * Nothing else here turns a name into a number; this is the migration, and it
+ * ends the moment the config is written back.
  */
 const LEGACY: readonly { canvas: string; byTool: string; shared: string }[] = [
   { canvas: '1280', byTool: 'tonioByTool', shared: 'tonio' },
   { canvas: '600', byTool: 'multatorByTool', shared: 'multatorWidth' },
 ];
 
+/** One canvas bucket of a config from before the one canvas, unnormalised. */
+interface CanvasBucket {
+  canvas: number;
+  /** Stored brushes, each still as it was written down. */
+  brushes: Record<BrushToolId, Record<string, unknown>>;
+}
+
+/**
+ * The buckets of a config keyed by canvas width, brought to the one canvas:
+ * a width measured on a 600-wide canvas is 1280/600 of ours. Buckets are read
+ * widest last, so where two of them held a tool the record of the editor's
+ * own canvas is the one that stands.
+ */
+function fromCanvasBuckets(buckets: readonly CanvasBucket[]): Record<BrushToolId, Record<string, unknown>> {
+  const merged: Record<BrushToolId, Record<string, unknown>> = {};
+  for (const { canvas, brushes } of [...buckets].sort((a, b) => a.canvas - b.canvas)) {
+    const scale = canvas > 0 ? CANVAS_LOGICAL_WIDTH / canvas : 1;
+    for (const [tool, brush] of Object.entries(brushes)) {
+      merged[tool] = typeof brush.width === 'number'
+        ? { ...brush, width: Math.round(brush.width * scale) }
+        : { ...brush };
+    }
+  }
+  return merged;
+}
+
+/**
+ * The brushes of one bucket as they were written. `shared` is the one record
+ * a config from before the per-tool split held for the whole canvas: every
+ * tool starts from it, so nobody's width jumps on the upgrade. Without one,
+ * only the tools actually stored are taken — a bucket MUST NOT overwrite
+ * another one's record with a default nobody chose.
+ */
+function storedBrushes(value: unknown, shared?: Record<string, unknown>): Record<BrushToolId, Record<string, unknown>> {
+  const stored = record(value);
+  const tools = shared ? new Set([...BRUSH_TOOLS, ...Object.keys(stored)]) : new Set(Object.keys(stored));
+  return Object.fromEntries([...tools].map((tool) => [tool, { ...shared, ...record(stored[tool]) }]));
+}
+
+/**
+ * Nothing written down stays nothing: a brush met for the first time reads
+ * its own defaults, and filling the set here would hand it somebody else's.
+ */
+function brushRecords(stored: Record<string, unknown>): Record<BrushToolId, BrushRecord> {
+  return Object.keys(stored).length > 0 ? normalizeBrushes(stored, {}, byTool(FALLBACK_BRUSH)) : {};
+}
+
 function normalizeDrawingConfig(value: unknown, defaultBrush: string): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
-  const byCanvas: Record<string, Record<BrushToolId, BrushRecord>> = {};
-  for (const [canvas, stored] of Object.entries(record(drawing.byCanvas))) {
-    byCanvas[canvas] = normalizeBrushes(stored, {}, byTool(FALLBACK_BRUSH));
-  }
+  const buckets: CanvasBucket[] = Object.entries(record(drawing.byCanvas))
+    .map(([canvas, stored]) => ({ canvas: Number(canvas), brushes: storedBrushes(stored) }));
   for (const { canvas, byTool: legacy, shared } of LEGACY) {
-    // A config from before the split holds one brush for the whole canvas:
-    // every tool starts from it, so nobody's width jumps on the upgrade.
-    const one = shared === 'tonio' ? record(drawing.tonio) : { width: drawing.multatorWidth };
     if (drawing[legacy] === undefined && drawing[shared] === undefined) {
       continue;
     }
-    byCanvas[canvas] = normalizeBrushes(drawing[legacy], one, byTool(FALLBACK_BRUSH));
+    const one = shared === 'tonio' ? record(drawing.tonio) : { width: drawing.multatorWidth };
+    buckets.push({ canvas: Number(canvas), brushes: storedBrushes(drawing[legacy], one) });
   }
   return {
     defaultBrush,
-    byCanvas,
+    byTool: brushRecords(drawing.byTool !== undefined ? record(drawing.byTool) : fromCanvasBuckets(buckets)),
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
     panelHeight: clampNumber(
       drawing.panelHeight,

@@ -32,7 +32,7 @@ import { MULTATOR_RULES } from './multator';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool-geometry';
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
 import { PRESETS } from './presets';
-import { TONIO_CANVAS_WIDTH, toonioRules } from './toonio';
+import { toonioRules } from './toonio';
 
 // ---------------------------------------------------------------------------
 // The multator line
@@ -56,9 +56,9 @@ const MULTATOR_ERASER: PluginPrimitive = {
 // ---------------------------------------------------------------------------
 
 /**
- * Lang tolerance, contour, jitter: the reference writes them in pixels of its
- * own 600-wide canvas, so on a document of another size they scale the way the
- * width does.
+ * Lang tolerance, contour, jitter: pixels of the editor's canvas like every
+ * other number, so on a document of another size they scale the way the width
+ * does.
  */
 const oldschoolCommit: NonNullable<StrokeRules['commit']> = (points, descriptor, { coordinateScale }) => ({
   points: commitOldschoolStroke(
@@ -130,11 +130,9 @@ const PIXEL: PluginPrimitive = {
     color,
     shape: [...SQUARE_STAMP],
   }),
-  // A cell is a pixel of the tonio canvas whatever preset holds the tool, and
-  // the marks are its own: another brush's smoothing would bend a row of
+  // The marks are its own: another brush's smoothing would bend a row of
   // cells into a line the renderer has nothing to draw with.
   rules: () => ({
-    canvas: TONIO_CANVAS_WIDTH,
     range: { min: 1, max: 500 },
     defaults: { width: 5, smooth: 3, minDistance: 3 },
     // Neither number reaches it: Smooth is the identity here and Prepare

@@ -15,9 +15,22 @@ function commit(id: string, descriptor: LineToolDescriptor, points: readonly num
 }
 
 describe('the oldschool pen is a brush', () => {
-  it('fixes the Multator canvas, whatever preset holds it', () => {
-    expect(plugins.probeRules('oldschool')?.canvas).toBe(600);
-    expect(plugins.probeRules('oldschool-eraser')?.canvas).toBe(600);
+  it('carries the Multator numbers, whatever preset holds it', () => {
+    // The reference's own, on the editor's canvas: 1..300 of a 600-wide
+    // canvas is 1..640 of ours, and its default 4 is 9.
+    expect(plugins.probeRules('oldschool')?.range).toEqual({ min: 1, max: 640 });
+    expect(plugins.probeRules('oldschool-eraser')?.defaults?.width).toBe(9);
+    expect('canvas' in (plugins.probeRules('oldschool') ?? {})).toBe(false);
+  });
+
+  it('thins with the reference tolerance brought to the editor\'s canvas', () => {
+    // The reference thins at 5 px of its 600-wide canvas — 32/3 px of ours,
+    // 85.3 document units. A zigzag of 80 units is under it and flattens the
+    // same way a barely visible one does; on the old 600-px reading of the
+    // same document it was over the bar and survived.
+    const zigzag = (h: number) => [0, 0, 200, h, 400, 0, 600, h, 800, 0, 1000, h, 1200, 0];
+    const flat = commit('oldschool', PENCIL, zigzag(4)).points.length;
+    expect(commit('oldschool', PENCIL, zigzag(80)).points).toHaveLength(flat);
   });
 
   it('is on no preset panel — it is a type of the brush in hand, not a key', () => {
@@ -83,9 +96,9 @@ describe('the oldschool pen is a brush', () => {
     expect(left(0.5)).toBe(-32);
   });
 
-  it('measures its Lang tolerance on the reference canvas, not on the document', () => {
+  it('scales its Lang tolerance by the document, not by the gesture', () => {
     // A zigzag shallow enough that the coarser tolerance flattens it away.
-    const zigzag = [0, 0, 200, 60, 400, 0, 600, 60, 800, 0];
+    const zigzag = [0, 0, 200, 200, 400, 0, 600, 200, 800, 0];
     const near = commit('oldschool', PENCIL, zigzag, 1).points.length;
     const far = commit('oldschool', PENCIL, zigzag, 0.25).points.length;
     expect(far).toBeLessThan(near);

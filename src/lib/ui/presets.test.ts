@@ -22,10 +22,11 @@ import {
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
 import { TOONOP_UX } from './ux-profile';
+import { copyBrushes } from './presets';
 import { plugins } from '../plugins';
 import { PLUGIN_API } from '../plugins/contract';
 
-/** The editor's own brush and a plugin's, on a canvas of its own. */
+/** The editor's own brush and a plugin's, with numbers of its own. */
 const OWN = 'toonop-brush';
 const COARSE = 'test.coarse';
 
@@ -38,7 +39,6 @@ plugins.register({
       stroke: {
         kind: 'pencil',
         rules: () => ({
-          canvas: 600,
           range: { min: 1, max: 300 },
           defaults: { width: 4, smooth: 3, minDistance: 3 },
           capture: (line: readonly number[]) => [...line],
@@ -97,11 +97,9 @@ test('parseUiConfig round-trips a valid stored config', () => {
     floatPos: {},
     drawing: {
       defaultBrush: COARSE,
-      byCanvas: {
-        '600': Object.fromEntries(
-          BRUSH_TOOLS.map((tool) => [tool, { width: 4, smooth: 3, minDistance: 3 }]),
-        ),
-      },
+      byTool: Object.fromEntries(
+        BRUSH_TOOLS.map((tool) => [tool, { width: 4, smooth: 3, minDistance: 3 }]),
+      ),
       pickSource: 'layer' as const,
       panelHeight: 200,
       sides: { ...DEFAULT_DRAWING_UI_CONFIG.sides },
@@ -122,7 +120,7 @@ test('the brush of a stored config is the one its preset names', () => {
 
 test('a fresh config draws with the editor’s own brush', () => {
   expect(DEFAULT_DRAWING_UI_CONFIG.defaultBrush).toBe(OWN);
-  expect(DEFAULT_DRAWING_UI_CONFIG.byCanvas).toEqual({});
+  expect(DEFAULT_DRAWING_UI_CONFIG.byTool).toEqual({});
 });
 
 test('old UI config migrates to independent safe profile defaults', () => {
@@ -135,16 +133,12 @@ test('brush records are clamped to supported ranges', () => {
     preset: 'toonop',
     drawing: { multatorWidth: -4, tonio: { width: 999, smooth: 0, minDistance: 99 } },
   }));
-  const clamped = { width: 500, smooth: 1, minDistance: 30 };
-  const coarse = { width: 1, smooth: 3, minDistance: 3 };
+  // A config written when the records were keyed by the name of an editor
+  // arrives in the one set, the wider canvas winning where both had a tool.
+  const clamped = { width: 640, smooth: 1, minDistance: 30 };
   expect(parsed?.drawing).toEqual({
     defaultBrush: OWN,
-    byCanvas: {
-      // A config written when the records were keyed by the name of an editor
-      // arrives under the width of the canvas that editor measured on.
-      '1280': { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
-      '600': { pencil: coarse, eraser: coarse, feather: coarse, 'mega-eraser': coarse },
-    },
+    byTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
     sides: DEFAULT_DRAWING_UI_CONFIG.sides,
@@ -300,7 +294,7 @@ test('a config with one shared brush copies it into every tool', () => {
     drawing: { tonio: { width: 7, smooth: 4, minDistance: 2 } },
   }));
   for (const tool of BRUSH_TOOLS) {
-    expect(parsed?.drawing.byCanvas['1280'][tool]).toEqual({ width: 7, smooth: 4, minDistance: 2 });
+    expect(parsed?.drawing.byTool[tool]).toEqual({ width: 7, smooth: 4, minDistance: 2 });
   }
 });
 
@@ -308,17 +302,28 @@ test('per-tool brushes are kept apart and clamped one by one', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
     drawing: {
-      byCanvas: {
-        '1280': {
-          pencil: { width: 20, smooth: 3, minDistance: 3 },
-          eraser: { width: 999, smooth: 0, minDistance: 99 },
-        },
+      byTool: {
+        pencil: { width: 20, smooth: 3, minDistance: 3 },
+        eraser: { width: 9999, smooth: 0, minDistance: 99 },
       },
     },
   }));
-  expect(parsed?.drawing.byCanvas['1280'].pencil).toEqual({ width: 20, smooth: 3, minDistance: 3 });
-  expect(parsed?.drawing.byCanvas['1280'].eraser).toEqual({ width: 500, smooth: 1, minDistance: 30 });
-  expect(parsed?.drawing.byCanvas['1280'].feather).toEqual({ width: 4, smooth: 3, minDistance: 3 });
+  expect(parsed?.drawing.byTool.pencil).toEqual({ width: 20, smooth: 3, minDistance: 3 });
+  expect(parsed?.drawing.byTool.eraser).toEqual({ width: 640, smooth: 1, minDistance: 30 });
+  expect(parsed?.drawing.byTool.feather).toEqual({ width: 4, smooth: 3, minDistance: 3 });
+});
+
+test('the records that are written down are the ones somebody set', () => {
+  // A brush nobody touched has no record: it reads its own defaults, and an
+  // empty one written for it would pin it to the editor's fallback instead.
+  // A plugin's brush keeps its record — taken away and put back, it finds
+  // its width where it left it.
+  expect(copyBrushes({ pencil: { width: 20, smooth: 3, minDistance: 3 } })).toEqual({
+    pencil: { width: 20, smooth: 3, minDistance: 3 },
+  });
+  const plugin = { [COARSE]: { width: 7, smooth: 3, minDistance: 3 } };
+  expect(copyBrushes(plugin)).toEqual(plugin);
+  expect(copyBrushes(plugin)[COARSE]).not.toBe(plugin[COARSE]);
 });
 
 test('a tool that draws no line borrows the pencil brush', () => {
@@ -412,22 +417,29 @@ test('a config saved before panels existed keeps the buttons it had turned off',
 
 test('an old config’s one width for a canvas becomes every brush’s own record', () => {
   // Before the split a whole canvas had one width; after it each brush has
-  // its own, and nobody’s jumps on the upgrade.
+  // its own — brought to the editor's canvas: 10 of a 600-wide one is 21.
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'test.bar',
     drawing: { multatorWidth: 10 },
   }));
-  expect(parsed?.drawing.byCanvas['600'].pencil.width).toBe(10);
-  expect(parsed?.drawing.byCanvas['600'].eraser.width).toBe(10);
+  expect(parsed?.drawing.byTool.pencil.width).toBe(21);
+  expect(parsed?.drawing.byTool.eraser.width).toBe(21);
 });
 
-test('two brushes of one canvas keep two records', () => {
+test('a config keyed by canvas width comes to one set, the widths brought along', () => {
+  // 20 of the 600-wide canvas is 43 of the editor's; where both canvases had
+  // the tool, the record of the editor's own canvas stands.
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'test.bar',
-    drawing: { byCanvas: { '600': { pencil: { width: 20 }, eraser: { width: 3 } } } },
+    drawing: {
+      byCanvas: {
+        '600': { pencil: { width: 20 }, eraser: { width: 3 } },
+        '1280': { pencil: { width: 7 } },
+      },
+    },
   }));
-  expect(parsed?.drawing.byCanvas['600'].pencil.width).toBe(20);
-  expect(parsed?.drawing.byCanvas['600'].eraser.width).toBe(3);
+  expect(parsed?.drawing.byTool.pencil.width).toBe(7);
+  expect(parsed?.drawing.byTool.eraser.width).toBe(6);
 });
 
 test('a brush of the register gets its own record, a tool that draws nothing takes the pencil’s', () => {

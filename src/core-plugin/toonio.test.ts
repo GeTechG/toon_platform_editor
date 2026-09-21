@@ -73,8 +73,9 @@ const STORED: number[][] = [
 describe('the Tonio brush carries its own rules', () => {
   const rules = toonioRules({ smooth: 3, minDistance: 3 });
 
-  it('measures its numbers on its own 1280 px canvas', () => {
-    expect(rules.canvas).toBe(1280);
+  it('carries the reference numbers: it drew on the canvas the editor draws on', () => {
+    expect(rules.range).toEqual({ min: 1, max: 500 });
+    expect(rules.defaults).toEqual({ width: 5, smooth: 3, minDistance: 3 });
   });
 
   it('truncates a sample to whole logical pixels as it collects it', () => {

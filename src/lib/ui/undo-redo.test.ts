@@ -188,9 +188,9 @@ describe('the browser eyedropper', () => {
 });
 
 describe('the brush each tool remembers', () => {
-  it('the sliders read and write this brush on the canvas it draws on', () => {
+  it('the sliders read and write the record of the tool in hand', () => {
     expect(member(state, 'get brush')).toContain('brushToolOf(this.tool)');
-    expect(member(state, 'get brush')).toContain('brushCanvas');
+    expect(member(state, 'get brush')).toContain('this.byTool');
     expect(member(state, 'setBrushSmooth')).toContain('editBrush({ smooth');
     expect(member(state, 'setBrushMinDistance')).toContain('editBrush({ minDistance');
     expect(member(state, 'set brushSizeLogical')).toContain('editBrush({ width');
@@ -200,12 +200,12 @@ describe('the brush each tool remembers', () => {
     expect(member(state, 'get brush')).not.toMatch(/byTool\[[^\]]*\] =/);
   });
 
-  it('the width is not chosen by the preset: the record already belongs to a canvas', () => {
+  it('the width is not chosen by the preset: the record belongs to the tool', () => {
     expect(member(state, 'get brushSizeLogical')).not.toContain('defaultBrush');
     expect(state).not.toContain('multatorBrushSizeLogical');
   });
 
-  it('the slider stops where the brush’s own canvas stops', () => {
+  it('the slider stops where the brush’s own range stops', () => {
     expect(member(state, 'get brushSizeMax')).toContain('this.brushRange');
     expect(member(state, 'get brushRange')).toContain('this.widthRules?.range');
     expect(brushPanel).toContain('editor.brushSizeMax');
@@ -213,9 +213,9 @@ describe('the brush each tool remembers', () => {
 
   it('every record is persisted, so a brush keeps its width across sessions', () => {
     const persist = member(state, 'private persistUiConfig');
-    expect(persist).toContain('byCanvas:');
-    // Keyed by the canvas a brush measures on, never by the name of anyone's
-    // editor: that name is not something the editor knows any more.
+    expect(persist).toContain('byTool:');
+    // Keyed by the tool, never by the name of anyone's editor: that name is
+    // not something the editor knows any more.
     expect(persist).not.toContain('tonio');
     expect(persist).not.toContain('multator');
   });

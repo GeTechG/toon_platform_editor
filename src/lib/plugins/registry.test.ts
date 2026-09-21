@@ -119,7 +119,7 @@ describe('PluginRegistry', () => {
       stroke: {
         kind: 'pencil',
         descriptor: () => ({ kind: 'pencil', geometry: 'smooth', width: 4, color: '#000000' }),
-        rules: (): StrokeRules => ({ canvas: 600, capture: (line, batch) => [...line, ...batch], commit }),
+        rules: (): StrokeRules => ({ capture: (line, batch) => [...line, ...batch], commit }),
       },
     }))).toBeNull();
 

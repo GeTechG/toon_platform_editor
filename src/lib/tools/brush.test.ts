@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { laySmoothPoints } from '../render/smoothing';
-import { TOONOP_CANVAS_WIDTH, toonopRules } from './brush';
+import { toonopRules } from './brush';
 
 /**
  * The editor's own brush. What it does is written down here and nowhere else:
@@ -10,9 +10,9 @@ import { TOONOP_CANVAS_WIDTH, toonopRules } from './brush';
 describe('the editor brush', () => {
   const rules = toonopRules({ width: 5, color: '#000000', fill: '#ffffff', smooth: 3, minDistance: 3 });
 
-  it('measures its numbers on its own 1280 px canvas', () => {
-    expect(rules.canvas).toBe(TOONOP_CANVAS_WIDTH);
-    expect(TOONOP_CANVAS_WIDTH).toBe(1280);
+  it('measures its numbers on the editor\'s logical canvas', () => {
+    expect(rules.range).toEqual({ min: 1, max: 500 });
+    expect(rules.defaults).toEqual({ width: 5, smooth: 3, minDistance: 3 });
   });
 
   it('truncates a sample to whole logical pixels as it collects it', () => {
@@ -57,10 +57,9 @@ describe('the editor brush', () => {
     expect(rules.smoothing).toBe(true);
   });
 
-  it('says the same about its canvas and ranges whatever brush it is handed', () => {
+  it('says the same about its ranges whatever brush it is handed', () => {
     const other = toonopRules({ width: 400, color: '#fff', fill: '#000', smooth: 99, minDistance: 30 });
 
-    expect(other.canvas).toBe(rules.canvas);
     expect(other.range).toEqual(rules.range!);
     expect(other.defaults).toEqual(rules.defaults!);
   });

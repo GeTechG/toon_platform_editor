@@ -20,9 +20,15 @@ import {
   STROKE_COORD_MIN,
 } from '../lib/format/constants';
 import { simplifyLang } from '../lib/tools/simplify';
+import { MULTATOR_SCALE } from './multator';
 
-/** Lang tolerance the oldschool pen uses, in logical px (the normal pen uses 10). */
-export const OLDSCHOOL_LANG_TOLERANCE_LOGICAL = 5;
+/**
+ * Lang tolerance the oldschool pen uses, in pixels of the editor's canvas:
+ * the reference's 5 px of its own 600-wide canvas, times 1280/600 (the normal
+ * pen's 10 px go the same way). Exact, not rounded — it is the shape of the
+ * line, and a rounded tolerance would be visible.
+ */
+export const OLDSCHOOL_LANG_TOLERANCE_LOGICAL = 5 * MULTATOR_SCALE;
 
 const STEPS = 4; // points per half turn in the caps (π/4 apart)
 const TAU = Math.PI * 2;
@@ -152,7 +158,7 @@ function midAngle(a: number, b: number): number {
 
 /**
  * Commit of an oldschool gesture: raw points (float document units) →
- * Lang 5/5 logical px → contour at trunc(size/2) with the size's jitter →
+ * Lang 5/(32/3) logical px → contour at trunc(size/2) with the size's jitter →
  * integer int16 coordinates.
  */
 export function commitOldschoolStroke(

@@ -22,7 +22,7 @@ const strict: UxProfile = {
   whiteIsEraser: true,
   pipetteNeedsPalette: true,
   pipetteOffRail: false,
-  brushSizeMax: 300,
+  brushSizeMax: 640,
   adaptiveBrushStep: true,
   tools: ['pencil', 'eraser', 'pipette'],
 };
@@ -95,20 +95,22 @@ describe('resolveToolSelection with a profile toolset', () => {
 });
 
 describe('nudgeBrushSize', () => {
-  it('an adaptive profile steps by 1 below 10, by 5 below 50, by 10 above', () => {
-    expect(nudgeBrushSize(4, 1, strict)).toBe(5);
-    expect(nudgeBrushSize(9, 1, strict)).toBe(10);
-    expect(nudgeBrushSize(10, 1, strict)).toBe(15);
-    expect(nudgeBrushSize(10, -1, strict)).toBe(5);
-    expect(nudgeBrushSize(45, 1, strict)).toBe(50);
-    expect(nudgeBrushSize(50, 1, strict)).toBe(60);
-    expect(nudgeBrushSize(50, -1, strict)).toBe(40);
+  // The reference stepped by 1/5/10 at 10 and 50 of its 600-wide canvas;
+  // on the editor's the same ladder is 2/10/20 at 20 and 100.
+  it('an adaptive profile steps by 2 below 20, by 10 below 100, by 20 above', () => {
+    expect(nudgeBrushSize(8, 1, strict)).toBe(10);
+    expect(nudgeBrushSize(18, 1, strict)).toBe(20);
+    expect(nudgeBrushSize(20, 1, strict)).toBe(30);
+    expect(nudgeBrushSize(20, -1, strict)).toBe(10);
+    expect(nudgeBrushSize(90, 1, strict)).toBe(100);
+    expect(nudgeBrushSize(100, 1, strict)).toBe(120);
+    expect(nudgeBrushSize(100, -1, strict)).toBe(80);
   });
 
   it('clamps to 1 and the profile ceiling', () => {
     expect(nudgeBrushSize(1, -1, strict)).toBe(1);
-    expect(nudgeBrushSize(300, 1, strict)).toBe(300);
-    expect(nudgeBrushSize(295, 1, strict)).toBe(300);
+    expect(nudgeBrushSize(640, 1, strict)).toBe(640);
+    expect(nudgeBrushSize(630, 1, strict)).toBe(640);
   });
 
   it('the editor profile steps by 1 within its own bounds', () => {

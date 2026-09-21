@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { SQUARE_STAMP } from '../format/types';
 import type { ToolDescriptor } from '../format/types';
 import * as profiles from './profiles';
-import { toonopRules, TOONOP_CANVAS_WIDTH } from './brush';
+import { toonopRules } from './brush';
 import { simplifyLang } from './simplify';
 import { addStroke, createDocument } from '../model/operations';
 import { canonicalize } from '../format/canonical';
@@ -16,14 +16,12 @@ const pencil: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, 
  * anybody's brush: what is under test here is the engine, which never learns
  * whose rules it is running, so the rules are written out in the test.
  */
-const COARSE_CANVAS = 600;
 /** One point per event, a polyline under the hand, Lang-thinned on commit. */
 const coarse: profiles.StrokeRules = {
-  canvas: COARSE_CANVAS,
   capture: (line, batch) =>
     batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
-  prepare: (points, _width, _zoom, canvasScale) =>
-    simplifyLang(points, 5, 80 / canvasScale).map(Math.round),
+  prepare: (points, _width, _zoom, documentScale) =>
+    simplifyLang(points, 5, 80 / documentScale).map(Math.round),
   previewGeometry: 'line',
 };
 /** The editor's own brush, at the settings a test asks for. */
@@ -31,7 +29,6 @@ const fine = (smooth = 3, minDistance = 3) =>
   toonopRules({ width: 0, color: '#000000', fill: '#ffffff', smooth, minDistance });
 /** A brush that stamps a mark per cell of its own grid. */
 const stamp: profiles.StrokeRules = {
-  canvas: 1280,
   capture: (line, batch, width) => {
     const out = [...line];
     for (let i = 0; i + 1 < batch.length; i += 2) {
@@ -192,39 +189,38 @@ function sample(pointerId: number, x: number, y: number, coalesced?: profiles.Po
   return { pointerId, isPrimary: true, x, y, coalesced };
 }
 
-describe('brush width in reference-canvas pixels', () => {
-  const scale600 = TOONOP_CANVAS_WIDTH / 600;
+describe('brush width in logical-canvas pixels', () => {
 
-  it('each brush measures on the canvas it named', () => {
-    expect(profiles.canvasCoordinateScale(TOONOP_CANVAS_WIDTH, 1280)).toBe(1);
-    expect(profiles.canvasCoordinateScale(TOONOP_CANVAS_WIDTH, 600)).toBe(1280 / 600);
-    expect(profiles.canvasCoordinateScale(COARSE_CANVAS, 600)).toBe(1);
-    expect(profiles.canvasCoordinateScale(COARSE_CANVAS, 1280)).toBe(600 / 1280);
+  it('every brush measures on the editor\'s own canvas, the document scales it', () => {
+    expect(profiles.documentCoordinateScale(1280)).toBe(1);
+    expect(profiles.documentCoordinateScale(640)).toBe(2);
+    expect(profiles.documentCoordinateScale(2560)).toBe(0.5);
   });
 
-  it('a coarse-canvas stroke grows with a canvas wider than its own', () => {
-    // 4 logical px = 32 doc units on the 600-wide canvas; on 1280 the
-    // same stroke has to cover the same share of the picture.
+  it('a stroke grows with a document narrower than the logical canvas', () => {
+    // 4 logical px = 32 doc units; on a 600-wide document the same stroke
+    // has to cover the same share of the picture.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' },
-      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 1280),
+      fine(1, 0), profiles.documentCoordinateScale(600),
     );
-    expect(session.descriptor.width).toBe(68);
+    expect(session.descriptor.width).toBe(15);
   });
 
   it('never widens a stroke past what the format can hold', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 2400, color: '#123456' },
-      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 1280),
+      fine(1, 0), profiles.documentCoordinateScale(2560),
     );
     expect(session.descriptor.width).toBe(MAX_STROKE_WIDTH);
   });
 
-  it('a brush of the wider canvas divides the frozen width by the normalisation', () => {
-    // 5 logical px = 40 doc units on a 600-wide canvas: 40 / (1280 / 600) = 18.75 → 19.
+  it('divides the frozen width by the document normalisation', () => {
+    // 5 logical px = 40 doc units; on a 600-wide document 40 / (1280 / 600)
+    // = 18.75 → 19.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      fine(1, 0), scale600,
+      fine(1, 0), profiles.documentCoordinateScale(600),
     );
     expect(session.descriptor.width).toBe(19);
   });
@@ -237,10 +233,10 @@ describe('brush width in reference-canvas pixels', () => {
     expect(session.descriptor.width).toBe(40);
   });
 
-  it('a brush keeps its width on the canvas it was drawn for', () => {
+  it('a brush keeps its width on a document of the logical canvas', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
-      fine(1, 0), profiles.canvasCoordinateScale(COARSE_CANVAS, 600),
+      fine(1, 0), profiles.documentCoordinateScale(1280),
     );
     expect(session.descriptor.width).toBe(40);
   });
@@ -273,10 +269,10 @@ describe('swapStrokeColours (a stroke drawn with the right button)', () => {
   });
 });
 
-describe('the feather under a coarse-canvas brush', () => {
+describe('the feather under a coarse brush', () => {
   it('draws that brush\'s way: the feather follows the preset', () => {
-    // The brush is the algorithm: a feather under a coarse-canvas brush is
-    // that brush's line that happens to be filled.
+    // The brush is the algorithm: a feather under a coarse brush is that
+    // brush's line that happens to be filled.
     const controller = new profiles.PointerStrokeController(() => ({
       rules: coarse,
       descriptor: { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
@@ -290,10 +286,10 @@ describe('the feather under a coarse-canvas brush', () => {
     });
   });
 
-  it('measures its width on the coarse canvas there', () => {
+  it('measures its width the way every other brush does', () => {
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
-      coarse, profiles.canvasCoordinateScale(COARSE_CANVAS, 600),
+      coarse, profiles.documentCoordinateScale(1280),
     );
     expect(session.rules).toBe(coarse);
     expect(session.descriptor.width).toBe(40);
@@ -330,12 +326,12 @@ describe('the pixel tool outside the fine preset', () => {
     expect(stroke.points.every((v) => v % 16 === 0)).toBe(true);
   });
 
-  it('measures its cell on the fine canvas whatever preset draws it', () => {
-    // The scale follows the tool's own canvas, not the preset's: a cell is a
-    // pixel of the 1280-wide canvas wherever the tool is offered.
+  it('measures its cell the way every other brush does', () => {
+    // A cell is a pixel of the logical canvas wherever the tool is offered,
+    // so on a 640-wide document sixteen units become eight.
     const session = profiles.beginStrokeSession(sample(1, 0, 0),
       { kind: 'stamp', geometry: 'line', width: 16, color: '#000000', shape: SQUARE_STAMP },
-      stamp, profiles.canvasCoordinateScale(stamp.canvas, 600),
+      stamp, profiles.documentCoordinateScale(640),
     );
     expect(session.descriptor.width).toBe(8);
   });
@@ -362,7 +358,7 @@ describe('commit comes from the brush', () => {
     expect(stroke.points.slice(0, 4)).toEqual([0, 0, 800, 0]);
   });
 
-  it('hands the commit the scale of its reference canvas', () => {
+  it('hands the commit the scale of the document', () => {
     let seen = 0;
     const controller = new profiles.PointerStrokeController(() => ({
       rules: {
@@ -407,7 +403,6 @@ describe('commit comes from the brush', () => {
 describe('what reaches the document', () => {
   /** A brush collecting raw pointer positions, as a plugin may. */
   const rawRules: profiles.StrokeRules = {
-    canvas: COARSE_CANVAS,
     capture: (line, points) => [...line, ...points],
   };
 

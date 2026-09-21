@@ -1,12 +1,28 @@
 import { describe, expect, test } from 'bun:test';
 
-import { STROKE_COORD_MAX } from '../format/constants';
-import { editCells } from './host';
+import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, STROKE_COORD_MAX } from '../format/constants';
+import { editCells, makeHost } from './host';
 
 const cells = () => [
   { strokes: [{ points: [0, 0, 10, 10], tool_id: 1 }] },
   { strokes: [{ points: [20, 20], tool_id: 2 }, { points: [30, 30], tool_id: 3 }] },
 ];
+
+describe('the unit a plugin measures in', () => {
+  const host = (logicalWidth: number) => makeHost({
+    doc: { width: logicalWidth * FIXED_POINT_SCALE },
+    pluginStrokes: () => [],
+    editPluginCells: () => {},
+    openPluginWindow: () => ({}) as HTMLElement,
+  });
+
+  test('document units become pixels of the one logical canvas', () => {
+    // A document of the logical canvas: one unit is 1/8 of a pixel.
+    expect(host(CANVAS_LOGICAL_WIDTH).referencePx(8)).toBe(1);
+    // Half as wide a document: the same picture, so a unit is worth double.
+    expect(host(CANVAS_LOGICAL_WIDTH / 2).referencePx(8)).toBe(2);
+  });
+});
 
 describe('editCells', () => {
   test('the plugin sees every stroke of every cell, in cell order', () => {

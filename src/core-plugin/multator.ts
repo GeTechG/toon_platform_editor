@@ -1,15 +1,17 @@
 /**
  * The Multator brush's own rules.
  *
- * Everything the editor used to know about the Multator canvas lives here:
- * the canvas its width is measured on, how the pointer's points are collected,
- * and how they are thinned when the gesture ends. The engine takes these as
- * plain functions and never learns whose they are.
+ * Everything the editor used to know about the Multator line lives here: how
+ * the pointer's points are collected, and how they are thinned when the
+ * gesture ends. The engine takes these as plain functions and never learns
+ * whose they are.
  */
 
 import {
+  CANVAS_LOGICAL_WIDTH,
+  FIXED_POINT_SCALE,
   LANG_LOOK_AHEAD,
-  LANG_TOLERANCE_DOC,
+  LANG_TOLERANCE_LOGICAL,
   MAX_STROKE_COORDS,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
@@ -18,14 +20,24 @@ import { simplifyLang } from '../lib/tools/simplify';
 import type { StrokeRules } from '../lib/plugins/contract';
 
 /** Native width of the source Multator drawing canvas. */
-export const MULTATOR_CANVAS_WIDTH = 600;
+const MULTATOR_CANVAS_WIDTH = 600;
+
+/**
+ * What a number of the reference is worth here. Its canvas was 600 wide and
+ * the editor's is 1280, so every pixel it measured is 2.13(3) of ours — a
+ * reference "1" was never one pixel of this editor. The numbers below are the
+ * reference's own, multiplied by this and rounded where the slider shows them.
+ */
+export const MULTATOR_SCALE = CANVAS_LOGICAL_WIDTH / MULTATOR_CANVAS_WIDTH;
+
+/** The reference's Lang tolerance (10 px of its canvas), in document units. */
+const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * MULTATOR_SCALE * FIXED_POINT_SCALE;
 
 export const MULTATOR_RULES: StrokeRules = {
-  canvas: MULTATOR_CANVAS_WIDTH,
-  // The reference's row of dots goes to 300, and neither of its two numbers
-  // reaches this brush: Lang thins it, not the smoothing pair.
-  range: { min: 1, max: 300 },
-  defaults: { width: 4, smooth: 3, minDistance: 3 },
+  // The reference's row of dots goes to 300 — 640 here — and neither of its
+  // two numbers reaches this brush: Lang thins it, not the smoothing pair.
+  range: { min: 1, max: Math.round(300 * MULTATOR_SCALE) },
+  defaults: { width: Math.round(4 * MULTATOR_SCALE), smooth: 3, minDistance: 3 },
   smoothing: false,
   // One point per event, repeats and all: the reference pushes every mousemove
   // as it comes, and a trailing repeat changes both the Lang window and the
@@ -34,10 +46,10 @@ export const MULTATOR_RULES: StrokeRules = {
   // joins the line.
   capture: (line, batch) =>
     batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
-  // The reference measures its Lang tolerance on its own 600 px canvas, so on
-  // a document of another size it scales the way the width does.
-  prepare: (points, _width, _zoom, canvasScale) =>
-    quantize(simplifyLang(points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC / canvasScale)),
+  // The tolerance is in pixels of the editor's canvas like every other
+  // number, so on a document of another size it scales the way the width does.
+  prepare: (points, _width, _zoom, documentScale) =>
+    quantize(simplifyLang(points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC / documentScale)),
   // The reference shows the raw polyline while the hand is down and curves it
   // only on release, so the line under the hand is read as a polyline.
   previewGeometry: 'line',

@@ -77,8 +77,9 @@ const MULTATOR_UX: UxProfile = {
   redoSurvivesStroke: false,
   // draw31.fla stage is 30 fps, doPlay runs every 6th tick → 5 fps.
   defaultFps: 5,
-  // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps.
-  brushSizeMax: 300,
+  // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps, on the
+  // reference's 600-wide canvas — 1..640 on the editor's (×1280/600).
+  brushSizeMax: 640,
   adaptiveBrushStep: true,
   canvasDensity: 'device',
   projectFile: false,
@@ -97,7 +98,7 @@ export const PRESETS: Readonly<Record<string, PluginPreset>> = {
   multator: {
     label: 'Multator',
     // Its line is a brush type of its own, so opening the preset is picking
-    // it: the multator canvas, whatever tool is in hand.
+    // it: the multator line, whatever tool is in hand.
     brush: 'multator-pencil',
     brushType: 'multator',
     ux: MULTATOR_UX,

@@ -24,17 +24,25 @@ export const PLAYER_FPS_MIN = 5;
 export const PLAYER_FPS_MAX = 24;
 
 /**
- * Brush sizes, in pixels of the brush's own reference canvas (Multator's
- * 600-wide one) — `canvasCoordinateScale` maps them onto the document.
+ * The row of dots of the Multator panel, in pixels of the editor's logical
+ * canvas — `documentCoordinateScale` maps them onto the document. The
+ * reference's own 2, 4, 6, 10, 20 measured on its 600-wide canvas; here they
+ * are ×1280/600, rounded to whole pixels of ours.
  */
-export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;
-export const DEFAULT_BRUSH_SIZE_LOGICAL = 4;
+export const BRUSH_SIZES_LOGICAL = [4, 9, 13, 21, 43] as const;
+/** The reference's starting 4 of that canvas. */
+export const DEFAULT_BRUSH_SIZE_LOGICAL = 9;
 export const DEFAULT_BRUSH_COLOR = '#000000';
 /** Second color of the Tonio palette (`fill`, right mouse button). */
 export const DEFAULT_FILL_COLOR = '#ff0000';
-/** Bounds for the +/- brush-size nudge (logical canvas px; 300 = reference cap). */
+/**
+ * Bounds a stored width is kept inside, in logical canvas px. The ceiling is
+ * the widest a brush may declare — the Multator cap of 300 on its 600-wide
+ * canvas, which is 640 of ours; a brush's own `range` stops the slider
+ * earlier.
+ */
 export const MIN_BRUSH_SIZE_LOGICAL = 1;
-export const MAX_BRUSH_SIZE_LOGICAL = 300;
+export const MAX_BRUSH_SIZE_LOGICAL = 640;
 
 /** Canvas background color. */
 export const BACKGROUND_COLOR = '#ffffff';
@@ -51,10 +59,14 @@ export const ONION_HISTORY_MAX_ALPHA = 0.15;
 /** How many visited frames Tonio keeps in that history. */
 export const ONION_HISTORY_LENGTH = 3;
 
-/** Lang simplification: tolerance in logical px. */
+/**
+ * Lang simplification: the reference's tolerance, in pixels of its own
+ * 600-wide canvas. The brush that thins with it scales it to the editor's
+ * canvas itself — rounding it here would be visible in the line.
+ */
 export const LANG_LOOK_AHEAD = 5;
 export const LANG_TOLERANCE_LOGICAL = 10;
-/** Lang tolerance in document units. */
+/** That tolerance in document units of a document of the reference's width. */
 export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
 
 /** Semantic limit: total number of points in a document. */
