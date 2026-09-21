@@ -4,7 +4,7 @@
   import { PENCIL } from '../plugins';
   import type { EditorState } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
-  import type { Frame, Layer, StrokeDialect } from '../format/types';
+  import type { Frame, Layer } from '../format/types';
   import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
@@ -39,13 +39,14 @@
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
   import {
-    type OwnCapture,
     PointerStrokeController,
     canvasCoordinateScale,
     swapStrokeColours,
     previewStrokeSession,
     type PointerSample,
   } from '../tools/profiles';
+  import type { StrokeRules } from '../plugins/contract';
+  import { presetBrushRules } from '../plugins/brushes';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -105,20 +106,17 @@
   const HIDDEN_LAYER_HINT = 'Слой скрыт';
   let hint = $state('');
   let hintTimer = 0;
-  /** Reference-canvas normalisation of the active tool, by its own dialect. */
+  /** Reference-canvas normalisation of the brush in hand, by its own rules. */
   const brushCanvasScale = $derived(
-    canvasCoordinateScale(
-      // A tool whose primitive lives in one dialect says so in its manifest
-      // (the pixel cell is always a pixel of the Tonio canvas); every
-      // other tool, the feather included, measures on its preset's canvas.
-      toolDialect(),
-      editor.doc.width / FIXED_POINT_SCALE,
-    ),
+    canvasCoordinateScale(activeRules().canvas, editor.doc.width / FIXED_POINT_SCALE),
   );
 
   /** Reference-canvas normalisation of the canvas the width is measured on. */
   const widthCanvasScale = $derived(
-    canvasCoordinateScale(editor.brushCanvas, editor.doc.width / FIXED_POINT_SCALE),
+    canvasCoordinateScale(
+      presetBrushRules(editor.brushCanvas, brushTuning()).canvas,
+      editor.doc.width / FIXED_POINT_SCALE,
+    ),
   );
   /**
    * The brush width in pixels of the canvas the stroke is laid on. The two
@@ -130,18 +128,21 @@
     editor.brushSizeLogical * (brushCanvasScale / widthCanvasScale),
   );
 
-  /** The tool's own collection rules, when it has them. */
-  function ownCapture(): OwnCapture | undefined {
-    const stroke = toolSpec(editor.brushTool)?.stroke;
-    return stroke?.capture ? { ...stroke, capture: stroke.capture } : undefined;
+  /** What the editor holds for the brush in hand, for a brush that uses it. */
+  function brushTuning() {
+    return { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance };
   }
 
   /**
-   * The canvas the active tool is measured on: the one it fixed for itself, or
-   * the preset's when it has no opinion.
+   * The rules the gesture runs under: the tool's own when it declared some,
+   * the preset's brush otherwise. Which brush that is, is the preset's
+   * business — the canvas only asks for the rules.
    */
-  function toolDialect(): StrokeDialect {
-    return toolSpec(editor.brushTool)?.stroke?.dialect ?? editor.defaultDialect;
+  function activeRules(): StrokeRules {
+    return (
+      toolSpec(editor.brushTool)?.stroke?.rules?.()
+      ?? presetBrushRules(editor.defaultBrush, brushTuning())
+    );
   }
 
   /**
@@ -154,7 +155,6 @@
       width: brushWidthDoc(strokeBrushSizeLogical),
       color: editor.brushColor,
       fill: editor.fillColor,
-      dialect: toolDialect(),
     });
   }
 
@@ -165,20 +165,11 @@
   let strokeButton = 0;
 
   const pointer = new PointerStrokeController(() => ({
-    // The canvas the brush in hand measures on — its own when it named one,
-    // the preset's when it did not.
-    profile: toolDialect(),
+    rules: activeRules(),
     descriptor: strokeButton === 0
       ? activeDescriptor()
       : swapStrokeColours(activeDescriptor(), editor.fillColor),
-    // A tool that collects its own points hands the engine its rules; the
-    // engine knows gestures and primitives, never the register.
-    own: ownCapture(),
-    tonio: { smooth: editor.tonioSmooth, minDistance: editor.tonioMinDistance },
     coordinateScale: brushCanvasScale,
-    // A brush that turns its own points into the stroke hands the rule over;
-    // the engine knows strokes, never which tool is which.
-    commit: toolSpec(editor.brushTool)?.stroke?.commit,
     zoom: editor.view.zoom,
   }));
   /**
@@ -677,7 +668,7 @@
     viewport: Viewport,
     color: string,
   ): void {
-    if (session.profile === 'multator') {
+    if (session.rules.previewGeometry === 'line') {
       // The reference press is a bare moveTo: the dot appears on release.
       if (session.rawPoints.length < 4) return;
       renderRawPolyline(
@@ -1137,14 +1128,11 @@
   function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
     const [x, y] = toDocUnits(e);
     // «Режим мышки» is the reference `oldPen`: one point per event, no
-    // coalesced batch. In the Multator profile the same checkbox means the
-    // oldschool pen instead, which never unpacks anyway.
-    // Before the session exists (the pointerdown event itself) the canvas is
-    // the tool's, not the preset's — or the first batch of a gesture would be
-    // collected by rules the rest of it never sees.
+    // coalesced batch. What a brush does with the samples a browser held back
+    // is its own rule — one takes them all, one keeps only the event itself —
+    // so the canvas hands them over and does not choose for it.
     const coalesced = unpackCoalesced
       && !editor.settings.mouseMode
-      && (pointer.session?.profile ?? toolDialect()) === 'toonio'
       ? e.getCoalescedEvents?.().map((sample) => {
           const [sampleX, sampleY] = toDocUnits(sample);
           return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };

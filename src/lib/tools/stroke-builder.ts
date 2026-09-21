@@ -3,6 +3,7 @@
  * (at commit) Lang simplification → quantization to integers,
  * exactly once.
  */
+import type { BuiltStroke } from '../model/operations';
 
 import {
   FIXED_POINT_SCALE,
@@ -12,7 +13,7 @@ import {
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from '../format/constants';
-import type { StrokeV1 } from '../format/types';
+
 import { simplifyLang } from './simplify';
 
 export interface BrushSettings {
@@ -62,7 +63,7 @@ export class StrokeBuilder {
    * `tolerance` is the Lang tolerance in document units — the reference's
    * 10 px of its 600 px canvas, scaled to the document by the caller.
    */
-  commit(tolerance = LANG_TOLERANCE_DOC): StrokeV1 {
+  commit(tolerance = LANG_TOLERANCE_DOC): BuiltStroke {
     if (this.#points.length === 0) {
       throw new Error('cannot commit an empty stroke');
     }
@@ -87,7 +88,7 @@ export class StrokeBuilder {
         quantized[n - 1] = lastY;
       }
     }
-    const stroke: StrokeV1 = { points: quantized, width: this.brush.width, color: this.brush.color };
+    const stroke: BuiltStroke = { points: quantized, width: this.brush.width, color: this.brush.color };
     if (this.brush.erase) {
       stroke.erase = true;
     }

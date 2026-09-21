@@ -1,15 +1,37 @@
 {
-  "schema_version": 3,
-  "width": 4.8e3,
+  "schema_version": 7,
+  "width": 4800.0,
   "height": 2400.0,
-  "frame_rate": 1.2e1,
+  "frame_rate": 12.0,
   "tools": [
-    { "kind": "pencil", "dialect": "multator", "width": 3.2e1, "color": "#123456" }
+    {
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 32.0,
+      "color": "#123456"
+    }
   ],
   "layers": [
-    { "hidden": false, "frames": [
-      { "strokes": [{ "points": [1e2, -0.0, 132.0, 1.32e2], "tool_id": 0.0 }] },
-      { "strokes": [] }
-    ] }
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                100.0,
+                -0.0,
+                132.0,
+                132.0
+              ],
+              "tool_id": 0.0
+            }
+          ]
+        },
+        {
+          "strokes": []
+        }
+      ]
+    }
   ]
 }

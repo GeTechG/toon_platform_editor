@@ -11,6 +11,7 @@
 
 import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
 import type { BrushType } from '../plugins/brush-types';
+import type { BrushId } from '../plugins/brushes';
 import { plugins } from '../plugins';
 import type { PickSource } from './frame-selection';
 import {
@@ -27,7 +28,8 @@ import {
 import type { PickerModel } from './picker-model';
 import { UX_PROFILES, type UxProfile, type UxProfileId } from './ux-profile';
 
-export type DrawingProfileId = 'multator' | 'toonio';
+export type { BrushId };
+
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
 export type BrushToolId = string;
@@ -53,16 +55,17 @@ export function brushToolOf(tool: string): BrushToolId {
  * simplified by Lang instead, and one that collects its own points or commits
  * by its own rule never passes through either.
  */
-export function brushUsesSmoothing(tool: string, dialect: DrawingProfileId): boolean {
-  const stroke = plugins.tool(tool)?.stroke;
-  if (stroke?.capture || stroke?.commit) {
+export function brushUsesSmoothing(tool: string, brush: BrushId): boolean {
+  // A brush that brought its own rules is thinned by them, whatever the panel
+  // is set to; only a tool drawing by the preset's brush follows the sliders.
+  if (plugins.tool(tool)?.stroke?.rules?.()) {
     return false;
   }
-  return (stroke?.dialect ?? dialect) === 'toonio';
+  return brush === 'toonio';
 }
 
 /** What a brush starts at on each canvas — the reference's own defaults. */
-export const DEFAULT_BRUSH: Record<DrawingProfileId, TonioBrush> = {
+export const DEFAULT_BRUSH: Record<BrushId, TonioBrush> = {
   toonio: { width: 5, smooth: 3, minDistance: 3 },
   multator: { width: 4, smooth: 3, minDistance: 3 },
 };
@@ -77,7 +80,7 @@ function byTool(brush: TonioBrush): Record<BrushToolId, TonioBrush> {
  * on. Tonio's slider goes to 500, Multator's row of dots to 300 — a property
  * of the canvas, not of the brush that draws on it.
  */
-export const BRUSH_RANGE: Record<DrawingProfileId, { min: number; max: number }> = {
+export const BRUSH_RANGE: Record<BrushId, { min: number; max: number }> = {
   toonio: { min: 1, max: 500 },
   multator: { min: MIN_BRUSH_SIZE_LOGICAL, max: MAX_BRUSH_SIZE_LOGICAL },
 };
@@ -89,7 +92,7 @@ export interface TonioBrush {
 }
 
 export interface DrawingUiConfig {
-  activeProfile: DrawingProfileId;
+  activeProfile: BrushId;
   /**
    * Width, smoothing and minimum per brush, on each canvas it draws on: five
    * pixels of Tonio's 1280-wide canvas are not five of Multator's 600, so a
@@ -267,18 +270,18 @@ const MULTATOR_TOOLS = ['pencil', 'eraser', 'pipette'].map((tool) => `tool:${too
 export const PRESETS: {
   id: string;
   label: string;
-  defaultDialect: DrawingProfileId;
+  defaultBrush: BrushId;
   ux: UxProfileId;
   /** The brush type it opens with; the everyday one when it names none. */
   brushType?: BrushType;
   /** What it starts with, as a patch on the one arrangement. */
   panels?: PresetPanels;
 }[] = [
-  { id: 'toonop', label: 'Toonop', defaultDialect: 'toonio', ux: 'toonop' },
+  { id: 'toonop', label: 'Toonop', defaultBrush: 'toonio', ux: 'toonop' },
   {
     id: 'multator',
     label: 'Multator',
-    defaultDialect: 'multator',
+    defaultBrush: 'multator',
     ux: 'multator',
     // Its line is a brush type of its own now, so opening the preset is
     // picking it: the multator canvas, whatever tool is in hand.
@@ -305,7 +308,7 @@ export const PRESETS: {
       },
     },
   },
-  { id: 'toonio', label: 'Toonio', defaultDialect: 'toonio', ux: 'toonio' },
+  { id: 'toonio', label: 'Toonio', defaultBrush: 'toonio', ux: 'toonio' },
 ];
 
 export const DEFAULT_PRESET = 'toonop';
@@ -320,8 +323,8 @@ function presetById(id: string) {
  * The canvas a preset hands to a brush that named none of its own, falling
  * back to the Toonop default. A brush with an opinion never asks.
  */
-export function presetDefaultDialect(id: string): DrawingProfileId {
-  return presetById(id).defaultDialect;
+export function presetDefaultBrush(id: string): BrushId {
+  return presetById(id).defaultBrush;
 }
 
 /** The brush type a preset opens with. */
@@ -404,7 +407,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     preset,
     panels,
     floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
-    drawing: normalizeDrawingConfig(drawing, presetDefaultDialect(preset)),
+    drawing: normalizeDrawingConfig(drawing, presetDefaultBrush(preset)),
     settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
 }
@@ -482,7 +485,7 @@ function normalizeBrushes(
   return result;
 }
 
-function normalizeDrawingConfig(value: unknown, activeProfile: DrawingProfileId): DrawingUiConfig {
+function normalizeDrawingConfig(value: unknown, activeProfile: BrushId): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   // A config from before the split holds one shared brush: every tool starts
   // from it, so nobody's width jumps on the upgrade.

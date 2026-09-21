@@ -18,6 +18,7 @@
 import { SQUARE_STAMP } from '../format/types';
 import { appendPixelCells, pixelPrepare } from '../tools/pixel';
 import { PLUGIN_API, type Plugin } from './contract';
+import { TONIO_CANVAS_WIDTH } from './brushes/toonio';
 
 export const pixelPlugin: Plugin = {
   id: 'pixel',
@@ -29,24 +30,26 @@ export const pixelPlugin: Plugin = {
     key: '',
     stroke: {
       kind: 'stamp',
-      // A cell is a pixel of the Tonio canvas whatever preset holds the tool:
-      // the Multator builder would smooth its cells into a polyline the pixel
-      // renderer cannot draw.
-      dialect: 'toonio',
       grid: true,
       // Cells are independent marks, so the eraser takes the ones it covered
       // and leaves the rest standing on the grid.
       cut: 'cells',
       descriptor: ({ width, color }) => ({
         kind: 'stamp',
-        dialect: 'toonio',
+        geometry: 'line',
         width,
         color,
         shape: [...SQUARE_STAMP],
       }),
-      capture: (line, points, width) => appendPixelCells(line, points, width),
-      // Reference Pixel: Smooth is the identity and Prepare thins by the width.
-      prepare: (points, width, zoom) => pixelPrepare(points, width, zoom),
+      // A cell is a pixel of the Tonio canvas whatever preset holds the tool,
+      // and the marks are its own: another brush's smoothing would bend a row
+      // of cells into a line the renderer has nothing to draw with.
+      rules: () => ({
+        canvas: TONIO_CANVAS_WIDTH,
+        capture: (line, points, width) => appendPixelCells(line, points, width),
+        // Reference Pixel: Smooth is the identity and Prepare thins by the width.
+        prepare: (points, width, zoom) => pixelPrepare(points, width, zoom),
+      }),
     },
   },
 };

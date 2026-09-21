@@ -10,19 +10,20 @@
  */
 
 import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
+import { MULTATOR_RULES } from './brushes/multator';
 import { OLDSCHOOL_TWIN } from './oldschool';
 
 /** Nothing of its own: the everyday brush with the multator canvas fixed. */
 const MULTATOR_PENCIL: PluginPrimitive = {
   kind: 'pencil',
-  dialect: 'multator',
-  descriptor: ({ width, color }) => ({ kind: 'pencil', dialect: 'multator', width, color }),
+  rules: () => MULTATOR_RULES,
+  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
 };
 
 const MULTATOR_ERASER: PluginPrimitive = {
   kind: 'eraser',
-  dialect: 'multator',
-  descriptor: ({ width }) => ({ kind: 'eraser', dialect: 'multator', width }),
+  rules: () => MULTATOR_RULES,
+  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
 };
 
 /** Neither brush asks for a key: the brush box is the door. */

@@ -18,6 +18,7 @@ import {
 } from './constants';
 import { SQUARE_STAMP } from './types';
 import type { Layer, ToolDescriptor, ToonDocument } from './types';
+import { layToonioPoints } from '../plugins/brushes/toonio';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
 export const TOONIO_CANVAS_WIDTH = 1280;
@@ -199,7 +200,10 @@ function readStrokes(
       }
     }
     if (points.length >= 2) {
-      strokes.push({ points, tool_id: toolId });
+      // An imported line is the reference's own, so it is laid down by the
+      // rule of the brush that drew it — the geometry is not recomputed, only
+      // written the way the shared reader reads it.
+      strokes.push({ points: layToonioPoints(points), tool_id: toolId });
     }
   }
   return strokes;
@@ -227,13 +231,13 @@ function toolDescriptor(type: number, width: number, color: string, fill: string
   const clamped = Math.min(4800, Math.max(1, width));
   switch (type) {
     case PENCIL:
-      return { kind: 'pencil', dialect: 'toonio', width: clamped, color };
+      return { kind: 'pencil', geometry: 'smooth', width: clamped, color };
     case ERASER:
-      return { kind: 'eraser', dialect: 'toonio', width: clamped };
+      return { kind: 'eraser', geometry: 'smooth', width: clamped };
     case FEATHER:
-      return { kind: 'feather', dialect: 'toonio', width: clamped, color, fill };
+      return { kind: 'feather', geometry: 'smooth', width: clamped, color, fill };
     case PIXEL:
-      return { kind: 'stamp', dialect: 'toonio', width: clamped, color, shape: [...SQUARE_STAMP] };
+      return { kind: 'stamp', geometry: 'line', width: clamped, color, shape: [...SQUARE_STAMP] };
     case MEGAERASER:
       throw new Error('файл содержит инструмент «мега-ластик», который не сохраняется как линия');
     default:
@@ -305,7 +309,7 @@ export function decodeLegacyJson(text: string): ToonImportResult {
         typeof raw?.Color === 'string' ? raw.Color : '#000000',
         '#000000',
       );
-      return [{ points, tool_id: internLegacyTool(tool, tools) }];
+      return [{ points: layToonioPoints(points), tool_id: internLegacyTool(tool, tools) }];
     }),
   }));
 

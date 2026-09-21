@@ -1,8 +1,9 @@
 /**
- * Stroke smoothing: quadratic Béziers through midpoints — the control
- * point is the stored point, the segment end is the midpoint towards
- * the next one. The final segment curves straight into the last point
- * (control = second-to-last point), matching the reference editor.
+ * The path readers of the format: the stored numbers plus the way to read
+ * them. Nothing here names a brush, an editor or a reference application —
+ * a document says how its points are shaped, and the player draws it with
+ * this same code.
+ *
  * Deterministic over quantized points.
  */
 
@@ -11,14 +12,23 @@ export interface PathSink {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
+  bezierCurveTo(
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ): void;
 }
 
 /**
- * Emits a smoothed path for a flat [x0, y0, x1, y1, …] array.
- * Coordinates are passed through as-is — scaling is the caller's
- * transform.
+ * The `smooth` chain: quadratic Béziers through midpoints — the control point
+ * is the stored point, the segment end is the midpoint towards the next one.
+ * The final segment curves straight into the last point. Coordinates are
+ * passed through as-is; scaling is the caller's transform.
  */
-export function emitMultatorPath(points: readonly number[], sink: PathSink): void {
+function emitSmoothPath(points: readonly number[], sink: PathSink): void {
   const count = points.length / 2;
   if (count === 0) {
     return;
@@ -47,12 +57,12 @@ export function emitMultatorPath(points: readonly number[], sink: PathSink): voi
 }
 
 /**
- * Closed variant (reference `multicurve(..., true)`, used for the oldschool
- * contour): starts at the midpoint of the first segment, one quadratic per
- * point with the next midpoint as the end, and a final quadratic through the
- * first point back to the start. Two points degrade to a line.
+ * The closed variant, for a `kind` that fills a ring: starts at the midpoint
+ * of the first segment, one quadratic per point with the next midpoint as the
+ * end, and a final quadratic through the first point back to the start. Two
+ * points degrade to a line.
  */
-export function emitMultatorClosedPath(points: readonly number[], sink: PathSink): void {
+function emitSmoothClosedPath(points: readonly number[], sink: PathSink): void {
   const count = points.length / 2;
   if (count === 0) {
     return;
@@ -79,23 +89,50 @@ export function emitMultatorClosedPath(points: readonly number[], sink: PathSink
   sink.quadraticCurveTo(points[0], points[1], start[0], start[1]);
 }
 
-/** Backward-compatible name while renderer consumers migrate to dialect dispatch. */
-export const emitSmoothedPath = emitMultatorPath;
+/** How a stroke's stored numbers are read into a path. */
+export type StrokeGeometry = 'line' | 'smooth' | 'cubic';
 
-/** Exact Tonio midpoint emitter; committed Tonio lines include their endpoint sentinel. */
-export function emitTonioPath(points: readonly number[], sink: PathSink): void {
-  for (let i = 2; i < points.length; i += 2) {
-    const x = points[i];
-    const y = points[i + 1];
-    let previousX = points[i - 2];
-    let previousY = points[i - 1];
-    if (previousX === x && previousY === y) {
-      previousX += 0.01;
-      previousY += 0.01;
+/**
+ * The only path reader the core has: the stored numbers plus the way to read
+ * them. No brush, editor or reference application is named here — a document
+ * says how its points are shaped, and the player draws it with this.
+ */
+export function emitGeometry(
+  points: readonly number[],
+  geometry: StrokeGeometry,
+  closed: boolean,
+  sink: PathSink,
+): void {
+  if (geometry === 'line') {
+    if (points.length < 2) {
+      return;
     }
-    sink.quadraticCurveTo(previousX, previousY, (x + previousX) / 2, (y + previousY) / 2);
+    sink.moveTo(points[0], points[1]);
+    for (let i = 2; i < points.length; i += 2) {
+      sink.lineTo(points[i], points[i + 1]);
+    }
+    return;
   }
-  if (points.length === 2) {
-    sink.quadraticCurveTo(points[0], points[1], points[0] + 0.01, points[1] + 0.01);
+  if (geometry === 'smooth') {
+    if (closed) {
+      emitSmoothClosedPath(points, sink);
+    } else {
+      emitSmoothPath(points, sink);
+    }
+    return;
+  }
+  if (points.length < 2) {
+    return;
+  }
+  sink.moveTo(points[0], points[1]);
+  for (let i = 2; i + 5 < points.length; i += 6) {
+    sink.bezierCurveTo(
+      points[i],
+      points[i + 1],
+      points[i + 2],
+      points[i + 3],
+      points[i + 4],
+      points[i + 5],
+    );
   }
 }

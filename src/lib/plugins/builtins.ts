@@ -16,22 +16,22 @@ import { pixelPlugin } from './pixel';
 
 /**
  * The three line primitives of the format, as the editor's own tools lay them
- * down. They go through the same block a plugin fills in: the dialect is the
- * preset's, the points are the dialect's own, and the eraser cuts them as
- * polylines — which is the default, so none of that is spelled out.
+ * down. They go through the same block a plugin fills in: the points are read
+ * as the one smooth chain, and the eraser cuts them as polylines — which is
+ * the default, so none of that is spelled out.
  */
 export const PENCIL: PluginPrimitive = {
   kind: 'pencil',
-  descriptor: ({ width, color, dialect }) => ({ kind: 'pencil', dialect, width, color }),
+  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
 };
 const ERASER: PluginPrimitive = {
   kind: 'eraser',
-  descriptor: ({ width, dialect }) => ({ kind: 'eraser', dialect, width }),
+  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
 };
-/** The preset's line, filled: the session freezes the same dialect. */
+/** The same line, filled before it is stroked. */
 const FEATHER: PluginPrimitive = {
   kind: 'feather',
-  descriptor: ({ width, color, fill, dialect }) => ({ kind: 'feather', dialect, width, color, fill }),
+  descriptor: ({ width, color, fill }) => ({ kind: 'feather', geometry: 'smooth', width, color, fill }),
 };
 
 /** In the order the rail draws them. */

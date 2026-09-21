@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:toon-platform:format:toon-v4",
-  "title": "Toon animation document, schema version 4",
+  "$id": "urn:toon-platform:format:toon-v7",
+  "title": "Toon animation document, schema version 7",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,7 +14,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": 4
+      "const": 7
     },
     "width": {
       "type": "integer",
@@ -59,6 +59,11 @@
         "hidden": {
           "type": "boolean"
         },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 12
+        },
         "frames": {
           "type": "array",
           "minItems": 1,
@@ -87,7 +92,7 @@
           "$ref": "#/$defs/feather"
         },
         {
-          "$ref": "#/$defs/pixel"
+          "$ref": "#/$defs/stamp"
         }
       ]
     },
@@ -96,7 +101,7 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect",
+        "geometry",
         "width",
         "color"
       ],
@@ -104,10 +109,12 @@
         "kind": {
           "const": "pencil"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "multator",
-            "toonio"
+            "line",
+            "smooth",
+            "cubic"
           ]
         },
         "width": {
@@ -126,17 +133,19 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect",
+        "geometry",
         "width"
       ],
       "properties": {
         "kind": {
           "const": "eraser"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "multator",
-            "toonio"
+            "line",
+            "smooth",
+            "cubic"
           ]
         },
         "width": {
@@ -151,16 +160,19 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect",
+        "geometry",
         "color"
       ],
       "properties": {
         "kind": {
           "const": "contour"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "multator"
+            "line",
+            "smooth",
+            "cubic"
           ]
         },
         "color": {
@@ -174,15 +186,18 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect"
+        "geometry"
       ],
       "properties": {
         "kind": {
           "const": "contour-eraser"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "multator"
+            "line",
+            "smooth",
+            "cubic"
           ]
         }
       }
@@ -233,7 +248,7 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect",
+        "geometry",
         "width",
         "color",
         "fill"
@@ -242,9 +257,12 @@
         "kind": {
           "const": "feather"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "toonio"
+            "line",
+            "smooth",
+            "cubic"
           ]
         },
         "width": {
@@ -262,22 +280,24 @@
         }
       }
     },
-    "pixel": {
+    "stamp": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "kind",
-        "dialect",
+        "geometry",
         "width",
-        "color"
+        "color",
+        "shape"
       ],
       "properties": {
         "kind": {
-          "const": "pixel"
+          "const": "stamp"
         },
-        "dialect": {
+        "geometry": {
+          "description": "How the stroke's numbers are read into a path.",
           "enum": [
-            "toonio"
+            "line"
           ]
         },
         "width": {
@@ -288,6 +308,17 @@
         "color": {
           "type": "string",
           "pattern": "^#[0-9a-f]{6}$"
+        },
+        "shape": {
+          "description": "Closed polygon on the unit square, filled at every point of the stroke: [x0,y0,x1,y1,...], at least three points.",
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 6,
+          "maxItems": 128
         }
       }
     }

@@ -6,11 +6,11 @@ Mapping for the supported first importer slice:
 
 | Tonio value | v2 value |
 | --- | --- |
-| pencil tool `{ w, c }` | `{ kind: 'pencil', dialect: 'toonio', width: w * 8, color: normalizedRgb }` |
-| eraser tool `{ w }` | `{ kind: 'eraser', dialect: 'toonio', width: w * 8 }` |
+| pencil tool `{ w, c }` | `{ kind: 'pencil', geometry: 'smooth', width: w * 8, color: normalizedRgb }` |
+| eraser tool `{ w }` | `{ kind: 'eraser', geometry: 'smooth', width: w * 8 }` |
 | line `{ d, p }` | `{ tool_id: intern(mappedTools[d]), points: p.map(value => value * 8) }` |
 
-Since schema v4 the table also holds `feather` (`{ w, c, f }` → `{ kind: 'feather', dialect: 'toonio', width: w * 8, color, fill }`) and `pixel` (`{ w, c }` → `{ kind: 'pixel', … }`); imported pixel lines keep the reference's sparse cells, because the renderer fills the gaps with the same Bresenham walk the reference applies at draw time. Mega-eraser strokes never appear in a file — the reference does not store them.
+The table also holds `feather` (`{ w, c, f }` → `{ kind: 'feather', geometry: 'smooth', width: w * 8, color, fill }`) and the stamp (`{ w, c }` → `{ kind: 'stamp', geometry: 'line', shape: <unit square>, … }`); imported pixel lines keep the reference's sparse cells, because the renderer fills the gaps with the same Bresenham walk the reference applies at draw time. Mega-eraser strokes never appear in a file — the reference does not store them.
 
 Tool descriptors are structurally interned in first-use order. Each imported line keeps its prepared endpoint representation and references the mapped descriptor. Layers, shared cels/exposures, holds, and unsupported Tonio tools require a later format version; they wrap or reference the same v2 stroke/tool core rather than changing its renderer contract.
 

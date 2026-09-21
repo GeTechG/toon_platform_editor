@@ -22,9 +22,13 @@ describe('buildCorpus', () => {
 it('builds a valid mixed Multator/Tonio benchmark corpus', () => {
   const doc = buildCorpus({ frames: 2, strokesPerFrame: 4, pointsPerStroke: 16, mixedEvery: 2 });
   expect(validateDocument(doc).ok).toBe(true);
-  const dialects = doc.layers[0].frames.flatMap((frame) => frame.strokes.map((stroke) => doc.tools[stroke.tool_id].dialect));
-  expect(dialects).toContain('multator');
-  expect(dialects).toContain('toonio');
+  // Both brushes lay their points down for the one reader; what tells them
+  // apart in the document is the shape of the line, not a name on the tool.
+  const strokes = doc.layers[0].frames.flatMap((frame) => frame.strokes);
+  const repeatsFirstPoint = (p: number[]) => p[0] === p[2] && p[1] === p[3];
+  expect(strokes.some((s) => repeatsFirstPoint(s.points))).toBe(true);
+  expect(strokes.some((s) => !repeatsFirstPoint(s.points))).toBe(true);
+  expect(doc.tools.every((tool) => tool.geometry === 'smooth')).toBe(true);
 });
 
 describe('layered corpus', () => {

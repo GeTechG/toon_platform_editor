@@ -8,7 +8,7 @@
  */
 
 import { LINE_PRIMITIVES } from '../render/dispatch';
-import { PLUGIN_API, type Plugin, type PluginTool } from './contract';
+import { PLUGIN_API, type Plugin, type PluginTool, type StrokeRules } from './contract';
 
 /**
  * What a call into a plugin gives back when the plugin threw instead: the
@@ -115,6 +115,30 @@ export class PluginRegistry {
         }
       }) as F;
     const nothing = () => {};
+    /** Every function of a rule set, guarded the same way the manifest is. */
+    const guardRules = (
+      rules: StrokeRules | undefined,
+      guardFn: <F extends AnyFn>(fn: F, fallback: F) => F,
+    ): StrokeRules | undefined => {
+      if (!rules) return undefined;
+      const keep = (line: readonly number[]) => [...line];
+      return {
+        ...rules,
+        capture: guardFn(rules.capture, (line, batch) => [...line, ...batch]),
+        ...(rules.release ? { release: guardFn(rules.release, keep) } : {}),
+        ...(rules.preview ? { preview: guardFn(rules.preview, keep) } : {}),
+        ...(rules.prepare ? { prepare: guardFn(rules.prepare, keep) } : {}),
+        ...(rules.path ? { path: guardFn(rules.path, keep) } : {}),
+        ...(rules.commit
+          ? {
+              commit: guardFn(rules.commit, (points, descriptor) => ({
+                points: [...points],
+                tool: descriptor,
+              })),
+            }
+          : {}),
+      };
+    };
     const stroke = tool.stroke;
     return {
       ...tool,
@@ -126,16 +150,14 @@ export class PluginRegistry {
               // down, this much the format knows and the renderer draws.
               descriptor: wrap(stroke.descriptor, (brush) => ({
                 kind: 'pencil',
-                dialect: brush.dialect,
+                geometry: 'smooth',
                 width: brush.width,
                 color: brush.color,
               })),
-              ...(stroke.capture
-                ? { capture: wrap(stroke.capture, (line, points) => [...line, ...points]) }
-                : {}),
-              ...(stroke.prepare ? { prepare: wrap(stroke.prepare, (points) => [...points]) } : {}),
-              ...(stroke.commit
-                ? { commit: wrap(stroke.commit, (points, descriptor) => ({ points: [...points], tool: descriptor })) }
+              // Rules that throw cost the plugin its own rules, not the
+              // gesture: the brush the preset picked takes over instead.
+              ...(stroke.rules
+                ? { rules: wrap(() => guardRules(stroke.rules!(), wrap), () => undefined) }
                 : {}),
             },
           }

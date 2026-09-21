@@ -10,11 +10,12 @@
 
 import { plugins } from '../plugins';
 import { PENCIL } from '../plugins/builtins';
+import { presetBrushRules } from '../plugins/brushes';
 import { emitPathForTool, isContourTool, isStampTool } from '../render/dispatch';
 import type { PathSink } from '../render/smoothing';
 import { PointerStrokeController } from '../tools/profiles';
 import { brushWidthDoc } from '../tools/stroke-builder';
-import type { DrawingProfileId, TonioBrush } from './presets';
+import type { BrushId, TonioBrush } from './presets';
 
 /** The sample box, in document units. */
 export const PREVIEW_BOX = { width: 768, height: 192 };
@@ -62,28 +63,24 @@ export interface BrushPreview {
  */
 export function brushPreview(
   tool: string,
-  dialect: DrawingProfileId,
+  brush: BrushId,
   widthLogical: number,
   tonio: TonioBrush,
 ): BrushPreview {
   const stroke = plugins.tool(tool)?.stroke ?? PENCIL;
-  const profile = stroke.dialect ?? dialect;
+  const rules = stroke.rules?.() ?? presetBrushRules(brush, tonio);
   const descriptor = stroke.descriptor({
     width: brushWidthDoc(widthLogical),
     color: '#000000',
     fill: '#ffffff',
-    dialect: profile,
   });
   const pointer = new PointerStrokeController(() => ({
-    profile,
     descriptor,
-    tonio,
+    rules,
     // The sample is written in document units of its own box, so there is
     // nothing to normalise: it is the shape of the line that is on show.
     coordinateScale: 1,
     zoom: 1,
-    own: stroke.capture ? { ...stroke, capture: stroke.capture } : undefined,
-    commit: stroke.commit,
   }));
   for (let i = 0; i < PREVIEW_GESTURE.length; i += 2) {
     const sample = { pointerId: 1, isPrimary: true, x: PREVIEW_GESTURE[i], y: PREVIEW_GESTURE[i + 1] };
@@ -123,6 +120,13 @@ class SvgPath implements PathSink {
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
     this.#start(cpx, cpy);
     this.#parts.push(`Q${round(cpx)} ${round(cpy)} ${round(x)} ${round(y)}`);
+  }
+
+  bezierCurveTo(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void {
+    this.#start(c1x, c1y);
+    this.#parts.push(
+      `C${round(c1x)} ${round(c1y)} ${round(c2x)} ${round(c2y)} ${round(x)} ${round(y)}`,
+    );
   }
 
   /**

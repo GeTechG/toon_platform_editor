@@ -20,15 +20,23 @@ import {
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from '../format/constants';
-import type {
-  Stroke,
-  Frame,
-  FrameV1,
-  FrameV2,
-  StrokeV1,
-  ToonDocument,
-  ToolDescriptor,
-} from '../format/types';
+import type { Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+
+/**
+ * A stroke as a brush hands it over before it is interned: the attributes are
+ * still inline, because the brush has no idea which descriptor the document
+ * already holds. `addStroke` interns them and the shape stops existing.
+ */
+export interface BuiltStroke {
+  points: number[];
+  width: number;
+  color: string;
+  erase?: true;
+}
+
+export interface BuiltFrame {
+  strokes: BuiltStroke[];
+}
 import type { Matrix } from './geom';
 import { applyMatrix, clampCoord, transformMatrix } from './geom';
 import { pixelCellNearest } from '../tools/pixel';
@@ -56,7 +64,7 @@ export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): numbe
 }
 
 function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
-  if (left.kind !== right.kind || left.dialect !== right.dialect) {
+  if (left.kind !== right.kind || left.geometry !== right.geometry) {
     return false;
   }
   switch (left.kind) {
@@ -309,9 +317,9 @@ export function cloneColumn(doc: ToonDocument, frameIndex: number): ResolvedColu
 }
 
 /** Deep-copies a frame and its strokes' point arrays. */
-export function cloneFrame(frame: FrameV1): FrameV1;
-export function cloneFrame(doc: ToonDocument, frame: FrameV2): ResolvedFrame;
-export function cloneFrame(frameOrDoc: FrameV1 | ToonDocument, maybeFrame?: FrameV2): FrameV1 | ResolvedFrame {
+export function cloneFrame(frame: BuiltFrame): BuiltFrame;
+export function cloneFrame(doc: ToonDocument, frame: Frame): ResolvedFrame;
+export function cloneFrame(frameOrDoc: BuiltFrame | ToonDocument, maybeFrame?: Frame): BuiltFrame | ResolvedFrame {
   if (maybeFrame) {
     const doc = frameOrDoc as ToonDocument;
     return {
@@ -322,7 +330,7 @@ export function cloneFrame(frameOrDoc: FrameV1 | ToonDocument, maybeFrame?: Fram
       }),
     };
   }
-  const frame = frameOrDoc as FrameV1;
+  const frame = frameOrDoc as BuiltFrame;
   return { strokes: frame.strokes.map((s) => ({ ...s, points: s.points.slice() })) };
 }
 
@@ -331,7 +339,7 @@ export function addStroke(
   doc: ToonDocument,
   layerIndex: number,
   frameIndex: number,
-  stroke: ResolvedStroke | StrokeV1,
+  stroke: ResolvedStroke | BuiltStroke,
 ): void {
   const target = cell(doc, layerIndex, frameIndex);
   assertStrokePoints(stroke.points);
@@ -370,7 +378,7 @@ function assertStrokePoints(points: number[]): void {
   });
 }
 
-function assertLegacyStroke(stroke: StrokeV1): void {
+function assertLegacyStroke(stroke: BuiltStroke): void {
   if (!Number.isInteger(stroke.width) || stroke.width < 1 || stroke.width > MAX_STROKE_WIDTH) {
     throw new RangeError(`stroke width must be an integer in 1..${MAX_STROKE_WIDTH}, got ${stroke.width}`);
   }
@@ -379,13 +387,13 @@ function assertLegacyStroke(stroke: StrokeV1): void {
   }
 }
 
-function resolveLegacyStroke(stroke: StrokeV1): ResolvedStroke {
+function resolveLegacyStroke(stroke: BuiltStroke): ResolvedStroke {
   assertLegacyStroke(stroke);
   return {
     points: stroke.points,
     tool: stroke.erase || stroke.color === '#ffffff'
-      ? { kind: 'eraser', dialect: 'multator', width: stroke.width }
-      : { kind: 'pencil', dialect: 'multator', width: stroke.width, color: stroke.color },
+      ? { kind: 'eraser', geometry: 'smooth', width: stroke.width }
+      : { kind: 'pencil', geometry: 'smooth', width: stroke.width, color: stroke.color },
   };
 }
 
@@ -402,7 +410,7 @@ function assertTool(tool: ToolDescriptor): void {
   }
 }
 
-function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): FrameV2 {
+function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): Frame {
   return {
     strokes: frame.strokes.map((stroke) => {
       assertStrokePoints(stroke.points);
@@ -416,23 +424,23 @@ function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): FrameV2 {
 export function copyTool(tool: ToolDescriptor): ToolDescriptor {
   switch (tool.kind) {
     case 'pencil':
-      return { kind: 'pencil', dialect: tool.dialect, width: tool.width, color: tool.color };
+      return { kind: 'pencil', geometry: tool.geometry, width: tool.width, color: tool.color };
     case 'eraser':
-      return { kind: 'eraser', dialect: tool.dialect, width: tool.width };
+      return { kind: 'eraser', geometry: tool.geometry, width: tool.width };
     case 'feather':
       return {
         kind: 'feather',
-        dialect: tool.dialect,
+        geometry: tool.geometry,
         width: tool.width,
         color: tool.color,
         fill: tool.fill,
       };
     case 'stamp':
-      return { kind: 'stamp', dialect: 'toonio', width: tool.width, color: tool.color, shape: [...tool.shape] };
+      return { kind: 'stamp', geometry: 'line', width: tool.width, color: tool.color, shape: [...tool.shape] };
     case 'contour':
-      return { kind: 'contour', dialect: 'multator', color: tool.color };
+      return { kind: 'contour', geometry: tool.geometry, color: tool.color };
     case 'contour-eraser':
-      return { kind: 'contour-eraser', dialect: 'multator' };
+      return { kind: 'contour-eraser', geometry: tool.geometry };
   }
 }
 

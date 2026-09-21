@@ -32,8 +32,11 @@ describe('decodeToon: version 5', () => {
     expect(doc.width).toBe(TOONIO_CANVAS_WIDTH * 8);
     expect(doc.height).toBe(TOONIO_CANVAS_HEIGHT * 8);
     expect(doc.frame_rate).toBe(12);
-    expect(doc.tools).toEqual([{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }]);
-    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [80, 160, 240, 320], tool_id: 0 }]);
+    expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
+    // Laid down for the shared reader the way the Tonio brush lays a line:
+    // its first point repeated, so the curve starts where the reference's did.
+    expect(doc.layers[0].frames[0].strokes)
+      .toEqual([{ points: [80, 160, 80, 160, 240, 320], tool_id: 0 }]);
   });
 
   it('keeps the hidden flag of a layer', () => {
@@ -77,8 +80,8 @@ describe('decodeToon: version 5', () => {
       1, 0, 0, 0,
     ])));
     expect(doc.tools).toEqual([
-      { kind: 'feather', dialect: 'toonio', width: 40, color: '#000000', fill: '#ff0000' },
-      { kind: 'stamp', dialect: 'toonio', width: 64, color: '#0026ff', shape: SQUARE_STAMP },
+      { kind: 'feather', geometry: 'smooth', width: 40, color: '#000000', fill: '#ff0000' },
+      { kind: 'stamp', geometry: 'line', width: 64, color: '#0026ff', shape: SQUARE_STAMP },
     ]);
 
     const rejected = decodeToon(encode([...header(1, 1), 1, 3, 5, 1, 0, 0, 0]));
@@ -161,8 +164,8 @@ describe('decodeToon: a point that flew off the canvas', () => {
       0, 2, 1, 2, 3, 4,
     ])));
     const [flown, intact] = doc.layers[0].frames[0].strokes;
-    expect(flown.points).toEqual([STROKE_COORD_MAX, 80, STROKE_COORD_MIN, 160]);
-    expect(intact.points).toEqual([8, 16, 24, 32]);
+    expect(flown.points).toEqual([STROKE_COORD_MAX, 80, STROKE_COORD_MAX, 80, STROKE_COORD_MIN, 160]);
+    expect(intact.points).toEqual([8, 16, 8, 16, 24, 32]);
     expect(validateDocument(doc).ok).toBe(true);
   });
 });
@@ -178,8 +181,8 @@ describe('decodeToon: legacy versions', () => {
       1, 10, 0, 20, // +10, -20
       1, 30, 1, 40,
     ])));
-    expect(doc.tools).toEqual([{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }]);
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([80, -160, 240, 320]);
+    expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([80, -160, 80, -160, 240, 320]);
   });
 });
 
@@ -198,24 +201,27 @@ describe('decodeLegacyJson', () => {
     expect(doc.layers).toHaveLength(1);
     expect(doc.layers[0].hidden).toBe(false);
     expect(doc.tools).toEqual([
-      { kind: 'pencil', dialect: 'toonio', width: 24, color: '#ff0000' },
-      { kind: 'pencil', dialect: 'toonio', width: 64, color: '#00ff00' },
+      { kind: 'pencil', geometry: 'smooth', width: 24, color: '#ff0000' },
+      { kind: 'pencil', geometry: 'smooth', width: 64, color: '#00ff00' },
     ]);
-    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [80, 160, 240, 320], tool_id: 0 }]);
-    expect(doc.layers[0].frames[1].strokes).toEqual([{ points: [8, 16], tool_id: 1 }]);
+    // Laid down for the shared reader the way the Tonio brush lays a line:
+    // its first point repeated, so the curve starts where the reference's did.
+    expect(doc.layers[0].frames[0].strokes)
+      .toEqual([{ points: [80, 160, 80, 160, 240, 320], tool_id: 0 }]);
+    expect(doc.layers[0].frames[1].strokes).toEqual([{ points: [8, 16, 8, 16], tool_id: 1 }]);
     expect(validateDocument(doc).ok).toBe(true);
   });
 
   it('reads the bare array form as a black pencil of width 5 at 13 fps', () => {
     const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 1, y: 2 }, { x: 3, y: 4 }]]])));
     expect(doc.frame_rate).toBe(13);
-    expect(doc.tools).toEqual([{ kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }]);
-    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [8, 16, 24, 32], tool_id: 0 }]);
+    expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
+    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [8, 16, 8, 16, 24, 32], tool_id: 0 }]);
   });
 
   it('clamps a point that flew off the canvas', () => {
     const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 30000, y: 0 }]]])));
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([STROKE_COORD_MAX, 0]);
+    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([STROKE_COORD_MAX, 0, STROKE_COORD_MAX, 0]);
   });
 
   it('refuses text that is not JSON', () => {

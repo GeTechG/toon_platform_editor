@@ -1,4 +1,4 @@
 {
-  "canonical": "{\"frame_rate\":12,\"frames\":[{\"strokes\":[{\"color\":\"#000000\",\"points\":[-320,-80,2400,1200,5200,2560],\"width\":32}]}],\"height\":2400,\"schema_version\":1,\"width\":4800}",
-  "sha256": "1741d6a5b3b7316031e2c4aa38b31a2628f451042c57b1137aef03c875648938"
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[-320,-80,2400,1200,5200,2560],\"tool_id\":0}]}],\"hidden\":false}],\"schema_version\":7,\"tools\":[{\"color\":\"#000000\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32}],\"width\":4800}",
+  "sha256": "90188325370105ef5d22b19faa3dec033f885b349a032183fee1cd3666d6e13b"
 }

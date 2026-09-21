@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { PLUGIN_API } from './contract';
+import { PLUGIN_API, type StrokeRules } from './contract';
 import { PluginRegistry } from './registry';
 
 /** The smallest manifest the registry accepts — a tool and nothing else. */
@@ -112,17 +112,22 @@ describe('PluginRegistry', () => {
     const registry = new PluginRegistry();
     const commit = (points: readonly number[]) => ({
       points: [...points],
-      tool: { kind: 'contour', dialect: 'multator', color: '#000000' } as const,
+      tool: { kind: 'contour', geometry: 'smooth', color: '#000000' } as const,
     });
 
     expect(registry.register(toolPlugin('a.oldschool', {
-      stroke: { kind: 'pencil', descriptor: () => ({ kind: 'pencil', dialect: 'multator', width: 4, color: '#000000' }), commit },
+      stroke: {
+        kind: 'pencil',
+        descriptor: () => ({ kind: 'pencil', geometry: 'smooth', width: 4, color: '#000000' }),
+        rules: (): StrokeRules => ({ canvas: 600, capture: (line, batch) => [...line, ...batch], commit }),
+      },
     }))).toBeNull();
 
     // Not the same function: an external plugin's is wrapped so its throw
     // costs the plugin and not the editor. What it commits is what matters.
-    expect(registry.tool('a.oldschool')?.stroke?.commit?.([1, 2], {} as never, { coordinateScale: 1 }))
-      .toEqual(commit([1, 2]));
+    expect(
+      registry.tool('a.oldschool')?.stroke?.rules?.()?.commit?.([1, 2], {} as never, { coordinateScale: 1 }),
+    ).toEqual(commit([1, 2]));
   });
 
   test('built-in tools go in the same way external ones do', () => {
@@ -172,9 +177,9 @@ describe('a plugin that throws', () => {
     }));
 
     const stroke = registry.tool('a.bad')!.stroke!;
-    const descriptor = quiet(() => stroke.descriptor({ width: 3, color: '#000', fill: '#fff', dialect: 'toonio' }));
+    const descriptor = quiet(() => stroke.descriptor({ width: 3, color: '#000', fill: '#fff' }));
 
-    expect(descriptor).toEqual({ kind: 'pencil', dialect: 'toonio', width: 3, color: '#000' });
+    expect(descriptor).toEqual({ kind: 'pencil', geometry: 'smooth', width: 3, color: '#000' });
     expect(registry.tool('a.bad')).toBeUndefined();
   });
 

@@ -56,10 +56,10 @@ describe('eraseStrokes by primitive', () => {
   const cutOf = (tool: { kind: string }) =>
     tool.kind === pixelPlugin.tool?.stroke?.kind ? pixelPlugin.tool?.stroke?.cut : undefined;
 
-  const pixelTools = [{ kind: 'stamp', dialect: 'toonio', width: 10, color: '#000000', shape: SQUARE_STAMP }] as const;
+  const pixelTools = [{ kind: 'stamp', geometry: 'line', width: 10, color: '#000000', shape: SQUARE_STAMP }] as const;
   const contourTools = [
-    { kind: 'contour', dialect: 'multator', color: '#000000' },
-    { kind: 'pencil', dialect: 'multator', width: 4, color: '#000000' },
+    { kind: 'contour', geometry: 'smooth', color: '#000000' },
+    { kind: 'pencil', geometry: 'smooth', width: 4, color: '#000000' },
   ] as const;
   /** Cells of width 10 in a row; a point is a cell's corner, so its centre is +5. */
   const cells = [0, 0, 10, 0, 20, 0, 30, 0, 40, 0];

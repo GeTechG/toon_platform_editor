@@ -173,7 +173,7 @@
       there is nothing to switch off — and the old pen it used to mean here is
       a type of the brush now, picked in the brush box.
     -->
-    {#if editor.defaultDialect === 'toonio'}
+    {#if editor.defaultBrush === 'toonio'}
       <label class="toggle">
         <span class="toggle-label">Режим мышки (точка на событие)</span>
         <input

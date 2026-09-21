@@ -6,33 +6,9 @@
  */
 
 import Ajv2020 from 'ajv/dist/2020';
-import schemaV1 from './schema/toon-v1.schema.json';
-import schemaV2 from './schema/toon-v2.schema.json';
-import schemaV3 from './schema/toon-v3.schema.json';
-import schemaV4 from './schema/toon-v4.schema.json';
-import schemaV5 from './schema/toon-v5.schema.json';
-import schemaV6 from './schema/toon-v6.schema.json';
-import { MAX_SUPPORTED_SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
-import type {
-  ToonDocumentV1,
-  ToonDocumentV2,
-  ToonDocumentV3,
-  ToonDocumentV4,
-  ToonDocumentV5,
-  ToonDocumentV6,
-} from './types';
-import { upgradeDocument } from './upgrade';
-
-// The migrations live in ./upgrade — ajv-free, so the share page's player can
-// lift an old document without pulling the validator into the viewer bundle.
-export {
-  migrateLegacyEraser,
-  migrateV1ToV2,
-  migrateV2ToV3,
-  migrateV3ToV4,
-  migrateV4ToV5,
-  upgradeDocument,
-} from './upgrade';
+import schema from './schema/toon-v7.schema.json';
+import { SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
+import type { ToolDescriptor, ToonDocument } from './types';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -49,20 +25,7 @@ export interface ValidationResult {
 }
 
 const ajv = new Ajv2020({ allErrors: true });
-const validateSchemaV1 = ajv.compile(schemaV1);
-const validateSchemaV2 = ajv.compile(schemaV2);
-const validateSchemaV3 = ajv.compile(schemaV3);
-const validateSchemaV4 = ajv.compile(schemaV4);
-const validateSchemaV5 = ajv.compile(schemaV5);
-const validateSchemaV6 = ajv.compile(schemaV6);
-const SCHEMAS = [
-  validateSchemaV1,
-  validateSchemaV2,
-  validateSchemaV3,
-  validateSchemaV4,
-  validateSchemaV5,
-  validateSchemaV6,
-];
+const validateSchema = ajv.compile(schema);
 
 /** Document load error; carries the list of validation issues. */
 export class FormatError extends Error {
@@ -84,16 +47,17 @@ export function validateDocument(data: unknown): ValidationResult {
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return failure('schema', '/schema_version', 'schema_version must be an integer ≥ 1');
   }
-  if (version > MAX_SUPPORTED_SCHEMA_VERSION) {
+  // One version, no migrations: a document of any other version is not this
+  // format, and guessing at it would draw a picture nobody made.
+  if (version !== SCHEMA_VERSION) {
     return failure(
       'unsupported-version',
       '/schema_version',
-      `version ${version} is not supported (maximum ${MAX_SUPPORTED_SCHEMA_VERSION}); update the editor`,
+      `version ${version} is not supported (this editor reads ${SCHEMA_VERSION} only)`,
     );
   }
 
   // 2. Structure — JSON Schema.
-  const validateSchema = SCHEMAS[version - 1];
   if (!validateSchema(data)) {
     const issues: ValidationIssue[] = (validateSchema.errors ?? []).map((err) => ({
       category: 'schema',
@@ -104,56 +68,44 @@ export function validateDocument(data: unknown): ValidationResult {
   }
 
   // 3. Semantics on top of the schema.
-  const issues = semanticIssues(data as unknown as AnyDocument);
+  const issues = semanticIssues(data as unknown as ToonDocument);
   return { ok: issues.length === 0, issues };
 }
 
-type AnyDocument =
-  | ToonDocumentV1
-  | ToonDocumentV2
-  | ToonDocumentV3
-  | ToonDocumentV4
-  | ToonDocumentV5
-  | ToonDocumentV6;
-
-/** Validates and types already-parsed JSON, migrating v1 → … → v6; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocumentV6 {
+/** Validates and types already-parsed JSON; throws FormatError. */
+export function loadDocument(data: unknown): ToonDocument {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);
   }
-  return upgradeDocument(structuredClone(data) as AnyDocument);
+  return structuredClone(data) as ToonDocument;
 }
 
 function failure(category: ValidationCategory, path: string, message: string): ValidationResult {
   return { ok: false, issues: [{ category, path, message }] };
 }
 
-function semanticIssues(doc: AnyDocument): ValidationIssue[] {
+function semanticIssues(doc: ToonDocument): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   let totalPoints = 0;
-  const toolCount = doc.schema_version === 1 ? 0 : doc.tools.length;
+  const toolCount = doc.tools.length;
 
-  // v3 keeps cells per layer; v1/v2 are a single implicit layer at /frames.
-  const cells: { path: string; frames: { strokes: { points: number[]; tool_id?: number }[] }[] }[] =
-    doc.schema_version >= 3
-      ? (doc as ToonDocumentV3).layers.map((layer, l) => ({ path: `/layers/${l}/frames`, frames: layer.frames }))
-      : [{ path: '/frames', frames: (doc as ToonDocumentV2).frames }];
+  const cells = doc.layers.map((layer, l) => ({
+    path: `/layers/${l}/frames`,
+    frames: layer.frames,
+  }));
 
   // The schema cannot express "every layer has the same number of frames".
-  if (doc.schema_version >= 3) {
-    const layers = (doc as ToonDocumentV3).layers;
-    const expected = layers[0].frames.length;
-    layers.forEach((layer, l) => {
-      if (layer.frames.length !== expected) {
-        issues.push({
-          category: 'semantic',
-          path: `/layers/${l}/frames`,
-          message: `layer has ${layer.frames.length} frames; every layer must have ${expected}`,
-        });
-      }
-    });
-  }
+  const expected = doc.layers[0].frames.length;
+  doc.layers.forEach((layer, l) => {
+    if (layer.frames.length !== expected) {
+      issues.push({
+        category: 'semantic',
+        path: `/layers/${l}/frames`,
+        message: `layer has ${layer.frames.length} frames; every layer must have ${expected}`,
+      });
+    }
+  });
 
   for (const { path, frames } of cells) {
     frames.forEach((frame, f) => {
@@ -168,6 +120,16 @@ function semanticIssues(doc: AnyDocument): ValidationIssue[] {
           return;
         }
         totalPoints += stroke.points.length / 2;
+        // A cubic stroke is a start point plus whole segments of six numbers;
+        // anything else would leave the reader with half a curve in hand.
+        const tool: ToolDescriptor | undefined = doc.tools[stroke.tool_id];
+        if (tool?.geometry === 'cubic' && (stroke.points.length - 2) % 6 !== 0) {
+          issues.push({
+            category: 'semantic',
+            path: `${base}/points`,
+            message: `cubic geometry needs 2 + 6n coordinates, got ${stroke.points.length}`,
+          });
+        }
         if (stroke.tool_id !== undefined && stroke.tool_id >= toolCount) {
           issues.push({
             category: 'semantic',

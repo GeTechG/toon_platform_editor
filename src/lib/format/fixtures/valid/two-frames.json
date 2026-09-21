@@ -1,18 +1,67 @@
 {
-  "schema_version": 1,
+  "schema_version": 7,
   "width": 4800,
   "height": 2400,
   "frame_rate": 24,
-  "frames": [
+  "tools": [
     {
-      "strokes": [
-        { "points": [0, 0, 2400, 1200, 4800, 2400], "width": 32, "color": "#000000" },
-        { "points": [100, 100], "width": 160, "color": "#ff3300" }
-      ]
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 32,
+      "color": "#000000"
     },
     {
-      "strokes": [
-        { "points": [4800, 0, 0, 2400], "width": 16, "color": "#00aa55" }
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 160,
+      "color": "#ff3300"
+    },
+    {
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 16,
+      "color": "#00aa55"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                2400,
+                1200,
+                4800,
+                2400
+              ],
+              "tool_id": 0
+            },
+            {
+              "points": [
+                100,
+                100
+              ],
+              "tool_id": 1
+            }
+          ]
+        },
+        {
+          "strokes": [
+            {
+              "points": [
+                4800,
+                0,
+                0,
+                2400
+              ],
+              "tool_id": 2
+            }
+          ]
+        }
       ]
     }
   ]

@@ -6,7 +6,7 @@
 import { BACKGROUND_COLOR } from '../format/constants';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
-import { emitSmoothedPath, type PathSink } from './smoothing';
+import { emitGeometry, type PathSink } from './smoothing';
 import { interpolatePixelLine } from '../tools/pixel';
 import {
   emitPathForTool,
@@ -150,7 +150,7 @@ export function renderRawPolyline(
   drawStrokePath(target, points, width, color, false, fill);
 }
 
-/** Dialect-aware live preview for prepared profile geometry. */
+/** Live preview of points a brush has already prepared. */
 export function renderResolvedPreview(
   points: readonly number[],
   tool: ToolDescriptor,
@@ -255,10 +255,12 @@ function drawResolvedStroke(
     target.fill();
     return;
   }
-  // Frame.addSpline: one point, or two equal ones, is a circle of the pen's radius.
+  // One point, or two equal ones, is a dot of the pen's radius — one rule for
+  // every brush. (Multator drew it as a filled circle; Tonio reached the same
+  // picture by nudging a degenerate curve under a round cap.)
   const dot = points.length === 2
     || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
-  if (dot && tool.dialect === 'multator') {
+  if (dot) {
     target.fillStyle = color;
     target.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
     target.fill();
@@ -335,7 +337,7 @@ function drawStrokePath(
   target.lineCap = 'round';
   target.lineJoin = 'round';
   if (smooth) {
-    emitSmoothedPath(points, target);
+    emitGeometry(points, 'smooth', false, target);
   } else {
     target.moveTo(points[0], points[1]);
     for (let i = 1; i < points.length / 2; i++) {

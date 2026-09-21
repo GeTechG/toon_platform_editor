@@ -17,21 +17,21 @@ describe('the multator type is a brush of the multator canvas', () => {
   });
 
   it('fixes the multator canvas, whatever preset holds it', () => {
-    expect(plugins.tool('multator-pencil')?.stroke?.dialect).toBe('multator');
-    expect(plugins.tool('multator-eraser')?.stroke?.dialect).toBe('multator');
+    expect(plugins.tool('multator-pencil')?.stroke?.rules?.()?.canvas).toBe(600);
+    expect(plugins.tool('multator-eraser')?.stroke?.rules?.()?.canvas).toBe(600);
   });
 
   it('draws the plain multator line: no capture and no commit of its own', () => {
     for (const id of ['multator-pencil', 'multator-eraser']) {
-      expect(plugins.tool(id)?.stroke?.capture).toBeUndefined();
-      expect(plugins.tool(id)?.stroke?.commit).toBeUndefined();
+      expect(plugins.tool(id)?.stroke?.rules?.()?.commit).toBeUndefined();
+      expect(plugins.tool(id)?.stroke?.rules?.()?.preview).toBeUndefined();
     }
     expect(plugins.tool('multator-pencil')?.stroke?.descriptor({
-      width: 64, color: '#ff0000', fill: '#ffffff', dialect: 'toonio',
-    })).toEqual({ kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' });
+      width: 64, color: '#ff0000', fill: '#ffffff',
+    })).toEqual({ kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' });
     expect(plugins.tool('multator-eraser')?.stroke?.descriptor({
-      width: 64, color: '#ff0000', fill: '#ffffff', dialect: 'toonio',
-    })).toEqual({ kind: 'eraser', dialect: 'multator', width: 64 });
+      width: 64, color: '#ff0000', fill: '#ffffff',
+    })).toEqual({ kind: 'eraser', geometry: 'smooth', width: 64 });
   });
 
   it('is on no panel — it is a type of the brush in hand, not a key', () => {

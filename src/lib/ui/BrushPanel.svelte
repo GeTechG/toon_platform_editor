@@ -58,7 +58,7 @@
    * sample, so it stops at a width where the shape of the line still reads.
    */
   function preview(tool: string) {
-    return brushPreview(tool, editor.defaultDialect, Math.min(editor.brushSizeLogical, 16), {
+    return brushPreview(tool, editor.defaultBrush, Math.min(editor.brushSizeLogical, 16), {
       width: editor.brushSizeLogical,
       smooth: editor.tonioSmooth,
       minDistance: editor.tonioMinDistance,

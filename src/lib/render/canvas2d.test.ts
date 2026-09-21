@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
 import { canonicalize } from '../format/canonical';
-import { loadDocument } from '../format/validate';
 import { SQUARE_STAMP } from '../format/types';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import {
@@ -92,6 +91,9 @@ class RecordingCtx implements Canvas2DLike {
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
     this.log.push(`quadraticCurveTo(${cpx},${cpy},${x},${y})`);
   }
+  bezierCurveTo(a: number, b: number, c: number, d: number, x: number, y: number): void {
+    this.log.push(`bezierCurveTo(${a},${b},${c},${d},${x},${y})`);
+  }
 }
 
 /** Small deterministic test rasterizer used only to freeze representative pixels. */
@@ -147,6 +149,13 @@ class RasterCtx implements Canvas2DLike {
   lineTo(x: number, y: number): void {
     this.#path.push([x * this.#scale, y * this.#scale]);
   }
+  bezierCurveTo(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void {
+    // Flattened through its control polygon — enough for a pixel signature.
+    this.lineTo(c1x, c1y);
+    this.lineTo(c2x, c2y);
+    this.lineTo(x, y);
+  }
+
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
     const control: [number, number] = [cpx * this.#scale, cpy * this.#scale];
     if (this.#path.length === 0) this.#path.push(control);
@@ -217,14 +226,14 @@ function rgba(color: string): number {
 const renderer = new Canvas2DFrameRenderer();
 const viewport = { scale: 0.125, dpr: 2 };
 const sampleTools: ToolDescriptor[] = [
-  { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
-  { kind: 'pencil', dialect: 'multator', width: 160, color: '#ff3300' },
-  { kind: 'pencil', dialect: 'multator', width: 16, color: '#00aa55' },
+  { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' },
+  { kind: 'pencil', geometry: 'smooth', width: 160, color: '#ff3300' },
+  { kind: 'pencil', geometry: 'smooth', width: 16, color: '#00aa55' },
 ];
 
 function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 6,
+    schema_version: 7,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -344,9 +353,9 @@ describe('Canvas2DFrameRenderer', () => {
   });
 
   it('matches Tonio golden commands and representative DPR 1 pixels', () => {
-    const frame: Frame = { strokes: [{ points: [80, 80, 320, 200, 320, 200], tool_id: 0 }] };
+    const frame: Frame = { strokes: [{ points: [80, 80, 80, 80, 320, 200, 320, 200], tool_id: 0 }] };
     const tools: ToolDescriptor[] = [
-      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#123456' },
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
     ];
     const recording = new RecordingCtx();
     renderer.render(docOf(tools, [frame]), 0, recording, { scale: 0.125, dpr: 1 });
@@ -354,8 +363,9 @@ describe('Canvas2DFrameRenderer', () => {
       'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
       'setTransform(0.125,0,0,0.125,0,0)', 'beginPath()', 'lineWidth=40',
       'strokeStyle=#123456', 'lineCap=round', 'lineJoin=round',
+      'moveTo(80,80)',
       'quadraticCurveTo(80,80,200,140)',
-      'quadraticCurveTo(320.01,200.01,320.005,200.005)', 'stroke()',
+      'quadraticCurveTo(320,200,320,200)', 'stroke()',
     ]);
     const raster = new RasterCtx();
     renderer.render(docOf(tools, [frame]), 0, raster, { scale: 0.125, dpr: 1 });
@@ -372,10 +382,10 @@ describe('Canvas2DFrameRenderer', () => {
 });
 
 describe('layer composition', () => {
-  const black: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' };
-  const red: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 400, color: '#ff0000' };
-  const eraser: ToolDescriptor = { kind: 'eraser', dialect: 'multator', width: 400 };
-  const contourEraser: ToolDescriptor = { kind: 'contour-eraser', dialect: 'multator' };
+  const black: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
+  const red: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 400, color: '#ff0000' };
+  const eraser: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 400 };
+  const contourEraser: ToolDescriptor = { kind: 'contour-eraser', geometry: 'smooth' };
   const tools = [black, red, eraser, contourEraser];
   const wide = [0, 1200, 4800, 1200];
 
@@ -456,8 +466,8 @@ describe('single-layer fast path', () => {
 
   it('a frame with erasers takes the composited path', () => {
     const tools: ToolDescriptor[] = [
-      { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
-      { kind: 'eraser', dialect: 'multator', width: 400 },
+      { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' },
+      { kind: 'eraser', geometry: 'smooth', width: 400 },
     ];
     const ctx = new RecordingCtx();
     const scratch: string[] = [];
@@ -469,16 +479,6 @@ describe('single-layer fast path', () => {
     expect(ctx.log).toContain('drawImage(scratch,0,0)');
   });
 
-  it('a migrated v2 document renders exactly as it did before migration', () => {
-    const v2 = {
-      schema_version: 2, width: 4800, height: 2400, frame_rate: 12,
-      tools: sampleTools,
-      frames: sampleDoc().layers[0].frames,
-    };
-    const migrated = loadDocument(v2);
-    expect(renderToLog(migrated)).toEqual(renderToLog(sampleDoc()));
-    expect(rasterSignature(migrated)).toBe(rasterSignature(sampleDoc()));
-  });
 });
 
 describe('renderStrokesLayer (composited layer)', () => {
@@ -509,8 +509,8 @@ describe('renderStrokesLayer (composited layer)', () => {
     };
     const ctx = new RecordingCtx();
     renderStrokesLayer(frame, [
-      { kind: 'eraser', dialect: 'multator', width: 32 },
-      { kind: 'pencil', dialect: 'multator', width: 16, color: '#00aa55' },
+      { kind: 'eraser', geometry: 'smooth', width: 32 },
+      { kind: 'pencil', geometry: 'smooth', width: 16, color: '#00aa55' },
     ], ctx, viewport);
     const out = ctx.log.indexOf('globalCompositeOperation=destination-out');
     const back = ctx.log.indexOf('globalCompositeOperation=source-over');
@@ -525,7 +525,7 @@ describe('renderStrokesLayer (composited layer)', () => {
       strokes: [{ points: [0, 0, 100, 100, 200, 200], tool_id: 0 }],
     };
     const ctx = new RecordingCtx();
-    renderStrokesLayer(frame, [{ kind: 'pencil', dialect: 'multator', width: 32, color: '#ffffff' }], ctx, viewport);
+    renderStrokesLayer(frame, [{ kind: 'pencil', geometry: 'smooth', width: 32, color: '#ffffff' }], ctx, viewport);
     const log = ctx.log.join('\n');
     expect(log).not.toContain('globalCompositeOperation=destination-out');
     expect(log).toContain('strokeStyle=#ffffff');
@@ -536,7 +536,7 @@ describe('renderStrokesLayer (composited layer)', () => {
       strokes: [{ points: [0, 0, 100, 100, 200, 200], tool_id: 0 }],
     };
     const ctx = new RecordingCtx();
-    renderStrokesLayer(frame, [{ kind: 'eraser', dialect: 'multator', width: 32 }], ctx, viewport, '#ff3b30');
+    renderStrokesLayer(frame, [{ kind: 'eraser', geometry: 'smooth', width: 32 }], ctx, viewport, '#ff3b30');
     const log = ctx.log.join('\n');
     expect(log).toContain('globalCompositeOperation=destination-out');
     expect(log).not.toContain('strokeStyle=#ff3b30');
@@ -545,8 +545,8 @@ describe('renderStrokesLayer (composited layer)', () => {
 
 describe('contour tools (oldschool pen)', () => {
   const contourTools: ToolDescriptor[] = [
-    { kind: 'contour', dialect: 'multator', color: '#ff0000' },
-    { kind: 'contour-eraser', dialect: 'multator' },
+    { kind: 'contour', geometry: 'smooth', color: '#ff0000' },
+    { kind: 'contour-eraser', geometry: 'smooth' },
   ];
   // A 4-point square contour: closed midpoint multicurve, filled.
   const square = [0, 0, 80, 0, 80, 80, 0, 80];
@@ -593,14 +593,15 @@ describe('contour tools (oldschool pen)', () => {
 
 describe('Tonio feather and pixel tools', () => {
   const tools: ToolDescriptor[] = [
-    { kind: 'feather', dialect: 'toonio', width: 32, color: '#000000', fill: '#ff0000' },
-    { kind: 'stamp', dialect: 'toonio', width: 16, color: '#0026ff', shape: SQUARE_STAMP },
+    { kind: 'feather', geometry: 'smooth', width: 32, color: '#000000', fill: '#ff0000' },
+    { kind: 'stamp', geometry: 'line', width: 16, color: '#0026ff', shape: SQUARE_STAMP },
   ];
 
   it('the feather fills the path before stroking it (tools.js Feather.PostDraw)', () => {
     const ctx = new RecordingCtx();
-    // Tonio committed lines carry the duplicated endpoint sentinel.
-    const line = [0, 0, 40, 0, 40, 40, 40, 40];
+    // A line the Tonio brush laid down: its first point repeated for the phase,
+    // and its own duplicated endpoint at the tail.
+    const line = [0, 0, 0, 0, 40, 0, 40, 40, 40, 40];
     renderer.render(docOf(tools, [{ strokes: [{ points: line, tool_id: 0 }] }]), 0, ctx, { scale: 1, dpr: 1 });
     const from = ctx.log.indexOf('beginPath()');
     expect(ctx.log.slice(from)).toEqual([
@@ -610,10 +611,12 @@ describe('Tonio feather and pixel tools', () => {
       'strokeStyle=#000000',
       'lineCap=round',
       'lineJoin=round',
+      'moveTo(0,0)',
       'quadraticCurveTo(0,0,20,0)',
       'quadraticCurveTo(40,0,40,20)',
-      // Duplicated endpoint sentinel → the reference's +0.01 Chrome workaround.
-      'quadraticCurveTo(40.01,40.01,40.004999999999995,40.004999999999995)',
+      // The tail lands on the endpoint itself: the reference nudged it by
+      // +0.01 only to keep its own emitter from dividing by zero.
+      'quadraticCurveTo(40,40,40,40)',
       'fill()',
       'stroke()',
     ]);

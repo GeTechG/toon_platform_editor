@@ -12,6 +12,7 @@ import { DEFAULT_BRUSH_SIZE_LOGICAL } from '../lib/format/constants';
 import type { ToonDocument } from '../lib/format/types';
 import { addFrame, addLayer, addStroke, createDocument } from '../lib/model/operations';
 import { StrokeBuilder, brushWidthDoc } from '../lib/tools/stroke-builder';
+import { layToonioPoints } from '../lib/plugins/brushes/toonio';
 
 export interface CorpusOptions {
   /** L — layers in the corpus. Default 1 (Multator class); 5 is the Toonio profile. */
@@ -19,7 +20,7 @@ export interface CorpusOptions {
   frames: number;
   strokesPerFrame: number;
   pointsPerStroke: number;
-  /** Every Nth stroke uses Tonio geometry; 0 keeps the corpus Multator-only. */
+  /** Every Nth stroke is laid down by the Tonio brush; 0 keeps the corpus Multator-only. */
   mixedEvery?: number;
 }
 
@@ -45,8 +46,10 @@ export function buildCorpus(opts: CorpusOptions): ToonDocument {
         if (opts.mixedEvery && (f * opts.strokesPerFrame + s) % opts.mixedEvery === 0) {
           const last = stroke.points.slice(-2);
           addStroke(doc, l, f, {
-            points: [...stroke.points, ...last],
-            tool: { kind: 'pencil', dialect: 'toonio', width, color },
+            // Laid down the way the Tonio brush lays a line: its endpoint
+            // sentinel, and its first point repeated for the phase.
+            points: layToonioPoints([...stroke.points, ...last]),
+            tool: { kind: 'pencil', geometry: 'smooth', width, color },
           });
         } else {
           addStroke(doc, l, f, stroke);

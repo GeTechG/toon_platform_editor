@@ -16,7 +16,7 @@ import {
   PALETTE_LIMIT_MAX,
   PALETTE_LIMIT_MIN,
   presetBrushType,
-  presetDefaultDialect,
+  presetDefaultBrush,
   presetUx,
 } from './presets';
 import { defaultPanels, movePanelItem } from './panels';
@@ -30,9 +30,9 @@ test('a preset is behaviour only — no set of buttons of its own', () => {
 });
 
 test('compatibility presets select their drawing profile through existing preset logic', () => {
-  expect(PRESETS.find((preset) => preset.id === 'toonop')?.defaultDialect).toBe('toonio');
-  expect(PRESETS.find((preset) => preset.id === 'multator')?.defaultDialect).toBe('multator');
-  expect(PRESETS.find((preset) => preset.id === 'toonio')?.defaultDialect).toBe('toonio');
+  expect(PRESETS.find((preset) => preset.id === 'toonop')?.defaultBrush).toBe('toonio');
+  expect(PRESETS.find((preset) => preset.id === 'multator')?.defaultBrush).toBe('multator');
+  expect(PRESETS.find((preset) => preset.id === 'toonio')?.defaultBrush).toBe('toonio');
 });
 
 test('each preset owns a UX profile: Multator reproduces the reference, others keep toonop', () => {
@@ -46,8 +46,8 @@ test('UX profile lookup falls back to toonop for an unknown preset', () => {
 });
 
 test('preset drawing profile lookup falls back to the Toonop profile', () => {
-  expect(presetDefaultDialect('toonio')).toBe('toonio');
-  expect(presetDefaultDialect('nope')).toBe('toonio');
+  expect(presetDefaultBrush('toonio')).toBe('toonio');
+  expect(presetDefaultBrush('nope')).toBe('toonio');
 });
 
 test('parseUiConfig round-trips a valid stored config', () => {

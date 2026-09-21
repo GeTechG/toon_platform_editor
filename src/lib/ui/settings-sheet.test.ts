@@ -272,7 +272,7 @@ describe('«режим мышки» is the coalesced switch, and nothing else', 
   it('is offered only where there is something to switch off', () => {
     // Multator never unpacks a coalesced batch, so under its canvas the
     // option had nothing left to do once the old pen became a brush.
-    expect(sheet).toContain("editor.defaultDialect === 'toonio'");
+    expect(sheet).toContain("editor.defaultBrush === 'toonio'");
   });
 });
 

@@ -1,4 +1,4 @@
 {
-  "canonical": "{\"frame_rate\":12,\"frames\":[{\"strokes\":[{\"points\":[10,20,30,40],\"tool_id\":0},{\"points\":[-8,-16,4808,2416],\"tool_id\":1}]}],\"height\":2400,\"schema_version\":2,\"tools\":[{\"color\":\"#123456\",\"dialect\":\"multator\",\"kind\":\"pencil\",\"width\":32},{\"dialect\":\"toonio\",\"kind\":\"eraser\",\"width\":40}],\"width\":4800}",
-  "sha256": "323b9e9c0a978f72e62be655a641040878738b0579c22e38b7e47ba60b3c070e"
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[10,20,30,40],\"tool_id\":0},{\"points\":[-8,-16,4808,2416],\"tool_id\":1}]}],\"hidden\":false}],\"schema_version\":7,\"tools\":[{\"color\":\"#123456\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32},{\"geometry\":\"smooth\",\"kind\":\"eraser\",\"width\":40}],\"width\":4800}",
+  "sha256": "c7b7ccbda8a9375cfc5d22c187253b0efba17a8971aee1858f50177de0423721"
 }

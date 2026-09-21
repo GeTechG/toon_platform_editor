@@ -8,8 +8,10 @@
  * from here, so the loader stays one loader.
  */
 
-import type { LineToolDescriptor, StrokeDialect } from '../format/types';
-import type { StrokeCommit } from '../tools/profiles';
+import type { LineToolDescriptor } from '../format/types';
+import type { StrokeRules } from '../tools/profiles';
+
+export type { StrokeRules };
 
 /** The contract major. A manifest asking for another one is not loaded. */
 export const PLUGIN_API = 1;
@@ -48,8 +50,6 @@ export interface PluginBrush {
   readonly width: number;
   readonly color: string;
   readonly fill: string;
-  /** The canvas the preset draws on, for a tool that has no opinion of its own. */
-  readonly dialect: StrokeDialect;
 }
 
 /**
@@ -68,8 +68,12 @@ export interface PluginBrush {
  */
 export interface PluginPrimitive {
   readonly kind: LineToolDescriptor['kind'];
-  /** The canvas its numbers are on, when the tool fixes one whatever the preset. */
-  readonly dialect?: StrokeDialect;
+  /**
+   * The brush's own rules, when it has them. A tool that declares none is
+   * drawn by the rules of the brush its preset picked — that is what "the
+   * everyday pencil follows the panel" means.
+   */
+  rules?(): StrokeRules | undefined;
   /** It lands on a grid: the canvas draws one, and the cursor is a cell. */
   readonly grid?: boolean;
   /**
@@ -80,22 +84,6 @@ export interface PluginPrimitive {
   readonly cut?: 'line' | 'cells' | 'closed';
   /** The descriptor frozen into the session, built from the brush in hand. */
   descriptor(brush: PluginBrush): LineToolDescriptor;
-  /**
-   * Collects the pointer's points itself, instead of the dialect's own
-   * capture. A tool that does this owns its points end to end: no smoothing of
-   * the dialect touches them, and the commit is `prepare` alone.
-   */
-  capture?(line: readonly number[], points: readonly number[], width: number): number[];
-  /** Thins the captured points when the gesture ends. */
-  prepare?(points: readonly number[], width: number, zoom: number): number[];
-  /**
-   * What the collected points become when the gesture ends. A brush that has
-   * one owns its stroke end to end and may hand back a descriptor of another
-   * kind than the one it drew with — the oldschool pen captures a line and
-   * commits a closed contour. The kind must still be one the format knows, or
-   * the stroke does not land in the frame.
-   */
-  readonly commit?: StrokeCommit;
 }
 
 /** A tool a plugin adds: how it is drawn, and what the gesture does. */

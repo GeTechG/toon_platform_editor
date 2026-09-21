@@ -8,7 +8,13 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FIXED_POINT_SCALE } from '../format/constants';
-import { emitTonioPath } from '../render/smoothing';
+import { emitGeometry } from '../render/smoothing';
+import {
+  layToonioPoints,
+  toonioPrepare,
+  toonioRules,
+  toonioSmooth,
+} from '../plugins/brushes/toonio';
 import { toDocument } from '../ui/viewport';
 import {
   beginStrokeSession,
@@ -16,8 +22,6 @@ import {
   finishStrokeEvent,
   commitStrokeSession,
   previewStrokeSession,
-  tonioPrepare,
-  tonioSmooth,
 } from './profiles';
 
 const REF = process.env.TOONIO_REF ?? '/home/sergey/Documents/toonio_editor';
@@ -85,10 +89,32 @@ function randomLine(rand: () => number): number[] {
 }
 
 class PathRecorder {
-  ops: string[] = [];
-  moveTo(x: number, y: number) { this.ops.push(`M${x},${y}`); }
-  lineTo(x: number, y: number) { this.ops.push(`L${x},${y}`); }
-  quadraticCurveTo(cx: number, cy: number, x: number, y: number) { this.ops.push(`Q${cx},${cy},${x},${y}`); }
+  ops: (string | number)[][] = [];
+  moveTo(x: number, y: number) { this.ops.push(['M', x, y]); }
+  lineTo(x: number, y: number) { this.ops.push(['L', x, y]); }
+  quadraticCurveTo(cx: number, cy: number, x: number, y: number) { this.ops.push(['Q', cx, cy, x, y]); }
+  bezierCurveTo(a: number, b: number, c: number, d: number, x: number, y: number) {
+    this.ops.push(['C', a, b, c, d, x, y]);
+  }
+}
+
+/**
+ * The reference nudged a curve by this much where two points coincided, so its
+ * own emitter would not divide by zero; the shared reader has no such need and
+ * lands on the point itself. 0.01 reference px is 1/800 of a logical pixel, and
+ * it is the only place our line may differ from tools.js.
+ */
+const REFERENCE_NUDGE = 0.01 + 1e-9;
+
+/** Asserts two command streams have the same shape and differ by at most `tol`. */
+function expectSameCurve(ours: (string | number)[][], theirs: (string | number)[][], tol: number) {
+  expect(ours.map((op) => op[0])).toEqual(theirs.map((op) => op[0]));
+  for (let i = 0; i < theirs.length; i++) {
+    expect(ours[i].length).toBe(theirs[i].length);
+    for (let j = 1; j < theirs[i].length; j++) {
+      expect(Math.abs((ours[i][j] as number) - (theirs[i][j] as number))).toBeLessThanOrEqual(tol);
+    }
+  }
 }
 
 const toDoc = (p: readonly number[]) => p.map((v) => v * FIXED_POINT_SCALE);
@@ -108,19 +134,22 @@ describe.skipIf(!available)('Tonio drawing parity with the reference checkout', 
       const line: RefLine = { d: { t: 1, w: 5, c: '#000000' }, p: p.slice(), s, m };
 
       const refSmooth = ref.tool.Smooth(line);
-      expect(fromDoc(tonioSmooth(toDoc(p), s))).toEqual(refSmooth.p);
+      expect(fromDoc(toonioSmooth(toDoc(p), s))).toEqual(refSmooth.p);
 
       const refPrepared = ref.tool.Prepare(refSmooth);
-      expect(fromDoc(tonioPrepare(tonioSmooth(toDoc(p), s), m, zoom))).toEqual(refPrepared.p);
+      expect(fromDoc(toonioPrepare(toonioSmooth(toDoc(p), s), m, zoom))).toEqual(refPrepared.p);
 
       // Live path (Smooth) and committed path (Prepare) rasterize through the
       // same Curve. Our path runs in document units, so compare after /8.
-      for (const [theirs, ours] of [[refSmooth.p, refSmooth.p], [refPrepared.p, refPrepared.p]] as const) {
+      for (const points of [refSmooth.p, refPrepared.p] as const) {
         const a = new PathRecorder();
-        ref.tool.Curve(a, { ...line, p: theirs });
+        ref.tool.Curve(a, { ...line, p: points });
         const b = new PathRecorder();
-        emitTonioPath(ours, b);
-        expect(b.ops).toEqual(a.ops);
+        emitGeometry(layToonioPoints(points), 'smooth', false, b);
+        // The shared reader opens with a moveTo the reference leaned on the
+        // canvas to do for it; from there the curves are the same line.
+        expect(b.ops[0]).toEqual(['M', points[0], points[1]]);
+        expectSameCurve(b.ops.slice(1), a.ops, REFERENCE_NUDGE);
       }
     }
   });
@@ -171,16 +200,20 @@ describe.skipIf(!available)('Tonio drawing parity with the reference checkout', 
         });
         return { pointerId: e.pointerId, isPrimary: true, x: sx, y: sy, coalesced };
       };
-      const session = beginStrokeSession('toonio', sample(events[0]), { kind: 'pencil', dialect: 'toonio', width: 40, color: '#000000' }, { smooth: 3, minDistance: 3 }, 1, zoom);
+      const session = beginStrokeSession(sample(events[0]), { kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }, toonioRules({ smooth: 3, minDistance: 3 }), 1, zoom);
       for (const e of events.slice(1, -1)) appendStrokeEvent(session, sample(e));
       if (events.length > 1) finishStrokeEvent(session, sample(events[events.length - 1]));
 
       expect(fromDoc(session.rawPoints)).toEqual(expected);
-      // And the whole gesture, preview and commit, lands where the reference lands.
+      // And the whole gesture, preview and commit, lands where the reference
+      // lands — laid down for the shared reader, which is the repeated first
+      // point and nothing else.
       ref.toonio.drawWindow.scale = zoom;
       const line: RefLine = { d: { t: 1, w: 5, c: '#000000' }, p: expected, s: 3, m: 3 };
-      expect(fromDoc(previewStrokeSession(session))).toEqual(ref.tool.Smooth(line).p);
-      expect(fromDoc(commitStrokeSession(session).points)).toEqual(ref.tool.Prepare(ref.tool.Smooth(line)).p);
+      expect(fromDoc(previewStrokeSession(session)))
+        .toEqual(layToonioPoints(ref.tool.Smooth(line).p));
+      expect(fromDoc(commitStrokeSession(session).points))
+        .toEqual(layToonioPoints(ref.tool.Prepare(ref.tool.Smooth(line)).p));
     }
   });
 });

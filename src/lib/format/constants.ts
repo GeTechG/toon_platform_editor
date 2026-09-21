@@ -4,7 +4,7 @@
  */
 
 /** Version the editor writes; older ones are migrated on load. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 /** Highest schema version the loader accepts. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 /** New documents take the reference Tonio canvas (toonio.ru draws 1280×720). */
@@ -24,7 +24,7 @@ export const PLAYER_FPS_MIN = 5;
 export const PLAYER_FPS_MAX = 24;
 
 /**
- * Brush sizes, in pixels of the dialect's own reference canvas (Multator's
+ * Brush sizes, in pixels of the brush's own reference canvas (Multator's
  * 600-wide one) — `canvasCoordinateScale` maps them onto the document.
  */
 export const BRUSH_SIZES_LOGICAL = [2, 4, 6, 10, 20] as const;

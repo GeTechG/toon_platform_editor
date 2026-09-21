@@ -186,7 +186,7 @@ describe('loadPalette', () => {
 describe('stealPalette', () => {
   /** A document whose tool table carries the colours to steal. */
   const doc = (tools: ToolDescriptor[]): ToonDocument => ({
-    schema_version: 6,
+    schema_version: 7,
     width: 10240,
     height: 5760,
     frame_rate: 12,
@@ -196,21 +196,21 @@ describe('stealPalette', () => {
 
   it('appends the colours of the opened document the grid lacks', () => {
     const stolen = stealPalette(['#000000'], doc([
-      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#Ff0000' },
-      { kind: 'eraser', dialect: 'toonio', width: 40 },
-      { kind: 'feather', dialect: 'toonio', width: 40, color: '#00ff00', fill: '#0000ff' },
-      { kind: 'pencil', dialect: 'toonio', width: 8, color: '#000000' },
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#Ff0000' },
+      { kind: 'eraser', geometry: 'smooth', width: 40 },
+      { kind: 'feather', geometry: 'smooth', width: 40, color: '#00ff00', fill: '#0000ff' },
+      { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' },
     ]), 50);
     expect(stolen).toEqual(['#000000', '#ff0000', '#00ff00', '#0000ff']);
   });
 
   it('stops at the limit and leaves the grid alone when it has them all', () => {
     expect(stealPalette(['#000000'], doc([
-      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#ff0000' },
-      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#00ff00' },
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#ff0000' },
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#00ff00' },
     ]), 2)).toEqual(['#000000', '#ff0000']);
     expect(stealPalette(['#ff0000'], doc([
-      { kind: 'pencil', dialect: 'toonio', width: 40, color: '#ff0000' },
+      { kind: 'pencil', geometry: 'smooth', width: 40, color: '#ff0000' },
     ]), 50)).toEqual(['#ff0000']);
   });
 });
@@ -226,14 +226,14 @@ describe('a palette is a set: one swatch per colour', () => {
 
   it('stealPalette takes a colour used by two tools only once', () => {
     const doc: ToonDocument = {
-      schema_version: 6,
+      schema_version: 7,
       width: 10240,
       height: 5760,
       frame_rate: 12,
       tools: [
-        { kind: 'pencil', dialect: 'toonio', width: 40, color: '#e2e8f0' },
-        { kind: 'pencil', dialect: 'toonio', width: 144, color: '#e2e8f0' },
-        { kind: 'feather', dialect: 'toonio', width: 40, color: '#e2e8f0', fill: '#e2e8f0' },
+        { kind: 'pencil', geometry: 'smooth', width: 40, color: '#e2e8f0' },
+        { kind: 'pencil', geometry: 'smooth', width: 144, color: '#e2e8f0' },
+        { kind: 'feather', geometry: 'smooth', width: 40, color: '#e2e8f0', fill: '#e2e8f0' },
       ],
       layers: [{ hidden: false, frames: [{ strokes: [] }] }],
     };

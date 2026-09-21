@@ -1,6 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 7,
   "width": 4800,
   "height": 2400,
-  "frame_rate": 12
+  "frame_rate": 12,
+  "tools": []
 }

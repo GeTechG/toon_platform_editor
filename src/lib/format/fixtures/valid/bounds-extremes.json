@@ -1,12 +1,32 @@
 {
-  "schema_version": 1,
+  "schema_version": 7,
   "width": 16,
   "height": 16,
   "frame_rate": 60,
-  "frames": [
+  "tools": [
     {
-      "strokes": [
-        { "points": [0, 0, 16, 16], "width": 1, "color": "#ffffff" }
+      "kind": "eraser",
+      "geometry": "smooth",
+      "width": 1
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                16,
+                16
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
       ]
     }
   ]

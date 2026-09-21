@@ -94,6 +94,7 @@ import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
 import { plugins } from '../plugins';
+import { brushIdForCanvas } from '../plugins/brushes';
 import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
 import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from '../plugins/install';
 import { listInstalled, removeInstalled } from '../plugins/store';
@@ -153,7 +154,7 @@ import {
   DEFAULT_SETTINGS,
   loadUiConfig,
   presetBrushType,
-  presetDefaultDialect,
+  presetDefaultBrush,
   presetPanels,
   presetUx,
   saveUiConfig,
@@ -162,7 +163,7 @@ import {
   SIDE_WIDTH_MAX,
   SIDE_WIDTH_MIN,
   type BrushToolId,
-  type DrawingProfileId,
+  type BrushId,
   type EditorSettings,
   type SideId,
   type TonioBrush,
@@ -263,7 +264,7 @@ export class EditorState {
    * preset's. Nothing else hangs on it: how the canvas is rasterised and what
    * Alt+S saves belong to the UX profile, and a width belongs to the brush.
    */
-  defaultDialect = $state<DrawingProfileId>(presetDefaultDialect(DEFAULT_PRESET));
+  defaultBrush = $state<BrushId>(presetDefaultBrush(DEFAULT_PRESET));
   multatorByTool = $state<Record<BrushToolId, TonioBrush>>(copyBrushes(DEFAULT_DRAWING_UI_CONFIG.multatorByTool));
   /**
    * Tonio width, smoothing and minimum per tool: the reference keeps a brush
@@ -435,7 +436,7 @@ export class EditorState {
       this.preset = saved.preset;
       this.panels = saved.panels;
       this.floatPos = saved.floatPos;
-      this.defaultDialect = saved.drawing.activeProfile;
+      this.defaultBrush = saved.drawing.activeProfile;
       this.multatorByTool = copyBrushes(saved.drawing.multatorByTool);
       this.tonioByTool = copyBrushes(saved.drawing.tonioByTool);
       this.pickSource = saved.drawing.pickSource;
@@ -505,9 +506,9 @@ export class EditorState {
    * different brush to the person drawing — switching it MUST NOT move the
    * slider or its ceiling.
    */
-  get brushCanvas(): DrawingProfileId {
-    const own = plugins.tool(this.tool)?.stroke?.dialect;
-    return own === 'multator' || own === 'toonio' ? own : this.defaultDialect;
+  get brushCanvas(): BrushId {
+    const own = plugins.tool(this.tool)?.stroke?.rules?.()?.canvas;
+    return own === undefined ? this.defaultBrush : brushIdForCanvas(own, this.defaultBrush);
   }
 
   /**
@@ -534,7 +535,7 @@ export class EditorState {
    * would be two numbers that change nothing — and the panel leaves them out.
    */
   get brushSmooths(): boolean {
-    return brushUsesSmoothing(this.brushTool, this.defaultDialect);
+    return brushUsesSmoothing(this.brushTool, this.defaultBrush);
   }
 
   get tonioSmooth(): number {
@@ -582,7 +583,7 @@ export class EditorState {
     // own colour widget — on the same panels.
     this.panels = presetPanels(id);
     this.ensureActiveLayerVisible();
-    this.defaultDialect = presetDefaultDialect(id);
+    this.defaultBrush = presetDefaultBrush(id);
     // Multator opens with its own line in hand; the other presets with the
     // everyday brush. A type picked afterwards stays until the next preset.
     this.brushType = presetBrushType(id);
@@ -1936,7 +1937,7 @@ export class EditorState {
         this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
       ) as Record<string, { x: number; y: number }>,
       drawing: {
-        activeProfile: this.defaultDialect,
+        activeProfile: this.defaultBrush,
         tonioByTool: copyBrushes(this.tonioByTool),
         multatorByTool: copyBrushes(this.multatorByTool),
         pickSource: this.pickSource,

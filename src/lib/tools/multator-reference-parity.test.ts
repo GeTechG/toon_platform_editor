@@ -12,7 +12,8 @@ import { join } from 'node:path';
 import { FIXED_POINT_SCALE } from '../format/constants';
 import type { Frame, ToolDescriptor } from '../format/types';
 import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
-import { emitMultatorPath } from '../render/smoothing';
+import { emitGeometry } from '../render/smoothing';
+import { MULTATOR_RULES } from '../plugins/brushes/multator';
 import { simplifyLang } from './simplify';
 import {
   appendStrokeEvent,
@@ -75,6 +76,9 @@ class PathRecorder {
   moveTo(x: number, y: number) { this.ops.push(`M${x},${y}`); }
   lineTo(x: number, y: number) { this.ops.push(`L${x},${y}`); }
   quadraticCurveTo(cx: number, cy: number, x: number, y: number) { this.ops.push(`Q${cx},${cy},${x},${y}`); }
+  bezierCurveTo(a: number, b: number, c: number, d: number, x: number, y: number) {
+    this.ops.push(`C${a},${b},${c},${d},${x},${y}`);
+  }
 }
 
 /** Just enough context to see whether a stroke lands as a circle or a path. */
@@ -130,8 +134,8 @@ const sample = (p: Pt, k: number) => ({ pointerId: 1, isPrimary: true, x: p.x * 
 
 function ourCommit(g: ReturnType<typeof gesture>, coordinateScale = 1): number[] {
   const k = 1 / coordinateScale;
-  const descriptor: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' };
-  const session = beginStrokeSession('multator', sample(g.down, k), descriptor, undefined, coordinateScale);
+  const descriptor: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
+  const session = beginStrokeSession(sample(g.down, k), descriptor, MULTATOR_RULES, coordinateScale);
   for (const m of g.moves) appendStrokeEvent(session, sample(m, k));
   finishStrokeEvent(session, sample(g.up, k));
   return commitStrokeSession(session).points;
@@ -178,7 +182,7 @@ describe.skipIf(!available)('Multator drawing parity with the reference build', 
       const points = ourCommit(g);
       const asPts: Pt[] = [];
       for (let i = 0; i < points.length; i += 2) asPts.push({ x: points[i], y: points[i + 1] });
-      const tool: ToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' };
+      const tool: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
       const frame: Frame = { strokes: [{ points, tool_id: 0 }] };
       const ctx = new ShapeRecorder();
       renderStrokesLayer(frame, [tool], ctx, { scale: 1, dpr: 1 });
@@ -191,7 +195,7 @@ describe.skipIf(!available)('Multator drawing parity with the reference build', 
       }
       const expected = ref.multicurve(asPts, false);
       const ours = new PathRecorder();
-      emitMultatorPath(points, ours);
+      emitGeometry(points, 'smooth', false, ours);
       expect(ours.ops).toEqual(expected);
       expect(ctx.ops).toEqual(expected);
     }

@@ -5,19 +5,19 @@ import { plugins } from '.';
 import { brushOfType } from './brush-types';
 import { OLDSCHOOL_TWIN } from './oldschool';
 
-const PENCIL: LineToolDescriptor = { kind: 'pencil', dialect: 'multator', width: 64, color: '#ff0000' };
-const ERASER: LineToolDescriptor = { kind: 'eraser', dialect: 'multator', width: 64 };
+const PENCIL: LineToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000' };
+const ERASER: LineToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 64 };
 
 function commit(id: string, descriptor: LineToolDescriptor, points: readonly number[], coordinateScale = 1) {
-  const stroke = plugins.tool(id)?.stroke?.commit;
+  const stroke = plugins.tool(id)?.stroke?.rules?.()?.commit;
   if (!stroke) throw new Error(`${id} commits nothing`);
   return stroke(points, descriptor, { coordinateScale });
 }
 
 describe('the oldschool pen is a brush', () => {
   it('fixes the Multator canvas, whatever preset holds it', () => {
-    expect(plugins.tool('oldschool')?.stroke?.dialect).toBe('multator');
-    expect(plugins.tool('oldschool-eraser')?.stroke?.dialect).toBe('multator');
+    expect(plugins.tool('oldschool')?.stroke?.rules?.()?.canvas).toBe(600);
+    expect(plugins.tool('oldschool-eraser')?.stroke?.rules?.()?.canvas).toBe(600);
   });
 
   it('is on no preset panel — it is a type of the brush in hand, not a key', () => {
@@ -27,7 +27,7 @@ describe('the oldschool pen is a brush', () => {
 
   it('commits the line it drew as a filled contour of the pencil colour', () => {
     const stroke = commit('oldschool', PENCIL, [0, 0, 800, 0]);
-    expect(stroke.tool).toEqual({ kind: 'contour', dialect: 'multator', color: '#ff0000' });
+    expect(stroke.tool).toEqual({ kind: 'contour', geometry: 'smooth', color: '#ff0000' });
     // capsule around the 100 px segment at half width 4 px: 10 points
     expect(stroke.points).toHaveLength(20);
     expect(stroke.points.every(Number.isInteger)).toBe(true);
@@ -35,14 +35,14 @@ describe('the oldschool pen is a brush', () => {
 
   it('commits the eraser as a contour-eraser', () => {
     expect(commit('oldschool-eraser', ERASER, [0, 0, 800, 0]).tool)
-      .toEqual({ kind: 'contour-eraser', dialect: 'multator' });
+      .toEqual({ kind: 'contour-eraser', geometry: 'smooth' });
   });
 
   it('has no twin for the feather — a contour carries no fill', () => {
     // The reference ignored its flag for the feather; here the protection is
     // structural: there is no oldschool feather to pick as a type.
     expect(Object.keys(OLDSCHOOL_TWIN)).toEqual(['pencil', 'eraser']);
-    expect(plugins.tool('feather')?.stroke?.commit).toBeUndefined();
+    expect(plugins.tool('feather')?.stroke?.rules?.()).toBeUndefined();
   });
 
   it('is the old type of the brush in hand, not a tool of its own', () => {

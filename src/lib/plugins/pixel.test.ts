@@ -15,12 +15,12 @@ test('the pixel tool brings its own everything', () => {
   // The canvas its numbers are on, how points are captured, how they are
   // thinned on commit, what the mega eraser does to them, and the grid — all
   // of it is here, in the plugin.
-  expect(stroke?.dialect).toBe('toonio');
+  expect(stroke?.rules?.()?.canvas).toBe(1280);
   expect(stroke?.cut).toBe('cells');
   expect(stroke?.grid).toBe(true);
   expect(typeof stroke?.descriptor).toBe('function');
-  expect(typeof stroke?.capture).toBe('function');
-  expect(typeof stroke?.prepare).toBe('function');
+  expect(typeof stroke?.rules?.()?.capture).toBe('function');
+  expect(typeof stroke?.rules?.()?.prepare).toBe('function');
 });
 
 test('the editor knows the pixel only as a thing the renderer draws', () => {

@@ -240,9 +240,9 @@ test('a tool that fixes its canvas says so itself', () => {
   // The editor holds no table of which primitive belongs to which canvas: the
   // tool that lays one down names it, and a tool with no opinion draws on the
   // preset's.
-  expect(plugins.tool('pixel')?.stroke?.dialect).toBe('toonio');
-  expect(plugins.tool('pencil')?.stroke?.dialect).toBeUndefined();
-  expect(canvas).toContain('?.stroke?.dialect ?? editor.defaultDialect');
+  expect(plugins.tool('pixel')?.stroke?.rules?.()?.canvas).toBe(1280);
+  expect(plugins.tool('pencil')?.stroke?.rules).toBeUndefined();
+  expect(canvas).toContain('?.stroke?.rules?.()');
 });
 
 test('a grid comes with the primitive, not with a name', () => {
@@ -257,7 +257,7 @@ test('a brush that is a type of another stands on no panel', () => {
   expect(panelItems().map((item) => item.id)).not.toContain(toolItem('oldschool'));
   expect(defaultPanels().hidden).not.toContain(toolItem('oldschool'));
   // Still a tool of the register, so what draws with it finds it.
-  expect(toolSpec('oldschool')?.stroke?.dialect).toBe('multator');
+  expect(toolSpec('oldschool')?.stroke?.rules?.()?.canvas).toBe(600);
 });
 
 test('the brush type is picked in the brush box, not typed as a word', () => {
@@ -283,11 +283,11 @@ test('both types of a brush share one width', () => {
   // the canvas a width is measured on is the tool's in hand, not the one the
   // type resolves to — the old pen's contour is a Multator shape, but its
   // thickness is the same brush record the everyday line draws with.
-  expect(member(state, 'brushCanvas')).toContain('plugins.tool(this.tool)?.stroke?.dialect');
+  expect(member(state, 'brushCanvas')).toContain('plugins.tool(this.tool)?.stroke?.rules?.()');
   expect(member(state, 'brushCanvas')).not.toContain('brushTool');
   // The cursor ring is measured on that same canvas, or it would be twice
   // the line the old brush lays down.
-  expect(canvas).toContain('canvasCoordinateScale(editor.brushCanvas');
+  expect(canvas).toContain('presetBrushRules(editor.brushCanvas');
   // And the width handed to the brush is converted into the canvas the
   // stroke is laid on — the old contour is a Multator shape whatever canvas
   // the slider counts in.
@@ -300,9 +300,9 @@ test('the preset is asked about the preset, the canvas about the line', () => {
   // a brush draw that named no canvas of its own. Rasterisation, the project
   // file and the mouse-mode option are the preset's, and must not drift back.
   expect(editorUi).toContain('editor.ux.projectFile');
-  expect(editorUi).not.toContain('defaultDialect');
+  expect(editorUi).not.toContain('defaultBrush');
   expect(canvas).toContain('editor.ux.canvasDensity');
-  expect(canvas.match(/editor\.defaultDialect/g)).toHaveLength(1);
+  expect(canvas.match(/editor\.defaultBrush/g)).toHaveLength(1);
 });
 
 test('the stroke engine knows gestures, not tools', () => {
@@ -311,7 +311,10 @@ test('the stroke engine knows gestures, not tools', () => {
   // engine never learns whose they are.
   expect(engine).not.toContain('plugins');
   expect(engine).not.toContain('editor.tool');
-  expect(engine).toContain('OwnCapture');
+  expect(engine).toContain('StrokeRules');
+  // Nor any drawing application: the rules arrive as functions, unnamed.
+  expect(engine.toLowerCase()).not.toContain('multator');
+  expect(engine.toLowerCase()).not.toContain('toonio');
   // Not even the easter egg: what its gesture commits is the brush's rule.
   expect(engine).not.toContain('oldschool');
   expect(engine).not.toContain('Oldschool');

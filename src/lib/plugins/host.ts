@@ -8,7 +8,7 @@
  */
 
 import { clampCoord } from '../model/geom';
-import { TONIO_CANVAS_WIDTH } from '../tools/profiles';
+import { TONIO_CANVAS_WIDTH } from './brushes/toonio';
 import type { Stroke } from '../format/types';
 import type { PluginHost, PluginStroke } from './contract';
 

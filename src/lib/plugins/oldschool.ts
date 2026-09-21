@@ -15,7 +15,8 @@
 import { FIXED_POINT_SCALE } from '../format/constants';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from '../tools/oldschool';
 import type { StrokeCommit } from '../tools/profiles';
-import { PLUGIN_API, type Plugin, type PluginPrimitive } from './contract';
+import { PLUGIN_API, type Plugin, type PluginPrimitive, type StrokeRules } from './contract';
+import { MULTATOR_RULES } from './brushes/multator';
 
 /**
  * Lang tolerance, contour, jitter: the reference writes them in pixels of its
@@ -35,8 +36,8 @@ const commit: StrokeCommit = (points, descriptor, { coordinateScale }) => ({
   // A contour carries one colour and no fill, so the pen paints and the
   // eraser punches — which is the whole of this brush type's vocabulary.
   tool: descriptor.kind === 'eraser'
-    ? { kind: 'contour-eraser', dialect: 'multator' }
-    : { kind: 'contour', dialect: 'multator', color: 'color' in descriptor ? descriptor.color : '#000000' },
+    ? { kind: 'contour-eraser', geometry: 'smooth' }
+    : { kind: 'contour', geometry: 'smooth', color: 'color' in descriptor ? descriptor.color : '#000000' },
 });
 
 /**
@@ -47,18 +48,28 @@ const commit: StrokeCommit = (points, descriptor, { coordinateScale }) => ({
  * of kind `pencil` would instead describe every pencil stroke in the document,
  * since the eraser looks a policy up by primitive.
  */
+/**
+ * The pen collects a line the way the Multator brush does, but owns what it
+ * becomes — and takes nothing from the release event (reference
+ * `onOldEndDraw` adds no point of its own).
+ */
+const oldschoolRules = (): StrokeRules => ({
+  ...MULTATOR_RULES,
+  release: (line) => [...line],
+  prepare: undefined,
+  commit,
+});
+
 const OLDSCHOOL_PEN: PluginPrimitive = {
   kind: 'pencil',
-  dialect: 'multator',
-  descriptor: ({ width, color }) => ({ kind: 'pencil', dialect: 'multator', width, color }),
-  commit,
+  rules: oldschoolRules,
+  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
 };
 
 const OLDSCHOOL_ERASER: PluginPrimitive = {
   kind: 'eraser',
-  dialect: 'multator',
-  descriptor: ({ width }) => ({ kind: 'eraser', dialect: 'multator', width }),
-  commit,
+  rules: oldschoolRules,
+  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
 };
 
 /**

@@ -4,10 +4,10 @@ import type {
   ContourToolDescriptor,
   FeatherToolDescriptor,
   StampToolDescriptor,
-  StrokeV2,
+  Stroke,
   ToolDescriptor,
 } from '../format/types';
-import { emitMultatorClosedPath, emitMultatorPath, emitTonioPath, type PathSink } from './smoothing';
+import { emitGeometry, type PathSink } from './smoothing';
 
 /**
  * The primitives a tool may lay down: what the renderer draws for a stroke a
@@ -38,7 +38,7 @@ export function isEraserTool(tool: ToolDescriptor): boolean {
   return tool.kind === 'eraser' || tool.kind === 'contour-eraser';
 }
 
-/** Whether a tool paints its path's interior as well as its outline (Tonio feather). */
+/** Whether a tool paints its path's interior as well as its outline. */
 export function isFilledLineTool(tool: ToolDescriptor): tool is FeatherToolDescriptor {
   return tool.kind === 'feather';
 }
@@ -55,7 +55,7 @@ export function isContourTool(
   return tool.kind === 'contour' || tool.kind === 'contour-eraser';
 }
 
-export function resolveTool(tools: readonly ToolDescriptor[], stroke: StrokeV2): ToolDescriptor {
+export function resolveTool(tools: readonly ToolDescriptor[], stroke: Stroke): ToolDescriptor {
   const descriptor = tools[stroke.tool_id];
   if (!descriptor) {
     throw new RangeError(`tool_id ${stroke.tool_id} does not reference an existing tool`);
@@ -63,16 +63,15 @@ export function resolveTool(tools: readonly ToolDescriptor[], stroke: StrokeV2):
   return descriptor;
 }
 
+/**
+ * The stored numbers into a path. Two things decide it and neither names a
+ * brush: `geometry` says how the numbers are read, `kind` says whether the
+ * path is a closed filled ring.
+ */
 export function emitPathForTool(
   points: readonly number[],
   descriptor: ToolDescriptor,
   sink: PathSink,
 ): void {
-  if (isContourTool(descriptor)) {
-    emitMultatorClosedPath(points, sink);
-  } else if (descriptor.dialect === 'toonio') {
-    emitTonioPath(points, sink);
-  } else {
-    emitMultatorPath(points, sink);
-  }
+  emitGeometry(points, descriptor.geometry, isContourTool(descriptor), sink);
 }

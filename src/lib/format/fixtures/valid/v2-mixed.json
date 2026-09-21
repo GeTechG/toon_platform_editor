@@ -1,16 +1,48 @@
 {
-  "schema_version": 2,
+  "schema_version": 7,
   "width": 4800,
   "height": 2400,
   "frame_rate": 12,
   "tools": [
-    { "kind": "pencil", "dialect": "multator", "width": 32, "color": "#123456" },
-    { "kind": "eraser", "dialect": "toonio", "width": 40 }
+    {
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 32,
+      "color": "#123456"
+    },
+    {
+      "kind": "eraser",
+      "geometry": "smooth",
+      "width": 40
+    }
   ],
-  "frames": [
-    { "strokes": [
-      { "points": [10, 20, 30, 40], "tool_id": 0 },
-      { "points": [-8, -16, 4808, 2416], "tool_id": 1 }
-    ] }
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        {
+          "strokes": [
+            {
+              "points": [
+                10,
+                20,
+                30,
+                40
+              ],
+              "tool_id": 0
+            },
+            {
+              "points": [
+                -8,
+                -16,
+                4808,
+                2416
+              ],
+              "tool_id": 1
+            }
+          ]
+        }
+      ]
+    }
   ]
 }

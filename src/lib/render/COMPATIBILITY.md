@@ -1,9 +1,14 @@
 # Drawing compatibility rendering
 
-Both saved dialects use fixed-point document coordinates (`1 logical px = 8 units`) and are dispatched only from the saved tool descriptor.
+Every stroke uses fixed-point document coordinates (`1 logical px = 8 units`) and is read only from the saved tool descriptor's `geometry`. The core has one reader per geometry and names no brush, editor or reference application:
 
-- `multator` keeps toonop's original midpoint emitter and dot-as-filled-circle behavior.
-- `toonio` ports `Tool.Curve` from the studied Tonio source: it consumes the duplicated endpoint sentinel, emits midpoint quadratics without re-running input preparation, and applies the `+0.01` coincident-point workaround.
+- `line` — the points are a polyline.
+- `smooth` — the points are the control points of a quadratic chain; each segment ends on the midpoint to the next point, and the last one lands on the last point.
+- `cubic` — the control points are written out (`x0,y0, (c1x,c1y, c2x,c2y, x,y)*`).
+
+Both studied references draw the same curve with this one reader. Multator's emitter *is* `smooth`. Tonio's ran the same chain a point out of phase, so the Tonio brush repeats its first point when it lays a stroke down, and the reader then reproduces `Tool.Curve` command for command — except at one place.
+
+**The one deviation.** Tonio's `Curve` nudged a segment by `+0.01` where two consecutive points coincided, so its own emitter would not divide by zero. Its endpoint sentinel guarantees exactly that at the end of every line, so the reference curve stops `0.005` units short of its own last point. The shared reader has no such need and lands on the point itself. The gap is `0.01` document units of control point and `0.005` of endpoint — 1/800 of a logical pixel — and it is the only difference from the reference. Raster signatures are unchanged; the parity tests assert the whole command stream inside that tolerance and exact equality everywhere else.
 
 Golden command tests are the geometry authority. Representative DPR=1 software-raster signatures guard broad pixel changes. Unlike original Tonio, toonop deliberately folds device pixel ratio into the Canvas transform; on DPR>1 this produces a sharper raster while logical geometry, widths, compositing, and path commands remain unchanged.
 

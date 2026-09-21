@@ -5,8 +5,7 @@
   // onion skin, no draft — a pure viewer for the public share page.
   import { untrack } from 'svelte';
   import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
-  import type { ToonDocumentV1, ToonDocumentV2, ToonDocument } from '../format/types';
-  import { upgradeDocument } from '../format/upgrade';
+  import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
@@ -31,7 +30,7 @@
     current = $bindable(0),
   }: {
     /** Any published version — the share page serves documents as they were saved. */
-    doc: ToonDocumentV1 | ToonDocumentV2 | ToonDocument;
+    doc: ToonDocument;
     controls?: boolean;
     playing?: boolean;
     /** The publication's soundtrack, if it has one. */
@@ -51,7 +50,7 @@
 
   // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
   // speaks v3 only, so the document is lifted once, here, at the boundary.
-  const view = $derived(upgradeDocument(doc));
+  const view = $derived(doc);
 
   const renderer = new Canvas2DFrameRenderer();
   let canvasEl: HTMLCanvasElement;

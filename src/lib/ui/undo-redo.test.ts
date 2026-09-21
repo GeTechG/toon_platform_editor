@@ -201,7 +201,7 @@ describe('the brush each tool remembers', () => {
   });
 
   it('the width is not chosen by the preset: the record already belongs to a canvas', () => {
-    expect(member(state, 'get brushSizeLogical')).not.toContain('defaultDialect');
+    expect(member(state, 'get brushSizeLogical')).not.toContain('defaultBrush');
     expect(state).not.toContain('multatorBrushSizeLogical');
   });
 

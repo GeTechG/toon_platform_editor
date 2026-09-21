@@ -8,21 +8,25 @@ function handler(name: string): string {
   return match[0];
 }
 
-describe('current Multator pointer lifecycle contract', () => {
+describe('the pointer lifecycle the canvas drives', () => {
   it('starts only a primary, non-playing, single active gesture and captures it', () => {
     const down = handler('onPointerDown');
     expect(down).toContain('editor.playing || !e.isPrimary || pointer.session');
     expect(down).toContain('setPointerCapture(e.pointerId)');
     expect(down).toContain('pointer.pointerDown(toPointerSample(e, true))');
-    expect(source).toContain("(pointer.session?.profile ?? toolDialect()) === 'toonio'");
+    // The canvas hands the samples over and lets the brush choose; it no
+    // longer decides for one by name.
+    expect(source).not.toContain("=== 'toonio'");
+    expect(source).toContain('rules: activeRules()');
     expect(source).toContain('coordinateScale: brushCanvasScale');
     expect(source).toContain('canvasCoordinateScale(');
   });
 
-  it('takes exactly one point from each pointermove without unpacking coalesced events', () => {
+  it('hands every pointermove to the brush, coalesced samples and all', () => {
     const move = handler('onPointerMove');
     expect(move).toContain('pointer.pointerMove(toPointerSample(e, true))');
-    expect(source).toContain("(pointer.session?.profile ?? toolDialect()) === 'toonio'");
+    // Which of the coalesced samples become points is the brush's rule.
+    expect(source).toContain('!editor.settings.mouseMode');
   });
 
   it('commits existing geometry on pointerup without appending the up coordinate', () => {
@@ -338,6 +342,6 @@ describe('what the canvas asks whom', () => {
     // A document has one bitmap: two brushes of two canvases cannot each have
     // their own. The reference that rasterises at document scale is a preset.
     expect(source).toContain("editor.ux.canvasDensity === 'document'");
-    expect(source).not.toContain("editor.defaultDialect === 'toonio'");
+    expect(source).not.toContain("editor.defaultBrush === 'toonio'");
   });
 });

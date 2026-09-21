@@ -31,7 +31,7 @@ import { transformMatrix } from './geom';
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(6);
+    expect(doc.schema_version).toBe(7);
     expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(10240);
     expect(doc.height).toBe(5760);
@@ -115,7 +115,7 @@ describe('cloneColumn / replaceColumn (frame copy-paste across layers)', () => {
     expect(column).toHaveLength(2);
     expect(column[0].strokes[0].points).toEqual([1, 2, 3, 4]);
     expect(column[1].strokes[0].tool).toEqual({
-      kind: 'pencil', dialect: 'multator', width: 8, color: '#ff0000',
+      kind: 'pencil', geometry: 'smooth', width: 8, color: '#ff0000',
     });
   });
 
@@ -254,7 +254,7 @@ describe('removeLastStroke (per-stroke undo)', () => {
 
     expect(removeLastStroke(doc, 0, 0)).toBe(true);
     expect(doc.layers[0].frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
-      { kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' },
+      { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' },
     ]);
     expect(removeLastStroke(doc, 0, 0)).toBe(true);
     expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
@@ -273,8 +273,8 @@ describe('addStroke', () => {
     addStroke(doc, 0, 0, { points: [0, 0, 10, 10], width: 32, color: '#000000' });
     addStroke(doc, 0, 0, { points: [20, 20], width: 16, color: '#ff0000' });
     expect(doc.layers[0].frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
-      { kind: 'pencil', dialect: 'multator', width: 32, color: '#000000' },
-      { kind: 'pencil', dialect: 'multator', width: 16, color: '#ff0000' },
+      { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' },
+      { kind: 'pencil', geometry: 'smooth', width: 16, color: '#ff0000' },
     ]);
   });
 
@@ -318,17 +318,16 @@ describe('setFrameRate', () => {
 });
 
 describe('schema limits', () => {
-  it('constants match toon-v1.schema.json', async () => {
+  it('constants match the schema', async () => {
     const [{ default: schema }, limits] = await Promise.all([
-      import('../format/schema/toon-v1.schema.json'),
+      import('../format/schema/toon-v7.schema.json'),
       import('../format/constants'),
     ]);
     expect(limits.MAX_DOC_DIMENSION).toBe(schema.properties.width.maximum);
     expect(limits.MAX_DOC_DIMENSION).toBe(schema.properties.height.maximum);
-    expect(limits.MAX_FRAMES).toBe(schema.properties.frames.maxItems);
     expect(limits.MAX_STROKES_PER_FRAME).toBe(schema.$defs.frame.properties.strokes.maxItems);
     expect(limits.MAX_STROKE_COORDS).toBe(schema.$defs.stroke.properties.points.maxItems);
-    expect(limits.MAX_STROKE_WIDTH).toBe(schema.$defs.stroke.properties.width.maximum);
+    expect(limits.MAX_STROKE_WIDTH).toBe(schema.$defs.pencil.properties.width.maximum);
   });
 
   it('createDocument rejects dimensions over the schema maximum', () => {
@@ -362,7 +361,7 @@ describe('schema limits', () => {
 
   it('addStroke stops at the per-frame stroke limit', () => {
     const doc = createDocument();
-    doc.tools.push({ kind: 'pencil', dialect: 'multator', width: 8, color: '#000000' });
+    doc.tools.push({ kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
     for (let i = 0; i < 16384; i++) {
       doc.layers[0].frames[0].strokes.push({ points: [1, 2], tool_id: 0 });
     }
@@ -458,10 +457,10 @@ describe('frame operations across layers', () => {
   });
 });
 
-describe('v3 schema limits', () => {
-  it('constants match toon-v3.schema.json', async () => {
+describe('layer schema limits', () => {
+  it('constants match the schema', async () => {
     const [{ default: schema }, limits] = await Promise.all([
-      import('../format/schema/toon-v3.schema.json'),
+      import('../format/schema/toon-v7.schema.json'),
       import('../format/constants'),
     ]);
     expect(limits.MAX_LAYERS).toBe(schema.properties.layers.maxItems);
@@ -623,7 +622,7 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
     const buffer = copyCells(doc, { frames: [0], layers: [0] });
     mergeCells(doc, { frames: [2], layers: [1] }, buffer);
     const recoloured: typeof buffer = [[{
-      strokes: [{ points: [0, 0], tool: { kind: 'pencil', dialect: 'multator', width: 8, color: '#ff0000' } }],
+      strokes: [{ points: [0, 0], tool: { kind: 'pencil', geometry: 'smooth', width: 8, color: '#ff0000' } }],
     }]];
     mergeCells(doc, { frames: [2], layers: [1] }, recoloured);
     expect(at(doc, 1, 2)).toEqual([[8, 16], [0, 0], [0, 0]]);
@@ -644,7 +643,7 @@ describe('transformStrokes and the pixel grid', () => {
     const doc = createDocument({ width: 4000, height: 4000 });
     addStroke(doc, 0, 0, {
       points: Array.from({ length: cells * 2 }, (_, i) => (i % 2 ? 0 : (i / 2) * width)),
-      tool: { kind: 'stamp', dialect: 'toonio', width, color: '#000000', shape: [...SQUARE_STAMP] },
+      tool: { kind: 'stamp', geometry: 'line', width, color: '#000000', shape: [...SQUARE_STAMP] },
     });
     return doc;
   }
@@ -682,7 +681,7 @@ describe('transformStrokes and the pixel grid', () => {
     const doc = createDocument({ width: 100, height: 100 });
     addStroke(doc, 0, 0, {
       points: [0, 0, 10, 10],
-      tool: { kind: 'pencil', dialect: 'toonio', width: 10, color: '#000000' },
+      tool: { kind: 'pencil', geometry: 'smooth', width: 10, color: '#000000' },
     });
     transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.5, scaleY: 1.5 }, 0, 0));
     expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 15, 15]);
@@ -697,7 +696,7 @@ describe('transformStrokes', () => {
     widths.forEach((width, i) => {
       addStroke(doc, 0, 0, {
         points: [10 + i, 20 + i, 30 + i, 40 + i],
-        tool: { kind: 'pencil', dialect: 'toonio', width, color: '#000000' },
+        tool: { kind: 'pencil', geometry: 'smooth', width, color: '#000000' },
       });
     });
     return doc;
@@ -763,7 +762,7 @@ describe('mirrorCell', () => {
     const doc = createDocument({ width: 100, height: 100 });
     addStroke(doc, 0, 0, {
       points: [10, 20, 30, 40],
-      tool: { kind: 'pencil', dialect: 'toonio', width: 5, color: '#000000' },
+      tool: { kind: 'pencil', geometry: 'smooth', width: 5, color: '#000000' },
     });
     return doc;
   }
@@ -879,7 +878,7 @@ describe('isEmptyDocument', () => {
     const doc = createDocument();
     addFrame(doc, 0);
     addLayer(doc, 1);
-    const tool = internTool(doc, { kind: 'pencil', dialect: 'toonio', width: 8, color: '#000000' });
+    const tool = internTool(doc, { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
     doc.layers[1].frames[1].strokes.push({ points: [0, 0, 8, 8], tool_id: tool });
     expect(isEmptyDocument(doc)).toBe(false);
   });
