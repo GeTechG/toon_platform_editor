@@ -10,6 +10,7 @@
   import { frameCount } from '../model/operations';
   import { LoopPlayer } from './player';
   import { frameForTime, trackShouldRestart } from '../audio/track';
+  import { t } from '../i18n';
 
   /**
    * Reduced motion means no autoplay: the visitor lands on the first frame
@@ -198,15 +199,15 @@
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     role="img"
-    aria-label="Мультик, кадр {current + 1} из {frameCount(view)}"
+    aria-label={t('play.frame_alt', { current: current + 1, total: frameCount(view) })}
   ></canvas>
   {#if controls}
     <button
       class="play-key"
       type="button"
       onclick={() => (playing = !playing)}
-      title={playing ? 'Пауза' : 'Проиграть'}
-      aria-label={playing ? 'Пауза' : 'Проиграть'}
+      title={playing ? t('play.pause') : t('play.play')}
+      aria-label={playing ? t('play.pause') : t('play.play')}
     >
       <!-- Two paths inline instead of the editor's Icon component: this entry
            point exists to keep the viewer's module graph small. -->
@@ -223,7 +224,7 @@
       >
         <path d={playing ? 'M9 6v12M15 6v12' : 'M8 5.5v13l11-6.5-11-6.5Z'} />
       </svg>
-      <span>{playing ? 'Пауза' : 'Проиграть'}</span>
+      <span>{playing ? t('play.pause') : t('play.play')}</span>
     </button>
   {/if}
 </div>

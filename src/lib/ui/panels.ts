@@ -12,6 +12,7 @@
 
 import { plugins } from '../plugins';
 import type { RegisteredTool } from '../plugins/registry';
+import { t } from '../i18n';
 
 /** What the rail draws for a tool, whoever added it. */
 export function toolSpec(tool: string): RegisteredTool | undefined {
@@ -48,12 +49,7 @@ export type PanelSlot = 'left' | 'right' | 'float' | 'hidden' | `row:${number}` 
 /** The slots that are always there, whatever the rows are doing. */
 export const FIXED_SLOTS = ['left', 'right', 'float', 'hidden'] as const;
 
-const FIXED_LABELS: Record<(typeof FIXED_SLOTS)[number], string> = {
-  left: 'Слева',
-  right: 'Справа',
-  float: 'Поверх холста',
-  hidden: 'Скрытые',
-};
+
 
 export function rowSlot(index: number): PanelSlot {
   return `row:${index}`;
@@ -72,13 +68,10 @@ export function slotRow(slot: PanelSlot): { index: number; fresh: boolean } | nu
 export function slotLabel(slot: PanelSlot): string {
   const row = slotRow(slot);
   if (row) {
-    return row.fresh ? 'Новая строка' : `Строка ${row.index + 1}`;
+    return row.fresh ? t('panel.row_new') : t('panel.row', { n: row.index + 1 });
   }
-  return FIXED_LABELS[slot as (typeof FIXED_SLOTS)[number]] ?? slot;
+  return (FIXED_SLOTS as readonly string[]).includes(slot) ? t(`panel.${slot}`) : slot;
 }
-
-/** Kept for the settings list: the same label table, by slot. */
-export const SLOT_LABELS = FIXED_LABELS;
 
 /**
  * `tool` — picks up something to draw with; `action` — does a thing and hands
@@ -86,11 +79,9 @@ export const SLOT_LABELS = FIXED_LABELS;
  */
 export type PanelItemKind = 'tool' | 'action' | 'widget';
 
-export const KIND_LABELS: Record<PanelItemKind, string> = {
-  tool: 'инструмент',
-  action: 'действие',
-  widget: 'виджет',
-};
+export function kindLabel(kind: PanelItemKind): string {
+  return t(`panel.kind.${kind}`);
+}
 
 export interface PanelItem {
   readonly id: string;
@@ -109,32 +100,34 @@ export interface PanelItem {
 }
 
 /** Everything that is not a tool: the tools come from the register. */
-const FIXED_ITEMS: readonly PanelItem[] = [
-  { id: 'save', kind: 'action', label: 'Сохранить черновик' },
-  { id: 'history', kind: 'action', label: 'Отменить / вернуть', wide: true },
-  { id: 'manual', kind: 'action', label: 'Мануал' },
-  { id: 'fullscreen', kind: 'action', label: 'Полный экран' },
-  { id: 'drafts', kind: 'action', label: 'Локальные сохранения' },
-  { id: 'palette', kind: 'widget', wide: true, label: 'Палитра' },
-  { id: 'brush', kind: 'widget', wide: true, label: 'Кисть' },
+function fixedItems(): readonly PanelItem[] {
+  return [
+  { id: 'save', kind: 'action', label: t('panel.item.save') },
+  { id: 'history', kind: 'action', label: t('panel.item.history'), wide: true },
+  { id: 'manual', kind: 'action', label: t('panel.item.manual') },
+  { id: 'fullscreen', kind: 'action', label: t('panel.item.fullscreen') },
+  { id: 'drafts', kind: 'action', label: t('panel.item.drafts') },
+  { id: 'palette', kind: 'widget', wide: true, label: t('panel.item.palette') },
+  { id: 'brush', kind: 'widget', wide: true, label: t('panel.item.brush') },
   // The plain pair, for whoever wants a key instead of a box.
-  { id: 'color', kind: 'widget', label: 'Цвет' },
-  { id: 'brush-sizes', kind: 'widget', wide: true, label: 'Толщина кисти' },
-  { id: 'timeline', kind: 'widget', wide: true, label: 'Лента кадров' },
-  { id: 'transport', kind: 'widget', label: 'Управление воспроизведением' },
-  { id: 'add-frame', kind: 'action', label: 'Добавить кадр' },
-  { id: 'delete-frame', kind: 'action', label: 'Удалить кадр' },
-  { id: 'onion', kind: 'action', label: 'Калька' },
-  { id: 'fps', kind: 'widget', wide: true, label: 'Частота кадров' },
-  { id: 'audio', kind: 'widget', label: 'Звук' },
-  { id: 'export', kind: 'action', label: 'Экспорт' },
-  { id: 'saved', kind: 'widget', wide: true, label: 'Отметка о сохранении' },
-  { id: 'copy', kind: 'action', label: 'Копировать' },
-  { id: 'paste', kind: 'action', label: 'Вставить' },
-  { id: 'merge', kind: 'action', label: 'Объединить' },
-  { id: 'settings', kind: 'action', label: 'Настройки', keep: true },
-  { id: 'publish', kind: 'action', label: 'Опубликовать' },
-];
+  { id: 'color', kind: 'widget', label: t('panel.item.color') },
+  { id: 'brush-sizes', kind: 'widget', wide: true, label: t('panel.item.brush_sizes') },
+  { id: 'timeline', kind: 'widget', wide: true, label: t('panel.item.timeline') },
+  { id: 'transport', kind: 'widget', label: t('panel.item.transport') },
+  { id: 'add-frame', kind: 'action', label: t('panel.item.add_frame') },
+  { id: 'delete-frame', kind: 'action', label: t('panel.item.delete_frame') },
+  { id: 'onion', kind: 'action', label: t('panel.item.onion') },
+  { id: 'fps', kind: 'widget', wide: true, label: t('panel.item.fps') },
+  { id: 'audio', kind: 'widget', label: t('panel.item.audio') },
+  { id: 'export', kind: 'action', label: t('panel.item.export') },
+  { id: 'saved', kind: 'widget', wide: true, label: t('panel.item.saved') },
+  { id: 'copy', kind: 'action', label: t('panel.item.copy') },
+  { id: 'paste', kind: 'action', label: t('panel.item.paste') },
+  { id: 'merge', kind: 'action', label: t('panel.item.merge') },
+  { id: 'settings', kind: 'action', label: t('panel.item.settings'), keep: true },
+  { id: 'publish', kind: 'action', label: t('panel.item.publish') },
+  ];
+}
 
 /**
  * Every item the panels can hold: the tools the register has right now, then
@@ -148,7 +141,7 @@ export function panelItems(): readonly PanelItem[] {
       kind: 'tool',
       label: tool.label,
     })),
-    ...FIXED_ITEMS,
+    ...fixedItems(),
   ];
 }
 

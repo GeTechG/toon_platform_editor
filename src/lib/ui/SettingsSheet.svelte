@@ -12,7 +12,7 @@
   import { formatFileSize } from './file-size';
   import {
     AUTOSAVE_INTERVALS,
-    AUTOSAVE_LABELS,
+    autosaveLabel,
     PALETTE_LIMIT_MAX,
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
@@ -20,6 +20,7 @@
   } from './presets';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
+  import { t } from '../i18n';
 
   let {
     editor,
@@ -75,7 +76,7 @@
         'drafts.toonops',
         await exportDrafts(chosen, (done, total) => (exporting = { done, total })),
       );
-      report = `Скачано ${plural(chosen.length, 'черновик', 'черновика', 'черновиков')}`;
+      report = t('draft.saved', { count: chosen.length });
     } finally {
       exporting = null;
     }
@@ -85,14 +86,8 @@
   async function askPersist(): Promise<void> {
     const granted = await navigator.storage?.persist?.().catch(() => false);
     report = granted
-      ? 'Хранилище теперь постоянное — черновики не будут удаляться браузером'
-      : 'Браузер не дал постоянное хранилище';
-  }
-
-  const PLURAL = new Intl.PluralRules('ru');
-  function plural(n: number, one: string, few: string, many: string): string {
-    const form = PLURAL.select(n);
-    return `${n} ${form === 'one' ? one : form === 'few' ? few : many}`;
+      ? t('settings.persist_on')
+      : t('settings.persist_off');
   }
 
   /** Hands the browser a file to save; nothing here touches the network. */
@@ -112,8 +107,8 @@
     if (!file) return;
     const loaded = editor.importSavedPalettes(await file.text());
     report = loaded > 0
-      ? `Загружено ${plural(loaded, 'палитра', 'палитры', 'палитр')}`
-      : 'В файле нет палитр';
+      ? t('settings.palettes_loaded', { count: loaded })
+      : t('settings.no_palettes');
   }
 
   async function onDraftFile(e: Event): Promise<void> {
@@ -121,20 +116,20 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    if (editor.warnings && !confirm(`Загрузить черновики из «${file.name}»? Они добавятся к уже сохранённым.`)) {
+    if (editor.warnings && !confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
     const { loaded, broken } = await importDrafts(await file.text());
     report = loaded > 0 || broken > 0
-      ? `Загружено ${loaded}, повреждено ${broken}`
-      : 'В файле нет черновиков';
+      ? t('settings.drafts_loaded', { loaded, broken })
+      : t('settings.no_drafts');
     drafts = draftEntries(await listDrafts());
   }
 
   function wipePalettes(): void {
-    if (confirm('Удалить все сохранённые палитры? Отменить это будет нельзя.')) {
+    if (confirm(t('settings.wipe_palettes_confirm'))) {
       editor.deleteAllSavedPalettes();
-      report = 'Сохранённые палитры удалены';
+      report = t('settings.palettes_wiped');
     }
   }
 </script>
@@ -145,7 +140,7 @@
   class="file"
   type="file"
   accept="application/json,.json"
-  aria-label="Файл палитр"
+  aria-label={t('settings.palette_file')}
   onchange={onPaletteFile}
 />
 <input
@@ -153,20 +148,20 @@
   class="file"
   type="file"
   accept=".toonops,.toonio,application/json,.json"
-  aria-label="Файл черновиков"
+  aria-label={t('settings.draft_file')}
   onchange={onDraftFile}
 />
 
-<dialog bind:this={dialogEl} class="sheet sheet-dialog" aria-label="Настройки" onclose={onClose}>
+<dialog bind:this={dialogEl} class="sheet sheet-dialog" aria-label={t('settings.sheet')} onclose={onClose}>
   <header class="sheet-head">
-    <h2>Настройки</h2>
-    <button class="key icon" onclick={() => dialogEl?.close()} aria-label="Закрыть">
+    <h2>{t('settings.sheet')}</h2>
+    <button class="key icon" onclick={() => dialogEl?.close()} aria-label={t('picker.close')}>
       <Icon name="x" />
     </button>
   </header>
 
   <div class="sheet-body">
-    <p class="sheet-hint">Рисование</p>
+    <p class="sheet-hint">{t('settings.drawing')}</p>
     <!--
       The option is Tonio's `toonio_old_pen`: one point per event instead of
       the coalesced batch. It is the editor's own, not a brush's — the batch
@@ -175,7 +170,7 @@
       picked in the brush box.)
     -->
     <label class="toggle">
-      <span class="toggle-label">Режим мышки (точка на событие)</span>
+      <span class="toggle-label">{t('settings.mouse_mode')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -185,7 +180,7 @@
     </label>
     {#if hasEyeDropper}
       <label class="toggle">
-        <span class="toggle-label">Пипетка браузера</span>
+        <span class="toggle-label">{t('settings.browser_pipette')}</span>
         <input
           type="checkbox"
           role="switch"
@@ -195,7 +190,7 @@
       </label>
     {/if}
     <label class="toggle">
-      <span class="toggle-label">Крест на курсоре при тонкой кисти</span>
+      <span class="toggle-label">{t('settings.crosshair')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -204,7 +199,7 @@
       />
     </label>
     <label class="toggle">
-      <span class="toggle-label">Блокировать редактор в трансформации</span>
+      <span class="toggle-label">{t('settings.lock_transform')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -213,9 +208,9 @@
       />
     </label>
 
-    <p class="sheet-hint">Палитра</p>
+    <p class="sheet-hint">{t('settings.palette')}</p>
     <label class="toggle">
-      <span class="toggle-label">Добавлять выбранный цвет в палитру</span>
+      <span class="toggle-label">{t('settings.auto_add_colour')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -224,7 +219,7 @@
       />
     </label>
     <label class="row">
-      <span class="row-label">Цветов в палитре</span>
+      <span class="row-label">{t('settings.palette_limit')}</span>
       <span class="slider">
         <input
           type="range"
@@ -241,25 +236,25 @@
       <button
         class="key"
         onclick={() => download('palettes.json', editor.exportSavedPalettes())}
-      >Скачать палитры</button>
-      <button class="key" onclick={() => paletteFile?.click()}>Загрузить палитры…</button>
-      <button class="key danger" onclick={wipePalettes}>Удалить все</button>
+      >{t('settings.download_palettes')}</button>
+      <button class="key" onclick={() => paletteFile?.click()}>{t('settings.load_palettes')}</button>
+      <button class="key danger" onclick={wipePalettes}>{t('settings.wipe_palettes')}</button>
     </div>
 
-    <p class="sheet-hint">Автосохранение</p>
+    <p class="sheet-hint">{t('settings.autosave')}</p>
     <label class="row">
-      <span class="row-label">Интервал</span>
+      <span class="row-label">{t('settings.interval')}</span>
       <select
         value={editor.settings.autosaveMs}
         onchange={(e) => editor.setSetting('autosaveMs', Number(e.currentTarget.value))}
       >
         {#each AUTOSAVE_INTERVALS as ms (ms)}
-          <option value={ms}>{AUTOSAVE_LABELS[ms]}</option>
+          <option value={ms}>{autosaveLabel(ms)}</option>
         {/each}
       </select>
     </label>
     <label class="toggle">
-      <span class="toggle-label">Показывать черновики при открытии</span>
+      <span class="toggle-label">{t('settings.show_drafts')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -275,7 +270,7 @@
               <span class="toggle-label">
                 {new Date(entry.updated).toLocaleString('ru')}
                 <small>
-                  {plural(entry.doc.layers[0].frames.length, 'кадр', 'кадра', 'кадров')}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio} · со звуком{/if}
+                  {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
                 </small>
               </span>
               <input
@@ -294,29 +289,29 @@
     {/if}
     {#if exporting}
       <progress value={exporting.done} max={exporting.total}>
-        {exporting.done} из {exporting.total}
+        {t('settings.progress', { done: exporting.done, total: exporting.total })}
       </progress>
     {/if}
     <div class="actions">
       <button class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
-        Скачать черновики (.toonops)
+        {t('settings.download_drafts')}
       </button>
-      <button class="key" onclick={() => draftFile?.click()}>Загрузить черновики…</button>
+      <button class="key" onclick={() => draftFile?.click()}>{t('settings.load_drafts')}</button>
       {#if onOpenDrafts}
-        <button class="key" onclick={onOpenDrafts}>Черновики…</button>
+        <button class="key" onclick={onOpenDrafts}>{t('settings.drafts')}</button>
       {/if}
       {#if onOpenFile}
-        <button class="key" onclick={onOpenFile}>Открыть .toon…</button>
+        <button class="key" onclick={onOpenFile}>{t('settings.open_toon')}</button>
       {/if}
       {#if onSaveNow}
-        <button class="key" onclick={onSaveNow}>Сохранить сейчас (Ctrl+S)</button>
+        <button class="key" onclick={onSaveNow}>{t('settings.save_now')}</button>
       {/if}
-      <button class="key" onclick={askPersist}>Запросить постоянное хранилище</button>
+      <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
     </div>
 
-    <p class="sheet-hint">Вид</p>
+    <p class="sheet-hint">{t('settings.view')}</p>
     <label class="toggle">
-      <span class="toggle-label">Панели слева, инструменты справа</span>
+      <span class="toggle-label">{t('settings.mirror_layout')}</span>
       <input
         type="checkbox"
         role="switch"
@@ -328,8 +323,8 @@
     <!-- Reference «Настроить панель»: which buttons the toolbar shows, and the
          preset they come from. The gear is never hideable, so this is always
          reachable. Last, because it is a set-once concern. -->
-    <p class="sheet-hint">Панель</p>
-    <div class="presets" role="group" aria-label="Набор">
+    <p class="sheet-hint">{t('settings.panel')}</p>
+    <div class="presets" role="group" aria-label={t('settings.preset_group')}>
       {#each presets() as p (p.id)}
         <button
           class="preset-chip"
@@ -342,7 +337,7 @@
 
     <!-- Расположение: arranged by hand in the editor, where the panels are.
          A list of selects said the same thing twice and nobody used it. -->
-    <p class="sheet-hint">Расположение</p>
+    <p class="sheet-hint">{t('settings.arrangement')}</p>
     <div class="actions">
       <button
         class="key primary"
@@ -350,10 +345,10 @@
           editor.arranging = true;
           dialogEl?.close();
         }}
-      >Редактировать панели</button>
+      >{t('settings.edit_panels')}</button>
     </div>
 
-    <p class="sheet-hint">Плагины</p>
+    <p class="sheet-hint">{t('settings.plugins')}</p>
     <div class="actions">
       <button
         class="key primary"
@@ -361,13 +356,13 @@
           onOpenPlugins?.();
           dialogEl?.close();
         }}
-      >Плагины</button>
+      >{t('settings.plugins')}</button>
     </div>
     <label class="field">
-      <span>Адрес каталога</span>
+      <span>{t('settings.catalog_url')}</span>
       <input
         type="url"
-        placeholder="пусто — каталога нет"
+        placeholder={t('settings.catalog_placeholder')}
         value={editor.settings.pluginCatalog}
         onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
       />
@@ -379,7 +374,7 @@
   </div>
 
   <footer class="sheet-foot">
-    <button class="key primary" onclick={() => dialogEl?.close()}>Готово</button>
+    <button class="key primary" onclick={() => dialogEl?.close()}>{t('settings.done')}</button>
   </footer>
 </dialog>
 

@@ -8,6 +8,7 @@
   import { brushPreview, PREVIEW_BOX } from './brush-preview';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -115,18 +116,18 @@
   </svg>
 {/snippet}
 
-<div class="box brush-box" aria-label="Кисть">
+<div class="box brush-box" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
        have no other form, so the list would offer a choice of one. -->
   {#if hasBrushTypes(editor.tool)}
-    <h3>Тип</h3>
+    <h3>{t('brush.type')}</h3>
     <!-- A list that drops down, not a row of keys: three names never fit the
          box's width, and each one is worth a sample of what it draws. -->
     <button
       class="trigger"
       bind:this={trigger}
       popovertarget={listId}
-      aria-label="Тип кисти: {current.label}"
+      aria-label={t('brush.type_of', { label: current.label })}
     >
       {@render sample(brushOfType('pencil', current.id))}
       <span class="name">{current.label}</span>
@@ -163,21 +164,21 @@
        marks instead of drawing one hands back nothing, and then there is
        nothing to show. -->
   {#if preview(editor.brushTool).d}
-    <figure class="live" aria-label="Образец линии этой кисти">
+    <figure class="live" aria-label={t('brush.sample')}>
       {@render sample(editor.brushTool)}
     </figure>
   {/if}
-  <h3>Толщина</h3>
-  {@render slider('Толщина кисти', 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
+  <h3>{t('brush.thickness')}</h3>
+  {@render slider(t('brush.sizes_group'), 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
   <!-- Only for the brushes the two numbers actually reach: the Multator line,
        the old pen and the pixel are smoothed by their own rule or by none.
        Each one says which way it pulls: a number alone is not an answer to
        «what should I set». -->
   {#if editor.brushSmooths}
-    {@render heading('Сглаживание', 'Больше — ровнее линия, но сильнее отстаёт от руки')}
-    {@render slider('Сглаживание', 1, 100, editor.brushSmooth, (v) => editor.setBrushSmooth(v))}
-    {@render heading('Упрощение', 'Больше — мелкие детали и острые углы срезаются')}
-    {@render slider('Упрощение — минимальное расстояние между точками', 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v))}
+    {@render heading(t('brush.smooth'), t('brush.smooth_hint'))}
+    {@render slider(t('brush.smooth'), 1, 100, editor.brushSmooth, (v) => editor.setBrushSmooth(v))}
+    {@render heading(t('brush.simplify'), t('brush.simplify_hint'))}
+    {@render slider(t('brush.simplify_slider'), 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v))}
   {/if}
 </div>
 <style>

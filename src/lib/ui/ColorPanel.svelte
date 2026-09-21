@@ -6,6 +6,7 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -13,7 +14,7 @@
 </script>
 
 {#if quickPalette}
-  <div class="quick" role="group" aria-label="Цвет (M — вся палитра)">
+  <div class="quick" role="group" aria-label={t('color.quick_group')}>
     {#each quickPalette as color (color)}
       <button
         class="swatch"
@@ -21,13 +22,13 @@
         aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
         style:--swatch={color}
         onclick={() => editor.setBrushColor(color)}
-        title="Цвет {color} (M — вся палитра)"
-        aria-label="Цвет {color}"
+        title={t('color.quick_title', { color })}
+        aria-label={t('color.swatch', { color })}
       ></button>
     {/each}
   </div>
 {:else if editor.paletteExpanded}
-  <label class="color" title="Цвет кисти (M — скрыть палитру)" style:--swatch={editor.brushColor}>
+  <label class="color" title={t('color.stroke_title')} style:--swatch={editor.brushColor}>
     <input
       type="color"
       value={editor.brushColor}
@@ -37,7 +38,7 @@
   <!-- Every preset draws with this one under the right button (CanvasView)
        and swaps the two on X — so every preset gets to choose it, whether or
        not it has the feather that also fills with it. -->
-  <label class="color fill" title="Цвет правой кнопки (ПКМ пипеткой)" style:--swatch={editor.fillColor}>
+  <label class="color fill" title={t('color.fill_title')} style:--swatch={editor.fillColor}>
     <input
       type="color"
       value={editor.fillColor}
@@ -47,17 +48,17 @@
   <button
     class="key icon"
     onclick={() => editor.swapColors()}
-    title="Поменять контур и заливку местами (X)"
-    aria-label="Поменять контур и заливку местами"
+    title={t('color.swap_title')}
+    aria-label={t('color.swap')}
   ><Icon name="swap" /></button>
   {#if editor.ux.colorGrid}
     <button
       class="key icon"
       onclick={() => editor.addCurrentColorToPalette()}
-      title="Добавить текущий цвет в палитру"
-      aria-label="Добавить текущий цвет в палитру"
+      title={t('color.add')}
+      aria-label={t('color.add')}
     ><Icon name="plus" /></button>
-    <div class="grid" role="group" aria-label="Палитра">
+    <div class="grid" role="group" aria-label={t('color.grid')}>
       {#each editor.palette as color (color)}
         <button
           class="cell"
@@ -65,8 +66,8 @@
           aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
           style:--swatch={color}
           onclick={() => editor.setBrushColor(color)}
-          title="Цвет {color}"
-          aria-label="Цвет {color}"
+          title={t('color.swatch', { color })}
+          aria-label={t('color.swatch', { color })}
         ></button>
       {/each}
     </div>

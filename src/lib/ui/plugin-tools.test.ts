@@ -17,6 +17,7 @@ import {
 import { DEFAULT_SETTINGS, parseUiConfig, presetPanels } from './presets';
 import { isHelpTool } from '../plugins';
 import { TOONOP_UX } from './ux-profile';
+import { t } from '../i18n';
 
 const HALFTONE = 'a.halftone';
 
@@ -203,7 +204,8 @@ test('the address of the catalog is a setting, and it points at the build branch
 
 test('the settings sheet sends you to the plugins window instead of listing plugins itself', () => {
   expect(sheet).toContain('pluginCatalog');
-  expect(sheet).toContain('Плагины');
+  expect(sheet).toContain("t('settings.plugins')");
+  expect(t('settings.plugins')).toBe('Плагины');
   // What is installed, what broke and what can be installed is one list, in
   // one window; the sheet showing it too would be the same thing twice.
   expect(sheet).not.toContain('plugins.failures');
@@ -423,8 +425,10 @@ test('the box shows what the numbers do, not only the numbers', () => {
   // brush in hand with the settings as they stand, and each slider says in
   // words which way it pulls.
   expect(brushPanel).toContain('preview(editor.brushTool)');
-  expect(brushPanel).toContain('отстаёт от руки');
-  expect(brushPanel).toContain('мелкие детали и острые углы');
+  expect(brushPanel).toContain("t('brush.smooth_hint')");
+  expect(brushPanel).toContain("t('brush.simplify_hint')");
+  expect(t('brush.smooth_hint')).toContain('отстаёт от руки');
+  expect(t('brush.simplify_hint')).toContain('мелкие детали и острые углы');
   // Behind an «i», not under everyone's nose: the box is a working panel,
   // and the words come up over it on hover, from CSS alone.
   expect(brushPanel).toContain("name=\"info\"");

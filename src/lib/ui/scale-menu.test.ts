@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { SCALE_MENU_MS, scaleMenuVisible } from './frame-selection';
 import { allPlaced, defaultPanels, panelItems } from './panels';
+import { t } from '../i18n';
 
 const menu = await Bun.file(new URL('./ScaleMenu.svelte', import.meta.url)).text();
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
@@ -24,7 +25,8 @@ describe('ScaleMenu', () => {
   });
 
   it('names its controls and its window for a reader', () => {
-    expect(menu).toContain('aria-label="Масштаб"');
+    expect(menu).toContain("aria-label={t('scale.group')}");
+    expect(t('scale.group')).toBe('Масштаб');
     expect(menu).toContain('aria-label');
   });
 

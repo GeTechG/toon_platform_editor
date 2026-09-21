@@ -10,6 +10,7 @@
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
   import { draggable } from './draggable';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -34,7 +35,7 @@
   <div
     class="transform-menu"
     role="group"
-    aria-label="Трансформация"
+    aria-label={t('transform.title')}
     use:draggable
     onkeydown={(e) => {
       // Escape inside the fields still cancels (WCAG 2.1.2: no keyboard trap).
@@ -44,7 +45,7 @@
       }
     }}
   >
-    <p class="title" data-drag-handle>Трансформация</p>
+    <p class="title" data-drag-handle>{t('transform.title')}</p>
     <!-- Label and field are siblings in the grid rather than a wrapping
          <label display:contents>, which older browsers drop out of the
          accessibility tree along with the association it carries. -->
@@ -53,19 +54,19 @@
       <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.value)} />
       <label for="tf-dy">Y</label>
       <input id="tf-dy" type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.value)} />
-      <label for="tf-rotate">Поворот</label>
+      <label for="tf-rotate">{t('transform.rotate')}</label>
       <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.value)} />
-      <label for="tf-scale-x">Масштаб X</label>
+      <label for="tf-scale-x">{t('transform.scale_x')}</label>
       <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', String(Number(e.currentTarget.value) / 100))} />
-      <label for="tf-scale-y">Масштаб Y</label>
+      <label for="tf-scale-y">{t('transform.scale_y')}</label>
       <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', String(Number(e.currentTarget.value) / 100))} />
     </div>
 
     <div class="row">
-      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label="Отразить по горизонтали (H)" title="Отразить по горизонтали (H)"><Icon name="flip-h" /></button>
-      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label="Отразить по вертикали (Shift+H)" title="Отразить по вертикали (Shift+H)"><Icon name="flip-v" /></button>
-      <button class="key icon" onclick={() => editor.undoTransform()} disabled={!editor.canUndoTransform} aria-label="Шаг назад" title="Шаг назад"><Icon name="undo" /></button>
-      <button class="key icon" onclick={() => editor.redoTransform()} disabled={!editor.canRedoTransform} aria-label="Шаг вперёд" title="Шаг вперёд"><Icon name="redo" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label={t('transform.flip_h')} title={t('transform.flip_h')}><Icon name="flip-h" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label={t('transform.flip_v')} title={t('transform.flip_v')}><Icon name="flip-v" /></button>
+      <button class="key icon" onclick={() => editor.undoTransform()} disabled={!editor.canUndoTransform} aria-label={t('transform.undo')} title={t('transform.undo')}><Icon name="undo" /></button>
+      <button class="key icon" onclick={() => editor.redoTransform()} disabled={!editor.canRedoTransform} aria-label={t('transform.redo')} title={t('transform.redo')}><Icon name="redo" /></button>
     </div>
 
     <label class="check">
@@ -74,12 +75,12 @@
         checked={editor.transformWidthWithScale}
         onchange={(e) => editor.setTransformWidthWithScale(e.currentTarget.checked)}
       />
-      Менять толщину с масштабом
+      {t('transform.width_with_scale')}
     </label>
 
     <div class="row">
-      <button class="key primary" onclick={() => editor.commitTransform()} aria-label="Применить (Enter)">Применить</button>
-      <button class="key" onclick={() => editor.cancelTransform()} aria-label="Отменить (Esc)">Отменить</button>
+      <button class="key primary" onclick={() => editor.commitTransform()} aria-label={t('transform.apply_label')}>{t('transform.apply')}</button>
+      <button class="key" onclick={() => editor.cancelTransform()} aria-label={t('transform.cancel_label')}>{t('transform.cancel')}</button>
     </div>
   </div>
 {/if}

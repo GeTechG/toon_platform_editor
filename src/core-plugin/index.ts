@@ -34,6 +34,7 @@ import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldsc
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
 import { PRESETS } from './presets';
 import { toonioRules } from './toonio';
+import { t } from '../lib/i18n';
 
 // ---------------------------------------------------------------------------
 // The multator line
@@ -158,19 +159,19 @@ const twin = (label: string, icon: string, stroke: PluginPrimitive): PluginTool 
 const plugin: Plugin = {
   id: 'core',
   api: PLUGIN_API,
-  name: 'Мультунио',
+  name: t('core.name'),
   icon: MASCOTS_ICON,
   version: '1.0.0',
-  description: 'Кисти, пресеты и прочее необязательное, что приезжает с редактором — тем же контрактом, что и любой плагин.',
+  description: t('core.description'),
   tools: {
-    'multator-pencil': twin('Мультаторовский карандаш', PENCIL_ICON, MULTATOR_PENCIL),
-    'multator-eraser': twin('Мультаторовский ластик', ERASER_ICON, MULTATOR_ERASER),
-    oldschool: twin('Старое перо', PENCIL_ICON, OLDSCHOOL_PEN),
-    'oldschool-eraser': twin('Старый ластик', ERASER_ICON, OLDSCHOOL_ERASER),
-    'toonio-brush': twin('Тониовская кисть', PENCIL_ICON, TOONIO_BRUSH),
+    'multator-pencil': twin(t('tool.multator_pencil'), PENCIL_ICON, MULTATOR_PENCIL),
+    'multator-eraser': twin(t('tool.multator_eraser'), ERASER_ICON, MULTATOR_ERASER),
+    oldschool: twin(t('tool.oldschool_pen'), PENCIL_ICON, OLDSCHOOL_PEN),
+    'oldschool-eraser': twin(t('tool.oldschool_eraser'), ERASER_ICON, OLDSCHOOL_ERASER),
+    'toonio-brush': twin(t('tool.toonio_brush'), PENCIL_ICON, TOONIO_BRUSH),
     pixel: {
-      label: 'Пиксель',
-      title: 'Пиксель — рисует по сетке',
+      label: t('tool.pixel.label'),
+      title: t('tool.pixel.title'),
       key: '',
       icon: PIXEL_ICON,
       stroke: PIXEL,
@@ -184,13 +185,13 @@ const plugin: Plugin = {
      * everyday pair.
      */
     old: {
-      label: 'Старая',
-      hint: 'Контур переменной толщины, как старым пером',
+      label: t('brush_type.oldschool.label'),
+      hint: t('brush_type.oldschool.hint'),
       twins: { pencil: 'oldschool', eraser: 'oldschool-eraser' },
     },
     multator: {
-      label: 'Мультатор',
-      hint: 'Сглаженная, дрожь руки почти не видно',
+      label: t('brush_type.multator.label'),
+      hint: t('brush_type.multator.hint'),
       twins: { pencil: 'multator-pencil', eraser: 'multator-eraser' },
     },
   },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { addStroke, createDocument, removeLastStroke } from '../model/operations';
+import { t } from '../i18n';
 
 // EditorState is a runes class, so it is asserted as source (same contract
 // style as layers-panel.test.ts); the model round trip redo depends on is
@@ -76,8 +77,10 @@ describe('editor toolbar and hotkeys', () => {
   });
 
   it('shows undo and redo keys that disable when there is nothing to do', () => {
-    expect(editorUi).toContain('Отменить');
-    expect(editorUi).toContain('Вернуть');
+    expect(editorUi).toContain("t('editor.undo')");
+    expect(editorUi).toContain("t('editor.redo')");
+    expect(t('editor.undo')).toBe('Отменить');
+    expect(t('editor.redo')).toBe('Вернуть');
     expect(editorUi).toContain('disabled={!editor.canUndo}');
     expect(editorUi).toContain('disabled={!editor.canRedo}');
   });

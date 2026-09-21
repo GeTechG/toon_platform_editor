@@ -45,6 +45,7 @@
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -101,7 +102,7 @@
   let lastPickPreview = 0;
   const PIPETTE_THROTTLE_MS = 100;
   /** Transient message over the canvas (e.g. drawing into a hidden layer). */
-  const HIDDEN_LAYER_HINT = 'Слой скрыт';
+  const HIDDEN_LAYER_HINT = t('canvas.hidden_layer');
   let hint = $state('');
   let hintTimer = 0;
   /**
@@ -325,8 +326,8 @@
   // accessibility tree as an anonymous box, so it says what it is and which
   // frame is on it.
   const canvasLabel = $derived(
-    `Холст: кадр ${editor.displayedFrame + 1} из ${frameCount(editor.doc)}` +
-      (editor.doc.layers.length > 1 ? `, слой ${editor.activeLayer + 1}` : ''),
+    t('canvas.label', { frame: editor.displayedFrame + 1, total: frameCount(editor.doc) })
+      + (editor.doc.layers.length > 1 ? t('canvas.label_layer', { layer: editor.activeLayer + 1 }) : ''),
   );
   /** Reference cursors for the transform zones (`tools.js:995-1032`). */
   const CURSOR_BY_MODE: Record<HitMode, string> = {

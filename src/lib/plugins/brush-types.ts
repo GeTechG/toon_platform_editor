@@ -8,6 +8,7 @@
  */
 
 import { plugins } from './index';
+import { t } from '../i18n';
 
 /** The id of a brush type; `normal` is the editor's own. */
 export type BrushType = string;
@@ -22,7 +23,7 @@ export function hasBrushTypes(tool: string): boolean {
 /** Every type offered for this tool, the everyday one first. */
 export function brushTypesFor(tool: string): { id: BrushType; label: string; hint: string }[] {
   return [
-    { id: NORMAL_BRUSH_TYPE, label: 'Обычная', hint: 'Точнее, гладкость настраивается' },
+    { id: NORMAL_BRUSH_TYPE, label: t('brush_type.normal.label'), hint: t('brush_type.normal.hint') },
     ...plugins.brushTypes().filter((type) => tool in type.twins).map((type) => ({
       id: type.id,
       label: type.label,

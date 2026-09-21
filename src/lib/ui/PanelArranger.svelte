@@ -13,6 +13,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { dropPlacement, rowEdge, type Box } from './arrange';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -269,17 +270,16 @@
   {/if}
 {/if}
 
-<div class="arrange-bar" role="region" aria-label="Расположение панелей">
+<div class="arrange-bar" role="region" aria-label={t('arrange.bar')}>
   <p class="arrange-hint">
     {#if refused}
-      «{dragLabel}» убрать нельзя — это дорога назад к настройкам; перенеси в панель
+      {t('arrange.refused', { label: dragLabel })}
     {:else if newRow}
-      Отпусти — «{dragLabel}» встанет новой строкой
+      {t('arrange.new_row', { label: dragLabel })}
     {:else if drag}
-      Переносим «{dragLabel}» — отпусти над панелью, холстом или полкой
+      {t('arrange.dragging', { label: dragLabel })}
     {:else}
-      Перетаскивай что угодно: в другую панель, за верхнюю или нижнюю грань строки
-      (будет новая строка), на холст (будет окном) или на полку
+      {t('arrange.idle')}
     {/if}
   </p>
 
@@ -290,7 +290,7 @@
       <span class="chip" data-item={item.id}>{item.label}</span>
     {/each}
     {#if hidden.length === 0}
-      <span class="tray-empty">пусто — перетащи сюда, чтобы убрать</span>
+      <span class="tray-empty">{t('arrange.tray_empty')}</span>
     {/if}
   </div>
 
@@ -298,7 +298,7 @@
     <!-- Named arrangements: «Планшет», «Стол», whatever the hand wants back. -->
     <select
       class="workspaces"
-      aria-label="Рабочее пространство"
+      aria-label={t('arrange.workspace')}
       value={picked}
       onchange={(e) => {
         picked = e.currentTarget.value;
@@ -307,7 +307,7 @@
         }
       }}
     >
-      <option value="">— рабочее пространство —</option>
+      <option value="">{t('arrange.workspace_none')}</option>
       {#each editor.workspaces as workspace (workspace.id)}
         <option value={String(workspace.id)}>{workspace.name}</option>
       {/each}
@@ -315,13 +315,13 @@
     <input
       class="ws-name"
       type="text"
-      placeholder="название"
-      aria-label="Название рабочего пространства"
+      placeholder={t('arrange.name_placeholder')}
+      aria-label={t('arrange.name_label')}
       bind:value={newName}
       onkeydown={(e) => e.key === 'Enter' && saveAs()}
     />
-    <button class="key" disabled={!newName.trim()} onclick={saveAs} title="Сохранить текущую раскладку под именем">
-      Сохранить
+    <button class="key" disabled={!newName.trim()} onclick={saveAs} title={t('arrange.save_title')}>
+      {t('arrange.save')}
     </button>
     <button
       class="key danger"
@@ -330,27 +330,27 @@
         editor.deleteWorkspace(Number(picked));
         picked = '';
       }}
-      title="Удалить выбранное пространство"
-    >Удалить</button>
-    <button class="key" onclick={downloadWorkspace} title="Сохранить расположение в файл">
-      Скачать
+      title={t('arrange.delete_title')}
+    >{t('arrange.delete')}</button>
+    <button class="key" onclick={downloadWorkspace} title={t('arrange.download_title')}>
+      {t('arrange.download')}
     </button>
-    <button class="key" onclick={() => workspaceFile?.click()} title="Загрузить расположение из файла">
-      Загрузить…
+    <button class="key" onclick={() => workspaceFile?.click()} title={t('arrange.upload_title')}>
+      {t('arrange.upload')}
     </button>
     <input
       bind:this={workspaceFile}
       class="ws-file"
       type="file"
       accept="application/json,.json"
-      aria-label="Файл расположения"
+      aria-label={t('arrange.file')}
       onchange={onWorkspaceFile}
     />
-    <button class="key" onclick={() => editor.resetPanels()} title="Вернуть раскладку набора">
-      Сбросить
+    <button class="key" onclick={() => editor.resetPanels()} title={t('arrange.reset_title')}>
+      {t('arrange.reset')}
     </button>
     <button class="key primary" onclick={() => (editor.arranging = false)}>
-      Готово
+      {t('arrange.done')}
     </button>
   </div>
 </div>

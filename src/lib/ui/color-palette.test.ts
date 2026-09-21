@@ -14,6 +14,7 @@ import {
   stealPalette,
   withSavedPalette,
 } from './color-palette';
+import { t } from '../i18n';
 
 describe('TONIO_DEFAULT_PALETTE', () => {
   it('is the reference palette of 30 colors', () => {
@@ -314,18 +315,21 @@ describe('the palette box follows the reference palette', () => {
   it('asks before a merge that would overflow, then reports what was added', () => {
     expect(paletteBox).toMatch(/skipped > 0[^]{0,200}confirm\(/);
     expect(paletteBox).toContain('editor.settings.paletteLimit');
-    expect(paletteBox).toContain('Добавлено');
+    expect(paletteBox).toContain("t('palette.added'");
+    expect(t('palette.added', { added: 3 })).toContain('Добавлено');
     expect(paletteBox).not.toContain('PALETTE_LIMIT');
   });
 
   it('says nothing fits when the grid is already full, instead of asking and reporting zero', () => {
     expect(paletteBox).toMatch(/added === 0[^]{0,400}return;[^]{0,200}skipped > 0[^]{0,200}confirm\(/);
-    expect(paletteBox).toContain('Палитра заполнена');
+    expect(paletteBox).toContain("t('palette.full'");
+    expect(t('palette.full', { limit: 30, skipped: 2 })).toContain('Палитра заполнена');
   });
 
   it('shows the remover hint once, then remembers that it did', () => {
     expect(paletteBox).toContain('removerTipShown');
-    expect(paletteBox).toMatch(/alert\('[^']*цвет/);
+    expect(paletteBox).toContain("alert(t('palette.remover_hint'))");
+    expect(t('palette.remover_hint')).toContain('цвет');
   });
 
   it('scrolls the grid to the cell of the chosen outline', () => {

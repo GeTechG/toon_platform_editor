@@ -29,6 +29,7 @@ import {
   selectVideoTarget,
   type VideoTarget,
 } from './video-codecs';
+import { t } from '../i18n';
 
 export interface VideoFormat {
   mimeType: string;
@@ -174,7 +175,7 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   const { plan, audio, onProgress, signal, trackSeconds, ...raster } = options;
   const target = plan.target;
   if (!target) {
-    throw new Error('видео-кодек не выбран');
+    throw new Error(t('export.no_codec'));
   }
   const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, WebMOutputFormat } =
     await import('mediabunny');
@@ -258,7 +259,7 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   const { plan, audio, onProgress, signal, trackSeconds, width, watermark } = options;
   const format = plan.format;
   if (!format) {
-    throw new Error('этот браузер не умеет записывать видео');
+    throw new Error(t('export.no_video'));
   }
   const { width: targetWidth, height } = exportSize(doc, width ?? logicalSize(doc).width);
   const canvas = document.createElement('canvas');
@@ -303,7 +304,7 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   };
   const recorded = new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => resolve(new Blob(chunks, { type: format.mimeType }));
-    recorder.onerror = () => reject(new Error('запись видео сорвалась'));
+    recorder.onerror = () => reject(new Error(t('export.recording_failed')));
   });
 
   const frames = frameCount(doc);

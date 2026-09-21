@@ -12,6 +12,7 @@ import {
   type RasterizeOptions,
 } from './rasterize';
 import type { ExportRequest, ExportResponse } from './worker';
+import { t } from '../i18n';
 
 export interface ExportGifOptions extends RasterizeOptions {
   signal?: AbortSignal;
@@ -37,7 +38,7 @@ export async function exportGif(
       settle();
     };
     function onAbort(): void {
-      done(() => reject(new DOMException('экспорт отменён', 'AbortError')));
+      done(() => reject(new DOMException(t('export.cancelled'), 'AbortError')));
     }
     signal?.addEventListener('abort', onAbort, { once: true });
     worker.onmessage = (e: MessageEvent<ExportResponse>) => {

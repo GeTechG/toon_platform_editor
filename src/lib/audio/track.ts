@@ -3,6 +3,7 @@
  * lines up with the frame strip. DOM-free so it runs under bun test — the
  * decoding itself (`AudioContext.decodeAudioData`) lives in the UI.
  */
+import { t } from '../i18n';
 
 /** Types the «нота» button suggests; anything `audio/*` is accepted. */
 export const AUDIO_MIME_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-wav'] as const;
@@ -17,10 +18,10 @@ export const AUDIO_MAX_BYTES = 70 * 1024 * 1024;
 /** Complaint about a picked file, or null if it may be loaded. */
 export function checkAudioFile(file: { type: string; size: number }): string | null {
   if (!file.type.startsWith('audio/')) {
-    return 'Нужен звуковой файл';
+    return t('audio.need_file');
   }
   if (file.size > AUDIO_MAX_BYTES) {
-    return `Файл тяжелее ${AUDIO_MAX_BYTES / 1024 / 1024} МБ`;
+    return t('audio.too_big', { limit: AUDIO_MAX_BYTES / 1024 / 1024 });
   }
   return null;
 }

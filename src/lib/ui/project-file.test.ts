@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { t } from '../i18n';
 
 // Editor.svelte and the sheets are Svelte, so they are asserted as source —
 // the same contract style as editor-keys.test.ts. The logic they call into
@@ -12,7 +13,8 @@ const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).t
 describe('Alt+S saves the project as a file', () => {
   it('writes the document itself, under the .toonop name', () => {
     expect(editorUi).toContain('function saveProjectFile()');
-    expect(editorUi).toContain('Скачать проект в формате .toonop?');
+    expect(editorUi).toContain("t('editor.download_project_confirm')");
+    expect(t('editor.download_project_confirm')).toBe('Скачать проект в формате .toonop?');
     expect(editorUi).toContain("type: 'application/json'");
     expect(editorUi).toContain("'toonop.toonop'");
     expect(editorUi).toContain('JSON.stringify($state.snapshot(editor.doc))');
@@ -27,7 +29,9 @@ describe('Alt+S saves the project as a file', () => {
   });
 
   it('the shortcut table says what the key does in this preset', () => {
-    expect(editorUi).toContain("['Alt + S', hasProjectFile ? 'Скачать проект (.toonop)' : 'Экспорт']");
+    expect(editorUi).toContain("['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')]");
+    expect(t('key.download_project')).toBe('Скачать проект (.toonop)');
+    expect(t('key.export')).toBe('Экспорт');
   });
 });
 
@@ -53,7 +57,8 @@ describe('one door for every file the editor opens', () => {
 
   it('the drawing that could not be read leaves the current one alone', () => {
     // `importDoc` is reached only after every decoder has succeeded.
-    expect(editorUi).toMatch(/importError = `Не удалось открыть файл[^]*?return;/);
+    expect(editorUi).toMatch(/importError = t\('editor\.file_failed'[^]*?return;/);
+    expect(t('editor.file_failed', { reason: 'x' })).toStartWith('Не удалось открыть файл');
   });
 });
 
@@ -62,7 +67,8 @@ describe('a file dropped on the window', () => {
     expect(editorUi).toContain('ondrop={onDrop}');
     expect(editorUi).toContain('function onDrop(');
     expect(editorUi).toContain("type.startsWith('audio/')");
-    expect(editorUi).toContain('Кажется, такой формат файла не поддерживается');
+    expect(editorUi).toContain("t('editor.file_unsupported')");
+    expect(t('editor.file_unsupported')).toBe('Кажется, такой формат файла не поддерживается');
   });
 });
 
@@ -125,7 +131,8 @@ describe('what the record holds and what comes back', () => {
 
 describe('a failed write is not silent', () => {
   it('says so, marks the indicator and stops trying until the page reloads', () => {
-    expect(editorUi).toContain('Ошибка локального сохранения');
+    expect(editorUi).toContain("t('editor.save_failed')");
+    expect(t('editor.save_failed')).toBe('Ошибка локального сохранения');
     expect(editorUi).toContain('saveFailed = true');
     expect(editorUi).toMatch(/saveFailed[^]*?clearInterval|clearInterval[^]*?saveFailed/);
   });
@@ -143,8 +150,10 @@ describe('persistent storage', () => {
   it('is asked for on the way in, and can be asked for again', () => {
     expect(editorUi).toContain('navigator.storage');
     expect(editorUi).toContain('.persist?.()');
-    expect(sheet).toContain('Запросить постоянное хранилище');
-    expect(sheet).toContain('Сохранить сейчас');
+    expect(sheet).toContain("t('settings.ask_persist')");
+    expect(t('settings.ask_persist')).toBe('Запросить постоянное хранилище');
+    expect(sheet).toContain("t('settings.save_now')");
+    expect(t('settings.save_now')).toStartWith('Сохранить сейчас');
   });
 
   it('the Toonio rail has a save key, dimmed while there is nothing to save', () => {
@@ -165,7 +174,8 @@ describe('the drafts list', () => {
   it('copies, deletes one and deletes all', () => {
     expect(editorUi).toContain('duplicateDraft(');
     expect(editorUi).toContain('deleteAllDrafts()');
-    expect(editorUi).toContain('Удалить все черновики?');
+    expect(editorUi).toContain("t('editor.drafts_wipe_confirm')");
+    expect(t('editor.drafts_wipe_confirm')).toStartWith('Удалить все черновики?');
   });
 });
 
@@ -178,7 +188,8 @@ describe('the drafts file', () => {
     // Our own name for our own file; `.toonio` stays readable, not writable.
     expect(sheet).toContain("'drafts.toonops'");
     expect(sheet).toContain('.toonops,.toonio');
-    expect(sheet).toContain('Загружено ${loaded}, повреждено ${broken}');
+    expect(sheet).toContain("t('settings.drafts_loaded', { loaded, broken })");
+    expect(t('settings.drafts_loaded', { loaded: 3, broken: 1 })).toBe('Загружено 3, повреждено 1');
   });
 });
 

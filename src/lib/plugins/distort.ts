@@ -13,6 +13,7 @@
 import { FIXED_POINT_SCALE } from '../format/constants';
 import { distortRate, jitter } from '../tools/distort';
 import type { PluginHost, PluginTool } from './contract';
+import { t } from '../i18n';
 
 /** The reference writes once every this many logical pixels. */
 const STEP_PX = 5;
@@ -25,8 +26,8 @@ let drag: { startX: number; lastStep: number } | null = null;
 
 export const distortTool: PluginTool = {
   icon: 'jitter',
-  title: 'Дрожь (~) — дребезг штрихов кадра',
-  label: 'Дрожь',
+  title: t('tool.jitter.title'),
+  label: t('tool.jitter.label'),
   key: '~',
   help: true,
   cursor: 'e-resize',

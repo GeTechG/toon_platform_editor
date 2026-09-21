@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { EXPORT_DEFAULT_WIDTH, EXPORT_WIDTHS } from '../format/constants';
+import { t } from '../i18n';
 
 // The sheet is Svelte runes, so it is asserted as source (the same contract
 // style as settings-sheet.test.ts); the logic it leans on is unit-tested in
@@ -55,9 +56,12 @@ describe('watermark and background', () => {
 
 describe('progress', () => {
   it('names the stage and offers Cancel for every format', () => {
-    expect(sheet).toContain('Рендер кадров');
-    expect(sheet).toContain('Кодирование');
-    expect(sheet).toMatch(/Отмен/);
+    expect(sheet).toContain("t('export.stage_render')");
+    expect(t('export.stage_render')).toContain('Рендер кадров');
+    expect(sheet).toContain("t('export.stage_encode')");
+    expect(t('export.stage_encode')).toContain('Кодирование');
+    expect(sheet).toContain("t('export.cancel')");
+    expect(t('export.cancel')).toStartWith('Отмен');
   });
 
   it('promises a real-time wait only on the MediaRecorder path', () => {

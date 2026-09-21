@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { LoopPlayer } from './player';
+import { t } from '../i18n';
 
 // Player.svelte is a runes component, so its contract is asserted as source
 // (same style as the ui/ component tests); the LoopPlayer behaviour that
@@ -43,8 +44,10 @@ describe('Player controls contract', () => {
   });
 
   it('names the button in Russian and gives it a real accessible name', () => {
-    expect(source).toContain('Проиграть');
-    expect(source).toContain('Пауза');
+    expect(source).toContain("t('play.play')");
+    expect(source).toContain("t('play.pause')");
+    expect(t('play.play')).toBe('Проиграть');
+    expect(t('play.pause')).toBe('Пауза');
     expect(source).toContain('aria-label={playing');
   });
 

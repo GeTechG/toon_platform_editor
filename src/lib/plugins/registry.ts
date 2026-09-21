@@ -10,6 +10,7 @@
 import { LINE_PRIMITIVES } from '../render/dispatch';
 import {
   PLUGIN_API,
+  pluginText,
   type Plugin,
   type PluginBrush,
   type PluginBrushType,
@@ -17,6 +18,19 @@ import {
   type PluginTool,
   type StrokeRules,
 } from './contract';
+import { BASE_LOCALE, i18n, t } from '../i18n';
+
+/**
+ * A manifest's text, resolved for the language in hand.
+ *
+ * ponytail: resolved once, on accept — so a language switched while the editor
+ * is open leaves plugin labels in the old one. Re-registering what `store.ts`
+ * already holds is the upgrade path, and it is the existing install path, not
+ * a new mechanism; it stays unwritten while nothing can switch the language.
+ */
+function localized(value: unknown): string | null {
+  return pluginText(value, i18n.language, BASE_LOCALE);
+}
 
 /**
  * What a call into a plugin gives back when the plugin threw instead: the
@@ -26,19 +40,25 @@ import {
 type AnyFn = (...args: never[]) => unknown;
 
 
-export interface RegisteredTool extends PluginTool {
+export interface RegisteredTool extends Omit<PluginTool, 'label' | 'title'> {
+  /** Resolved out of the manifest for the language in hand. */
+  readonly label: string;
+  readonly title: string;
   readonly id: string;
   /** The plugin that brought it — who may hide it is decided by this. */
   readonly plugin: string;
   readonly builtin: boolean;
 }
 
-export interface RegisteredPreset extends PluginPreset {
+export interface RegisteredPreset extends Omit<PluginPreset, 'label'> {
+  readonly label: string;
   readonly id: string;
   readonly plugin: string;
 }
 
-export interface RegisteredBrushType extends PluginBrushType {
+export interface RegisteredBrushType extends Omit<PluginBrushType, 'label' | 'hint'> {
+  readonly label: string;
+  readonly hint?: string;
   readonly id: string;
   readonly plugin: string;
 }
@@ -63,13 +83,22 @@ function keyId(key: string): string {
   return key.trim().toLowerCase();
 }
 
-function readTool(value: unknown): PluginTool | null {
+function readTool(value: unknown): RegisteredText<PluginTool> | null {
   const tool = typeof value === 'object' && value !== null ? value as Record<string, unknown> : null;
-  if (!tool || typeof tool.label !== 'string' || typeof tool.title !== 'string' || typeof tool.icon !== 'string') {
+  const label = tool && localized(tool.label);
+  const title = tool && localized(tool.title);
+  if (!tool || !label || !title || typeof tool.icon !== 'string') {
     return null;
   }
-  return { ...tool, key: typeof tool.key === 'string' ? tool.key : '' } as PluginTool;
+  return { ...tool, label, title, key: typeof tool.key === 'string' ? tool.key : '' } as RegisteredText<PluginTool>;
 }
+
+/** The same shape with its text resolved: what the rest of the editor reads. */
+type RegisteredText<T> = Omit<T, 'label' | 'title' | 'hint'> & {
+  label: string;
+  title: string;
+  hint?: string;
+};
 
 export class PluginRegistry {
   private readonly byId = new Map<string, RegisteredTool>();
@@ -103,16 +132,16 @@ export class PluginRegistry {
   register(value: unknown, opts: { builtin?: boolean; bundled?: boolean } = {}): string | null {
     const manifest = typeof value === 'object' && value !== null ? value as Partial<Plugin> : null;
     if (!manifest || typeof manifest.id !== 'string' || !manifest.id) {
-      return this.refuse('<без id>', 'манифеста нет или он без id');
+      return this.refuse(t('plugin.unnamed'), t('plugin.no_manifest'));
     }
     if (manifest.api !== PLUGIN_API) {
-      return this.refuse(manifest.id, `чужой мажор api: ${manifest.api}`);
+      return this.refuse(manifest.id, t('plugin.foreign_api', { api: manifest.api }));
     }
     const tools = record(manifest.tools);
     const presets = record(manifest.presets);
     const types = record(manifest.brushTypes);
     if (!tools && !presets && !types) {
-      return this.refuse(manifest.id, 'плагин не приносит ничего: ни инструмента, ни пресета, ни типа кисти');
+      return this.refuse(manifest.id, t('plugin.brings_nothing'));
     }
     const plugin = manifest.id;
     // A record that does not pass costs itself, not the manifest: a plugin of
@@ -133,26 +162,26 @@ export class PluginRegistry {
     for (const [id, value] of Object.entries(types ?? {})) {
       accepted += this.addBrushType(plugin, id, value) ? 1 : 0;
     }
-    return accepted === 0 ? this.failures[was]?.reason ?? 'плагин не принёс ничего рабочего' : null;
+    return accepted === 0 ? this.failures[was]?.reason ?? t('plugin.nothing_worked') : null;
   }
 
   private addTool(plugin: string, id: string, value: unknown, builtin: boolean): boolean {
     if (this.byId.has(id)) {
-      this.fail(plugin, `такой id уже загружен: ${id}`);
+      this.fail(plugin, t('plugin.id_taken', { id }));
       return false;
     }
     const tool = readTool(value);
     if (!tool) {
-      this.fail(plugin, `инструмент ${id} без label, title или icon`);
+      this.fail(plugin, t('plugin.tool_incomplete', { id }));
       return false;
     }
     if (tool.stroke) {
       if (!(LINE_PRIMITIVES as readonly string[]).includes(tool.stroke.kind)) {
-        this.fail(plugin, `примитив, которого формат не знает: ${tool.stroke.kind}`);
+        this.fail(plugin, t('plugin.unknown_primitive', { kind: tool.stroke.kind }));
         return false;
       }
       if (typeof tool.stroke.descriptor !== 'function') {
-        this.fail(plugin, `инструмент ${id} рисует, но не строит дескриптор`);
+        this.fail(plugin, t('plugin.tool_no_descriptor', { id }));
         return false;
       }
     }
@@ -160,7 +189,7 @@ export class PluginRegistry {
     // one that already had it keeps doing what it did.
     let key = tool.key;
     if (key && this.keys.has(keyId(key))) {
-      this.fail(plugin, `клавиша занята: ${key}`);
+      this.fail(plugin, t('plugin.key_taken', { key }));
       key = '';
     }
     if (key) {
@@ -175,34 +204,36 @@ export class PluginRegistry {
 
   private addPreset(plugin: string, id: string, value: unknown): boolean {
     const preset = value as PluginPreset | null;
-    if (!preset || typeof preset.label !== 'string' || typeof preset.brush !== 'string' || !preset.ux) {
-      this.fail(plugin, `пресет ${id} без label, кисти или UX-профиля`);
+    const label = preset && localized(preset.label);
+    if (!preset || !label || typeof preset.brush !== 'string' || !preset.ux) {
+      this.fail(plugin, t('plugin.preset_incomplete', { id }));
       return false;
     }
     if (this.presetById.has(id)) {
-      this.fail(plugin, `такой пресет уже загружен: ${id}`);
+      this.fail(plugin, t('plugin.preset_taken', { id }));
       return false;
     }
-    this.presetById.set(id, { ...preset, id, plugin });
+    this.presetById.set(id, { ...preset, label, id, plugin });
     return true;
   }
 
   private addBrushType(plugin: string, id: string, value: unknown): boolean {
     const type = value as PluginBrushType | null;
-    if (!type || typeof type.label !== 'string' || typeof type.twins !== 'object' || !type.twins) {
-      this.fail(plugin, `тип кисти ${id} без label или таблицы двойников`);
+    const label = type && localized(type.label);
+    if (!type || !label || typeof type.twins !== 'object' || !type.twins) {
+      this.fail(plugin, t('plugin.brush_type_incomplete', { id }));
       return false;
     }
     if (this.typeById.has(id)) {
-      this.fail(plugin, `такой тип кисти уже загружен: ${id}`);
+      this.fail(plugin, t('plugin.brush_type_taken', { id }));
       return false;
     }
-    this.typeById.set(id, { ...type, id, plugin });
+    this.typeById.set(id, { ...type, label, hint: localized(type.hint) ?? undefined, id, plugin });
     return true;
   }
 
   /** Wraps every door into the plugin, so one exception costs the plugin only. */
-  private guard(id: string, tool: PluginTool): PluginTool {
+  private guard(id: string, tool: RegisteredText<PluginTool>): RegisteredText<PluginTool> {
     const wrap = <F extends AnyFn>(fn: F, fallback: F): F =>
       ((...args: never[]) => {
         try {
@@ -284,7 +315,7 @@ export class PluginRegistry {
     }
     const reason = error instanceof Error ? error.message : String(error);
     this.broken.set(id, reason);
-    console.error(`плагин ${id} отключён после ошибки:`, error);
+    console.error(t('plugin.broken', { id }), error);
     this.onBreak?.(id, reason);
   }
 

@@ -11,9 +11,10 @@
  */
 
 import { compareVersions, type CatalogEntry } from './catalog';
-import type { Plugin } from './contract';
+import { pluginText, type Plugin } from './contract';
 import type { PluginRegistry } from './registry';
 import { listInstalled, putInstalled } from './store';
+import { BASE_LOCALE, i18n, t } from '../i18n';
 
 export interface InstallPorts {
   fetch: (url: string) => Promise<{ text(): Promise<string> }>;
@@ -43,8 +44,9 @@ function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A manifest's text for the language in hand; '' when it has none. */
 function text(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return pluginText(value, i18n.language, BASE_LOCALE) ?? '';
 }
 
 function manifestOf(module: Record<string, unknown>): Partial<Plugin> & Record<string, unknown> {
@@ -87,7 +89,7 @@ export async function installFromCatalog(
   // The catalog says what this record is; a bundle that turns out to be
   // another plugin is not the one that was asked for.
   if (got.manifest.id !== entry.id) {
-    return `бандл отдаёт не тот плагин: ждали ${entry.id}, получили ${text(got.manifest.id) || '«без id»'}`;
+    return t('plugin.wrong_bundle', { expected: entry.id, got: text(got.manifest.id) || t('plugin.no_id') });
   }
   const refused = accept(got.manifest, registry);
   if (refused) {
@@ -188,11 +190,11 @@ export async function updateInstalled(
     }
     const got = await bundle(entry.url, ports);
     if (typeof got === 'string') {
-      registry.fail(plugin.id, `обновление не удалось: ${got}`);
+      registry.fail(plugin.id, t('plugin.update_failed', { reason: got }));
       continue;
     }
     if (got.manifest.id !== entry.id) {
-      registry.fail(plugin.id, `обновление не удалось: бандл отдаёт не тот плагин`);
+      registry.fail(plugin.id, t('plugin.update_wrong_bundle'));
       continue;
     }
     // The old one has to go first: the register refuses a second plugin under
@@ -200,7 +202,7 @@ export async function updateInstalled(
     registry.remove(plugin.id);
     const refused = accept(got.manifest, registry);
     if (refused) {
-      registry.fail(plugin.id, `обновление не удалось: ${refused}`);
+      registry.fail(plugin.id, t('plugin.update_failed', { reason: refused }));
       continue;
     }
     await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, code: got.code });

@@ -124,7 +124,7 @@ import {
   type UxProfile,
 } from './ux-profile';
 import {
-  CURRENT_NAME,
+  currentName,
   exportWorkspace,
   importWorkspaces,
   loadWorkspaces,
@@ -171,6 +171,7 @@ import {
   type SideId,
   type BrushRecord,
 } from './presets';
+import { t } from '../i18n';
 
 /**
  * A tool is whatever the register has (plugins/registry.ts), so this is an id
@@ -454,7 +455,7 @@ export class EditorState {
     // The reference names every layer it creates, the first one included.
     // Without a name here the row falls back to its position, and the moment
     // a second layer slid in under it both rows would read «Слой 2».
-    renameLayer(this.doc, 0, 'Слой 1');
+    renameLayer(this.doc, 0, t('layer.default_name', { n: 1 }));
   }
 
   /** Everything the session logs as an error, so Alt+L has something to hand over. */
@@ -837,7 +838,7 @@ export class EditorState {
     const picked = id === undefined ? undefined : this.workspaces.find((w) => w.id === id);
     const workspace = picked ? $state.snapshot(picked) : undefined;
     return exportWorkspace(
-      workspace?.name ?? CURRENT_NAME,
+      workspace?.name ?? currentName(),
       workspace?.panels ?? $state.snapshot(this.panels),
       workspace?.floatPos ?? $state.snapshot(this.floatPos),
     );
@@ -953,7 +954,7 @@ export class EditorState {
     this.activeLayer = addLayer(this.doc, at);
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
-    renameLayer(this.doc, at, `Слой ${this.layerCounter}`);
+    renameLayer(this.doc, at, t('layer.default_name', { n: this.layerCounter }));
     this.touched = true;
   }
 
@@ -964,7 +965,7 @@ export class EditorState {
 
   /** What the panel calls a layer: its stored name, or its position. */
   layerLabel(index: number): string {
-    return this.doc.layers[index]?.name ?? `Слой ${index + 1}`;
+    return this.doc.layers[index]?.name ?? t('layer.default_name', { n: index + 1 });
   }
 
   /** Names a layer (double click in the panel); a blank name goes back to the position. */
@@ -980,7 +981,7 @@ export class EditorState {
     if (this.playing || this.doc.layers.length <= 1) {
       return;
     }
-    if (!this.confirmed(`Удалить «${this.layerLabel(this.activeLayer)}»?`)) {
+    if (!this.confirmed(t('layer.delete_confirm', { name: this.layerLabel(this.activeLayer) }))) {
       return;
     }
     const removed = this.activeLayer;
@@ -1271,7 +1272,7 @@ export class EditorState {
     if (this.playing || !this.canRemoveFrame) {
       return;
     }
-    if (!this.confirmed(`Удалить кадр ${this.activeFrame + 1}?`)) {
+    if (!this.confirmed(t('frame.delete_confirm', { n: this.activeFrame + 1 }))) {
       return;
     }
     const left = this.activeFrame;
@@ -1348,12 +1349,12 @@ export class EditorState {
     // more than one cell is at stake (`bundle:8192-8250`).
     const { nonEmpty, frames, layers } = pasteNeedsConfirm(this.doc, target);
     if (nonEmpty) {
-      if (!this.confirmed('Ячейки не пустые. Заменить их содержимое?')) {
+      if (!this.confirmed(t('frame.replace_confirm'))) {
         return;
       }
       if (
         (frames > 1 || layers > 1)
-        && !this.confirmed(`Это затронет кадров: ${frames}, слоёв: ${layers}. Продолжить?`)
+        && !this.confirmed(t('frame.affects_confirm', { frames, layers }))
       ) {
         return;
       }

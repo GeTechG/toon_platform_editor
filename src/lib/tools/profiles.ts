@@ -18,6 +18,7 @@ import { MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import type { ResolvedStroke } from '../model/operations';
+import { t } from '../i18n';
 
 export interface PointerSample {
   pointerId: number;
@@ -228,7 +229,7 @@ export class PointerStrokeController {
     const stroke = commitStrokeSession(session);
     const kind = (stroke?.tool as { kind?: unknown } | undefined)?.kind;
     if (!(DOCUMENT_PRIMITIVES as readonly unknown[]).includes(kind)) {
-      console.error(`кисть вернула вид, которого формат не знает: ${String(kind)}`);
+      console.error(t('brush.unknown_kind', { kind: String(kind) }));
       return null;
     }
     // The document stores whole coordinates. A brush quantizes on its own way,

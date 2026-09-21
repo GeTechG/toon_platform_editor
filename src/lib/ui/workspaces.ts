@@ -6,6 +6,7 @@
  */
 
 import { normalizePanels, type PanelLayout } from './panels';
+import { t } from '../i18n';
 
 export interface FloatPositions {
   [id: string]: { x: number; y: number };
@@ -20,7 +21,7 @@ export interface Workspace {
 
 const STORAGE_KEY = 'toon-editor:workspaces';
 /** What the live arrangement is called when it is exported unnamed. */
-export const CURRENT_NAME = 'Текущее';
+export const currentName = (): string => t('workspace.current');
 
 function cleanFloatPos(value: unknown): FloatPositions {
   const out: FloatPositions = {};

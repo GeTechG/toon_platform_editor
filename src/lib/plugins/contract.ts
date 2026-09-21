@@ -30,6 +30,41 @@ export type { StrokeRules };
  */
 export const PLUGIN_API = 1;
 
+/**
+ * Text a manifest shows a person: one string, or one per locale.
+ *
+ * A plugin is a bundle of its own, compiled apart from the editor, so it
+ * cannot reach the editor's catalogue — and it should not: our keys are
+ * renamed by the week, and a plugin that could write into them could rewrite
+ * the editor's own words. It hands over the text instead, in whatever
+ * languages it has; where it keeps them (its own JSON, its own i18n) is its
+ * business.
+ */
+export type PluginText = string | Readonly<Record<string, string>>;
+
+/**
+ * The one string a reader gets: the language in hand, the base language, then
+ * whatever the map does have — a plugin that knows only German still says
+ * something rather than nothing. `null` when there is no text at all, which
+ * the register refuses over.
+ */
+export function pluginText(value: unknown, locale: string, base: string): string | null {
+  if (typeof value === 'string') {
+    return value || null;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const map = value as Record<string, unknown>;
+  for (const key of [locale, base, ...Object.keys(map)]) {
+    const text = map[key];
+    if (typeof text === 'string' && text) {
+      return text;
+    }
+  }
+  return null;
+}
+
 /** A point of the gesture, in document units. */
 export interface PluginPoint {
   readonly x: number;
@@ -111,8 +146,8 @@ export interface PluginPrimitive {
 
 /** A tool a plugin adds: how it is drawn, and what the gesture does. */
 export interface PluginTool {
-  readonly label: string;
-  readonly title: string;
+  readonly label: PluginText;
+  readonly title: PluginText;
   /** The shortcut it asks for; dropped when something already holds it. */
   readonly key: string;
   /** SVG markup, drawn at the size of the editor's own icons. */
@@ -207,7 +242,7 @@ export interface UxProfile {
  * profile whole, not the name of one kept in a table here.
  */
 export interface PluginPreset {
-  readonly label: string;
+  readonly label: PluginText;
   /** Default brush: the tool whose rules a tool without its own follows. */
   readonly brush: string;
   /** The brush type it opens with; the everyday one when it names none. */
@@ -229,9 +264,9 @@ export interface PluginPanels {
  * that stands in for it. "Обычная" is the editor's own and means "no twins".
  */
 export interface PluginBrushType {
-  readonly label: string;
+  readonly label: PluginText;
   /** One line on what it draws, for the list that offers it. */
-  readonly hint?: string;
+  readonly hint?: PluginText;
   readonly twins: Readonly<Record<string, string>>;
 }
 
@@ -243,9 +278,9 @@ export interface Plugin {
    * catalog record; these are read from the manifest only for a bundle put in
    * from disk, which has no record anywhere.
    */
-  readonly name?: string;
+  readonly name?: PluginText;
   readonly version?: string;
-  readonly description?: string;
+  readonly description?: PluginText;
   /** SVG markup on the 24-unit grid, drawn beside the name in the list. */
   readonly icon?: string;
   /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { allPlaced, defaultPanels } from './panels';
+import { t } from '../i18n';
 
 const rows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
@@ -15,7 +16,8 @@ describe('one layer list, two placements', () => {
 
   it('every control the reference puts in a row is in the row, not a footer', () => {
     // Reference row: eye · name · ⇕ · ×, with «+ Слой» heading the column.
-    expect(rows).toContain('Удалить слой');
+    expect(rows).toContain("t('layer.remove_title')");
+    expect(t('layer.remove_title')).toBe('Удалить слой');
     expect(rows).toContain('class="add-layer"');
     expect(rows).not.toContain('<footer>');
     // Deleting acts on the row you pressed, not on whichever layer was active.

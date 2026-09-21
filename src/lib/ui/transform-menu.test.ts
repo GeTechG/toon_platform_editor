@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { t } from '../i18n';
 
 const menu = await Bun.file(new URL('./TransformMenu.svelte', import.meta.url)).text();
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
@@ -6,9 +7,13 @@ const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).tex
 
 describe('TransformMenu', () => {
   it('offers a numeric field per transform parameter', () => {
-    for (const label of ['X', 'Y', 'Поворот', 'Масштаб X', 'Масштаб Y']) {
-      expect(menu).toContain(label);
+    expect(menu).toContain('>X</label>');
+    expect(menu).toContain('>Y</label>');
+    for (const key of ['transform.rotate', 'transform.scale_x', 'transform.scale_y']) {
+      expect(menu).toContain(`t('${key}')`);
+      expect(t(key)).not.toBe(key);
     }
+    expect(t('transform.rotate')).toBe('Поворот');
     expect(menu).toContain('type="number"');
   });
 
@@ -35,7 +40,8 @@ describe('TransformMenu', () => {
     expect(menu).toContain('aria-label');
     expect(menu).toContain("e.key === 'Escape'");
     // The window announces itself rather than being an unnamed group of inputs.
-    expect(menu).toContain('aria-label="Трансформация"');
+    expect(menu).toContain("aria-label={t('transform.title')}");
+    expect(t('transform.title')).toBe('Трансформация');
   });
 
   it('is only mounted while a transform is open', () => {

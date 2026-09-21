@@ -5,6 +5,7 @@
   // of fields under the frames was in the way of the frames.
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
 
@@ -20,7 +21,7 @@
   }
 
   function removeTrack(): void {
-    if (!editor.warnings || confirm('Убрать звук? Отменить это будет нельзя.')) {
+    if (!editor.warnings || confirm(t('audio.remove_confirm'))) {
       editor.audio.clear();
       onClose();
     }
@@ -39,10 +40,10 @@
   const trackOutruns = $derived(editor.audio.duration - filmSeconds > 1);
 </script>
 
-<div class="audio-plate" role="dialog" aria-label="Звук">
+<div class="audio-plate" role="dialog" aria-label={t('audio.panel')}>
   <header>
-    <h2>Звук</h2>
-    <button class="key icon" onclick={onClose} aria-label="Закрыть звук">
+    <h2>{t('audio.panel')}</h2>
+    <button class="key icon" onclick={onClose} aria-label={t('audio.close')}>
       <Icon name="x" />
     </button>
   </header>
@@ -58,43 +59,43 @@
 
     {#if editor.audio.hasTrack}
       <label class="field">
-        <span>Название</span>
-        <input bind:value={editor.audio.name} placeholder="Без названия" />
+        <span>{t('audio.name')}</span>
+        <input bind:value={editor.audio.name} placeholder={t('audio.name_placeholder')} />
       </label>
       <label class="field">
-        <span>Автор</span>
-        <input bind:value={editor.audio.author} placeholder="Кто написал" />
+        <span>{t('audio.author')}</span>
+        <input bind:value={editor.audio.author} placeholder={t('audio.author_placeholder')} />
       </label>
 
       <label class="toggle">
         <span>
-          Привязать к кадрам
+          {t('audio.tie')}
           <small>
             {editor.audio.sync
-              ? 'кадр всегда попадает на своё место в треке; на повторе трека мультик начнётся заново'
-              : 'мультик крутится сам по себе, трек просто играет под ним'}
+              ? t('audio.tie_on')
+              : t('audio.tie_off')}
           </small>
         </span>
         <input type="checkbox" role="switch" bind:checked={editor.audio.sync} />
       </label>
 
       <p class="lengths">
-        Мультик <b>{clock(filmSeconds)}</b>, трек <b>{clock(editor.audio.duration)}</b>
+        {t('audio.film')} <b>{clock(filmSeconds)}</b>, {t('audio.track')} <b>{clock(editor.audio.duration)}</b>
       </p>
       {#if trackOutruns}
-        <p class="hint">На ленте видно только начало трека — столько, сколько длится мультик.</p>
+        <p class="hint">{t('audio.outruns')}</p>
       {/if}
 
       <div class="row">
-        <button class="key wide" onclick={() => picker?.click()}>Заменить файл…</button>
-        <button class="key icon" onclick={removeTrack} title="Убрать звук" aria-label="Убрать звук">
+        <button class="key wide" onclick={() => picker?.click()}>{t('audio.replace')}</button>
+        <button class="key icon" onclick={removeTrack} title={t('audio.remove')} aria-label={t('audio.remove')}>
           <Icon name="trash" size={16} />
         </button>
       </div>
     {:else}
-      <p class="hint">Под кадрами пойдёт волна, а просмотр и видео — со звуком.</p>
-      <button class="key wide" onclick={() => picker?.click()}>Выбрать файл…</button>
-      <p class="hint">mp3, ogg или wav</p>
+      <p class="hint">{t('audio.pitch')}</p>
+      <button class="key wide" onclick={() => picker?.click()}>{t('audio.pick')}</button>
+      <p class="hint">{t('audio.formats')}</p>
     {/if}
 
     {#if editor.audio.error}

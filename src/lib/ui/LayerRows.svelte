@@ -13,6 +13,7 @@
   import LayerThumb from './LayerThumb.svelte';
   import { rowHeight } from './thumb-size';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   // `compact` drops the per-row thumbnail: the studio timeline already shows
   // every cell, so a second thumbnail in the layer column would be noise.
@@ -80,7 +81,7 @@
   }
 
   function announce(layerIndex: number): void {
-    announcement = `Слой: позиция ${rowNumber(layerIndex)} из ${editor.doc.layers.length}`;
+    announcement = t('layer.moved', { n: rowNumber(layerIndex), total: editor.doc.layers.length });
   }
 
   function moveBy(layerIndex: number, delta: 1 | -1): void {
@@ -268,13 +269,13 @@
     class="add-layer"
     disabled={!canAdd}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
-    title="Добавить слой (Shift+A)"
+    title={t('layer.add_title')}
   >
-    <Icon name="plus" size={16} /> Слой
+    <Icon name="plus" size={16} /> {t('layer.add')}
   </button>
 </div>
 
-<div class="list" data-layer-list bind:this={listEl} role="listbox" aria-label="Слои" tabindex="-1">
+<div class="list" data-layer-list bind:this={listEl} role="listbox" aria-label={t('layer.list')} tabindex="-1">
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
       <div
         class="row"
@@ -291,8 +292,8 @@
         <button
           class="eye"
           aria-pressed={!editor.doc.layers[layerIndex].hidden}
-          aria-label={editor.doc.layers[layerIndex].hidden ? 'Показать слой' : 'Скрыть слой'}
-          title={editor.doc.layers[layerIndex].hidden ? 'Показать слой' : 'Скрыть слой'}
+          aria-label={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
+          title={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
           onclick={(e) => {
             e.stopPropagation();
             editor.toggleLayerHidden(layerIndex);
@@ -310,8 +311,8 @@
         <button
           class="tag"
           style="background: var(--layer-tag-{editor.layerColor(layerIndex)})"
-          title="Цвет слоя (клик — следующий)"
-          aria-label="Цвет слоя {editor.layerLabel(layerIndex)}"
+          title={t('layer.colour_title')}
+          aria-label={t('layer.colour', { name: editor.layerLabel(layerIndex) })}
           onclick={(e) => {
             e.stopPropagation();
             editor.cycleLayerColor(layerIndex);
@@ -328,25 +329,25 @@
             onclick={(e) => e.stopPropagation()}
             onkeydown={onRenameKeydown}
             onblur={commitRename}
-            aria-label="Имя слоя"
+            aria-label={t('layer.name_field')}
           />
         {:else}
-          <span class="name" title="Двойной клик или F2 — переименовать"
+          <span class="name" title={t('layer.rename_hint')}
             >{editor.layerLabel(layerIndex)}</span>
         {/if}
 
         <span
           class="handle"
           role="presentation"
-          title="Перетащить слой (Alt+↑ / Alt+↓)"
+          title={t('layer.drag')}
           onpointerdown={(e) => onHandleDown(e, layerIndex)}
         ><Icon name="move-vertical" size={16} /></span>
 
         <button
           class="kill"
           disabled={!canRemove}
-          aria-label="Удалить слой {rowNumber(layerIndex)}"
-          title="Удалить слой"
+          aria-label={t('layer.remove', { n: rowNumber(layerIndex) })}
+          title={t('layer.remove_title')}
           onclick={(e) => {
             e.stopPropagation();
             removeLayer(layerIndex);

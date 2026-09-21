@@ -17,6 +17,7 @@
   import { WATERMARK_TEXT, exportSize, type ExportStage } from '../export/rasterize';
   import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
 
@@ -75,8 +76,8 @@
     `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, '0')}`;
 
   const STAGES: Record<ExportStage, string> = {
-    render: 'Рендер кадров…',
-    encode: 'Кодирование…',
+    render: t('export.stage_render'),
+    encode: t('export.stage_encode'),
   };
 
   $effect(() => {
@@ -129,10 +130,10 @@
       }
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') {
-        error = 'Экспорт отменён';
+        error = t('export.cancelled_msg');
       } else {
         console.warn('export failed:', err);
-        error = 'Не собралось — попробуй ещё раз';
+        error = t('export.failed');
       }
     } finally {
       busy = '';
@@ -172,8 +173,8 @@
   class="key"
   onclick={openSheet}
   data-key="Alt+S"
-  title="Экспорт (Alt+S)"
-  aria-label="Экспорт"
+  title={t('export.title')}
+  aria-label={t('export.sheet')}
 >
   <Icon name="download" />
 </button>
@@ -182,22 +183,22 @@
   <dialog
     bind:this={dialogEl}
     class="sheet sheet-dialog"
-    aria-label="Экспорт"
+    aria-label={t('export.sheet')}
     onclose={() => {
       open = false;
       cancel();
     }}
   >
     <header class="sheet-head">
-      <h2>Экспорт</h2>
-      <button class="key icon" onclick={close} aria-label="Закрыть">
+      <h2>{t('export.sheet')}</h2>
+      <button class="key icon" onclick={close} aria-label={t('picker.close')}>
         <Icon name="x" />
       </button>
     </header>
 
     <div class="sheet-body">
-      <p class="sheet-hint">Формат</p>
-      <div class="choices" role="group" aria-label="Формат">
+      <p class="sheet-hint">{t('export.format')}</p>
+      <div class="choices" role="group" aria-label={t('export.format')}>
         {#if singleFrame}
           <button class="key" class:active={format === 'png'} aria-pressed={format === 'png'} onclick={() => (format = 'png')}>PNG</button>
         {/if}
@@ -208,11 +209,11 @@
           aria-pressed={format === 'video'}
           disabled={planned && !plan}
           onclick={() => (format = 'video')}
-        >{plan?.label ?? 'Видео'}</button>
+        >{plan?.label ?? t('export.video')}</button>
       </div>
 
-      <p class="sheet-hint">Разрешение</p>
-      <div class="choices" role="group" aria-label="Разрешение">
+      <p class="sheet-hint">{t('export.resolution')}</p>
+      <div class="choices" role="group" aria-label={t('export.resolution')}>
         {#each EXPORT_WIDTHS as w (w)}
           {@const s = exportSize(editor.doc, w)}
           <button class="key" class:active={width === w} aria-pressed={width === w} onclick={() => (width = w)}>
@@ -222,48 +223,47 @@
       </div>
 
       <label class="toggle">
-        <span class="toggle-label">Водяной знак «{WATERMARK_TEXT}»</span>
+        <span class="toggle-label">{t('export.watermark', { text: WATERMARK_TEXT })}</span>
         <input type="checkbox" role="switch" bind:checked={watermark} />
       </label>
       {#if format === 'png'}
         <label class="toggle">
-          <span class="toggle-label">Прозрачный фон</span>
+          <span class="toggle-label">{t('export.transparent')}</span>
           <input type="checkbox" role="switch" bind:checked={transparent} />
         </label>
       {/if}
 
       {#if format === 'video'}
         {#if planned && !plan}
-          <p class="note">Этот браузер не умеет кодировать видео — остаются GIF и PNG.</p>
+          <p class="note">{t('export.no_video_note')}</p>
         {:else if plan && plan.extension !== 'mp4'}
           <p class="note">
-            MP4 {editor.audio.hasTrack ? 'со звуком ' : ''}этот браузер не кодирует; WebM откроется в
-            нём же и в любом плеере.
+            {t('export.webm_note', { audio: editor.audio.hasTrack ? t('export.mp4_with_audio') : '' })}
           </p>
         {/if}
         {#if editor.audio.hasTrack}
           <p class="note">
-            Звук «{editor.audio.name}» войдёт в видео.
+            {t('export.audio_note', { name: editor.audio.name })}
             {#if editor.audio.sync}
-              Трек привязан к кадрам, поэтому видео длится один проход мультика — как в просмотре.
+              {t('export.audio_tied')}
             {:else}
-              Трек не привязан, поэтому он задаёт длину: мультик повторяется, пока играет музыка.
+              {t('export.audio_untied')}
             {/if}
           </p>
         {/if}
         {#if plan?.realtime}
-          <p class="note">Этот браузер пишет видео в реальном времени: {clock(videoSeconds)}.</p>
+          <p class="note">{t('export.realtime', { clock: clock(videoSeconds) })}</p>
         {/if}
       {/if}
 
       <button class="key wide primary" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
-        Скачать
+        {t('export.download')}
       </button>
 
       {#if busy}
         <p class="note" role="status">{stage} {progress}%</p>
         <progress max="100" value={progress}></progress>
-        <button class="key wide" onclick={cancel}>Отменить</button>
+        <button class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>
@@ -271,7 +271,7 @@
     </div>
 
     <footer class="sheet-foot">
-      <button class="key primary" onclick={close}>Готово</button>
+      <button class="key primary" onclick={close}>{t('export.done')}</button>
     </footer>
   </dialog>
 {/if}

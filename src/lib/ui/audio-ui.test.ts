@@ -176,7 +176,7 @@ describe('the draft keeps the track whole', () => {
 
   it('a track that came back short is reported, not played as a stub', () => {
     expect(state).toContain('track.bytes !== track.blob.size');
-    expect(state).toContain('повреждён');
+    expect(state).toContain("t('audio.draft_broken')");
   });
 });
 

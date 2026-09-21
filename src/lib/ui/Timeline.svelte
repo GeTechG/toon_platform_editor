@@ -8,6 +8,7 @@
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -200,7 +201,7 @@
     <div
       class="col-resizer"
       role="separator"
-      aria-label="Ширина колонки слоёв"
+      aria-label={t('timeline.col_width')}
       aria-orientation="vertical"
       aria-valuenow={colPx}
       aria-valuemin={COL_MIN}
@@ -211,7 +212,7 @@
       onpointerup={onColUp}
       onpointercancel={onColUp}
       onkeydown={onColKey}
-      title="Ширина колонки слоёв (← / →)"
+      title={t('timeline.col_width_title')}
     ></div>
 
     <!-- The press-to-deselect is a mouse convenience on top of the cells,
@@ -220,7 +221,7 @@
     <div
       class="grid"
       role="group"
-      aria-label="Кадры и слои"
+      aria-label={t('timeline.grid')}
       bind:this={strip}
       onpointerdown={resetSelection}
     >
@@ -231,7 +232,7 @@
             style:width="{cell.w + 2}px"
             class:onion={onionFrames.includes(i)}
             class:copied={editor.copiedFrom?.frames.includes(i)}
-            title={onionFrames.includes(i) ? `Кадр ${i + 1} — на кальке` : `Кадр ${i + 1}`}
+            title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
           >{i + 1}</span>
         {/each}
       </div>
@@ -254,8 +255,8 @@
               onclick={(e) => onCellClick(e, i, layerIndex)}
               onpointerdown={(e) => onCellDown(e, i, layerIndex)}
               onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
-              title="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
-              aria-label="Кадр {i + 1}, слой {editor.doc.layers.length - layerIndex}"
+              title={t('timeline.cell', { frame: i + 1, layer: editor.doc.layers.length - layerIndex })}
+              aria-label={t('timeline.cell', { frame: i + 1, layer: editor.doc.layers.length - layerIndex })}
             >
               <LayerThumb
                 doc={editor.doc}

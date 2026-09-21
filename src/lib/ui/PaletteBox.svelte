@@ -3,6 +3,7 @@
   import { TONIO_DEFAULT_PALETTE, contrastInk, mergePalettes, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
   import ColourPicker from './ColourPicker.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -17,7 +18,7 @@
 
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
-  const DEFAULT: SavedPalette = { id: -1, name: 'По умолчанию', created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
+  const DEFAULT: SavedPalette = { id: -1, name: t('palette.default_name'), created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
   const savedList = $derived([DEFAULT, ...editor.savedPalettes].reverse());
 
   /** Left button (or keyboard) → outline, right button → fill; remover mode deletes instead. */
@@ -37,12 +38,12 @@
   }
 
   function savePalette(): void {
-    const name = prompt('Название палитры', 'Новая палитра');
+    const name = prompt(t('palette.save_prompt'), t('palette.new_name'));
     if (name) editor.saveCurrentPalette(name);
   }
 
   function usePalette(p: SavedPalette): void {
-    if (!confirm('Осторожно: новая палитра заменит текущую.\nВозможно, стоит сначала сохранить текущую.\nПродолжить?')) return;
+    if (!confirm(t('palette.replace_confirm'))) return;
     editor.replacePalette(p.colours);
     preview = null;
     section = 'colors';
@@ -60,16 +61,16 @@
     if (added === 0) {
       alert(
         skipped === 0
-          ? 'Все эти цвета уже есть в текущей палитре.'
-          : `Палитра заполнена: лимит ${limit}. Ни один из ${skipped} цветов не поместится.`,
+          ? t('palette.all_present')
+          : t('palette.full', { limit, skipped }),
       );
       return;
     }
-    if (skipped > 0 && !confirm(`Не поместится ${skipped} — лимит палитры ${limit}.\nПродолжить?`)) {
+    if (skipped > 0 && !confirm(t('palette.partial_confirm', { skipped, limit }))) {
       return;
     }
     editor.mergePalette(p.colours);
-    alert(`Добавлено ${added}`);
+    alert(t('palette.added', { added }));
     preview = null;
     section = 'colors';
   }
@@ -79,17 +80,17 @@
     removerMode = !removerMode;
     if (!removerMode || editor.settings.removerTipShown) return;
     editor.setSetting('removerTipShown', true);
-    alert('Щёлкай по цветам, чтобы убрать их из палитры.');
+    alert(t('palette.remover_hint'));
   }
 
   function deletePalette(p: SavedPalette): void {
-    if (!confirm('Удалить эту палитру?')) return;
+    if (!confirm(t('palette.delete_confirm'))) return;
     editor.deleteSavedPalette(p.id);
     preview = null;
   }
 
   function erasePalette(): void {
-    if (!confirm('Точно очистить текущую палитру?')) return;
+    if (!confirm(t('palette.erase_confirm'))) return;
     editor.replacePalette([]);
     openSection('colors');
   }
@@ -136,47 +137,47 @@
 
 <!-- Reference `.panel.palette`: the two big colors with swap and «add», the
      grid (or the saved list) in the middle, a three-key strip at the foot. -->
-<div class="box palette" aria-label="Цвета">
+<div class="box palette" aria-label={t('palette.box')}>
   <div class="main-colors">
     <div class="big" style:--swatch={editor.brushColor} style:color={contrastInk(editor.brushColor)}>
       <button
         class="face"
-        title="Цвет контура (ЛКМ)"
-        aria-label="Цвет контура {editor.brushColor}"
+        title={t('palette.stroke_title')}
+        aria-label={t('palette.stroke', { color: editor.brushColor })}
         aria-haspopup="dialog"
         onclick={(e) => openPicker(e, 'outline')}
       >
         <span class="mark"><Icon name="pencil" size={16} /></span>
       </button>
       {#if !outlineInGrid}
-        <button class="add" onclick={() => editor.addColorToPalette(editor.brushColor)} title="Добавить контур в палитру" aria-label="Добавить цвет контура в палитру"><Icon name="plus" size={16} /></button>
+        <button class="add" onclick={() => editor.addColorToPalette(editor.brushColor)} title={t('palette.add_stroke_title')} aria-label={t('palette.add_stroke')}><Icon name="plus" size={16} /></button>
       {/if}
     </div>
     <div class="big" style:--swatch={editor.fillColor} style:color={contrastInk(editor.fillColor)}>
       <button
         class="face"
-        title="Цвет заливки (ПКМ)"
-        aria-label="Цвет заливки {editor.fillColor}"
+        title={t('palette.fill_title')}
+        aria-label={t('palette.fill', { color: editor.fillColor })}
         aria-haspopup="dialog"
         onclick={(e) => openPicker(e, 'fill')}
       >
         <span class="mark"><Icon name="feather" size={16} /></span>
       </button>
       {#if !fillInGrid}
-        <button class="add" onclick={() => editor.addColorToPalette(editor.fillColor)} title="Добавить заливку в палитру" aria-label="Добавить цвет заливки в палитру"><Icon name="plus" size={16} /></button>
+        <button class="add" onclick={() => editor.addColorToPalette(editor.fillColor)} title={t('palette.add_fill_title')} aria-label={t('palette.add_fill')}><Icon name="plus" size={16} /></button>
       {/if}
     </div>
     <button
       class="swap"
       onclick={() => editor.swapColors()}
-      title="Поменять контур и заливку местами (X)"
-      aria-label="Поменять контур и заливку местами"
+      title={t('color.swap_title')}
+      aria-label={t('color.swap')}
     ><Icon name="swap" size={16} /></button>
   </div>
 
   {#if section === 'saved'}
-    <div class="saved" role="group" aria-label="Сохранённые палитры">
-      <button class="tile add-tile" onclick={savePalette} title="Сохранить текущую палитру" aria-label="Сохранить текущую палитру">
+    <div class="saved" role="group" aria-label={t('palette.saved_group')}>
+      <button class="tile add-tile" onclick={savePalette} title={t('palette.save_title')} aria-label={t('palette.save_title')}>
         <Icon name="plus" size={18} />
       </button>
       {#each savedList as p (p.id)}
@@ -184,8 +185,8 @@
           class="tile"
           class:active={preview?.id === p.id}
           onclick={() => (preview = preview?.id === p.id ? null : p)}
-          title="{p.name || 'Новая палитра'} ({p.colours.length})"
-          aria-label="Палитра {p.name || 'Новая палитра'}, {p.colours.length} цветов"
+          title={t('palette.tile_title', { name: p.name || t('palette.new_name'), count: p.colours.length })}
+          aria-label={t('palette.tile', { name: p.name || t('palette.new_name'), count: p.colours.length })}
         >
           {#each p.colours.slice(0, 30) as c, i (i)}
             <span class="micro" style:background={c}></span>
@@ -194,7 +195,7 @@
       {/each}
     </div>
   {:else}
-    <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label="Палитра">
+    <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label={t('palette.grid')}>
       {#each editor.palette as color (color)}
         {@const isOutline = editor.brushColor === color}
         {@const isFill = editor.fillColor === color}
@@ -206,8 +207,8 @@
           onmousedown={(e) => onCell(e, color)}
           oncontextmenu={(e) => e.preventDefault()}
           onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), color))}
-          title={removerMode ? `Убрать ${color} из палитры` : `${color}: ЛКМ — контур, ПКМ — заливка`}
-          aria-label={removerMode ? `Убрать ${color} из палитры` : `Цвет ${color} (Enter — контур, Shift+Enter — заливка)`}
+          title={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour_title', { color })}
+          aria-label={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour', { color })}
           aria-pressed={isOutline || isFill}
         >
           {#if removerMode}
@@ -224,14 +225,14 @@
     </div>
   {/if}
 
-  <div class="foot" role="group" aria-label="Инструменты палитры">
+  <div class="foot" role="group" aria-label={t('palette.tools')}>
     <button
       class="foot-btn"
       class:active={section === 'edit'}
       aria-pressed={section === 'edit'}
       onclick={() => openSection('edit')}
-      title="Редактировать палитру"
-      aria-label="Редактировать палитру"
+      title={t('palette.edit')}
+      aria-label={t('palette.edit')}
     ><Icon name="edit" size={18} /></button>
     {#if section === 'edit'}
       <button
@@ -239,18 +240,18 @@
         class:active={removerMode}
         aria-pressed={removerMode}
         onclick={toggleRemover}
-        title="Удалить цвета: щёлкай по ним в палитре"
-        aria-label="Режим удаления цветов"
+        title={t('palette.remover')}
+        aria-label={t('palette.remover_label')}
       ><Icon name="x" size={18} /></button>
-      <button class="foot-btn danger" onclick={erasePalette} title="Очистить палитру" aria-label="Очистить палитру"><Icon name="trash" size={18} /></button>
+      <button class="foot-btn danger" onclick={erasePalette} title={t('palette.erase')} aria-label={t('palette.erase')}><Icon name="trash" size={18} /></button>
     {:else}
       <button
         class="foot-btn"
         class:active={section === 'saved'}
         aria-pressed={section === 'saved'}
         onclick={() => openSection('saved')}
-        title="Сохранённые палитры"
-        aria-label="Сохранённые палитры"
+        title={t('palette.saved')}
+        aria-label={t('palette.saved')}
       ><Icon name="palette" size={18} /></button>
       <button
         class="foot-btn"
@@ -258,8 +259,8 @@
         aria-pressed={editor.tool === 'pipette'}
         onclick={() => editor.selectTool('pipette')}
         oncontextmenu={(e) => (e.preventDefault(), editor.selectTool('pipette', 'fill'))}
-        title="Пипетка (P); ПКМ — в заливку"
-        aria-label="Пипетка; правая кнопка берёт цвет в заливку"
+        title={t('palette.pipette_title')}
+        aria-label={t('palette.pipette')}
       ><Icon name="pipette" size={18} /></button>
     {/if}
   </div>
@@ -267,12 +268,12 @@
 
 <!-- Reference PalettePreview: the saved palette opened beside the box. -->
 {#if preview}
-  <div class="box preview" role="dialog" aria-label="Палитра {preview.name || 'Новая палитра'}">
+  <div class="box preview" role="dialog" aria-label={t('palette.preview', { name: preview.name || t('palette.new_name') })}>
     <div class="preview-head">
-      <strong>{preview.name || 'Новая палитра'}</strong>
-      <button class="close" onclick={() => (preview = null)} aria-label="Закрыть"><Icon name="x" size={16} /></button>
+      <strong>{preview.name || t('palette.new_name')}</strong>
+      <button class="close" onclick={() => (preview = null)} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
     </div>
-    <div class="grid preview-grid" role="group" aria-label="Цвета палитры">
+    <div class="grid preview-grid" role="group" aria-label={t('palette.preview_colours')}>
       {#each preview.colours as c, i (i)}
         <button
           class="cell"
@@ -280,16 +281,16 @@
           style:color={contrastInk(c)}
           onmousedown={(e) => onPreviewCell(e, c)}
           oncontextmenu={(e) => e.preventDefault()}
-          title="{c}: ЛКМ — контур, ПКМ — заливка"
-          aria-label="Взять цвет {c}"
+          title={t('palette.colour_title', { color: c })}
+          aria-label={t('palette.take_colour', { color: c })}
         ></button>
       {/each}
     </div>
     <div class="foot">
-      <button class="foot-btn" onclick={() => preview && usePalette(preview)} title="Загрузить палитру" aria-label="Загрузить палитру"><Icon name="palette" size={18} /></button>
-      <button class="foot-btn" onclick={() => preview && mergePalette(preview)} title="Объединить с текущей палитрой" aria-label="Объединить с текущей палитрой"><Icon name="plus" size={18} /></button>
+      <button class="foot-btn" onclick={() => preview && usePalette(preview)} title={t('palette.load')} aria-label={t('palette.load')}><Icon name="palette" size={18} /></button>
+      <button class="foot-btn" onclick={() => preview && mergePalette(preview)} title={t('palette.merge')} aria-label={t('palette.merge')}><Icon name="plus" size={18} /></button>
       {#if preview.id >= 0}
-        <button class="foot-btn danger" onclick={() => preview && deletePalette(preview)} title="Удалить палитру" aria-label="Удалить палитру"><Icon name="trash" size={18} /></button>
+        <button class="foot-btn danger" onclick={() => preview && deletePalette(preview)} title={t('palette.delete')} aria-label={t('palette.delete')}><Icon name="trash" size={18} /></button>
       {/if}
     </div>
   </div>
@@ -298,7 +299,7 @@
 {#if picking}
   <ColourPicker
     color={picking.target === 'fill' ? editor.fillColor : editor.brushColor}
-    label={picking.target === 'fill' ? 'заливка' : 'контур'}
+    label={picking.target === 'fill' ? t('picker.fill') : t('picker.stroke')}
     x={picking.x}
     y={picking.y}
     model={editor.settings.pickerModel}

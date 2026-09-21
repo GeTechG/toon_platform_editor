@@ -5,24 +5,25 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import { BRUSH_SIZES_LOGICAL } from '../format/constants';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 </script>
 
-<div class="sizes" role="group" aria-label="Толщина кисти">
+<div class="sizes" role="group" aria-label={t('brush.sizes_group')}>
   {#each BRUSH_SIZES_LOGICAL as size (size)}
     <button
       class="size-btn"
       class:active={editor.brushSizeLogical === size}
       aria-pressed={editor.brushSizeLogical === size}
       onclick={() => (editor.brushSizeLogical = size)}
-      title="Толщина {size} px"
-      aria-label="Толщина кисти {size} px"
+      title={t('brush.size_title', { size })}
+      aria-label={t('brush.size_label', { size })}
     >
       <span class="dot" style:width="{Math.min(size + 2, 22)}px" style:height="{Math.min(size + 2, 22)}px"></span>
     </button>
   {/each}
-  <span class="size" title="Толщина кисти — меняется на +/−">{editor.brushSizeLogical}px</span>
+  <span class="size" title={t('brush.size_hint')}>{editor.brushSizeLogical}px</span>
 </div>
 
 <style>

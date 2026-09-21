@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { AUTOSAVE_INTERVALS, AUTOSAVE_LABELS } from './presets';
+import { AUTOSAVE_INTERVALS, autosaveLabel } from './presets';
+import { t } from '../i18n';
 
 // EditorState and the sheets are runes/Svelte, so they are asserted as source
 // (same contract style as layers-panel.test.ts); the pure parts run for real.
@@ -22,10 +23,10 @@ function methodBody(source: string, name: string): string {
 describe('every autosave interval the sheet offers has a label', () => {
   it('covers the list, «никогда» included', () => {
     for (const ms of AUTOSAVE_INTERVALS) {
-      expect(AUTOSAVE_LABELS[ms]).toBeString();
+      // A missing key comes back as the key itself, which is the failure.
+      expect(autosaveLabel(ms)).not.toStartWith('autosave.');
     }
-    expect(AUTOSAVE_LABELS[0]).toBe('никогда');
-    expect(Object.keys(AUTOSAVE_LABELS)).toHaveLength(AUTOSAVE_INTERVALS.length);
+    expect(autosaveLabel(0)).toBe('никогда');
   });
 });
 
@@ -42,7 +43,8 @@ describe('the rail and the chrome follow the reference studio', () => {
   it('opens the settings sheet straight from the gear, with no popover left', () => {
     expect(editorUi).not.toContain('settingsOpen');
     expect(editorUi).not.toContain('class="popover"');
-    expect(editorUi).toMatch(/onclick=\{openSettingsSheet\}[^]{0,200}Настройки/);
+    expect(editorUi).toMatch(/onclick=\{openSettingsSheet\}[^]{0,200}t\('editor\.settings'\)/);
+    expect(t('editor.settings')).toBe('Настройки');
   });
 
   it('shows the fullscreen button as active while the mode is on', () => {
@@ -75,11 +77,11 @@ describe('the rail and the chrome follow the reference studio', () => {
   });
 
   it('keeps the panel section as the last one in the settings sheet', () => {
-    expect(sheet).toContain('Панель');
+    expect(sheet).toContain("t('settings.panel')");
     // Arranging is a gesture in the editor now — the sheet only opens it.
     expect(sheet).toContain('editor.arranging = true');
     expect(sheet).not.toContain('slotsOf(editor.panels)');
-    expect(sheet.indexOf('Панель')).toBeGreaterThan(sheet.indexOf('Вид'));
+    expect(sheet.indexOf("t('settings.panel')")).toBeGreaterThan(sheet.indexOf("t('settings.view')"));
   });
 
   it('downloads the session error log on Alt+L', () => {
@@ -145,9 +147,11 @@ describe('the settings sheet', () => {
   });
 
   it('has the four reference sections', () => {
-    for (const section of ['Рисование', 'Палитра', 'Автосохранение', 'Вид']) {
-      expect(sheet).toContain(section);
+    for (const key of ['settings.drawing', 'settings.palette', 'settings.autosave', 'settings.view']) {
+      expect(sheet).toContain(`t('${key}')`);
+      expect(t(key)).not.toBe(key);
     }
+    expect(t('settings.drawing')).toBe('Рисование');
   });
 
   it('every drawing option writes through setSetting', () => {
@@ -167,7 +171,8 @@ describe('the settings sheet', () => {
     expect(sheet).toContain('importSavedPalettes');
     expect(sheet).toContain('exportDrafts');
     expect(sheet).toContain('importDrafts');
-    expect(sheet).toContain('Загружено');
+    expect(sheet).toContain("t('settings.palettes_loaded'");
+    expect(t('settings.palettes_loaded', { count: 2 })).toContain('Загружено');
   });
 
   it('deleting every saved palette asks first', () => {
@@ -232,8 +237,10 @@ describe('key hints on the buttons', () => {
   });
 
   it('a key on a button is in its title too, for the keyboard and the readers', () => {
-    expect(editorUi).toContain('Калька (K)');
-    expect(play).toMatch(/title=[^]*?Space/);
+    expect(t('editor.onion_on')).toContain('(K)');
+    expect(play).toContain('title={editor.playing');
+    expect(t('play.title_play')).toContain('Space');
+    expect(t('play.title_stop')).toContain('Space');
   });
 });
 
@@ -266,7 +273,8 @@ describe('the browser eyedropper option', () => {
 describe('«режим мышки» is the coalesced switch, and nothing else', () => {
   it('has one label, because it now means one thing', () => {
     expect(sheet).not.toContain('mouseModeLabel');
-    expect(sheet).toContain('Режим мышки (точка на событие)');
+    expect(sheet).toContain("t('settings.mouse_mode')");
+    expect(t('settings.mouse_mode')).toBe('Режим мышки (точка на событие)');
   });
 
   it('belongs to the editor, not to a brush', () => {

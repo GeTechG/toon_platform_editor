@@ -13,6 +13,7 @@
   } from './picker-model';
   import { contrastInk } from './color-palette';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let {
     color,
@@ -227,23 +228,23 @@
 <svelte:window onkeydown={onKeydown} />
 
 <!-- Click-outside catcher; the picker itself sits above it. -->
-<button class="backdrop" aria-label="Закрыть выбор цвета" onclick={() => onclose()}></button>
+<button class="backdrop" aria-label={t('picker.close_backdrop')} onclick={() => onclose()}></button>
 
 <div
   class="picker"
   bind:this={box}
   role="dialog"
-  aria-label="Выбор цвета: {label}"
+  aria-label={t('picker.title', { label })}
   style:left="{x}px"
   style:top="{y}px"
   style:transform="translate({offset.x}px, {offset.y}px)"
 >
   <header class="head" role="presentation" onpointerdown={dragWindow}>
     <strong>{label}</strong>
-    <button class="close" onclick={() => onclose()} aria-label="Закрыть"><Icon name="x" size={16} /></button>
+    <button class="close" onclick={() => onclose()} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
   </header>
 
-  <div class="models" role="group" aria-label="Модель цвета">
+  <div class="models" role="group" aria-label={t('picker.models')}>
     {#each [['hsv', 'HSV'], ['rgb', 'RGB'], ['wheel', 'Wheel']] as const as [id, name] (id)}
       <button class:active={model === id} aria-pressed={model === id} onclick={() => setModel(id)}>{name}</button>
     {/each}
@@ -258,8 +259,8 @@
       height={SURFACE}
       role="slider"
       tabindex="0"
-      aria-label="Поле цвета: стрелки — на единицу, Shift — на десять, Alt — по полосе"
-      aria-valuetext="{color}, поле {Math.round(pointer.x * 100)} на {Math.round((1 - pointer.y) * 100)}"
+      aria-label={t('picker.field')}
+      aria-valuetext={t('picker.field_value', { color, x: Math.round(pointer.x * 100), y: Math.round((1 - pointer.y) * 100) })}
       aria-valuenow={Math.round(pointer.x * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -280,7 +281,7 @@
       height={BAR_H}
       role="slider"
       tabindex="0"
-      aria-label="Полоса"
+      aria-label={t('picker.ramp')}
       aria-valuenow={Math.round(pointer.bar * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -327,14 +328,14 @@
   </div>
 
   <div class="preview">
-    <span class="swatch" style:background={color} style:color={contrastInk(color)}>новый</span>
+    <span class="swatch" style:background={color} style:color={contrastInk(color)}>{t('picker.new')}</span>
     <button
       class="swatch old"
       style:background={origin}
       style:color={contrastInk(origin)}
       onclick={() => onpick(origin)}
-      title="Вернуть исходный цвет {origin}"
-    >исходный</button>
+      title={t('picker.origin_title', { color: origin })}
+    >{t('picker.origin')}</button>
   </div>
 </div>
 

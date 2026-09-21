@@ -5,6 +5,7 @@
   import { LoopPlayer } from '../player/player';
   import { playbackRange } from './frame-selection';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -132,8 +133,8 @@
   disabled={!canPlay}
   onclick={() => toggle()}
   data-key="Space"
-  title={editor.playing ? 'Остановить просмотр (Space)' : 'Проиграть кадры (Space)'}
-  aria-label={editor.playing ? 'Остановить' : 'Проиграть'}
+  title={editor.playing ? t('play.title_stop') : t('play.title_play')}
+  aria-label={editor.playing ? t('play.stop') : t('play.play')}
 >
   <Icon name={editor.playing ? 'stop' : 'play'} size={22} />
 </button>

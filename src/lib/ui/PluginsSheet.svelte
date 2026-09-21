@@ -12,6 +12,8 @@
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
+  import { BASE_LOCALE, i18n, t } from '../i18n';
+  import { pluginText } from '../plugins/contract';
 
   let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
 
@@ -42,9 +44,9 @@
    */
   const delivery: InstalledPlugin = {
     id: BUNDLED_PLUGIN.id,
-    name: BUNDLED_PLUGIN.name ?? BUNDLED_PLUGIN.id,
+    name: pluginText(BUNDLED_PLUGIN.name, i18n.language, BASE_LOCALE) ?? BUNDLED_PLUGIN.id,
     version: BUNDLED_PLUGIN.version ?? '',
-    description: BUNDLED_PLUGIN.description ?? '',
+    description: pluginText(BUNDLED_PLUGIN.description, i18n.language, BASE_LOCALE) ?? '',
     icon: BUNDLED_PLUGIN.icon ?? '',
     code: '',
     source: 'bundled',
@@ -83,7 +85,7 @@
     busy = entry.id;
     try {
       const failed = await editor.installPlugin(entry);
-      report = failed ? `${entry.name}: ${failed}` : `${entry.name} установлен`;
+      report = failed ? t('plugins.failed_report', { name: entry.name, reason: failed }) : t('plugins.installed_report', { name: entry.name });
     } finally {
       busy = '';
     }
@@ -92,7 +94,7 @@
 
   async function remove(plugin: InstalledPlugin): Promise<void> {
     await editor.removePlugin(plugin.id);
-    report = `${plugin.name} удалён`;
+    report = t('plugins.removed_report', { name: plugin.name });
     await refresh();
   }
 
@@ -106,7 +108,7 @@
     busy = file.name;
     try {
       const failed = await editor.installPluginFile(await file.text());
-      report = failed ? `${file.name}: ${failed}` : `${file.name} установлен`;
+      report = failed ? t('plugins.failed_report', { name: file.name, reason: failed }) : t('plugins.installed_report', { name: file.name });
     } finally {
       busy = '';
     }
@@ -142,14 +144,14 @@
   class="file"
   type="file"
   accept=".js,text/javascript"
-  aria-label="Файл плагина"
+  aria-label={t('plugins.file')}
   onchange={onBundleFile}
 />
 
-<dialog bind:this={dialogEl} class="sheet sheet-dialog" aria-label="Плагины" onclose={onClose}>
+<dialog bind:this={dialogEl} class="sheet sheet-dialog" aria-label={t('plugins.sheet')} onclose={onClose}>
   <header class="sheet-head">
-    <h2>Плагины</h2>
-    <button class="key icon" onclick={() => dialogEl?.close()} aria-label="Закрыть">
+    <h2>{t('plugins.sheet')}</h2>
+    <button class="key icon" onclick={() => dialogEl?.close()} aria-label={t('picker.close')}>
       <Icon name="x" />
     </button>
   </header>
@@ -161,23 +163,23 @@
       role="tab"
       aria-selected={tab === 'mine'}
       onclick={() => (tab = 'mine')}
-    >Мои</button>
+    >{t('plugins.mine')}</button>
     <button
       class="key"
       class:primary={tab === 'catalog'}
       role="tab"
       aria-selected={tab === 'catalog'}
       onclick={() => (tab = 'catalog')}
-    >Каталог</button>
+    >{t('plugins.catalog')}</button>
   </div>
 
   <div class="sheet-body">
     {#if tab === 'mine'}
       <div class="actions">
-        <button class="key" onclick={() => bundleFile?.click()}>Установить файлом…</button>
+        <button class="key" onclick={() => bundleFile?.click()}>{t('plugins.install_file')}</button>
       </div>
       {#if installed.length === 0}
-        <p class="empty">Ничего не установлено. Поставьте плагин из каталога или своим файлом.</p>
+        <p class="empty">{t('plugins.empty')}</p>
       {/if}
       {#if listed.length > 0}
         <ul class="plugins">
@@ -190,18 +192,18 @@
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
                 <small>
                   {plugin.source === 'bundled'
-                    ? 'в поставке'
-                    : plugin.source === 'local' ? 'поставлен файлом' : 'из каталога'}
+                    ? t('plugins.source_bundled')
+                    : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
                   {#if broken(plugin.id)}
-                    — отключён после ошибки, подробности в консоли
+                    {t('plugins.broken')}
                   {/if}
                 </small>
               </span>
               {#if broken(plugin.id)}
-                <button class="key" onclick={() => editor.enablePlugin(plugin.id)}>Включить</button>
+                <button class="key" onclick={() => editor.enablePlugin(plugin.id)}>{t('plugins.enable')}</button>
               {/if}
               {#if plugin.source !== 'bundled'}
-                <button class="key" onclick={() => remove(plugin)}>Удалить</button>
+                <button class="key" onclick={() => remove(plugin)}>{t('plugins.remove')}</button>
               {/if}
             </li>
           {/each}
@@ -210,7 +212,7 @@
     {:else if catalogError}
       <p class="empty">{catalogError}</p>
     {:else if catalog.length === 0}
-      <p class="empty">В каталоге пока ничего нет.</p>
+      <p class="empty">{t('plugins.catalog_empty')}</p>
     {:else}
       <ul class="plugins">
         {#each catalog as entry (entry.id)}
@@ -223,12 +225,12 @@
               <small>{entry.description}</small>
             </span>
             {#if offer(entry) === 'installed'}
-              <span class="saved">установлен</span>
+              <span class="saved">{t('plugins.installed')}</span>
             {:else if offer(entry) === 'local'}
-              <span class="saved">поставлен локально</span>
+              <span class="saved">{t('plugins.local')}</span>
             {:else}
               <button class="key primary" disabled={busy === entry.id} onclick={() => install(entry)}>
-                {busy === entry.id ? 'Качается…' : offer(entry) === 'update' ? 'Обновить' : 'Установить'}
+                {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
               </button>
             {/if}
           </li>
@@ -242,7 +244,7 @@
   </div>
 
   <footer class="sheet-foot">
-    <button class="key primary" onclick={() => dialogEl?.close()}>Готово</button>
+    <button class="key primary" onclick={() => dialogEl?.close()}>{t('plugins.done')}</button>
   </footer>
 </dialog>
 

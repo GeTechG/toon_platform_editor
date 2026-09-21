@@ -13,6 +13,7 @@
   import { clampWindowPosition } from './draggable';
   import { panelItem } from './panels';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let {
     editor,
@@ -102,7 +103,7 @@
     class="float-bar"
     role="toolbar"
     tabindex="0"
-    aria-label="Окно «{label}» — стрелками двигать"
+    aria-label={t('window.drag', { label })}
     onpointerdown={onDown}
     onpointermove={onMove}
     onpointerup={onUp}
@@ -113,8 +114,8 @@
     <button
       class="key icon"
       onclick={() => editor.showPanelItem(id)}
-      title="Вернуть в панель"
-      aria-label="Вернуть «{label}» в панель"
+      title={t('window.dock_title')}
+      aria-label={t('window.dock', { label })}
     >
       <Icon name="x" size={14} />
     </button>

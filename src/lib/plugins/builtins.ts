@@ -12,6 +12,7 @@ import { toonopRules } from '../tools/brush';
 import { PLUGIN_API, type Plugin, type PluginPreset, type PluginPrimitive, type PluginTool } from './contract';
 import { distortTool } from './distort';
 import { TOONOP_UX } from '../ui/ux-profile';
+import { t } from '../i18n';
 
 /**
  * The three line primitives of the format, as the editor's own tools lay them
@@ -44,41 +45,41 @@ const TOONOP_BRUSH: PluginPrimitive = {
 
 /** In the order the rail draws them. */
 const TOOLS: Readonly<Record<string, PluginTool>> = {
-  pencil: { icon: 'pencil', title: 'Карандаш (B)', label: 'Карандаш', key: 'B', stroke: PENCIL },
-  eraser: { icon: 'eraser', title: 'Ластик (E)', label: 'Ластик', key: 'E', stroke: ERASER },
+  pencil: { icon: 'pencil', title: t('tool.pencil.title'), label: t('tool.pencil.label'), key: 'B', stroke: PENCIL },
+  eraser: { icon: 'eraser', title: t('tool.eraser.title'), label: t('tool.eraser.label'), key: 'E', stroke: ERASER },
   feather: {
     icon: 'feather',
-    title: 'Перо (F) — обводка и заливка',
-    label: 'Перо',
+    title: t('tool.feather.title'),
+    label: t('tool.feather.label'),
     key: 'F',
     stroke: FEATHER,
   },
   'mega-eraser': {
     icon: 'mega-eraser',
-    title: 'Мега-ластик (Alt+E) — режет линии целиком',
-    label: 'Мега-ластик',
+    title: t('tool.mega_eraser.title'),
+    label: t('tool.mega_eraser.label'),
     key: 'Alt+E',
   },
   pipette: {
     icon: 'pipette',
-    title: 'Пипетка (P) — ещё раз: взять цвет с экрана',
-    label: 'Пипетка',
+    title: t('tool.pipette.title'),
+    label: t('tool.pipette.label'),
     key: 'P',
     help: true,
   },
-  drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D', help: true },
+  drag: { icon: 'hand', title: t('tool.hand.title'), label: t('tool.hand.label'), key: 'D', help: true },
   lasso: {
     icon: 'transform',
-    title: 'Трансформация (Q) — взять кадр и трансформировать',
-    label: 'Трансформация',
+    title: t('tool.transform.title'),
+    label: t('tool.transform.label'),
     key: 'Q',
     help: true,
   },
   distort: distortTool,
   'toonop-brush': {
     icon: 'pencil',
-    title: 'Кисть редактора',
-    label: 'Кисть редактора',
+    title: t('tool.editor_brush.title'),
+    label: t('tool.editor_brush.label'),
     key: '',
     offPanel: true,
     stroke: TOONOP_BRUSH,

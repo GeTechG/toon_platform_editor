@@ -21,6 +21,11 @@
       "types": "./src/player.ts",
       "svelte": "./src/player.ts",
       "default": "./src/player.ts"
+    },
+    "./i18n": {
+      "types": "./src/lib/i18n.ts",
+      "svelte": "./src/lib/i18n.ts",
+      "default": "./src/lib/i18n.ts"
     }
   },
   "scripts": {
@@ -43,6 +48,7 @@
   "dependencies": {
     "ajv": "^8.20.0",
     "gifenc": "^1.0.3",
+    "i18next": "^26.4.2",
     "mediabunny": "^1.58.1"
   }
 }

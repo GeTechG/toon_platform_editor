@@ -19,6 +19,7 @@ import {
 import { SQUARE_STAMP } from './types';
 import type { Layer, ToolDescriptor, ToonDocument } from './types';
 import { laySmoothPoints } from '../render/smoothing';
+import { t } from '../i18n';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
 export const TOONIO_CANVAS_WIDTH = 1280;
@@ -54,7 +55,7 @@ class Reader {
 
   next(): number {
     if (this.#at >= this.words.length) {
-      throw new Truncated('обрыв файла');
+      throw new Truncated(t('file.truncated'));
     }
     return this.words[this.#at++];
   }
@@ -86,13 +87,13 @@ class Reader {
 
 export function decodeToon(buffer: ArrayBuffer): ToonImportResult {
   if (buffer.byteLength < 2 || buffer.byteLength % 2 !== 0) {
-    return { ok: false, error: 'это не файл Тунио: пустой или обрезанный' };
+    return { ok: false, error: t('file.empty') };
   }
   try {
     return { ok: true, ...read(new Reader(new Int16Array(buffer))) };
   } catch (error) {
     if (error instanceof Truncated) {
-      return { ok: false, error: 'обрыв файла: он повреждён или обрезан' };
+      return { ok: false, error: t('file.truncated_long') };
     }
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -108,10 +109,10 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
     version = reader.next();
   }
   if (version < 1 || version > MAX_VERSION) {
-    throw new Error(`версия файла ${version} не поддерживается`);
+    throw new Error(t('file.version_unsupported', { version }));
   }
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
-    throw new Error('это не файл Тунио: неправдоподобный заголовок');
+    throw new Error(t('file.bad_header'));
   }
   const original = version >= 3 ? reader.string() : '';
 
@@ -151,7 +152,7 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
     // The writer emits exactly as many words as the drawing needs, so a tail
     // means this is not a `.toon` — version 1 files carry no signature to
     // check instead.
-    throw new Error('это не файл Тунио: после рисунка остались лишние данные');
+    throw new Error(t('file.trailing_data'));
   }
   return {
     original,
@@ -180,7 +181,7 @@ function readStrokes(
     if (version >= 5) {
       toolId = reader.next();
       if (!tools[toolId]) {
-        throw new Error(`линия ссылается на инструмент ${toolId}, которого нет в файле`);
+        throw new Error(t('file.unknown_tool_ref', { tool: toolId }));
       }
     } else {
       toolId = internLegacyTool(readLegacyTool(reader), tools);
@@ -239,9 +240,9 @@ function toolDescriptor(type: number, width: number, color: string, fill: string
     case PIXEL:
       return { kind: 'stamp', geometry: 'line', width: clamped, color, shape: [...SQUARE_STAMP] };
     case MEGAERASER:
-      throw new Error('файл содержит инструмент «мега-ластик», который не сохраняется как линия');
+      throw new Error(t('file.mega_eraser'));
     default:
-      throw new Error(`файл содержит неизвестный инструмент (${type})`);
+      throw new Error(t('file.unknown_tool', { type }));
   }
 }
 
@@ -283,11 +284,11 @@ export function decodeLegacyJson(text: string): ToonImportResult {
   try {
     data = JSON.parse(text);
   } catch (error) {
-    return { ok: false, error: `это не JSON: ${error instanceof Error ? error.message : error}` };
+    return { ok: false, error: t('file.not_json', { reason: error instanceof Error ? error.message : error }) };
   }
   const source = Array.isArray(data) ? data : (data as { Frames?: unknown } | null)?.Frames;
   if (!Array.isArray(source) || source.length === 0) {
-    return { ok: false, error: 'это не сохранение Тунио: в файле нет кадров' };
+    return { ok: false, error: t('file.no_frames') };
   }
   const fps = Number((data as { Data?: { FPS?: unknown } }).Data?.FPS) || LEGACY_JSON_FPS;
 

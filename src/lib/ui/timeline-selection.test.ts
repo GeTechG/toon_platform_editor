@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { t } from '../i18n';
 
 // EditorState is a runes class, so its contract is asserted as source — the
 // selection math it leans on is tested for real in frame-selection.test.ts
@@ -198,7 +199,8 @@ describe('layer names never collide with the positional fallback', () => {
   it('the editor names the layer of a document it starts itself', () => {
     // A stored «Слой 2» beside an unnamed layer that has slid to position 2
     // would show the same label twice; naming layer 1 up front avoids it.
-    expect(state).toContain("renameLayer(this.doc, 0, 'Слой 1')");
+    expect(state).toContain("renameLayer(this.doc, 0, t('layer.default_name', { n: 1 }))");
+    expect(t('layer.default_name', { n: 1 })).toBe('Слой 1');
   });
 });
 

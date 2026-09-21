@@ -8,32 +8,33 @@
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
   import { draggable } from './draggable';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
   const percent = $derived(Math.round(editor.view.zoom * 100));
 </script>
 
-<div class="scale-menu" role="group" aria-label="Масштаб" data-drag-handle use:draggable>
+<div class="scale-menu" role="group" aria-label={t('scale.group')} data-drag-handle use:draggable>
   <button
     class="step"
     disabled={editor.view.zoom <= ZOOM_MIN}
     onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, -1))}
-    title="Отдалить"
-    aria-label="Отдалить"
+    title={t('scale.out')}
+    aria-label={t('scale.out')}
   ><Icon name="minus" size={16} /></button>
   <button
     class="value"
     onclick={() => editor.resetView()}
-    title="Вернуть 100%"
-    aria-label="Масштаб {percent}%. Вернуть 100%"
+    title={t('scale.reset')}
+    aria-label={t('scale.value', { percent })}
   >{percent}%</button>
   <button
     class="step"
     disabled={editor.view.zoom >= ZOOM_MAX}
     onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, 1))}
-    title="Приблизить"
-    aria-label="Приблизить"
+    title={t('scale.in')}
+    aria-label={t('scale.in')}
   ><Icon name="plus" size={16} /></button>
 </div>
 

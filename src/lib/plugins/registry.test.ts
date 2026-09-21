@@ -297,3 +297,41 @@ describe('a plugin that throws', () => {
     expect(registry.tool('pencil')).toBeDefined();
   });
 });
+
+// A plugin is compiled apart from the editor, so its words come with it. A
+// plain string is one language for everyone; a map says which is which, and
+// the register resolves it once, on accept.
+describe('a manifest brings its own languages', () => {
+  test('a map of locales resolves to the one in hand', () => {
+    const registry = new PluginRegistry();
+
+    registry.register(toolPlugin('a.map', { label: { ru: 'Полутон', en: 'Halftone' }, title: { en: 'Halftone' } }));
+
+    const tool = registry.tool('a.map');
+    expect(tool?.label).toBe('Полутон');
+    // No Russian in the map: an English title beats no title at all.
+    expect(tool?.title).toBe('Halftone');
+  });
+
+  test('a map with nothing in it is a tool without a label', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register(toolPlugin('a.empty', { label: {} }))).toContain('label');
+    expect(registry.tools()).toEqual([]);
+  });
+
+  test('a brush type and a preset read their text the same way', () => {
+    const registry = new PluginRegistry();
+
+    registry.register({
+      id: 'a.types',
+      api: PLUGIN_API,
+      brushTypes: { old: { label: { ru: 'Старая' }, hint: { ru: 'Переменная толщина' }, twins: { pencil: 'p' } } },
+      presets: { retro: { label: { ru: 'Ретро' }, brush: 'pencil', ux: {} } },
+    });
+
+    expect(registry.brushType('old')?.label).toBe('Старая');
+    expect(registry.brushType('old')?.hint).toBe('Переменная толщина');
+    expect(registry.preset('retro')?.label).toBe('Ретро');
+  });
+});

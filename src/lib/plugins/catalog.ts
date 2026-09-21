@@ -7,6 +7,7 @@
  */
 
 import { PLUGIN_API } from './contract';
+import { t } from '../i18n';
 
 /** A plugin offered by the catalog; `url` is its bundle, already resolved. */
 export interface CatalogEntry {
@@ -71,7 +72,7 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
 export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT_PORTS): Promise<Catalog> {
   const address_ = address.trim();
   if (!address_) {
-    return { plugins: [], error: 'адрес каталога не задан' };
+    return { plugins: [], error: t('plugin.catalog_no_url') };
   }
   // An address on the site itself (`/plugins/build/`) is the ordinary case
   // while an author works on one, so it is resolved against the page.
@@ -80,11 +81,11 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
   try {
     index = await (await ports.fetch(new URL('index.json', base).href)).json();
   } catch (error) {
-    return { plugins: [], error: `каталог не прочитан: ${reason(error)}` };
+    return { plugins: [], error: t('plugin.catalog_unreadable', { reason: reason(error) }) };
   }
   const body = typeof index === 'object' && index !== null ? index as Record<string, unknown> : {};
   if (body.api !== PLUGIN_API) {
-    return { plugins: [], error: `каталог другого мажора: ${String(body.api)}` };
+    return { plugins: [], error: t('plugin.catalog_foreign_major', { api: String(body.api) }) };
   }
   const plugins: CatalogEntry[] = [];
   for (const value of Array.isArray(body.plugins) ? body.plugins : []) {

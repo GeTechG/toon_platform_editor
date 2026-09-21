@@ -14,6 +14,7 @@ import {
   trackTimeFor,
   waveformBars,
 } from './track';
+import { t } from '../i18n';
 
 /** A track as it is stored and published: bytes plus the credits. */
 export interface AudioTrackData {
@@ -97,7 +98,7 @@ export class AudioTrackState {
       }
     } catch (err) {
       console.warn('audio decode failed:', err);
-      this.error = 'Редактор не смог декодировать этот звук, попробуйте другой формат';
+      this.error = t('audio.undecodable');
       return false;
     }
     // What the file says about itself wins over the file name, which is what
@@ -114,7 +115,7 @@ export class AudioTrackState {
    */
   async restore(track: AudioTrackData & { bytes?: number }): Promise<void> {
     if (typeof track.bytes === 'number' && track.bytes !== track.blob.size) {
-      this.error = 'Трек в черновике повреждён — приложи файл заново';
+      this.error = t('audio.draft_broken');
       console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
       return;
     }
@@ -142,7 +143,7 @@ export class AudioTrackState {
     // the envelope was built from can still be one this browser will not
     // play. Silence with no explanation is the worst outcome, so it is named.
     element.onerror = () => {
-      this.error = 'Этот звук браузер не проигрывает — попробуй mp3';
+      this.error = t('audio.unplayable');
     };
     element.load();
     this.#element = element;
@@ -196,7 +197,7 @@ export class AudioTrackState {
       // block sound until the page has been interacted with. Saying so beats
       // a console line nobody reads.
       console.warn('audio playback failed:', err);
-      this.error = 'Браузер не дал включить звук — нажми «Проиграть» ещё раз';
+      this.error = t('audio.blocked');
     });
   }
 

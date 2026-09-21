@@ -51,6 +51,7 @@
   import type { SideId } from './presets';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
+  import { t } from '../i18n';
 
   // Optional publish hook. When a host app provides it, a Publish button appears
   // and hands the host a plain snapshot of the current document; the editor
@@ -517,7 +518,7 @@
         break;
       case 'Delete':
         if (e.shiftKey) {
-          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || askDelete('Удалить слой со штрихами?'))) {
+          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || askDelete(t('editor.layer_has_strokes')))) {
             editor.removeActiveLayer();
           }
         } else {
@@ -652,7 +653,7 @@
         return;
       }
       saveFailed = true;
-      alert('Ошибка локального сохранения. Скачайте проект и перезагрузите страницу.');
+      alert(t('editor.save_failed_alert'));
     });
   }
 
@@ -685,7 +686,7 @@
    * wrapper. Sound and palette stay in the draft, as they do in a `.toon`.
    */
   function saveProjectFile(): void {
-    if (editor.warnings && !confirm('Скачать проект в формате .toonop?')) {
+    if (editor.warnings && !confirm(t('editor.download_project_confirm'))) {
       return;
     }
     const blob = new Blob([JSON.stringify($state.snapshot(editor.doc))], { type: 'application/json' });
@@ -798,7 +799,7 @@
   }
 
   async function removeAllDrafts(): Promise<void> {
-    if (!askDelete('Удалить все черновики? Отменить это будет нельзя.')) {
+    if (!askDelete(t('editor.drafts_wipe_confirm'))) {
       return;
     }
     await deleteAllDrafts();
@@ -828,7 +829,7 @@
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
   function openDraft(entry: DraftEntry): void {
     if (editor.touched) {
-      if (!confirm('Открыть черновик? Текущий рисунок будет заменён.')) {
+      if (!confirm(t('editor.draft_open_confirm'))) {
         return;
       }
       saveNow();
@@ -853,7 +854,7 @@
   }
 
   async function removeDraft(entry: DraftEntry): Promise<void> {
-    if (!askDelete('Удалить черновик? Отменить это будет нельзя.')) {
+    if (!askDelete(t('editor.draft_delete_confirm'))) {
       return;
     }
     await deleteDraft(entry.id);
@@ -870,8 +871,7 @@
    * it is the way back.
    */
   const MEGA_ERASER_WARNING =
-    'Мега-ластик — экспериментальный инструмент: он режет уже нарисованные штрихи. '
-    + 'Черновик сохранён на всякий случай.';
+    t('editor.mega_eraser_warning');
 
   $effect(() => {
     if (editor.tool !== 'mega-eraser' || editor.megaEraserWarned) {
@@ -888,12 +888,6 @@
     return !editor.warnings || confirm(message);
   }
 
-  const PLURAL = new Intl.PluralRules('ru');
-  function plural(n: number, one: string, few: string, many: string): string {
-    const form = PLURAL.select(n);
-    return `${n} ${form === 'one' ? one : form === 'few' ? few : many}`;
-  }
-
   let fileInput = $state<HTMLInputElement | undefined>();
   /** Import failure, shown until the next attempt. */
   let importError = $state('');
@@ -908,7 +902,7 @@
   async function openFile(file: File): Promise<void> {
     importError = '';
     if (editor.touched) {
-      if (!confirm(`Открыть «${file.name}»? Текущий рисунок будет заменён.`)) {
+      if (!confirm(t('editor.file_open_confirm', { name: file.name }))) {
         return;
       }
       saveNow();
@@ -922,24 +916,24 @@
       } else if (name.endsWith('.json')) {
         const result = decodeLegacyJson(await file.text());
         if (!result.ok) {
-          importError = `Не удалось открыть файл: ${result.error}`;
+          importError = t('editor.file_failed', { reason: result.error });
           return;
         }
         doc = result.doc;
       } else if (name.endsWith('.toon')) {
         const result = decodeToon(await file.arrayBuffer());
         if (!result.ok) {
-          importError = `Не удалось открыть файл: ${result.error}`;
+          importError = t('editor.file_failed', { reason: result.error });
           return;
         }
         doc = result.doc;
         original = result.original;
       } else {
-        importError = 'Кажется, такой формат файла не поддерживается';
+        importError = t('editor.file_unsupported');
         return;
       }
     } catch (err) {
-      importError = `Не удалось открыть файл: ${err instanceof Error ? err.message : err}`;
+      importError = t('editor.file_failed', { reason: err instanceof Error ? err.message : err });
       return;
     }
     adoptOpenedDoc(doc, original);
@@ -977,7 +971,7 @@
       void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
       audioOpen = true;
     } else {
-      importError = 'Кажется, такой формат файла не поддерживается';
+      importError = t('editor.file_unsupported');
     }
   }
   // The reference's settings window: drawing, palette, autosave, view.
@@ -1008,29 +1002,29 @@
   // Mirrors the key handler above one-for-one. If a case is added there and not
   // here, the sheet lies — keep them next to each other for that reason.
   const SHORTCUTS: [string, string][] = $derived([
-    ['B', 'Карандаш'],
-    ['E', 'Ластик'],
-    ['P', 'Пипетка'],
-    ['+ / −', 'Толще / тоньше кисть'],
-    ['M', 'Показать палитру (Toonio: объединить)'],
-    ['Z', 'Отменить штрих'],
-    ['Y', 'Вернуть штрих'],
-    ['C', 'Скопировать кадр (Toonio: выделение)'],
-    ['V', 'Вставить кадр (Toonio: выделение)'],
-    ['F', 'Во весь экран (Toonio: перо)'],
-    ['A', 'Добавить кадр (Shift — слой)'],
-    ['Del', 'Удалить кадр (Shift — слой)'],
-    ['J / L', 'Первый / последний кадр'],
-    ['← / →', 'Предыдущий / следующий кадр'],
-    ['↑ / ↓', 'Слой выше / ниже'],
-    ['Shift + ←→↑↓', 'Toonio: расширить выделение ленты'],
-    ['K', 'Калька'],
-    ['X', 'Поменять контур и заливку'],
-    ['Space', 'Просмотр (в трансформации — применить)'],
-    ['Ctrl + S', 'Сохранить черновик сейчас'],
-    ['Alt + S', hasProjectFile ? 'Скачать проект (.toonop)' : 'Экспорт'],
-    ['Alt + Enter', 'Отключить предупреждения об удалении'],
-    ['Alt + L', 'Скачать лог ошибок'],
+    ['B', t('key.pencil')],
+    ['E', t('key.eraser')],
+    ['P', t('key.pipette')],
+    ['+ / −', t('key.brush_size')],
+    ['M', t('key.palette')],
+    ['Z', t('key.undo')],
+    ['Y', t('key.redo')],
+    ['C', t('key.copy')],
+    ['V', t('key.paste')],
+    ['F', t('key.fullscreen')],
+    ['A', t('key.add_frame')],
+    ['Del', t('key.delete_frame')],
+    ['J / L', t('key.ends')],
+    ['← / →', t('key.steps')],
+    ['↑ / ↓', t('key.layers')],
+    ['Shift + ←→↑↓', t('key.extend')],
+    ['K', t('key.onion')],
+    ['X', t('key.swap')],
+    ['Space', t('key.preview')],
+    ['Ctrl + S', t('key.save')],
+    ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
+    ['Alt + Enter', t('key.no_warnings')],
+    ['Alt + L', t('key.error_log')],
   ]);
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
@@ -1088,7 +1082,7 @@
   type="file"
   accept=".toonop,.toon,.json"
   class="file"
-  aria-label="Открыть файл проекта"
+  aria-label={t('editor.open_project')}
   onchange={(e) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
@@ -1104,8 +1098,8 @@
     disabled={!editor.canUndo}
     onclick={() => editor.undo()}
     data-key="Z"
-    title="Отменить последний штрих (Z)"
-    aria-label="Отменить"
+    title={t('editor.undo_title')}
+    aria-label={t('editor.undo')}
   >
     <Icon name="undo" />
   </button>
@@ -1114,8 +1108,8 @@
     disabled={!editor.canRedo}
     onclick={() => editor.redo()}
     data-key="Y"
-    title="Вернуть отменённый штрих (Y)"
-    aria-label="Вернуть"
+    title={t('editor.redo_title')}
+    aria-label={t('editor.redo')}
   >
     <Icon name="redo" />
   </button>
@@ -1140,14 +1134,14 @@
         class="side-resizer"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Ширина панели: {label}"
+        aria-label={t('editor.panel_width', { label })}
         aria-valuenow={sideWidth(id)}
         aria-valuemin={SIDE_WIDTH_MIN[id]}
         aria-valuemax={SIDE_WIDTH_MAX}
         tabindex="0"
         onpointerdown={(e) => onSideDown(e, id)}
         onkeydown={(e) => onSideKey(e, id)}
-        title="Ширина панели (← / →)"
+        title={t('editor.panel_width_title')}
       ></div>
     {/if}
     <!-- The arrow points the way the panel is about to travel. -->
@@ -1155,8 +1149,8 @@
       class="fold"
       onclick={() => editor.toggleSide(id)}
       aria-expanded={!folded(id)}
-      title={folded(id) ? 'Развернуть панель' : 'Свернуть панель'}
-      aria-label="{folded(id) ? 'Развернуть' : 'Свернуть'} панель: {label}"
+      title={folded(id) ? t('editor.panel_expand') : t('editor.panel_fold')}
+      aria-label={t('editor.panel_toggle', { action: folded(id) ? t('editor.expand') : t('editor.fold'), label })}
     >
       <Icon name={foldIcon(id, folded(id))} size={14} />
     </button>
@@ -1178,8 +1172,8 @@
       onclick={saveNow}
       disabled={!dirty}
       data-key="Ctrl+S"
-      title="Сохранить черновик сейчас (Ctrl+S)"
-      aria-label="Сохранить черновик"
+      title={t('editor.save_title')}
+      aria-label={t('editor.save')}
     >
       <Icon name="save" />
     </button>
@@ -1189,7 +1183,7 @@
     </div>
   {:else if id === 'manual'}
     <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
-    <button class="key icon" onclick={() => (manualOpen = true)} title="Мануал" aria-label="Мануал">
+    <button class="key icon" onclick={() => (manualOpen = true)} title={t('editor.manual')} aria-label={t('editor.manual')}>
       <Icon name="help" />
     </button>
   {:else if id === 'fullscreen'}
@@ -1200,14 +1194,14 @@
         aria-pressed={isFullscreen}
         onclick={toggleFullscreen}
         data-key="F"
-        title="Полный экран (F)"
-        aria-label="Полный экран"
+        title={t('editor.fullscreen_title')}
+        aria-label={t('editor.fullscreen')}
       >
         <Icon name="expand" />
       </button>
     {/if}
   {:else if id === 'drafts'}
-    <button class="key icon" onclick={openDrafts} title="Локальные сохранения" aria-label="Локальные сохранения">
+    <button class="key icon" onclick={openDrafts} title={t('editor.drafts_key')} aria-label={t('editor.drafts_key')}>
       <Icon name="drafts" />
     </button>
   {:else if id === 'palette'}
@@ -1224,35 +1218,35 @@
     </div>
   {:else if id === 'transport'}
     <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads. -->
-    <div class="transport-keys" role="group" aria-label="Управление воспроизведением">
+    <div class="transport-keys" role="group" aria-label={t('editor.transport')}>
         <button
           class="key icon ends"
           disabled={editor.playing || editor.activeFrame === 0}
           onclick={() => editor.selectFrame(0)}
-          title="На первый кадр"
-          aria-label="На первый кадр"
+          title={t('editor.first_frame')}
+          aria-label={t('editor.first_frame')}
         ><Icon name="frame-first" /></button>
         <button
           class="key icon"
           disabled={editor.playing}
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
-          title="Предыдущий кадр"
-          aria-label="Предыдущий кадр"
+          title={t('editor.prev_frame')}
+          aria-label={t('editor.prev_frame')}
         ><Icon name="frame-prev" /></button>
       <PlayControls bind:this={playControls} {editor} />
         <button
           class="key icon"
           disabled={editor.playing}
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
-          title="Следующий кадр"
-          aria-label="Следующий кадр"
+          title={t('editor.next_frame')}
+          aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
         <button
           class="key icon ends"
           disabled={editor.playing || editor.activeFrame >= lastFrame}
           onclick={() => editor.selectFrame(lastFrame)}
-          title="На последний кадр"
-          aria-label="На последний кадр"
+          title={t('editor.last_frame')}
+          aria-label={t('editor.last_frame')}
         ><Icon name="frame-last" /></button>
     </div>
   {:else if id === 'add-frame'}
@@ -1261,8 +1255,8 @@
       disabled={editor.playing}
       onclick={onAddFrame}
       data-key="A"
-      title="Добавить кадр после текущего (A; Ctrl+клик — перед)"
-      aria-label="Добавить кадр"
+      title={t('editor.add_frame_title')}
+      aria-label={t('editor.add_frame')}
     >
       <Icon name="plus" />
     </button>
@@ -1272,8 +1266,8 @@
       disabled={editor.playing}
       onclick={() => editor.removeActiveFrame()}
       data-key="Del"
-      title="Удалить текущий кадр (Del)"
-      aria-label="Удалить кадр"
+      title={t('editor.delete_frame_title')}
+      aria-label={t('editor.delete_frame')}
     >
       <Icon name="trash" />
     </button>
@@ -1284,15 +1278,15 @@
       aria-pressed={editor.onionSkin}
       onclick={() => editor.toggleOnionSkin()}
       data-key="K"
-      title={editor.onionSkin ? 'Калька (K) включена' : 'Калька (K) выключена'}
-      aria-label="Калька"
+      title={editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off')}
+      aria-label={t('editor.onion')}
     >
       <Icon name="onion" />
     </button>
   {:else if id === 'fps'}
     <!-- The reference keeps fps on the bar itself: a slider and a box. -->
-    <label class="fps-inline" title="Частота кадров">
-      <span class="sr-only">Частота кадров</span>
+    <label class="fps-inline" title={t('editor.fps')}>
+      <span class="sr-only">{t('editor.fps')}</span>
       <input
         type="range"
         min={editor.ux.fpsRange[0]}
@@ -1320,8 +1314,8 @@
         aria-expanded={audioOpen}
         aria-haspopup="dialog"
         onclick={() => (audioOpen = !audioOpen)}
-        title={editor.audio.hasTrack ? `Звук: ${editor.audio.name || 'без названия'}` : 'Звук'}
-        aria-label="Звук"
+        title={editor.audio.hasTrack ? t('editor.audio_of', { name: editor.audio.name || t('editor.audio_unnamed') }) : t('editor.audio')}
+        aria-label={t('editor.audio')}
       >
         <Icon name="note" />
       </button>
@@ -1341,11 +1335,11 @@
   {:else if id === 'saved'}
     {#if saveFailed}
       <span class="saved too_big" role="status">
-        <Icon name="x" size={14} /> Ошибка локального сохранения
+        <Icon name="x" size={14} /> {t('editor.save_failed')}
       </span>
     {:else if lastSaved}
       <span class="saved {draftSizeClass(savedBytes)}" role="status">
-        сохранено локально {lastSaved} · {formatFileSize(savedBytes)}
+        {t('editor.saved_at', { when: lastSaved, size: formatFileSize(savedBytes) })}
       </span>
     {/if}
   {:else if id === 'copy'}
@@ -1354,8 +1348,8 @@
       disabled={editor.playing}
       onclick={() => editor.copySelection()}
       data-key="C"
-      title="Копировать выделенные ячейки (C)"
-      aria-label="Копировать выделение"
+      title={t('editor.copy_title')}
+      aria-label={t('editor.copy')}
     ><Icon name="copy" /></button>
   {:else if id === 'paste'}
     <button
@@ -1363,8 +1357,8 @@
       disabled={!editor.canPasteCells}
       onclick={() => editor.pasteSelection()}
       data-key="V"
-      title="Вставить с заменой ячеек (V)"
-      aria-label="Вставить выделение"
+      title={t('editor.paste_title')}
+      aria-label={t('editor.paste')}
     ><Icon name="paste" /></button>
   {:else if id === 'settings'}
     <!-- Movable, never hideable: this key is the way back to the settings. -->
@@ -1372,8 +1366,8 @@
       class="key icon"
       aria-haspopup="dialog"
       onclick={openSettingsSheet}
-      title="Настройки"
-      aria-label="Настройки"
+      title={t('editor.settings')}
+      aria-label={t('editor.settings')}
     >
       <Icon name="gear" />
     </button>
@@ -1395,8 +1389,8 @@
                 }
               : null,
           )}
-        title="Опубликовать"
-        aria-label="Опубликовать"
+        title={t('editor.publish')}
+        aria-label={t('editor.publish')}
       >
         <Icon name="send" />
       </button>
@@ -1407,8 +1401,8 @@
       disabled={!editor.canPasteCells}
       onclick={() => editor.mergeSelection()}
       data-key="M"
-      title="Объединить: штрихи буфера поверх ячеек (M)"
-      aria-label="Объединить кадры"
+      title={t('editor.merge_title')}
+      aria-label={t('editor.merge')}
     ><Icon name="merge" /></button>
   {/if}
 {/snippet}
@@ -1422,7 +1416,7 @@
         class="arr"
         class:wide={panelItemSpec(id)?.wide}
         data-item={id}
-        title="Перетащи «{panelItemSpec(id)?.label ?? id}»"
+        title={t('editor.drag_item', { label: panelItemSpec(id)?.label ?? id })}
       >
         {@render panelItem(id)}
       </div>
@@ -1431,7 +1425,7 @@
     {/if}
   {/each}
   {#if editor.arranging && items.length === 0}
-    <span class="slot-empty">пусто</span>
+    <span class="slot-empty">{t('editor.slot_empty')}</span>
   {/if}
 {/snippet}
 
@@ -1447,7 +1441,7 @@
     <aside
       class="left"
       class:collapsed={folded('left')}
-      aria-label="Инструменты и история"
+      aria-label={t('editor.tools_side')}
       data-slot="left"
       style={sideStyle('left')}
       bind:clientWidth={sidePx.left}
@@ -1456,7 +1450,7 @@
         {@render slot(editor.panels.left)}
       {/if}
     </aside>
-    {@render sideEdge('left', 'Инструменты и история')}
+    {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
   <div class="stage" data-slot="float">
     <CanvasView {editor} />
@@ -1480,18 +1474,18 @@
           <!-- Where the pipette reads from. It comes up with the pipette and
                goes with it, like the zoom window with the hand: on a panel it
                was a pair of keys sitting dead most of the time. -->
-          <div class="pick-window" role="group" aria-label="Источник пипетки">
-            <p class="pick-title">Пипетка</p>
+          <div class="pick-window" role="group" aria-label={t('editor.pick_source')}>
+            <p class="pick-title">{t('editor.pipette')}</p>
             <div class="pick-source">
-              {#each [['canvas', 'Холст'], ['layer', 'Слой']] as [source, label] (source)}
+              {#each [['canvas', t('editor.pick_canvas')], ['layer', t('editor.pick_layer')]] as [source, label] (source)}
                 <button
                   class="key"
                   class:active={editor.pickSource === source}
                   aria-pressed={editor.pickSource === source}
                   onclick={() => editor.setPickSource(source as 'canvas' | 'layer')}
                   title={source === 'canvas'
-                    ? 'Брать цвет с видимого холста (Alt — только активный слой)'
-                    : 'Брать цвет только с активного слоя'}
+                    ? t('editor.pick_canvas_title')
+                    : t('editor.pick_layer_title')}
                 >{label}</button>
               {/each}
             </div>
@@ -1511,7 +1505,7 @@
     {#if importError}
       <p class="import-error" role="alert">
         {importError}
-        <button class="key" onclick={() => (importError = '')} aria-label="Закрыть сообщение">
+        <button class="key" onclick={() => (importError = '')} aria-label={t('editor.close_message')}>
           <Icon name="x" size={16} />
         </button>
       </p>
@@ -1521,7 +1515,7 @@
     <aside
       class="right"
       class:collapsed={folded('right')}
-      aria-label="Палитра и кисть"
+      aria-label={t('editor.palette_side')}
       data-slot="right"
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
@@ -1530,7 +1524,7 @@
         {@render slot(editor.panels.right)}
       {/if}
     </aside>
-    {@render sideEdge('right', 'Палитра и кисть')}
+    {@render sideEdge('right', t('editor.palette_side'))}
   {/if}
   <!-- A panel with nothing in it is not drawn — the canvas takes the room. -->
   {#if editor.panels.rows.length > 0 || editor.arranging}
@@ -1546,8 +1540,8 @@
         class="fold lying"
         onclick={() => editor.togglePanel()}
         aria-expanded={!panelFolded}
-        title={panelFolded ? 'Развернуть панель' : 'Свернуть панель'}
-        aria-label="{panelFolded ? 'Развернуть' : 'Свернуть'} нижнюю панель"
+        title={panelFolded ? t('editor.panel_expand') : t('editor.panel_fold')}
+        aria-label={panelFolded ? t('editor.bottom_expand') : t('editor.bottom_fold')}
       >
         <Icon name={panelFolded ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>
@@ -1559,7 +1553,7 @@
       <div
         class="resizer"
         role="separator"
-        aria-label="Высота нижней панели"
+        aria-label={t('editor.bottom_height')}
         aria-orientation="horizontal"
         aria-valuenow={panelHeight}
         aria-valuemin={panelFloor}
@@ -1567,7 +1561,7 @@
         onpointerdown={(e) =>
           startResize(e, 'y', -1, panelHeight, (px) => editor.setPanelHeight(px), 'panel')}
         onkeydown={onDividerKey}
-        title="Высота нижней панели (↑ / ↓)"
+        title={t('editor.bottom_height_title')}
       ></div>
     {/if}
     {#if !panelFolded}
@@ -1577,7 +1571,7 @@
            has to stand there holding a place open. -->
       <div class="toolbar">
         {#each editor.panels.rows as row, i (i)}
-          <div class="row" role="group" aria-label="Строка {i + 1}" data-slot="row:{i}">
+          <div class="row" role="group" aria-label={t('editor.row_n', { n: i + 1 })} data-slot="row:{i}">
             {@render slot(row)}
           </div>
         {/each}
@@ -1604,25 +1598,25 @@
       class="sheet-backdrop"
       role="button"
       tabindex="-1"
-      aria-label="Закрыть черновики"
+      aria-label={t('editor.drafts_close')}
       onclick={() => (draftsOpen = false)}
       onkeydown={(e) => e.key === 'Escape' && (draftsOpen = false)}
     ></div>
-    <div class="sheet" role="dialog" aria-label="Черновики" aria-modal="true">
+    <div class="sheet" role="dialog" aria-label={t('editor.drafts')} aria-modal="true">
       <header class="sheet-head">
-        <h2>Черновики</h2>
-        <button class="key icon" onclick={() => (draftsOpen = false)} aria-label="Закрыть">
+        <h2>{t('editor.drafts')}</h2>
+        <button class="key icon" onclick={() => (draftsOpen = false)} aria-label={t('editor.close')}>
           <Icon name="x" />
         </button>
       </header>
 
       <div class="sheet-body">
         {#if drafts.length === 0}
-          <p class="empty">Сохранённых черновиков пока нет — рисуй, они появятся сами.</p>
+          <p class="empty">{t('editor.drafts_empty')}</p>
         {:else}
           <p class="sheet-hint">
-            {plural(drafts.length, 'черновик', 'черновика', 'черновиков')} на этом устройстве
-            {#if storageUsed}· занято {formatFileSize(storageUsed)}{/if}
+            {t('draft.count', { count: drafts.length })}{t('editor.on_this_device')}
+            {#if storageUsed}{t('editor.storage_used', { size: formatFileSize(storageUsed) })}{/if}
           </p>
           <ul class="drafts">
             {#each drafts as entry (entry.id)}
@@ -1640,8 +1634,8 @@
                   <span class="draft-meta">
                     <span class="draft-date">{new Date(entry.updated).toLocaleString('ru')}</span>
                     <span class="draft-size">
-                      {plural(entry.doc.layers[0].frames.length, 'кадр', 'кадра', 'кадров')} ·
-                      {plural(entry.doc.layers.length, 'слой', 'слоя', 'слоёв')}
+                      {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
+                      {t('draft.layers', { count: entry.doc.layers.length })}
                       {#if entry.bytes}
                         · <span class={draftSizeClass(entry.bytes)}>{formatFileSize(entry.bytes)}</span>
                       {/if}
@@ -1649,7 +1643,7 @@
                     {#if entry.audio}
                       <span class="draft-track">
                         <Icon name="note" size={13} />
-                        {entry.audio.author ? `${entry.audio.author} — ` : ''}{entry.audio.name || 'без названия'}
+                        {entry.audio.author ? t('draft.track_by', { author: entry.audio.author }) : ''}{entry.audio.name || t('editor.audio_unnamed')}
                       </span>
                     {/if}
                   </span>
@@ -1657,16 +1651,16 @@
                 <button
                   class="key icon"
                   onclick={() => copyDraft(entry)}
-                  title="Сделать копию черновика"
-                  aria-label="Копия черновика"
+                  title={t('editor.draft_copy_title')}
+                  aria-label={t('editor.draft_copy')}
                 >
                   <Icon name="copy" />
                 </button>
                 <button
                   class="key icon"
                   onclick={() => removeDraft(entry)}
-                  title="Удалить черновик"
-                  aria-label="Удалить черновик"
+                  title={t('editor.draft_delete_title')}
+                  aria-label={t('editor.draft_delete')}
                 >
                   <Icon name="trash" />
                 </button>
@@ -1678,9 +1672,9 @@
 
       <footer class="sheet-foot">
         {#if drafts.length > 0}
-          <button class="key" onclick={removeAllDrafts}>Удалить все</button>
+          <button class="key" onclick={removeAllDrafts}>{t('editor.drafts_wipe')}</button>
         {/if}
-        <button class="key primary" onclick={() => (draftsOpen = false)}>Закрыть</button>
+        <button class="key primary" onclick={() => (draftsOpen = false)}>{t('editor.close')}</button>
       </footer>
     </div>
   {/if}
@@ -1703,7 +1697,7 @@
   <!-- The lock: an update is coming down, and nothing else is to be touched
        while it does. Esc does not call it off — there is nothing to call off. -->
   <dialog class="updating" bind:this={updatingEl} oncancel={(e) => e.preventDefault()}>
-    <p>Обновляются плагины…</p>
+    <p>{t('editor.plugins_updating')}</p>
   </dialog>
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
@@ -1713,14 +1707,14 @@
       class="sheet-backdrop"
       role="button"
       tabindex="-1"
-      aria-label="Закрыть мануал"
+      aria-label={t('editor.manual_close')}
       onclick={() => (manualOpen = false)}
       onkeydown={(e) => e.key === 'Escape' && (manualOpen = false)}
     ></div>
-    <div class="sheet" role="dialog" aria-label="Мануал" aria-modal="true">
+    <div class="sheet" role="dialog" aria-label={t('editor.manual')} aria-modal="true">
       <header class="sheet-head">
-        <h2>Мануал</h2>
-        <button class="key icon" onclick={() => (manualOpen = false)} aria-label="Закрыть">
+        <h2>{t('editor.manual')}</h2>
+        <button class="key icon" onclick={() => (manualOpen = false)} aria-label={t('editor.close')}>
           <Icon name="x" />
         </button>
       </header>
@@ -1729,7 +1723,7 @@
         <!-- Every shortcut the key handler above actually implements, in one
              place. They were reachable but undocumented: nothing in the UI said
              the editor had any. Behind the sheet, so the toolbar stays quiet. -->
-        <p class="sheet-hint">Горячие клавиши</p>
+        <p class="sheet-hint">{t('editor.shortcuts')}</p>
         <dl class="keylist">
           {#each SHORTCUTS as [combo, what] (combo)}
             <div class="keyrow">
@@ -1741,7 +1735,7 @@
       </div>
 
       <footer class="sheet-foot">
-        <button class="key primary" onclick={() => (manualOpen = false)}>Готово</button>
+        <button class="key primary" onclick={() => (manualOpen = false)}>{t('editor.done')}</button>
       </footer>
     </div>
   {/if}

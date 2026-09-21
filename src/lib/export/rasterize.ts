@@ -15,6 +15,7 @@ import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 import type { Viewport } from '../render/contract';
+import { t } from '../i18n';
 
 export const WATERMARK_TEXT = 'toonop';
 
@@ -201,6 +202,6 @@ export async function rasterizeDocument(
 /** The rejection every export path speaks: `AbortError`, never a bare Error. */
 export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
-    throw new DOMException('экспорт отменён', 'AbortError');
+    throw new DOMException(t('export.cancelled'), 'AbortError');
   }
 }

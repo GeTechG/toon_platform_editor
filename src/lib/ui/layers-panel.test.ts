@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { t } from '../i18n';
 
 const source = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
 const rows = source;
@@ -96,7 +97,8 @@ describe('the colour tag is pickable', () => {
   it('the tag is a button that walks the six swatches', () => {
     expect(rows).toContain('class="tag"');
     expect(rows).toContain('editor.cycleLayerColor(layerIndex)');
-    expect(rows).toContain('Цвет слоя');
+    expect(rows).toContain("t('layer.colour_title')");
+    expect(t('layer.colour_title')).toStartWith('Цвет слоя');
     expect(rows).toContain('editor.layerColor(layerIndex)');
   });
 

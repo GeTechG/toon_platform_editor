@@ -9,7 +9,7 @@ import {
   visibleTools,
   toolItem,
   toolOfItem,
-  KIND_LABELS,
+  kindLabel,
   slotLabel,
   slotsOf,
   allPlaced,
@@ -381,7 +381,7 @@ describe('the slots a layout offers', () => {
 
   test('every kind of item has a word for it', () => {
     for (const item of panelItems()) {
-      expect(KIND_LABELS[item.kind].length).toBeGreaterThan(0);
+      expect(kindLabel(item.kind).length).toBeGreaterThan(0);
     }
   });
 });

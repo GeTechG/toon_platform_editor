@@ -26,6 +26,7 @@ import {
 } from './panels';
 import type { PickerModel } from './picker-model';
 import { type UxProfile } from './ux-profile';
+import { t } from '../i18n';
 
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
@@ -217,16 +218,21 @@ export const AUTOSAVE_INTERVALS: readonly number[] = [
 ];
 
 /** What the sheet calls each interval. */
-export const AUTOSAVE_LABELS: Record<number, string> = {
-  10_000: '10 секунд',
-  30_000: '30 секунд',
-  60_000: 'минута',
-  300_000: '5 минут',
-  600_000: '10 минут',
-  1_800_000: '30 минут',
-  3_600_000: 'час',
-  0: 'никогда',
+const AUTOSAVE_KEYS: Record<number, string> = {
+  10_000: 'autosave.s10',
+  30_000: 'autosave.s30',
+  60_000: 'autosave.m1',
+  300_000: 'autosave.m5',
+  600_000: 'autosave.m10',
+  1_800_000: 'autosave.m30',
+  3_600_000: 'autosave.h1',
+  0: 'autosave.never',
 };
+
+export function autosaveLabel(ms: number): string {
+  const key = AUTOSAVE_KEYS[ms];
+  return key ? t(key) : String(ms);
+}
 
 export const PALETTE_LIMIT_MIN = 30;
 export const PALETTE_LIMIT_MAX = 300;
