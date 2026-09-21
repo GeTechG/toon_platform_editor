@@ -13,8 +13,17 @@ import type { StrokeRules } from '../tools/profiles';
 
 export type { StrokeRules };
 
-/** The contract major. A manifest asking for another one is not loaded. */
-export const PLUGIN_API = 2;
+/**
+ * The contract major. A manifest asking for another one is not loaded.
+ *
+ * It holds where it is while the contract is still being shaped: a breaking
+ * change arrives without a new number, because there is nothing out there to
+ * break — the plugins are ours and there is one of them. Moving it earns its
+ * keep the day the editor can read an older manifest and bring it to the
+ * current shape; a number without that promises a compatibility that is not
+ * there.
+ */
+export const PLUGIN_API = 1;
 
 /** A point of the gesture, in document units. */
 export interface PluginPoint {
