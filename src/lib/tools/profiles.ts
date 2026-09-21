@@ -1,5 +1,5 @@
 import { FIXED_POINT_SCALE, LANG_TOLERANCE_DOC, MAX_STROKE_WIDTH } from '../format/constants';
-import type { LineToolDescriptor, StrokeDialect } from '../format/types';
+import type { LineToolDescriptor, StrokeDialect, ToolDescriptor } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import type { ResolvedStroke } from '../model/operations';
 import { StrokeBuilder } from './stroke-builder';
@@ -198,12 +198,14 @@ export function finishStrokeEvent(session: StrokeSession, event: PointerSample):
 }
 
 export function previewStrokeSession(session: StrokeSession): readonly number[] {
-  if (session.own) {
-    return session.rawPoints;
-  }
-  return session.profile === 'toonio'
-    ? tonioSmooth(session.rawPoints, session.tonio.smooth)
-    : session.rawPoints;
+  // The line under the hand is the line that will be committed — the sentinel
+  // included, or the preview would stop half a segment short of the pointer
+  // and only catch up on release. The dialect's own smoothing already writes
+  // one, so this changes nothing for a brush that goes through it.
+  const points = session.own || session.profile !== 'toonio'
+    ? session.rawPoints
+    : tonioSmooth(session.rawPoints, session.tonio.smooth);
+  return withTonioSentinel([...points], session.descriptor);
 }
 
 export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
@@ -232,6 +234,25 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
         session.tonioCoordinateScale,
       );
   return { points, tool: copyLineTool(session.descriptor) };
+}
+
+/**
+ * The endpoint sentinel of a Tonio line: its last point written down twice.
+ *
+ * The renderer's midpoint chain ends on the midpoint of the last pair, so a
+ * line without it stops half a segment short of where the hand let go. The
+ * dialect's own commit (`tonioPrepare`) writes it; a tool that collects or
+ * commits its own points cannot be expected to know the convention, and this
+ * is where the stroke becomes a record of the document rather than a gesture.
+ * A stamp has no curve and no sentinel — its points are its marks.
+ */
+function withTonioSentinel(points: number[], tool: ToolDescriptor): number[] {
+  const count = points.length;
+  if (tool.dialect !== 'toonio' || tool.kind === 'stamp' || count < 4) {
+    return points;
+  }
+  const duplicated = points[count - 4] === points[count - 2] && points[count - 3] === points[count - 1];
+  return duplicated ? points : [...points, points[count - 2], points[count - 1]];
 }
 
 export function quantizeTonioPoint(xDoc: number, yDoc: number): [number, number] {
@@ -334,7 +355,7 @@ export class PointerStrokeController {
     // The document stores whole coordinates. The dialects quantize on their own
     // way here, but a tool that collects or commits its own points hands back
     // whatever the pointer gave — and a fraction would cost the whole stroke.
-    return { ...stroke, points: stroke.points.map(Math.round) };
+    return { ...stroke, points: withTonioSentinel(stroke.points.map(Math.round), stroke.tool) };
   }
 
   pointerCancel(event: PointerSample): boolean {

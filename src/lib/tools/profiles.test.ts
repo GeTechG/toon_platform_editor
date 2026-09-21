@@ -449,6 +449,43 @@ describe('what reaches the document', () => {
     capture: (line, points) => [...line, ...points],
   };
 
+  /** A tool that keeps two points and moves the second one — a straight line. */
+  const straightOwn: profiles.OwnCapture = {
+    capture: (line, points) => {
+      const x = points[points.length - 2];
+      const y = points[points.length - 1];
+      return line.length >= 2 ? [line[0], line[1], x, y] : [x, y];
+    },
+  };
+
+  it('ends a Tonio line on its endpoint sentinel, whoever collected the points', () => {
+    // A Tonio line is written down with its last point duplicated: the
+    // renderer's midpoint chain lands on the midpoint of the last pair, so
+    // without it the line stops half a segment short of where the hand let go.
+    // The dialect's own commit writes it; a tool collecting its own points
+    // cannot be expected to know the convention.
+    const controller = new profiles.PointerStrokeController(() => ({
+      profile: 'toonio', descriptor: { ...pencil, dialect: 'toonio' }, own: straightOwn,
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 200, 100));
+    controller.pointerUp(sample(1, 300, 150));
+
+    expect(controller.takeCommitted()?.points).toEqual([0, 0, 300, 150, 300, 150]);
+  });
+
+  it('previews a Tonio line the way it will be committed, sentinel and all', () => {
+    // What is drawn under the hand and what lands in the frame are the same
+    // line: without the sentinel the preview stops half a segment short and
+    // jumps to the pointer only on release.
+    const session = profiles.beginStrokeSession(
+      'toonio', sample(1, 0, 0), { ...pencil, dialect: 'toonio' }, undefined, undefined, 1, straightOwn,
+    );
+    profiles.appendStrokeEvent(session, sample(1, 300, 150));
+
+    expect(profiles.previewStrokeSession(session)).toEqual([0, 0, 300, 150, 300, 150]);
+  });
+
   it('quantizes a tool\'s own points instead of dropping the stroke', () => {
     // The document stores integers; the dialect's own capture quantizes, and a
     // tool that collects its points itself would otherwise have to know that.
