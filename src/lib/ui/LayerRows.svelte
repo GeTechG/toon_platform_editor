@@ -1,8 +1,7 @@
 <script lang="ts">
   // The layer list itself, in the reference's shape: an «+ Слой» header over
   // rows of eye · name · ⇕ · ×, every control acting on its own row. The
-  // popup panel (bar layout) and the studio timeline column both render this,
-  // so the two forms cannot drift apart. Layers are stored bottom-up and
+  // timeline's own column renders it. Layers are stored bottom-up and
   // shown top-down (topmost row first) — the order you see on the canvas.
   // A row shows the layer's stored name, or its position when it has none,
   // so moving an unnamed layer renumbers its row. The colour tag is a display

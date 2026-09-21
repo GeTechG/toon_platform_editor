@@ -1,9 +1,9 @@
 <script lang="ts">
-  // Two shapes, one component. The `bar` layout keeps the single strip of
-  // frames the editor always had; the `studio` layout is the reference
-  // toonio.ru timeline (`Timeline` in toonio.bundle.js:8645): the shared layer
-  // list on the left and a layer-by-frame grid of cell thumbnails on the
-  // right, filling whatever height the resizable bottom panel gives it.
+  // The reference toonio.ru timeline (`Timeline` in toonio.bundle.js:8645):
+  // the layer list on the left and a layer-by-frame grid of cell thumbnails
+  // on the right, filling whatever height the resizable bottom panel gives
+  // it. One shape for every preset — a preset patches where the strip sits,
+  // not what it is.
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import LayerRows from './LayerRows.svelte';
@@ -275,7 +275,7 @@
 
 <style>
 
-  /* --- The layer × frame grid, in both layouts ---------------------------- */
+  /* --- The layer × frame grid -------------------------------------------- */
   .board {
     display: flex;
     flex-direction: column;
