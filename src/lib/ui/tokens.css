@@ -30,7 +30,17 @@
   --signal-dark: #d8331c; /* the working red: 4.76:1 both ways on canvas */
   --signal-deep: #b02a15; /* key under prime + its hover ink (ramp step) */
 
+  /* Two weights of ink line, and they are not interchangeable. `--hairline` is
+     the divider: a table rule, a section line, the seam between two tones,
+     where 14% is exactly enough to be structure without being a wall.
+     `--edge` is the *boundary of a control* — the border of a field, the hard
+     key under a ghost button — where WCAG 2.2 AA 1.4.11 asks 3:1 against both
+     the control's own fill and the surface under it. The hairline gives 1.36:1
+     there, so a white field on a white plate has no visible edge at all. 48%
+     ink measures 3.45:1 on canvas and 3.32:1 on paper: one ramp, one hue, two
+     honest jobs. */
   --hairline: #0b0c1024; /* 14% ink — dividers, structure without shadow */
+  --edge: #0b0c107a; /* 48% ink — the boundary of an interactive control */
   --hairline-soft: #0b0c1012; /* 7% ink */
   --ghost-2: #1b5cff1a; /* onion-skin's far step (0.1) */
 
