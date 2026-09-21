@@ -11,10 +11,10 @@
  */
 
 import { compareVersions, type CatalogEntry } from './catalog';
-import { pluginText, type Plugin } from './contract';
+import { pluginNamespace, pluginText, type Plugin } from './contract';
 import type { PluginRegistry } from './registry';
 import { listInstalled, putInstalled } from './store';
-import { BASE_LOCALE, i18n, t } from '../i18n';
+import { t } from '../i18n';
 
 export interface InstallPorts {
   fetch: (url: string) => Promise<{ text(): Promise<string> }>;
@@ -45,8 +45,8 @@ function reason(error: unknown): string {
 }
 
 /** A manifest's text for the language in hand; '' when it has none. */
-function text(value: unknown): string {
-  return pluginText(value, i18n.language, BASE_LOCALE) ?? '';
+function text(value: unknown, ns = ''): string {
+  return pluginText(value, ns) ?? '';
 }
 
 function manifestOf(module: Record<string, unknown>): Partial<Plugin> & Record<string, unknown> {
@@ -136,8 +136,8 @@ export async function installFromFile(
   await putInstalled({
     id,
     version: text(manifest.version) || '0.0.0',
-    name: text(manifest.name) || id,
-    description: text(manifest.description),
+    name: text(manifest.name, pluginNamespace(id)) || id,
+    description: text(manifest.description, pluginNamespace(id)),
     icon: icon.startsWith('<') ? icon : '',
     code,
     source: 'local',

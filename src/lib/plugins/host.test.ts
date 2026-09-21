@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, STROKE_COORD_MAX } from '../format/constants';
 import { editCells, makeHost } from './host';
+import { pluginNamespace } from './contract';
+import { i18n } from '../i18n';
 
 const cells = () => [
   { strokes: [{ points: [0, 0, 10, 10], tool_id: 1 }] },
@@ -18,7 +20,7 @@ describe('the unit a plugin measures in', () => {
       pluginStrokes: () => [],
       editPluginCells: () => {},
       openPluginWindow: () => ({}) as HTMLElement,
-    });
+    }, 'a.units');
     expect('referencePx' in host).toBe(false);
   });
 });
@@ -80,5 +82,21 @@ describe('editCells', () => {
 
     expect(next[0]).toHaveLength(1);
     expect(next[1]).toHaveLength(2);
+  });
+});
+
+describe('the words a plugin is handed', () => {
+  test('host.t reads the keys of the plugin that was handed the host', () => {
+    i18n.addResourceBundle('ru', pluginNamespace('a.words'), { hello: 'Привет' });
+    const host = makeHost({
+      doc: { width: CANVAS_LOGICAL_WIDTH * FIXED_POINT_SCALE },
+      pluginStrokes: () => [],
+      editPluginCells: () => {},
+      openPluginWindow: () => ({}) as HTMLElement,
+    }, 'a.words');
+
+    expect(host.t('hello')).toBe('Привет');
+    // Someone else's keys, including the editor's, are not its to read.
+    expect(host.t('tool.pencil.label')).toBe('tool.pencil.label');
   });
 });

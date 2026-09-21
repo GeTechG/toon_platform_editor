@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { PLUGIN_API, type StrokeRules } from './contract';
 import { PluginRegistry } from './registry';
+import { t } from '../i18n';
 
 /** The smallest manifest the registry accepts — one tool and nothing else. */
 function toolPlugin(id: string, patch: Record<string, unknown> = {}): unknown {
@@ -333,5 +334,57 @@ describe('a manifest brings its own languages', () => {
     expect(registry.brushType('old')?.label).toBe('Старая');
     expect(registry.brushType('old')?.hint).toBe('Переменная толщина');
     expect(registry.preset('retro')?.label).toBe('Ретро');
+  });
+});
+
+// A plugin that has more than a label or two keeps its words the way the
+// editor keeps its own: a catalogue per language, and keys in the manifest.
+// The register hands them to i18next under a namespace of the plugin's own,
+// so no plugin can write over the editor's words or another plugin's.
+describe('a plugin brings its own catalogue', () => {
+  test('a key in the manifest is read out of the catalogue the plugin brought', () => {
+    const registry = new PluginRegistry();
+
+    registry.register({
+      id: 'a.keys',
+      api: PLUGIN_API,
+      locales: {
+        ru: { tool: { label: 'Полутон', title: 'Полутон (H)' } },
+        en: { tool: { label: 'Halftone', title: 'Halftone (H)' } },
+      },
+      tools: {
+        'a.keys': { label: { t: 'tool.label' }, title: { t: 'tool.title' }, icon: '<path />' },
+      },
+    });
+
+    expect(registry.tool('a.keys')?.label).toBe('Полутон');
+    expect(registry.tool('a.keys')?.title).toBe('Полутон (H)');
+  });
+
+  test('a key nothing answers is a record without a label, not a raw key on the rail', () => {
+    const registry = new PluginRegistry();
+
+    const refused = registry.register({
+      id: 'a.missing',
+      api: PLUGIN_API,
+      locales: { ru: { tool: { label: 'Полутон' } } },
+      tools: { 'a.missing': { label: { t: 'tool.label' }, title: { t: 'tool.nothing' }, icon: '<path />' } },
+    });
+
+    expect(refused).toContain('title');
+    expect(registry.tools()).toEqual([]);
+  });
+
+  test("a plugin's catalogue cannot write over the editor's own words", () => {
+    const registry = new PluginRegistry();
+
+    registry.register({
+      id: 'a.thief',
+      api: PLUGIN_API,
+      locales: { ru: { 'tool.pencil.label': 'Украдено' } },
+      tools: { 'a.thief': { label: 'Вор', title: 'Вор', icon: '<path />' } },
+    });
+
+    expect(t('tool.pencil.label')).toBe('Карандаш');
   });
 });

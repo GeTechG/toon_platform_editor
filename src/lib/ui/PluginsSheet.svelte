@@ -12,8 +12,8 @@
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
-  import { BASE_LOCALE, i18n, t } from '../i18n';
-  import { pluginText } from '../plugins/contract';
+  import { t } from '../i18n';
+  import { pluginNamespace, pluginText } from '../plugins/contract';
 
   let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
 
@@ -44,9 +44,9 @@
    */
   const delivery: InstalledPlugin = {
     id: BUNDLED_PLUGIN.id,
-    name: pluginText(BUNDLED_PLUGIN.name, i18n.language, BASE_LOCALE) ?? BUNDLED_PLUGIN.id,
+    name: pluginText(BUNDLED_PLUGIN.name, pluginNamespace(BUNDLED_PLUGIN.id)) ?? BUNDLED_PLUGIN.id,
     version: BUNDLED_PLUGIN.version ?? '',
-    description: pluginText(BUNDLED_PLUGIN.description, i18n.language, BASE_LOCALE) ?? '',
+    description: pluginText(BUNDLED_PLUGIN.description, pluginNamespace(BUNDLED_PLUGIN.id)) ?? '',
     icon: BUNDLED_PLUGIN.icon ?? '',
     code: '',
     source: 'bundled',

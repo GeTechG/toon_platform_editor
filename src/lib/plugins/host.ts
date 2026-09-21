@@ -9,7 +9,8 @@
 
 import { clampCoord } from '../model/geom';
 import type { Stroke } from '../format/types';
-import type { PluginHost, PluginStroke } from './contract';
+import { pluginNamespace, type PluginHost, type PluginStroke } from './contract';
+import { translator } from '../i18n';
 
 export interface EditableCell {
   readonly strokes: readonly Stroke[];
@@ -50,8 +51,9 @@ export interface HostOwner {
  * does not cross this boundary (plugins share a runtime with each other, not
  * with the editor), so the contract hands over data and takes callbacks.
  */
-export function makeHost(owner: HostOwner): PluginHost {
+export function makeHost(owner: HostOwner, plugin: string): PluginHost {
   return {
+    t: translator(pluginNamespace(plugin)),
     window: ({ title }) => owner.openPluginWindow(title),
     strokes: () => owner.pluginStrokes(),
     edit: (fn) => owner.editPluginCells(fn),

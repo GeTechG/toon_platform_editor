@@ -10,6 +10,7 @@
 import { LINE_PRIMITIVES } from '../render/dispatch';
 import {
   PLUGIN_API,
+  pluginNamespace,
   pluginText,
   type Plugin,
   type PluginBrush,
@@ -18,18 +19,24 @@ import {
   type PluginTool,
   type StrokeRules,
 } from './contract';
-import { BASE_LOCALE, i18n, t } from '../i18n';
+import { i18n, t } from '../i18n';
 
 /**
- * A manifest's text, resolved for the language in hand.
+ * Hands a plugin's own catalogue to i18next, under a namespace of its own.
  *
- * ponytail: resolved once, on accept — so a language switched while the editor
- * is open leaves plugin labels in the old one. Re-registering what `store.ts`
- * already holds is the upgrade path, and it is the existing install path, not
- * a new mechanism; it stays unwritten while nothing can switch the language.
+ * Before any record is read, so the keys in the manifest already answer. A
+ * bundle is replaced rather than merged on a re-register: what the plugin
+ * ships now is what it means now.
  */
-function localized(value: unknown): string | null {
-  return pluginText(value, i18n.language, BASE_LOCALE);
+function addLocales(id: string, locales: unknown): void {
+  if (typeof locales !== 'object' || locales === null) {
+    return;
+  }
+  for (const [locale, resources] of Object.entries(locales as Record<string, unknown>)) {
+    if (typeof resources === 'object' && resources !== null) {
+      i18n.addResourceBundle(locale, pluginNamespace(id), resources, true, true);
+    }
+  }
 }
 
 /**
@@ -83,10 +90,10 @@ function keyId(key: string): string {
   return key.trim().toLowerCase();
 }
 
-function readTool(value: unknown): RegisteredText<PluginTool> | null {
+function readTool(value: unknown, ns: string): RegisteredText<PluginTool> | null {
   const tool = typeof value === 'object' && value !== null ? value as Record<string, unknown> : null;
-  const label = tool && localized(tool.label);
-  const title = tool && localized(tool.title);
+  const label = tool && pluginText(tool.label, ns);
+  const title = tool && pluginText(tool.title, ns);
   if (!tool || !label || !title || typeof tool.icon !== 'string') {
     return null;
   }
@@ -144,6 +151,8 @@ export class PluginRegistry {
       return this.refuse(manifest.id, t('plugin.brings_nothing'));
     }
     const plugin = manifest.id;
+    // Its words first: every record below may be nothing but keys into them.
+    addLocales(plugin, manifest.locales);
     // A record that does not pass costs itself, not the manifest: a plugin of
     // seven tools must not lose six because one asked for a taken id. A
     // manifest of which nothing at all passed is a refused install, though,
@@ -170,7 +179,8 @@ export class PluginRegistry {
       this.fail(plugin, t('plugin.id_taken', { id }));
       return false;
     }
-    const tool = readTool(value);
+    const ns = pluginNamespace(plugin);
+    const tool = readTool(value, ns);
     if (!tool) {
       this.fail(plugin, t('plugin.tool_incomplete', { id }));
       return false;
@@ -204,7 +214,7 @@ export class PluginRegistry {
 
   private addPreset(plugin: string, id: string, value: unknown): boolean {
     const preset = value as PluginPreset | null;
-    const label = preset && localized(preset.label);
+    const label = preset && pluginText(preset.label, pluginNamespace(plugin));
     if (!preset || !label || typeof preset.brush !== 'string' || !preset.ux) {
       this.fail(plugin, t('plugin.preset_incomplete', { id }));
       return false;
@@ -219,7 +229,8 @@ export class PluginRegistry {
 
   private addBrushType(plugin: string, id: string, value: unknown): boolean {
     const type = value as PluginBrushType | null;
-    const label = type && localized(type.label);
+    const ns = pluginNamespace(plugin);
+    const label = type && pluginText(type.label, ns);
     if (!type || !label || typeof type.twins !== 'object' || !type.twins) {
       this.fail(plugin, t('plugin.brush_type_incomplete', { id }));
       return false;
@@ -228,7 +239,7 @@ export class PluginRegistry {
       this.fail(plugin, t('plugin.brush_type_taken', { id }));
       return false;
     }
-    this.typeById.set(id, { ...type, label, hint: localized(type.hint) ?? undefined, id, plugin });
+    this.typeById.set(id, { ...type, label, hint: pluginText(type.hint, ns) ?? undefined, id, plugin });
     return true;
   }
 

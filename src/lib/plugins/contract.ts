@@ -10,6 +10,7 @@
 
 import type { LineToolDescriptor } from '../format/types';
 import type { StrokeRules } from '../tools/profiles';
+import { BASE_LOCALE, i18n } from '../i18n';
 
 export type { StrokeRules };
 
@@ -40,24 +41,46 @@ export const PLUGIN_API = 1;
  * languages it has; where it keeps them (its own JSON, its own i18n) is its
  * business.
  */
-export type PluginText = string | Readonly<Record<string, string>>;
+export type PluginText =
+  /** The same words for everyone. */
+  | string
+  /** A key of the plugin's own catalogue (`locales`), the way the editor writes its own. */
+  | { readonly t: string }
+  /** One string per locale, for a plugin too small to carry a catalogue. */
+  | Readonly<Record<string, string>>;
 
 /**
- * The one string a reader gets: the language in hand, the base language, then
- * whatever the map does have — a plugin that knows only German still says
- * something rather than nothing. `null` when there is no text at all, which
- * the register refuses over.
+ * Where a plugin's catalogue lives inside the editor's i18next.
+ *
+ * Namespaced by id and prefixed, so a plugin cannot answer for the editor's
+ * keys or for another plugin's — even one calling itself `editor`.
  */
-export function pluginText(value: unknown, locale: string, base: string): string | null {
+export function pluginNamespace(id: string): string {
+  return `plugin:${id}`;
+}
+
+/**
+ * The one string a reader gets, out of whichever of the three shapes the
+ * manifest used. A key is looked up in the plugin's own namespace; a map is
+ * read in the language in hand, then the base language, then whatever it does
+ * have — a plugin that knows only German still says something rather than
+ * nothing. `null` when there is no text at all, which the register refuses
+ * over: a raw key on the tool rail is worse than a refused record.
+ */
+export function pluginText(value: unknown, ns: string): string | null {
   if (typeof value === 'string') {
     return value || null;
   }
   if (typeof value !== 'object' || value === null) {
     return null;
   }
+  const key = (value as { t?: unknown }).t;
+  if (typeof key === 'string') {
+    return i18n.exists(key, { ns }) ? i18n.t(key, { ns }) : null;
+  }
   const map = value as Record<string, unknown>;
-  for (const key of [locale, base, ...Object.keys(map)]) {
-    const text = map[key];
+  for (const locale of [i18n.language, BASE_LOCALE, ...Object.keys(map)]) {
+    const text = map[locale];
     if (typeof text === 'string' && text) {
       return text;
     }
@@ -84,6 +107,11 @@ export interface PluginStroke {
  * the contract says it in words rather than leaving it to be discovered.
  */
 export interface PluginHost {
+  /**
+   * The plugin's own words, by key, out of the catalogue it shipped in
+   * `locales`. Another plugin's keys and the editor's are not its to read.
+   */
+  t(key: string, params?: Record<string, unknown>): string;
   /** A node inside a floating window of the editor; it lives until the tool is left. */
   window(opts: { title: string }): HTMLElement;
   /** The strokes of the current frame on the selected, visible layers. */
@@ -281,6 +309,12 @@ export interface Plugin {
   readonly name?: PluginText;
   readonly version?: string;
   readonly description?: PluginText;
+  /**
+   * The plugin's own catalogue: locale → resources, in i18next's shape. The
+   * register hands it over under `pluginNamespace(id)` before it reads a
+   * single record, so the keys in the manifest already answer.
+   */
+  readonly locales?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
   /** SVG markup on the 24-unit grid, drawn beside the name in the list. */
   readonly icon?: string;
   /**

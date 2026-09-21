@@ -1885,9 +1885,13 @@ export class EditorState {
     this.refreshPlugins();
   }
 
-  /** What a plugin is handed — never this object, which carries the runes state. */
-  pluginHost(): PluginHost {
-    return makeHost(this);
+  /**
+   * What a plugin is handed — never this object, which carries the runes state.
+   * The words in it are the ones the tool's own plugin shipped, so the host is
+   * built for whatever is in hand at the moment it is asked for.
+   */
+  pluginHost(plugin = toolSpec(this.tool)?.plugin ?? ''): PluginHost {
+    return makeHost(this, plugin);
   }
 
   /** The node a plugin draws its own controls into, inside a window of the editor. */
