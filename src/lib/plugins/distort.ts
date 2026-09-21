@@ -24,9 +24,9 @@ const PX_PER_UNIT = 1 / FIXED_POINT_SCALE;
 let drag: { startX: number; lastStep: number } | null = null;
 
 export const distortTool: PluginTool = {
-  icon: 'distort',
-  title: 'Искажение (~) — дребезг штрихов кадра',
-  label: 'Искажение',
+  icon: 'jitter',
+  title: 'Дрожь (~) — дребезг штрихов кадра',
+  label: 'Дрожь',
   key: '~',
   help: true,
   cursor: 'e-resize',

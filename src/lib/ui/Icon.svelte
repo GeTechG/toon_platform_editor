@@ -47,8 +47,8 @@
     | 'drafts'
     | 'save'
     | 'hand'
-    | 'lasso'
-    | 'distort'
+    | 'transform'
+    | 'jitter'
     | 'note'
     | 'help'
     | 'info';
@@ -84,10 +84,11 @@
     'mega-eraser': 'M3 12h4M17 12h4M8.5 5.5h7v13h-7z',
     // An open hand: the tool that drags the canvas about.
     hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 12V4.5a1.5 1.5 0 0 1 3 0V12M14 12V6.5a1.5 1.5 0 0 1 3 0V13M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a1.5 1.5 0 0 1 2.6-1.5L8 15',
-    // A dashed loop closing on itself, the way a lasso is drawn.
-    lasso: 'M12 4c5 0 9 2.5 9 5.5S17 15 12 15s-9-2.5-9-5.5S7 4 12 4ZM8 14.5c-.7 1.5-.5 3 .7 3.9M9.5 20.5a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Z',
-    // A square with one corner pulled out of place.
-    distort: 'M4 4h12l4 16H4zM4 4v16M16 4l4 16',
+    // The frame taken in hand: a box with a handle at every corner.
+    transform: 'M7 7h10v10H7zM4.5 4.5h.01M19.5 4.5h.01M4.5 19.5h.01M19.5 19.5h.01',
+    // Two strokes shaking against each other — what the brush does to a frame.
+    jitter:
+      'M3 9c1.5-3 3 3 4.5 0s3 3 4.5 0 3 3 4.5 0 3 3 4.5 0M3 15c1.5 3 3-3 4.5 0s3-3 4.5 0 3-3 4.5 0 3-3 4.5 0',
     // A ringed question mark: the manual, not an inline hint.
     // A circle with an i: the word behind it is there for whoever wants it.
     info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v5M12 7.5h.01',

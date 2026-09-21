@@ -68,9 +68,9 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
   },
   drag: { icon: 'hand', title: 'Рука (D) — двигать холст', label: 'Рука', key: 'D', help: true },
   lasso: {
-    icon: 'lasso',
-    title: 'Лассо (Q) — взять кадр и трансформировать',
-    label: 'Лассо',
+    icon: 'transform',
+    title: 'Трансформация (Q) — взять кадр и трансформировать',
+    label: 'Трансформация',
     key: 'Q',
     help: true,
   },
