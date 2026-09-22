@@ -322,8 +322,11 @@ describe('the sheet lies on a worktable', () => {
     const draw = handler('draw');
     // The table shows through around the sheet instead of a full-bleed fill.
     expect(draw).toContain('clearRect(0, 0, pxWidth, pxHeight)');
-    expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
     expect(draw).toContain('ctx.clip()');
+    // The paper itself is filled in its own buffer now — same paint, drawn
+    // once per shape instead of once per frame — and `draw` places it.
+    expect(handler('paperBuffer')).toContain('fillStyle = BACKGROUND_COLOR');
+    expect(draw).toMatch(/drawImage\(\s*paperEl/);
   });
 
   it('reads pointer positions against the sheet, not the workspace', () => {
@@ -342,5 +345,33 @@ describe('what the canvas asks whom', () => {
     // their own. The reference that rasterises at document scale is a preset.
     expect(source).toContain("editor.ux.canvasDensity === 'document'");
     expect(source).not.toContain("editor.defaultBrush === 'toonio'");
+  });
+});
+
+describe('the frame pays only for what changed', () => {
+  const draw = handler('draw');
+
+  // `shadowBlur` is one of the most expensive things a 2D context does, and
+  // the paper's shadow was being laid down from scratch on every `draw` —
+  // every playback frame included, at `24 * dpr` of blur, which is a 72px
+  // radius on a common Android panel. The stack above it was already behind a
+  // dirty flag; the shadow, which changes only when the sheet is panned,
+  // zoomed or resized, was not behind anything.
+  it('does not blur the paper shadow on every draw', () => {
+    expect(draw).not.toContain('shadowBlur');
+  });
+
+  it('keeps the paper and its shadow as a buffer, like the layer stack', () => {
+    expect(source).toContain('function paperBuffer');
+    expect(draw).toMatch(/drawImage\(\s*paperEl/);
+  });
+
+  // Every coalesced sample of a pointermove called `toDocUnits`, and every
+  // call read the canvas rect again: one layout query per sample of a stroke,
+  // where one per event is all the geometry the event has.
+  it('reads the canvas rect once per pointer event, not once per sample', () => {
+    const toDocUnits = handler('toDocUnits');
+    expect(toDocUnits).not.toContain('getBoundingClientRect');
+    expect(source).toContain('function canvasRect');
   });
 });

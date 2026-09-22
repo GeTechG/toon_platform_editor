@@ -37,3 +37,36 @@ describe('both floating windows drag by their header', () => {
     expect(transformMenu).toContain('data-drag-handle');
   });
 });
+
+const dragSource = await Bun.file(new URL('./draggable.ts', import.meta.url)).text();
+
+describe('a drag measures once, then only writes', () => {
+  const move = dragSource.slice(
+    dragSource.indexOf('function onPointerMove'),
+    dragSource.indexOf('function release'),
+  );
+
+  // Every `pointermove` read `getBoundingClientRect()` — and the move before
+  // it had written `left`/`top` on the same element, so the read forced the
+  // browser to lay the page out again. Write, read, write, on every sample of
+  // a drag people perform while drawing. Nothing being read changes during a
+  // drag: the window keeps its size, and the page keeps its bounds.
+  it('takes no measurement while the pointer is moving', () => {
+    expect(move).not.toContain('getBoundingClientRect');
+    expect(move).not.toContain('clientWidth');
+    expect(move).not.toContain('clientHeight');
+  });
+
+  it('measures once, where the window leaves the flow', () => {
+    // The size has to be read after the switch to `fixed`, not before it: out
+    // of the flow the window may size itself differently, and the clamp is
+    // about the box that is actually on screen. Once is enough — neither the
+    // window nor the page changes shape while a pointer is down.
+    const begin = dragSource.slice(
+      dragSource.indexOf('function beginDrag'),
+      dragSource.indexOf('function onPointerMove'),
+    );
+    expect(begin).toContain('getBoundingClientRect');
+    expect(begin).toContain('clientWidth');
+  });
+});

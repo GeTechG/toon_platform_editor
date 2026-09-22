@@ -252,6 +252,7 @@
               aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
                 ? 'true'
                 : undefined}
+              aria-pressed={isSelected(i, layerIndex)}
               onclick={(e) => onCellClick(e, i, layerIndex)}
               onpointerdown={(e) => onCellDown(e, i, layerIndex)}
               onpointerenter={(e) => onCellEnter(e, i, layerIndex)}

@@ -103,8 +103,9 @@
     outline: 3px solid var(--electric);
     outline-offset: 2px;
   }
-  /* Saved color grid (Tonio): a scrolling strip of 24px cells — the WCAG 2.2
-     target floor — so thirty swatches never push the toolbar onto a new row. */
+  /* Saved colour strip (Tonio): the row it stands in is already a key tall,
+     so a 24px cell was twenty empty pixels, not room saved. The strip scrolls
+     sideways either way — the floor costs visible swatches, not the row. */
   .grid {
     display: flex;
     gap: 3px;
@@ -115,8 +116,8 @@
   }
   .cell {
     flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
+    width: var(--key-h);
+    height: var(--key-h);
     padding: 0;
     border: 2px solid transparent;
     border-radius: var(--r-sm);

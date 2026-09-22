@@ -63,6 +63,16 @@ describe('studio timeline grid', () => {
     expect(timeline).toContain('editor.copiedFrom');
   });
 
+  it('says the selection out loud, not only in the dashed ring', () => {
+    // `aria-current` names the one cell the editor is on. Being part of the
+    // block a copy or a delete is about to take is a second state, and it was
+    // drawn and nothing else — a dashed outline a screen reader cannot see.
+    // Every other multi-state control in the package (the tool key, the brush
+    // sizes, the swatches) says `aria-pressed`; the cell is the one that did
+    // not.
+    expect(timeline).toMatch(/aria-pressed=\{isSelected\(/);
+  });
+
   it('tells those states apart without colour (WCAG 1.4.1)', () => {
     // Active is a solid ring, the selection a dashed one; onion and copied
     // frames carry a glyph in the frame-number header.
@@ -301,9 +311,10 @@ describe('the bottom panel folds like the sides', () => {
     expect(editorUi).toMatch(/\.fold\.lying:hover \{[^}]*translate\(-50%/s);
     expect(editorUi).toMatch(/\.fold\.lying \{[^}]*width: var\(--key-h\)/s);
     // The panel clips what its rows paint outside it, and the tab is the one
-    // thing that is meant to stick out: 15px of tab plus its focus ring (3px
-    // at 2px offset) have to clear that clip, or the arrow loses its head.
-    expect(editorUi).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin: 20px/s);
+    // thing that is meant to stick out. How much room that takes is arithmetic
+    // — tab, ring, offset and the lift under the cursor — and `system-craft`
+    // does the sum; here it is enough that a margin is cut at all.
+    expect(editorUi).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin: \d+px/s);
     expect(editorUi).toContain("chevron-down");
     expect(editorUi).toContain("chevron-up");
   });

@@ -5,13 +5,19 @@
  * infinite loop.
  */
 
-import { GIFEncoder, applyPalette, quantize } from 'gifenc';
+import { GIFEncoder, applyPalette, quantize, type Palette } from 'gifenc';
 
 export interface RgbaFrame {
   /** Opaque RGBA pixels, 4 bytes per pixel. */
   data: Uint8ClampedArray;
   width: number;
   height: number;
+}
+
+export interface GifStreamOptions {
+  fps: number;
+  /** Every pixel the animation will hand over, so the stride is known up front. */
+  totalPixels: number;
 }
 
 export interface EncodeGifOptions {
@@ -32,36 +38,91 @@ export function gifDelayMs(fps: number): number {
   return Math.max(1, Math.trunc(1000 / fps));
 }
 
-export function encodeGif(frames: RgbaFrame[], { fps, onProgress }: EncodeGifOptions): Uint8Array {
-  const delayMs = gifDelayMs(fps);
-  const palette = quantize(samplePixels(frames), 256);
-  const gif = GIFEncoder();
-  frames.forEach((frame, i) => {
+/**
+ * A GIF built one frame at a time. The animation never exists as an array:
+ * the caller rasterizes a frame, hands it over, and is free to reuse the
+ * canvas underneath it — at 2560×1440 a frame is 14.7 MB, and holding sixty
+ * of them was 880 MB on a phone PRODUCT.md promises to run on.
+ *
+ * The cost is that the document is drawn twice. One palette for the whole
+ * animation means the colours have to be known before the first frame is
+ * encoded, and the sample is taken from the same pixels the encoder will
+ * later write — so pass one draws and samples, pass two draws and encodes.
+ *
+ * ponytail: two render passes over one memory pass. A single pass needs the
+ * palette before the pixels exist — build it from the document's own colours,
+ * if the second draw ever shows up in a measurement.
+ */
+export class GifStream {
+  readonly #delayMs: number;
+  readonly #stride: number;
+  #sample: number[] = [];
+  readonly #gif = GIFEncoder();
+  #palette: Palette | null = null;
+  #written = 0;
+
+  constructor({ fps, totalPixels }: GifStreamOptions) {
+    this.#delayMs = gifDelayMs(fps);
+    this.#stride = sampleStride(totalPixels);
+  }
+
+  /** Pass one: what this frame contributes to the shared palette. */
+  sample(frame: RgbaFrame): void {
+    const px = new Uint32Array(frame.data.buffer, frame.data.byteOffset, frame.data.length / 4);
+    for (let i = 0; i < px.length; i += this.#stride) {
+      this.#sample.push(px[i]);
+    }
+  }
+
+  /** Closes the sample and quantizes it. Nothing may be written before this. */
+  begin(): void {
+    this.#palette = quantize(new Uint8Array(Uint32Array.from(this.#sample).buffer), 256);
+    // The sample is the one thing here that grew with the animation; it is
+    // spent now, and holding it would put the ceiling back.
+    this.#sample = [];
+  }
+
+  /** Pass two: encodes one frame and keeps nothing of it. */
+  write(frame: RgbaFrame): void {
+    const palette = this.#palette;
+    if (!palette) {
+      throw new Error('GifStream: begin() must run before the first frame');
+    }
     const index = applyPalette(frame.data, palette);
-    gif.writeFrame(
+    this.#gif.writeFrame(
       index,
       frame.width,
       frame.height,
       // Palette on the first frame only: it becomes the global color table.
-      i === 0 ? { palette, delay: delayMs, repeat: 0 } : { delay: delayMs },
+      this.#written === 0 ? { palette, delay: this.#delayMs, repeat: 0 } : { delay: this.#delayMs },
     );
-    onProgress?.(i + 1, frames.length);
-  });
-  gif.finish();
-  return gif.bytes();
+    this.#written++;
+  }
+
+  finish(): Uint8Array {
+    this.#gif.finish();
+    return this.#gif.bytes();
+  }
 }
 
-/** Even-stride pixel sample across all frames for palette quantization. */
-function samplePixels(frames: RgbaFrame[]): Uint8Array {
-  const total = frames.reduce((n, f) => n + f.data.length / 4, 0);
-  const stride = Math.max(1, Math.ceil(total / PALETTE_SAMPLE_MAX_PIXELS));
-  const sample = new Uint32Array(frames.reduce((n, f) => n + Math.ceil(f.data.length / 4 / stride), 0));
-  let si = 0;
-  for (const f of frames) {
-    const px = new Uint32Array(f.data.buffer, f.data.byteOffset, f.data.length / 4);
-    for (let i = 0; i < px.length; i += stride) {
-      sample[si++] = px[i];
-    }
+/** The whole animation in memory at once — the shape bun tests reach for. */
+export function encodeGif(frames: RgbaFrame[], { fps, onProgress }: EncodeGifOptions): Uint8Array {
+  const stream = new GifStream({
+    fps,
+    totalPixels: frames.reduce((n, f) => n + f.data.length / 4, 0),
+  });
+  for (const frame of frames) {
+    stream.sample(frame);
   }
-  return new Uint8Array(sample.buffer);
+  stream.begin();
+  frames.forEach((frame, i) => {
+    stream.write(frame);
+    onProgress?.(i + 1, frames.length);
+  });
+  return stream.finish();
+}
+
+/** Even-stride sampling keeps palette input bounded however long the film is. */
+function sampleStride(totalPixels: number): number {
+  return Math.max(1, Math.ceil(totalPixels / PALETTE_SAMPLE_MAX_PIXELS));
 }

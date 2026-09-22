@@ -43,6 +43,9 @@ interface Grab {
   pointerId: number;
   /** The press has travelled far enough to be a drag. */
   moving: boolean;
+  /** Read once, when the window leaves the flow; neither changes during a drag. */
+  size: Size;
+  bounds: Size;
 }
 
 export function draggable(node: HTMLElement): { destroy(): void } {
@@ -62,6 +65,9 @@ export function draggable(node: HTMLElement): { destroy(): void } {
       handle: handle as HTMLElement,
       pointerId: e.pointerId,
       moving: false,
+      // Filled by `beginDrag`, once the window is out of the flow.
+      size: { width: rect.width, height: rect.height },
+      bounds: { width: 0, height: 0 },
     };
     // Until the press becomes a drag there is no pointer capture — a key must
     // still take its click — so the moves are followed on the window, or a
@@ -76,6 +82,30 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     window[method]('pointercancel', release as EventListener);
   }
 
+  /**
+   * The window leaves the layout flow and keeps the exact place it already
+   * occupied, so nothing jumps under the pointer — and the two things the
+   * clamp needs are measured here, once. They were being read on every
+   * `pointermove`, right after the previous move had written `left`/`top` on
+   * the same element: a write, then a read of the layout that write had just
+   * dirtied, then another write. A forced reflow per pointer sample, during a
+   * drag people perform with the other hand still drawing.
+   */
+  function beginDrag(): void {
+    if (!grab) {
+      return;
+    }
+    node.style.position = 'fixed';
+    node.style.margin = '0';
+    node.style.left = `${grab.left}px`;
+    node.style.top = `${grab.top}px`;
+    const rect = node.getBoundingClientRect();
+    grab.size = { width: rect.width, height: rect.height };
+    grab.bounds = { width: document.body.clientWidth, height: document.body.clientHeight };
+    grab.handle.setPointerCapture(grab.pointerId);
+    grab.moving = true;
+  }
+
   function onPointerMove(e: PointerEvent): void {
     if (!grab || e.pointerId !== grab.pointerId) {
       return;
@@ -84,22 +114,14 @@ export function draggable(node: HTMLElement): { destroy(): void } {
       if (Math.hypot(e.clientX - grab.x, e.clientY - grab.y) < DRAG_THRESHOLD) {
         return;
       }
-      // The window leaves the layout flow on the first real drag and keeps the
-      // exact place it already occupied, so nothing jumps under the pointer.
-      node.style.position = 'fixed';
-      node.style.margin = '0';
-      node.style.left = `${grab.left}px`;
-      node.style.top = `${grab.top}px`;
-      grab.handle.setPointerCapture(grab.pointerId);
-      grab.moving = true;
+      beginDrag();
     }
     e.preventDefault();
-    const rect = node.getBoundingClientRect();
     const { left, top } = clampWindowPosition(
       grab.left + e.clientX - grab.x,
       grab.top + e.clientY - grab.y,
-      rect,
-      { width: document.body.clientWidth, height: document.body.clientHeight },
+      grab.size,
+      grab.bounds,
     );
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;

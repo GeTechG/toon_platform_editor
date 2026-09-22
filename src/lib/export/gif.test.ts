@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { encodeGif, gifDelayMs, type RgbaFrame } from './gif';
+import { GifStream, encodeGif, gifDelayMs, type RgbaFrame } from './gif';
 
 /** Solid-color opaque frame. */
 function frame(w: number, h: number, [r, g, b]: [number, number, number]): RgbaFrame {
@@ -85,5 +85,51 @@ describe('encodeGif', () => {
       [1, 2],
       [2, 2],
     ]);
+  });
+});
+
+describe('GifStream', () => {
+  // The whole animation used to be rasterized into an array before a byte was
+  // encoded: at 2560×1440 a frame is 14.7 MB, so sixty of them is 880 MB held
+  // at once — and PRODUCT.md measures every decision against a 2 GB Android.
+  // The stream takes one frame at a time and is done with it before the next
+  // arrives, so the peak is a frame, not an animation.
+  test('one frame at a time gives the same bytes as the whole array', () => {
+    const frames = [frame(4, 4, [255, 0, 0]), frame(4, 4, [0, 0, 255]), frame(4, 4, [0, 255, 0])];
+    const whole = encodeGif(frames, { fps: 12 });
+
+    const stream = new GifStream({ fps: 12, totalPixels: frames.length * 16 });
+    for (const f of frames) stream.sample(f);
+    stream.begin();
+    for (const f of frames) stream.write(f);
+
+    expect(stream.finish()).toEqual(whole);
+  });
+
+  test('a frame handed over is finished with before the next one', () => {
+    // The caller transfers each buffer to the worker and reuses the canvas, so
+    // a frame that is read again later is a frame that was never really given
+    // up. Blanking it right after `write` proves the encoder is done with it.
+    const frames = [frame(4, 4, [255, 0, 0]), frame(4, 4, [0, 0, 255])];
+    const expected = encodeGif(
+      [frame(4, 4, [255, 0, 0]), frame(4, 4, [0, 0, 255])],
+      { fps: 12 },
+    );
+
+    const stream = new GifStream({ fps: 12, totalPixels: frames.length * 16 });
+    for (const f of frames) stream.sample(f);
+    stream.begin();
+    for (const f of frames) {
+      stream.write(f);
+      f.data.fill(0);
+    }
+
+    expect(stream.finish()).toEqual(expected);
+  });
+
+  test('the palette is built before the first frame is written', () => {
+    const stream = new GifStream({ fps: 12, totalPixels: 16 });
+    stream.sample(frame(4, 4, [255, 0, 0]));
+    expect(() => stream.write(frame(4, 4, [255, 0, 0]))).toThrow();
   });
 });

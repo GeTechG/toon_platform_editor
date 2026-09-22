@@ -86,3 +86,22 @@ describe('stampWatermark', () => {
     expect(ctx.fillStyle).toBe('#000000');
   });
 });
+
+const rasterizeSource = await Bun.file(new URL('./rasterize.ts', import.meta.url)).text();
+const gifExportSource = await Bun.file(new URL('./export-gif.ts', import.meta.url)).text();
+
+describe('the rasterizer hands frames over one at a time', () => {
+  // `rasterizeDocument` returned the whole animation as an array, and GIF
+  // export awaited it before a byte was encoded. The array is the ceiling: at
+  // 2560×1440 a frame is 14.7 MB, and the export sheet offers 2560. Nothing
+  // downstream ever needed them all at once — it read them in order.
+  test('the document is offered as a stream, not as an array', () => {
+    expect(rasterizeSource).toContain('export async function* rasterizeFrames');
+    expect(rasterizeSource).not.toContain('rasterizeDocument');
+  });
+
+  test('gif export walks the stream instead of collecting it', () => {
+    expect(gifExportSource).toContain('for await');
+    expect(gifExportSource).not.toMatch(/const frames\s*=/);
+  });
+});

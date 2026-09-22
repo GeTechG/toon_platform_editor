@@ -24,6 +24,11 @@ function withoutComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
+/** The same, for markup: a comment naming a role does not take it. */
+function withoutMarkupComments(source: string): string {
+  return source.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 async function markup(): Promise<Map<string, string>> {
   const found = new Map<string, string>();
   for await (const file of new Glob('**/*.svelte').scan(UI)) {
@@ -165,6 +170,70 @@ describe('no layer tag wears the signal red', () => {
   });
 });
 
+// The Signal Rule gives red exactly one job — the action «рисовать» — and
+// names «бордеров, ошибок» among the places it may not go. The studio is the
+// place where that action has already been taken: the red button lives on the
+// site, at the door. So no sheet in this package needs the signal hue at all,
+// and three had taken it for other work — a two-pixel border round an import
+// error (the very case DESIGN §5 answers with the weight of the line), the
+// label on a delete key, and the name of a plugin that is switched off.
+describe('red stays with the action that owns it', () => {
+  it('names no signal token in any sheet of the studio', () => {
+    const wearing: string[] = [];
+    for (const [file, css] of STYLES) {
+      for (const [, token] of withoutComments(css).matchAll(/var\(\s*(--signal[\w-]*)/g)) {
+        wearing.push(`${file} ${token}`);
+      }
+    }
+    expect(wearing).toEqual([]);
+  });
+});
+
+// `a colour in a sheet comes from the table` reads sheets. The canvas is not a
+// sheet: what is drawn on it is set in JavaScript, as a string handed to a 2D
+// context, and the guard cannot see it. Two of them stood for tokens — the
+// sheet's hairline edge and the plate shadow under the paper — and one had
+// drifted: 0.18 ink where `--hairline` is 0.141, a number invented at the call
+// site. Hex literals are left alone on purpose: `#303030` there is an operand
+// of a `difference` composite, not a colour anyone sees.
+describe('a colour drawn on the canvas comes from the table too', () => {
+  /** `rgba(11, 12, 16, 0.18)` → `#0b0c102e`, so the two forms can be compared. */
+  function packRgba(value: string): string | null {
+    const m = value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)/);
+    if (!m) return null;
+    const [r, g, b] = [1, 2, 3].map((i) => Number(m[i]));
+    const a = Math.round((m[4] === undefined ? 1 : Number(m[4])) * 255);
+    return '#' + [r, g, b, a].map((n) => n.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** Every colour the table declares, in one comparable form. */
+  function declared(): Set<string> {
+    const out = new Set<string>();
+    const table = `${tokensCss}\n${editorUi.match(/\.editor\s*\{[\s\S]*?\n  \}/)?.[0] ?? ''}`;
+    for (const [, hex] of table.matchAll(/#([0-9a-f]{6}|[0-9a-f]{8})\b/gi)) {
+      out.add(`#${hex.toLowerCase()}${hex.length === 6 ? 'ff' : ''}`);
+    }
+    for (const [, value] of table.matchAll(/(rgba?\([^)]*\))/g)) {
+      const packed = packRgba(value);
+      if (packed) out.add(packed);
+    }
+    return out;
+  }
+
+  it('writes no rgba in a script that the table does not declare', () => {
+    const table = declared();
+    const stray: string[] = [];
+    for (const [file, source] of MARKUP) {
+      const script = source.replace(/<style>[\s\S]*<\/style>/, '');
+      for (const [, value] of withoutComments(script).matchAll(/(rgba?\([^)]*\))/g)) {
+        const packed = packRgba(value);
+        if (packed && !table.has(packed)) stray.push(`${file} ${value}`);
+      }
+    }
+    expect(stray).toEqual([]);
+  });
+});
+
 describe('a draft thumbnail reserves its box', () => {
   it('states both sides so the list does not reflow behind the blob', () => {
     // The record carries the document, so the box is the same `fitThumb` the
@@ -197,6 +266,21 @@ describe('a role promises the behaviour it names', () => {
   // the keyboard the picker left focus on the swatch outside, declared no
   // `aria-modal`, and gave nothing back on close — while five sheets next door
   // got the trap, the Esc and the inert page from `showModal()` for free.
+  // `tab` promises more than `dialog` does: arrow keys that move between the
+  // tabs, one stop in the tab order for the whole set, `aria-controls` tying
+  // each tab to a panel, and a `tabpanel` to receive it. The site wrote this
+  // out in a comment and chose `aria-pressed` instead — «aria-pressed states
+  // the same thing honestly» — and the plugins sheet is where the choice was
+  // not made. Two buttons that swap what is under them are a group.
+  it('promises no tab it has not built', () => {
+    const pretending = [...MARKUP]
+      .filter(([, source]) => /role="tab(list)?"/.test(withoutMarkupComments(source)))
+      .filter(([, source]) => !/aria-controls/.test(source) || !/role="tabpanel"/.test(source))
+      .map(([file]) => file);
+
+    expect(pretending).toEqual([]);
+  });
+
   it('builds a window out of the element that is one', () => {
     const handRolled = [...MARKUP]
       .filter(([, source]) => /role="dialog"|aria-modal/.test(source))
@@ -274,6 +358,21 @@ describe('a colour in a sheet comes from the table', () => {
 // `hidden` stays right where the cut is the point and nothing operable is
 // behind it: a rounded corner, a mask, decoration parked past an edge. The
 // question that tells them apart is whether anything out there is a control.
+// The site wrote this rule down and kept it: `100vw` is the viewport with the
+// classic scrollbar counted in, so every size derived from it overshoots the
+// room that exists by the width of that bar. `shell-craft.test.ts` scans the
+// site's sheets for it — and the studio, which is embedded into that same
+// page, was measuring from it in four places.
+describe('width is measured from the container', () => {
+  it('never computes a size from 100vw', () => {
+    const guessing: string[] = [];
+    for (const [file, css] of STYLES) {
+      if (withoutComments(css).includes('100vw')) guessing.push(file);
+    }
+    expect(guessing).toEqual([]);
+  });
+});
+
 describe('a box squeezed below its content gives it a way out', () => {
   // The boxes of the studio: a panel body inside a rail that has a ceiling.
   const SQUEEZED = ['BrushPanel.svelte', 'PaletteBox.svelte'];
@@ -288,5 +387,21 @@ describe('a box squeezed below its content gives it a way out', () => {
       }
     }
     expect(cutting).toEqual([]);
+  });
+});
+
+// The bottom bar clips with a margin so the furniture that straddles its seam
+// survives: the drag band 8px above the edge, the fold tab 15px above it, and
+// that tab's focus ring — 3px at 2px offset, so 20px in all. The margin was
+// sized to exactly that and the tab lifts 1px on hover, which put the top of
+// its ring one pixel outside the margin that was cut for it.
+describe('the clip margin covers what leans on the seam', () => {
+  it('leaves room for the tab, its ring and its lift', () => {
+    const margin = Number(editorUi.match(/overflow-clip-margin:\s*(\d+)px/)?.[1]);
+    const tab = Number(editorUi.match(/\.fold\.lying \{[^}]*height:\s*(\d+)px/s)?.[1]);
+    const ring = Number(editorUi.match(/:focus-visible \{\s*outline:\s*(\d+)px/)?.[1]);
+    const offset = Number(editorUi.match(/outline-offset:\s*(\d+)px/)?.[1]);
+    const lift = Number(editorUi.match(/\.fold\.lying:hover \{[^}]*translate\(-50%,\s*-(\d+)px\)/s)?.[1]);
+    expect(margin).toBeGreaterThanOrEqual(tab + ring + offset + lift);
   });
 });

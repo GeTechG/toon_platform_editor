@@ -1908,10 +1908,11 @@
        key's shadow is not shaved off at the edge — and so the furniture that
        straddles the seam on purpose survives it: the drag band 8px above the
        edge and the fold tab 15px above it, plus that tab's focus ring (3px
-       at 2px offset). The margin is uniform, so it is the tallest of them. */
-    max-height: 75vh;
+       at 2px offset) and the 1px the tab lifts under the cursor. The margin is
+       uniform, so it is the tallest of them: 15 + 3 + 2 + 1. */
+    max-height: 75dvh;
     overflow: clip;
-    overflow-clip-margin: 20px;
+    overflow-clip-margin: 21px;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair
@@ -2061,7 +2062,7 @@
   }
   /* The bar sizes to its contents while things are being moved into it. */
   .editor.arranging .panel {
-    max-height: 60vh;
+    max-height: 60dvh;
   }
   .editor.arranging .slot-empty {
     padding: 0 0.4rem;
@@ -2516,7 +2517,7 @@
     }
     .studio .timeline :global(.board) {
       height: auto;
-      max-height: 40vh;
+      max-height: 40dvh;
     }
     /* Transport and output do not fit one 390px line — they wrap instead of
        pushing the page into a horizontal scroll. Every layout, not just the
@@ -2525,6 +2526,24 @@
        key of a draft row — off the screen. */
     .row {
       flex-wrap: wrap;
+    }
+  }
+
+  /* A phone turned on its side is not a narrow screen — it is a short one, and
+     `max-width` never hears about it. At 844×390 the studio keeps its grid,
+     where the canvas row is `1fr` and takes whatever the bar leaves:
+     `panelFloor` stops that at 151px, so nothing collapses to nothing the way
+     portrait did, but the bar can be dragged to three quarters of 390 and
+     leave the canvas under a hundred pixels with nothing to stop at. A `1fr`
+     row does not grow for a child's `min-height` — the child overflows it
+     instead — so the floor is written on the row, and the bar's ceiling comes
+     down to where that floor is reachable. */
+  @media (max-height: 30rem) {
+    .editor.studio {
+      grid-template-rows: minmax(38dvh, 1fr) auto;
+    }
+    .studio .panel {
+      max-height: 55dvh;
     }
   }
   /* Zoom group: two keys around a tabular readout, so the width does not
@@ -2542,7 +2561,11 @@
     max-width: min(32rem, 92%);
     margin: 0;
     padding: 0.5rem 0.75rem;
-    border: 2px solid var(--signal);
+    /* DESIGN §5 answers a refusal with the weight of the line, not a colour:
+       red belongs to «рисовать» and the Signal Rule names borders and errors
+       among the places it may not go. The reason is carried by the words, in
+       a `role="alert"` the reader already gets. */
+    border: 2px solid var(--ink);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
@@ -2611,7 +2634,8 @@
       bottom: auto;
       top: 50%;
       transform: translate(-50%, -50%);
-      width: min(24rem, calc(100vw - 2rem));
+      /* Fixed: `100%` is the initial containing block, scrollbar excluded. */
+      width: min(24rem, calc(100% - 2rem));
       border-radius: var(--r-md);
       /* Not a sheet any more: all four corners, all four sides, floating over
          the scrim. The sheet's lift points up because it rises from an edge —

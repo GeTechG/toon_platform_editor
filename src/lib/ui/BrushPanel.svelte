@@ -234,7 +234,9 @@
     position: fixed;
     margin: 0;
     width: 240px;
-    max-width: calc(100vw - 16px);
+    /* Fixed, so `100%` is the initial containing block — the room that
+       actually exists, where `100vw` counts the scrollbar in as well. */
+    max-width: calc(100% - 16px);
     padding: 6px;
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
@@ -249,7 +251,9 @@
   }
   .type {
     display: grid;
+    align-content: center;
     gap: 2px;
+    min-height: var(--key-h);
     padding: 6px 8px;
     border: 1px solid transparent;
     border-radius: var(--r-sm);

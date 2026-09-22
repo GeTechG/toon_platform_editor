@@ -156,19 +156,21 @@
     </button>
   </header>
 
-  <div class="tabs" role="tablist">
+  <!-- Two buttons that swap what is under them, not an ARIA tablist: `role="tab"`
+       promises arrow-key navigation, `aria-controls` and tabpanels that this does
+       not implement. `aria-pressed` states the same thing honestly, and the group
+       carries the label — the same call the site's auth dialog wrote down. -->
+  <div class="tabs" role="group" aria-label={t('plugins.sheet')}>
     <button
       class="key"
       class:primary={tab === 'mine'}
-      role="tab"
-      aria-selected={tab === 'mine'}
+      aria-pressed={tab === 'mine'}
       onclick={() => (tab = 'mine')}
     >{t('plugins.mine')}</button>
     <button
       class="key"
       class:primary={tab === 'catalog'}
-      role="tab"
-      aria-selected={tab === 'catalog'}
+      aria-pressed={tab === 'catalog'}
       onclick={() => (tab = 'catalog')}
     >{t('plugins.catalog')}</button>
   </div>
@@ -293,8 +295,10 @@
     padding: 0.45rem 0.2rem;
     border-top: 1px solid var(--hairline);
   }
+  /* Switched off is quieter, not louder: secondary text is what the system
+     already says for «present but not in play». */
   .plugins li.off .name {
-    color: var(--signal-dark);
+    color: var(--ink-2);
   }
   /* The plugin's face, big enough to read: the row grows to it. */
   .icon {

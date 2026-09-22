@@ -115,7 +115,11 @@
     z-index: 6;
     display: flex;
     flex-direction: column;
-    width: min(18rem, calc(100vw - 2rem));
+    /* The plate is docked to its key, so `100%` here is that key's wrapper
+       and means nothing. The viewport clamp it replaced meant nothing either:
+       18rem is 288px and the narrowest screen the studio is built for is 320,
+       where the clamp sat 32px above the width it was capping. */
+    width: 18rem;
     background: var(--canvas);
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);

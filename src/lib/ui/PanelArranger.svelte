@@ -401,7 +401,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    width: min(46rem, calc(100vw - 2rem));
+    /* Fixed: `100%` is the initial containing block, scrollbar excluded. */
+    width: min(46rem, calc(100% - 2rem));
     padding: 0.7rem 0.8rem;
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);

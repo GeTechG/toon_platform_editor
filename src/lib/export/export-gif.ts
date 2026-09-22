@@ -1,12 +1,20 @@
 /**
  * Main-thread side of GIF export: frames come from the shared rasterizer
- * (resolution, watermark and background live there), the RGBA buffers go to
- * the encoding worker.
+ * (resolution, watermark and background live there) and go to the encoding
+ * worker one at a time, each buffer transferred rather than copied.
+ *
+ * The animation is never assembled. One palette for the whole film has to be
+ * known before the first frame is encoded, so the document is drawn twice:
+ * once for the colours, once for the bytes. That is the price of not holding
+ * 880 MB of RGBA on a phone that has 2 GB in total.
  */
 
 import type { ToonDocument } from '../format/types';
+import { frameCount } from '../model/operations';
 import {
-  rasterizeDocument,
+  exportSize,
+  logicalSize,
+  rasterizeFrames,
   throwIfAborted,
   type ExportStage,
   type RasterizeOptions,
@@ -24,14 +32,14 @@ export async function exportGif(
   doc: ToonDocument,
   { signal, onProgress, ...raster }: ExportGifOptions = {},
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const frames = await rasterizeDocument(doc, {
-    ...raster,
-    signal,
-    onProgress: (done, total) => onProgress?.(done, total, 'render'),
-  });
-  throwIfAborted(signal);
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-  return new Promise((resolve, reject) => {
+  const size = exportSize(doc, raster.width ?? logicalSize(doc).width);
+  const total = frameCount(doc);
+
+  const send = (msg: ExportRequest, transfer: Transferable[] = []) =>
+    worker.postMessage(msg, transfer);
+
+  const bytes = new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
     const done = (settle: () => void) => {
       worker.terminate();
       signal?.removeEventListener('abort', onAbort);
@@ -52,9 +60,37 @@ export async function exportGif(
       }
     };
     worker.onerror = () => done(() => reject(new Error('GIF export worker failed')));
-    worker.postMessage(
-      { frames, fps: doc.frame_rate } satisfies ExportRequest,
-      frames.map((f) => f.data),
-    );
   });
+
+  try {
+    send({
+      type: 'open',
+      fps: doc.frame_rate,
+      totalPixels: total * size.width * size.height,
+      total,
+    });
+    // Pass one: the colours. The progress line calls this the render, which is
+    // what it is — the frames are drawn, read for their palette and dropped.
+    for await (const frame of rasterizeFrames(doc, {
+      ...raster,
+      signal,
+      onProgress: (done, count) => onProgress?.(done, count, 'render'),
+    })) {
+      send({ type: 'sample', frame }, [frame.data]);
+    }
+    throwIfAborted(signal);
+    send({ type: 'begin' });
+    // Pass two: the bytes. Progress for this half comes back from the worker,
+    // one message per frame it has actually encoded.
+    for await (const frame of rasterizeFrames(doc, { ...raster, signal })) {
+      send({ type: 'frame', frame }, [frame.data]);
+    }
+    throwIfAborted(signal);
+    send({ type: 'finish' });
+  } catch (err) {
+    worker.terminate();
+    throw err;
+  }
+
+  return bytes;
 }

@@ -118,3 +118,49 @@ describe('a rail that scrolls says so', () => {
     expect(phone).toMatch(/mask-image:\s*linear-gradient\(to right/);
   });
 });
+
+describe('a short screen keeps room to draw as well', () => {
+  // The floor above is inside `@media (max-width: 40rem)`. Turn the same phone
+  // on its side — 844×390 — and the branch does not match: the studio is wide
+  // now, and short instead. `panelFloor` keeps the bottom bar off the canvas's
+  // throat (151px, more with a soundtrack or a third row), so nothing collapses
+  // to nothing the way portrait did; but `max-height: 75vh` lets the bar be
+  // dragged to 292 of those 390 and leaves the canvas under a hundred pixels,
+  // with no floor of its own to stop at. Width is not the only way a screen
+  // runs out.
+  const short = [...editorUi.matchAll(/@media \(max-height: ([\d.]+)rem\)/g)].map((m) =>
+    block(m.index!),
+  );
+
+  it('has a branch that answers the height of the screen', () => {
+    expect(short.length).toBeGreaterThan(0);
+  });
+
+  it('gives the stage a floor the row cannot go under', () => {
+    // Portrait stacks the studio with flex, where `min-height` on the child is
+    // the floor. Landscape keeps the grid, where it is not: a `1fr` row hands
+    // its item whatever is left, and `min-height` on the item overflows the row
+    // rather than growing it. The floor for a grid row is written on the row.
+    expect(short.join('\n')).toMatch(/grid-template-rows:\s*minmax\(\s*\d+dvh/);
+  });
+
+  it('lowers the bar ceiling so the floor is reachable', () => {
+    expect(short.join('\n')).toMatch(/\.studio \.panel \{[^}]*max-height:\s*\d+dvh/);
+  });
+});
+
+describe('height in the studio is written in dvh', () => {
+  // `phone-layout` already requires `dvh` for the rails, the panel and the
+  // stage: `vh` is the tall viewport, so a value written in it jumps the moment
+  // Mobile Safari collapses its address bar. Three heights were still in `vh`
+  // — two of them in the same media block as their `dvh` neighbours, one of
+  // them the ceiling a landscape phone actually uses.
+  it('no rule measures a height in vh', () => {
+    // A rule this file explains is not a rule this file breaks.
+    const style = editorUi
+      .slice(editorUi.indexOf('<style>'))
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const stray = [...style.matchAll(/[\w-]+:\s*[^;]*?\b[\d.]+vh\b[^;]*/g)].map((m) => m[0].trim());
+    expect(stray).toEqual([]);
+  });
+});

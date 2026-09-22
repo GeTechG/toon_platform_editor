@@ -393,6 +393,13 @@
   }
   .close {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    /* The icon is 16px and the padding was 3: a 22px target, under the floor
+       and under the standard's own 24. The drawing stays 16; the button is
+       the key it always was. */
+    min-width: var(--key-h);
+    min-height: var(--key-h);
     padding: 0.2rem;
     border: none;
     border-radius: var(--r-sm);
@@ -415,6 +422,9 @@
     background: var(--sky);
   }
   .models button {
+    /* Three segments of a pill, side by side: adjacent targets get no help
+       from the standard's spacing clause, so each one carries the floor. */
+    min-height: var(--key-h);
     padding: 0.3rem 0;
     border: none;
     border-radius: calc(var(--r-sm) - 1px);
@@ -502,6 +512,7 @@
   .fields input {
     width: 100%;
     min-width: 0;
+    min-height: var(--key-h);
     padding: 0.25rem 0.2rem;
     border: 1px solid var(--edge);
     border-radius: var(--r-sm);

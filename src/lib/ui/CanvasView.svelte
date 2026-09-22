@@ -161,6 +161,9 @@
   let stackSize = { width: 0, height: 0 };
   /** Scratch for the active layer plus the live stroke (the eraser cuts only here). */
   let liveEl: HTMLCanvasElement | null = null;
+  /** The paper and its shadow, and the shape they were drawn for. */
+  let paperEl: HTMLCanvasElement | null = null;
+  let paperKey = '';
   /** Scratch for the whole frame when it is blitted at a profile alpha < 1. */
   let compositeEl: HTMLCanvasElement | null = null;
   /** Scratch one layer is rasterized into before it lands on a stack buffer. */
@@ -193,6 +196,33 @@
     if (canvas.width !== pxW) canvas.width = pxW;
     if (canvas.height !== pxH) canvas.height = pxH;
     return canvas;
+  }
+
+  /**
+   * The white sheet with its plate shadow around it, drawn once per shape.
+   * Returns the margin the shadow needs on every side, which is also where
+   * the paper sits inside the buffer: the blur reaches `24 * dpr` and the
+   * drop is `10 * dpr`, so the far side of the offset sizes the room.
+   */
+  function paperBuffer(w: number, h: number, dpr: number): number {
+    const margin = Math.ceil(34 * dpr);
+    const key = `${w}x${h}@${dpr}`;
+    if (paperKey === key && paperEl) {
+      return margin;
+    }
+    paperEl = buffer(paperEl, Math.ceil(w + margin * 2), Math.ceil(h + margin * 2));
+    const pctx = paperEl.getContext('2d') as unknown as ViewCtx;
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.clearRect(0, 0, paperEl.width, paperEl.height);
+    // The ink of `--shadow-plate`: the paper floats over the table by the
+    // same recipe every plate in the system floats by.
+    pctx.shadowColor = 'rgba(15, 23, 60, 0.35)';
+    pctx.shadowBlur = 24 * dpr;
+    pctx.shadowOffsetY = 10 * dpr;
+    pctx.fillStyle = BACKGROUND_COLOR;
+    pctx.fillRect(margin, margin, w, h);
+    paperKey = key;
+    return margin;
   }
 
   /** Rasterizes `cells` into a transparent buffer, bottom-up. */
@@ -426,13 +456,12 @@
     };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
-    ctx.save();
-    ctx.shadowColor = 'rgba(15, 23, 60, 0.35)';
-    ctx.shadowBlur = 24 * dpr;
-    ctx.shadowOffsetY = 10 * dpr;
-    ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
-    ctx.restore();
+    // The paper and the shadow under it are the same picture until the sheet
+    // is zoomed or resized — a pan changes where it lands, not what it is.
+    // Blurring it again every frame was the one expensive thing left in
+    // `draw` that nothing was watching, playback frames included.
+    const margin = paperBuffer(sheet.w, sheet.h, dpr);
+    ctx.drawImage(paperEl!, sheet.x - margin, sheet.y - margin);
     // Everything drawn stays on the paper — a stroke that runs off the edge
     // is cut by it, the way it is on export.
     ctx.save();
@@ -508,8 +537,12 @@
     }
     ctx.restore();
     // A hairline edge, so the paper reads as a sheet even over a white table.
+    // The value is `--hairline` (14% ink), written out because a 2D context
+    // takes a string and not a custom property.
+    // ponytail: held to the token by `system-craft.test.ts`, not read from the
+    // computed style — one read at mount if a theme ever moves this hue.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.strokeStyle = 'rgba(11, 12, 16, 0.18)';
+    ctx.strokeStyle = 'rgba(11, 12, 16, 0.141)';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(sheet.x) + 0.5, Math.round(sheet.y) + 0.5, Math.round(sheet.w), Math.round(sheet.h));
   }
@@ -709,8 +742,19 @@
     scheduleDraw();
   });
 
-  function toDocUnits(e: { clientX: number; clientY: number }): [number, number] {
-    const rect = canvasEl.getBoundingClientRect();
+  /**
+   * Where the canvas sits on the screen. One layout query, handed down: a
+   * `pointermove` carrying eight coalesced samples used to ask eight times
+   * for a rectangle that cannot have moved between them.
+   */
+  function canvasRect(): DOMRect {
+    return canvasEl.getBoundingClientRect();
+  }
+
+  function toDocUnits(
+    e: { clientX: number; clientY: number },
+    rect: DOMRect = canvasRect(),
+  ): [number, number] {
     return toDocument(
       e.clientX - rect.left,
       e.clientY - rect.top,
@@ -917,16 +961,17 @@
   function onPointerMove(e: PointerEvent): void {
     cursorX = e.clientX;
     cursorY = e.clientY;
-    // Where the zoom buttons, the slider and `+`/`-` will zoom around.
-    const canvasRect = canvasEl.getBoundingClientRect();
-    editor.lastScalePivot = { x: e.clientX - canvasRect.left, y: e.clientY - canvasRect.top };
+    // Where the zoom buttons, the slider and `+`/`-` will zoom around. Read
+    // once here and handed to every branch below, so a move costs one query.
+    const rect = canvasRect();
+    editor.lastScalePivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     if (panning && e.pointerId === panning.pointerId) {
       panBy(e.clientX - panning.x, e.clientY - panning.y);
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
-      const [x, y] = toDocUnits(e);
+      const [x, y] = toDocUnits(e, rect);
       megaGesture.push(Math.round(x), Math.round(y));
       scheduleDraw();
       return;
@@ -934,7 +979,7 @@
     if (pluginGrab && e.pointerId === gesturePointerId) {
       // ponytail: the tool throttles its own writes (distort does it every
       // fifth reference pixel). Batch by rAF if a big frame ever stutters.
-      const [x, y] = toDocUnits(e);
+      const [x, y] = toDocUnits(e, rect);
       toolSpec(editor.tool)?.move?.(editor.pluginHost(), { x, y });
       return;
     }
@@ -944,7 +989,7 @@
     }
     // No button down over an open transform: the cursor names the zone.
     if (editor.transform) {
-      const [x, y] = toDocUnits(e);
+      const [x, y] = toDocUnits(e, rect);
       hoverMode = hitMode(x, y, editor.transform.box, editor.transform.session, hitZoom);
     }
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
@@ -1090,7 +1135,8 @@
   }
 
   function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
-    const [x, y] = toDocUnits(e);
+    const rect = canvasRect();
+    const [x, y] = toDocUnits(e, rect);
     // «Режим мышки» is the reference `oldPen`: one point per event, no
     // coalesced batch. What a brush does with the samples a browser held back
     // is its own rule — one takes them all, one keeps only the event itself —
@@ -1098,7 +1144,7 @@
     const coalesced = unpackCoalesced
       && !editor.settings.mouseMode
       ? e.getCoalescedEvents?.().map((sample) => {
-          const [sampleX, sampleY] = toDocUnits(sample);
+          const [sampleX, sampleY] = toDocUnits(sample, rect);
           return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };
         })
       : undefined;

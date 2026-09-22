@@ -3,11 +3,11 @@
  * frames from here, so the target resolution, the background and the
  * watermark are parameters instead of three implementations that drift.
  *
- * ponytail: frames are rendered on the main thread and, for GIF, held as RGBA
- * until the worker takes them — 2560×1440 is ~14 MB a frame, so a long
- * animation at the top resolution is hundreds of MB. Upgrade path is the
- * reference's: an `OffscreenCanvas` in a worker, handing back `ImageBitmap`.
- * It needs `Canvas2DFrameRenderer` to be worker-portable first.
+ * ponytail: frames are rendered on the main thread. Each one is handed over
+ * and forgotten, so the memory is a frame rather than an animation; the CPU
+ * is still the main thread's. Upgrade path is the reference's: an
+ * `OffscreenCanvas` in a worker, handing back `ImageBitmap`. It needs
+ * `Canvas2DFrameRenderer` to be worker-portable first.
  */
 
 import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
@@ -178,25 +178,25 @@ export interface RasterizeDocumentOptions extends RasterizeOptions {
 }
 
 /**
- * Every frame in playback order. Yields to the event loop between frames, so
- * the progress line moves and Cancel is heard.
+ * Every frame in playback order, one at a time. Yields to the event loop
+ * between frames, so the progress line moves and Cancel is heard — and hands
+ * each buffer to the caller rather than collecting them, so a long animation
+ * at the top resolution costs one frame of memory instead of all of them.
  */
-export async function rasterizeDocument(
+export async function* rasterizeFrames(
   doc: ToonDocument,
   options: RasterizeDocumentOptions = {},
-): Promise<RgbaFrameBuffer[]> {
+): AsyncGenerator<RgbaFrameBuffer> {
   const { signal, onProgress, ...rest } = options;
   const raster = new FrameRasterizer(doc, rest);
   const total = frameCount(doc);
-  const frames: RgbaFrameBuffer[] = [];
   for (let index = 0; index < total; index++) {
     throwIfAborted(signal);
     raster.draw(index);
-    frames.push({ data: raster.pixels(), ...raster.size });
+    yield { data: raster.pixels(), ...raster.size };
     onProgress?.(index + 1, total);
     await Promise.resolve();
   }
-  return frames;
 }
 
 /** The rejection every export path speaks: `AbortError`, never a bare Error. */

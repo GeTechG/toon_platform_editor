@@ -25,6 +25,12 @@ const WINDOWS = [
   'PaletteBox.svelte',
   'BrushPanel.svelte',
   'TransformMenu.svelte',
+  // The colour window is the fifth of its kind — a native `<dialog>` people
+  // drag by its head — and it was the one the list forgot.
+  'ColourPicker.svelte',
+  // The colour panel stands in a toolbar row, not in the montage: its saved
+  // swatches are chrome beside the keys, and the row is already a key tall.
+  'ColorPanel.svelte',
   // The studio's own chrome, for the same reason: scoping this to the floating
   // windows alone left the fps slider in the bottom toolbar at 96x24.
   'Editor.svelte',
@@ -47,6 +53,10 @@ const EXEMPT = new Map<string, string>([
   // it, which is `min-height: 2.9rem` (46.4) and carries the pointer cursor.
   // A 44px checkbox beside a one-line setting would be the setting.
   ['Editor.svelte .editor :global(.toggle input)', 'the row is the target, and the row clears the floor'],
+  // Rearranging wraps each item in a handle that is the item plus 2px. The
+  // item inside is the key, and the key clears the floor; the handle has no
+  // size of its own to declare.
+  ['Editor.svelte .editor.arranging .arr', 'the handle is the item plus 2px, and the item clears the floor'],
 ]);
 
 const sheets = new Map<string, string>();
@@ -92,6 +102,32 @@ function box(body: string): { h: number | null; w: number | null } {
   return { h: least(of('min-height'), of('height')), w: least(of('min-width'), of('width')) };
 }
 
+/**
+ * Does this rule leave room above and below its content? Shorthand order is
+ * top/right/bottom/left, so the first value and the third are the ones that
+ * make a control taller than what is written in it. `padding: 0 10px` sizes
+ * nothing vertically — the height comes from the row.
+ */
+function padsVertically(body: string): boolean {
+  const hit = body.match(/(?:^|;|\s)padding\s*:\s*([^;]+)/);
+  if (!hit) return false;
+  const parts = hit[1].trim().split(/\s+/);
+  const vertical = parts.length >= 3 ? [parts[0], parts[2]] : [parts[0]];
+  // A bare `0` carries no unit, so `px` does not read it; every other
+  // unreadable value is treated as room, which is the cautious direction.
+  return vertical.some((v) => v !== '0' && (px(v) ?? 1) > 0);
+}
+
+/** The press area a thin control grows for itself, per DESIGN §5. */
+function grownBox(all: Rule[], rule: Rule): { h: number | null; w: number | null } {
+  return box(
+    all
+      .filter((r) => r.selector.split(',').some((one) => one.trim() === `${rule.selector}::after`))
+      .map((r) => r.body)
+      .join(';'),
+  );
+}
+
 /** Does this rule draw something a person operates? */
 function isControl({ selector, body }: Rule): boolean {
   if (/::(before|after|backdrop)|:focus|:hover|:active|:disabled|popover-open/.test(selector)) {
@@ -117,14 +153,7 @@ describe('a control outside the montage grid takes a finger', () => {
         // A thin thing may stay thin and grow its press area with a pseudo
         // element — DESIGN §5 says so in as many words — as long as the area
         // itself reaches the floor.
-        const grown = box(
-          all
-            .filter((r) =>
-              r.selector.split(',').some((one) => one.trim() === `${rule.selector}::after`),
-            )
-            .map((r) => r.body)
-            .join(';'),
-        );
+        const grown = grownBox(all, rule);
         for (const axis of ['h', 'w'] as const) {
           const pinned = own[axis];
           if (pinned !== null && pinned < FLOOR && (grown[axis] ?? 0) < FLOOR) {
@@ -151,5 +180,34 @@ describe('a control outside the montage grid takes a finger', () => {
       }
     }
     expect(literal).toEqual([]);
+  });
+  it('declares the floor it stands on', () => {
+    // The rule above catches a control that pins itself too small. It cannot
+    // see one that pins nothing at all and takes the size of what is inside
+    // it: the colour window's close button is a 16px icon in 0.2rem of
+    // padding — 22px, under the floor and under the standard's own 24 — and
+    // it declares no height for anything to compare.
+    //
+    // Padding is the tell. A control that sizes itself by the room it leaves
+    // around its content has decided how big it is, and a decision that lands
+    // at 22 is the one this file exists to catch. A control that takes its
+    // height from elsewhere is not deciding here: `.key`/`.step` take it from
+    // the studio sheet, a percentage takes it from the box around it, and a
+    // thin thing takes its target from the pseudo element it grows.
+    const silent: string[] = [];
+    for (const [file, css] of sheets) {
+      const all = rules(css);
+      for (const rule of all) {
+        if (!isControl(rule)) continue;
+        if (/\.(key|step)\b/.test(rule.selector)) continue;
+        if (!padsVertically(rule.body)) continue;
+        if (/(^|;|\s)height\s*:\s*[\d.]+%/.test(rule.body)) continue;
+        const name = `${file} ${rule.selector}`;
+        if ([...EXEMPT.keys()].some((k) => name.startsWith(k))) continue;
+        if (grownBox(all, rule).h !== null) continue;
+        if ((box(rule.body).h ?? 0) < FLOOR) silent.push(name);
+      }
+    }
+    expect(silent).toEqual([]);
   });
 });

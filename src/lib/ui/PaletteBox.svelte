@@ -512,8 +512,11 @@
     background: var(--ghost-2);
     color: var(--electric);
   }
+  /* Full ink against the footer's secondary text: the key that throws work
+     away reads heavier than the keys that keep it. Red is the drawing
+     action's and nothing else's. */
   .foot-btn.danger {
-    color: var(--signal-dark);
+    color: var(--ink);
   }
   .foot-btn:focus-visible {
     outline: 3px solid var(--electric);
@@ -535,6 +538,10 @@
   }
   .close {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--key-h);
+    min-height: var(--key-h);
     padding: 0.1rem 0.4rem;
     border: none;
     background: transparent;
