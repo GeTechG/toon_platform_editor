@@ -300,7 +300,7 @@
         {/if}
       {/if}
 
-      <button class="key wide primary" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
+      <button class="key wide primary download" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
         {t('export.download')}
       </button>
 
@@ -349,6 +349,11 @@
   .wide {
     width: 100%;
     justify-content: center;
+  }
+  /* Its own gap, the same a section heading takes: the settings above it
+     come and go with the format, and the project or a plugin's format has none. */
+  .download {
+    margin-top: 0.7rem;
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — notes stay ink. */
   .note {
