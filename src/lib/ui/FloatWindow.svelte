@@ -138,7 +138,7 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     /* Lifted off the paper the way a window is, not painted onto it. */
-    box-shadow: 0 10px 24px rgba(15, 23, 60, 0.18);
+    box-shadow: var(--shadow-plate);
     overflow: hidden;
   }
   .float-bar {

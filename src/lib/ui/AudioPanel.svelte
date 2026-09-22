@@ -116,7 +116,7 @@
     background: var(--canvas);
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
-    box-shadow: 0 12px 28px -12px rgba(15, 23, 60, 0.35);
+    box-shadow: var(--shadow-plate);
   }
   /* Mobile: a bottom drawer instead of a floating plate, as the layers list. */
   @media (max-width: 40rem) {
@@ -161,9 +161,13 @@
     border: 1px solid var(--edge);
     border-radius: var(--r-sm, 7px);
   }
-  .field input:focus {
+  /* The ring belongs to the system (tokens.css): 3px electric at 2px offset,
+     what every other field in both packages wears. This rule only tints the
+     line underneath it. It used to drop the ring and keep the tint — a quarter
+     of the promised indicator, winning on specificity rather than on a
+     decision. */
+  .field input:focus-visible {
     border-color: var(--electric, #1b5cff);
-    outline: none;
   }
   .toggle {
     display: flex;

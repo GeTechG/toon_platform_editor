@@ -24,6 +24,7 @@
   import { loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
+  import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
   import { wrapIndex } from './frame-selection';
   import { draftEntries } from '../draft/restore';
@@ -1640,7 +1641,8 @@
                     {#if thumbUrls[entry.id]}
                       <!-- The still written with the record: no document to
                            re-render, and it is what the drawing looked like. -->
-                      <img src={thumbUrls[entry.id]} alt="" height="44" />
+                      {@const box = fitThumb(entry.doc.width, entry.doc.height, 44)}
+                      <img src={thumbUrls[entry.id]} alt="" width={box.w} height={box.h} />
                     {:else}
                       <FrameThumb doc={entry.doc} frameIndex={0} maxW={44} />
                     {/if}
@@ -1766,11 +1768,15 @@
     --table: #d7dfee;
     /* Layer tags: six hues cycling by row position, a display aid only — the
        document stores no colour. Kept muted so a column of them reads as
-       stripes beside the names rather than competing with the drawing. */
+       stripes beside the names rather than competing with the drawing. Six
+       hues, none of them in the signal band: The Signal Rule reserves red for
+       «рисовать» and names icons and borders as off-limits, and the written
+       carve-out in DESIGN §2 covers paint inside a drawing (the mascot), not
+       interface chrome. The fourth was #c0392b, 6° from the signal. */
     --layer-tag-0: #1b5cff;
     --layer-tag-1: #00997a;
     --layer-tag-2: #b8860b;
-    --layer-tag-3: #c0392b;
+    --layer-tag-3: #c2185b;
     --layer-tag-4: #7d3cc7;
     --layer-tag-5: #0f7d9e;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
@@ -1830,7 +1836,7 @@
      window goes `position: fixed` to be dragged. */
   .tool-windows > :global(*),
   .scale-window > :global(*) {
-    box-shadow: 0 10px 24px rgba(15, 23, 60, 0.18);
+    box-shadow: var(--shadow-plate);
   }
   .scale-window {
     position: absolute;
@@ -2415,6 +2421,12 @@
       min-height: 0;
       overflow: auto;
       overscroll-behavior: contain;
+      /* And it says that it scrolls. On 390px the left rail carries ten keys
+         and shows six; the tenth is «Опубликовать», the only way out of the
+         editor into the product, and a cleanly cut key is a signal only to
+         someone who already knows the rail moves. When nothing overflows the
+         fade lies over paper and is invisible. */
+      mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
     }
     .studio .left,
     .studio .history {
@@ -2539,7 +2551,7 @@
     font-weight: 650;
   }
   .updating::backdrop {
-    background: rgba(11, 12, 16, 0.42);
+    background: var(--scrim, #0b0c106b);
   }
   /* The shape comes from the shared `.sheet` chrome; a <dialog> only needs its
      own defaults cleared and a backdrop of its own (as in the settings sheet). */
@@ -2551,7 +2563,7 @@
     color: var(--ink);
   }
   .editor :global(.sheet-dialog)::backdrop {
-    background: rgba(11, 12, 16, 0.42);
+    background: var(--scrim, #0b0c106b);
   }
   /* Bottom sheet on mobile, centered card on wider screens. */
   .editor :global(.sheet) {
@@ -2566,7 +2578,7 @@
     background: var(--canvas);
     border-top-left-radius: var(--r-md);
     border-top-right-radius: var(--r-md);
-    box-shadow: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);
+    box-shadow: var(--shadow-sheet);
   }
   @media (min-width: 40.0625rem) {
     .editor :global(.sheet) {

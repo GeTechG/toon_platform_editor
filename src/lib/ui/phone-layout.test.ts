@@ -55,3 +55,13 @@ describe('the phone branch and the desktop branch do not overlap', () => {
     expect(deskEdges.filter((edge) => phoneEdges.includes(edge))).toEqual([]);
   });
 });
+
+describe('a rail that scrolls says so', () => {
+  it('fades its inline end, so the keys past the edge are not a secret', () => {
+    // On 390px the left rail carries ten keys and shows six. The tenth is
+    // «Опубликовать» — the only way out of the editor into the product — and
+    // the rail gave no sign it went further. A clipped key is a signal for
+    // someone who already knows the rail moves; the edge has to say it first.
+    expect(phone).toMatch(/mask-image:\s*linear-gradient\(to right/);
+  });
+});

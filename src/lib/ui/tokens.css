@@ -44,9 +44,37 @@
   --hairline-soft: #0b0c1012; /* 7% ink */
   --ghost-2: #1b5cff1a; /* onion-skin's far step (0.1) */
 
+  /* Elevation (DESIGN §4). The system is flat by default: structure is a
+     hairline and a tonal plate, and a shadow is the exception. There are three,
+     by role, and a component picks the role rather than a recipe — eleven
+     literals in seven recipes, five of them pure black, are what the editor had
+     while these lived only in the site's sheet. */
+  --shadow-plate: 24px 32px 60px -30px rgba(15, 23, 60, 0.35); /* floats */
+  --shadow-menu: 12px 18px 40px -20px rgba(15, 23, 60, 0.35); /* drops */
+  /* A sheet rises from the bottom edge, where a downward shadow falls off the
+     screen. Same ink, turned over. */
+  --shadow-sheet: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);
+
+  /* The paper laid over the page under a modal. One value, five sheets opened
+     one, and each carried its own copy. */
+  --scrim: #0b0c106b; /* 42% ink */
+
   --r-sm: 7px;
   --r-md: 14px;
   --r-lg: 16px;
   --r-xl: 22px;
   --r-pill: 999px;
+}
+
+/* The ring the package carries itself. Everything exported here — the editor,
+   `./icon`, `./player` — renders wherever a host mounts it, and the ring was
+   coming from the site's own sheet: any host that is not `apps/web`, this
+   package's dev host included, got the browser default on a surface whose
+   openness PRODUCT.md calls a differentiator.
+
+   Zero specificity like the table above, and bounded by `.editor`: the file
+   offers its look, it does not paint the page around it. */
+:where(.editor) :focus-visible {
+  outline: 3px solid var(--electric);
+  outline-offset: 2px;
 }

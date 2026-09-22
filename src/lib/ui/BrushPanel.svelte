@@ -188,7 +188,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-plate);
     overflow: hidden;
   }
   .brush-box {
@@ -234,7 +234,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-menu);
   }
   /* A closed popover is hidden by the browser's own `display: none`, which
      any layout declared here would quietly override. */
@@ -306,7 +306,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     background: var(--canvas);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+    box-shadow: var(--shadow-menu);
     font-size: 0.75rem;
     line-height: 1.25;
     text-align: left;

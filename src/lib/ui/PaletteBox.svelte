@@ -316,7 +316,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 8px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-plate);
     overflow: hidden;
   }
   .palette {

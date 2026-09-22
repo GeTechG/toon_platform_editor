@@ -378,7 +378,7 @@
     font-size: 0.82rem;
     font-weight: 650;
     white-space: nowrap;
-    box-shadow: 0 6px 16px rgba(15, 23, 60, 0.3);
+    box-shadow: var(--shadow-menu);
   }
   .drop-line {
     border-radius: 2px;
@@ -406,7 +406,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 14px 30px rgba(15, 23, 60, 0.22);
+    box-shadow: var(--shadow-plate);
   }
   .arrange-hint {
     margin: 0;

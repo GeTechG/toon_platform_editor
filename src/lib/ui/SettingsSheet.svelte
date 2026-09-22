@@ -443,7 +443,7 @@
     color: var(--ink);
   }
   .sheet-dialog::backdrop {
-    background: rgba(11, 12, 16, 0.42);
+    background: var(--scrim, #0b0c106b);
   }
   .row {
     display: flex;

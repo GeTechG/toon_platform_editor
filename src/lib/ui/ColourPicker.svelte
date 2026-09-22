@@ -359,7 +359,7 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--shadow-menu);
   }
   .head {
     display: flex;
@@ -416,7 +416,6 @@
   }
   .models button.active {
     background: var(--canvas);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
     color: var(--electric);
   }
   /* The canvas and its pointer share one frame. */
@@ -448,7 +447,7 @@
     margin: -6px 0 0 -6px;
     border: 2px solid #fff;
     border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
     pointer-events: none;
   }
   .knob {
