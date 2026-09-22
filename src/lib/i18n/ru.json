@@ -24,6 +24,7 @@
     "title": "Экспорт (Alt+S)",
     "sheet": "Экспорт",
     "format": "Формат",
+    "project": "Проект (.toonop)",
     "video": "Видео",
     "resolution": "Разрешение",
     "watermark": "Водяной знак «{{text}}»",

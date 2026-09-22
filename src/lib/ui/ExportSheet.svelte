@@ -21,7 +21,7 @@
 
   let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
 
-  type Format = 'png' | 'gif' | 'video';
+  type Format = 'project' | 'png' | 'gif' | 'video';
 
   let open = $state(false);
   let dialogEl = $state<HTMLDialogElement | undefined>();
@@ -114,7 +114,14 @@
     cancelling = new AbortController();
     const options = { width, watermark, signal: cancelling.signal, onProgress: track };
     try {
-      if (format === 'png') {
+      if (format === 'project') {
+        // The project, not a picture of it: the document exactly as the draft
+        // and the API hold it, the same file Alt+S writes in the Toonio preset.
+        save(
+          new Blob([JSON.stringify($state.snapshot(editor.doc))], { type: 'application/json' }),
+          'toonop.toonop',
+        );
+      } else if (format === 'png') {
         save(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
       } else if (format === 'gif') {
         const bytes = await exportGif(editor.doc, options);
@@ -210,27 +217,35 @@
           disabled={planned && !plan}
           onclick={() => (format = 'video')}
         >{plan?.label ?? t('export.video')}</button>
+        <button
+          class="key"
+          class:active={format === 'project'}
+          aria-pressed={format === 'project'}
+          onclick={() => (format = 'project')}
+        >{t('export.project')}</button>
       </div>
 
-      <p class="sheet-hint">{t('export.resolution')}</p>
-      <div class="choices" role="group" aria-label={t('export.resolution')}>
-        {#each EXPORT_WIDTHS as w (w)}
-          {@const s = exportSize(editor.doc, w)}
-          <button class="key" class:active={width === w} aria-pressed={width === w} onclick={() => (width = w)}>
-            {s.width}×{s.height}
-          </button>
-        {/each}
-      </div>
+      {#if format !== 'project'}
+        <p class="sheet-hint">{t('export.resolution')}</p>
+        <div class="choices" role="group" aria-label={t('export.resolution')}>
+          {#each EXPORT_WIDTHS as w (w)}
+            {@const s = exportSize(editor.doc, w)}
+            <button class="key" class:active={width === w} aria-pressed={width === w} onclick={() => (width = w)}>
+              {s.width}×{s.height}
+            </button>
+          {/each}
+        </div>
 
-      <label class="toggle">
-        <span class="toggle-label">{t('export.watermark', { text: WATERMARK_TEXT })}</span>
-        <input type="checkbox" role="switch" bind:checked={watermark} />
-      </label>
-      {#if format === 'png'}
         <label class="toggle">
-          <span class="toggle-label">{t('export.transparent')}</span>
-          <input type="checkbox" role="switch" bind:checked={transparent} />
+          <span class="toggle-label">{t('export.watermark', { text: WATERMARK_TEXT })}</span>
+          <input type="checkbox" role="switch" bind:checked={watermark} />
         </label>
+        {#if format === 'png'}
+          <label class="toggle">
+            <span class="toggle-label">{t('export.transparent')}</span>
+            <input type="checkbox" role="switch" bind:checked={transparent} />
+          </label>
+        {/if}
       {/if}
 
       {#if format === 'video'}

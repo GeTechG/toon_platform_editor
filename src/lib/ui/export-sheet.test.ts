@@ -27,6 +27,20 @@ describe('formats', () => {
   });
 });
 
+describe('the project itself', () => {
+  it('is a format beside the pictures, the document as it stands', () => {
+    expect(sheet).toContain("type Format = 'project' | 'png' | 'gif' | 'video'");
+    expect(sheet).toContain("format === 'project'");
+    expect(sheet).toContain('JSON.stringify($state.snapshot(editor.doc))');
+    expect(sheet).toContain("'toonop.toonop'");
+    expect(t('export.project')).toBe('Проект (.toonop)');
+  });
+
+  it('hides what only a picture has', () => {
+    expect(sheet).toContain("{#if format !== 'project'}");
+  });
+});
+
 describe('resolution', () => {
   it('offers the reference row of widths, 1280 selected', () => {
     expect(EXPORT_WIDTHS).toEqual([640, 1280, 1920, 2560]);
