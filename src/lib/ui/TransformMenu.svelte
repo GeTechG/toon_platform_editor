@@ -117,7 +117,7 @@
   input[type='number'] {
     width: 100%;
     min-width: 0;
-    min-height: 32px;
+    min-height: var(--key-h, 2.75rem);
     padding: 0 6px;
     /* The boundary of a control, not a divider: white field on a white plate
        drawn with the hairline is 1.36:1, where 1.4.11 asks three. */
@@ -133,8 +133,10 @@
   }
   .row .key {
     flex: 1;
-    /* WCAG 2.5.8: every control keeps a 24px target. */
-    min-height: 32px;
+    /* The product's floor, not the standard's. 2.5.8 asks 24 and this asked 24;
+       DESIGN §5 asks 44 of everything outside the montage grid, and a floating
+       transform window is outside it. A standard is a floor under a floor. */
+    min-height: var(--key-h, 2.75rem);
   }
   .check {
     display: flex;

@@ -317,7 +317,9 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-plate);
-    overflow: hidden;
+    /* Same reason as the brush box: the radius clips either way, and a rail
+       with a ceiling squeezes this one too. */
+    overflow: auto;
   }
   .palette {
     display: grid;
@@ -358,7 +360,12 @@
     display: flex;
     pointer-events: none;
   }
-  /* «Add to palette», bottom-left, only while the color is not in the grid. */
+  /* «Add to palette», bottom-left, only while the color is not in the grid.
+     Drawn at the glyph's size and pressed at a finger's: a 44px circle painted
+     here would cover a third of the colour block. The two press boxes below
+     take their room from the swatch faces, which are 85x70 each and least
+     useful exactly where these sit — and they are 72px apart, so neither
+     reaches the other. */
   .add {
     position: absolute;
     left: 4px;
@@ -373,6 +380,16 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
+  }
+  .add::after,
+  .swap::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--key-h, 2.75rem);
+    height: var(--key-h, 2.75rem);
+    transform: translate(-50%, -50%);
   }
   .swap {
     position: absolute;
@@ -472,14 +489,14 @@
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
-    min-height: 40px;
+    min-height: var(--key-h, 2.75rem);
     border-top: 1px solid var(--hairline);
   }
   .foot-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
+    min-height: var(--key-h, 2.75rem);
     border: none;
     background: var(--canvas);
     color: var(--ink-2);

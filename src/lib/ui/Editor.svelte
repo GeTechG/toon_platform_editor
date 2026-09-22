@@ -1779,6 +1779,9 @@
     --layer-tag-3: #c2185b;
     --layer-tag-4: #7d3cc7;
     --layer-tag-5: #0f7d9e;
+    /* The copy/paste flash over the canvas: the reference's 0xCCCCCC at 0.9,
+       kept to the value because parity is the point of it. */
+    --flash: #cccccce6;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
     --key-h: 2.75rem;
     /* How far a control paints outside its own box: the focus ring (3px at
@@ -1850,22 +1853,41 @@
      the fill that steps back, not the window, so the readout and the edge keep
      their contrast while the hand is down. */
   /* On a phone the stage is short — a floating window would cover the drawing,
-     so the windows sit under the canvas and span the width. */
+     so the windows sit under the canvas and span the width.
+     Un-floating them is only half of that: a static child needs a row, and the
+     stage is a frame the canvas fills edge to edge. Without the other half the
+     zoom window laid itself out past the stage's own bottom, under the panel
+     that comes next — present in the tree, with geometry, and neither visible
+     nor pressable. So the stage becomes a column here and the canvas gives the
+     rows back: `height: 100%` on the wrap would resolve against the whole
+     stage and push its siblings straight out again. */
   @media (max-width: 40rem) {
+    .stage {
+      display: flex;
+      flex-direction: column;
+    }
+    .stage > :global(.wrap) {
+      flex: 1;
+      min-height: 0;
+      height: auto;
+    }
     .tool-windows,
     .scale-window {
       position: static;
+      flex: none;
       width: auto;
       max-height: none;
       margin-top: 0.5rem;
     }
   }
-  /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. */
+  /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
+     parity and cannot move; what it can do is be declared, like the worktable
+     and the layer tags above, so the table knows about it. */
   .flash {
     position: absolute;
     inset: 0;
     z-index: 5;
-    background: rgba(204, 204, 204, 0.9);
+    background: var(--flash);
     pointer-events: none;
   }
   /* Bottom toolbar — the second neutral layer over the white canvas. */
@@ -2367,8 +2389,10 @@
     margin: 0;
     accent-color: var(--electric);
       /* 16px is the native height of a range and too thin to catch; the track
-       stays where it is drawn, the band around it is a finger deep. */
-    height: 1.5rem;
+       stays where it is drawn, the band around it is a finger deep — and a
+       finger is the floor DESIGN §5 sets for everything outside the montage
+       grid, not the 24 the standard settles for. */
+    height: var(--key-h, 2.75rem);
 }
   .fps-inline input[type='number'] {
     width: 3.2rem;
@@ -2461,6 +2485,15 @@
       flex: 0 1 auto;
       min-height: 0;
       max-height: 26dvh;
+      /* The third rail, and it scrolls like the other two. `clip` plus the 20px
+         margin is a desktop arrangement: the margin is there so the fold tab
+         and the resizer can paint outside, and both are `display: none` below.
+         What it did here instead was hand the *document* a scrollbar — the
+         column fits 788 exactly, the panel wanted 177 of its 167, and the
+         missing ten painted past the studio: 855 against a 844 viewport. */
+      overflow: auto;
+      overflow-clip-margin: 0;
+      overscroll-behavior: contain;
     }
     /* The floor the canvas never gives up. It is the last child to be sized
        and the only one that grows, so without a floor it takes whatever the

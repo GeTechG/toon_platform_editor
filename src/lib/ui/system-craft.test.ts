@@ -190,6 +190,33 @@ describe('a role promises the behaviour it names', () => {
 
     expect(wrong).toEqual([]);
   });
+
+  // Hand-rolled is the wrong half of the promise even when it is kept. The
+  // colour picker had Esc and a Tab wrapper, and the wrapper only fired once
+  // focus was already inside: it held focus, it never fetched it. Opened from
+  // the keyboard the picker left focus on the swatch outside, declared no
+  // `aria-modal`, and gave nothing back on close — while five sheets next door
+  // got the trap, the Esc and the inert page from `showModal()` for free.
+  it('builds a window out of the element that is one', () => {
+    const handRolled = [...MARKUP]
+      .filter(([, source]) => /role="dialog"|aria-modal/.test(source))
+      .filter(([, source]) => !/<dialog/.test(source))
+      .map(([file]) => file);
+
+    expect(handRolled).toEqual([]);
+  });
+
+  it('opens every one of them modally', () => {
+    // A `<dialog>` shown with `show()` or with the `open` attribute is a
+    // non-modal box: no top layer, no trap, no inert page. The element is only
+    // half the answer; `showModal()` is the other half.
+    const notModal = [...MARKUP]
+      .filter(([, source]) => /<dialog/.test(source))
+      .filter(([, source]) => !/showModal\(\)/.test(source))
+      .map(([file]) => file);
+
+    expect(notModal).toEqual([]);
+  });
 });
 
 // The panel is a section of the page the studio fills, so its heading sits one
@@ -221,11 +248,45 @@ describe('a colour in a sheet comes from the table', () => {
         .replace(/--[a-z0-9-]+\s*:[^;]*;/g, '')
         .replace(/\bmask(-image)?\s*:[^;]*;/g, '')
         .replace(/var\([^()]*\)/g, '');
-      for (const hit of consumed.matchAll(/#[0-9a-f]{3,8}\b/gi)) {
+      // Both spellings. The invariant knew the hash and not the function, and
+      // the function is exactly how a colour with alpha is written — which is
+      // exactly where a colour is laid over someone else's: a ring, an outline,
+      // a wash. Two rings of the colour picker rode on `rgba(0, 0, 0, .55)`,
+      // pure black against an ink ramp, and this test watched them do it.
+      for (const hit of consumed.matchAll(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\([^)]*\)/gi)) {
         wrong.push(`${file} ${hit[0]}`);
       }
     }
 
     expect(wrong).toEqual([]);
+  });
+});
+
+// A container that can end up shorter than what is inside it has two ways to
+// behave and only one of them is honest. `overflow: hidden` does not offer a
+// way out, it closes one: the cut control looks exactly like a control that was
+// never drawn. Measured on 1280×800 before this was fixed: the brush box stood
+// 319px tall around 385px of content and `.right` above it had nothing to
+// scroll (593 of 593), so «Упрощение» and its slider simply were not reachable.
+// On 390×844 it was 173 around 377 — thickness, smoothing and simplification,
+// the whole lower half of the panel.
+//
+// `hidden` stays right where the cut is the point and nothing operable is
+// behind it: a rounded corner, a mask, decoration parked past an edge. The
+// question that tells them apart is whether anything out there is a control.
+describe('a box squeezed below its content gives it a way out', () => {
+  // The boxes of the studio: a panel body inside a rail that has a ceiling.
+  const SQUEEZED = ['BrushPanel.svelte', 'PaletteBox.svelte'];
+
+  it('scrolls what does not fit instead of hiding it', () => {
+    const cutting: string[] = [];
+    for (const file of SQUEEZED) {
+      const box = withoutComments(STYLES.get(file) ?? '').match(/\n  \.box \{([^}]*)\}/)?.[1];
+      expect(box).toBeDefined();
+      if (/overflow:\s*hidden/.test(box!)) {
+        cutting.push(`${file} .box`);
+      }
+    }
+    expect(cutting).toEqual([]);
   });
 });

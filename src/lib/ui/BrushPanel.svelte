@@ -189,7 +189,12 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-plate);
-    overflow: hidden;
+    /* `auto`, not `hidden`: the radius still clips, but the box lives in a rail
+       with a ceiling and is routinely shorter than what is in it — 319 around
+       385 on a desktop, 173 around 377 on a phone — and `hidden` does not offer
+       a way to the rest, it closes one. «Упрощение» and its slider were simply
+       unreachable, with nothing above them to scroll either. */
+    overflow: auto;
   }
   .brush-box {
     display: grid;
@@ -211,7 +216,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 2rem;
+    min-height: var(--key-h, 2.75rem);
     padding: 0 8px;
     border: 1px solid var(--edge);
     border-radius: var(--r-sm);
@@ -317,14 +322,17 @@
     display: block;
   }
   /* 1.1rem was the drawn size of the glyph and the size of the target with it —
-     18px, under the 24px floor. The circle stays the glyph's, the box around it
-     is a finger's. */
+     18px, under any floor at all. The glyph stays the glyph's size; the box
+     around it is the product's, not the standard's minimum: DESIGN §5 keeps 44
+     for everything outside the montage grid, and a help key in a tool panel is
+     outside it. The background is `none`, so what grows is the target, not a
+     circle on the screen. */
   .info {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
+    width: var(--key-h, 2.75rem);
+    height: var(--key-h, 2.75rem);
     padding: 0;
     vertical-align: -0.2rem;
     border: none;
@@ -356,15 +364,16 @@
   .brush-box input[type='range'] {
     width: 100%;
     /* A native range is 16px tall, and these three are the most-pressed
-       controls in the panel. The track is drawn where it was; the band a
-       thumb can be caught in is a finger deep. */
-    height: 1.5rem;
+       controls in the panel — brush thickness is the most repeated movement in
+       the editor. The track is drawn where it was; the band a thumb can be
+       caught in is a finger deep, and a finger is 44 (DESIGN §5), not 24. */
+    height: var(--key-h, 2.75rem);
     margin: 0;
     accent-color: var(--electric);
   }
   .brush-box input[type='number'] {
     width: 100%;
-    min-height: 2rem;
+    min-height: var(--key-h, 2.75rem);
     box-sizing: border-box;
     padding: 0 0.2rem;
     border: 1px solid var(--edge);

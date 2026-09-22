@@ -27,6 +27,11 @@
       "svelte": "./src/lib/i18n.ts",
       "default": "./src/lib/i18n.ts"
     },
+    "./i18n-core": {
+      "types": "./src/lib/i18n-core.ts",
+      "svelte": "./src/lib/i18n-core.ts",
+      "default": "./src/lib/i18n-core.ts"
+    },
     "./tokens.css": "./src/lib/ui/tokens.css"
   },
   "scripts": {

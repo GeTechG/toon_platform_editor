@@ -407,7 +407,11 @@
   }
   .name {
     flex: 1;
-    min-width: 0;
+    /* The name is the only thing telling two rows apart, so it keeps a floor of
+       its own: «Слой 1» measures 45 and the column is sized to honour this.
+       `min-width: 0` let it shrink to nothing and the list to a column of
+       «Сло…». Past the floor the ellipsis is right — the divider widens it. */
+    min-width: 3rem;
     font-size: 0.85rem;
     white-space: nowrap;
     overflow: hidden;

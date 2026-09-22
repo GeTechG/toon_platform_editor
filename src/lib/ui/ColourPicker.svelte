@@ -52,7 +52,28 @@
   let applied = $state(origin);
   let surface = $state<HTMLCanvasElement | null>(null);
   let bar = $state<HTMLCanvasElement | null>(null);
-  let box = $state<HTMLElement | null>(null);
+  let box = $state<HTMLDialogElement | null>(null);
+  /**
+   * Why the close goes through the element instead of straight to the parent:
+   * `close()` is what hands focus back to the swatch that opened the window,
+   * and that only happens if the platform runs the close. So every exit records
+   * what kind of exit it was and asks the dialog to shut; `onclose` then tells
+   * the parent, which unmounts us.
+   */
+  let intent: { revert?: boolean } = {};
+
+  function requestClose(options: { revert?: boolean } = {}): void {
+    intent = options;
+    box?.close();
+  }
+
+  // Modal, not `open`: the top layer, the focus trap, the Esc and the inert
+  // page behind are all `showModal()`'s, and the five sheets of the studio
+  // already live on them. The hand-rolled version here wrapped Tab once focus
+  // was inside and never brought it in.
+  $effect(() => {
+    if (box && !box.open) box.showModal();
+  });
   let hexText = $state(origin);
   /** Window offset from where it opened, moved by dragging the header. */
   let offset = $state({ x: 0, y: 0 });
@@ -119,32 +140,18 @@
   }
 
   /**
-   * Esc puts the original colour back and closes; Enter and Space close on
-   * what is chosen (`bundle:9942-9987`). Tab stays inside the window.
+   * Enter and Space close on what is chosen (`bundle:9942-9987`). Esc is the
+   * dialog's own `cancel`, and Tab is the dialog's own trap — neither is this
+   * function's business any more.
    */
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      onclose({ revert: true });
-      return;
-    }
-    if (e.key === 'Enter' || e.key === ' ') {
-      // A field owns its own keys: Space types, Enter commits what was typed.
-      const inField = (e.target as HTMLElement | null)?.tagName === 'INPUT';
-      if (inField && e.key === ' ') return;
-      if (inField) commitHex();
-      e.stopPropagation();
-      onclose();
-      return;
-    }
-    if (e.key !== 'Tab' || !box) return;
-    const items = [...box.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]')].filter((el) => !el.hasAttribute('disabled'));
-    if (items.length === 0) return;
-    const edge = e.shiftKey ? items[0] : items[items.length - 1];
-    if (document.activeElement === edge) {
-      e.preventDefault();
-      (e.shiftKey ? items[items.length - 1] : items[0]).focus();
-    }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    // A field owns its own keys: Space types, Enter commits what was typed.
+    const inField = (e.target as HTMLElement | null)?.tagName === 'INPUT';
+    if (inField && e.key === ' ') return;
+    if (inField) commitHex();
+    e.stopPropagation();
+    requestClose();
   }
 
   function dragWindow(e: PointerEvent): void {
@@ -225,23 +232,28 @@
   $effect(() => paint(bar, 'bar', model, barPointer(model, pointer)));
 </script>
 
-<svelte:window onkeydown={onKeydown} />
-
-<!-- Click-outside catcher; the picker itself sits above it. -->
-<button class="backdrop" aria-label={t('picker.close_backdrop')} onclick={() => onclose()}></button>
-
-<div
+<!-- A click outside a modal dialog lands on the dialog element itself, because
+     the box we paint is the window and everything around it is `::backdrop`.
+     That is the click-outside catcher the old `<button>` was standing in for,
+     and it needs no element of its own. -->
+<dialog
   class="picker"
   bind:this={box}
-  role="dialog"
   aria-label={t('picker.title', { label })}
+  onkeydown={onKeydown}
+  onclick={(e) => e.target === box && requestClose()}
+  oncancel={(e) => {
+    e.preventDefault();
+    requestClose({ revert: true });
+  }}
+  onclose={() => onclose(intent)}
   style:left="{x}px"
   style:top="{y}px"
   style:transform="translate({offset.x}px, {offset.y}px)"
 >
   <header class="head" role="presentation" onpointerdown={dragWindow}>
     <strong>{label}</strong>
-    <button class="close" onclick={() => onclose()} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
+    <button class="close" onclick={() => requestClose()} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
   </header>
 
   <div class="models" role="group" aria-label={t('picker.models')}>
@@ -337,29 +349,32 @@
       title={t('picker.origin_title', { color: origin })}
     >{t('picker.origin')}</button>
   </div>
-</div>
+</dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    border: none;
-    background: transparent;
-    cursor: default;
-  }
-  /* 176px of canvas plus a 14px gutter on either side. */
+  /* 176px of canvas plus a 14px gutter on either side. A modal `<dialog>` is
+     centred by the UA with `inset: 0; margin: auto`; this one opens under the
+     swatch it belongs to, so the margin goes and the coordinates stay. The top
+     layer draws it over everything regardless of `z-index`. */
   .picker {
     position: fixed;
-    z-index: 41;
+    margin: 0;
+    max-width: none;
+    max-height: none;
     display: grid;
     width: 204px;
     gap: 10px;
-    padding-bottom: 12px;
+    padding: 0 0 12px;
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
     background: var(--canvas);
+    color: var(--ink);
     box-shadow: var(--shadow-menu);
+  }
+  /* The old catcher was an invisible full-screen button, so the page behind
+     stayed lit. `::backdrop` takes over the job and keeps the look. */
+  .picker::backdrop {
+    background: transparent;
   }
   .head {
     display: flex;
@@ -447,7 +462,10 @@
     margin: -6px 0 0 -6px;
     border: 2px solid var(--canvas, #fff);
     border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    /* The ring that keeps the pointer visible on a light surface: the table's
+       control boundary, not a second black. `--edge` is ink at 48% and was
+       written for exactly this — telling a control from what is under it. */
+    box-shadow: 0 0 0 1px var(--edge, #0b0c107a);
     pointer-events: none;
   }
   .knob {
@@ -458,7 +476,7 @@
     margin-left: -3.5px;
     border: 2px solid var(--canvas, #fff);
     border-radius: 4px;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 0 0 1px var(--edge, #0b0c107a);
     pointer-events: none;
   }
   .fields {

@@ -296,7 +296,11 @@
     display: flex;
     flex-direction: column;
     flex: none;
-    width: 11rem;
+    /* The row spends 137 of this on furniture — padding, eye, tag, handle,
+       delete and four gaps — so 11rem left 39 for the name and «Слой 1» needs
+       45. The editor's own default name did not fit the editor's own default
+       column; the divider is for long names, not for that. */
+    width: 12.5rem;
     min-height: 0;
     border-right: 1px solid var(--hairline);
   }

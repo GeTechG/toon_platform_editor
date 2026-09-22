@@ -121,3 +121,44 @@ describe('the colour tag is pickable', () => {
     expect(state).toContain('normalizeLayerColors(saved.layerColors');
   });
 });
+
+// The column that holds the names was 11rem, and the row inside it spends
+// 136.4 of that on furniture: 12.8 of padding, a 28 eye, a 14 tag, a 30 handle,
+// a 26 delete and four 6.4 gaps. That leaves 38.6 for the name — measured at
+// 39 against a `scrollWidth` of 45 for «Слой 1» on 1280×800. The editor's own
+// default name did not fit the editor's own default column, so a fresh document
+// opened on «Сло…», and every user fixed it once by hand with the divider.
+//
+// The name is the only thing telling two layers apart. A floor under it, and a
+// column wide enough to honour that floor, are what keep the list a list.
+const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
+const layerRows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url)).text();
+
+describe('the layer column fits the name the editor gives a layer', () => {
+  /** «Слой 1» at 0.85rem, measured in the browser. */
+  const DEFAULT_NAME = 45;
+  /** Eye, tag, handle, delete, the row's padding and its four gaps. */
+  const FURNITURE = 137;
+
+
+  /** `11rem` / `176px` → 176. */
+  function px(value: string): number {
+    const rem = value.match(/([\d.]+)rem/);
+    if (rem) return Number(rem[1]) * 16;
+    return Number(value.match(/([\d.]+)px/)?.[1] ?? NaN);
+  }
+
+  it('opens wide enough for the default name', () => {
+    const width = timeline.match(/\.layer-col \{[^}]*width:\s*([^;]+);/s)?.[1];
+    expect(width).toBeDefined();
+    expect(px(width!)).toBeGreaterThanOrEqual(FURNITURE + DEFAULT_NAME);
+  });
+
+  it('puts a floor under the name, so a later squeeze cannot take it back', () => {
+    const name = layerRows.match(/\n  \.name \{([^}]*)\}/)?.[1];
+    expect(name).toBeDefined();
+    const floor = name!.match(/min-width:\s*([^;]+);/)?.[1];
+    expect(floor).toBeDefined();
+    expect(px(floor!)).toBeGreaterThanOrEqual(DEFAULT_NAME);
+  });
+});

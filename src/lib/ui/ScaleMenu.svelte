@@ -70,7 +70,10 @@
     background: var(--canvas, #fff);
   }
   button {
-    min-height: 28px;
+    /* The floor, not a number that fits the window. DESIGN §5 keeps 44 for
+       everything outside the montage grid, and this window floats over the
+       canvas — it crowds out no frame and buys nothing by being smaller. */
+    min-height: var(--key-h, 2.75rem);
     border: none;
     border-radius: 7px;
     background: transparent;
@@ -82,7 +85,7 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 28px;
+    width: var(--key-h, 2.75rem);
   }
   .value {
     flex: 1;

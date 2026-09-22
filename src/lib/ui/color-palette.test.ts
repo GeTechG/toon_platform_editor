@@ -292,9 +292,13 @@ describe('the colour picker follows the reference window', () => {
   });
 
   it('closes with a revert flag on Esc and without one otherwise', () => {
+    // Esc is `cancel` now that the window is a real `<dialog>`, and every exit
+    // routes through `close()` so the platform hands focus back to the swatch.
+    // The contract the parent sees is the one it always saw.
     expect(picker).toContain('onclose: (options?: { revert?: boolean }) => void');
-    expect(picker).toContain('onclose({ revert: true })');
-    expect(picker).toMatch(/e\.key === 'Enter'[^]{0,400}onclose\(\)/);
+    expect(picker).toMatch(/oncancel=\{[^]{0,200}requestClose\(\{ revert: true \}\)/);
+    expect(picker).toContain('onclose={() => onclose(intent)}');
+    expect(picker).toMatch(/e\.key !== 'Enter'[^]{0,400}requestClose\(\)/);
   });
 
   it('opens under the swatch, clamped to the viewport', () => {

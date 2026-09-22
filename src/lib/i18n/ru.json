@@ -287,7 +287,6 @@
     "affects_confirm": "Это затронет кадров: {{frames}}, слоёв: {{layers}}. Продолжить?"
   },
   "picker": {
-    "close_backdrop": "Закрыть выбор цвета",
     "title": "Выбор цвета: {{label}}",
     "close": "Закрыть",
     "models": "Модель цвета",
