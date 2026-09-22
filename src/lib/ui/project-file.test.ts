@@ -171,6 +171,15 @@ describe('the drafts list', () => {
     expect(editorUi).toContain('navigator.storage?.estimate');
   });
 
+  it('hands one record to the browser as a file, without asking', () => {
+    expect(editorUi).toContain('async function downloadDraft(entry: DraftEntry)');
+    expect(editorUi).toContain('exportDrafts([entry.id])');
+    expect(editorUi).toContain("'draft.toonops'");
+    expect(editorUi).toContain('onclick={() => downloadDraft(entry)}');
+    expect(editorUi).toContain("t('editor.draft_download_title')");
+    expect(t('editor.draft_download')).toBe('Скачать черновик');
+  });
+
   it('copies, deletes one and deletes all', () => {
     expect(editorUi).toContain('duplicateDraft(');
     expect(editorUi).toContain('deleteAllDrafts()');

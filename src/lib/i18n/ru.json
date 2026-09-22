@@ -560,6 +560,8 @@
     "storage_used": "· занято {{size}}",
     "draft_copy_title": "Сделать копию черновика",
     "draft_copy": "Копия черновика",
+    "draft_download_title": "Скачать черновик файлом .toonops",
+    "draft_download": "Скачать черновик",
     "draft_delete_title": "Удалить черновик",
     "draft_delete": "Удалить черновик",
     "drafts_wipe": "Удалить все",

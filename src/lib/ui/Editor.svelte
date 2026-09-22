@@ -32,6 +32,7 @@
     deleteAllDrafts,
     deleteDraft,
     duplicateDraft,
+    exportDrafts,
     listDrafts,
     newDraftId,
     saveDraft,
@@ -810,6 +811,21 @@
   async function copyDraft(entry: DraftEntry): Promise<void> {
     await duplicateDraft(entry.id);
     await refreshDrafts();
+  }
+
+  /**
+   * The record as a file, straight from the card — the same `.toonops` the
+   * settings export writes, one save in it, so it comes back through the same
+   * import with its screenshot, its track and the hand it was saved with.
+   */
+  async function downloadDraft(entry: DraftEntry): Promise<void> {
+    const text = await exportDrafts([entry.id]);
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'draft.toonops';
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function removeAllDrafts(): Promise<void> {
@@ -1671,6 +1687,14 @@
                   aria-label={t('editor.draft_copy')}
                 >
                   <Icon name="copy" />
+                </button>
+                <button
+                  class="key icon"
+                  onclick={() => downloadDraft(entry)}
+                  title={t('editor.draft_download_title')}
+                  aria-label={t('editor.draft_download')}
+                >
+                  <Icon name="download" />
                 </button>
                 <button
                   class="key icon"
