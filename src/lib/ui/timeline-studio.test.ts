@@ -338,6 +338,28 @@ describe('the bottom panel folds like the sides', () => {
   });
 });
 
+describe('the strip builds a window of frames', () => {
+  // Fifteen hundred buttons with a canvas inside is what three hundred frames
+  // on five layers came to; the browser laid every one of them out.
+  it('builds the frames of the window, not every frame of the document', () => {
+    expect(timeline).toContain('stripWindow(');
+    expect(timeline).toContain('{#each built as i (i)}');
+    expect(timeline).not.toContain('{#each frames as _, i (i)}');
+  });
+
+  it('stands spacers in for the frames it left out', () => {
+    // The scrollbar has to be the length it would be with every cell in place.
+    const spacers = timeline.match(/view\.(before|after)/g) ?? [];
+    // Three rows share the window: the numbers, the cells and the wave.
+    expect(spacers.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('scrolls to the active frame by arithmetic, not by looking for its cell', () => {
+    expect(timeline).toContain('scrollToFrame(');
+    expect(timeline).not.toContain('[data-frame="${index}"]');
+  });
+});
+
 describe('the strip only pays for the cells it shows', () => {
   // Sixty frames meant sixty live 2D contexts, of which a 1280px screen shows
   // about twenty; the format allows 4096. A canvas is free until `getContext`,

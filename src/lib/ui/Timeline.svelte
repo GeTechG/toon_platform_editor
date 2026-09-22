@@ -6,6 +6,7 @@
   // not what it is.
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
+  import { scrollToFrame, stripWindow } from './strip-window';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import { t } from '../i18n';
@@ -19,6 +20,10 @@
   /** Keeps the layer names level with their row of cells. */
   function syncRowScroll(e: Event): void {
     const from = e.target as HTMLElement | null;
+    if (from === strip) {
+      // The window of frames the strip builds follows the scroll.
+      stripScroll = strip.scrollLeft;
+    }
     const list = body?.querySelector<HTMLElement>('[data-layer-list]');
     if (!from || !list || !strip) {
       return;
@@ -29,15 +34,29 @@
     }
   }
 
+  // --- The window of frames the strip builds ---------------------------------
+  // The format allows 4096 frames and a row is built per layer: three hundred
+  // frames on five layers is fifteen hundred buttons with a canvas inside. The
+  // strip builds what is in view plus a screen either side, and two spacers
+  // stand in for the rest so the scrollbar is the length it always was.
+  /** The gap between cells of a row — `.head`, `.cells` and `.wave` share it. */
+  const GRID_GAP = 2;
+  let stripScroll = $state(0);
+  let stripWidth = $state(0);
+
   // Keep the active frame in view (the reference list re-centers on it):
   // after add/delete/paste/hotkeys the strip scrolls just enough to show it.
   // Not during playback — the strip stays put while frames flip.
   $effect(() => {
     const index = editor.activeFrame;
-    void editor.doc.layers[0].frames.length;
+    void editor.doc;
     if (editor.playing || !strip) return;
-    const el = strip.querySelector(`[data-frame="${index}"]`) ?? strip.children[index];
-    (el as HTMLElement | undefined)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // Where the frame sits is arithmetic: its cell may not be built.
+    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth);
+    if (to !== null) {
+      strip.scrollLeft = to;
+      stripScroll = to;
+    }
   });
 
   // --- Studio grid ----------------------------------------------------------
@@ -109,6 +128,9 @@
   const cell = $derived(fitThumb(editor.doc.width, editor.doc.height, CELL_BOX.w, CELL_BOX.h));
   const row = $derived(rowHeight(editor.doc));
   const thumbWidth = $derived(cell.w + 2);
+  /** The frames built right now — the ones in view, plus a screen either side. */
+  const view = $derived(stripWindow(frames.length, thumbWidth, GRID_GAP, stripScroll, stripWidth));
+  const built = $derived(Array.from({ length: view.count }, (_, k) => view.first + k));
 
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the
@@ -164,13 +186,19 @@
          and the controls. The lane is drawn even where the track is silent, so
          an empty stretch reads as "quiet here", not as a missing waveform. -->
     <div class="wave" aria-hidden="true">
-      {#each frames as _, i (i)}
+      {#if view.before > 0}
+        <span class="gap" style:width="{view.before}px"></span>
+      {/if}
+      {#each built as i (i)}
         <span class="bar" style:width="{cellWidth}px">
           {#each { length: per } as _, k (k)}
             <span style:height="{Math.max(6, Math.round((bars[i * per + k] ?? 0) * 100))}%"></span>
           {/each}
         </span>
       {/each}
+      {#if view.after > 0}
+        <span class="gap" style:width="{view.after}px"></span>
+      {/if}
     </div>
   {/if}
 {/snippet}
@@ -223,10 +251,14 @@
       role="group"
       aria-label={t('timeline.grid')}
       bind:this={strip}
+      bind:clientWidth={stripWidth}
       onpointerdown={resetSelection}
     >
       <div class="head">
-        {#each frames as _, i (i)}
+        {#if view.before > 0}
+          <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
+        {/if}
+        {#each built as i (i)}
           <span
             class="num"
             style:width="{cell.w + 2}px"
@@ -235,10 +267,16 @@
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
           >{i + 1}</span>
         {/each}
+        {#if view.after > 0}
+          <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
+        {/if}
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
         <div class="cells" style:height="{row}px">
-          {#each frames as _, i (i)}
+          {#if view.before > 0}
+            <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
+          {/if}
+          {#each built as i (i)}
             <button
               class="cell"
               style:width="{cell.w + 2}px"
@@ -268,6 +306,9 @@
               />
             </button>
           {/each}
+          {#if view.after > 0}
+            <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
+          {/if}
         </div>
       {/each}
       {@render wave(thumbWidth)}
@@ -423,6 +464,11 @@
     align-items: flex-end;
     background: color-mix(in srgb, var(--electric, #1b5cff) 7%, transparent);
     border-radius: var(--r-sm, 7px);
+  }
+  /* What stands in for the frames the strip has not built: the width they
+     would have taken, so the scrollbar is the length it always was. */
+  .gap {
+    flex: none;
   }
   .bar {
     flex: none;
