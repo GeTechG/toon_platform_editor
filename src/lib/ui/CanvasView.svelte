@@ -8,15 +8,12 @@
   import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
-    blitLayer,
-    renderLivePart,
     renderRawPolyline,
     renderResolvedPreview,
-    renderStrokesLayer,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
-  import type { StrokeGeometry } from '../render/smoothing';
+  import { FrameComposer, type LiveLine } from '../render/frame-compose';
   import { isFilledLineTool } from '../render/dispatch';
   import { cursorShape, pickSource } from './frame-selection';
   import {
@@ -39,7 +36,6 @@
     zoomDelta,
     type Stage,
   } from './viewport';
-  import { BufferRing } from './buffer-ring';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import type { LineToolDescriptor } from '../format/types';
   import {
@@ -149,53 +145,22 @@
    */
   let strokeLayer: Layer | undefined;
 
-  // Three composite buffers instead of a canvas per visited frame: everything
-  // under the active layer, the active layer itself, everything above. Memory
-  // is bounded by the canvas size, not by how many frames were visited.
-  let belowEl: HTMLCanvasElement | null = null;
-  let activeEl: HTMLCanvasElement | null = null;
-  let aboveEl: HTMLCanvasElement | null = null;
   /**
-   * Set by the reactive effect, which reads the document and the view. A
-   * digest over stroke counts would miss a paste that swaps cells of the same
-   * length, so the subscription — not a hand-rolled key — decides when the
-   * stack is stale.
+   * The frame itself: the layers around the active one, the ghosts of the
+   * onion between them and the line under the hand. The same composer the
+   * benchmark runs, so what is measured there is what is drawn here.
    */
-  let stackDirty = true;
-  let stackSize = { width: 0, height: 0 };
-  /** Scratch for the active layer plus the live stroke (the eraser cuts only here). */
-  let liveEl: HTMLCanvasElement | null = null;
-  /**
-   * What the live buffer was seeded from, and how much of the line is already
-   * on it. A stroke grows at one end: the part that has settled stays where it
-   * was drawn, and only what still moves under the hand is drawn again — on
-   * the visible canvas, which is repainted every frame anyway.
-   */
-  let liveSeed = '';
-  let livePainted = 0;
-  /** Bumped by every rebuild of the stack, so the live buffer knows to reseed. */
-  let stackSerial = 0;
+  const composer = new FrameComposer();
   /** The paper and its shadow, and the shape they were drawn for. */
   let paperEl: HTMLCanvasElement | null = null;
   let paperKey = '';
-  /** Scratch for the whole frame when it is blitted at a profile alpha < 1. */
-  let compositeEl: HTMLCanvasElement | null = null;
-  /** Scratch one layer is rasterized into before it lands on a stack buffer. */
-  let layerScratchEl: HTMLCanvasElement | null = null;
+  /** Scratch the pipette flattens the frame into before reading a pixel back. */
+  let pickEl: HTMLCanvasElement | null = null;
   let rafPending = false;
 
-  // Onion neighbors: at most the onion depth on each side, so a handful of
-  // cells. The buffers are made once and handed out by key — a ghost carries
-  // the pan baked into it, so a hand moving the sheet misses on every frame,
-  // and a miss that made a canvas was a full-stage backing store per ghost
-  // per frame.
-  const ONION_CACHE_LIMIT = 4;
-  const onionRing = new BufferRing(ONION_CACHE_LIMIT, () => document.createElement('canvas'));
-
   /**
-   * Stable id per layer or cell object. Cache keys built from indices and
-   * stroke counts collide after a reorder, a paste of equal length or a
-   * document swap; object identity does not.
+   * Stable id per gesture object. A key built from a count collides after the
+   * gesture is replaced; object identity does not.
    */
   const nodeIds = new WeakMap<object, number>();
   let nextNodeId = 0;
@@ -240,113 +205,6 @@
     pctx.fillRect(margin, margin, w, h);
     paperKey = key;
     return margin;
-  }
-
-  /** Rasterizes `cells` into a transparent buffer, bottom-up. */
-  function paintStack(
-    el: HTMLCanvasElement,
-    cells: Frame[],
-    pxW: number,
-    pxH: number,
-    viewport: Viewport,
-  ): void {
-    const ctx = el.getContext('2d') as unknown as ViewCtx;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, pxW, pxH);
-    if (cells.length === 1) {
-      // A single layer cannot bleed into another — rasterize it in place.
-      renderStrokesLayer(cells[0], previewTools, ctx, viewport);
-      return;
-    }
-    for (const cell of cells) {
-      // Each layer rasterizes into its own scratch first, so an eraser cuts
-      // only its own layer — then the scratch lands on the stack buffer.
-      layerScratchEl = buffer(layerScratchEl, pxW, pxH);
-      const sctx = layerScratchEl.getContext('2d') as unknown as ViewCtx;
-      sctx.setTransform(1, 0, 0, 1, 0, 0);
-      sctx.clearRect(0, 0, pxW, pxH);
-      renderStrokesLayer(cell, previewTools, sctx, viewport);
-      blitLayer(layerScratchEl, ctx);
-    }
-  }
-
-  function rebuildStack(frame: number, pxW: number, pxH: number, viewport: Viewport): void {
-    const layers = editor.doc.layers;
-    const below: Frame[] = [];
-    const above: Frame[] = [];
-    for (let l = 0; l < layers.length; l++) {
-      const cell = stackCell(l, frame);
-      if (!cell || layers[l].hidden || l === editor.activeLayer) {
-        continue;
-      }
-      (l < editor.activeLayer ? below : above).push(cell);
-    }
-    belowEl = buffer(belowEl, pxW, pxH);
-    aboveEl = buffer(aboveEl, pxW, pxH);
-    activeEl = buffer(activeEl, pxW, pxH);
-    paintStack(belowEl, below, pxW, pxH, viewport);
-    paintStack(aboveEl, above, pxW, pxH, viewport);
-    const activeCell = stackCell(editor.activeLayer, frame);
-    paintStack(activeEl, activeCell && !layers[editor.activeLayer].hidden ? [activeCell] : [], pxW, pxH, viewport);
-    stackSerial += 1;
-  }
-
-  /**
-   * A ghost frame, cached: the neighbour model draws the active layer alone,
-   * while Tonio's history flattens every selected layer of that frame into one
-   * ghost (`bundle:11035-11040`) — the state decides which through
-   * `onionHistoryLayerIndices`.
-   */
-  function onionCell(frame: number, pxW: number, pxH: number, viewport: Viewport): HTMLCanvasElement | null {
-    const indices = editor.onionHistoryLayerIndices;
-    const cells: { layer: Layer; cell: Frame }[] = [];
-    for (const index of indices) {
-      const layer = editor.doc.layers[index];
-      const cell = layer?.frames[frame];
-      if (cell && !layer.hidden && cell.strokes.length > 0) {
-        cells.push({ layer, cell });
-      }
-    }
-    if (cells.length === 0) {
-      return null;
-    }
-    const key = cells
-      .map(({ layer, cell }) => `${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}`)
-      .join('|')
-      + `:${pxW}x${pxH}@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
-    const { buffer: el, fresh } = onionRing.take(key);
-    if (!fresh && el.width === pxW && el.height === pxH) {
-      return el;
-    }
-    buffer(el, pxW, pxH);
-    const ctx = el.getContext('2d') as unknown as ViewCtx;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, pxW, pxH);
-    for (const { cell } of cells) {
-      renderStrokesLayer(cell, editor.doc.tools, ctx, viewport);
-    }
-    return el;
-  }
-
-  /**
-   * Blits the ghosts. They sit where the active layer sits in the stack — over
-   * the layers below it, under the active one and everything above
-   * (`bundle:11158-11161`), so a ghost never covers the line being drawn.
-   */
-  function drawOnion(ctx: ViewCtx, pxWidth: number, pxHeight: number, viewport: Viewport): void {
-    if (!editor.showOnionSkin) {
-      return;
-    }
-    for (const neighbor of editor.onionSkinLayers) {
-      const el = onionCell(neighbor.index, pxWidth, pxHeight, viewport);
-      if (!el) {
-        continue;
-      }
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = neighbor.alpha;
-      ctx.drawImage(el, 0, 0);
-    }
-    ctx.globalAlpha = 1;
   }
 
   // The sheet at 100%: the document fitted inside the wrap (whose size the
@@ -458,14 +316,10 @@
       return;
     }
 
-    if (stackDirty || stackSize.width !== pxWidth || stackSize.height !== pxHeight) {
-      rebuildStack(frame, pxWidth, pxHeight, viewport);
-      stackDirty = false;
-      stackSize = { width: pxWidth, height: pxHeight };
-    }
-
-    // The sheet, not the window: the table (the element's own background)
-    // shows through around the paper, which is filled where the view puts it.
+    // The frame itself — the layers around the active one, the ghosts, the
+    // line under the hand — is put together by the shared composer, the same
+    // one the benchmark runs. What is left here is the editor's canvas: the
+    // paper the frame lies on, the clip to its edges, a tool's grid over it.
     const sheet = {
       x: editor.view.panX * dpr,
       y: editor.view.panY * dpr,
@@ -487,123 +341,22 @@
     ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
     ctx.clip();
 
-    // The live stroke belongs to the active layer: it composites with that
-    // layer alone, so an eraser punches its alpha and not the layers below.
-    const session = pointer.session;
-    let activeWithLive = activeEl!;
-    /**
-     * The end of the live line, the part still moving under the hand: it is
-     * drawn on the visible canvas, between the active layer and the ones
-     * above it, because that canvas is repainted every frame anyway and the
-     * buffer under it must keep only what has settled.
-     */
-    let liveTail: ((target: ViewCtx) => void) | null = null;
-    if (session && strokeLayer === editor.doc.layers[editor.activeLayer]) {
-      const erase = session.descriptor.kind === 'eraser';
-      const color = erase ? BACKGROUND_COLOR : session.descriptor.color;
-      const growing = growingLine(session);
-      liveEl = buffer(liveEl, pxWidth, pxHeight);
-      const lctx = liveEl.getContext('2d') as unknown as ViewCtx;
-      const seed = `${nodeId(session)}:${stackSerial}:${pxWidth}x${pxHeight}`
-        + `@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
-      const reseed = (): void => {
-        lctx.setTransform(1, 0, 0, 1, 0, 0);
-        lctx.clearRect(0, 0, pxWidth, pxHeight);
-        lctx.drawImage(activeEl!, 0, 0);
-      };
-      if (!growing) {
-        // An eraser cuts the alpha of this layer and a feather fills what it
-        // encloses: both depend on the whole figure, so both are drawn whole.
-        reseed();
-        liveSeed = '';
-        livePainted = 0;
-        lctx.globalCompositeOperation = erase ? 'destination-out' : 'source-over';
-        renderSessionPreview(session, lctx, viewport, color);
-        lctx.globalCompositeOperation = 'source-over';
-      } else {
-        // Every command but the last two is settled: the thinning keeps the
-        // point under the hand twice at the end, and a command reaches one
-        // point past its own.
-        const settled = Math.max(0, growing.points.length / 2 - 3);
-        if (seed !== liveSeed || settled < livePainted) {
-          reseed();
-          liveSeed = seed;
-          livePainted = 0;
-        }
-        if (settled > livePainted) {
-          // A join is the command the sub-path starts *after*, so the stretch
-          // that adds commands `livePainted`…`settled - 1` joins one before.
-          const drawn = renderLivePart(
-            growing.points, growing.geometry, session.descriptor.width, color,
-            lctx, viewport, livePainted - 1, settled - 1,
-          );
-          if (drawn) {
-            livePainted = settled;
-          }
-        }
-        const from = livePainted - 1;
-        liveTail = (target) => {
-          if (from <= 0) {
-            // Too short to have settled anything: the whole line, as before.
-            renderSessionPreview(session, target, viewport, color);
-            return;
-          }
-          renderLivePart(
-            growing.points, growing.geometry, session.descriptor.width, color,
-            target, viewport, from,
-          );
-        };
-      }
-      activeWithLive = liveEl;
-    }
+    composer.compose(ctx, pxWidth, pxHeight, {
+      doc: editor.doc,
+      frame,
+      activeLayer: editor.activeLayer,
+      viewport,
+      tools: previewTools,
+      cellAt: stackCell,
+      ghosts: editor.showOnionSkin
+        ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+        : undefined,
+      live: liveLine(viewport),
+      // The profile's active alpha (Multator: 0.8, its containerSprite)
+      // applies to the whole current frame.
+      alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
+    });
 
-    // The mega eraser previews its cut the way the reference does — the
-    // gesture punches alpha on top of the layer — while the strokes are only
-    // rewritten on pointerup.
-    if (megaGesture && megaGesture.length >= 2) {
-      liveEl = buffer(liveEl, pxWidth, pxHeight);
-      const lctx = liveEl.getContext('2d') as unknown as ViewCtx;
-      lctx.setTransform(1, 0, 0, 1, 0, 0);
-      lctx.clearRect(0, 0, pxWidth, pxHeight);
-      lctx.drawImage(activeEl!, 0, 0);
-      lctx.globalCompositeOperation = 'destination-out';
-      renderRawPolyline(
-        megaGesture,
-        // The width the gesture really cuts with: the cut on release takes
-        // the same normalised radius, and so does the cursor ring.
-        brushWidthDoc(editor.brushSizeLogical),
-        BACKGROUND_COLOR,
-        lctx,
-        viewport,
-      );
-      lctx.globalCompositeOperation = 'source-over';
-      activeWithLive = liveEl;
-    }
-
-    // The profile's active alpha (Multator: 0.8, its containerSprite) applies
-    // to the whole current frame, so the stack composites offscreen first.
-    const alpha = editor.playing ? 1 : editor.ux.activeFrameAlpha;
-    if (alpha < 1) {
-      compositeEl = buffer(compositeEl, pxWidth, pxHeight);
-      const cctx = compositeEl.getContext('2d') as unknown as ViewCtx;
-      cctx.setTransform(1, 0, 0, 1, 0, 0);
-      cctx.clearRect(0, 0, pxWidth, pxHeight);
-      cctx.drawImage(belowEl!, 0, 0);
-      drawOnion(cctx, pxWidth, pxHeight, viewport);
-      cctx.drawImage(activeWithLive, 0, 0);
-      liveTail?.(cctx);
-      cctx.setTransform(1, 0, 0, 1, 0, 0);
-      cctx.drawImage(aboveEl!, 0, 0);
-      ctx.globalAlpha = alpha;
-      blitLayer(compositeEl, ctx);
-      ctx.globalAlpha = 1;
-    } else {
-      blitLayer(belowEl!, ctx);
-      drawOnion(ctx, pxWidth, pxHeight, viewport);
-      blitLayer(activeWithLive, ctx);
-      liveTail?.(ctx);
-      blitLayer(aboveEl!, ctx);
-    }
     // The grid is a drawing aid, not part of the picture: the preview shows
     // the frames as they will be exported.
     if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
@@ -734,26 +487,57 @@
   }
 
   /**
-   * The line under the hand when it is one that can be added to: a pencil
-   * whose path is read as a polyline or a smooth chain. An eraser cuts alpha
-   * and a feather fills its interior — what either of them draws depends on
-   * the whole figure, so neither grows and both say so by being absent here.
+   * The line under the hand, as the composer takes it.
+   *
+   * A pencil whose path is read as a polyline or a smooth chain is handed over
+   * as points: the composer keeps the settled part of it and draws only what
+   * still moves. An eraser cuts alpha and a feather fills what it encloses —
+   * what either of them paints depends on the whole figure, so they hand over
+   * the way to paint it instead. The mega eraser is one of the latter: its
+   * gesture punches alpha on top of the layer the way the reference does,
+   * while the strokes are only rewritten on release.
    */
-  function growingLine(
-    session: NonNullable<typeof pointer.session>,
-  ): { points: readonly number[]; geometry: StrokeGeometry } | null {
-    if (session.descriptor.kind !== 'pencil') {
+  function liveLine(viewport: Viewport): LiveLine | null {
+    if (megaGesture && megaGesture.length >= 2) {
+      const gesture = megaGesture;
+      return {
+        id: nodeId(gesture),
+        erase: true,
+        paint: (target) => renderRawPolyline(
+          gesture,
+          // The width the gesture really cuts with: the cut on release takes
+          // the same normalised radius, and so does the cursor ring.
+          brushWidthDoc(editor.brushSizeLogical),
+          BACKGROUND_COLOR,
+          target,
+          viewport,
+        ),
+      };
+    }
+    const session = pointer.session;
+    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer]) {
       return null;
     }
+    const erase = session.descriptor.kind === 'eraser';
+    const color = erase ? BACKGROUND_COLOR : session.descriptor.color;
     const geometry = session.rules.previewGeometry ?? session.descriptor.geometry;
-    if (geometry !== 'line' && geometry !== 'smooth') {
-      return null;
+    const grows = session.descriptor.kind === 'pencil'
+      && (geometry === 'line' || geometry === 'smooth');
+    if (!grows) {
+      return {
+        id: nodeId(session),
+        erase,
+        paint: (target) => renderSessionPreview(session, target, viewport, color),
+      };
     }
     return {
+      id: nodeId(session),
       points: session.rules.previewGeometry === 'line'
         ? session.rawPoints
         : previewStrokeSession(session),
       geometry,
+      width: session.descriptor.width,
+      color,
     };
   }
 
@@ -811,7 +595,7 @@
     void editor.ux;
     void editor.view;
     void editor.transform;
-    stackDirty = true;
+    composer.invalidate();
     scheduleDraw();
   });
 
@@ -859,21 +643,24 @@
     const rect = canvasEl.getBoundingClientRect();
     const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * canvasEl.width)));
     const py = Math.min(canvasEl.height - 1, Math.max(0, Math.floor(((e.clientY - rect.top) / rect.height) * canvasEl.height)));
-    let el = activeEl;
-    if (source === 'canvas') {
-      compositeEl = buffer(compositeEl, canvasEl.width, canvasEl.height);
-      const cctx = compositeEl.getContext('2d') as unknown as ViewCtx;
-      cctx.setTransform(1, 0, 0, 1, 0, 0);
-      cctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-      cctx.drawImage(belowEl!, 0, 0);
-      cctx.drawImage(activeEl!, 0, 0);
-      cctx.drawImage(aboveEl!, 0, 0);
-      el = compositeEl;
-    }
-    if (!el) {
+    // The frame as it was composed, off the composer's own buffers: no paper
+    // under it, no onion over it and no line under the hand.
+    const layers = composer.layers;
+    if (!layers) {
       return null;
     }
-    const [r, g, b, a] = el.getContext('2d')!.getImageData(px, py, 1, 1).data;
+    pickEl = buffer(pickEl, canvasEl.width, canvasEl.height);
+    const pctx = pickEl.getContext('2d') as unknown as ViewCtx;
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    if (source === 'canvas') {
+      pctx.drawImage(layers.below, 0, 0);
+    }
+    pctx.drawImage(layers.active, 0, 0);
+    if (source === 'canvas') {
+      pctx.drawImage(layers.above, 0, 0);
+    }
+    const [r, g, b, a] = pickEl.getContext('2d')!.getImageData(px, py, 1, 1).data;
     // Reference: only a fully opaque pixel carries a colour. The soft rim of
     // a stroke reads as emptiness, so the pipette never picks a washed-out
     // version of the line it was aimed at.
@@ -1148,7 +935,7 @@
       editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
       megaGesture = null;
       gesturePointerId = -1;
-      stackDirty = true;
+      composer.invalidate();
       scheduleDraw();
       return;
     }

@@ -4,12 +4,13 @@
  * performance.now, canvas). The pure math lives in metrics.ts.
  */
 
-import { DEFAULT_BRUSH_SIZE_LOGICAL } from '../lib/format/constants';
+import { BACKGROUND_COLOR, DEFAULT_BRUSH_SIZE_LOGICAL, ONION_SKIN_ALPHAS } from '../lib/format/constants';
 import type { ToonDocument } from '../lib/format/types';
 import { LoopPlayer } from '../lib/player/player';
 import { brushWidthDoc } from '../lib/tools/stroke-builder';
 import type { BenchConfig } from './config';
-import { FrameCompositor, type LiveStroke } from './compose';
+import { FrameComposer, type ComposeTarget, type LiveLine } from '../lib/render/frame-compose';
+import { onionLayers } from '../lib/ui/frame-selection';
 import { frameCount } from '../lib/model/operations';
 import { buildCorpus, syntheticRawPoints } from './corpus';
 import { frameTiming, heapGrowthBytes, percentile, type HeapSample } from './metrics';
@@ -37,6 +38,49 @@ function usedHeap(): number | null {
   return mem ? mem.usedJSHeapSize : null;
 }
 
+/**
+ * The frame, drawn the way the editor draws it: the same composer, the same
+ * buffers, the same live line. What the editor puts over it — the paper, the
+ * clip to the sheet, a tool's grid — is not the frame and is not measured.
+ */
+class BenchCanvas {
+  readonly #ctx: ComposeTarget;
+  readonly #composer = new FrameComposer();
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('2D context unavailable');
+    }
+    this.#ctx = ctx as unknown as ComposeTarget;
+  }
+
+  compose(doc: ToonDocument, frame: number, onion: boolean, live: LiveLine | null): void {
+    const { width, height } = this.canvas;
+    // dpr folded into the pixel count: k = scale × dpr = width / doc.width.
+    const viewport = { scale: width / doc.width, dpr: 1 };
+    this.#ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.#ctx.fillStyle = BACKGROUND_COLOR;
+    this.#ctx.fillRect(0, 0, width, height);
+    this.#composer.compose(this.#ctx, width, height, {
+      doc,
+      frame,
+      activeLayer: 0,
+      viewport,
+      tools: doc.tools,
+      ghosts: onion
+        ? { frames: onionLayers(frame, frameCount(doc), ONION_SKIN_ALPHAS), layers: [0] }
+        : undefined,
+      live,
+    });
+  }
+
+  /** The frame changed: the stack the composer holds is stale. */
+  invalidate(): void {
+    this.#composer.invalidate();
+  }
+}
+
 export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Promise<BenchResult> {
   const doc = buildCorpus({
     layers: cfg.layers,
@@ -45,7 +89,7 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
     pointsPerStroke: cfg.pointsPerStroke,
     mixedEvery: cfg.mixedEvery,
   });
-  const compositor = new FrameCompositor(canvas);
+  const compositor = new BenchCanvas(canvas);
 
   const latencies = await probeLatency(compositor, doc, cfg);
   const { intervals, heap } = await probePlayback(compositor, doc, cfg);
@@ -106,23 +150,25 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
  * measurable part of input→paint on weak hardware.
  */
 async function probeLatency(
-  compositor: FrameCompositor,
+  compositor: BenchCanvas,
   doc: ToonDocument,
   cfg: BenchConfig,
 ): Promise<number[]> {
   const raw = syntheticRawPoints(doc, 999, cfg.latencyPoints);
-  const live: LiveStroke = {
-    points: [],
+  const points: number[] = [];
+  const live: LiveLine = {
+    id: 1,
+    points,
+    geometry: 'smooth',
     width: brushWidthDoc(DEFAULT_BRUSH_SIZE_LOGICAL),
     color: '#000000',
   };
-  const pts = live.points as number[];
   const latencies: number[] = [];
   for (let i = 0; i < cfg.latencyPoints; i++) {
     await nextFrame();
     const t0 = performance.now();
-    pts.push(raw[2 * i], raw[2 * i + 1]);
-    compositor.compose(doc, 0, 0, true, live);
+    points.push(raw[2 * i], raw[2 * i + 1]);
+    compositor.compose(doc, 0, true, live);
     latencies.push(performance.now() - t0);
   }
   return latencies;
@@ -135,12 +181,13 @@ async function probeLatency(
  * heap samples. Onion is off during playback, matching the editor.
  */
 async function probePlayback(
-  compositor: FrameCompositor,
+  compositor: BenchCanvas,
   doc: ToonDocument,
   cfg: BenchConfig,
 ): Promise<{ intervals: number[]; heap: HeapSample[] }> {
   for (let f = 0; f < frameCount(doc); f++) {
-    compositor.compose(doc, f, f, false, null);
+    compositor.invalidate();
+    compositor.compose(doc, f, false, null);
   }
 
   const deliveries: number[] = [];
@@ -151,7 +198,10 @@ async function probePlayback(
     fps: cfg.targetFps,
     startFrame: 0,
     onFrame: (idx) => {
-      compositor.compose(doc, idx, idx, false, null);
+      // A frame of playback is a new frame: the stack the composer holds is
+      // the frame it drew last, exactly as in the editor.
+      compositor.invalidate();
+      compositor.compose(doc, idx, false, null);
       const now = performance.now();
       deliveries.push(now);
       const mem = usedHeap();

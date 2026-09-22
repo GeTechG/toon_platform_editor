@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 const source = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+/** The frame itself is put together here now; the canvas only shows it. */
+const compose = await Bun.file(new URL('../render/frame-compose.ts', import.meta.url)).text();
 
 function handler(name: string): string {
   const match = source.match(new RegExp(`function ${name}\\([^]*?\\n  }`));
@@ -66,54 +68,47 @@ describe('layer-aware canvas contract', () => {
     // The stack is split around the ACTIVE layer, so a preview drawn while the
     // selection moved elsewhere would show the stroke on the wrong layer. The
     // commit still lands on the pinned layer either way.
-    const draw = handler('draw');
-    expect(draw).toContain('strokeLayer === editor.doc.layers[editor.activeLayer]');
+    expect(handler('liveLine')).toContain('strokeLayer !== editor.doc.layers[editor.activeLayer]');
   });
 
   it('caches three composite buffers instead of one canvas per visited frame', () => {
-    expect(source).not.toContain('WeakMap<Frame');
-    for (const buffer of ['belowEl', 'activeEl', 'aboveEl']) {
-      expect(source).toContain(buffer);
+    expect(compose).not.toContain('WeakMap<Frame');
+    for (const buffer of ['#below', '#active', '#above']) {
+      expect(compose).toContain(buffer);
     }
   });
 
   it('rebuilds the buffers from the reactive effect, not from a content digest', () => {
     // A digest over stroke counts misses a paste that swaps cells of equal
     // length; the effect already tracks every document dependency, so it is
-    // what marks the stack dirty.
+    // what tells the composer the frame went stale.
     expect(source).not.toContain('function stackKey');
-    expect(source).toContain('stackDirty = true');
-    const draw = handler('draw');
-    expect(draw).toContain('stackDirty');
-    expect(draw).toContain('rebuildStack');
-    // Pointer moves repaint without rebuilding: only the effect sets the flag.
-    expect(handler('onPointerMove')).not.toContain('stackDirty');
+    expect(source).toContain('composer.invalidate()');
+    expect(compose).toContain('#stale');
+    // Pointer moves repaint without rebuilding: only the effect invalidates.
+    expect(handler('onPointerMove')).not.toContain('composer.invalidate');
   });
 
   it('onion-skin composites only the layers the state names for the ghost', () => {
     // Neighbour model: the active layer alone, so a static background is not
     // painted twice. Tonio's history: every selected layer, flattened.
-    const onion = source.match(/function onionCell\([^]*?\n  }/)?.[0] ?? '';
-    expect(onion).toContain('editor.onionHistoryLayerIndices');
-    expect(source).toContain('ONION_CACHE_LIMIT');
+    expect(handler('draw')).toContain('layers: editor.onionHistoryLayerIndices');
+    expect(compose).toContain('GHOST_BUFFERS');
   });
 
   it('redraws a ghost into a buffer it already has, never into a new canvas', () => {
     // The key carries the pan, so a hand moving the sheet misses the cache on
     // every frame; a miss that made a canvas was a full-stage backing store
     // per ghost per frame, handed straight to the collector.
-    const onion = source.match(/function onionCell\([^]*?\n  }/)?.[0] ?? '';
-    expect(onion).toContain('onionRing.take(key)');
-    expect(onion).not.toContain('buffer(null');
-    expect(source).toContain('new BufferRing(');
+    expect(compose).toContain('this.#ghosts.take(key)');
+    expect(compose).toContain('new BufferRing(');
   });
 
   it('keys the onion cache by layer and cell identity, not by index and count', () => {
     // Index + stroke count collide after a reorder, a paste, or a document
     // swap — the cache would hand back another layer's drawing.
-    const onion = source.match(/function onionCell\([^]*?\n  }/)?.[0] ?? '';
-    expect(onion).toContain('nodeId(layer)');
-    expect(onion).toContain('nodeId(cell)');
+    expect(compose).toContain('nodeId(layer)');
+    expect(compose).toContain('nodeId(cell)');
   });
 
   it('the pipette honors the configured source and Alt', () => {
@@ -169,14 +164,17 @@ describe('transform tools on the canvas', () => {
     expect(handler('stackCell')).toContain('widthWithScale');
     // Preview and apply share one quantizer, or the strokes snap on Enter.
     expect(handler('stackCell')).toContain('quantizeStrokePoints(');
-    expect(source).toContain('renderStrokesLayer(cells[0], previewTools');
+    // The stack rasterizes with that table, so the preview is what lands.
+    expect(handler('draw')).toContain('tools: previewTools');
   });
 
   it('draws the selection moved, not doubled: the stack rasterizes it transformed', () => {
     // Otherwise the originals stay under the preview and every drag smears.
     expect(handler('stackCell')).toContain('editor.transform');
     expect(handler('stackCell')).toContain('editor.transformPoint(');
-    expect(handler('rebuildStack')).toContain('stackCell(');
+    // The composer asks for the cell as it should be drawn, not as it is stored.
+    expect(handler('draw')).toContain('cellAt: stackCell');
+    expect(compose).toContain('scene.cellAt');
   });
 
   it('shows the polygon, the frame and its handles as an overlay over the canvas', () => {
@@ -260,27 +258,27 @@ describe('the live stroke is added to, not redrawn', () => {
   // Redrawing the whole line every frame costs the whole line every frame:
   // the longer it is drawn, the further it trails the hand.
   it('keeps the settled part of the line on the buffer', () => {
-    const draw = handler('draw');
-    expect(draw).toContain('renderLivePart(');
-    expect(draw).toContain('livePainted');
-    // The end still moving goes on the visible canvas, which is repainted
-    // every frame anyway — so the buffer holds nothing stale.
-    expect(draw).toContain('liveTail');
+    expect(compose).toContain('renderLivePart(');
+    expect(compose).toContain('#livePainted');
+    // The end still moving goes on the target, which is repainted every frame
+    // anyway — so the buffer holds nothing stale.
+    expect(compose).toContain('#paintLiveTail');
   });
 
   it('reseeds the buffer when anything under the line changes', () => {
-    const draw = handler('draw');
-    const seed = draw.match(/const seed = [^;]*;/)?.[0] ?? '';
-    expect(seed).toContain('stackSerial');
+    const seed = compose.match(/const seed = [^;]*\n[^;]*;/)?.[0] ?? '';
+    expect(seed).toContain('this.#serial');
     expect(seed).toContain('viewport.scale');
     expect(seed).toContain('viewport.panX');
-    expect(handler('rebuildStack')).toContain('stackSerial += 1');
+    expect(compose).toContain('this.#serial += 1');
   });
 
   it('draws an eraser and a feather whole: their mark depends on the whole figure', () => {
-    const growing = source.match(/function growingLine\([^]*?\n  }/)?.[0] ?? '';
-    expect(growing).toContain("session.descriptor.kind !== 'pencil'");
-    expect(growing).toContain("geometry !== 'line' && geometry !== 'smooth'");
+    const live = handler('liveLine');
+    expect(live).toContain("session.descriptor.kind === 'pencil'");
+    expect(live).toContain("geometry === 'line' || geometry === 'smooth'");
+    // A line that cannot be added to hands over the way to paint it instead.
+    expect(live).toContain('paint: (target)');
   });
 });
 
@@ -289,8 +287,9 @@ describe('the mega eraser', () => {
     // The smear on screen and the cut on release take the same number the
     // slider shows — one of them scaled and the other not is how the gesture
     // used to swallow more than it promised.
-    const preview = source.match(/renderRawPolyline\(\s*megaGesture,[^)]*\)/)?.[0] ?? '';
-    expect(preview).toContain('brushWidthDoc(editor.brushSizeLogical)');
+    const live = handler('liveLine');
+    expect(live).toContain('megaGesture');
+    expect(live).toContain('brushWidthDoc(editor.brushSizeLogical)');
     expect(handler('onPointerUp')).toContain('brushWidthDoc(editor.brushSizeLogical) / 2');
   });
 });
@@ -311,15 +310,14 @@ describe('the wheel zoom', () => {
 
 describe('onion position in the layer stack (Toonio parity)', () => {
   it('the ghosts land between the layers below and the active one', () => {
-    const draw = source.slice(source.indexOf('blitLayer(belowEl'));
-    expect(source).toContain('drawOnion(');
-    // The ghosts are blitted after the layers below the active one and before it.
-    const below = source.indexOf('blitLayer(belowEl!, ctx)');
-    const onion = source.indexOf('drawOnion(ctx', below);
-    const active = source.indexOf('blitLayer(activeWithLive, ctx)', below);
-    expect(onion).toBeGreaterThan(below);
-    expect(active).toBeGreaterThan(onion);
-    expect(draw).toBeTruthy();
+    // Asserted for real against a recording target in frame-compose.test.ts;
+    // here only that the canvas still asks for them.
+    expect(handler('draw')).toContain('ghosts: editor.showOnionSkin');
+    const below = compose.indexOf('blitLayer(this.#below!.image, target)');
+    const ghosts = compose.indexOf('this.#drawGhosts(target', below);
+    const active = compose.indexOf('blitLayer(active.image, target)', below);
+    expect(ghosts).toBeGreaterThan(below);
+    expect(active).toBeGreaterThan(ghosts);
   });
 
   it('a ghost flattens every layer the selection covers', () => {
@@ -333,7 +331,7 @@ describe('the ghosts repaint when the selection changes', () => {
   // active one. Without it a Ctrl+click showed nothing until the active layer
   // moved and something else invalidated the stack.
   function redrawEffect(): string {
-    const match = source.match(/\$effect\(\(\) => \{[^]*?stackDirty = true;[^]*?\n  \}\);/);
+    const match = source.match(/\$effect\(\(\) => \{[^]*?composer\.invalidate\(\);[^]*?\n  \}\);/);
     if (!match) throw new Error('missing the stack effect');
     return match[0];
   }
@@ -342,10 +340,8 @@ describe('the ghosts repaint when the selection changes', () => {
     expect(redrawEffect()).toContain('editor.onionHistoryLayerIndices');
   });
 
-  it('subscribes to those layers cells, not only the active one', () => {
-    const effect = redrawEffect();
-    const ghostLoop = effect.slice(effect.indexOf('editor.onionSkinLayers'));
-    expect(ghostLoop).not.toContain('activeLayer?.frames');
+  it('subscribes to the document, which every write to it replaces', () => {
+    expect(redrawEffect()).toContain('void editor.doc;');
   });
 });
 
