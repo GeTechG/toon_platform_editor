@@ -2589,6 +2589,10 @@
       transform: translate(-50%, -50%);
       width: min(24rem, calc(100vw - 2rem));
       border-radius: var(--r-md);
+      /* Not a sheet any more: all four corners, all four sides, floating over
+         the scrim. The sheet's lift points up because it rises from an edge —
+         centred, that leaves it standing on nothing. */
+      box-shadow: var(--shadow-plate);
     }
   }
   .editor :global(.sheet-head) {

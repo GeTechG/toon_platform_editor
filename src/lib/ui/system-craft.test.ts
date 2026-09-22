@@ -60,6 +60,19 @@ describe('a soft shadow comes from the vocabulary', () => {
     expect([...new Set(literal)].sort()).toEqual([]);
   });
 
+  it('shadows the sheet by the shape it has on the screen it is on', () => {
+    // One element, two shapes. On a phone it rises from the bottom edge, where
+    // a downward shadow falls off the screen and only the upward one separates
+    // it from the table. On a wider screen the same element is a card centred
+    // over the scrim — it floats, and an upward-only lift leaves it standing on
+    // nothing while every other floating surface in the editor drifts down-right.
+    const centred = editorUi.slice(
+      editorUi.lastIndexOf('.editor :global(.sheet) {', editorUi.indexOf('width: min(24rem')),
+      editorUi.indexOf('}', editorUi.indexOf('width: min(24rem')),
+    );
+    expect(centred).toContain('box-shadow: var(--shadow-plate)');
+  });
+
   it('declares the vocabulary in the file both packages read', () => {
     // The site declared these and the editor could not see them, which is how
     // eleven literals happened. The lower package owns the table (see
