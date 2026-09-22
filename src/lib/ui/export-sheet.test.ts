@@ -37,7 +37,22 @@ describe('the project itself', () => {
   });
 
   it('hides what only a picture has', () => {
-    expect(sheet).toContain("{#if format !== 'project'}");
+    expect(sheet).toContain("{#if format !== 'project' && !format.startsWith('plugin:')}");
+  });
+});
+
+describe('a format a plugin brings', () => {
+  it('is a button beside ours, one per format that works', () => {
+    expect(sheet).toMatch(/pluginFormats = \$derived\.by\([^]*?editor\.pluginsVersion[^]*?plugins\.exporters\(\)/);
+    expect(sheet).toContain('{#each pluginFormats as entry (entry.id)}');
+  });
+
+  it('is handed the scene of the frame in hand and saves what it returns', () => {
+    expect(sheet).toMatch(/pluginFormat\.run\(makeScene\(editor\.doc, editor\.activeFrame\)\)[^]*?save\(file\.blob, file\.name\)/);
+  });
+
+  it('falls back to ours when its plugin goes away', () => {
+    expect(sheet).toMatch(/format\.startsWith\('plugin:'\) && !pluginFormat\)[^]*?format = singleFrame \? 'png' : 'gif'/);
   });
 });
 

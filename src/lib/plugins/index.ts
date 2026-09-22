@@ -37,12 +37,22 @@ export type {
   Plugin,
   PluginBrush,
   PluginBrushType,
+  PluginCanvas,
+  PluginExport,
+  PluginExporter,
   PluginHost,
   PluginPoint,
   PluginPreset,
   PluginPrimitive,
+  PluginScene,
   PluginStroke,
   PluginTool,
   UxProfile,
 } from './contract';
-export type { PluginFailure, RegisteredBrushType, RegisteredPreset, RegisteredTool } from './registry';
+export type {
+  PluginFailure,
+  RegisteredBrushType,
+  RegisteredExporter,
+  RegisteredPreset,
+  RegisteredTool,
+} from './registry';

@@ -17,11 +17,14 @@
   import { WATERMARK_TEXT, exportSize, type ExportStage } from '../export/rasterize';
   import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
+  import { plugins } from '../plugins';
+  import { makeScene } from '../plugins/scene';
   import { t } from '../i18n';
 
   let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
 
-  type Format = 'project' | 'png' | 'gif' | 'video';
+  /** A plugin's format is its register id behind a prefix, so it cannot pass for ours. */
+  type Format = 'project' | 'png' | 'gif' | 'video' | `plugin:${string}`;
 
   let open = $state(false);
   let dialogEl = $state<HTMLDialogElement | undefined>();
@@ -39,6 +42,20 @@
   let planned = $state(false);
 
   const singleFrame = $derived(frameCount(editor.doc) === 1);
+
+  /** The formats plugins bring; a plugin that broke takes its button with it. */
+  const pluginFormats = $derived.by(() => {
+    void editor.pluginsVersion;
+    return plugins.exporters();
+  });
+  const pluginFormat = $derived(pluginFormats.find((entry) => format === `plugin:${entry.id}`));
+
+  // A format whose plugin went away is not a choice any more.
+  $effect(() => {
+    if (format.startsWith('plugin:') && !pluginFormat) {
+      format = singleFrame ? 'png' : 'gif';
+    }
+  });
 
   // PNG is a still: the moment there is a second frame it stops being on
   // offer, and a sheet left on it falls back to GIF (`export_help.js:124-126`).
@@ -121,6 +138,9 @@
           new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }),
           'toonop.toonop',
         );
+      } else if (pluginFormat) {
+        const file = await pluginFormat.run(makeScene(editor.doc, editor.activeFrame));
+        save(file.blob, file.name);
       } else if (format === 'png') {
         save(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
       } else if (format === 'gif') {
@@ -223,9 +243,18 @@
           aria-pressed={format === 'project'}
           onclick={() => (format = 'project')}
         >{t('export.project')}</button>
+        {#each pluginFormats as entry (entry.id)}
+          <button
+            class="key"
+            class:active={format === `plugin:${entry.id}`}
+            aria-pressed={format === `plugin:${entry.id}`}
+            title={entry.hint}
+            onclick={() => (format = `plugin:${entry.id}`)}
+          >{entry.label}</button>
+        {/each}
       </div>
 
-      {#if format !== 'project'}
+      {#if format !== 'project' && !format.startsWith('plugin:')}
         <p class="sheet-hint">{t('export.resolution')}</p>
         <div class="choices" role="group" aria-label={t('export.resolution')}>
           {#each EXPORT_WIDTHS as w (w)}

@@ -409,3 +409,62 @@ describe('a plugin brings its own catalogue', () => {
     expect(t('tool.pencil.label')).toBe('Карандаш');
   });
 });
+
+describe('a plugin brings an export format', () => {
+  const file = () => ({ blob: new Blob(['<svg/>']), name: 'toonop.svg' });
+  const exporterPlugin = (id: string, exporters: Record<string, unknown>) => ({ id, api: PLUGIN_API, exporters });
+
+  test('a plugin of formats alone loads, and its format is in the register', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register(exporterPlugin('a.svg', { svg: { label: { ru: 'SVG' }, run: file } }))).toBeNull();
+
+    expect(registry.exporters().map((format) => [format.id, format.label, format.plugin])).toEqual([['svg', 'SVG', 'a.svg']]);
+  });
+
+  test('a format without a label or without run is refused', () => {
+    const registry = new PluginRegistry();
+
+    expect(registry.register(exporterPlugin('a.bare', { bare: { run: file } }))).not.toBeNull();
+    expect(registry.register(exporterPlugin('a.idle', { idle: { label: 'Idle' } }))).not.toBeNull();
+
+    expect(registry.exporters()).toEqual([]);
+  });
+
+  test('a format id already taken stays with the one loaded first', () => {
+    const registry = new PluginRegistry();
+
+    registry.register(exporterPlugin('a.first', { svg: { label: 'SVG', run: file } }));
+    registry.register(exporterPlugin('a.second', { svg: { label: 'SVG 2', run: file } }));
+
+    expect(registry.exporters().map((format) => format.plugin)).toEqual(['a.first']);
+  });
+
+  test('taking the plugin off takes its formats', () => {
+    const registry = new PluginRegistry();
+
+    registry.register(exporterPlugin('a.svg', { svg: { label: 'SVG', run: file } }));
+    registry.remove('a.svg');
+
+    expect(registry.exporters()).toEqual([]);
+  });
+
+  test('a run that throws switches the plugin off and still reaches the caller', async () => {
+    const registry = new PluginRegistry();
+    registry.register(exporterPlugin('a.bad', { svg: { label: 'SVG', run: () => { throw new Error('ой'); } } }));
+
+    await expect(Promise.resolve().then(() => registry.exporters()[0].run({} as never))).rejects.toThrow('ой');
+
+    expect(registry.brokenReason('a.bad')).toContain('ой');
+    expect(registry.exporters()).toEqual([]);
+  });
+
+  test('a run whose promise is refused switches the plugin off the same way', async () => {
+    const registry = new PluginRegistry();
+    registry.register(exporterPlugin('a.bad', { svg: { label: 'SVG', run: async () => { throw new Error('ой'); } } }));
+
+    await expect(registry.exporters()[0].run({} as never)).rejects.toThrow('ой');
+
+    expect(registry.brokenReason('a.bad')).toContain('ой');
+  });
+});

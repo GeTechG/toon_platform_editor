@@ -15,6 +15,7 @@ import {
   type Plugin,
   type PluginBrush,
   type PluginBrushType,
+  type PluginExporter,
   type PluginPreset,
   type PluginTool,
   type StrokeRules,
@@ -59,6 +60,13 @@ export interface RegisteredTool extends Omit<PluginTool, 'label' | 'title'> {
 
 export interface RegisteredPreset extends Omit<PluginPreset, 'label'> {
   readonly label: string;
+  readonly id: string;
+  readonly plugin: string;
+}
+
+export interface RegisteredExporter extends Omit<PluginExporter, 'label' | 'hint'> {
+  readonly label: string;
+  readonly hint?: string;
   readonly id: string;
   readonly plugin: string;
 }
@@ -111,6 +119,7 @@ export class PluginRegistry {
   private readonly byId = new Map<string, RegisteredTool>();
   private readonly presetById = new Map<string, RegisteredPreset>();
   private readonly typeById = new Map<string, RegisteredBrushType>();
+  private readonly exporterById = new Map<string, RegisteredExporter>();
   private readonly keys = new Set<string>();
   /** Plugins switched off by their own exception: id → why. */
   private readonly broken = new Map<string, string>();
@@ -147,7 +156,8 @@ export class PluginRegistry {
     const tools = record(manifest.tools);
     const presets = record(manifest.presets);
     const types = record(manifest.brushTypes);
-    if (!tools && !presets && !types) {
+    const exporters = record(manifest.exporters);
+    if (!tools && !presets && !types && !exporters) {
       return this.refuse(manifest.id, t('plugin.brings_nothing'));
     }
     const plugin = manifest.id;
@@ -170,6 +180,9 @@ export class PluginRegistry {
     }
     for (const [id, value] of Object.entries(types ?? {})) {
       accepted += this.addBrushType(plugin, id, value) ? 1 : 0;
+    }
+    for (const [id, value] of Object.entries(exporters ?? {})) {
+      accepted += this.addExporter(plugin, id, value) ? 1 : 0;
     }
     return accepted === 0 ? this.failures[was]?.reason ?? t('plugin.nothing_worked') : null;
   }
@@ -240,6 +253,32 @@ export class PluginRegistry {
       return false;
     }
     this.typeById.set(id, { ...type, label, hint: pluginText(type.hint, ns) ?? undefined, id, plugin });
+    return true;
+  }
+
+  private addExporter(plugin: string, id: string, value: unknown): boolean {
+    const format = value as PluginExporter | null;
+    const ns = pluginNamespace(plugin);
+    const label = format && pluginText(format.label, ns);
+    if (!format || !label || typeof format.run !== 'function') {
+      this.fail(plugin, t('plugin.exporter_incomplete', { id }));
+      return false;
+    }
+    if (this.exporterById.has(id)) {
+      this.fail(plugin, t('plugin.exporter_taken', { id }));
+      return false;
+    }
+    // A format has no fallback to degrade to: its exception switches the
+    // plugin off and still reaches the export window, which says it failed.
+    const run: PluginExporter['run'] = async (scene) => {
+      try {
+        return await format.run(scene);
+      } catch (error) {
+        this.breakDown(plugin, error);
+        throw error;
+      }
+    };
+    this.exporterById.set(id, { ...format, run, label, hint: pluginText(format.hint, ns) ?? undefined, id, plugin });
     return true;
   }
 
@@ -380,6 +419,9 @@ export class PluginRegistry {
     for (const [id, type] of [...this.typeById]) {
       if (type.plugin === plugin) this.typeById.delete(id);
     }
+    for (const [id, format] of [...this.exporterById]) {
+      if (format.plugin === plugin) this.exporterById.delete(id);
+    }
   }
 
   tool(id: string): RegisteredTool | undefined {
@@ -414,6 +456,11 @@ export class PluginRegistry {
 
   brushTypes(): readonly RegisteredBrushType[] {
     return [...this.typeById.values()].filter((type) => !this.broken.has(type.plugin));
+  }
+
+  /** Every export format whose plugin works, in the order it was registered. */
+  exporters(): readonly RegisteredExporter[] {
+    return [...this.exporterById.values()].filter((format) => !this.broken.has(format.plugin));
   }
 
   /** The rules of a brush, read with a neutral record (see `PROBE`). */
