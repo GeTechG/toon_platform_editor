@@ -152,3 +152,85 @@ export function laySmoothPoints(points: readonly number[]): number[] {
   }
   return [points[0], points[1], ...points];
 }
+
+/**
+ * The same path `emitGeometry` draws, from command `from` on.
+ *
+ * A live stroke grows at one end and is redrawn from nothing on every frame,
+ * which costs the whole line over and over — the longer it is drawn, the
+ * further the line lags behind the hand. What is already on the buffer does
+ * not need drawing again; only the commands after the join do. The sub-path
+ * starts exactly where the whole path had got to, so the join is a
+ * continuation and not a step.
+ *
+ * `until` is the last command drawn, so a caller can take the settled
+ * middle of the path and leave the end, which is still moving under the hand,
+ * to be drawn somewhere it can be redrawn from scratch.
+ *
+ * Returns false when the path cannot be joined — a closed ring, a cubic
+ * chain, a join past the end — and the caller draws it whole.
+ */
+export function emitGeometryFrom(
+  points: readonly number[],
+  geometry: StrokeGeometry,
+  from: number,
+  sink: PathSink,
+  until = Infinity,
+): boolean {
+  const count = points.length / 2;
+  if (from <= 0 && until >= count) {
+    emitGeometry(points, geometry, false, sink);
+    return true;
+  }
+  const start = Math.max(0, from);
+  if (geometry === 'line') {
+    // Command `i` is the segment onto point `i`; the join sits on it.
+    if (start >= count) {
+      return false;
+    }
+    sink.moveTo(points[2 * start], points[2 * start + 1]);
+    for (let i = start + 1; i < Math.min(count, until + 1); i++) {
+      sink.lineTo(points[2 * i], points[2 * i + 1]);
+    }
+    return true;
+  }
+  if (geometry !== 'smooth' || count < 3) {
+    return false;
+  }
+  // `emitSmoothPath` lays down one command per point from the second on, and
+  // command `i` ends on the midpoint towards point `i + 1` — except the last,
+  // which ends on the last point itself.
+  const last = count - 2;
+  if (start > last) {
+    return false;
+  }
+  if (start === last) {
+    sink.moveTo(points[2 * (count - 1)], points[2 * (count - 1) + 1]);
+    return true;
+  }
+  if (start === 0) {
+    sink.moveTo(points[0], points[1]);
+  } else {
+    sink.moveTo(
+      (points[2 * start] + points[2 * (start + 1)]) / 2,
+      (points[2 * start + 1] + points[2 * (start + 1) + 1]) / 2,
+    );
+  }
+  const stop = Math.min(last, until);
+  for (let i = start + 1; i <= Math.min(last - 1, stop); i++) {
+    const cx = points[2 * i];
+    const cy = points[2 * i + 1];
+    const nx = points[2 * (i + 1)];
+    const ny = points[2 * (i + 1) + 1];
+    sink.quadraticCurveTo(cx, cy, (cx + nx) / 2, (cy + ny) / 2);
+  }
+  if (stop >= last) {
+    sink.quadraticCurveTo(
+      points[2 * last],
+      points[2 * last + 1],
+      points[2 * (count - 1)],
+      points[2 * (count - 1) + 1],
+    );
+  }
+  return true;
+}

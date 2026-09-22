@@ -28,8 +28,8 @@ test('a brush with rules of its own previews its own line, not the preset one', 
           kind: 'pencil',
           // One point per event and nothing else: a line of its own shape.
           rules: () => ({
-            capture: (line: readonly number[], batch: readonly number[]) =>
-              batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
+            capture: (_line: readonly number[], batch: readonly number[]) =>
+              batch.length < 2 ? [] : [batch[batch.length - 2], batch[batch.length - 1]],
           }),
           descriptor: ({ width, color }: { width: number; color: string }) =>
             ({ kind: 'pencil', geometry: 'smooth', width, color }),

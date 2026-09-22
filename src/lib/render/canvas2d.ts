@@ -6,7 +6,8 @@
 import { BACKGROUND_COLOR } from '../format/constants';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
-import { emitGeometry, type PathSink } from './smoothing';
+import { emitGeometry, emitGeometryFrom, type PathSink } from './smoothing';
+import type { StrokeGeometry } from './smoothing';
 import { interpolatePixelLine } from '../tools/pixel';
 import {
   emitPathForTool,
@@ -161,6 +162,46 @@ export function renderResolvedPreview(
   if (points.length < 2) return;
   applyDocTransform(target, viewport);
   drawResolvedStroke(target, points, tool, color);
+}
+
+/**
+ * The stretch of a live line between two joins, onto a target that already
+ * holds what came before it.
+ *
+ * A live stroke grows at one end, and redrawing it whole on every frame costs
+ * the whole line over and over: the longer the line, the further it trails the
+ * hand. What has settled stays on the buffer, and only the commands still
+ * moving are drawn again. `until` is the last command drawn — `Infinity` for
+ * "to the end of the line".
+ *
+ * False means the line cannot be split that way and nothing was drawn: the
+ * caller draws it whole.
+ */
+export function renderLivePart(
+  points: readonly number[],
+  geometry: StrokeGeometry,
+  width: number,
+  color: string,
+  target: Canvas2DLike,
+  viewport: Viewport,
+  from: number,
+  until = Infinity,
+): boolean {
+  if (points.length < 4) {
+    // One point is a dot, and a dot is drawn whole or not at all.
+    return false;
+  }
+  applyDocTransform(target, viewport);
+  target.beginPath();
+  if (!emitGeometryFrom(points, geometry, from, target, until)) {
+    return false;
+  }
+  target.lineWidth = width;
+  target.strokeStyle = color;
+  target.lineCap = 'round';
+  target.lineJoin = 'round';
+  target.stroke();
+  return true;
 }
 
 /**

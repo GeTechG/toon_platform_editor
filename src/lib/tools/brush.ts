@@ -21,7 +21,7 @@ export function toonopRules({ smooth, minDistance }: PluginBrush): StrokeRules {
     range: RANGE,
     defaults: DEFAULTS,
     smoothing: true,
-    capture: (line, batch) => [...line, ...collect(batch)],
+    capture: (_line, batch) => collect(batch),
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => thinBySmooth(points, smooth),
     prepare: (points, _width, zoom) => thinByDistance(thinBySmooth(points, smooth), minDistance, zoom),

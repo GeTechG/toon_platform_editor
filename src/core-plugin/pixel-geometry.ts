@@ -16,17 +16,18 @@ export function pixelCell(value: number, width: number): number {
 }
 
 /**
- * Appends the snapped cells of one pointer batch. Returns a new array; cells
- * already present in `line` before this call are dropped.
+ * The snapped cells one pointer batch adds to the line. Cells already present
+ * in `line` before this call are dropped; a repeat inside the batch is kept,
+ * the way the reference scans only the points it had.
  */
 export function appendPixelCells(
   line: readonly number[],
   points: readonly number[],
   width: number,
 ): number[] {
-  const result = line.slice();
+  const added: number[] = [];
   if (points.length % 2 !== 0) {
-    return result;
+    return added;
   }
   const known = line.length;
   for (let i = 0; i < points.length; i += 2) {
@@ -40,10 +41,10 @@ export function appendPixelCells(
       }
     }
     if (!exists) {
-      result.push(x, y);
+      added.push(x, y);
     }
   }
-  return result;
+  return added;
 }
 
 /** Bresenham over cells, `step` units per pixel (reference `InterpolateLine`). */

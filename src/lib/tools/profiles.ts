@@ -70,7 +70,11 @@ export interface StrokeRules {
   readonly defaults?: { readonly width: number; readonly smooth: number; readonly minDistance: number };
   /** Whether the smoothing pair reaches this brush at all. */
   readonly smoothing?: boolean;
-  /** Folds a batch of pointer samples into the points collected so far. */
+  /**
+   * What this batch of pointer samples adds to the line — not the line
+   * rebuilt. `line` is what has been collected so far, for a rule that needs
+   * to look at it; writing into it the rule MUST NOT.
+   */
   capture(line: readonly number[], batch: readonly number[], width: number): number[];
   /** The line under the hand, before the thinning the commit does. */
   preview?(points: readonly number[]): number[];
@@ -90,9 +94,10 @@ export interface StrokeRules {
    */
   path?(points: readonly number[]): number[];
   /**
-   * What the release event contributes. Absent means "the same as any other
-   * event": one brush leaves a gesture that never moved as a dot, another
-   * takes nothing from the release at all.
+   * What the release event contributes — again, the addition and not the
+   * line. Absent means "the same as any other event": one brush leaves a
+   * gesture that never moved as a dot, another takes nothing from the release
+   * at all, which is an empty addition.
    */
   release?(line: readonly number[], batch: readonly number[], width: number): number[];
   /** A cancelled gesture still lands in the frame. */
@@ -269,6 +274,12 @@ export class PointerStrokeController {
  * Hands one pointer event to the brush as a flat batch of samples: the
  * coalesced ones a browser held back, or the event itself when there are none.
  * Which of them end up in the line is the brush's rule, not the engine's.
+ *
+ * The rule returns what this batch adds, and the engine appends it. Returning
+ * the whole line instead would copy it on every event — quadratic in the
+ * length of the stroke, which is felt as a line that lags the further it is
+ * drawn. Appended one by one rather than by spread: a long line spread into
+ * arguments runs into the engine's stack limit.
  */
 function collect(
   session: StrokeSession,
@@ -279,9 +290,10 @@ function collect(
   const samples = coalesced && coalesced.length > 0 ? coalesced : [event];
   const batch: number[] = [];
   for (const sample of samples) batch.push(sample.x, sample.y);
-  const collected = take(session.rawPoints, batch, session.descriptor.width);
-  session.rawPoints.length = 0;
-  session.rawPoints.push(...collected);
+  const added = take(session.rawPoints, batch, session.descriptor.width);
+  for (let i = 0; i < added.length; i++) {
+    session.rawPoints.push(added[i]);
+  }
 }
 
 function positive(value: number): number {

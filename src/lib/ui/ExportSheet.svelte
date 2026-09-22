@@ -118,7 +118,7 @@
         // The project, not a picture of it: the document exactly as the draft
         // and the API hold it, the same file Alt+S writes in the Toonio preset.
         save(
-          new Blob([JSON.stringify($state.snapshot(editor.doc))], { type: 'application/json' }),
+          new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }),
           'toonop.toonop',
         );
       } else if (format === 'png') {

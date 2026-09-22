@@ -50,7 +50,7 @@ describe('undo/redo availability', () => {
   });
 
   it('remembers what undo removed and hands it back on redo', () => {
-    expect(member(state, 'undo')).toContain('this.undone.push');
+    expect(member(state, 'undo')).toContain('this.undone = [...this.undone, { cell, stroke }]');
     expect(member(state, 'redo')).toContain('addStroke(');
   });
 

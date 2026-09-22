@@ -18,8 +18,8 @@ const pencil: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, 
  */
 /** One point per event, a polyline under the hand, Lang-thinned on commit. */
 const coarse: profiles.StrokeRules = {
-  capture: (line, batch) =>
-    batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
+  capture: (_line, batch) =>
+    batch.length < 2 ? [] : [batch[batch.length - 2], batch[batch.length - 1]],
   prepare: (points) => simplifyLang(points, 5, 80).map(Math.round),
   previewGeometry: 'line',
 };
@@ -29,13 +29,13 @@ const fine = (smooth = 3, minDistance = 3) =>
 /** A brush that stamps a mark per cell of its own grid. */
 const stamp: profiles.StrokeRules = {
   capture: (line, batch, width) => {
-    const out = [...line];
+    const added: number[] = [];
     for (let i = 0; i + 1 < batch.length; i += 2) {
       const x = width * Math.trunc(batch[i] / width);
       const y = width * Math.trunc(batch[i + 1] / width);
-      if (!hasCell(out, x, y)) out.push(x, y);
+      if (!hasCell(line, x, y) && !hasCell(added, x, y)) added.push(x, y);
     }
-    return out;
+    return added;
   },
   prepare: (points) => [...points],
 };
@@ -182,6 +182,36 @@ it('round-trips coarse → fine → coarse strokes in one frame', () => {
   expect(reloaded.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' }]);
   expect(reloaded.layers[0].frames[0].strokes).toHaveLength(3);
   expect(reloaded).toEqual(doc);
+});
+
+describe('capture отдаёт добавку, а не пересобранную линию', () => {
+  it('движок дописывает возвращённое в конец линии', () => {
+    // Что правило видело в `line` на каждом событии — оно справка, не буфер
+    // для записи: вернуть надо то, что этот батч добавляет.
+    const seen: number[][] = [];
+    const rules: profiles.StrokeRules = {
+      capture: (line, batch) => {
+        seen.push([...line]);
+        return [batch[batch.length - 2], batch[batch.length - 1]];
+      },
+    };
+    const session = profiles.beginStrokeSession(sample(1, 1, 2), pencil, rules);
+    profiles.appendStrokeEvent(session, sample(1, 3, 4));
+    profiles.appendStrokeEvent(session, sample(1, 5, 6));
+    expect(session.rawPoints).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(seen).toEqual([[], [1, 2], [1, 2, 3, 4]]);
+  });
+
+  it('пустая добавка оставляет линию как была', () => {
+    const rules: profiles.StrokeRules = {
+      capture: (_line, batch) => batch.slice(0, 2),
+      release: () => [],
+    };
+    const session = profiles.beginStrokeSession(sample(1, 7, 8), pencil, rules);
+    profiles.finishStrokeEvent(session, sample(1, 9, 10));
+    expect(session.rawPoints).toEqual([7, 8]);
+  });
+
 });
 
 function sample(pointerId: number, x: number, y: number, coalesced?: profiles.PointerSample[]): profiles.PointerSample {
@@ -371,7 +401,7 @@ describe('commit comes from the brush', () => {
 describe('what reaches the document', () => {
   /** A brush collecting raw pointer positions, as a plugin may. */
   const rawRules: profiles.StrokeRules = {
-    capture: (line, points) => [...line, ...points],
+    capture: (_line, points) => [...points],
   };
 
   it('lands exactly what the brush laid down — the engine adds no convention', () => {

@@ -15,7 +15,8 @@ describe('the Multator brush carries its own rules', () => {
     expect(first).toEqual([10, 20]);
     // A repeat is kept: the reference pushes every move as it comes, and a
     // trailing repeat changes both the Lang window and the last curve segment.
-    expect(MULTATOR_RULES.capture(first, [10, 20], 32)).toEqual([10, 20, 10, 20]);
+    // The rule returns what the event adds, so the same point comes again.
+    expect(MULTATOR_RULES.capture(first, [10, 20], 32)).toEqual([10, 20]);
   });
 
   it('takes the event itself out of a coalesced batch, never the whole batch', () => {
@@ -43,7 +44,8 @@ describe('the Multator brush carries its own rules', () => {
   });
 
   it('leaves a gesture that never moved as a dot', () => {
-    expect(MULTATOR_RULES.release!([10, 20], [10, 20], 32)).toEqual([10, 20]);
-    expect(MULTATOR_RULES.release!([10, 20], [30, 40], 32)).toEqual([10, 20, 30, 40]);
+    // The release adds nothing where the hand let go, and its point where it moved.
+    expect(MULTATOR_RULES.release!([10, 20], [10, 20], 32)).toEqual([]);
+    expect(MULTATOR_RULES.release!([10, 20], [30, 40], 32)).toEqual([30, 40]);
   });
 });

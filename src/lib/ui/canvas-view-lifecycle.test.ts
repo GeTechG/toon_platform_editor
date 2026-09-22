@@ -98,6 +98,16 @@ describe('layer-aware canvas contract', () => {
     expect(source).toContain('ONION_CACHE_LIMIT');
   });
 
+  it('redraws a ghost into a buffer it already has, never into a new canvas', () => {
+    // The key carries the pan, so a hand moving the sheet misses the cache on
+    // every frame; a miss that made a canvas was a full-stage backing store
+    // per ghost per frame, handed straight to the collector.
+    const onion = source.match(/function onionCell\([^]*?\n  }/)?.[0] ?? '';
+    expect(onion).toContain('onionRing.take(key)');
+    expect(onion).not.toContain('buffer(null');
+    expect(source).toContain('new BufferRing(');
+  });
+
   it('keys the onion cache by layer and cell identity, not by index and count', () => {
     // Index + stroke count collide after a reorder, a paste, or a document
     // swap — the cache would hand back another layer's drawing.
@@ -243,6 +253,34 @@ describe('the cursor over the canvas', () => {
 
   it('takes the grid away while the preview plays', () => {
     expect(handler('draw')).toContain("?.stroke?.grid && !editor.playing");
+  });
+});
+
+describe('the live stroke is added to, not redrawn', () => {
+  // Redrawing the whole line every frame costs the whole line every frame:
+  // the longer it is drawn, the further it trails the hand.
+  it('keeps the settled part of the line on the buffer', () => {
+    const draw = handler('draw');
+    expect(draw).toContain('renderLivePart(');
+    expect(draw).toContain('livePainted');
+    // The end still moving goes on the visible canvas, which is repainted
+    // every frame anyway — so the buffer holds nothing stale.
+    expect(draw).toContain('liveTail');
+  });
+
+  it('reseeds the buffer when anything under the line changes', () => {
+    const draw = handler('draw');
+    const seed = draw.match(/const seed = [^;]*;/)?.[0] ?? '';
+    expect(seed).toContain('stackSerial');
+    expect(seed).toContain('viewport.scale');
+    expect(seed).toContain('viewport.panX');
+    expect(handler('rebuildStack')).toContain('stackSerial += 1');
+  });
+
+  it('draws an eraser and a feather whole: their mark depends on the whole figure', () => {
+    const growing = source.match(/function growingLine\([^]*?\n  }/)?.[0] ?? '';
+    expect(growing).toContain("session.descriptor.kind !== 'pencil'");
+    expect(growing).toContain("geometry !== 'line' && geometry !== 'smooth'");
   });
 });
 

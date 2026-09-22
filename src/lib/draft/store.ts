@@ -172,6 +172,8 @@ async function updateDraft(
   id: string,
   what: string,
   mutate: (previous: DraftRecord | undefined) => DraftRecord | null,
+  /** What the record turned out to weigh — the write already knows. */
+  wrote?: (bytes: number) => void,
 ): Promise<boolean> {
   let db: IDBDatabase;
   try {
@@ -191,6 +193,7 @@ async function updateDraft(
           return; // nothing to write; the transaction completes on its own
         }
         next.bytes = recordBytes(next);
+        wrote?.(next.bytes);
         store.put(next);
       };
       tx.oncomplete = () => resolve();
@@ -205,21 +208,37 @@ async function updateDraft(
   }
 }
 
+/** What one draft write did: whether it landed, and what the record weighs. */
+export interface DraftWrite {
+  ok: boolean;
+  /** Size of the record as written; 0 when nothing was written. */
+  bytes: number;
+}
+
 /**
  * Persists one session (a plain, structured-clone-safe document) and what the
- * editor was doing at the time. Never throws; see `updateDraft` for what the
- * answer means.
+ * editor was doing at the time. Never throws; see `updateDraft` for what `ok`
+ * means.
+ *
+ * The size comes back with the answer because the write already serialized the
+ * document to size the record: asking the caller to stringify it again is a
+ * second full pass over every stroke of the drawing, on the main thread, for
+ * an indicator.
  */
-export async function saveDraft(id: string, doc: unknown, state?: DraftState): Promise<boolean> {
-  return queueWrite(() =>
+export async function saveDraft(id: string, doc: unknown, state?: DraftState): Promise<DraftWrite> {
+  let bytes = 0;
+  const ok = await queueWrite(() =>
     updateDraft(id, 'draft save', (previous) => {
       const next: DraftRecord = { ...previous, id, updated: Date.now(), doc };
       if (state) {
         next.state = state;
       }
       return next;
+    }, (written) => {
+      bytes = written;
     }),
   );
+  return { ok, bytes };
 }
 
 /**

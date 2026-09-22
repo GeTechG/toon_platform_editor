@@ -99,6 +99,18 @@ describe('draft store', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('reports what the record weighs, so nobody sizes the document again', async () => {
+    // The write already serializes the document to size the record; a second
+    // `JSON.stringify` on the editor's side was a full pass over every stroke
+    // of the drawing, on the main thread, for an indicator.
+    setIndexedDB(fakeIndexedDB());
+    const written = await saveDraft('a', doc(12));
+    expect(written.ok).toBe(true);
+    expect(written.bytes).toBe(JSON.stringify(doc(12)).length);
+    const [listed] = await listDrafts();
+    expect(listed.bytes).toBe(written.bytes);
+  });
+
   it('degrades quietly when IndexedDB is unavailable', async () => {
     // No indexedDB global (bun's default) → best-effort no-op, no throw.
     const warn = mock(() => {});
@@ -106,7 +118,7 @@ describe('draft store', () => {
     console.warn = warn;
     try {
       // No storage at all is not a failed write: nothing to shout about.
-      await expect(saveDraft('a', { any: true })).resolves.toBe(true);
+      await expect(saveDraft('a', { any: true })).resolves.toEqual({ ok: true, bytes: 0 });
       await expect(deleteDraft('a')).resolves.toBeUndefined();
       expect(await listDrafts()).toEqual([]);
     } finally {
@@ -338,7 +350,7 @@ describe('the record carries the session state', () => {
 describe('saveDraft reports whether the write landed', () => {
   it('says yes when the record is on disk', async () => {
     setIndexedDB(fakeIndexedDB());
-    expect(await saveDraft('a', doc(1))).toBe(true);
+    expect((await saveDraft('a', doc(1))).ok).toBe(true);
   });
 
   it('says no when a write into working storage fails', async () => {
@@ -375,7 +387,7 @@ describe('saveDraft reports whether the write landed', () => {
     const original = console.warn;
     console.warn = mock(() => {});
     try {
-      expect(await saveDraft('a', doc(1))).toBe(false);
+      expect((await saveDraft('a', doc(1))).ok).toBe(false);
     } finally {
       console.warn = original;
     }

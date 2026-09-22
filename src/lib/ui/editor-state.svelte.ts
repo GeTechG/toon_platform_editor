@@ -248,7 +248,15 @@ export class EditorState {
   get transformLock(): boolean {
     return this.settings.lockTransform;
   }
-  doc = $state(createDocument());
+  /**
+   * The document, held as a value. `$state` would proxy it all the way down —
+   * a signal per layer, per frame, per stroke and per coordinate — and the
+   * render path reads those coordinates thousands of times a frame, at 35× the
+   * cost of a plain array. So the holder is raw, and every write goes through
+   * `#write`, which replaces it: that replacement is what the canvas, the
+   * thumbnails and the autosave hear.
+   */
+  doc = $state.raw(createDocument());
   activeFrame = $state(0);
   /** Layer the next stroke goes into; UI state, not part of the document. */
   activeLayer = $state(0);
@@ -316,15 +324,15 @@ export class EditorState {
    * first and the snapshot only comes back when the cells are in the state
    * the edit produced.
    */
-  edits = $state<CellSnapshot[][]>([]);
+  edits = $state.raw<CellSnapshot[][]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
-  undone = $state<{ cell: Frame; stroke: Stroke }[]>([]);
+  undone = $state.raw<{ cell: Frame; stroke: Stroke }[]>([]);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
-  copiedColumn = $state<ResolvedColumn | null>(null);
+  copiedColumn = $state.raw<ResolvedColumn | null>(null);
   /** Timeline cells the user has selected; a plain click leaves one. */
   selection = $state<CellSelection>({ frames: [0], layers: [0] });
   /** Clipboard for the timeline block copy/paste, deep-copied on copy. */
-  copiedCells = $state<CellBuffer | null>(null);
+  copiedCells = $state.raw<CellBuffer | null>(null);
   /** Where the buffer was taken from — the timeline marks those cells. */
   copiedFrom = $state<CellSelection | null>(null);
   /** Cells of that block already drawn into, as `frame:layer` — their mark is out. */
@@ -455,7 +463,7 @@ export class EditorState {
     // The reference names every layer it creates, the first one included.
     // Without a name here the row falls back to its position, and the moment
     // a second layer slid in under it both rows would read «Слой 2».
-    renameLayer(this.doc, 0, t('layer.default_name', { n: 1 }));
+    this.#write((doc) => renameLayer(doc, 0, t('layer.default_name', { n: 1 })));
   }
 
   /** Everything the session logs as an error, so Alt+L has something to hand over. */
@@ -610,9 +618,10 @@ export class EditorState {
     this.paletteExpanded = this.ux.quickPalette === null;
     if (this.touched) {
       // A narrower profile range must not leave the document out of bounds.
-      setFrameRate(this.doc, clampPlayerFps(this.doc.frame_rate, this.ux.fpsRange));
+      const fps = clampPlayerFps(this.doc.frame_rate, this.ux.fpsRange);
+      this.#write((doc) => setFrameRate(doc, fps));
     } else {
-      setFrameRate(this.doc, this.ux.defaultFps);
+      this.#write((doc) => setFrameRate(doc, this.ux.defaultFps));
     }
     this.persistUiConfig();
   }
@@ -873,6 +882,18 @@ export class EditorState {
   }
 
   /**
+   * The one way into the document. The holder is a value, so a change to what
+   * is inside it is heard by nobody until the holder itself is replaced —
+   * which is what happens here, once, for every write the editor makes. The
+   * wrapper is five fields; the layers array under it is the same one.
+   */
+  #write<T>(change: (doc: ToonDocument) => T): T {
+    const result = change(this.doc);
+    this.doc = { ...this.doc };
+    return result;
+  }
+
+  /**
    * With the layers panel gone the user has no way to unhide a layer, so a
    * hidden active layer would be a dead canvas — make it visible again. The
    * other hidden layers stay hidden; this is a document change.
@@ -885,7 +906,7 @@ export class EditorState {
     }
     const layer = this.doc.layers[this.activeLayer];
     if (layer?.hidden) {
-      setLayerHidden(this.doc, this.activeLayer, false);
+      this.#write((doc) => setLayerHidden(doc, this.activeLayer, false));
       this.touched = true;
     }
   }
@@ -951,10 +972,10 @@ export class EditorState {
       return;
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
-    this.activeLayer = addLayer(this.doc, at);
+    this.activeLayer = this.#write((doc) => addLayer(doc, at));
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
-    renameLayer(this.doc, at, t('layer.default_name', { n: this.layerCounter }));
+    this.#write((doc) => renameLayer(doc, at, t('layer.default_name', { n: this.layerCounter })));
     this.touched = true;
   }
 
@@ -973,7 +994,7 @@ export class EditorState {
     if (this.playing || !this.doc.layers[index]) {
       return;
     }
-    renameLayer(this.doc, index, name);
+    this.#write((doc) => renameLayer(doc, index, name));
     this.touched = true;
   }
 
@@ -985,7 +1006,7 @@ export class EditorState {
       return;
     }
     const removed = this.activeLayer;
-    removeLayer(this.doc, removed);
+    this.#write((doc) => removeLayer(doc, removed));
     this.layerColors.splice(removed, 1);
     this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
     this.touched = true;
@@ -1001,7 +1022,7 @@ export class EditorState {
     if (from === to || to < 0 || to >= this.doc.layers.length) {
       return;
     }
-    moveLayer(this.doc, from, to);
+    this.#write((doc) => moveLayer(doc, from, to));
     this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1));
     this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
     this.touched = true;
@@ -1026,7 +1047,7 @@ export class EditorState {
     if (!layer) {
       return;
     }
-    setLayerHidden(this.doc, index, !layer.hidden);
+    this.#write((doc) => setLayerHidden(doc, index, !layer.hidden));
     this.touched = true;
   }
 
@@ -1235,7 +1256,7 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
-    this.activeFrame = addFrame(this.doc, this.activeFrame);
+    this.activeFrame = this.#write((doc) => addFrame(doc, this.activeFrame));
     // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
     // the frame it came from goes into the onion history like any other move.
     // Without this the fresh cell showed no ghost of the drawing it follows.
@@ -1250,7 +1271,7 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
-    this.activeFrame = insertFrameBefore(this.doc, this.activeFrame);
+    this.activeFrame = this.#write((doc) => insertFrameBefore(doc, this.activeFrame));
     // `AddHistory(prev, ctrl)`: the frame left goes in first, then every entry
     // shifts, because the insert pushed those cells one to the right. The cell
     // that was under `left` now lives at `left + 1` — where its ghost belongs.
@@ -1276,7 +1297,7 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
-    removeFrame(this.doc, this.activeFrame);
+    this.#write((doc) => removeFrame(doc, this.activeFrame));
     this.activeFrame = activeFrameAfterRemove(this.activeFrame, frameCount(this.doc), this.ux.afterRemove);
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
@@ -1284,7 +1305,7 @@ export class EditorState {
   }
 
   setFps(value: number): void {
-    setFrameRate(this.doc, clampPlayerFps(value, this.ux.fpsRange));
+    this.#write((doc) => setFrameRate(doc, clampPlayerFps(value, this.ux.fpsRange)));
     this.touched = true;
   }
 
@@ -1300,7 +1321,7 @@ export class EditorState {
       return;
     }
     try {
-      replaceColumn(this.doc, this.activeFrame, this.copiedColumn);
+      this.#write((doc) => replaceColumn(doc, this.activeFrame, this.copiedColumn!));
       this.touched = true;
       this.flashTick++;
     } catch (err) {
@@ -1361,7 +1382,7 @@ export class EditorState {
     }
     const snapshots = this.snapshotCells(target);
     try {
-      write(this.doc, target, buffer);
+      this.#write((doc) => write(doc, target, buffer));
     } catch (err) {
       // At the document point limit — drop the write instead of throwing.
       console.warn('timeline paste rejected:', err);
@@ -1420,7 +1441,7 @@ export class EditorState {
       snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
       snapshot.after = snapshot.cell.strokes.length;
     }
-    this.edits.push(snapshots);
+    this.edits = [...this.edits, snapshots];
     this.undone = [];
     this.touched = true;
   }
@@ -1471,9 +1492,9 @@ export class EditorState {
     // retires the redo stack. Give it a redo entry if anyone asks for one.
     const edit = this.restorableEdit;
     if (edit) {
-      this.edits.pop();
+      this.edits = this.edits.slice(0, -1);
       for (const snapshot of edit) {
-        replaceStrokes(this.doc, snapshot.layer, snapshot.frame, snapshot.strokes);
+        this.#write((doc) => replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes));
       }
       this.undone = [];
       this.touched = true;
@@ -1481,12 +1502,12 @@ export class EditorState {
     }
     const cell = this.activeCell!;
     const stroke = cell.strokes[cell.strokes.length - 1];
-    if (!removeLastStroke(this.doc, this.activeLayer, this.activeFrame)) {
+    if (!this.#write((doc) => removeLastStroke(doc, this.activeLayer, this.activeFrame))) {
       return;
     }
     // Unbounded, like the reference's own buffer: a stroke off the stack is
     // still the one the document held a moment ago, not a second copy of it.
-    this.undone.push({ cell, stroke });
+    this.undone = [...this.undone, { cell, stroke }];
     this.touched = true;
   }
 
@@ -1495,12 +1516,14 @@ export class EditorState {
     if (!this.canRedo) {
       return;
     }
-    const { stroke } = this.undone.pop()!;
+    const { stroke } = this.undone[this.undone.length - 1];
+    this.undone = this.undone.slice(0, -1);
     // The tool is still interned, so this resolves to the same tool_id.
-    addStroke(this.doc, this.activeLayer, this.activeFrame, {
+    const tool = this.doc.tools[stroke.tool_id];
+    this.#write((doc) => addStroke(doc, this.activeLayer, this.activeFrame, {
       points: stroke.points,
-      tool: this.doc.tools[stroke.tool_id],
-    });
+      tool,
+    }));
     this.touched = true;
   }
 
@@ -1510,7 +1533,7 @@ export class EditorState {
    * the redo stack.
    */
   commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
-    addStroke(this.doc, layerIndex, this.activeFrame, stroke);
+    this.#write((doc) => addStroke(doc, layerIndex, this.activeFrame, stroke));
     if (!this.ux.redoSurvivesStroke) {
       this.undone = [];
     }
@@ -1554,7 +1577,7 @@ export class EditorState {
       return;
     }
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
-    replaceStrokes(this.doc, this.activeLayer, this.activeFrame, after);
+    this.#write((doc) => replaceStrokes(doc, this.activeLayer, this.activeFrame, after));
     this.pushEdit(snapshots);
   }
 
@@ -1581,7 +1604,7 @@ export class EditorState {
     this.selection = { frames: [this.activeFrame], layers: this.selection.layers };
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers });
     for (const layer of layers) {
-      mirrorCell(this.doc, layer, this.activeFrame, axis);
+      this.#write((doc) => mirrorCell(doc, layer, this.activeFrame, axis));
     }
     this.pushEdit(snapshots);
   }
@@ -1600,7 +1623,7 @@ export class EditorState {
     }
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [...layers] });
     for (const layer of layers) {
-      map(this.doc, layer, this.activeFrame);
+      this.#write((doc) => map(doc, layer, this.activeFrame));
     }
     this.pushEdit(snapshots);
   }
@@ -1791,7 +1814,7 @@ export class EditorState {
     gesture.snapshots.forEach(({ layer, frame }, i) => {
       // A fresh cell object, not a rewrite in place: that identity change is
       // what tells the canvas its buffers are stale.
-      replaceStrokes(this.doc, layer, frame, next[i]);
+      this.#write((doc) => replaceStrokes(doc, layer, frame, next[i]));
     });
     this.touched = true;
     if (standalone) {

@@ -262,10 +262,13 @@ export class PluginRegistry {
     ): StrokeRules | undefined => {
       if (!rules) return undefined;
       const keep = (line: readonly number[]) => [...line];
+      // A rule returns what it adds, so a fallback for a broken one adds the
+      // batch as it came — and a broken release adds nothing.
+      const nothingAdded = () => [];
       return {
         ...rules,
-        capture: guardFn(rules.capture, (line, batch) => [...line, ...batch]),
-        ...(rules.release ? { release: guardFn(rules.release, keep) } : {}),
+        capture: guardFn(rules.capture, (_line, batch) => [...batch]),
+        ...(rules.release ? { release: guardFn(rules.release, nothingAdded) } : {}),
         ...(rules.preview ? { preview: guardFn(rules.preview, keep) } : {}),
         ...(rules.prepare ? { prepare: guardFn(rules.prepare, keep) } : {}),
         ...(rules.path ? { path: guardFn(rules.path, keep) } : {}),

@@ -44,8 +44,8 @@ export const MULTATOR_RULES: StrokeRules = {
   // last curve segment. The samples a browser coalesced between frames are not
   // events the reference ever saw, so only the last pair — the event itself —
   // joins the line.
-  capture: (line, batch) =>
-    batch.length < 2 ? [...line] : [...line, batch[batch.length - 2], batch[batch.length - 1]],
+  capture: (_line, batch) =>
+    batch.length < 2 ? [] : [batch[batch.length - 2], batch[batch.length - 1]],
   // The tolerance is document units like every other number here: the size
   // of the document it lands on does not enter into it.
   prepare: (points) => quantize(simplifyLang(points, LANG_LOOK_AHEAD, LANG_TOLERANCE_DOC)),
@@ -56,7 +56,7 @@ export const MULTATOR_RULES: StrokeRules = {
   // never moved and let go where it pressed — that stays a dot.
   release: (line, batch, width) =>
     line.length === 2 && line[0] === batch[batch.length - 2] && line[1] === batch[batch.length - 1]
-      ? [...line]
+      ? []
       : MULTATOR_RULES.capture(line, batch, width),
 };
 

@@ -120,7 +120,7 @@ describe('PluginRegistry', () => {
       stroke: {
         kind: 'pencil',
         descriptor: () => ({ kind: 'pencil', geometry: 'smooth', width: 4, color: '#000000' }),
-        rules: (): StrokeRules => ({ capture: (line, batch) => [...line, ...batch], commit }),
+        rules: (): StrokeRules => ({ capture: (_line, batch) => [...batch], commit }),
       },
     }))).toBeNull();
 
@@ -253,6 +253,27 @@ describe('a plugin that throws', () => {
     expect(registry.tools().map((t) => t.id)).toEqual([]);
     expect(registry.tool('a.bad')).toBeUndefined();
     expect(registry.brokenReason('a.bad')).toContain('ой');
+  });
+
+  test('a capture that throws takes the batch as it came, and adds nothing on release', () => {
+    // The fallback lives under the same contract as the rule it replaces: it
+    // returns the addition, so a broken brush leaves a line and not a line
+    // with everything it ever collected stacked on top of itself.
+    const registry = new PluginRegistry();
+    registry.register(broken('a.bad', {
+      stroke: {
+        kind: 'pencil',
+        descriptor: () => ({ kind: 'pencil', geometry: 'smooth', width: 4, color: '#000000' }),
+        rules: () => ({
+          capture: () => { throw new Error('ой'); },
+          release: () => { throw new Error('ой'); },
+        }),
+      },
+    }));
+
+    const rules = registry.probeRules('a.bad')!;
+    expect(quiet(() => rules.capture([1, 2], [3, 4], 4))).toEqual([3, 4]);
+    expect(quiet(() => rules.release!([1, 2], [3, 4], 4))).toEqual([]);
   });
 
   test('a descriptor that throws draws as a pencil and the plugin is off', () => {

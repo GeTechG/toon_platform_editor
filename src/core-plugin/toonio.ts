@@ -22,7 +22,7 @@ export function toonioRules({ smooth, minDistance }: ToonioTuning): StrokeRules 
     range: { min: 1, max: 500 },
     defaults: { width: 5, smooth: 3, minDistance: 3 },
     smoothing: true,
-    capture: (line, batch) => [...line, ...collect(batch)],
+    capture: (_line, batch) => collect(batch),
     // Stage one is what the hand sees; the commit runs stage two on top of it.
     preview: (points) => toonioSmooth(points, smooth),
     prepare: (points, _width, zoom) => toonioPrepare(toonioSmooth(points, smooth), minDistance, zoom),

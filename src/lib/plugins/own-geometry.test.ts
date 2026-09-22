@@ -24,7 +24,7 @@ import {
 /** A curve of explicit control points: every segment bulges to one side. */
 const ribbonRules: StrokeRules = {
   range: { min: 1, max: 80 },
-  capture: (line, batch) => [...line, ...batch],
+  capture: (_line, batch) => [...batch],
   path: (points) => {
     if (points.length < 4) return [...points];
     const out = [points[0], points[1]];

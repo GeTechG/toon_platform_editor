@@ -34,7 +34,7 @@ describe('timeline selection state', () => {
 
 describe('copy, paste and merge of a selection', () => {
   it('copy deep-copies every selected cell into the buffer', () => {
-    expect(state).toContain('copiedCells = $state<CellBuffer | null>(null)');
+    expect(state).toContain('copiedCells = $state.raw<CellBuffer | null>(null)');
     expect(member(state, 'copySelection')).toContain('copyCells(this.doc, this.selection)');
   });
 
@@ -53,7 +53,7 @@ describe('copy, paste and merge of a selection', () => {
     expect(member(state, 'applyCopiedCells')).toContain('this.pushEdit(');
     // The snapshot stack holds a list of cells per entry, so a block edit and
     // a mega-eraser cut both come back in one undo.
-    expect(state).toContain('edits = $state<CellSnapshot[][]>([])');
+    expect(state).toContain('edits = $state.raw<CellSnapshot[][]>([])');
     expect(member(state, 'undo')).toContain('this.restorableEdit');
     expect(member(state, 'applyMegaEraser')).toContain('this.pushEdit(');
   });
@@ -199,7 +199,7 @@ describe('layer names never collide with the positional fallback', () => {
   it('the editor names the layer of a document it starts itself', () => {
     // A stored «Слой 2» beside an unnamed layer that has slid to position 2
     // would show the same label twice; naming layer 1 up front avoids it.
-    expect(state).toContain("renameLayer(this.doc, 0, t('layer.default_name', { n: 1 }))");
+    expect(state).toContain("renameLayer(doc, 0, t('layer.default_name', { n: 1 }))");
     expect(t('layer.default_name', { n: 1 })).toBe('Слой 1');
   });
 });

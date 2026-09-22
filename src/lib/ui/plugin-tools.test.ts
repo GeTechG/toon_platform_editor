@@ -42,7 +42,7 @@ plugins.register({
       label: 'Грубая', title: 'Грубая', key: '', icon: '<path />', offPanel: true,
       stroke: {
         kind: 'pencil',
-        rules: () => ({ range: { min: 1, max: 300 }, capture: (line: readonly number[]) => [...line] }),
+        rules: () => ({ range: { min: 1, max: 300 }, capture: () => [] }),
         descriptor: ({ width, color }: { width: number; color: string }) =>
           ({ kind: 'pencil', geometry: 'smooth', width, color }),
       },

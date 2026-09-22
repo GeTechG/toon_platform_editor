@@ -2,21 +2,22 @@ import { describe, expect, it } from 'bun:test';
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
 
 describe('appendPixelCells', () => {
+  // The rule returns what the batch adds to the line, not the line rebuilt.
   it('snaps every point to the grid of the tool width', () => {
     // Reference: w * ~~(x / w) — truncation towards zero, not floor.
     expect(appendPixelCells([], [17, 3, 31.9, -1], 16)).toEqual([16, 0, 16, 0]);
   });
 
   it('drops a cell the line already holds', () => {
-    expect(appendPixelCells([16, 0], [17, 3, 40, 40], 16)).toEqual([16, 0, 32, 32]);
+    expect(appendPixelCells([16, 0], [17, 3, 40, 40], 16)).toEqual([32, 32]);
   });
 
   it('keeps a repeat inside one batch — the reference scans the old points only', () => {
     expect(appendPixelCells([], [0, 0, 1, 1], 16)).toEqual([0, 0, 0, 0]);
   });
 
-  it('ignores an odd coordinate count', () => {
-    expect(appendPixelCells([16, 0], [1, 2, 3], 16)).toEqual([16, 0]);
+  it('adds nothing for an odd coordinate count', () => {
+    expect(appendPixelCells([16, 0], [1, 2, 3], 16)).toEqual([]);
   });
 });
 

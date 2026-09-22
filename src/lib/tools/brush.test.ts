@@ -21,7 +21,8 @@ describe('the editor brush', () => {
 
   it('drops a repeat inside one batch but keeps one across two', () => {
     expect(rules.capture([], [8, 8, 8, 8, 16, 16], 40)).toEqual([8, 8, 16, 16]);
-    expect(rules.capture([8, 8], [8, 8], 40)).toEqual([8, 8, 8, 8]);
+    // The rule adds to the line, and across the seam the repeat is added again.
+    expect(rules.capture([8, 8], [8, 8], 40)).toEqual([8, 8]);
   });
 
   it('shows the first thinning stage under the hand and both on commit', () => {

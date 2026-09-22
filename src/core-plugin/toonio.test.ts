@@ -86,7 +86,8 @@ describe('the Tonio brush carries its own rules', () => {
     // The reference dedups within `CreatePointData` and then appends the batch,
     // so a point repeated over the seam of two events survives.
     expect(rules.capture([], [8, 8, 8, 8, 16, 16], 40)).toEqual([8, 8, 16, 16]);
-    expect(rules.capture([8, 8], [8, 8], 40)).toEqual([8, 8, 8, 8]);
+    // The rule adds to the line, and across the seam the repeat is added again.
+    expect(rules.capture([8, 8], [8, 8], 40)).toEqual([8, 8]);
   });
 
   it('shows the first thinning stage under the hand and both on commit', () => {

@@ -2,9 +2,11 @@
   // Thumbnail of one layer's cell — the layer alone, not the composite, so a
   // layers-panel row shows what that layer contributes. Same stroke path as
   // the canvas (renderStrokesLayer), on a transparent little buffer.
-  import type { ToonDocument } from '../format/types';
+  import type { Frame, ToonDocument } from '../format/types';
   import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
   import { fitThumb } from './thumb-size';
+  import { whenOnScreen } from './on-screen';
+  import { renderDensity } from './viewport';
 
   let {
     doc,
@@ -31,36 +33,45 @@
    * every scroll costs more than the memory it returns.
    * ponytail: bounded by what was scrolled past, not by what is on screen —
    * release on exit if a very long strip ever proves it matters.
+   *
+   * One observer serves the whole strip (`on-screen.ts`): a pair per cell was
+   * a pair per thousand cells, which is the cost the window was put here to
+   * remove.
    */
   let onScreen = $state(false);
   $effect(() => {
     if (!canvasEl) {
       return;
     }
-    if (typeof IntersectionObserver === 'undefined') {
-      onScreen = true; // no observer (older engine, SSR shim): draw as before
-      return;
-    }
-    // The `.grid` scroller clips the cells, so intersection with the viewport
-    // is exactly "inside the visible part of the strip". A screen of margin
-    // either side, so a cell is drawn before the scroll reaches it.
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        onScreen ||= entry.isIntersecting;
-      },
-      { rootMargin: '200px' },
-    );
-    io.observe(canvasEl);
-    return () => io.disconnect();
+    return whenOnScreen(canvasEl, () => {
+      onScreen = true;
+    });
   });
+
+  /**
+   * The cell this thumbnail currently shows, and how many strokes were on it.
+   * A write to the document replaces the whole holder, so every thumbnail on
+   * screen hears every stroke; a block edit writes a fresh cell and a new
+   * stroke is pushed onto the one that is there, so the pair of them is what
+   * says whether this thumbnail has anything new to draw.
+   */
+  let painted: Frame | undefined;
+  let paintedStrokes = -1;
+  let paintedBox = '';
 
   $effect(() => {
     const cell = doc.layers[layerIndex]?.frames[frameIndex];
-    void cell?.strokes.length;
     if (!canvasEl || !cell || !onScreen) {
       return;
     }
-    const dpr = window.devicePixelRatio || 1;
+    const shape = `${box.w}x${box.h}`;
+    if (cell === painted && cell.strokes.length === paintedStrokes && shape === paintedBox) {
+      return;
+    }
+    painted = cell;
+    paintedStrokes = cell.strokes.length;
+    paintedBox = shape;
+    const dpr = renderDensity(window.devicePixelRatio || 1);
     canvasEl.width = Math.max(1, Math.round(box.w * dpr));
     canvasEl.height = Math.max(1, Math.round(box.h * dpr));
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike & {

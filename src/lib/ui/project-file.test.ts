@@ -17,7 +17,7 @@ describe('Alt+S saves the project as a file', () => {
     expect(t('editor.download_project_confirm')).toBe('Скачать проект в формате .toonop?');
     expect(editorUi).toContain("type: 'application/json'");
     expect(editorUi).toContain("'toonop.toonop'");
-    expect(editorUi).toContain('JSON.stringify($state.snapshot(editor.doc))');
+    expect(editorUi).toContain('JSON.stringify(editor.doc)');
   });
 
   it('asks unless the warnings are muted', () => {
@@ -113,7 +113,10 @@ describe('the autosave record is one per visit', () => {
 describe('what the record holds and what comes back', () => {
   it('writes the hand along with the drawing', () => {
     expect(editorUi).toContain('saveDraft(draftId, doc, editor.sessionState())');
-    expect(editorUi).toContain('$state.snapshot(editor.doc)');
+    // The document is a value the editor holds whole: it goes to storage as it
+    // is, with no snapshot taken and no second pass to size it.
+    expect(editorUi).toContain('const doc = editor.doc;');
+    expect(editorUi).not.toContain('JSON.stringify(doc).length');
     expect(state).toContain('sessionState(): DraftState');
     expect(state).toContain('restoreState(');
   });

@@ -160,3 +160,25 @@ export function toDocument(
     ((y - view.panY) / (sheet.height * view.zoom)) * doc.height,
   ];
 }
+
+/**
+ * Device pixels per CSS pixel the editor rasterizes at.
+ *
+ * Capped at two. The editor keeps about ten full-stage buffers — the three of
+ * the layer stack, the live layer, the composite, a layer scratch, the paper
+ * and the onion ghosts — and each of them is the whole worktable. At the
+ * density 3 a phone reports, their backing store together runs past a hundred
+ * megabytes on a device that is not given that much, and the end of it is not
+ * a lag but a reloaded tab. On line art the difference between 2× and 3× is
+ * not there to see.
+ *
+ * Halved while a navigation gesture is on, and never below 1: pan and pinch
+ * bake into the buffers, so every frame of the gesture rebuilds the stack, and
+ * a quarter of the pixels is what reads as smooth exactly while the picture
+ * moves. A screen at density 1 keeps its pixels — it has none to spare, and
+ * a desktop with a mouse has no problem to solve.
+ */
+export function renderDensity(deviceDpr: number, navigating = false): number {
+  const density = Number.isFinite(deviceDpr) && deviceDpr > 0 ? Math.min(2, deviceDpr) : 1;
+  return navigating ? Math.max(1, density / 2) : density;
+}

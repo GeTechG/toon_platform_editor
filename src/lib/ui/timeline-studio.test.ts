@@ -344,9 +344,17 @@ describe('the strip only pays for the cells it shows', () => {
   // so the cell waits until it is in view. Measured after: 61 cells, 23 drawn.
   it('a cell thumbnail takes its context when it comes into view', async () => {
     const thumb = await Bun.file(new URL('./LayerThumb.svelte', import.meta.url)).text();
-    expect(thumb).toContain('IntersectionObserver');
+    // One observer for the whole strip, not a pair per cell (`on-screen.ts`).
+    expect(thumb).toContain('whenOnScreen(canvasEl');
     expect(thumb).toContain('!onScreen');
-    // No observer in the engine is a reason to draw, not a reason to go blank.
-    expect(thumb).toContain('onScreen = true;');
+    expect(thumb).not.toContain('new IntersectionObserver');
+  });
+
+  it('a cell thumbnail redraws for its own cell, not for the document', async () => {
+    // A write replaces the whole document holder, so every thumbnail on
+    // screen hears every stroke; the cell it was drawn from is what says
+    // whether this one has anything new to show.
+    const thumb = await Bun.file(new URL('./LayerThumb.svelte', import.meta.url)).text();
+    expect(thumb).toContain('cell === painted');
   });
 });

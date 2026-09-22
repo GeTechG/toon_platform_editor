@@ -631,16 +631,10 @@
     if (!editor.touched) {
       return;
     }
-    const doc = editor.doc;
-    void doc.frame_rate;
-    void doc.layers.length;
-    for (const layer of doc.layers) {
-      void layer.hidden;
-      void layer.frames.length;
-      for (const cell of layer.frames) {
-        void cell.strokes.length;
-      }
-    }
+    // The document is one value and every write replaces it, so this is the
+    // whole subscription. It used to be a walk over every cell of every
+    // layer — frames × layers reads on each stroke.
+    void editor.doc;
     dirty = true;
   });
 
@@ -656,14 +650,16 @@
     if (!editor.touched || saveFailed) {
       return;
     }
-    const doc = $state.snapshot(editor.doc);
+    // The document is a value the editor holds whole, so it goes to storage as
+    // it is: no snapshot to take, and no second pass over every stroke of the
+    // drawing to size what the write is about to size anyway.
+    const doc = editor.doc;
     queued = false;
     dirty = false;
     editor.lastSavedAt = Date.now();
-    // What the record will weigh: the document plus the track riding with it.
-    savedBytes = JSON.stringify(doc).length + (editor.audio.blob?.size ?? 0);
-    void saveDraft(draftId, doc, editor.sessionState()).then((ok) => {
+    void saveDraft(draftId, doc, editor.sessionState()).then(({ ok, bytes }) => {
       if (ok) {
+        savedBytes = bytes;
         writeScreenshot(doc);
         return;
       }
@@ -704,7 +700,7 @@
     if (editor.warnings && !confirm(t('editor.download_project_confirm'))) {
       return;
     }
-    const blob = new Blob([JSON.stringify($state.snapshot(editor.doc))], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(editor.doc)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;

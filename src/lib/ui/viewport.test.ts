@@ -11,6 +11,7 @@ import {
   zoomCentredOn,
   zoomDelta,
   type Stage,
+  renderDensity,
 } from './viewport';
 
 /** A 200×100 sheet lying on a 400×300 workspace. */
@@ -137,5 +138,35 @@ describe('toDocument', () => {
   it('reads negative units off the workspace beside the sheet', () => {
     const [x] = toDocument(-100, 0, SHEET, DOC, { zoom: 1, panX: 0, panY: 0 });
     expect(x).toBe(-2400);
+  });
+});
+
+describe('renderDensity', () => {
+  it('leaves an ordinary screen at its own density', () => {
+    expect(renderDensity(1)).toBe(1);
+    expect(renderDensity(1.5)).toBe(1.5);
+    expect(renderDensity(2)).toBe(2);
+  });
+
+  it('caps a phone at two device pixels per CSS pixel', () => {
+    // The editor holds about ten full-stage buffers; at density 3 their
+    // backing store on a phone runs past a hundred megabytes, and on line art
+    // 3× is not visible. 2.25× fewer pixels in every one of them.
+    expect(renderDensity(3)).toBe(2);
+    expect(renderDensity(4)).toBe(2);
+  });
+
+  it('halves while a navigation gesture is on, never below one', () => {
+    // Pan and pinch rebuild the whole stack every frame of the gesture; a
+    // quarter of the pixels is what reads as smooth while it moves. A desktop
+    // at density 1 keeps its pixels: it has none to spare and no problem.
+    expect(renderDensity(3, true)).toBe(1);
+    expect(renderDensity(2, true)).toBe(1);
+    expect(renderDensity(1, true)).toBe(1);
+  });
+
+  it('falls back to one for a density the browser could not name', () => {
+    expect(renderDensity(0)).toBe(1);
+    expect(renderDensity(Number.NaN)).toBe(1);
   });
 });

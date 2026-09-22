@@ -42,7 +42,7 @@ plugins.register({
         rules: () => ({
           range: { min: 1, max: 300 },
           defaults: { width: 4, smooth: 3, minDistance: 3 },
-          capture: (line: readonly number[]) => [...line],
+          capture: () => [],
         }),
         descriptor: ({ width, color }: { width: number; color: string }) =>
           ({ kind: 'pencil', geometry: 'smooth', width, color }),
