@@ -137,7 +137,7 @@
 
 <!-- Reference `.panel.palette`: the two big colors with swap and «add», the
      grid (or the saved list) in the middle, a three-key strip at the foot. -->
-<div class="box palette" aria-label={t('palette.box')}>
+<div class="box palette" role="group" aria-label={t('palette.box')}>
   <div class="main-colors">
     <div class="big" style:--swatch={editor.brushColor} style:color={contrastInk(editor.brushColor)}>
       <button

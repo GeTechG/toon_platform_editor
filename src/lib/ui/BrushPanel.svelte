@@ -69,6 +69,9 @@
   const current = $derived(types.find(({ id }) => id === editor.brushType) ?? types[0]);
 
 
+
+  /** Which heading's help is open: one at a time, until pressed again, Esc or blur. */
+  let openNote = $state<string | null>(null);
 </script>
 
 {#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void)}
@@ -90,15 +93,28 @@
   />
 {/snippet}
 
-<!-- The words come up over the box on hover or focus, and go with the
-     pointer: the panel is for working, not for reading. No state and no
-     script — the bubble is a sibling of the «i», shown by CSS. The reader
-     that cannot hover gets the same words from the button's own label. -->
+<!-- The words come up over the box when the «i» is pressed — by mouse, finger
+     or key alike — and stay until it is pressed again, Esc, or focus moves on.
+     Hover used to drive it: the bubble closed under a pointer reaching for
+     it, and a finger never opened it (WCAG 1.4.13). The reader gets the same
+     words from the button's own label. -->
 {#snippet heading(title: string, note: string)}
   <h2 class="field">
     {title}
-    <button class="info" type="button" aria-label="{title}: {note}"><Icon name="info" /></button>
-    <span class="note" aria-hidden="true">{note}</span>
+    <button
+      class="info"
+      type="button"
+      aria-label="{title}: {note}"
+      onclick={() => (openNote = openNote === title ? null : title)}
+      onkeydown={(e) => {
+        if (e.key === 'Escape' && openNote === title) {
+          e.preventDefault();
+          openNote = null;
+        }
+      }}
+      onblur={() => openNote === title && (openNote = null)}
+    ><Icon name="info" /></button>
+    <span class="note" class:open={openNote === title} aria-hidden="true">{note}</span>
   </h2>
 {/snippet}
 
@@ -116,7 +132,7 @@
   </svg>
 {/snippet}
 
-<div class="box brush-box" aria-label={t('brush.box')}>
+<div class="box brush-box" role="group" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
        have no other form, so the list would offer a choice of one. -->
   {#if hasBrushTypes(editor.tool)}
@@ -321,8 +337,7 @@
     text-align: left;
     color: var(--ink-2);
   }
-  .info:hover ~ .note,
-  .info:focus-visible ~ .note {
+  .note.open {
     display: block;
   }
   /* 1.1rem was the drawn size of the glyph and the size of the target with it —

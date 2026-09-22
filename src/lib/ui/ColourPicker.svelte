@@ -470,12 +470,12 @@
     width: 12px;
     height: 12px;
     margin: -6px 0 0 -6px;
-    border: 2px solid var(--canvas, #fff);
+    border: 2px solid var(--canvas);
     border-radius: 50%;
     /* The ring that keeps the pointer visible on a light surface: the table's
        control boundary, not a second black. `--edge` is ink at 48% and was
        written for exactly this — telling a control from what is under it. */
-    box-shadow: 0 0 0 1px var(--edge, #0b0c107a);
+    box-shadow: 0 0 0 1px var(--edge);
     pointer-events: none;
   }
   .knob {
@@ -484,9 +484,9 @@
     width: 7px;
     height: 100%;
     margin-left: -3.5px;
-    border: 2px solid var(--canvas, #fff);
+    border: 2px solid var(--canvas);
     border-radius: 4px;
-    box-shadow: 0 0 0 1px var(--edge, #0b0c107a);
+    box-shadow: 0 0 0 1px var(--edge);
     pointer-events: none;
   }
   .fields {

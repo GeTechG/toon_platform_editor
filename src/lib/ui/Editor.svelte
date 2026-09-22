@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount, untrack, type Snippet } from 'svelte';
   import { plugins } from '../plugins';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
@@ -27,6 +27,7 @@
   import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
   import { wrapIndex } from './frame-selection';
+  import { keyOwner } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -62,9 +63,16 @@
   // coupling).
   // The soundtrack travels beside the document, not inside it: the toon format
   // holds drawings, and the platform stores the file on its own endpoint.
+  // `stageNote` is the host's own word over the canvas — the site's first-run
+  // hint. The stage is the only box that knows where the canvas is, so the
+  // note is placed against it rather than against the whole editor.
   let {
     onPublish,
-  }: { onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void } = $props();
+    stageNote,
+  }: {
+    onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void;
+    stageNote?: Snippet;
+  } = $props();
 
   const editor = new EditorState();
   // The session being autosaved. Minted when the editor opens and kept for as
@@ -153,12 +161,29 @@
    * the timeline, so a panel sitting at its minimum has to make room for them
    * rather than push the layer rows out of view.
    */
+  /** Each bottom row's content box — padding out, so a row's bleed is not a wrap. */
+  let rowBoxes = $state<(DOMRectReadOnly | undefined)[]>([]);
+  /** One key tall: what the floor's arithmetic expects of a row of keys. */
+  const KEY_ROW = 44;
+  /**
+   * What wrapped key rows take beyond one key each. Between a phone and a wide
+   * desktop the transport does not fit one line and wraps; the floor has to
+   * hear about it, or the second line comes out of the strip and the layer
+   * rows go under the panel's edge. The strip's own row grows with the panel.
+   */
+  const wrapExtra = $derived(
+    editor.panels.rows.reduce(
+      (sum, row, i) => (row.includes('timeline') ? sum : sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW)),
+      0,
+    ),
+  );
   const panelFloor = $derived(
     PANEL_HEIGHT_MIN
       + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0)
       // The floor is written for a strip and one row; every row beyond that
       // needs its own height, or it is cut off at the panel's edge.
-      + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP,
+      + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP
+      + wrapExtra,
   );
   /** The stored panel height, never more than three quarters of the viewport. */
   const panelHeight = $derived(
@@ -266,12 +291,6 @@
     editor.selectLayer(layer);
   }
 
-  /**
-   * Keys the reference still acts on while a form field has focus: apply,
-   * play and cancel. Everything else belongs to the field being typed in.
-   */
-  const TYPING_KEYS = ['Enter', ' ', 'Escape'];
-
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
@@ -322,9 +341,18 @@
     // The reference dispatches its hotkey table whatever modifier is held, so
     // Ctrl+Z, Ctrl+C, Ctrl+V and Ctrl+M land on the same handlers as the bare
     // keys; only A and F7 change meaning under Ctrl.
-    const target = e.target as HTMLElement | null;
-    const typing = !!target && (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName));
-    if (typing && !TYPING_KEYS.includes(e.key)) {
+    // What the focused control, an open sheet or the letter-keys setting
+    // keeps for itself never reaches the table (key-owner.ts).
+    const owner = keyOwner({
+      key: e.key,
+      target: e.target instanceof HTMLElement ? e.target : null,
+      defaultPrevented: e.defaultPrevented,
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+      modalOpen: document.querySelector('dialog:modal') !== null,
+      letterKeys: editor.settings.letterKeys,
+    });
+    if (owner === 'control') {
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do
@@ -1359,15 +1387,19 @@
       }}
     />
   {:else if id === 'saved'}
-    {#if saveFailed}
-      <span class="saved too_big" role="status">
+    <!-- One region, there before its first word: a live region inserted
+         together with its text is often not announced at all. A failed save
+         is urgent, so it interrupts; a saved one waits its turn. -->
+    <span
+      class="saved save-status {saveFailed ? 'too_big' : lastSaved ? draftSizeClass(savedBytes) : ''}"
+      role={saveFailed ? 'alert' : 'status'}
+    >
+      {#if saveFailed}
         <Icon name="x" size={14} /> {t('editor.save_failed')}
-      </span>
-    {:else if lastSaved}
-      <span class="saved {draftSizeClass(savedBytes)}" role="status">
+      {:else if lastSaved}
         {t('editor.saved_at', { when: lastSaved, size: formatFileSize(savedBytes) })}
-      </span>
-    {/if}
+      {/if}
+    </span>
   {:else if id === 'copy'}
     <button
       class="key icon"
@@ -1480,6 +1512,7 @@
   {/if}
   <div class="stage" data-slot="float">
     <CanvasView {editor} />
+    {@render stageNote?.()}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -1597,7 +1630,13 @@
            has to stand there holding a place open. -->
       <div class="toolbar">
         {#each editor.panels.rows as row, i (i)}
-          <div class="row" role="group" aria-label={t('editor.row_n', { n: i + 1 })} data-slot="row:{i}">
+          <div
+            class="row"
+            role="group"
+            aria-label={t('editor.row_n', { n: i + 1 })}
+            data-slot="row:{i}"
+            bind:contentRect={rowBoxes[i]}
+          >
             {@render slot(row)}
           </div>
         {/each}
@@ -1732,8 +1771,8 @@
 
   <!-- The lock: an update is coming down, and nothing else is to be touched
        while it does. Esc does not call it off — there is nothing to call off. -->
-  <dialog class="updating" bind:this={updatingEl} oncancel={(e) => e.preventDefault()}>
-    <p>{t('editor.plugins_updating')}</p>
+  <dialog class="updating" bind:this={updatingEl} aria-labelledby="editor-updating" oncancel={(e) => e.preventDefault()}>
+    <p id="editor-updating">{t('editor.plugins_updating')}</p>
   </dialog>
 
   <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
@@ -1793,7 +1832,7 @@
        «рисовать» and names icons and borders as off-limits, and the written
        carve-out in DESIGN §2 covers paint inside a drawing (the mascot), not
        interface chrome. The fourth was #c0392b, 6° from the signal. */
-    --layer-tag-0: #1b5cff;
+    --layer-tag-0: var(--electric);
     --layer-tag-1: #00997a;
     --layer-tag-2: #b8860b;
     --layer-tag-3: #c2185b;
@@ -1846,7 +1885,7 @@
     position: absolute;
     left: clamp(0.5rem, 2.2vw, 1.25rem);
     top: clamp(0.5rem, 2.2vw, 1.25rem);
-    z-index: 3;
+    z-index: var(--z-tool);
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -1865,7 +1904,7 @@
     position: absolute;
     left: clamp(0.5rem, 2.2vw, 1.25rem);
     bottom: clamp(0.5rem, 2.2vw, 1.25rem);
-    z-index: 3;
+    z-index: var(--z-tool);
     /* One row of keys — it takes the width it needs, not a panel's. */
     width: max-content;
   }
@@ -1906,7 +1945,7 @@
   .flash {
     position: absolute;
     inset: 0;
-    z-index: 5;
+    z-index: var(--z-flash);
     background: var(--flash);
     pointer-events: none;
   }
@@ -2110,7 +2149,7 @@
   .pick-window {
     padding: 0.5rem;
     border: 1px solid var(--hairline);
-    border-radius: 10px;
+    border-radius: var(--r-md);
     background: var(--canvas);
     font-size: 13px;
   }
@@ -2350,7 +2389,7 @@
     transform: translateY(2px);
   }
   .fold:focus-visible {
-    outline: 3px solid var(--electric, #1b5cff);
+    outline: 3px solid var(--electric);
     outline-offset: 2px;
   }
   /* Folded, the tab is all that is left of the column: it waits at the screen
@@ -2443,8 +2482,7 @@
       display: flex;
     }
     .studio .left,
-    .studio .right,
-    .studio .history {
+    .studio .right {
       display: flex;
       flex-direction: row;
       width: auto !important;
@@ -2464,9 +2502,20 @@
          fade lies over paper and is invisible. */
       mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
     }
-    .studio .left,
-    .studio .history {
+    .studio .left {
       max-height: 26dvh;
+    }
+    /* Inside a rail the history is one more run of keys in the rail's row,
+       with none of the rail's own scrolling around it. Named as the column
+       rule names it: `.studio .left .history` is three classes, and a phone
+       rule of two lost to it whatever the media query — the history stayed a
+       16px grid, «Отменить» under «Полный экран», «Вернуть» in a band of its
+       own that took the height from the canvas. */
+    .studio .left .history,
+    .studio .right .history {
+      display: flex;
+      flex: none;
+      gap: 0.4rem;
     }
     .studio .right {
       max-height: 22dvh;
@@ -2565,6 +2614,22 @@
     .studio .panel {
       max-height: 55dvh;
     }
+    /* 334px under the site bar hold the canvas's 38dvh and a bar of one key
+       row plus the strip — not a transport wrapped to two lines, which pushed
+       the page 15px past the screen. Here the row scrolls sideways like the
+       phone rail and says so with the same fade; the bleed keeps the keys'
+       travel and focus rings inside the scroll box. */
+    .studio .row:not(:has(.timeline)) {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior: contain;
+      padding: var(--bleed);
+      margin: calc(-1 * var(--bleed));
+      mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+    }
+    .studio .row:not(:has(.timeline)) > :global(*) {
+      flex: none;
+    }
   }
   /* Zoom group: two keys around a tabular readout, so the width does not
      jump as the percentage changes. */
@@ -2618,7 +2683,7 @@
     font-weight: 650;
   }
   .updating::backdrop {
-    background: var(--scrim, #0b0c106b);
+    background: var(--scrim);
   }
   /* The shape comes from the shared `.sheet` chrome; a <dialog> only needs its
      own defaults cleared and a backdrop of its own (as in the settings sheet). */
@@ -2630,12 +2695,12 @@
     color: var(--ink);
   }
   .editor :global(.sheet-dialog)::backdrop {
-    background: var(--scrim, #0b0c106b);
+    background: var(--scrim);
   }
   /* Bottom sheet on mobile, centered card on wider screens. */
   .editor :global(.sheet) {
     position: fixed;
-    z-index: 11;
+    z-index: var(--z-sheet);
     left: 0;
     right: 0;
     bottom: 0;
@@ -2869,6 +2934,9 @@
     .editor :global(.key[data-key]:hover:not(:disabled))::after {
       content: none;
     }
+  }
+  .editor :global(.saved:empty) {
+    padding: 0;
   }
   .editor :global(.saved) {
     padding: 0 0.4rem;

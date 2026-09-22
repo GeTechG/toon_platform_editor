@@ -409,3 +409,34 @@ describe('the frame pays only for what changed', () => {
     expect(source).toContain('function canvasRect');
   });
 });
+
+// Pan and pinch rebuilt the whole frame on every animation frame: the view is
+// one of the composer's inputs, and the ghosts are cached by a key that
+// includes the pan. The hand moves the picture, not what is in it.
+describe('a navigation gesture moves the picture instead of rebuilding it', () => {
+  it('the gesture takes a shot of the last composed frame when it starts', () => {
+    expect(handler('startNavigation')).toContain('takeNavShot()');
+  });
+
+  it('while the hand moves, draw shows the shot through the reprojection', () => {
+    const draw = handler('draw');
+    expect(draw).toContain('reprojection(');
+    expect(draw.indexOf('reprojection(')).toBeLessThan(draw.indexOf('composer.compose('));
+  });
+
+  it('letting go drops the shot and composes once at full density', () => {
+    const end = handler('endNavigation');
+    expect(end).toContain('navShot = null');
+    expect(source).not.toContain('renderDensity(window.devicePixelRatio || 1, navigating())');
+  });
+});
+
+// The brush ring and the pipette swatch followed the pointer by `left`/`top`,
+// a layout on every pointermove — at a 120 Hz touch rate, while drawing.
+describe('the cursor follows the pointer on the compositor', () => {
+  it('moves by transform, not by left/top', () => {
+    expect(source).not.toContain('style:left="{cursorX}px"');
+    expect(source).not.toContain('style:top="{cursorY}px"');
+    expect(source).toContain('style:transform="translate({cursorX}px, {cursorY}px)');
+  });
+});

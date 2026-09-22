@@ -18,8 +18,13 @@
   const renderer = new Canvas2DFrameRenderer();
   const box = $derived(fitThumb(doc.width, doc.height, maxW, maxH));
 
-  /** The cells this thumbnail was last drawn from — see `LayerThumb`. */
+  /**
+   * The document and the cells this thumbnail was last drawn from. The counts
+   * alone missed a lasso move or a distort, which keep every one of them; a
+   * list read back from storage hands over a new document for a changed draft.
+   */
   let painted = '';
+  let paintedDoc: typeof doc | undefined;
 
   $effect(() => {
     // Redraw when the cells, their strokes, the layer order or a layer's
@@ -27,10 +32,11 @@
     const cells = doc.layers
       .map((layer) => (layer.hidden ? 'x' : (layer.frames[frameIndex]?.strokes.length ?? 'x')))
       .join('|') + `:${box.w}x${box.h}`;
-    if (!canvasEl || cells === painted) {
+    if (!canvasEl || (cells === painted && doc === paintedDoc)) {
       return;
     }
     painted = cells;
+    paintedDoc = doc;
     const dpr = renderDensity(window.devicePixelRatio || 1);
     canvasEl.width = Math.max(1, Math.round(box.w * dpr));
     canvasEl.height = Math.max(1, Math.round(box.h * dpr));

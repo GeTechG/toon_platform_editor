@@ -275,9 +275,13 @@
         {t('export.download')}
       </button>
 
+      <!-- The stage is announced once per stage, from a region that is there
+           before it; the percent is for the eye and the bar, which a reader
+           asks for when it wants it instead of hearing it every tick. -->
+      <p class="sr-only" role="status">{stage}</p>
       {#if busy}
-        <p class="note" role="status">{stage} {progress}%</p>
-        <progress max="100" value={progress}></progress>
+        <p class="note" aria-hidden="true">{stage} {progress}%</p>
+        <progress max="100" value={progress} aria-label={stage}></progress>
         <button class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {/if}
       {#if error}
@@ -302,7 +306,7 @@
     color: var(--ink);
   }
   .sheet-dialog::backdrop {
-    background: var(--scrim, #0b0c106b);
+    background: var(--scrim);
   }
   .choices {
     display: flex;
@@ -321,10 +325,18 @@
   .note {
     margin: 0.2rem 0;
     font-size: 0.82rem;
-    color: var(--ink-2, #333a48);
+    color: var(--ink-2);
   }
   progress {
     width: 100%;
     height: 0.5rem;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 </style>

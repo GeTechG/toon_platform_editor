@@ -140,3 +140,76 @@ describe('the brand table is written once', () => {
     expect(editorUi).toContain('--bleed: 6px;');
   });
 });
+
+// The layers that stand over the canvas all share the editor's one stacking
+// context, and their order lived in nine literals across six files — 3, 5, 6,
+// 11, 30, 40 — with nothing saying which was meant to be above which. A new
+// overlay was placed by guesswork. The order is written once now; a number
+// inside a component that only orders its own children stays a number.
+describe('the overlays over the canvas stack by name', () => {
+  const LADDER = ['--z-tool', '--z-flash', '--z-float', '--z-sheet', '--z-arrange', '--z-cursor', '--z-drop'];
+  const tokens = files.find((f) => f.file.endsWith('ui/tokens.css'))!.text;
+
+  it('the ladder is declared once, bottom to top', () => {
+    const values = LADDER.map((name) => Number(tokens.match(new RegExp(`${name}:\\s*(\\d+)`))?.[1]));
+    expect(values.every((v) => Number.isFinite(v))).toBe(true);
+    expect([...values].sort((a, b) => a - b)).toEqual(values);
+  });
+
+  it('every overlay takes its rung', () => {
+    const uses: [string, string, string][] = [
+      ['ui/Editor.svelte', '.tool-windows', '--z-tool'],
+      ['ui/Editor.svelte', '.scale-window', '--z-tool'],
+      ['ui/Editor.svelte', '.flash', '--z-flash'],
+      ['ui/FloatWindow.svelte', '.float', '--z-float'],
+      ['ui/AudioPanel.svelte', '.audio-plate', '--z-float'],
+      ['ui/Editor.svelte', '.editor :global(.sheet)', '--z-sheet'],
+      ['ui/CanvasView.svelte', '.brush-cursor', '--z-cursor'],
+      ['ui/CanvasView.svelte', '.pick-preview', '--z-cursor'],
+      ['ui/PanelArranger.svelte', '.arrange-bar', '--z-arrange'],
+      ['ui/PanelArranger.svelte', '.drop-panel', '--z-drop'],
+    ];
+    for (const [file, selector, rung] of uses) {
+      const text = files.find((f) => f.file.endsWith(file))!.text;
+      const at = text.indexOf(`  ${selector} {`);
+      expect(at).toBeGreaterThan(-1);
+      expect(text.slice(at, text.indexOf('}', at))).toContain(`z-index: var(${rung})`);
+    }
+  });
+});
+
+// Inside the editor every component renders under `.editor`, where tokens.css
+// declares the whole table. A hex fallback there is never used — it is a copy
+// of the token's value that goes stale the day the hue moves, and in a host
+// with its own table it would hide a missing token instead of showing it. The
+// standalone player is the one export that is mounted without tokens.css.
+describe('an editor component reads a token without a copy of its value', () => {
+  it('no var(--token, #hex) outside the player', () => {
+    const copies = files
+      .filter((f) => f.file.startsWith('lib/ui/') && f.file.endsWith('.svelte'))
+      .flatMap((f) => [...f.text.matchAll(/var\(--[a-z0-9-]+,\s*#[0-9a-f]{3,8}\)/gi)].map((m) => `${f.file}: ${m[0]}`));
+    expect(copies).toEqual([]);
+  });
+
+  it('the first layer tag is the electric blue by name, not by value', () => {
+    const editor = files.find((f) => f.file === 'lib/ui/Editor.svelte')!.text;
+    expect(editor).toContain('--layer-tag-0: var(--electric);');
+  });
+});
+
+// The radius scale is five rungs (DESIGN §2). A literal that equals a rung is
+// the rung written by hand; 10px and 6px are no rung at all — three tool
+// windows sat at 10 beside a brush box at 14. What stays literal is drawing
+// detail under the scale: a 2px stripe, a 4px thumbnail corner.
+describe('a corner is a rung of the radius scale', () => {
+  it('no literal radius at or above the smallest rung', () => {
+    const literals = files
+      .filter((f) => f.file.startsWith('lib/ui/') && f.file.endsWith('.svelte'))
+      .flatMap((f) =>
+        [...f.text.matchAll(/border-radius:\s*(\d+)px;/g)]
+          .filter((m) => Number(m[1]) >= 6)
+          .map((m) => `${f.file}: ${m[0]}`),
+      );
+    expect(literals).toEqual([]);
+  });
+});

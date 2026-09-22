@@ -164,3 +164,40 @@ describe('height in the studio is written in dvh', () => {
     expect(stray).toEqual([]);
   });
 });
+
+// The column rule `.studio .left .history` is three classes; the phone rule
+// that turns the history into a row was two. A media query adds nothing to
+// specificity, so on a phone the history stayed a grid inside a rail with no
+// width: 16px wide, «Отменить» under «Полный экран», «Вернуть» dropped into an
+// empty band that doubled the rail and took the height from the canvas.
+describe('undo and redo stay reachable on a phone', () => {
+  it('the phone rule for the history outranks the column rule', () => {
+    const branch = phoneBranches().find((b) => b.includes('.history')) ?? '';
+    expect(branch).toContain('.studio .left .history');
+    expect(branch).toContain('.studio .right .history');
+  });
+});
+
+// The floor under the bottom bar is arithmetic for rows that stay one key
+// tall. Between a phone and a wide desktop the transport wraps to a second
+// line — measured at 768×1024 and 844×390 — and the 53px it takes came out of
+// the strip: the panel showed «+ Слой | 1» and no layer at all.
+describe('a wrapped row raises the floor under the bar', () => {
+  it('each key row is measured and what it takes over one key is added', () => {
+    expect(editorUi).toContain('bind:contentRect={rowBoxes[i]}');
+    const floor = editorUi.match(/const panelFloor = \$derived\([^]*?\n  \);/)?.[0] ?? '';
+    expect(floor).toContain('wrapExtra');
+  });
+});
+
+// Turned on its side a phone has 334px under the site bar: the canvas row
+// keeps 38dvh, and a transport wrapped to two lines asked the bar for 204 —
+// together past the screen, which scrolled the page by 15px. On a short screen
+// a line that scrolls sideways is cheaper than a second line.
+describe('a short screen keeps each key row to one line', () => {
+  it('the landscape block stops the key rows wrapping and lets them scroll', () => {
+    const at = editorUi.indexOf('@media (max-height: 30rem)');
+    const landscape = block(at);
+    expect(landscape).toMatch(/\.studio \.row:not\(:has\(\.timeline\)\)\s*\{[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/);
+  });
+});

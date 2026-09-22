@@ -367,12 +367,12 @@
   .drop-line,
   .drop-panel {
     position: fixed;
-    z-index: 40;
+    z-index: var(--z-drop);
     pointer-events: none;
   }
   .ghost {
     padding: 0.2rem 0.55rem;
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     background: var(--electric);
     color: var(--canvas);
     font-size: 0.82rem;
@@ -396,7 +396,7 @@
     position: fixed;
     left: 50%;
     top: 1rem;
-    z-index: 30;
+    z-index: var(--z-arrange);
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
@@ -436,7 +436,7 @@
   .chip {
     padding: 0.2rem 0.5rem;
     border: 1px solid var(--edge);
-    border-radius: 999px;
+    border-radius: var(--r-pill);
     background: var(--sky);
     font-size: 0.82rem;
     cursor: grab;

@@ -172,13 +172,34 @@ export function toDocument(
  * a lag but a reloaded tab. On line art the difference between 2× and 3× is
  * not there to see.
  *
- * Halved while a navigation gesture is on, and never below 1: pan and pinch
- * bake into the buffers, so every frame of the gesture rebuilds the stack, and
- * a quarter of the pixels is what reads as smooth exactly while the picture
- * moves. A screen at density 1 keeps its pixels — it has none to spare, and
- * a desktop with a mouse has no problem to solve.
+ * A navigation gesture does not change it: pan and pinch move the last
+ * composed picture (`reprojection`) instead of rebuilding it, so there is
+ * nothing to save by drawing fewer pixels while the hand moves — and nothing
+ * to resize twice when it starts and stops.
  */
-export function renderDensity(deviceDpr: number, navigating = false): number {
-  const density = Number.isFinite(deviceDpr) && deviceDpr > 0 ? Math.min(2, deviceDpr) : 1;
-  return navigating ? Math.max(1, density / 2) : density;
+export function renderDensity(deviceDpr: number): number {
+  return Number.isFinite(deviceDpr) && deviceDpr > 0 ? Math.min(2, deviceDpr) : 1;
+}
+
+/** A view as the canvas drew it: zoom and pan in CSS px, and the density. */
+export interface DrawnView {
+  zoom: number;
+  panX: number;
+  panY: number;
+  dpr: number;
+}
+
+/**
+ * Where a picture drawn under `from` lands under `to`: the uniform scale and
+ * offset, in `to`'s device pixels, that put every point of it back where the
+ * new view would draw it. Pan and pinch show the last composed frame through
+ * this and rebuild it once, when the hand lets go.
+ */
+export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x: number; y: number } {
+  const k = to.zoom / from.zoom;
+  return {
+    scale: (k * to.dpr) / from.dpr,
+    x: to.dpr * (to.panX - k * from.panX),
+    y: to.dpr * (to.panY - k * from.panY),
+  };
 }

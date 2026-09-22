@@ -430,7 +430,7 @@ test('the box shows what the numbers do, not only the numbers', () => {
   expect(t('brush.smooth_hint')).toContain('отстаёт от руки');
   expect(t('brush.simplify_hint')).toContain('мелкие детали и острые углы');
   // Behind an «i», not under everyone's nose: the box is a working panel,
-  // and the words come up over it on hover, from CSS alone.
+  // and the words come up over it when the «i» is pressed (brush-note.test.ts).
   expect(brushPanel).toContain("name=\"info\"");
-  expect(brushPanel).toContain('.info:hover ~ .note');
+  expect(brushPanel).toContain('.note.open');
 });

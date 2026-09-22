@@ -64,6 +64,20 @@
   --r-lg: 16px;
   --r-xl: 22px;
   --r-pill: 999px;
+
+  /* What stands over the canvas, bottom to top. Every rung shares the
+     editor's one stacking context, so the order is written here once; a
+     number inside a component that only orders its own children stays a
+     number. The tool windows and the zoom window, the empty-frame flash, the
+     floating windows and the audio plate, the sheets, the arrange bar, the
+     brush cursor, and the panel being dragged in arrange mode. */
+  --z-tool: 3;
+  --z-flash: 5;
+  --z-float: 6;
+  --z-sheet: 11;
+  --z-arrange: 30;
+  --z-cursor: 31;
+  --z-drop: 40;
 }
 
 /* The ring the package carries itself. Everything exported here — the editor,

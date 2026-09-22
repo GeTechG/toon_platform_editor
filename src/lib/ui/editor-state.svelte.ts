@@ -3,6 +3,7 @@
  * Document mutations go through model operations only.
  */
 
+import { sessionErrors } from './error-log';
 import { AudioTrackState } from '../audio/state.svelte';
 import type { DraftState } from '../draft/store';
 import type { Frame, Stroke, ToonDocument } from '../format/types';
@@ -186,6 +187,8 @@ export type Tool = string;
  * rotation, bounded so a long drag cannot grow without end.
  */
 const TRANSFORM_HISTORY_LIMIT = 100;
+/** Block edits kept for undo; each holds a copy of the cells it wrote. */
+const EDIT_HISTORY_LIMIT = 100;
 
 /** One cell of a block edit, as it was before the edit ran. */
 interface CellSnapshot {
@@ -293,7 +296,8 @@ export class EditorState {
    * Errors the session has seen, for Alt+L (`bundle:11407-11409`). Capped, so
    * a loop that throws every frame cannot grow the tab out of memory.
    */
-  readonly errorLog: string[] = [];
+  /** The page's error log (error-log.ts), shared by every editor on it. */
+  readonly errorLog: string[] = sessionErrors.lines;
   /** Reference `toonio_saved_palettes`: named snapshots of the grid. */
   savedPalettes = $state<SavedPalette[]>(loadSavedPalettes());
   /** Canvas zoom and pan; view state only, never part of the document. */
@@ -457,33 +461,15 @@ export class EditorState {
     // preview asks the tool for its descriptor — and runes state MUST NOT be
     // written while one is being computed.
     plugins.onBreak = () => queueMicrotask(() => this.refreshPlugins());
-    this.watchErrors();
+    if (typeof window !== 'undefined') {
+      sessionErrors.watch(window, console);
+    }
     this.paletteExpanded = this.ux.quickPalette === null;
     this.doc = createDocument({ frameRate: this.ux.defaultFps });
     // The reference names every layer it creates, the first one included.
     // Without a name here the row falls back to its position, and the moment
     // a second layer slid in under it both rows would read «Слой 2».
     this.#write((doc) => renameLayer(doc, 0, t('layer.default_name', { n: 1 })));
-  }
-
-  /** Everything the session logs as an error, so Alt+L has something to hand over. */
-  private watchErrors(): void {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    const note = (what: unknown): void => {
-      if (this.errorLog.length >= 200) {
-        this.errorLog.shift();
-      }
-      this.errorLog.push(`${new Date().toISOString()} ${what instanceof Error ? what.stack ?? what.message : String(what)}`);
-    };
-    window.addEventListener('error', (e) => note(e.error ?? e.message));
-    window.addEventListener('unhandledrejection', (e) => note(e.reason));
-    const wasError = console.error.bind(console);
-    console.error = (...args: unknown[]) => {
-      note(args.join(' '));
-      wasError(...args);
-    };
   }
 
   /** Behavior profile of the active preset (palette, eraser rule, onion side, frames, playback). */
@@ -1441,7 +1427,7 @@ export class EditorState {
       snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
       snapshot.after = snapshot.cell.strokes.length;
     }
-    this.edits = [...this.edits, snapshots];
+    this.edits = [...this.edits, snapshots].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
     this.touched = true;
   }

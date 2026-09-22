@@ -36,12 +36,12 @@ describe('ScaleMenu', () => {
     // The fill steps back, never the window: `opacity` on the whole thing took
     // the readout to 4.33:1 and the edge to 1.8:1 (WCAG 1.4.3, 1.4.11).
     expect(editorUi).not.toMatch(/\.scale-window[^{]*\{[^}]*opacity:/s);
-    expect(menu).toMatch(/background: color-mix\(in srgb, var\(--canvas, #fff\) 55%/);
+    expect(menu).toMatch(/background: color-mix\(in srgb, var\(--canvas\) 55%/);
   });
 
   it('comes back to full when hovered, focused, or the hand is up', () => {
     expect(menu).toContain('class:up={editor.scaleMenuVisible}');
-    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:hover,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--canvas, #fff\)/);
+    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:hover,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--canvas\)/);
   });
 
   it('opens with the hand, the tool it belongs to', () => {

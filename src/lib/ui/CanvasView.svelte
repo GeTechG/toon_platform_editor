@@ -30,6 +30,8 @@
     fitSheet,
     fitView,
     renderDensity,
+    reprojection,
+    type DrawnView,
     toDocument,
     zoomAt,
     zoomCentredOn,
@@ -230,7 +232,7 @@
   // frame is on it.
   const canvasLabel = $derived(
     t('canvas.label', { frame: editor.displayedFrame + 1, total: frameCount(editor.doc) })
-      + (editor.doc.layers.length > 1 ? t('canvas.label_layer', { layer: editor.activeLayer + 1 }) : ''),
+      + (editor.doc.layers.length > 1 ? t('canvas.label_layer', { layer: editor.layerLabel(editor.activeLayer) }) : ''),
   );
   /** Reference cursors for the transform zones (`tools.js:995-1032`). */
   const CURSOR_BY_MODE: Record<HitMode, string> = {
@@ -281,6 +283,23 @@
     placed = wrapWidth > 0 && wrapHeight > 0;
   });
 
+  /** The view the last composed frame was drawn under. */
+  let lastDrawn: DrawnView | null = null;
+  /** That frame, copied when a pan or pinch starts, and the view it was drawn in. */
+  let navShot: { canvas: HTMLCanvasElement; view: DrawnView } | null = null;
+  let shotCanvas: HTMLCanvasElement | undefined;
+
+  function takeNavShot(): void {
+    if (!canvasEl || !lastDrawn || navShot) {
+      return;
+    }
+    shotCanvas ??= document.createElement('canvas');
+    shotCanvas.width = canvasEl.width;
+    shotCanvas.height = canvasEl.height;
+    shotCanvas.getContext('2d')?.drawImage(canvasEl, 0, 0);
+    navShot = { canvas: shotCanvas, view: lastDrawn };
+  }
+
   function draw(): void {
     if (!canvasEl) {
       return;
@@ -295,7 +314,7 @@
     // through the cap — and through the half a navigation gesture draws at.
     const dpr = editor.ux.canvasDensity === 'document'
       ? editor.doc.width / FIXED_POINT_SCALE / sheetWidth
-      : renderDensity(window.devicePixelRatio || 1, navigating());
+      : renderDensity(window.devicePixelRatio || 1);
     const pxWidth = Math.max(1, Math.round(stage.width * dpr));
     const pxHeight = Math.max(1, Math.round(stage.height * dpr));
     if (canvasEl.width !== pxWidth) {
@@ -341,26 +360,38 @@
     ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
     ctx.clip();
 
-    composer.compose(ctx, pxWidth, pxHeight, {
-      doc: editor.doc,
-      frame,
-      activeLayer: editor.activeLayer,
-      viewport,
-      tools: previewTools,
-      cellAt: stackCell,
-      ghosts: editor.showOnionSkin
-        ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
-        : undefined,
-      live: liveLine(viewport),
-      // The profile's active alpha (Multator: 0.8, its containerSprite)
-      // applies to the whole current frame.
-      alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
-    });
+    const drawn: DrawnView = { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr };
+    // While the hand pans or pinches, the picture is the one it grabbed, moved:
+    // nothing in it changes until it lets go, and rebuilding every layer and
+    // ghost per animation frame was what the gesture stuttered on.
+    const shot = navShot && navigating() && !editor.playing ? navShot : null;
+    if (shot) {
+      const to = reprojection(shot.view, drawn);
+      ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
+      ctx.drawImage(shot.canvas, 0, 0);
+    } else {
+      lastDrawn = drawn;
+      composer.compose(ctx, pxWidth, pxHeight, {
+        doc: editor.doc,
+        frame,
+        activeLayer: editor.activeLayer,
+        viewport,
+        tools: previewTools,
+        cellAt: stackCell,
+        ghosts: editor.showOnionSkin
+          ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+          : undefined,
+        live: liveLine(viewport),
+        // The profile's active alpha (Multator: 0.8, its containerSprite)
+        // applies to the whole current frame.
+        alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
+      });
 
-    // The grid is a drawing aid, not part of the picture: the preview shows
-    // the frames as they will be exported.
-    if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
-      drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+      // The grid is a drawing aid, not part of the picture: the preview shows
+      // the frames as they will be exported.
+      if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
+        drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+      }
     }
     ctx.restore();
     // A hairline edge, so the paper reads as a sheet even over a white table.
@@ -685,6 +716,7 @@
           scheduleDraw();
         }
         gesture = pinchFrom(touches);
+        takeNavShot();
         return true;
       }
       return touches.size > 1;
@@ -693,6 +725,7 @@
     if (e.button === 1 || spaceHeld || editor.tool === 'drag') {
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       canvasEl.setPointerCapture(e.pointerId);
+      takeNavShot();
       return true;
     }
     return false;
@@ -907,9 +940,14 @@
     if (panning && e.pointerId === panning.pointerId) {
       panning = null;
     }
-    // The gesture drew at half the density; standing still, the picture is
-    // worth its full one again.
+    // The gesture showed the frame it grabbed; standing still, the picture is
+    // composed again, once, for the view it came to rest in. The shot's
+    // backing store goes back too — a stage of pixels held for nothing.
     if (was && !navigating()) {
+      navShot = null;
+      if (shotCanvas) {
+        shotCanvas.width = 0;
+      }
       scheduleDraw();
       return true;
     }
@@ -1102,8 +1140,7 @@
   {#if cursorVisible && editor.tool === 'pipette' && pickPreview}
     <span
       class="pick-preview"
-      style:left="{cursorX}px"
-      style:top="{cursorY}px"
+      style:transform="translate({cursorX}px, {cursorY}px)"
       style:background={pickPreview}
       aria-hidden="true"
     ></span>
@@ -1115,8 +1152,7 @@
       class:cross={cursorParts.cross}
       class:ringless={!cursorParts.ring}
       class:square={toolSpec(editor.brushTool)?.stroke?.grid}
-      style:left="{cursorX}px"
-      style:top="{cursorY}px"
+      style:transform="translate({cursorX}px, {cursorY}px) translate(-50%, -50%)"
       style:width="{cursorDiameter}px"
       style:height="{cursorDiameter}px"
       aria-hidden="true"
@@ -1155,19 +1191,22 @@
   }
   .overlay .frame {
     fill: none;
-    stroke: var(--electric, #1b5cff);
+    stroke: var(--electric);
     stroke-width: 1;
     stroke-dasharray: 5 3;
   }
   .overlay .handle {
-    fill: var(--canvas, #fff);
-    stroke: var(--electric, #1b5cff);
+    fill: var(--canvas);
+    stroke: var(--electric);
     stroke-width: 2;
   }
+  /* Pinned to the corner and carried by the transform on the element: moving
+     `left`/`top` was a layout per pointermove. */
   .brush-cursor {
     position: fixed;
-    z-index: 30;
-    transform: translate(-50%, -50%);
+    left: 0;
+    top: 0;
+    z-index: var(--z-cursor);
     border: 1px solid var(--ink);
     border-radius: 50%;
     box-shadow: 0 0 0 1px var(--canvas);
@@ -1208,7 +1247,9 @@
   /* Tonio draws a 25px swatch down-right of the pipette cursor. */
   .pick-preview {
     position: fixed;
-    z-index: 30;
+    left: 0;
+    top: 0;
+    z-index: var(--z-cursor);
     width: 25px;
     height: 25px;
     margin: 10px 0 0 10px;
@@ -1223,9 +1264,9 @@
     transform: translateX(-50%);
     margin: 0;
     padding: 6px 12px;
-    border-radius: 999px;
-    background: var(--ink, #0b0c10);
-    color: var(--canvas, #fff);
+    border-radius: var(--r-pill);
+    background: var(--ink);
+    color: var(--canvas);
     font-size: 13px;
     pointer-events: none;
   }

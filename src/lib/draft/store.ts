@@ -66,15 +66,28 @@ export interface DraftRecord {
   bytes?: number;
 }
 
-/** What the record weighs: document text, track and screenshot. */
-function recordBytes(record: DraftRecord): number {
+/** What the track and the screenshot add to a record. */
+function blobBytes(record: DraftRecord): number {
+  return (record.audio?.blob.size ?? 0) + (record.screenshot?.size ?? 0);
+}
+
+/**
+ * What the record weighs: document text, track and screenshot. A write that
+ * kept the document it read — the screenshot, the track, its credits — carries
+ * the document's share over from the size already stored instead of walking
+ * every stroke again to learn a number it has.
+ */
+function recordBytes(record: DraftRecord, previous: DraftRecord | undefined): number {
+  if (previous && record.doc === previous.doc && previous.bytes !== undefined) {
+    return previous.bytes - blobBytes(previous) + blobBytes(record);
+  }
   let bytes = 0;
   try {
     bytes += JSON.stringify(record.doc ?? null).length;
   } catch {
     // A document that will not stringify is not one we can size.
   }
-  return bytes + (record.audio?.blob.size ?? 0) + (record.screenshot?.size ?? 0);
+  return bytes + blobBytes(record);
 }
 
 /** Id for a fresh session — minted on the first edit, kept until the sheet is left. */
@@ -116,6 +129,36 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 /**
+ * One connection for the page, opened on first use and kept: opening and
+ * closing the database around every autosave was a round trip per write for
+ * nothing. It is given up only when another tab needs to upgrade the schema,
+ * or when opening failed — the next call tries again. Keyed by the factory, so
+ * a page (or a test) that swaps `indexedDB` never writes into the old one.
+ */
+let shared: { factory: unknown; db: Promise<IDBDatabase> } | null = null;
+
+function connection(): Promise<IDBDatabase> {
+  const factory = typeof indexedDB === 'undefined' ? undefined : indexedDB;
+  if (shared && shared.factory === factory) {
+    return shared.db;
+  }
+  const db = openDb().then((opened) => {
+    opened.onversionchange = () => {
+      opened.close();
+      shared = null;
+    };
+    return opened;
+  });
+  db.catch(() => {
+    if (shared?.db === db) {
+      shared = null;
+    }
+  });
+  shared = { factory, db };
+  return db;
+}
+
+/**
  * Every saved draft, newest first.
  *
  * ponytail: reads whole documents to build the list — the preview is drawn
@@ -124,17 +167,13 @@ function openDb(): Promise<IDBDatabase> {
  */
 export async function listDrafts(): Promise<DraftRecord[]> {
   try {
-    const db = await openDb();
-    try {
-      const all = await new Promise<DraftRecord[]>((resolve, reject) => {
-        const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
-        req.onsuccess = () => resolve(req.result as DraftRecord[]);
-        req.onerror = () => reject(req.error);
-      });
-      return all.sort((a, b) => b.updated - a.updated);
-    } finally {
-      db.close();
-    }
+    const db = await connection();
+    const all = await new Promise<DraftRecord[]>((resolve, reject) => {
+      const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+      req.onsuccess = () => resolve(req.result as DraftRecord[]);
+      req.onerror = () => reject(req.error);
+    });
+    return all.sort((a, b) => b.updated - a.updated);
   } catch (err) {
     console.warn('draft list failed:', err);
     return [];
@@ -146,8 +185,7 @@ export async function listDrafts(): Promise<DraftRecord[]> {
  * clock and the track effect are independent and neither awaits the other —
  * each read the record before the other's put and the loser's field is gone:
  * a saved document could drop an attached track, or a track could rewind the
- * document. Queueing also keeps one database connection open at a time, so a
- * finished call never closes the connection another is mid-transaction on.
+ * document.
  */
 let writes: Promise<unknown> = Promise.resolve();
 
@@ -177,7 +215,7 @@ async function updateDraft(
 ): Promise<boolean> {
   let db: IDBDatabase;
   try {
-    db = await openDb();
+    db = await connection();
   } catch (err) {
     console.warn(`${what} failed:`, err);
     return true;
@@ -188,11 +226,12 @@ async function updateDraft(
       const store = tx.objectStore(STORE);
       const read = store.get(id);
       read.onsuccess = () => {
-        const next = mutate(read.result as DraftRecord | undefined);
+        const previous = read.result as DraftRecord | undefined;
+        const next = mutate(previous);
         if (!next) {
           return; // nothing to write; the transaction completes on its own
         }
-        next.bytes = recordBytes(next);
+        next.bytes = recordBytes(next, previous);
         wrote?.(next.bytes);
         store.put(next);
       };
@@ -203,8 +242,6 @@ async function updateDraft(
   } catch (err) {
     console.warn(`${what} failed:`, err);
     return false;
-  } finally {
-    db.close();
   }
 }
 
@@ -298,17 +335,13 @@ export async function deleteDraft(id: string): Promise<void> {
 
 async function removeDraft(id: string): Promise<void> {
   try {
-    const db = await openDb();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE, 'readwrite');
-        tx.objectStore(STORE).delete(id);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-    } finally {
-      db.close();
-    }
+    const db = await connection();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   } catch (err) {
     console.warn('draft delete failed:', err);
   }

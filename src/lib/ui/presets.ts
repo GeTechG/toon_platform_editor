@@ -192,6 +192,12 @@ export interface EditorSettings {
   pickerModel: PickerModel;
   /** Panels left of the canvas, tool rail on the right (wide screens only). */
   altLayout: boolean;
+  /**
+   * Bare letters, digits and signs are hotkeys (B, E, +, …), as in the
+   * reference editors. Off, only chords and non-character keys act — the way
+   * out for speech input, which types letters at the page (WCAG 2.1.4).
+   */
+  letterKeys: boolean;
   /** The one-off hint on first entering the palette's remover mode has been shown. */
   removerTipShown: boolean;
   /**
@@ -249,6 +255,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   showDraftsOnStart: true,
   pickerModel: 'hsv',
   altLayout: false,
+  letterKeys: true,
   removerTipShown: false,
   pluginCatalog: PLUGIN_CATALOG,
 };
@@ -422,6 +429,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       ? raw.pickerModel as PickerModel
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
+    letterKeys: flag('letterKeys'),
     removerTipShown: flag('removerTipShown'),
     pluginCatalog: readCatalogAddress(raw),
   };

@@ -54,7 +54,7 @@
    * those twice quickly is two presses, not a rename.
    */
   function startRename(e: MouseEvent | null, layerIndex: number): void {
-    if (e && (e.target as HTMLElement).closest('button, .handle')) {
+    if (e && (e.target as HTMLElement).closest('button:not(.name), .handle')) {
       return;
     }
     renaming = { layer: layerIndex, text: editor.layerLabel(layerIndex) };
@@ -275,19 +275,21 @@
   </button>
 </div>
 
-<div class="list" data-layer-list bind:this={listEl} role="listbox" aria-label={t('layer.list')} tabindex="-1">
+<div class="list" data-layer-list bind:this={listEl} role="list" aria-label={t('layer.list')} tabindex="-1">
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
+      <!-- A click anywhere on the row picks the layer, as the reference does;
+           the keyboard's way to the same thing is the name button below. An
+           option role would have flattened every control in the row. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="row"
         style:height="{ROW_HEIGHT}px"
         class:active={layerIndex === editor.activeLayer}
         class:dragging={drag?.currentLayer === layerIndex}
-        role="option"
-        aria-selected={layerIndex === editor.activeLayer}
-        tabindex="0"
+        role="listitem"
         onclick={() => editor.selectLayer(layerIndex)}
         ondblclick={(e) => startRename(e, layerIndex)}
-        onkeydown={(e) => onRowKeydown(e, layerIndex)}
       >
         <button
           class="eye"
@@ -332,8 +334,13 @@
             aria-label={t('layer.name_field')}
           />
         {:else}
-          <span class="name" title={t('layer.rename_hint')}
-            >{editor.layerLabel(layerIndex)}</span>
+          <button
+            class="name"
+            aria-pressed={layerIndex === editor.activeLayer}
+            title={t('layer.rename_hint')}
+            onclick={() => editor.selectLayer(layerIndex)}
+            onkeydown={(e) => onRowKeydown(e, layerIndex)}
+          >{editor.layerLabel(layerIndex)}</button>
         {/if}
 
         <span
@@ -346,7 +353,7 @@
         <button
           class="kill"
           disabled={!canRemove}
-          aria-label={t('layer.remove', { n: rowNumber(layerIndex) })}
+          aria-label={t('layer.remove', { name: editor.layerLabel(layerIndex) })}
           title={t('layer.remove_title')}
           onclick={(e) => {
             e.stopPropagation();
@@ -377,14 +384,15 @@
     cursor: pointer;
   }
   .row.active {
-    background: color-mix(in srgb, var(--electric, #1b5cff) 12%, transparent);
+    background: color-mix(in srgb, var(--electric) 12%, transparent);
   }
   .row.dragging {
     opacity: 0.7;
   }
-  .row:focus-visible {
-    outline: 2px solid var(--electric, #1b5cff);
-    outline-offset: -2px;
+  /* The name button carries the keyboard; its ring sits inside, where the
+     scrolling list cannot shave it off. */
+  .name:focus-visible {
+    outline-offset: -3px;
   }
   .eye {
     display: grid;
@@ -412,16 +420,24 @@
        `min-width: 0` let it shrink to nothing and the list to a column of
        «Сло…». Past the floor the ellipsis is right — the divider widens it. */
     min-width: 3rem;
+    align-self: stretch;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .rename {
-    border: 1px solid var(--electric, #1b5cff);
+    border: 1px solid var(--electric);
     border-radius: var(--r-sm, 7px);
     padding: 0 0.25rem;
-    background: var(--canvas, #fff);
+    background: var(--canvas);
     color: inherit;
     font: inherit;
     font-size: 0.85rem;
@@ -456,7 +472,7 @@
     transform: translate(-50%, -50%);
   }
   .tag:focus-visible {
-    outline: 2px solid var(--electric, #1b5cff);
+    outline: 2px solid var(--electric);
     outline-offset: 1px;
   }
   /* The handle is the only drag surface, so the list still scrolls by touch. */

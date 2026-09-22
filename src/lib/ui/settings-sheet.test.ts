@@ -65,6 +65,11 @@ describe('the rail and the chrome follow the reference studio', () => {
     expect(sheet).toContain("setSetting('altLayout'");
   });
 
+  it('single-letter keys can be switched off from the sheet (WCAG 2.1.4)', () => {
+    expect(sheet).toContain("setSetting('letterKeys'");
+    expect(sheet).toContain('checked={editor.settings.letterKeys}');
+  });
+
   it('pins every studio area to its row, so swapping the columns cannot restack them', () => {
     // Auto-placement never goes backwards: with .left at column 3 and .right
     // at column 1, an unpinned row sends each following area to a new row.
@@ -87,7 +92,8 @@ describe('the rail and the chrome follow the reference studio', () => {
   it('downloads the session error log on Alt+L', () => {
     expect(editorUi).toMatch(/altKey[^]{0,80}'l'/i);
     expect(editorUi).toContain('errorLog');
-    expect(state).toContain('unhandledrejection');
+    // Rejections are caught by the page's one log (error-log.test.ts).
+    expect(state).toContain('sessionErrors.watch(window, console)');
   });
 });
 

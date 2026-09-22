@@ -261,7 +261,7 @@
     color: var(--ink);
   }
   .sheet-dialog::backdrop {
-    background: var(--scrim, #0b0c106b);
+    background: var(--scrim);
   }
   .tabs {
     display: flex;

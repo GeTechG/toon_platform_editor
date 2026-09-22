@@ -12,6 +12,7 @@ import {
   zoomDelta,
   type Stage,
   renderDensity,
+  reprojection,
 } from './viewport';
 
 /** A 200×100 sheet lying on a 400×300 workspace. */
@@ -156,17 +157,36 @@ describe('renderDensity', () => {
     expect(renderDensity(4)).toBe(2);
   });
 
-  it('halves while a navigation gesture is on, never below one', () => {
-    // Pan and pinch rebuild the whole stack every frame of the gesture; a
-    // quarter of the pixels is what reads as smooth while it moves. A desktop
-    // at density 1 keeps its pixels: it has none to spare and no problem.
-    expect(renderDensity(3, true)).toBe(1);
-    expect(renderDensity(2, true)).toBe(1);
-    expect(renderDensity(1, true)).toBe(1);
-  });
-
   it('falls back to one for a density the browser could not name', () => {
     expect(renderDensity(0)).toBe(1);
     expect(renderDensity(Number.NaN)).toBe(1);
+  });
+});
+
+// Pan and pinch used to rebuild the whole frame — every layer from vectors,
+// every ghost past its cache — on each animation frame of the gesture. While
+// the hand moves the picture, the picture has not changed: the last composed
+// frame is moved and scaled instead, and rebuilt once when the hand lets go.
+describe('reprojection', () => {
+  const at = (zoom: number, panX: number, panY: number, dpr = 1) => ({ zoom, panX, panY, dpr });
+
+  it('a still view maps the picture onto itself', () => {
+    expect(reprojection(at(1.5, 40, 20, 2), at(1.5, 40, 20, 2))).toEqual({ scale: 1, x: 0, y: 0 });
+  });
+
+  it('a pan moves the picture by the pan, in device pixels', () => {
+    expect(reprojection(at(1, 10, 10, 2), at(1, 25, 5, 2))).toEqual({ scale: 1, x: 30, y: -10 });
+  });
+
+  it('a zoom scales the picture about the new pan', () => {
+    // A point at CSS x = 110 (pan 10 + 100 of sheet) at zoom 1 lies at
+    // 20 + 200 = 220 at zoom 2 with pan 20.
+    const r = reprojection(at(1, 10, 0), at(2, 20, 0));
+    expect(r.scale * 110 + r.x).toBe(220);
+  });
+
+  it('carries a picture drawn at another density', () => {
+    const r = reprojection(at(1, 0, 0, 2), at(1, 0, 0, 1));
+    expect(r.scale).toBe(0.5);
   });
 });

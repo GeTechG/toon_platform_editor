@@ -70,3 +70,16 @@ describe('a drag measures once, then only writes', () => {
     expect(begin).toContain('clientWidth');
   });
 });
+
+// The arrows moved a floating window with no bound: a few presses put it past
+// the stage edge, where neither the pointer nor the keyboard could bring it
+// back. And `role="toolbar"` promised arrow-key travel between its items, which
+// is not what its arrows do.
+describe('a floating window moved by keys stays on the stage', () => {
+  it('the key step goes through the same clamp as the drag', async () => {
+    const win = await Bun.file(new URL('./FloatWindow.svelte', import.meta.url)).text();
+    const onKey = win.match(/function onKey\([^]*?\n  }/)?.[0] ?? '';
+    expect(onKey).toContain('clampWindowPosition(');
+    expect(win).not.toContain('role="toolbar"');
+  });
+});

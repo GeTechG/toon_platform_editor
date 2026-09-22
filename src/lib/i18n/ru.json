@@ -243,7 +243,7 @@
     "name_field": "Имя слоя",
     "rename_hint": "Двойной клик или F2 — переименовать",
     "drag": "Перетащить слой (Alt+↑ / Alt+↓)",
-    "remove": "Удалить слой {{n}}",
+    "remove": "Удалить «{{name}}»",
     "remove_title": "Удалить слой"
   },
   "play": {
@@ -280,7 +280,7 @@
   "canvas": {
     "hidden_layer": "Слой скрыт",
     "label": "Холст: кадр {{frame}} из {{total}}",
-    "label_layer": ", слой {{layer}}"
+    "label_layer": ", {{layer}}"
   },
   "frame": {
     "delete_confirm": "Удалить кадр {{n}}?",
@@ -321,7 +321,7 @@
     "grid": "Кадры и слои",
     "frame": "Кадр {{n}}",
     "frame_onion": "Кадр {{n}} — на кальке",
-    "cell": "Кадр {{frame}}, слой {{layer}}"
+    "cell": "Кадр {{frame}}, {{layer}}"
   },
   "palette": {
     "default_name": "По умолчанию",
@@ -474,6 +474,7 @@
     "ask_persist": "Запросить постоянное хранилище",
     "view": "Вид",
     "mirror_layout": "Панели слева, инструменты справа",
+    "letter_keys": "Горячие клавиши одной буквой",
     "panel": "Панель",
     "preset_group": "Набор",
     "arrangement": "Расположение",

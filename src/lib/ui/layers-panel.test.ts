@@ -106,7 +106,9 @@ describe('the colour tag is pickable', () => {
     // The tag, the eye and the delete sit inside the row, whose double click
     // opens the name for editing; two quick colour steps must not rename.
     expect(rows).toContain('ondblclick={(e) => startRename(e, layerIndex)}');
-    expect(fn('startRename')).toContain("closest('button, .handle')");
+    // The name is a button too now — the one that picks the layer — and a
+    // double click on it is exactly the rename.
+    expect(fn('startRename')).toContain("closest('button:not(.name), .handle')");
   });
 
   it('the colours follow their layers through add, delete and reorder', () => {
@@ -160,5 +162,41 @@ describe('the layer column fits the name the editor gives a layer', () => {
     const floor = name!.match(/min-width:\s*([^;]+);/)?.[1];
     expect(floor).toBeDefined();
     expect(px(floor!)).toBeGreaterThanOrEqual(DEFAULT_NAME);
+  });
+});
+
+// A layer had three numbers: its name counted from the bottom, the delete
+// button and the strip from the top, the canvas from zero plus one. With three
+// layers the row «Слой 3» carried a button announced «Удалить слой 1».
+const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+
+describe('a layer is called by one name everywhere', () => {
+  it('the delete button names the layer it deletes', () => {
+    expect(rows).toMatch(/t\('layer\.remove', \{ name: editor\.layerLabel\(layerIndex\) \}\)/);
+    expect(t('layer.remove', { name: 'Фон' })).toContain('Фон');
+  });
+
+  it('a strip cell names its layer the way the row does', () => {
+    expect(timeline).toMatch(/t\('timeline\.cell', \{ frame: i \+ 1, layer: editor\.layerLabel\(layerIndex\) \}\)/);
+  });
+
+  it('the canvas names the active layer the way the row does', () => {
+    expect(canvas).toContain('editor.layerLabel(editor.activeLayer)');
+  });
+});
+
+// `role="option"` makes everything inside the row presentational, so the eye,
+// the colour tag and the delete button were flattened into the row's text
+// (WCAG 4.1.2). A list of rows, each selected by its own name button, keeps
+// every control a control.
+describe('the controls in a row stay controls', () => {
+  it('the list is a list, not a listbox of options', () => {
+    expect(rows).not.toContain('role="option"');
+    expect(rows).not.toContain('role="listbox"');
+    expect(rows).toContain('role="listitem"');
+  });
+
+  it('the name is the button that selects the layer', () => {
+    expect(rows).toMatch(/<button\s+class="name"[^>]*aria-pressed=\{layerIndex === editor\.activeLayer\}/);
   });
 });

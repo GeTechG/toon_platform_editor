@@ -162,9 +162,12 @@ describe('no layer tag wears the signal red', () => {
   it('keeps every tag clear of the signal band', () => {
     const signal = hue('#ff4326');
     const distance = (h: number) => Math.min(Math.abs(h - signal), 360 - Math.abs(h - signal));
+    // A tag may name a token (the first one is the electric blue by name);
+    // it is judged by the value that token carries.
+    const electric = tokensCss.match(/--electric:\s*(#[0-9a-f]{6})/i)![1];
     const tags = [...`${tokensCss}\n${[...STYLES.values()].join('\n')}`.matchAll(
-      /--layer-tag-\d+:\s*(#[0-9a-f]{6})/gi,
-    )].map((m) => m[1]);
+      /--layer-tag-\d+:\s*(#[0-9a-f]{6}|var\(--electric\))/gi,
+    )].map((m) => (m[1].startsWith('var') ? electric : m[1]));
     expect(tags.length).toBe(6);
     expect(tags.filter((hex) => distance(hue(hex)) < 25)).toEqual([]);
   });

@@ -98,9 +98,9 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.6rem;
-    border: 1px solid var(--hairline, #0b0c1024);
-    border-radius: 10px;
-    background: var(--canvas, #fff);
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--canvas);
     font-size: 13px;
   }
   /* Label beside its field, not above it: the window is 13rem, and stacked
@@ -121,9 +121,9 @@
     padding: 0 6px;
     /* The boundary of a control, not a divider: white field on a white plate
        drawn with the hairline is 1.36:1, where 1.4.11 asks three. */
-    border: 1px solid var(--edge, #0b0c107a);
-    border-radius: 6px;
-    background: var(--canvas, #fff);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
     color: inherit;
     font: inherit;
   }

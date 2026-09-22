@@ -88,6 +88,6 @@
 <style>
   canvas {
     display: block;
-    background: var(--canvas, #fff);
+    background: var(--canvas);
   }
 </style>

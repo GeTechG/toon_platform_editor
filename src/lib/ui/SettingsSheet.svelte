@@ -288,7 +288,7 @@
       </ul>
     {/if}
     {#if exporting}
-      <progress value={exporting.done} max={exporting.total}>
+      <progress value={exporting.done} max={exporting.total} aria-label={t('settings.download_drafts')}>
         {t('settings.progress', { done: exporting.done, total: exporting.total })}
       </progress>
     {/if}
@@ -317,6 +317,15 @@
         role="switch"
         checked={editor.settings.altLayout}
         onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
+      />
+    </label>
+    <label class="toggle">
+      <span class="toggle-label">{t('settings.letter_keys')}</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.settings.letterKeys}
+        onchange={(e) => editor.setSetting('letterKeys', e.currentTarget.checked)}
       />
     </label>
 
@@ -443,7 +452,7 @@
     color: var(--ink);
   }
   .sheet-dialog::backdrop {
-    background: var(--scrim, #0b0c106b);
+    background: var(--scrim);
   }
   .row {
     display: flex;

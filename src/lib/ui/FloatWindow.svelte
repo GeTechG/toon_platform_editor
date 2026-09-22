@@ -82,11 +82,17 @@
     const step = e.shiftKey ? 20 : 4;
     const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
     const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
-    if (dx === 0 && dy === 0) {
+    if ((dx === 0 && dy === 0) || !el) {
       return;
     }
     e.preventDefault();
-    editor.setFloatPos(id, pos.x + dx, pos.y + dy);
+    const next = clampWindowPosition(
+      pos.x + dx,
+      pos.y + dy,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      frame(),
+    );
+    editor.setFloatPos(id, next.left, next.top);
   }
 </script>
 
@@ -98,10 +104,13 @@
   data-item={id}
   style="left: {pos.x}px; top: {pos.y}px"
 >
+  <!-- A named group the arrows move, not a toolbar: a toolbar's arrows
+       travel between its items, and these move the window. -->
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     class="float-bar"
-    role="toolbar"
+    role="group"
     tabindex="0"
     aria-label={t('window.drag', { label })}
     onpointerdown={onDown}
@@ -130,7 +139,7 @@
     position: absolute;
     /* Over the panels as well as the canvas, under the sheets and the
        arrange bar. */
-    z-index: 6;
+    z-index: var(--z-float);
     display: flex;
     flex-direction: column;
     max-width: min(90%, 28rem);

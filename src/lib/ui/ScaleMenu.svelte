@@ -53,11 +53,11 @@
     padding: 2px;
     /* The window is dragged by its own row, so this is the boundary of a
        control and takes the edge, not the divider. */
-    border: 1px solid var(--edge, #0b0c107a);
-    border-radius: 10px;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
     /* Quiet over someone's drawing is the fill stepping back — never the
        window, which would take the readout and the edge down with it. */
-    background: color-mix(in srgb, var(--canvas, #fff) 55%, transparent);
+    background: color-mix(in srgb, var(--canvas) 55%, transparent);
     transition: background 120ms ease;
     font-size: 12px;
     /* The row is its own handle; only its keys are not. */
@@ -67,7 +67,7 @@
   .scale-menu.up,
   .scale-menu:hover,
   .scale-menu:focus-within {
-    background: var(--canvas, #fff);
+    background: var(--canvas);
   }
   button {
     /* The floor, not a number that fits the window. DESIGN §5 keeps 44 for
@@ -75,7 +75,7 @@
        canvas — it crowds out no frame and buys nothing by being smaller. */
     min-height: var(--key-h, 2.75rem);
     border: none;
-    border-radius: 7px;
+    border-radius: var(--r-sm);
     background: transparent;
     color: inherit;
     font: inherit;
@@ -93,7 +93,7 @@
     font-variant-numeric: tabular-nums;
   }
   button:hover:not(:disabled) {
-    background: var(--hairline-soft, #0b0c1012);
+    background: var(--hairline-soft);
   }
   button:disabled {
     opacity: 0.4;

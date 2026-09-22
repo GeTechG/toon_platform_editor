@@ -8,6 +8,7 @@
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { frameCount } from '../model/operations';
+  import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
   import { frameForTime, trackShouldRestart } from '../audio/track';
   import { t } from '../i18n';
@@ -75,7 +76,9 @@
     if (!canvasEl) {
       return;
     }
-    const dpr = window.devicePixelRatio || 1;
+    // Capped like the editor's canvas: 3× on a phone is not visible on line
+    // art and costs 2.25× the pixels on every frame played.
+    const dpr = renderDensity(window.devicePixelRatio || 1);
     const pxWidth = Math.max(1, Math.round(cssWidth * dpr));
     const pxHeight = Math.max(1, Math.round(cssHeight * dpr));
     if (canvasEl.width !== pxWidth) {

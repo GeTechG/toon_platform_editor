@@ -380,3 +380,20 @@ describe('the strip only pays for the cells it shows', () => {
     expect(thumb).toContain('cell === painted');
   });
 });
+
+// Every visible cell was a tab stop of its own: getting past the strip took
+// dozens of Tabs, and the arrows moved the active cell while focus stayed
+// behind on the old one, so nothing said which frame was now current.
+const stripSource = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
+
+describe('the strip is one stop on the Tab path', () => {
+  const strip = stripSource;
+
+  it('only the active cell is in the tab order', () => {
+    expect(strip).toMatch(/tabindex=\{i === editor\.displayedFrame && layerIndex === editor\.activeLayer \? 0 : -1\}/);
+  });
+
+  it('focus follows the active cell, so its name is announced', () => {
+    expect(strip).toContain(".querySelector<HTMLElement>('.cell.active')?.focus()");
+  });
+});

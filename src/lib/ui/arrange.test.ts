@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 import { dropPlacement, insertIndex, rowEdge, type Box } from './arrange';
 
 /** A row of three 40px-wide boxes at y 0..40. */
@@ -238,5 +238,17 @@ describe('the handle frames the item it grabs', () => {
     // their square footprint.
     expect(block).not.toContain('min-width: 0');
     expect(block).not.toContain('flex: 1;');
+  });
+});
+
+// A host's note over the canvas — the site's first-run hint — was centred on
+// the whole editor, so at 768 and on a phone turned sideways half of it lay
+// over the palette column. The stage is the only box that knows where the
+// canvas is; a note handed to it is placed against the canvas and nothing else.
+describe('a host can put a note on the stage', () => {
+  it('the editor takes a stageNote snippet and renders it inside the stage', () => {
+    expect(editorUi).toContain('stageNote?: Snippet');
+    const stage = editorUi.slice(editorUi.indexOf('<div class="stage" data-slot="float">'));
+    expect(stage.slice(0, 400)).toContain('{@render stageNote?.()}');
   });
 });

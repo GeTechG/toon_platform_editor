@@ -119,6 +119,10 @@ export class FrameComposer {
   #composite: ComposeBuffer | undefined;
   readonly #ghosts: BufferRing<ComposeBuffer>;
 
+  // ponytail: every buffer is the whole stage, table included — about ten of
+  // them, ~37 MB at density 2 on a phone. Sizing them to the sheet ∩ stage
+  // needs an origin threaded through the blits, the live tail and the
+  // pipette's reads of `layers`; worth it if a low-memory device reloads.
   #stale = true;
   #width = 0;
   #height = 0;

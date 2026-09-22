@@ -112,7 +112,7 @@
     position: absolute;
     right: 0;
     bottom: calc(100% + 0.4rem);
-    z-index: 6;
+    z-index: var(--z-float);
     display: flex;
     flex-direction: column;
     /* The plate is docked to its key, so `100%` here is that key's wrapper
@@ -156,7 +156,7 @@
     flex-direction: column;
     gap: 0.2rem;
     font-size: 0.78rem;
-    color: var(--ink-2, #333a48);
+    color: var(--ink-2);
   }
   .field input {
     height: var(--key-h);
@@ -174,7 +174,7 @@
      of the promised indicator, winning on specificity rather than on a
      decision. */
   .field input:focus-visible {
-    border-color: var(--electric, #1b5cff);
+    border-color: var(--electric);
   }
   .toggle {
     display: flex;
@@ -189,7 +189,7 @@
     margin-top: 0.1rem;
     font-size: 0.74rem;
     line-height: 1.3;
-    color: var(--ink-2, #333a48);
+    color: var(--ink-2);
     text-wrap: pretty;
   }
   .toggle input {
@@ -199,7 +199,7 @@
   .lengths {
     margin: 0;
     font-size: 0.82rem;
-    color: var(--ink-2, #333a48);
+    color: var(--ink-2);
     font-variant-numeric: tabular-nums;
   }
   .lengths b {
@@ -209,7 +209,7 @@
     margin: 0;
     font-size: 0.78rem;
     line-height: 1.35;
-    color: var(--ink-2, #333a48);
+    color: var(--ink-2);
     text-wrap: pretty;
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */

@@ -31,6 +31,7 @@
   <label class="color" title={t('color.stroke_title')} style:--swatch={editor.brushColor}>
     <input
       type="color"
+      aria-label={t('color.stroke_title')}
       value={editor.brushColor}
       oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
     />
@@ -41,6 +42,7 @@
   <label class="color fill" title={t('color.fill_title')} style:--swatch={editor.fillColor}>
     <input
       type="color"
+      aria-label={t('color.fill_title')}
       value={editor.fillColor}
       oninput={(e) => (editor.fillColor = e.currentTarget.value.toLowerCase())}
     />

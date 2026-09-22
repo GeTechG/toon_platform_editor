@@ -518,3 +518,37 @@ describe('a write that arrives after the record was deleted', () => {
     expect(await listDrafts()).toEqual([]);
   });
 });
+
+// Every write weighed the record by serialising the whole document, the
+// screenshot written a few seconds after each autosave included — a second
+// full pass over every stroke on the main thread for a document it did not
+// touch. And every write opened and closed the database again.
+describe('a side write does not weigh the document again', () => {
+  it('the screenshot write carries the size over instead of stringifying', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const written = await saveDraft('a', doc(1));
+    const stringify = JSON.stringify;
+    let calls = 0;
+    JSON.stringify = ((...args: Parameters<typeof stringify>) => {
+      calls++;
+      return stringify(...args);
+    }) as typeof stringify;
+    try {
+      await setDraftScreenshot('a', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' }));
+    } finally {
+      JSON.stringify = stringify;
+    }
+    expect(calls).toBe(0);
+    expect((await listDrafts())[0].bytes).toBe(written.bytes + 3);
+  });
+
+  it('writes share one connection', async () => {
+    const fake = fakeIndexedDB() as { open: (...args: unknown[]) => unknown };
+    let opens = 0;
+    setIndexedDB({ open: (...args: unknown[]) => (opens++, fake.open(...args)) });
+    await saveDraft('a', doc(1));
+    await saveDraft('a', doc(2));
+    await setDraftScreenshot('a', new Blob([new Uint8Array([1])]));
+    expect(opens).toBe(1);
+  });
+});

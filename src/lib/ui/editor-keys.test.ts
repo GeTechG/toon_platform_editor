@@ -19,10 +19,12 @@ describe('modifiers reach the keymap', () => {
     expect(onKeydown()).toContain('if (e.altKey) {');
   });
 
-  it('a form field passes only Enter, Space and Escape through', () => {
+  it('a key the focused control owns never reaches the table (key-owner.ts)', () => {
     const source = onKeydown();
-    expect(source).toContain("TYPING_KEYS");
-    expect(editorUi).toContain("const TYPING_KEYS = ['Enter', ' ', 'Escape']");
+    expect(source).toContain('keyOwner(');
+    expect(source).toContain('letterKeys: editor.settings.letterKeys');
+    expect(source).toContain("document.querySelector('dialog:modal')");
+    expect(editorUi).not.toContain('TYPING_KEYS');
   });
 });
 

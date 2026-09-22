@@ -228,6 +228,7 @@ test('settings round-trip through the stored config', () => {
     showDraftsOnStart: false,
     pickerModel: 'wheel' as const,
     altLayout: true,
+    letterKeys: false,
     removerTipShown: true,
     pluginCatalog: 'https://plugins.example/',
   };
@@ -461,4 +462,8 @@ test('the smoothing sliders are only for the brushes that say they reach them', 
   expect(brushUsesSmoothing('pencil', OWN)).toBe(true);
   expect(brushUsesSmoothing('pencil', COARSE)).toBe(false);
   expect(brushUsesSmoothing(COARSE, OWN)).toBe(false);
+});
+
+test('single-letter keys are on by default, as in the reference editors', () => {
+  expect(DEFAULT_SETTINGS.letterKeys).toBe(true);
 });

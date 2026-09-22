@@ -4,6 +4,7 @@
   // on the right, filling whatever height the resizable bottom panel gives
   // it. One shape for every preset — a preset patches where the strip sits,
   // not what it is.
+  import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import { scrollToFrame, stripWindow } from './strip-window';
@@ -57,6 +58,20 @@
       strip.scrollLeft = to;
       stripScroll = to;
     }
+  });
+
+  // The strip is one Tab stop — the active cell — and focus rides along with
+  // it: when the arrows move the active cell while a cell has focus, focus
+  // moves too, so the new cell's name («Кадр 5, Слой 1») is what is read.
+  // After the tick: the cell may only now be built by the scroll above.
+  $effect(() => {
+    void editor.displayedFrame;
+    void editor.activeLayer;
+    const focused = document.activeElement;
+    if (!strip || !(focused instanceof HTMLElement) || !focused.classList.contains('cell') || !strip.contains(focused)) {
+      return;
+    }
+    void tick().then(() => strip?.querySelector<HTMLElement>('.cell.active')?.focus());
   });
 
   // --- Studio grid ----------------------------------------------------------
@@ -286,6 +301,7 @@
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
               data-frame={i}
+              tabindex={i === editor.displayedFrame && layerIndex === editor.activeLayer ? 0 : -1}
               disabled={editor.playing}
               aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
                 ? 'true'
@@ -294,8 +310,8 @@
               onclick={(e) => onCellClick(e, i, layerIndex)}
               onpointerdown={(e) => onCellDown(e, i, layerIndex)}
               onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
-              title={t('timeline.cell', { frame: i + 1, layer: editor.doc.layers.length - layerIndex })}
-              aria-label={t('timeline.cell', { frame: i + 1, layer: editor.doc.layers.length - layerIndex })}
+              title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
+              aria-label={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
             >
               <LayerThumb
                 doc={editor.doc}
@@ -370,7 +386,7 @@
     transform: translateX(-50%);
   }
   .col-resizer:focus-visible {
-    outline: 2px solid var(--electric, #1b5cff);
+    outline: 2px solid var(--electric);
     outline-offset: -2px;
   }
   .grid {
@@ -432,19 +448,19 @@
      dotted one — three shapes, so colour is never the only signal. */
   .cell.selected {
     border-style: dashed;
-    border-color: var(--electric, #1b5cff);
-    background: color-mix(in srgb, var(--electric, #1b5cff) 10%, transparent);
+    border-color: var(--electric);
+    background: color-mix(in srgb, var(--electric) 10%, transparent);
   }
   .cell.copied {
     border-style: dotted;
   }
   .cell.active {
     border-style: solid;
-    border-color: var(--electric, #1b5cff);
-    box-shadow: inset 0 0 0 2px var(--electric, #1b5cff);
+    border-color: var(--electric);
+    box-shadow: inset 0 0 0 2px var(--electric);
   }
   .cell:focus-visible {
-    outline: 2px solid var(--electric, #1b5cff);
+    outline: 2px solid var(--electric);
     outline-offset: 1px;
   }
   .cell:disabled {
@@ -462,7 +478,7 @@
     margin-top: 2px;
     padding: 2px;
     align-items: flex-end;
-    background: color-mix(in srgb, var(--electric, #1b5cff) 7%, transparent);
+    background: color-mix(in srgb, var(--electric) 7%, transparent);
     border-radius: var(--r-sm, 7px);
   }
   /* What stands in for the frames the strip has not built: the width they
@@ -479,7 +495,7 @@
   }
   .bar > span {
     flex: 1;
-    background: var(--electric, #1b5cff);
+    background: var(--electric);
     opacity: 0.6;
     border-radius: 1px;
   }

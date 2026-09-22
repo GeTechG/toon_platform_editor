@@ -223,3 +223,13 @@ describe('the brush each tool remembers', () => {
     expect(persist).not.toContain('multator');
   });
 });
+
+// Every block edit files a deep copy of the cells it wrote, and the list only
+// ever grew — copied whole on each push, too. A session of pastes and cuts on
+// a 2 GB phone paid for every one of them until the tab was killed.
+describe('the block-edit history is bounded', () => {
+  it('keeps the newest steps up to the same limit as the transform history', () => {
+    expect(member(state, 'private pushEdit')).toContain('.slice(-EDIT_HISTORY_LIMIT)');
+    expect(state).toMatch(/const EDIT_HISTORY_LIMIT = \d+;/);
+  });
+});
