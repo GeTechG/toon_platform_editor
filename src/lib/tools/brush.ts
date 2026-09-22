@@ -32,17 +32,20 @@ export function toonopRules({ smooth, minDistance }: PluginBrush): StrokeRules {
 }
 
 /**
- * One batch of pointer samples, truncated to whole logical pixels. A repeat
- * inside the batch is dropped; one across the seam of two events survives,
- * because the dedup is per batch and the batches are appended.
+ * One batch of pointer samples, rounded to the document unit they are stored
+ * in — an eighth of a logical pixel. The reference truncates to whole pixels
+ * because its canvas is that grid; this canvas is a sheet on a table, and at
+ * zoom 4 the hand moves a quarter pixel at a time. A repeat inside the batch
+ * is dropped; one across the seam of two events survives, because the dedup is
+ * per batch and the batches are appended.
  */
 function collect(batch: readonly number[]): number[] {
   const out: number[] = [];
   let previousX: number | undefined;
   let previousY: number | undefined;
   for (let i = 0; i + 1 < batch.length; i += 2) {
-    const x = Math.trunc(batch[i] / FIXED_POINT_SCALE) * FIXED_POINT_SCALE;
-    const y = Math.trunc(batch[i + 1] / FIXED_POINT_SCALE) * FIXED_POINT_SCALE;
+    const x = Math.round(batch[i]);
+    const y = Math.round(batch[i + 1]);
     if (x === previousX && y === previousY) continue;
     out.push(x, y);
     previousX = x;

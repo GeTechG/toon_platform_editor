@@ -15,8 +15,8 @@ describe('the editor brush', () => {
     expect(rules.defaults).toEqual({ width: 5, smooth: 3, minDistance: 3 });
   });
 
-  it('truncates a sample to whole logical pixels as it collects it', () => {
-    expect(rules.capture([], [10.9, 20.9], 40)).toEqual([8, 16]);
+  it('rounds a sample to the document unit it is stored in, not to a whole pixel', () => {
+    expect(rules.capture([], [10.9, 20.9], 40)).toEqual([11, 21]);
   });
 
   it('drops a repeat inside one batch but keeps one across two', () => {

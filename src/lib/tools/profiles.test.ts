@@ -402,9 +402,9 @@ describe('what reaches the document', () => {
     // there under the hand too, and both end where the hand is.
     expect(preview.slice(0, 4)).toEqual([0, 0, 0, 0]);
     expect(committed.slice(0, 4)).toEqual([0, 0, 0, 0]);
-    // Truncated to whole logical pixels as the brush collected them.
-    expect(preview.slice(-2)).toEqual([296, 144]);
-    expect(committed.slice(-2)).toEqual([296, 144]);
+    // Rounded to document units as the brush collected them.
+    expect(preview.slice(-2)).toEqual([300, 150]);
+    expect(committed.slice(-2)).toEqual([300, 150]);
   });
 
   it('quantizes a brush\'s own points instead of dropping the stroke', () => {
