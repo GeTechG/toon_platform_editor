@@ -383,7 +383,7 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: 50%;
     background: var(--canvas);
     color: var(--ink);
@@ -445,7 +445,7 @@
     grid-template-rows: repeat(5, 1fr);
     min-height: 60px;
     padding: 0;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     overflow: hidden;

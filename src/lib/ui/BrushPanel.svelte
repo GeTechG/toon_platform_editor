@@ -213,7 +213,7 @@
     gap: 8px;
     min-height: 2rem;
     padding: 0 8px;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
@@ -367,7 +367,7 @@
     min-height: 2rem;
     box-sizing: border-box;
     padding: 0 0.2rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);

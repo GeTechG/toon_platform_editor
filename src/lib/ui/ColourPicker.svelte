@@ -486,7 +486,7 @@
     width: 100%;
     min-width: 0;
     padding: 0.25rem 0.2rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);

@@ -209,13 +209,14 @@ describe('side panel dividers', () => {
   });
 
   it('the fold handle is a key-shaped tab growing out of the panel edge', () => {
-    // The editor speaks in physical keys: 7px radius, hairline, 2px key
-    // shadow, sky on hover. A tab is one of them, rounded on the stage side
-    // and square where it meets the panel.
+    // The editor speaks in physical keys: 7px radius, a 2px key shadow, sky on
+    // hover. A tab is one of them, rounded on the stage side and square where
+    // it meets the panel. The key is drawn with `--edge`, not the divider
+    // hairline: a key you cannot see does not read as a key (WCAG 1.4.11).
     expect(editorUi).toContain('editor.toggleSide(');
     const fold = editorUi.match(/\n  \.fold \{[^}]*\}/s)?.[0] ?? '';
     expect(fold).toContain('height: var(--key-h)');
-    expect(fold).toContain('box-shadow: 0 2px 0 var(--hairline)');
+    expect(fold).toContain('box-shadow: 0 2px 0 var(--edge)');
     expect(fold).not.toContain('border-radius: 50%');
     expect(editorUi).toMatch(/\.at-left \.fold \{[^}]*border-radius: 0 var\(--r-sm\) var\(--r-sm\) 0/s);
     expect(editorUi).toMatch(/\.fold:hover \{[^}]*background: var\(--sky\)/s);

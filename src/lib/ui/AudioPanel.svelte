@@ -158,7 +158,7 @@
     font-size: 0.88rem;
     color: var(--ink);
     background: var(--canvas);
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm, 7px);
   }
   .field input:focus {

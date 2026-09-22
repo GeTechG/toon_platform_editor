@@ -88,7 +88,7 @@
     border: 2px solid transparent;
     border-radius: 50%;
     background: var(--swatch);
-    box-shadow: 0 0 0 1px var(--hairline);
+    box-shadow: 0 0 0 1px var(--edge);
     cursor: pointer;
     transition: border-color 0.15s ease, transform 0.13s ease;
   }
@@ -121,7 +121,7 @@
     border: 2px solid transparent;
     border-radius: var(--r-sm);
     background: var(--swatch);
-    box-shadow: 0 0 0 1px var(--hairline);
+    box-shadow: 0 0 0 1px var(--edge);
     cursor: pointer;
   }
   .cell.active {
@@ -139,7 +139,7 @@
     height: var(--key-h);
     border-radius: 50%;
     background: var(--swatch);
-    box-shadow: 0 0 0 1px var(--hairline), inset 0 0 0 2px var(--canvas);
+    box-shadow: 0 0 0 1px var(--edge), inset 0 0 0 2px var(--canvas);
     cursor: pointer;
   }
   .color:focus-within {

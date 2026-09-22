@@ -2268,10 +2268,10 @@
     width: 15px;
     height: var(--key-h);
     padding: 0;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     background: var(--canvas);
     color: var(--ink-2);
-    box-shadow: 0 2px 0 var(--hairline);
+    box-shadow: 0 2px 0 var(--edge);
     cursor: pointer;
     transition:
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -2295,13 +2295,13 @@
     background: var(--sky);
     border-color: var(--electric);
     color: var(--ink);
-    box-shadow: 0 1px 0 var(--hairline);
+    box-shadow: 0 1px 0 var(--edge);
   }
   .fold:hover {
     transform: translateY(1px);
   }
   .fold:active {
-    box-shadow: 0 0 0 var(--hairline);
+    box-shadow: 0 0 0 var(--edge);
     transform: translateY(2px);
   }
   .fold:focus-visible {
@@ -2378,7 +2378,7 @@
     height: var(--key-h);
     box-sizing: border-box;
     padding: 0 0.3rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
@@ -2751,14 +2751,14 @@
     min-width: var(--key-h);
     height: var(--key-h);
     padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
     font: inherit;
     font-weight: 650;
     cursor: pointer;
-    box-shadow: 0 2px 0 var(--hairline);
+    box-shadow: 0 2px 0 var(--edge);
     transition:
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -2799,11 +2799,11 @@
     background: var(--sky);
     border-color: var(--electric);
     transform: translateY(1px);
-    box-shadow: 0 1px 0 var(--hairline);
+    box-shadow: 0 1px 0 var(--edge);
   }
   .editor :global(.key:active:not(:disabled)) {
     transform: translateY(2px);
-    box-shadow: 0 0 0 var(--hairline);
+    box-shadow: 0 0 0 var(--edge);
   }
   .editor :global(.key:focus-visible) {
     outline: 3px solid var(--electric);
@@ -2812,7 +2812,7 @@
   .editor :global(.key:disabled) {
     opacity: 0.4;
     cursor: default;
-    box-shadow: 0 2px 0 var(--hairline);
+    box-shadow: 0 2px 0 var(--edge);
   }
   .editor :global(.key.active) {
     background: color-mix(in srgb, var(--electric) 10%, var(--canvas));

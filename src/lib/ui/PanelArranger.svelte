@@ -434,7 +434,7 @@
   }
   .chip {
     padding: 0.2rem 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: 999px;
     background: var(--sky);
     font-size: 0.82rem;
@@ -453,7 +453,7 @@
     min-height: var(--key-h);
     width: 8rem;
     padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: inherit;
@@ -464,7 +464,7 @@
     margin-right: auto;
     max-width: 14rem;
     padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: inherit;

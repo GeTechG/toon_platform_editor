@@ -388,7 +388,7 @@
     flex: 1;
     height: var(--key-h);
     padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
@@ -473,7 +473,7 @@
   select {
     min-height: var(--key-h);
     padding: 0 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: inherit;

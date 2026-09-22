@@ -374,7 +374,7 @@
     place-items: center;
     padding: 0;
     overflow: hidden;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: 4px;
     background: var(--canvas);
     cursor: pointer;
