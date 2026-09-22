@@ -1510,7 +1510,7 @@
     <!-- The only zoom control there is, so it is always on the canvas: in the
          far corner, faded back until the hand is up, the wheel turns, or it is
          hovered or focused. -->
-    <div class="scale-window" class:up={editor.scaleMenuVisible}>
+    <div class="scale-window">
       <ScaleMenu {editor} />
     </div>
     {#if flashVisible}
@@ -1845,16 +1845,10 @@
     z-index: 3;
     /* One row of keys — it takes the width it needs, not a panel's. */
     width: max-content;
-    opacity: 0.55;
-    transition: opacity 120ms ease;
   }
-  /* Faded is for the drawing's sake, never for the reader's: touching it, or
-     tabbing into it, brings it back to full. */
-  .scale-window.up,
-  .scale-window:hover,
-  .scale-window:focus-within {
-    opacity: 1;
-  }
+  /* Quiet at rest is the window's own business now (ScaleMenu.svelte): it is
+     the fill that steps back, not the window, so the readout and the edge keep
+     their contrast while the hand is down. */
   /* On a phone the stage is short — a floating window would cover the drawing,
      so the windows sit under the canvas and span the width. */
   @media (max-width: 40rem) {
@@ -1864,7 +1858,6 @@
       width: auto;
       max-height: none;
       margin-top: 0.5rem;
-      opacity: 1;
     }
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. */
@@ -1943,12 +1936,15 @@
     height: 0.75rem;
     padding: 0;
   }
-  .panel.collapsed .fold {
-    opacity: 0.55;
+  .panel.collapsed .fold,
+  .side-edge.folded .fold {
+    background: color-mix(in srgb, var(--canvas) 55%, transparent);
   }
   .panel.collapsed .fold:hover,
-  .panel.collapsed .fold:focus-visible {
-    opacity: 1;
+  .panel.collapsed .fold:focus-visible,
+  .side-edge.folded .fold:hover,
+  .side-edge.folded .fold:focus-visible {
+    background: var(--sky);
   }
   .toolbar {
     display: flex;
@@ -2315,14 +2311,9 @@
     outline-offset: 2px;
   }
   /* Folded, the tab is all that is left of the column: it waits at the screen
-     edge, quiet until the cursor comes for it. */
-  .side-edge.folded .fold {
-    opacity: 0.55;
-  }
-  .side-edge.folded .fold:hover,
-  .side-edge.folded .fold:focus-visible {
-    opacity: 1;
-  }
+     edge, quiet until the cursor comes for it — quiet being its fill, which it
+     shares with the collapsed bar's tab above. Fading the tab itself took the
+     `--edge` outline to 1.8:1 and the arrow with it. */
   /* Folded: the column is a bare strip at the screen edge, wide enough to
      carry the circle and nothing else. */
   .studio .left.collapsed,

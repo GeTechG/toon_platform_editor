@@ -95,11 +95,11 @@
      script — the bubble is a sibling of the «i», shown by CSS. The reader
      that cannot hover gets the same words from the button's own label. -->
 {#snippet heading(title: string, note: string)}
-  <h3 class="field">
+  <h2 class="field">
     {title}
     <button class="info" type="button" aria-label="{title}: {note}"><Icon name="info" /></button>
     <span class="note" aria-hidden="true">{note}</span>
-  </h3>
+  </h2>
 {/snippet}
 
 {#snippet sample(tool: string)}
@@ -120,7 +120,7 @@
   <!-- Only where there is something to switch to: the feather and the pixel
        have no other form, so the list would offer a choice of one. -->
   {#if hasBrushTypes(editor.tool)}
-    <h3>{t('brush.type')}</h3>
+    <h2>{t('brush.type')}</h2>
     <!-- A list that drops down, not a row of keys: three names never fit the
          box's width, and each one is worth a sample of what it draws. -->
     <button
@@ -168,7 +168,7 @@
       {@render sample(editor.brushTool)}
     </figure>
   {/if}
-  <h3>{t('brush.thickness')}</h3>
+  <h2>{t('brush.thickness')}</h2>
   {@render slider(t('brush.sizes_group'), 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
   <!-- Only for the brushes the two numbers actually reach: the Multator line,
        the old pen and the pixel are smoothed by their own rule or by none.
@@ -198,7 +198,7 @@
     align-items: center;
     padding: 10px;
   }
-  .brush-box h3 {
+  .brush-box h2 {
     grid-column: 1 / 3;
     margin: 0;
     text-align: center;

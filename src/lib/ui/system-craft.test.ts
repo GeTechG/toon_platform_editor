@@ -24,7 +24,16 @@ function withoutComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
+async function markup(): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  for await (const file of new Glob('**/*.svelte').scan(UI)) {
+    found.set(file, await Bun.file(UI + file).text());
+  }
+  return found;
+}
+
 const STYLES = await sheets();
+const MARKUP = await markup();
 const tokensCss = await Bun.file(UI + 'tokens.css').text();
 const editorUi = await Bun.file(UI + 'Editor.svelte').text();
 
@@ -163,5 +172,60 @@ describe('a draft thumbnail reserves its box', () => {
     const tag = editorUi.match(/<img[^>]*thumbUrls[^>]*>/)?.[0] ?? '';
     expect(tag).toContain('width=');
     expect(tag).toContain('height=');
+  });
+});
+
+// A role is a promise about behaviour. `dialog` promises a window: focus moved
+// in, Esc that closes, focus handed back where it came from. Four sheets keep
+// that promise with the platform's own `<dialog>` and `showModal()`, and the
+// colour picker keeps it by hand — focus, Esc and a Tab that wraps. Two panels
+// claimed it with none of the three, which is the very thing the drafts sheet
+// was rebuilt to stop doing. A panel that is a panel says `group`.
+describe('a role promises the behaviour it names', () => {
+  it('gives every role="dialog" its focus and its Esc', () => {
+    const wrong = [...MARKUP]
+      .filter(([, source]) => /role="dialog"/.test(source))
+      .filter(([, source]) => !/\.focus\(\)/.test(source) || !/'Escape'/.test(source))
+      .map(([file]) => file);
+
+    expect(wrong).toEqual([]);
+  });
+});
+
+// The panel is a section of the page the studio fills, so its heading sits one
+// step under the page's own. A sheet opens its own ladder inside a dialog and
+// starts at two like the rest; what no file may do is open at three with no two
+// above it, which leaves the heading list with a gap where a name should be.
+describe('a panel heading sits under the one above it', () => {
+  it('opens no ladder at the third step', () => {
+    const wrong = [...MARKUP]
+      .filter(([, source]) => /<h3\b/.test(source) && !/<h2\b/.test(source))
+      .map(([file]) => file);
+
+    expect(wrong).toEqual([]);
+  });
+});
+
+// A colour is written where it is declared and nowhere else. Three things are
+// not that: a `--name:` line is a declaration, and `tokens.test.ts` already
+// holds those to the table in DESIGN.md; a fallback inside `var()` is the
+// table's own value spelled out for a host that arrives without one, which is
+// the house style of a package that ships as source; and black inside a mask
+// is alpha, not ink — it means opaque, and no token would say it better. What
+// is left after those three is a colour the system never heard of.
+describe('a colour in a sheet comes from the table', () => {
+  it('writes none of them as a bare literal', () => {
+    const wrong: string[] = [];
+    for (const [file, css] of STYLES) {
+      const consumed = withoutComments(css)
+        .replace(/--[a-z0-9-]+\s*:[^;]*;/g, '')
+        .replace(/\bmask(-image)?\s*:[^;]*;/g, '')
+        .replace(/var\([^()]*\)/g, '');
+      for (const hit of consumed.matchAll(/#[0-9a-f]{3,8}\b/gi)) {
+        wrong.push(`${file} ${hit[0]}`);
+      }
+    }
+
+    expect(wrong).toEqual([]);
   });
 });

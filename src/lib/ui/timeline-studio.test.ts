@@ -223,8 +223,11 @@ describe('side panel dividers', () => {
   });
 
   it('the tab that brings a folded column back waits pale at the screen edge', () => {
-    expect(editorUi).toMatch(/\.side-edge\.folded \.fold \{[^}]*opacity: 0\.55/s);
-    expect(editorUi).toMatch(/\.side-edge\.folded \.fold:hover[^{]*\{[^}]*opacity: 1/s);
+    // Pale is the fill, not the tab: fading the tab itself took the `--edge`
+    // outline down to 1.8:1 and the arrow with it (WCAG 1.4.11).
+    expect(editorUi).toMatch(/\.side-edge\.folded \.fold \{\n\s*background: color-mix\(in srgb, var\(--canvas\) 55%/s);
+    expect(editorUi).toMatch(/\.side-edge\.folded \.fold:focus-visible \{\n\s*background: var\(--sky\)/s);
+    expect(editorUi).not.toMatch(/\.fold[^{]*\{[^}]*opacity:/s);
   });
 
   it('a folded column is a bare strip at the screen edge, with the circle still on it', () => {

@@ -15,7 +15,14 @@
   const percent = $derived(Math.round(editor.view.zoom * 100));
 </script>
 
-<div class="scale-menu" role="group" aria-label={t('scale.group')} data-drag-handle use:draggable>
+<div
+  class="scale-menu"
+  class:up={editor.scaleMenuVisible}
+  role="group"
+  aria-label={t('scale.group')}
+  data-drag-handle
+  use:draggable
+>
   <button
     class="step"
     disabled={editor.view.zoom <= ZOOM_MIN}
@@ -44,13 +51,23 @@
     align-items: center;
     gap: 2px;
     padding: 2px;
-    border: 1px solid var(--hairline, #0b0c1024);
+    /* The window is dragged by its own row, so this is the boundary of a
+       control and takes the edge, not the divider. */
+    border: 1px solid var(--edge, #0b0c107a);
     border-radius: 10px;
-    background: var(--canvas, #fff);
+    /* Quiet over someone's drawing is the fill stepping back — never the
+       window, which would take the readout and the edge down with it. */
+    background: color-mix(in srgb, var(--canvas, #fff) 55%, transparent);
+    transition: background 120ms ease;
     font-size: 12px;
     /* The row is its own handle; only its keys are not. */
     cursor: move;
     touch-action: none;
+  }
+  .scale-menu.up,
+  .scale-menu:hover,
+  .scale-menu:focus-within {
+    background: var(--canvas, #fff);
   }
   button {
     min-height: 28px;

@@ -445,7 +445,7 @@
     width: 12px;
     height: 12px;
     margin: -6px 0 0 -6px;
-    border: 2px solid #fff;
+    border: 2px solid var(--canvas, #fff);
     border-radius: 50%;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
     pointer-events: none;
@@ -456,7 +456,7 @@
     width: 7px;
     height: 100%;
     margin-left: -3.5px;
-    border: 2px solid #fff;
+    border: 2px solid var(--canvas, #fff);
     border-radius: 4px;
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
     pointer-events: none;

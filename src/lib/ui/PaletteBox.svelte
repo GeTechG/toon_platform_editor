@@ -268,7 +268,7 @@
 
 <!-- Reference PalettePreview: the saved palette opened beside the box. -->
 {#if preview}
-  <div class="box preview" role="dialog" aria-label={t('palette.preview', { name: preview.name || t('palette.new_name') })}>
+  <div class="box preview" role="group" aria-label={t('palette.preview', { name: preview.name || t('palette.new_name') })}>
     <div class="preview-head">
       <strong>{preview.name || t('palette.new_name')}</strong>
       <button class="close" onclick={() => (preview = null)} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>

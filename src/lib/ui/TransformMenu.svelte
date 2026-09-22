@@ -119,7 +119,9 @@
     min-width: 0;
     min-height: 32px;
     padding: 0 6px;
-    border: 1px solid var(--hairline, #0b0c1024);
+    /* The boundary of a control, not a divider: white field on a white plate
+       drawn with the hairline is 1.36:1, where 1.4.11 asks three. */
+    border: 1px solid var(--edge, #0b0c107a);
     border-radius: 6px;
     background: var(--canvas, #fff);
     color: inherit;

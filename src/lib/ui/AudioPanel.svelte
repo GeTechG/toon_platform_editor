@@ -40,7 +40,10 @@
   const trackOutruns = $derived(editor.audio.duration - filmSeconds > 1);
 </script>
 
-<div class="audio-plate" role="dialog" aria-label={t('audio.panel')}>
+<!-- A group, not a dialog: the plate is docked, it takes no focus of its own
+     and Esc does not close it, so the role that promises a window would be
+     promising three things it does not do. -->
+<div class="audio-plate" role="group" aria-label={t('audio.panel')}>
   <header>
     <h2>{t('audio.panel')}</h2>
     <button class="key icon" onclick={onClose} aria-label={t('audio.close')}>
