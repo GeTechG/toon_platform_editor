@@ -198,7 +198,7 @@ describe('обновление плагина из каталога', () => {
 
     const updated = await quiet(() =>
       updateInstalled(
-        [{ id: 'halftone', name: 'h', version: '2.0.0', description: '', icon: '', url: 'https://x/h.js' }],
+        [{ id: 'halftone', name: 'h', version: '2.0.0', description: '', icon: '', url: 'https://x/h.js', official: false }],
         registry,
         ports,
       ),

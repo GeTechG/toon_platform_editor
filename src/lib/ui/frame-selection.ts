@@ -9,6 +9,7 @@ import {
   PLAYER_FPS_MAX,
   PLAYER_FPS_MIN,
 } from '../format/constants';
+import type { Frame, ToonDocument } from '../format/types';
 
 /**
  * Active frame after removing removedIndex. 'next' (default): the right
@@ -432,4 +433,34 @@ export function selectionSpan(selection: CellSelection): { from: number; to: num
     to: Math.max(...selection.frames) + 1,
     layers: selection.layers.length,
   };
+}
+
+/**
+ * The cells a copy was taken from, by identity: a frame inserted or removed,
+ * a layer added or moved shifts every number, and a mark kept by number
+ * would point at cells that were never copied. A cell deleted, or written
+ * over by a paste, is simply no longer in the document, so its mark is gone.
+ */
+export function copiedMarks(doc: ToonDocument, range: CellSelection): ReadonlySet<Frame> {
+  return new Set(range.layers.flatMap((l) =>
+    range.frames.map((f) => doc.layers[l]?.frames[f]).filter((cell) => cell !== undefined)));
+}
+
+export function isMarked(doc: ToonDocument, marks: ReadonlySet<Frame>, frame: number, layer: number): boolean {
+  const cell = doc.layers[layer]?.frames[frame];
+  return cell !== undefined && marks.has(cell);
+}
+
+/** The header marks a frame while any of its cells is still marked. */
+export function isFrameMarked(doc: ToonDocument, marks: ReadonlySet<Frame>, frame: number): boolean {
+  return marks.size > 0 && doc.layers.some((layer) => marks.has(layer.frames[frame]));
+}
+
+/**
+ * `м:сс`, to the nearest second (owner) — but a film or track that is there
+ * at all is at least 0:01: a one-frame film read as 0:00 looked empty.
+ */
+export function lengthClock(seconds: number): string {
+  const whole = seconds > 0 ? Math.max(1, Math.round(seconds)) : 0;
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }

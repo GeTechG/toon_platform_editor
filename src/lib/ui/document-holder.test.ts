@@ -31,6 +31,9 @@ const READ_ONLY = new Set([
   'takeStructure',
   'structureIntact',
   'seal',
+  'copiedMarks',
+  'isMarked',
+  'isFrameMarked',
 ]);
 
 /** The body of the one method that writes to the document. */

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { hexToRgb, normalizeHexInput, parseHex, rgbToHex, wheelToHsv } from './color-model';
+  import { hexToRgb, parseColourInput, rgbToHex, wheelToHsv } from './color-model';
   import {
     barPointer,
     colorToPointer,
@@ -111,17 +111,39 @@
     onpick(rgbToHex({ ...rgb, [key]: value }));
   }
 
-  function commitHex(): void {
-    const hex = parseHex(hexText);
-    if (hex) onpick(hex);
-    else hexText = color;
+  /**
+   * A CSS colour name is the browser's to know: a canvas takes it as its
+   * fill and says it back as hex. It ignores what it cannot read, so the
+   * name is tried over two sentinels — both kept means no colour.
+   */
+  function namedColour(name: string): string | null {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) return null;
+    const [a, b] = ['#000000', '#ffffff'].map((sentinel) => {
+      ctx.fillStyle = sentinel;
+      ctx.fillStyle = name;
+      return String(ctx.fillStyle);
+    });
+    return a === b && /^#[0-9a-f]{6}$/.test(a) ? a : null;
   }
 
-  /** Reference: the field paints as it is typed (`bundle:10144-10152`). */
+  /** Enter or blur: what parses is kept and shown as hex, anything else gives the field the colour back. */
+  function commitHex(): void {
+    const hex = parseColourInput(hexText, namedColour);
+    if (hex) {
+      onpick(hex);
+      hexText = hex;
+    } else hexText = color;
+  }
+
+  /**
+   * The field paints as it is typed or pasted (`bundle:10144-10152`), but only
+   * a colour it has read for certain: hex, rgb(), hsl() or a CSS name.
+   */
   function typeHex(raw: string): void {
     hexText = raw;
-    const hex = normalizeHexInput(raw);
-    // Unrecognised: the colour stays, and the blur or Enter gives the field it back.
+    const hex = parseColourInput(raw, namedColour);
+    // Unfinished or unknown: the colour stays, and the blur or Enter gives the field it back.
     if (!hex) return;
     applied = hex;
     pointer = colorToPointer(model, hex);
@@ -163,13 +185,16 @@
   /**
    * Enter and Space close on what is chosen (`bundle:9942-9987`). Esc is the
    * dialog's own `cancel`, and Tab is the dialog's own trap — neither is this
-   * function's business any more.
+   * function's business any more. The key's default goes too: focus returns
+   * to the swatch on close, and the same Enter pressed it, reopening the
+   * window on the new colour as if nothing had changed.
    */
   function onKeydown(e: KeyboardEvent): void {
     const action = pickerKeyAction(e.key, (e.target as HTMLElement | null)?.tagName ?? '');
     if (!action) return;
     if (action === 'commit') commitHex();
     e.stopPropagation();
+    e.preventDefault();
     requestClose();
   }
 

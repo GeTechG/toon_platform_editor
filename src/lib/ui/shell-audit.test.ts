@@ -64,13 +64,10 @@ describe('storage the browser refuses', () => {
   });
 });
 
-describe('Alt+Enter', () => {
-  it('says the confirmations are off and offers them back', () => {
-    // A silent toggle of every delete question: nothing on screen said so.
-    expect(editorUi).toMatch(/class="warnings-off"[^>]*role="status"/);
-    expect(editorUi).toContain("t('editor.warnings_off')");
-    expect(editorUi).toMatch(/onclick=\{\(\) => \(editor\.warnings = true\)\}/);
-    expect(t('editor.warnings_off')).toContain('Alt+Enter');
+describe('stage notes', () => {
+  it('sit in a live region that is always there', () => {
+    // Alt+Enter and its «вопросы выключены» note are gone (owner-twelfth-shell).
+    expect(editorUi).toMatch(/class="stage-notes"[^>]*role="status"/);
   });
 });
 

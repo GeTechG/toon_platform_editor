@@ -54,10 +54,6 @@ describe('words that name the same thing agree', () => {
   it('full screen is «Полный экран» in the manual too', () => {
     expect(ru.key.fullscreen).toBe(ru.editor.fullscreen);
   });
-
-  it('Alt+Enter is a switch, and the manual says so', () => {
-    expect(ru.key.no_warnings).toMatch(/\//);
-  });
 });
 
 describe('reduced motion', () => {

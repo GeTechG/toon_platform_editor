@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'bun:test';
-import { hexToRgb, hsvToRgb, normalizeHexInput, parseHex, rgbToHex, rgbToHsv, wheelToHsv } from './color-model';
+import { hexToRgb, hsvToRgb, parseColourInput, parseHex, rgbToHex, rgbToHsv, wheelToHsv } from './color-model';
 
-describe('normalizeHexInput', () => {
-  it('drops what is not a hex digit and pads the rest with zeros', () => {
-    expect(normalizeHexInput('12g')).toBe('#120000');
-    expect(normalizeHexInput('#AbC')).toBe('#abc000');
+describe('parseColourInput', () => {
+  // Owner, after the twelfth audit: the field no longer strips the non-hex and
+  // pads the rest (`12g` was #120000, `rgb(255,0,0)` was #b25500); it reads a
+  // colour for certain or not at all.
+  it('reads nothing from a half-typed or mixed hex', () => {
+    expect(parseColourInput('12g')).toBeNull();
+    expect(parseColourInput('#AbC')).toBe('#aabbcc');
   });
 
-  it('gives nothing when no hex digit is left, so «zz» does not paint black', () => {
-    expect(normalizeHexInput('')).toBeNull();
-    expect(normalizeHexInput('zz')).toBeNull();
-    expect(normalizeHexInput('#')).toBeNull();
+  it('gives nothing for an empty field, so «zz» does not paint black', () => {
+    expect(parseColourInput('')).toBeNull();
+    expect(parseColourInput('zz')).toBeNull();
+    expect(parseColourInput('#')).toBeNull();
   });
 
-  it('keeps only the first six digits', () => {
-    expect(normalizeHexInput('#1234567')).toBe('#123456');
-    expect(normalizeHexInput('7fc9ff')).toBe('#7fc9ff');
+  it('takes six digits, not seven', () => {
+    expect(parseColourInput('#1234567')).toBeNull();
+    expect(parseColourInput('7fc9ff')).toBe('#7fc9ff');
   });
 });
 

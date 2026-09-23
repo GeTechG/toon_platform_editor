@@ -59,7 +59,7 @@ describe('the question names the range', () => {
 describe('the editor deletes the selected block', () => {
   const remove = member(state, 'removeActiveFrame');
 
-  it('in one write, behind the transform guard and the muted-warnings question', () => {
+  it('in one write, behind the transform guard and the question', () => {
     expect(remove).toContain('this.leaveTransform()');
     expect(remove).toContain('this.confirmed(');
     expect(remove).toContain("'frame.delete_block_confirm'");

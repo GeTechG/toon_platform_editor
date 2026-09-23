@@ -155,15 +155,18 @@
   /**
    * The picker applies live without touching the grid. Esc asks for the colour
    * it opened on back; any other way out keeps what is chosen, and that colour
-   * joins the grid under the reference's `paletteAutoAdd`.
+   * joins the grid under the reference's `paletteAutoAdd` — if the window
+   * changed it. Opened and closed as it was, it adds nothing: at the limit
+   * each such glance overwrote the next cell of the ring.
    */
   function closePicker(options?: { revert?: boolean }): void {
     if (!picking) return;
     const { target, origin } = picking;
+    const current = target === 'fill' ? editor.fillColor : editor.brushColor;
     if (options?.revert) {
       editor.pickColor(origin, target, true);
-    } else if (editor.ux.colorGrid && editor.settings.paletteAutoAdd) {
-      editor.addColorToPalette(target === 'fill' ? editor.fillColor : editor.brushColor);
+    } else if (current !== origin && editor.ux.colorGrid && editor.settings.paletteAutoAdd) {
+      editor.addColorToPalette(current);
     }
     picking = null;
   }

@@ -12,6 +12,7 @@
 import { CANVAS_LOGICAL_WIDTH, MAX_BRUSH_SIZE_LOGICAL } from '../format/constants';
 import { NORMAL_BRUSH_TYPE, type BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
+import { OFFICIAL_CATALOG } from '../plugins/catalog';
 import type { RegisteredPreset } from '../plugins/registry';
 import type { PickSource } from './frame-selection';
 import {
@@ -227,12 +228,8 @@ export interface EditorSettings {
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
 
-/**
- * The catalog the editor opens with: the build branch of the plugin
- * repository, read straight from GitHub — no hosting to set up, and a cache of
- * minutes rather than of hours.
- */
-export const PLUGIN_CATALOG = 'https://raw.githubusercontent.com/GeTechG/toonop_plugins/build/';
+/** The catalog the editor opens with: ours (`../plugins/catalog`). */
+export const PLUGIN_CATALOG = OFFICIAL_CATALOG;
 
 /** Offered autosave intervals, reference order; 0 is "never". */
 export const AUTOSAVE_INTERVALS: readonly number[] = [

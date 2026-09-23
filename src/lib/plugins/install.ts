@@ -161,6 +161,7 @@ export async function installFromCatalog(
     icon: entry.icon,
     code: got.code,
     source: 'catalog',
+    official: entry.official,
     installed: Date.now(),
   }, registry, ports);
 }
@@ -276,7 +277,7 @@ export async function updateInstalled(
       continue;
     }
     // Not on disk, the old code comes back after a reload: not «обновлён».
-    if (!(await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, code: got.code }))) {
+    if (!(await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, official: entry.official, code: got.code }))) {
       registry.fail(plugin.id, t('plugins.not_kept'));
       continue;
     }

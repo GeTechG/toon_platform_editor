@@ -28,15 +28,52 @@ export function parseHex(text: string): string | null {
   return null;
 }
 
+const NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|deg|turn|rad|grad)?$/;
+
+/** One CSS function argument as its number and unit; null when it is not one. */
+function arg(text: string): { n: number; unit: string } | null {
+  const m = NUMBER.exec(text);
+  return m ? { n: Number(m[1]), unit: m[2] ?? '' } : null;
+}
+
+/** CSS Color 4 `hslToRgb`; `h` in degrees, `s` and `l` 0–1. */
+function hslToRgb(h: number, s: number, l: number): Rgb {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    return (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255;
+  };
+  return { r: f(0), g: f(8), b: f(4) };
+}
+
 /**
- * Reference hex field on every keystroke (`bundle:10144-10152`): anything
- * that is not a hex digit is dropped, the rest is cut to six and padded with
- * zeros, so the colour follows the typing instead of waiting for Enter.
+ * What the colour window's field accepts, typed or pasted: `#rgb`, `#rrggbb`,
+ * bare `rrggbb`, `rgb()`/`rgba()` and `hsl()`/`hsla()` in the comma or the
+ * space syntax (the alpha is read and dropped), and a CSS colour name, which
+ * only the browser can resolve — so it comes in as `named`. Anything unfinished
+ * or unknown is null: the field paints only what it has read for certain,
+ * unlike the reference, which dropped the non-hex and painted `rgb(255,0,0)`
+ * as #b25500.
  */
-export function normalizeHexInput(raw: string): string | null {
-  // No digit at all («zz», an emptied field) is no colour, not black.
-  const body = raw.toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 6);
-  return body ? `#${body.padEnd(6, '0')}` : null;
+export function parseColourInput(text: string, named?: (name: string) => string | null): string | null {
+  const s = text.trim().toLowerCase();
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(s) || /^[0-9a-f]{6}$/.test(s)) return parseHex(s);
+  const fn = /^(rgba?|hsla?)\(([^()]*)\)$/.exec(s);
+  if (fn) {
+    const args = fn[2].trim().split(/\s*[,/]\s*|\s+/).map(arg);
+    if ((args.length !== 3 && args.length !== 4) || args.some((a) => !a)) return null;
+    const [a, b, c, alpha] = args as { n: number; unit: string }[];
+    if (alpha && alpha.unit !== '' && alpha.unit !== '%') return null;
+    if (fn[1].startsWith('rgb')) {
+      if ([a, b, c].some((x) => x.unit !== '' && x.unit !== '%')) return null;
+      const byte = (x: { n: number; unit: string }) => (x.unit === '%' ? (x.n / 100) * 255 : x.n);
+      return rgbToHex({ r: byte(a), g: byte(b), b: byte(c) });
+    }
+    const turn = { '': 1, deg: 1, turn: 360, rad: 180 / Math.PI, grad: 0.9 }[a.unit];
+    if (turn === undefined || [b, c].some((x) => x.unit !== '' && x.unit !== '%')) return null;
+    return rgbToHex(hslToRgb((((a.n * turn) % 360) + 360) % 360, clamp(b.n, 0, 100) / 100, clamp(c.n, 0, 100) / 100));
+  }
+  return /^[a-z]+$/.test(s) ? (named?.(s) ?? null) : null;
 }
 
 export function hexToRgb(hex: string): Rgb {

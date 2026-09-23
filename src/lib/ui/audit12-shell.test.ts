@@ -88,7 +88,8 @@ describe('a chord the browser owns', () => {
     // Every Ctrl chord went down the hotkey table and was prevented: Ctrl+=
     // thickened the brush instead of zooming the page (WCAG 1.4.4), Ctrl+P
     // picked the pipette instead of printing, Ctrl+L took the address bar.
-    for (const key of ['=', '+', '-', '_', 'l', 'p', 'f', 'd', 'h', 'j', 'o', 'b', 'k', 'e', 'x', ' ']) {
+    // Ctrl+X is the studio's cut since the owner's twelfth answers.
+    for (const key of ['=', '+', '-', '_', 'l', 'p', 'f', 'd', 'h', 'j', 'o', 'b', 'k', 'e', ' ']) {
       expect(press(key)).toBe('control');
     }
   });
@@ -127,10 +128,10 @@ function fn(name: string): string {
   return match[0];
 }
 
-describe('opening a draft with the questions muted', () => {
-  it('asks no more than opening a file does: Alt+Enter mutes it, the draft is written all the same', () => {
-    // A file opened without a word under Alt+Enter; a draft still asked.
-    expect(fn('openDraft')).toMatch(/if \(editor\.touched\) \{\s*if \(editor\.warnings && !confirm\(t\('editor\.draft_open_confirm'\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(!\(await saveNow\(true\)\)\)/);
+describe('opening a draft over a drawing', () => {
+  it('asks, as opening a file does, and the draft is written before it goes', () => {
+    // Alt+Enter no longer mutes the question (owner-twelfth-shell).
+    expect(fn('openDraft')).toMatch(/if \(editor\.touched\) \{\s*if \(!confirm\(t\('editor\.draft_open_confirm'\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(!\(await saveNow\(true\)\)\)/);
   });
 });
 

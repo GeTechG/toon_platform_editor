@@ -37,12 +37,11 @@ describe('a held key', () => {
     expect(handler.indexOf('repeats(key)')).toBeLessThan(handler.indexOf('if (editor.transform)'));
   });
 
-  it('with Ctrl or Alt does its thing once: one save, one log file, one toggle', () => {
+  it('with Ctrl or Alt does its thing once: one save, one log file', () => {
     // A held Alt+L downloaded a log file per auto-repeat.
     const handler = fn('onKeydown');
     expect(handler).toMatch(/if \(!e\.repeat\) \{\s*saveNow\(true\);/);
     expect(handler).toMatch(/if \(!e\.repeat\) \{\s*downloadErrorLog\(\);/);
-    expect(handler).toMatch(/if \(!e\.repeat\) \{\s*editor\.warnings = !editor\.warnings;/);
   });
 });
 

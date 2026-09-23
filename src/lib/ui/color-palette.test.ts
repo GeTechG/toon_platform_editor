@@ -277,7 +277,7 @@ const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).t
 describe('the colour picker follows the reference window', () => {
   it('applies the hex field on every keystroke, not only on Enter', () => {
     expect(picker).toMatch(/oninput=\{[^}]*typeHex/);
-    expect(picker).toMatch(/function typeHex[^]{0,200}normalizeHexInput/);
+    expect(picker).toMatch(/function typeHex[^]{0,200}parseColourInput/);
   });
 
   it('keeps the last valid colour on unrecognised input and gives it back to the field on blur', () => {

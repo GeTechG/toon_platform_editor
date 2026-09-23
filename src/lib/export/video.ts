@@ -148,8 +148,58 @@ export async function planVideo(doc: ToonDocument, hasAudio: boolean, width?: nu
     : null;
 }
 
+/** A chunk mediabunny's `StreamTarget` writes: bytes at a position in the file. */
+export interface FileChunk {
+  type: 'write';
+  data: Uint8Array;
+  position: number;
+}
+
+/** The file the video was streaming into refused a write: disk full, access taken away. */
+export class FileWriteError extends Error {
+  constructor() {
+    super(t('export.write_failed'));
+    this.name = 'FileWriteError';
+  }
+}
+
+/**
+ * Stands between mediabunny and the file. mediabunny closes its stream on a
+ * cancel too, and closing a `FileSystemWritableFileStream` commits what is in
+ * it — half a video under the name the person picked. Here a close before
+ * `finish()` aborts instead, and the file keeps nothing of the export.
+ */
+export function guardSink(sink: WritableStream<FileChunk>) {
+  const writer = sink.getWriter();
+  let whole = false;
+  let failed: unknown = null;
+  const stream = new WritableStream<FileChunk>({
+    write: (chunk) =>
+      writer.write(chunk).catch((error) => {
+        failed ??= error;
+        throw error;
+      }),
+    close: () => (whole ? writer.close() : writer.abort()),
+    abort: (reason) => writer.abort(reason),
+  });
+  return {
+    stream,
+    finish: () => {
+      whole = true;
+    },
+    failed: () => failed,
+    /** Throws the unfinished file away, whether or not mediabunny got to its close. */
+    drop: () => writer.abort().catch(() => {}),
+  };
+}
+
 export interface VideoExportOptions extends RasterizeOptions {
   plan: VideoPlan;
+  /**
+   * The file picked with `showSaveFilePicker`: the WebCodecs path streams into
+   * it instead of holding the whole video in memory, and resolves with `null`.
+   */
+  sink?: WritableStream<FileChunk>;
   /** The soundtrack, muxed into the video; omitted for a silent export. */
   audio?: Blob | null;
   onProgress?: (done: number, total: number, stage: ExportStage) => void;
@@ -165,30 +215,33 @@ export interface VideoExportOptions extends RasterizeOptions {
 /**
  * Renders the document through the same `Canvas2DFrameRenderer` the canvas,
  * the GIF and the player use, and encodes it. Resolves with the finished
- * file; rejects with an `AbortError` if cancelled.
+ * file, or `null` when it went straight into `sink`; rejects with an
+ * `AbortError` if cancelled and with a `FileWriteError` if the file refused.
  */
-export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
+export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
   return options.plan.realtime ? recordVideo(doc, options) : encodeVideo(doc, options);
 }
 
 /** WebCodecs: frames are encoded as fast as the machine manages. */
-async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
-  const { plan, audio, onProgress, signal, trackSeconds, ...raster } = options;
+async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
+  const { plan, audio, onProgress, signal, trackSeconds, sink, ...raster } = options;
   const target = plan.target;
   if (!target) {
     throw new Error(t('export.no_codec'));
   }
-  const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, WebMOutputFormat } =
+  const { AudioBufferSource, BufferTarget, CanvasSource, Mp4OutputFormat, Output, Quality, StreamTarget, WebMOutputFormat } =
     await import('mediabunny');
 
   const fps = doc.frame_rate;
   const frames = frameCount(doc);
   const total = exportFrameCount(frames, fps, trackSeconds);
   const rasterizer = new FrameRasterizer(doc, raster);
+  const file = sink ? guardSink(sink) : null;
   const buffer = new BufferTarget();
   const output = new Output({
     format: target.extension === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat(),
-    target: buffer,
+    // Chunked: a file is written in few large pieces, not one per packet.
+    target: file ? new StreamTarget(file.stream as WritableStream<never>, { chunked: true }) : buffer,
   });
   const video = new CanvasSource(rasterizer.canvas, {
     codec: target.videoCodec,
@@ -220,10 +273,17 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
       await nextTask();
     }
     video.close();
+    // Past this point the only close is the one that ends a whole file.
+    file?.finish();
     await output.finalize();
-    return new Blob([buffer.buffer as ArrayBuffer], { type: output.format.mimeType });
+    return file ? null : new Blob([buffer.buffer as ArrayBuffer], { type: output.format.mimeType });
   } catch (err) {
     await output.cancel().catch(() => {});
+    await file?.drop();
+    if (file?.failed()) {
+      console.warn('video file write failed:', file.failed());
+      throw new FileWriteError();
+    }
     throw err;
   }
 }

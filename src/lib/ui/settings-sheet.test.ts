@@ -198,7 +198,7 @@ describe('autosave on the settings interval', () => {
     expect(editorUi).not.toContain('scheduleSave');
   });
 
-  it('«никогда» leaves the timer unarmed, so only Ctrl+S writes', () => {
+  it('«никогда» leaves the timer unarmed; leaving the studio still writes', () => {
     expect(editorUi).toMatch(/autosaveMs[^]*?=== 0/);
   });
 
@@ -215,14 +215,14 @@ describe('the remaining reference keys', () => {
     expect(editorUi).toContain('editor.commitTransform()');
   });
 
-  it('Ctrl+S saves the draft now, Alt+S opens the export, Alt+Enter mutes the warnings', () => {
+  it('Ctrl+S saves the draft now, Alt+S opens the export, Alt+Enter is not a key', () => {
     expect(editorUi).toMatch(/key === 's'[^]*?saveNow\(/);
     expect(editorUi).toContain("altKey && (key === 's'");
-    expect(editorUi).toMatch(/altKey && key === 'Enter'/);
+    expect(editorUi).not.toMatch(/altKey && key === 'Enter'/);
   });
 
   it('the shortcut list names them too, so the sheet does not lie', () => {
-    for (const combo of ['Space', 'Ctrl + S', 'Alt + S', 'Alt + Enter']) {
+    for (const combo of ['Space', 'Ctrl + S', 'Alt + S']) {
       expect(editorUi).toContain(`['${combo}'`);
     }
   });

@@ -96,9 +96,12 @@ export interface SavedPalette {
   colours: string[];
 }
 
-const HEX = /^#[0-9a-f]{6}$/i;
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** Reference ImportPalettes: entries need an id and a colour list; bad colors are dropped. */
+/** `#rgb` as `#rrggbb`, lower case: the grid is keyed by the long form. */
+const longHex = (c: string): string => (c.length === 4 ? c.replace(/[0-9a-f]/gi, (d) => d + d) : c).toLowerCase();
+
+/** Reference ImportPalettes: entries need an id and a colour list; bad colors are dropped, `#rgb` is widened. */
 export function parseSavedPalettes(raw: string | null): SavedPalette[] {
   let data: unknown;
   try {
@@ -118,7 +121,7 @@ export function parseSavedPalettes(raw: string | null): SavedPalette[] {
       id,
       name: typeof name === 'string' ? name : '',
       created: typeof created === 'number' ? created : 0,
-      colours: colours.filter((c): c is string => typeof c === 'string' && HEX.test(c)).map((c) => c.toLowerCase()),
+      colours: colours.filter((c): c is string => typeof c === 'string' && HEX.test(c)).map(longHex),
     });
   }
   return out;
@@ -172,12 +175,13 @@ export function loadSavedPalettes(): SavedPalette[] {
   }
 }
 
-/** Best-effort, never throws. */
-export function saveSavedPalettes(list: readonly SavedPalette[]): void {
+/** Best-effort, never throws; false when the storage refused and the list lives for the session only. */
+export function saveSavedPalettes(list: readonly SavedPalette[]): boolean {
   try {
     localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+    return true;
   } catch {
-    // blocked storage — the list lives for the session only.
+    return false;
   }
 }
 

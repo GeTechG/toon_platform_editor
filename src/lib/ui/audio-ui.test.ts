@@ -183,8 +183,8 @@ describe('the soundtrack panel', () => {
   });
 
   it('names both lengths, so a wave shorter than the track explains itself', () => {
-    expect(panel).toContain('clock(filmSeconds)');
-    expect(panel).toContain('clock(editor.audio.duration)');
+    expect(panel).toContain('lengthClock(filmSeconds)');
+    expect(panel).toContain('lengthClock(editor.audio.duration)');
     expect(panel).toContain('trackOutruns');
   });
 });

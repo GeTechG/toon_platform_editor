@@ -25,3 +25,17 @@ export function positionOfSize(size: number, min: number, max: number): number {
   // a step at the far end.
   return (SIZE_TRACK * Math.log(clamped / min)) / Math.log(max / min);
 }
+
+/**
+ * Track positions one screen pixel of the canvas drag is worth: the whole
+ * scale in about 330 px, a thin brush a pixel for every six.
+ */
+const DRAG_POSITIONS_PER_PX = 3;
+
+/**
+ * The size a Shift+drag on the canvas reaches (Krita): right or up thickens,
+ * left or down thins, along the slider's own logarithmic track.
+ */
+export function sizeFromDrag(start: number, dx: number, dy: number, min: number, max: number): number {
+  return sizeAtPosition(positionOfSize(start, min, max) + (dx - dy) * DRAG_POSITIONS_PER_PX, min, max);
+}

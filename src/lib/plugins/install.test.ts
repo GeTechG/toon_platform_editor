@@ -15,6 +15,7 @@ const entry = (id: string, version = '1.0.0'): CatalogEntry => ({
   description: 'что-то делает',
   icon: '<path d="M4 4h16" />',
   url: `https://plugins.example/${id}/plugin.js`,
+  official: false,
 });
 
 const manifest = (id: string, extra: Record<string, unknown> = {}) => ({

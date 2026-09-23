@@ -110,9 +110,9 @@ describe('onion history (Toonio parity)', () => {
 });
 
 describe('overwrite confirmation (Toonio parity)', () => {
-  it('the state asks through a callback the UI wires up, muted by Alt+Enter', () => {
+  it('the state asks through a callback the UI wires up, every time', () => {
     expect(state).toContain('ask: (message: string) => boolean');
-    expect(member(state, 'confirmed')).toContain('!this.warnings');
+    expect(member(state, 'confirmed')).toContain('return this.ask(message)');
   });
 
   it('a paste over non-empty cells asks, and asks again for a block', () => {
@@ -143,13 +143,12 @@ describe('overwrite confirmation (Toonio parity)', () => {
 
 describe('the copied marker', () => {
   it('a stroke into a copied cell clears that cell alone', () => {
-    expect(member(state, 'commitStroke')).toContain('this.copiedDrawnInto');
-    expect(member(state, 'isCopiedCell')).toContain('this.copiedDrawnInto');
-    expect(member(state, 'isCopiedCell')).toContain('this.copiedFrom');
+    expect(member(state, 'commitStroke')).toContain('this.copiedMarks');
+    expect(member(state, 'isCopiedCell')).toContain('this.copiedMarks');
   });
 
   it('a fresh copy lights every cell of the block again', () => {
-    expect(member(state, 'copySelection')).toContain('this.copiedDrawnInto = []');
+    expect(member(state, 'copySelection')).toContain('this.copiedMarks = copiedMarks(');
   });
 });
 

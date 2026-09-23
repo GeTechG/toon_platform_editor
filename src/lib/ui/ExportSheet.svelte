@@ -16,9 +16,9 @@
   import { exportGif } from '../export/export-gif';
   import { exportPng } from '../export/png';
   import { WATERMARK_TEXT, exportSize, throwIfAborted, type ExportStage } from '../export/rasterize';
-  import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
+  import { FileWriteError, exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
-  import { saveFile as save } from './save-file';
+  import { pickSaveFile, saveFile as save } from './save-file';
   import { plugins } from '../plugins';
   import { makeScene } from '../plugins/scene';
   import { t } from '../i18n';
@@ -132,6 +132,18 @@
     if (busy) {
       return;
     }
+    // Where the browser can write a file itself, a WebCodecs video goes
+    // straight to disk instead of into memory whole. The picker has to open
+    // inside the click, so it comes before anything else is awaited; closed,
+    // it means «не надо».
+    let file: Awaited<ReturnType<typeof pickSaveFile>> = null;
+    if (format === 'video' && plan && !plan.realtime) {
+      try {
+        file = await pickSaveFile(`toonop.${plan.extension}`, `video/${plan.extension}`);
+      } catch {
+        return;
+      }
+    }
     // TODO(toonio-file-parity): force a draft save before the export, as the
     // reference does (`toon.js:265`) — the hook arrives with that change.
     busy = format;
@@ -168,16 +180,26 @@
         const bytes = await exportGif(editor.doc, options);
         deliver(new Blob([bytes], { type: 'image/gif' }), 'toonop.gif');
       } else if (plan) {
+        const sink = file ? await file.createWritable().catch(() => Promise.reject(new FileWriteError())) : undefined;
         const blob = await exportVideo(editor.doc, {
           ...options,
           plan,
           audio: editor.audio.blob,
           trackSeconds,
+          sink,
         });
-        deliver(blob, `toonop.${plan.extension}`);
+        if (blob) {
+          deliver(blob, `toonop.${plan.extension}`);
+        }
+        file = null;
       }
     } catch (err) {
-      if (signal.aborted || (err as { name?: string }).name === 'AbortError') {
+      // What was picked and not finished is not left behind as an empty or
+      // broken video; where `remove` is missing it stays empty.
+      void file?.remove?.().catch(() => {});
+      if (err instanceof FileWriteError) {
+        error = err.message;
+      } else if (signal.aborted || (err as { name?: string }).name === 'AbortError') {
         error = t('export.cancelled_msg');
       } else {
         console.warn('export failed:', err);

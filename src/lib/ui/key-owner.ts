@@ -35,13 +35,13 @@ const SLIDERS = new Set(['slider', 'separator', 'spinbutton', 'range']);
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
 /**
- * The chords the table takes: the reference's Ctrl+Z, Y, C, V and M, and Ctrl+A
- * / Ctrl+F7 (a frame in front). Every other Ctrl chord went down the table as
+ * The chords the table takes: the reference's Ctrl+Z, Y, C, V and M, Ctrl+A
+ * / Ctrl+F7 (a frame in front), and Ctrl+X, the cut next to C and V. Every other Ctrl chord went down the table as
  * well and was prevented — Ctrl+= thickened the brush instead of zooming the
  * page (WCAG 1.4.4), Ctrl+P picked the pipette instead of printing, Ctrl+L
  * never reached the address bar. Ctrl+S is the editor's own, before this.
  */
-const CHORDS = new Set(['z', 'Z', 'y', 'Y', 'c', 'C', 'v', 'V', 'm', 'M', 'a', 'A', 'F7']);
+const CHORDS = new Set(['z', 'Z', 'y', 'Y', 'c', 'C', 'v', 'V', 'x', 'X', 'm', 'M', 'a', 'A', 'F7']);
 
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);

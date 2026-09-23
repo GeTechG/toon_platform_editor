@@ -112,5 +112,5 @@ export const RESERVED_KEYS: readonly string[] = [
   '+', '-', '=', '_', '`',
   'Enter', 'Escape', 'Delete', 'F7', ' ',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Ctrl+S', 'Alt+S', 'Alt+Enter', 'Alt+L',
+  'Ctrl+S', 'Ctrl+X', 'Alt+S', 'Alt+L',
 ];

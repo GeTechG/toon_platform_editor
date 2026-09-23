@@ -336,9 +336,10 @@
       }
       return;
     }
-    // Reference Ctrl+S / Alt+S / Alt+Enter. These fire from a form field too:
-    // the browser would otherwise take Ctrl+S for "save page", and muting the
-    // warnings is not a keystroke anyone types by accident.
+    // Reference Ctrl+S / Alt+S. These fire from a form field too: the browser
+    // would otherwise take Ctrl+S for "save page". The reference's Alt+Enter,
+    // which muted every question (`HotEnter`, toonio.bundle.js:320), is gone
+    // on purpose: a drawing must not go by accident (owner, twelfth audit).
     if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
       e.preventDefault();
       if (!e.repeat) {
@@ -357,13 +358,6 @@
         saveProjectFile();
       } else {
         exportButton?.start();
-      }
-      return;
-    }
-    if (e.altKey && key === 'Enter') {
-      e.preventDefault();
-      if (!e.repeat) {
-        editor.warnings = !editor.warnings;
       }
       return;
     }
@@ -665,9 +659,14 @@
         editor.toggleOnionSkin();
         break;
       // Reference: the X between the two swatches swaps outline and fill.
+      // Under Ctrl it is the cut next to C and V (owner, after the twelfth audit).
       case 'x':
       case 'X':
-        editor.swapColors();
+        if (e.ctrlKey || e.metaKey) {
+          editor.cutSelection();
+        } else {
+          editor.swapColors();
+        }
         break;
       // Reference Space: run and stop the preview. Shift starts at the
       // active frame instead of the start of the range.
@@ -823,7 +822,7 @@
    * wrapper. Sound and palette stay in the draft, as they do in a `.toon`.
    */
   function saveProjectFile(): void {
-    if (editor.warnings && !confirm(t('editor.download_project_confirm'))) {
+    if (!confirm(t('editor.download_project_confirm'))) {
       return;
     }
     saveFile(new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }), 'toonop.toonop');
@@ -881,8 +880,9 @@
   $effect(() => {
     const ms = editor.settings.autosaveMs;
     if (ms === 0 || saveFailed) {
-      // «никогда» — Ctrl+S is the only way to disk; and after a failed write
-      // the clock stays off until the page is reloaded (`toon.js:99-109`).
+      // «никогда» — no clock; leaving the studio still writes (flushOnLeave).
+      // After a failed write the clock stays off until the page is reloaded
+      // (`toon.js:99-109`).
       return;
     }
     const timer = setInterval(() => {
@@ -921,11 +921,11 @@
    * The studio goes without `beforeunload`: a site link unmounts it, and a
    * phone sends the tab to the background and may kill it there. Either way
    * the strokes since the last turn of the clock went with it, unasked. They
-   * are written now — unless autosave is «никогда», where Ctrl+S is the only
-   * way to disk by the owner's choice.
+   * are written now, «никогда» or not: that setting stops the clock only
+   * (owner, twelfth audit).
    */
   function flushOnLeave(): void {
-    if (dirty && editor.settings.autosaveMs !== 0) {
+    if (dirty) {
       void saveNow();
     }
   }
@@ -995,7 +995,7 @@
 
   onMount(async () => {
     // One place the editor asks from — the state calls it for frames, layers
-    // and pastes alike, and `Alt+Enter` mutes it inside `confirmed`.
+    // and pastes alike.
     editor.ask = (message: string) => confirm(message);
     // The transport defers a write until the preview is over and tells us here.
     editor.onStop = saveQueued;
@@ -1021,7 +1021,7 @@
       return;
     }
     if (editor.touched) {
-      if (editor.warnings && !confirm(t('editor.draft_open_confirm'))) {
+      if (!confirm(t('editor.draft_open_confirm'))) {
         return;
       }
       // By hand, so a clock stopped by a failure tries once more; a drawing
@@ -1079,7 +1079,6 @@
     }
   }
 
-  /** Reference Alt+Enter: with the warnings muted a delete just happens. */
   /**
    * Reference warning on the first mega-eraser of the session: the tool
    * rewrites the strokes of a cell in place, so the draft written right after
@@ -1093,7 +1092,7 @@
       return;
     }
     editor.megaEraserWarned = true;
-    if (editor.warnings && editor.settings.megaEraserWarning) {
+    if (editor.settings.megaEraserWarning) {
       megaWarnOpen = true;
     }
     // «Сохранён» only once it is: the write may fail, or reach no storage.
@@ -1101,7 +1100,7 @@
   });
 
   function askDelete(message: string): boolean {
-    return !editor.warnings || confirm(message);
+    return confirm(message);
   }
 
   let fileInput = $state<HTMLInputElement | undefined>();
@@ -1118,8 +1117,9 @@
   async function openFile(file: File): Promise<void> {
     importError = '';
     if (editor.touched) {
-      // Alt+Enter takes the question away, not the draft: it is written all the same.
-      if (editor.warnings && !confirm(t('editor.file_open_confirm', { name: file.name }))) {
+      // A browser that keeps no drafts loses the drawing outright: the question says so.
+      const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
+      if (!confirm(t(question, { name: file.name }))) {
         return;
       }
       if (!(await saveNow(true))) {
@@ -1210,7 +1210,7 @@
    */
   async function openDraftsFile(file: File): Promise<void> {
     importError = '';
-    if (editor.warnings && !confirm(t('settings.drafts_confirm', { name: file.name }))) {
+    if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
     try {
@@ -1277,6 +1277,7 @@
         ['Y, Ctrl+Shift+Z', t('key.redo')],
         ['C', t('key.copy')],
         ['V', t('key.paste')],
+        ['Ctrl + X', t('key.cut')],
         ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
         ['A', t('key.add_frame')],
         ['Del', t('key.delete_frame')],
@@ -1289,7 +1290,6 @@
         ['Space', t('key.preview')],
         ['Ctrl + S', t('key.save')],
         ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
-        ['Alt + Enter', t('key.no_warnings')],
         ['Alt + L', t('key.error_log')],
       ] as ([string, string] | false)[]
     )
@@ -1344,9 +1344,12 @@
   ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
   ondrop={onDrop}
   onbeforeunload={(e) => {
-    // Unsaved strokes on a sheet that has something on it: the browser's own
-    // dialog is the last thing between them and a closed tab.
-    if (editor.touched && dirty && !isEmptyDocument(editor.doc)) {
+    // Unsaved strokes on a sheet that has something on it: the write starts
+    // now, and the browser's own dialog holds the tab while it may not have
+    // landed yet — the last thing between them and a closed tab.
+    const unsaved = editor.touched && dirty && !isEmptyDocument(editor.doc);
+    flushOnLeave();
+    if (unsaved) {
       e.preventDefault();
     }
   }}
@@ -1786,15 +1789,8 @@
       <div class="flash" aria-hidden="true"></div>
     {/if}
     <!-- Modes that change what a press does or where the drawing lives. The
-         region is always there, so its first words are announced. Alt+Enter
-         used to mute every delete question with nothing on screen saying so. -->
-    <div class="warnings-off" role="status">
-      {#if !editor.warnings}
-        <p class="stage-note">
-          {t('editor.warnings_off')}
-          <button class="key" onclick={() => (editor.warnings = true)}>{t('editor.warnings_on')}</button>
-        </p>
-      {/if}
+         region is always there, so its first words are announced. -->
+    <div class="stage-notes" role="status">
       {#if storageBlocked}
         <p class="stage-note">{t('editor.save_unavailable')}</p>
       {/if}
@@ -3000,7 +2996,7 @@
   /* Mode notes along the stage's top edge, drawn like the import error: the
      weight of the line, not a colour. The box lets the pointer through to the
      canvas where there is no note. */
-  .warnings-off {
+  .stage-notes {
     position: absolute;
     inset-inline: 0;
     top: 0.5rem;
@@ -3017,19 +3013,13 @@
     gap: 0.5rem;
     max-width: min(32rem, 92%);
     margin: 0;
-    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+    padding: 0.25rem 0.75rem;
     border: 2px solid var(--ink);
     border-radius: var(--r-sm);
     background: var(--canvas);
     color: var(--ink);
     font-size: 0.85rem;
     pointer-events: auto;
-  }
-  .stage-note:not(:has(button)) {
-    padding-right: 0.75rem;
-  }
-  .stage-note .key {
-    flex: none;
   }
   .layers {
     position: relative;

@@ -254,7 +254,8 @@
       {@render sample(editor.brushTool)}
     </figure>
   {/if}
-  <h2>{t('brush.thickness')}</h2>
+  <!-- The drag on the canvas is the main way; the box says it is there. -->
+  {@render heading(t('brush.thickness'), t('brush.thickness_hint'))}
   {@render slider(t('brush.sizes_group'), editor.brushRange.min, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v), true)}
   <!-- Only for the brushes the two numbers actually reach: the Multator line,
        the old pen and the pixel are smoothed by their own rule or by none.

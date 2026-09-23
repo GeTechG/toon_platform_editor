@@ -23,10 +23,9 @@ describe('leaving the studio keeps the strokes', () => {
     expect(editorUi).toMatch(/onvisibilitychange=\{\(\) => document\.visibilityState === 'hidden' && flushOnLeave\(\)\}/);
   });
 
-  it('the flush writes only a changed drawing, and not when the owner turned autosave off', () => {
+  it('the flush writes only a changed drawing — «никогда» included (owner-twelfth-shell)', () => {
     const flush = editorUi.match(/function flushOnLeave\(\): void \{[^]*?\n  \}/)?.[0] ?? '';
     expect(flush).toContain('dirty');
-    expect(flush).toContain('editor.settings.autosaveMs !== 0');
     expect(flush).toContain('saveNow()');
   });
 });

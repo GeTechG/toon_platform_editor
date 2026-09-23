@@ -30,6 +30,12 @@ export interface InstalledPlugin {
    * all, and the list shows it from the register instead.
    */
   readonly source: 'catalog' | 'local' | 'bundled';
+  /**
+   * From our catalog and marked ours there. Absent on a file, on a record from
+   * another address, and on everything installed before the mark existed —
+   * all of it community until our catalog says otherwise.
+   */
+  readonly official?: boolean;
   readonly installed: number;
 }
 

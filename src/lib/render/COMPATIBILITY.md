@@ -90,7 +90,7 @@ Autosave: `autosaveMs` runs 10 s … 1 h plus "never" (default a minute, as the 
 
 View: the reference's dark room (`N`, with its grey worktable) is out of parity — the studio carries no theme of its own, because dark is the whole site's business, not the editor's. The reference's background illustrations are out of scope too.
 
-Keys: `Space` runs and stops the preview, and applies an unfinished transform instead when one is open; `Ctrl+S` saves the draft now; `Alt+S` opens the export; `Alt+Enter` mutes the deletion confirmations for the session (deliberately not persisted). These three modified keys fire from a form field too — the browser would otherwise take `Ctrl+S` for "save page" — while every bare key stays out of one. Hovering a button that has a key shows the key in place of its icon (reference `.control p`), drawn over the icon so nothing reflows; the same key is in the `title` and the `aria-label`, and a touch screen skips the swap, where a "hover" sticks after a tap.
+Keys: `Space` runs and stops the preview, and applies an unfinished transform instead when one is open; `Ctrl+S` saves the draft now; `Alt+S` opens the export. The reference's `Alt+Enter`, which muted every confirmation (`HotEnter`, `toonio.bundle.js:320`), is left out on purpose: a drawing must not go by accident. These two modified keys fire from a form field too — the browser would otherwise take `Ctrl+S` for "save page" — while every bare key stays out of one. Hovering a button that has a key shows the key in place of its icon (reference `.control p`), drawn over the icon so nothing reflows; the same key is in the `title` and the `aria-label`, and a touch screen skips the swap, where a "hover" sticks after a tap.
 
 ## Soundtrack and video export
 

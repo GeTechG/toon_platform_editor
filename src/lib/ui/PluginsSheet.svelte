@@ -20,6 +20,12 @@
   let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
+  let warnEl = $state<HTMLDialogElement | undefined>();
+  /**
+   * An install waiting on the warning: a community plugin of the catalog, or
+   * any bundle from a file. `run` goes ahead on «Установить».
+   */
+  let pending = $state<{ name: string; run: () => Promise<void> } | null>(null);
   let bundleFile = $state<HTMLInputElement | undefined>();
   let mineTab = $state<HTMLButtonElement | undefined>();
   let catalogTab = $state<HTMLButtonElement | undefined>();
@@ -38,6 +44,30 @@
   $effect(() => {
     dialogEl?.showModal();
   });
+
+  // Modal over the modal: the plugins window goes inert under it, and Esc or
+  // «Отмена» brings the focus back where it was.
+  $effect(() => {
+    if (pending) {
+      warnEl?.showModal();
+    }
+  });
+
+  function answer(go: boolean): void {
+    const run = go ? pending?.run : undefined;
+    pending = null;
+    warnEl?.close();
+    void run?.();
+  }
+
+  /** Ours installs at once; anything else is somebody's code and says so first. */
+  function askInstall(entry: CatalogEntry): void {
+    if (entry.official) {
+      void install(entry);
+      return;
+    }
+    pending = { name: entry.name, run: () => install(entry) };
+  }
 
   async function refresh(): Promise<void> {
     installed = await listInstalled();
@@ -149,13 +179,19 @@
     if (!file) {
       return;
     }
-    busy = file.name;
+    const code = await file.text();
+    // A file is never checked by toonop, whoever wrote it.
+    pending = { name: file.name, run: () => installFile(file.name, code) };
+  }
+
+  async function installFile(fileName: string, code: string): Promise<void> {
+    busy = fileName;
     try {
-      const failed = await editor.installPluginFile(await file.text());
+      const failed = await editor.installPluginFile(code);
       // The register's reason is for the plugin's author: the console and the
       // Alt+L log keep it whole, the window says what the person can do.
-      if (failed) console.error(`plugin file ${file.name} refused:`, failed);
-      report = failed ? t('plugins.failed_report', { name: file.name, reason: forPerson(failed) }) : t('plugins.installed_report', { name: file.name });
+      if (failed) console.error(`plugin file ${fileName} refused:`, failed);
+      report = failed ? t('plugins.failed_report', { name: fileName, reason: forPerson(failed) }) : t('plugins.installed_report', { name: fileName });
     } finally {
       busy = '';
     }
@@ -244,6 +280,7 @@
               <span class="about">
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
                 <small>
+                  {plugin.source === 'bundled' || plugin.official ? t('plugins.official') : t('plugins.community')},
                   {plugin.source === 'bundled'
                     ? t('plugins.source_bundled')
                     : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
@@ -282,14 +319,14 @@
             </span>
             <span class="about">
               <span class="name">{entry.name} <span class="saved">{entry.version}</span></span>
-              <small>{entry.description}</small>
+              <small>{entry.official ? t('plugins.official') : t('plugins.community')} · {entry.description}</small>
             </span>
             {#if offer(entry) === 'installed'}
               <span class="saved">{t('plugins.installed')}</span>
             {:else if offer(entry) === 'local'}
               <span class="saved">{t('plugins.local')}</span>
             {:else}
-              <button class="key" disabled={busy === entry.id} onclick={() => install(entry)}>
+              <button class="key" disabled={busy === entry.id} onclick={() => askInstall(entry)}>
                 {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
               </button>
             {/if}
@@ -305,6 +342,28 @@
     <button class="key primary" onclick={() => dialogEl?.close()}>{t('plugins.done')}</button>
     <p class="report" role="status">{report}</p>
   </footer>
+
+  <!-- Inside the window, so the window stays open under it. Esc is «Отмена». -->
+  {#if pending}
+    <dialog
+      bind:this={warnEl}
+      class="sheet sheet-dialog warn"
+      aria-labelledby="plugin-warn-title"
+      aria-describedby="plugin-warn-body"
+      oncancel={(e) => { e.preventDefault(); answer(false); }}
+    >
+      <header class="sheet-head">
+        <h2 id="plugin-warn-title">{t('plugins.warn_title')}</h2>
+      </header>
+      <p id="plugin-warn-body" class="warn-body">{t('plugins.warn_body', { name: pending.name })}</p>
+      <footer class="sheet-foot">
+        <button class="key" onclick={() => answer(false)}>{t('plugins.warn_cancel')}</button>
+        <!-- Not red: somebody's code is not the step the window pushes toward
+             (and one red key per sheet file). -->
+        <button class="key" onclick={() => answer(true)}>{t('plugins.warn_install')}</button>
+      </footer>
+    </dialog>
+  {/if}
 </dialog>
 
 <style>
@@ -387,6 +446,11 @@
      a line they start a sentence. */
   .empty::first-letter {
     text-transform: uppercase;
+  }
+  .warn-body {
+    margin: 0;
+    padding: 0.8rem 1rem;
+    max-width: 32rem;
   }
   .report {
     flex: 1;

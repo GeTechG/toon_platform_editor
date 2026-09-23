@@ -42,7 +42,7 @@ describe('the editor profile', () => {
     expect(toonop.redoSurvivesStroke).toBe(true);
     expect(toonop.defaultFps).toBe(12);
     expect(toonop.brushSizeMax).toBe(500);
-    expect(toonop.adaptiveBrushStep).toBe(false);
+    expect(toonop.adaptiveBrushStep).toBe('ladder');
     expect(toonop.onionMode).toBe('history');
     expect(toonop.colorGrid).toBe(true);
     expect(toonop.fpsRange).toEqual([1, 30]);
@@ -113,8 +113,8 @@ describe('nudgeBrushSize', () => {
     expect(nudgeBrushSize(630, 1, strict)).toBe(640);
   });
 
-  it('the editor profile steps by 1 within its own bounds', () => {
-    expect(nudgeBrushSize(10, 1, toonop)).toBe(11);
+  it('the editor profile walks its ladder within its own bounds', () => {
+    expect(nudgeBrushSize(10, 1, toonop)).toBe(15);
     expect(nudgeBrushSize(1, -1, toonop)).toBe(1);
     expect(nudgeBrushSize(toonop.brushSizeMax, 1, toonop)).toBe(toonop.brushSizeMax);
   });

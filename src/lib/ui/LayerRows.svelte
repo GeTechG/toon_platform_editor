@@ -144,7 +144,7 @@
       return;
     }
     // Undo brings a deleted layer back; the state still asks by name through the
-    // editor's one `ask`, so Alt+Enter mutes this the way it mutes the rest.
+    // editor's one `ask`.
     editor.selectLayer(layerIndex);
     const count = editor.doc.layers.length;
     editor.removeActiveLayer();

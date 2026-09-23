@@ -48,10 +48,10 @@ describe('the pointer lifecycle the canvas drives', () => {
 describe('layer-aware canvas contract', () => {
   it('refuses to start a stroke in a hidden layer and says why', () => {
     const down = handler('onPointerDown');
-    expect(down).toContain('editor.activeLayerHidden');
-    expect(down).toContain('showHint(HIDDEN_LAYER_HINT)');
+    // The state's one guard refuses and sets the hint (owner-twelfth-canvas).
+    expect(down).toContain('editor.mayEdit()');
     // The guard runs before the gesture starts.
-    expect(down.indexOf('editor.activeLayerHidden')).toBeLessThan(down.indexOf('pointer.pointerDown'));
+    expect(down.indexOf('editor.mayEdit()')).toBeLessThan(down.indexOf('pointer.pointerDown'));
   });
 
   it('pins the layer object at pointerdown, not its index', () => {
@@ -240,7 +240,8 @@ describe('the cursor over the canvas', () => {
   it('measures the ring by the width the stroke really lands at', () => {
     // A pixel is a pixel: the ring is the slider's own number through the
     // view (fit × zoom), with nothing about the document's size in between.
-    expect(source).toContain('(editor.brushSizeLogical * sheetWidth * editor.view.zoom)');
+    expect(source).toContain('diameterOf(editor.brushSizeLogical)');
+    expect(source).toContain('(size * sheetWidth * editor.view.zoom)');
   });
 
   it('squares the cursor and lays a difference grid under the pixel tool', () => {

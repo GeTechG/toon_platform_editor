@@ -252,8 +252,12 @@ export interface UxProfile {
   readonly defaultFps: number;
   /** Upper bound for the +/- brush nudge (logical px). */
   readonly brushSizeMax: number;
-  /** Adaptive +/- step (1 below 10, 5 below 50, else 10) instead of a flat 1. */
-  readonly adaptiveBrushStep: boolean;
+  /**
+   * The +/- step: flat 1 (`false`), Multator's adaptive one (`true`: 2/10/20
+   * at 20 and 100), or Photoshop's ladder (`'ladder'`: 1/5/10/25/50/100 at
+   * 10/50/100/200/300, snapping an odd size onto the next rung).
+   */
+  readonly adaptiveBrushStep: boolean | 'ladder';
   /**
    * How the editor's canvas is rasterised. `device` takes the screen's
    * `devicePixelRatio`; `document` takes one bitmap pixel per document pixel,

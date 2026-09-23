@@ -53,7 +53,8 @@ export const TOONOP_UX: UxProfile = {
   redoSurvivesStroke: true,
   defaultFps: DEFAULT_FPS,
   brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
-  adaptiveBrushStep: false,
+  // The thick end in a few presses (owner, 12th audit): 1 → 500 was 499.
+  adaptiveBrushStep: 'ladder',
   canvasDensity: 'device',
   projectFile: false,
   onionMode: 'history',
@@ -64,9 +65,21 @@ export const TOONOP_UX: UxProfile = {
   tools: TOONOP_TOOLS,
 };
 
+/** Photoshop's bracket ladder: [below this size, the step]. */
+const LADDER: readonly (readonly [number, number])[] = [
+  [10, 1], [50, 5], [100, 10], [200, 25], [300, 50], [Infinity, 100],
+];
+
 /** Brush size after a +/- nudge (dir = ±1) under the profile's stepping rule. */
 export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number {
   let step = 1;
+  if (ux.adaptiveBrushStep === 'ladder') {
+    // Photoshop's [ and ]: going down takes the step of the band below, so
+    // 10 − is 9 and 50 − is 45; an odd size lands on the next rung.
+    const rung = LADDER.find(([below]) => (dir > 0 ? size : size - 1) < below)![1];
+    const next = dir > 0 ? Math.floor(size / rung) * rung + rung : Math.ceil(size / rung) * rung - rung;
+    return Math.min(ux.brushSizeMax, Math.max(MIN_BRUSH_SIZE_LOGICAL, next));
+  }
   if (ux.adaptiveBrushStep) {
     // The reference's ladder (1 below 10, 5 below 50, 10 above) measured on
     // its 600-wide canvas; on the editor's 1280 that is ×2.13(3), rounded to

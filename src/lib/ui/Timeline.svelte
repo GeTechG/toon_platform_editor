@@ -523,7 +523,7 @@
             class="num"
             style:width="{cell.w + 2}px"
             class:onion={onionFrames.includes(i)}
-            class:copied={editor.copiedFrom?.frames.includes(i)}
+            class:copied={editor.isCopiedFrame(i)}
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
           >{i + 1}</span>
         {/each}

@@ -42,6 +42,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
+  import { sizeFromDrag } from './size-scale';
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
@@ -77,6 +78,11 @@
   let cursorVisible = $state(false);
   /** Color the pipette would take, shown next to the cursor (Tonio). */
   let pickPreview = $state<string | null>(null);
+  /**
+   * Shift+drag sizing the brush (Krita): where it was pressed, the size it
+   * started from and the one it has reached. Nothing is written until it ends.
+   */
+  let sizing = $state<{ pointerId: number; x: number; y: number; start: number; size: number } | null>(null);
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
   /** Active touch points, for two-finger pan and pinch. */
@@ -109,7 +115,6 @@
   let lastPickPreview = 0;
   const PIPETTE_THROTTLE_MS = 100;
   /** Transient message over the canvas (e.g. drawing into a hidden layer). */
-  const HIDDEN_LAYER_HINT = t('canvas.hidden_layer');
   let hint = $state('');
   let hintTimer = 0;
   /**
@@ -251,9 +256,10 @@
    * measure. A pixel is a pixel: the width the slider shows is the width that
    * lands, and only the view (fit and zoom) stands between them.
    */
-  const cursorDiameter = $derived(
-    Math.max(1, (editor.brushSizeLogical * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE)),
-  );
+  const cursorDiameter = $derived(diameterOf(editor.brushSizeLogical));
+  function diameterOf(size: number): number {
+    return Math.max(1, (size * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE));
+  }
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
   const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
 
@@ -296,11 +302,12 @@
     // It is the preset's rasterisation: one document, one bitmap, whatever
     // canvas the brush in hand measures on.
     // The preset that rasterizes in the document's own density keeps it: there
-    // the bitmap is the document's, not the screen's. Everything else goes
-    // through the cap — and through the half a navigation gesture draws at.
-    const dpr = editor.ux.canvasDensity === 'document'
+    // the bitmap is the document's, not the screen's. It goes through the cap
+    // all the same: a phone's 360 px sheet asked 3.5× of a 1280 document, and
+    // the buffers the cap is there for ran to ~60 MB (owner, twelfth audit).
+    const dpr = renderDensity(editor.ux.canvasDensity === 'document'
       ? editor.doc.width / FIXED_POINT_SCALE / sheetWidth
-      : renderDensity(window.devicePixelRatio || 1);
+      : window.devicePixelRatio || 1);
     const pxWidth = Math.max(1, Math.round(stage.width * dpr));
     const pxHeight = Math.max(1, Math.round(stage.height * dpr));
     if (canvasEl.width !== pxWidth) {
@@ -936,6 +943,16 @@
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
+    // Shift+drag sizes the brush wherever its ring is the cursor (Krita; the
+    // owner: settings are a gesture in the editor). The mouse button or the
+    // pen tip; a finger never, it has no Shift. No dot, no stroke.
+    if (e.shiftKey && e.button === 0 && e.pointerType !== 'touch' && !editor.transform
+      && editor.tool !== 'pipette' && !overlayCursor) {
+      const size = editor.brushSizeLogical;
+      sizing = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, start: size, size };
+      canvasEl.setPointerCapture(e.pointerId);
+      return;
+    }
     // A live transform owns the canvas: a handle scales, the ring outside a
     // corner turns, the body moves. It comes before every drawing tool.
     if (editor.transform) {
@@ -961,10 +978,6 @@
     // there are callbacks, not which tool it is.
     const spec = toolSpec(editor.tool);
     if (spec?.press) {
-      if (editor.activeLayerHidden) {
-        showHint(HIDDEN_LAYER_HINT);
-        return;
-      }
       if (!editor.beginPluginGesture()) {
         return;
       }
@@ -1000,8 +1013,7 @@
       return;
     }
     if (editor.tool === 'mega-eraser') {
-      if (editor.activeLayerHidden) {
-        showHint(HIDDEN_LAYER_HINT);
+      if (!editor.mayEdit()) {
         return;
       }
       const [x, y] = toDocUnits(e);
@@ -1011,9 +1023,8 @@
       scheduleDraw();
       return;
     }
-    if (editor.activeLayerHidden) {
-      // Nothing would appear — say so instead of swallowing the gesture.
-      showHint(HIDDEN_LAYER_HINT);
+    // Nothing would appear — the state says so instead of swallowing the gesture.
+    if (!editor.mayEdit()) {
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
@@ -1030,8 +1041,13 @@
     // gesture here, or the stroke follows the hover and refuses the next press.
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
-      && (pointer.session || grab || megaGesture || pluginGrab || panning)) {
+      && (pointer.session || grab || megaGesture || pluginGrab || panning || sizing)) {
       onPointerUp(e);
+      return;
+    }
+    if (sizing && e.pointerId === sizing.pointerId) {
+      sizing.size = sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y,
+        editor.brushRange.min, editor.brushSizeMax);
       return;
     }
     cursorX = e.clientX;
@@ -1157,6 +1173,12 @@
     if (endNavigation(e)) {
       return;
     }
+    if (sizing && e.pointerId === sizing.pointerId) {
+      // Through the slider's own setter: clamped, saved to the brush record.
+      editor.brushSizeLogical = sizing.size;
+      sizing = null;
+      return;
+    }
     if (grab && e.pointerId === grab.pointerId) {
       grab = null;
       return;
@@ -1232,6 +1254,11 @@
     heldPointers.delete(e.pointerId);
     editor.gestureHeld = heldPointers.size > 0;
     if (endNavigation(e)) {
+      return;
+    }
+    // The size goes back to what it was: nothing was written yet.
+    if (sizing && e.pointerId === sizing.pointerId) {
+      sizing = null;
       return;
     }
     // A cancelled pointer must not leave a half-drawn polygon or a held
@@ -1343,7 +1370,24 @@
       aria-hidden="true"
     ></span>
   {/if}
-  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor}
+  {#if sizing}
+    <!-- Where the drag began, at the size it has reached, in the sheet's
+         real scale — the number beside it for a size too big or too thin to read. -->
+    <span
+      class="brush-cursor size-ring"
+      class:square={toolSpec(editor.brushTool)?.stroke?.grid}
+      style:transform="translate({sizing.x}px, {sizing.y}px) translate(-50%, -50%)"
+      style:width="{diameterOf(sizing.size)}px"
+      style:height="{diameterOf(sizing.size)}px"
+      aria-hidden="true"
+    ></span>
+    <span
+      class="size-number"
+      style:transform="translate({sizing.x}px, {sizing.y}px) translate(-50%, calc(-100% - 12px))"
+      aria-hidden="true"
+    >{t('brush.size_title', { size: sizing.size })}</span>
+  {/if}
+  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !sizing}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
@@ -1444,6 +1488,21 @@
   .brush-cursor.cross::after {
     width: 1px;
     height: 11px;
+  }
+  /* The number of the Shift+drag, over the ring, as the hint is drawn. */
+  .size-number {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: var(--z-cursor);
+    padding: 2px 8px;
+    border-radius: var(--r-pill);
+    background: var(--ink);
+    color: var(--canvas);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
   }
   /* Tonio draws a 25px swatch down-right of the pipette cursor. */
   .pick-preview {

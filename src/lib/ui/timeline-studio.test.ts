@@ -60,7 +60,7 @@ describe('studio timeline grid', () => {
     expect(timeline).toContain('class:active');
     expect(timeline).toContain('class:selected');
     expect(timeline).toContain('editor.onionSkinLayers');
-    expect(timeline).toContain('editor.copiedFrom');
+    expect(timeline).toContain('editor.isCopiedFrame(');
   });
 
   it('says the selection out loud, not only in the dashed ring', () => {

@@ -6,6 +6,7 @@
  */
 
 import { parseDraft } from './restore';
+import { decodeToon } from '../format/toon-decode';
 
 const DB_NAME = 'toon-editor';
 const STORE = 'drafts';
@@ -419,13 +420,24 @@ async function toBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-function fromBase64(text: string, type: string): Blob {
+/** Plain base64 (ours) or a data URL (toonio.ru's `BLOB2B64`), whose own type wins. */
+function base64Bytes(text: string, type: string): { bytes: Uint8Array<ArrayBuffer>; type: string } {
+  const url = /^data:([^;,]*)[^,]*,/.exec(text);
+  if (url) {
+    type = url[1] || type;
+    text = text.slice(url[0].length);
+  }
   const binary = atob(text);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return new Blob([bytes], { type });
+  return { bytes, type };
+}
+
+function fromBase64(text: string, type: string): Blob {
+  const decoded = base64Bytes(text, type);
+  return new Blob([decoded.bytes], { type: decoded.type });
 }
 
 /**
@@ -529,31 +541,49 @@ function isDraftState(value: unknown): value is DraftState {
     && (state.layerColors === undefined || (Array.isArray(state.layerColors) && state.layerColors.every(isInt)));
 }
 
+/**
+ * A save's `data`: our document as JSON text, or toonio.ru's — the binary
+ * `.toon` stream as a data URL (`autosave_worker.js` Export) — decoded into
+ * our document, so what is stored is always ours. Null when neither reads.
+ */
+function readData(data: string): unknown {
+  try {
+    return JSON.parse(data);
+  } catch {
+    // Not JSON: a toonio.ru save.
+  }
+  try {
+    const result = decodeToon(base64Bytes(data, '').bytes.buffer);
+    return result.ok ? result.doc : null;
+  } catch {
+    return null; // base64 that is not base64
+  }
+}
+
 /** One entry of either file shape as a record, or null when it is not one. */
 function readSave(entry: unknown): DraftRecord | null {
   if (typeof entry !== 'object' || entry === null) {
     return null;
   }
   const save = entry as Record<string, unknown>;
-  if (typeof save.id !== 'string') {
+  // toonio.ru keys a save by its `url`.
+  const id = typeof save.id === 'string' ? save.id : save.url;
+  if (typeof id !== 'string') {
     return null;
   }
   let doc = save.doc;
   if (typeof save.data === 'string') {
-    try {
-      doc = JSON.parse(save.data);
-    } catch {
-      return null;
-    }
+    doc = readData(save.data);
   }
   // A drawing that will not open is dropped from the list when it is read;
   // counted as loaded, «загружено: 2» showed one card.
   if (!parseDraft(doc)) {
     return null;
   }
+  const created = typeof save.created === 'string' ? Date.parse(save.created) : NaN;
   const record: DraftRecord = {
-    id: save.id,
-    updated: typeof save.updated === 'number' ? save.updated : Date.now(),
+    id,
+    updated: typeof save.updated === 'number' ? save.updated : Number.isFinite(created) ? created : Date.now(),
     doc,
   };
   if (isDraftState(save.state)) {

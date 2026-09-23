@@ -110,10 +110,12 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    const loaded = editor.importSavedPalettes(await file.text());
-    report = loaded > 0
-      ? t('settings.palettes_loaded', { count: loaded })
-      : t('settings.no_palettes');
+    const { loaded, stored } = editor.importSavedPalettes(await file.text());
+    report = loaded === 0
+      ? t('settings.no_palettes')
+      : stored
+        ? t('settings.palettes_loaded', { count: loaded })
+        : t('settings.palettes_not_stored');
   }
 
   async function onDraftFile(e: Event): Promise<void> {
@@ -121,7 +123,7 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    if (editor.warnings && !confirm(t('settings.drafts_confirm', { name: file.name }))) {
+    if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
     try {

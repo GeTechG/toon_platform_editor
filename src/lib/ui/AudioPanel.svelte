@@ -8,6 +8,7 @@
   import Icon from './Icon.svelte';
   import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES } from '../audio/track';
   import { t } from '../i18n';
+  import { lengthClock } from './frame-selection';
 
   let {
     editor,
@@ -68,7 +69,7 @@
     }
     loadedNote = '';
     if (await editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author)) {
-      loadedNote = t('audio.loaded', { name: editor.audio.name, length: clock(editor.audio.duration) });
+      loadedNote = t('audio.loaded', { name: editor.audio.name, length: lengthClock(editor.audio.duration) });
       // «Выбрать файл…» leaves with the empty plate and takes the focus with
       // it; the key that does the same job in the full plate takes it over.
       await tick();
@@ -85,16 +86,10 @@
   }
 
   function removeTrack(): void {
-    if (!editor.warnings || confirm(t('audio.remove_confirm'))) {
+    if (confirm(t('audio.remove_confirm'))) {
       editor.audio.clear();
       close();
     }
-  }
-
-  /** `м:сс` — the only shape a length under an hour needs. */
-  function clock(seconds: number): string {
-    const whole = Math.max(0, Math.round(seconds));
-    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
   }
 
   const filmSeconds = $derived(editor.doc.layers[0].frames.length / editor.doc.frame_rate);
@@ -163,7 +158,7 @@
       </label>
 
       <p class="lengths">
-        {t('audio.film')} <b>{clock(filmSeconds)}</b>, {t('audio.track')} <b>{clock(editor.audio.duration)}</b>
+        {t('audio.film')} <b>{lengthClock(filmSeconds)}</b>, {t('audio.track')} <b>{lengthClock(editor.audio.duration)}</b>
       </p>
       {#if trackOutruns}
         <p class="hint">{t('audio.outruns')}</p>

@@ -59,6 +59,9 @@ import {
   keepsSelection,
   newLayerIndex,
   pasteTargetFromSelection,
+  copiedMarks,
+  isMarked,
+  isFrameMarked,
   pushVisited,
   shiftVisited,
   rangeSelection,
@@ -367,10 +370,11 @@ export class EditorState {
   selection = $state<CellSelection>({ frames: [0], layers: [0] });
   /** Clipboard for the timeline block copy/paste, deep-copied on copy. */
   copiedCells = $state.raw<CellBuffer | null>(null);
-  /** Where the buffer was taken from — the timeline marks those cells. */
-  copiedFrom = $state<CellSelection | null>(null);
-  /** Cells of that block already drawn into, as `frame:layer` — their mark is out. */
-  copiedDrawnInto = $state<string[]>([]);
+  /**
+   * The cells the buffer was taken from, by identity, so the mark follows
+   * them through inserts, deletes and layer moves; a cell drawn into leaves.
+   */
+  copiedMarks = $state.raw<ReadonlySet<Frame>>(new Set());
   /**
    * Names the next new layer takes (reference `layerIterator`): a running
    * count for the session, seeded from the open document so the first new
@@ -414,16 +418,10 @@ export class EditorState {
   /** When the draft was last written, for the panel's «Сохранено HH:MM». */
   lastSavedAt = $state<number | null>(null);
   /**
-   * Reference Alt+Enter: mutes the «точно удалить?» confirmations for this
-   * session. Deliberately not persisted — a muted warning should not outlive
-   * the sitting that muted it.
-   */
-  warnings = $state(true);
-  /**
    * How the editor asks before it overwrites. Editor.svelte points it at
    * `confirm`; in tests and on the share page nothing asks, so the default
-   * says yes. `Alt+Enter` mutes every question for the session — see
-   * `confirmed`.
+   * says yes. Every question is asked: the reference's Alt+Enter that muted
+   * them is gone on purpose (owner, twelfth audit).
    */
   ask: (message: string) => boolean = () => true;
   /** Set once the user changes the document — gates autosave and draft restore. */
@@ -811,12 +809,11 @@ export class EditorState {
     return exportPalettes(this.savedPalettes);
   }
 
-  /** Reads such a file; returns how many palettes landed, for the sheet to report. */
-  importSavedPalettes(raw: string): number {
+  /** Reads such a file; how many palettes landed and whether storage kept them, for the sheet to report. */
+  importSavedPalettes(raw: string): { loaded: number; stored: boolean } {
     const { palettes, loaded } = importPalettes(this.savedPalettes, raw);
     this.savedPalettes = palettes;
-    saveSavedPalettes(this.savedPalettes);
-    return loaded;
+    return { loaded, stored: saveSavedPalettes(this.savedPalettes) };
   }
 
   /** «Удалить все» — the sheet asks first. */
@@ -969,6 +966,21 @@ export class EditorState {
   /** The layer the next stroke goes into, or undefined while the document is swapped. */
   get activeLayerHidden(): boolean {
     return this.doc.layers[this.activeLayer]?.hidden ?? false;
+  }
+
+  /**
+   * The one check every edit of a cell asks first: a hidden layer is not
+   * edited — not drawn on, erased, pasted into, mirrored, transformed, touched
+   * by a plugin, undone or redone (owner, twelfth audit). A refusal says why
+   * in the canvas's live line; the undo stack stays as it was. Adding,
+   * deleting, moving and showing layers and frames are not edits of a cell.
+   */
+  mayEdit(layers: readonly number[] = [this.activeLayer]): boolean {
+    if (!layers.some((layer) => this.doc.layers[layer]?.hidden)) {
+      return true;
+    }
+    this.canvasHint = { text: t('canvas.hidden_layer') };
+    return false;
   }
 
   selectLayer(index: number): void {
@@ -1124,7 +1136,7 @@ export class EditorState {
   /**
    * Whether the panels may become `next`. Asked only when that throws away an
    * arrangement made by hand — one that is neither `next` already nor the
-   * current preset's own — and muted by Alt+Enter like every other question.
+   * current preset's own.
    */
   private mayReplacePanels(next: PanelLayout, id = this.preset, question?: string): boolean {
     return samePanels(this.panels, next)
@@ -1311,7 +1323,7 @@ export class EditorState {
     this.undone = [];
     this.selection = { frames: [0], layers: [0] };
     this.copiedCells = null;
-    this.copiedFrom = null;
+    this.copiedMarks = new Set();
   }
 
   selectFrame(index: number): void {
@@ -1397,6 +1409,11 @@ export class EditorState {
     }
     const left = this.activeFrame;
     const before = this.takeStructure();
+    // Taking every frame keeps the first cell object but empties it: its
+    // copied mark would outlive what was copied.
+    if (count >= frameCount(this.doc)) {
+      this.copiedMarks = new Set();
+    }
     this.#write((doc) => removeFrame(doc, from, count));
     this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
@@ -1417,7 +1434,7 @@ export class EditorState {
 
   /** Pastes the clipboard column onto the active frame, replacing every layer's cell. */
   pasteFrame(): void {
-    if (this.playing || !this.copiedColumn || !this.leaveTransform()) {
+    if (this.playing || !this.copiedColumn || !this.mayEdit() || !this.leaveTransform()) {
       return;
     }
     try {
@@ -1433,9 +1450,21 @@ export class EditorState {
   /** Copies every selected cell to the timeline clipboard (deep copy). */
   copySelection(): void {
     this.copiedCells = copyCells(this.doc, this.selection);
-    this.copiedFrom = this.selection;
-    this.copiedDrawnInto = [];
+    this.copiedMarks = copiedMarks(this.doc, this.selection);
     this.flashTick++;
+  }
+
+  /** Ctrl+X: the selection goes to the clipboard and its cells are emptied, one undo step. */
+  cutSelection(): void {
+    if (this.playing || !this.leaveTransform()) {
+      return;
+    }
+    this.copySelection();
+    const target = this.selection;
+    const snapshots = this.snapshotCells(target);
+    // One empty frame per layer: the buffer's frames cycle over the whole range.
+    this.#write((doc) => replaceCells(doc, target, target.layers.map(() => [{ strokes: [] }])));
+    this.pushEdit(snapshots);
   }
 
   get canPasteCells(): boolean {
@@ -1452,9 +1481,9 @@ export class EditorState {
     this.applyCopiedCells(mergeCells);
   }
 
-  /** One question, muted for the session by `Alt+Enter` (the reference's warnings flag). */
+  /** One question, asked every time. */
   private confirmed(message: string): boolean {
-    return !this.warnings || this.ask(message);
+    return this.ask(message);
   }
 
   private applyCopiedCells(write: typeof replaceCells): void {
@@ -1466,6 +1495,9 @@ export class EditorState {
       frames: buffer[0]?.length ?? 0,
       layers: buffer.length,
     });
+    if (!this.mayEdit(target.layers)) {
+      return;
+    }
     // The reference asks before it overwrites, and asks a second time once
     // more than one cell is at stake (`bundle:8192-8250`).
     const { nonEmpty, frames, layers } = pasteNeedsConfirm(this.doc, target);
@@ -1646,6 +1678,9 @@ export class EditorState {
     }
     const edit = this.restorableEdit;
     if (edit) {
+      if (!this.mayEdit(edit.map((snapshot) => snapshot.layer))) {
+        return;
+      }
       this.edits = this.edits.slice(0, -1);
       for (const snapshot of edit) {
         this.#write((doc) => replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes));
@@ -1655,6 +1690,9 @@ export class EditorState {
       return;
     }
     const cell = this.activeCell!;
+    if (!this.mayEdit()) {
+      return;
+    }
     const stroke = cell.strokes[cell.strokes.length - 1];
     if (!this.#write((doc) => removeLastStroke(doc, this.activeLayer, this.activeFrame))) {
       return;
@@ -1671,7 +1709,7 @@ export class EditorState {
       this.redoTransform();
       return;
     }
-    if (!this.canRedo) {
+    if (!this.canRedo || !this.mayEdit()) {
       return;
     }
     const { stroke } = this.undone[this.undone.length - 1];
@@ -1692,28 +1730,30 @@ export class EditorState {
    * the redo stack.
    */
   commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
+    if (!this.mayEdit([layerIndex])) {
+      return;
+    }
     this.#write((doc) => addStroke(doc, layerIndex, this.activeFrame, stroke));
     if (!this.ux.redoSurvivesStroke) {
       this.undone = [];
     }
     // The reference drops the "copied" mark off a cell as soon as it is drawn
     // into (`bundle:8143-8151`); the rest of the block keeps it.
-    const key = `${this.activeFrame}:${layerIndex}`;
-    if (this.copiedFrom && !this.copiedDrawnInto.includes(key)) {
-      this.copiedDrawnInto = [...this.copiedDrawnInto, key];
+    const drawn = this.doc.layers[layerIndex]?.frames[this.activeFrame];
+    if (drawn && this.copiedMarks.has(drawn)) {
+      this.copiedMarks = new Set([...this.copiedMarks].filter((cell) => cell !== drawn));
     }
     this.touched = true;
   }
 
   /** Whether the timeline still marks this cell as copied from. */
   isCopiedCell(frame: number, layer: number): boolean {
-    const from = this.copiedFrom;
-    return (
-      from !== null
-      && from.frames.includes(frame)
-      && from.layers.includes(layer)
-      && !this.copiedDrawnInto.includes(`${frame}:${layer}`)
-    );
+    return isMarked(this.doc, this.copiedMarks, frame, layer);
+  }
+
+  /** Whether the header still names this frame as copied from. */
+  isCopiedFrame(frame: number): boolean {
+    return isFrameMarked(this.doc, this.copiedMarks, frame);
   }
 
   /**
@@ -1723,7 +1763,7 @@ export class EditorState {
    */
   applyMegaEraser(gesture: readonly number[], radius: number): void {
     const cell = this.activeCell;
-    if (this.playing || !cell || this.activeLayerHidden) {
+    if (this.playing || !cell || !this.mayEdit()) {
       return;
     }
     const before = cell.strokes;
@@ -1756,7 +1796,7 @@ export class EditorState {
   mirrorSelectedLayers(axis: 'horizontal' | 'vertical'): void {
     const layers = this.visibleSelectedLayers
       .filter((layer) => (this.doc.layers[layer].frames[this.activeFrame]?.strokes.length ?? 0) > 0);
-    if (this.playing || layers.length === 0) {
+    if (this.playing || !this.mayEdit() || layers.length === 0) {
       return;
     }
     this.selection = { frames: [this.activeFrame], layers: this.selection.layers };
@@ -1776,7 +1816,7 @@ export class EditorState {
     layers: readonly number[],
     map: (doc: ToonDocument, layer: number, frame: number) => void,
   ): void {
-    if (this.playing || layers.length === 0) {
+    if (this.playing || layers.length === 0 || !this.mayEdit(layers)) {
       return;
     }
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [...layers] });
@@ -1792,6 +1832,10 @@ export class EditorState {
    * opens nothing, so the caller can leave the tool where it was.
    */
   beginTransform(): boolean {
+    if (!this.playing && !this.mayEdit()) {
+      this.transform = null;
+      return false;
+    }
     const layers = this.visibleSelectedLayers;
     const box = selectionBounds(layers.flatMap(
       (layer) => this.doc.layers[layer].frames[this.activeFrame]?.strokes ?? [],
@@ -1938,7 +1982,7 @@ export class EditorState {
    */
   beginPluginGesture(): boolean {
     const layers = this.visibleSelectedLayers;
-    if (this.playing || layers.length === 0) {
+    if (this.playing || !this.mayEdit() || layers.length === 0) {
       return false;
     }
     this.pluginGesture = { snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }), wrote: false };

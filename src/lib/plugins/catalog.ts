@@ -16,6 +16,15 @@ import { t } from '../i18n';
  * is installed, so the plugin's own catalogue is not loaded yet and a record
  * localises itself the only way it can — by carrying the strings (`{ ru, en }`).
  */
+/**
+ * The catalog the editor opens with: the build branch of the plugin
+ * repository, read straight from GitHub — no hosting to set up, and a cache of
+ * minutes rather than of hours. Only its word on `official` is taken: toonop
+ * checks what is marked official there, and any other address is a link to
+ * somebody's plugins, whatever its records claim.
+ */
+export const OFFICIAL_CATALOG = 'https://raw.githubusercontent.com/GeTechG/toonop_plugins/build/';
+
 export interface CatalogEntry {
   readonly id: string;
   readonly name: string;
@@ -23,6 +32,8 @@ export interface CatalogEntry {
   readonly description: string;
   readonly icon: string;
   readonly url: string;
+  /** Ours and checked: installs without the warning a community plugin gets. */
+  readonly official: boolean;
 }
 
 export interface Catalog {
@@ -65,7 +76,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-function readEntry(value: unknown, base: string): CatalogEntry | null {
+function readEntry(value: unknown, base: string, trusted: boolean): CatalogEntry | null {
   const record = typeof value === 'object' && value !== null ? value as Record<string, unknown> : null;
   if (!record || !text(record.id) || !text(record.entry)) {
     return null;
@@ -77,6 +88,7 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
     description: localized(record.description, text(record.id)),
     icon: text(record.icon),
     url: new URL(text(record.entry), base).href,
+    official: trusted && record.official === true,
   };
 }
 
@@ -105,7 +117,7 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
   }
   const plugins: CatalogEntry[] = [];
   for (const value of Array.isArray(body.plugins) ? body.plugins : []) {
-    const entry = readEntry(value, base);
+    const entry = readEntry(value, base, base === OFFICIAL_CATALOG);
     if (entry) {
       plugins.push(entry);
     }
