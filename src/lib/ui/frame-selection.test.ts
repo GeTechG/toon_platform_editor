@@ -20,6 +20,7 @@ import {
   playbackStartFrame,
   rangeSelection,
   toggleLayerInSelection,
+  extendTarget,
 } from './frame-selection';
 import type { CellSelection } from './frame-selection';
 
@@ -544,5 +545,35 @@ describe('pushVisited without a landing frame', () => {
 
   it('still keeps only the last three', () => {
     expect(pushVisited([1, 2, 3], 4)).toEqual([2, 3, 4]);
+  });
+});
+
+describe('ninth audit: Shift+arrow grows the block a step at a time', () => {
+  // The target was always the active cell's neighbour, and the active cell is
+  // the anchor: a second Shift+← spanned the same two frames again, so a
+  // keyboard could never select more than two frames or two layers.
+  const bounds = { frames: 10, layers: 4 };
+
+  it('each press moves the far edge, not the anchor', () => {
+    const active = { frame: 5, layer: 1 };
+    let sel: CellSelection = { frames: [5], layers: [1] };
+    sel = rangeSelection(active, extendTarget(sel, active, -1, 0, bounds), bounds);
+    sel = rangeSelection(active, extendTarget(sel, active, -1, 0, bounds), bounds);
+    expect(sel.frames).toEqual([3, 4, 5]);
+    sel = rangeSelection(active, extendTarget(sel, active, 0, 1, bounds), bounds);
+    sel = rangeSelection(active, extendTarget(sel, active, 0, 1, bounds), bounds);
+    expect(sel.layers).toEqual([1, 2, 3]);
+  });
+
+  it('the opposite arrow shrinks back towards the anchor and past it', () => {
+    const active = { frame: 5, layer: 0 };
+    const sel = { frames: [3, 4, 5], layers: [0] };
+    expect(extendTarget(sel, active, 1, 0, bounds)).toEqual({ frame: 4, layer: 0 });
+    expect(extendTarget({ frames: [5], layers: [0] }, active, 1, 0, bounds)).toEqual({ frame: 6, layer: 0 });
+  });
+
+  it('stops at the edges instead of wrapping', () => {
+    const active = { frame: 0, layer: 3 };
+    expect(extendTarget({ frames: [0], layers: [3] }, active, -1, 1, bounds)).toEqual({ frame: 0, layer: 3 });
   });
 });

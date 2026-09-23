@@ -199,6 +199,11 @@ describe('what lies over the stage has no ring', () => {
     const float = sheets.find((s) => s.file === 'FloatWindow.svelte')!.text;
     expect(float).not.toContain('0 0 0 1px var(--hairline)');
   });
+
+  it('lays a floating window in the paper tone, not white on the white sheet', () => {
+    const float = sheets.find((s) => s.file === 'FloatWindow.svelte')!.text;
+    expect(rule(float, '\n  .float')).toContain('background: var(--paper);');
+  });
 });
 
 describe('nothing scrolls that should not', () => {
@@ -211,5 +216,14 @@ describe('nothing scrolls that should not', () => {
 
   it('marks a picked palette tool in the accent, not the onion-skin blue', () => {
     expect(rule(palette(), '.foot-btn.active')).not.toContain('--ghost-2');
+  });
+});
+
+// A size in px does not follow the reader's text setting: at 200 % the pipette
+// window kept its 13px words while the keys around it doubled.
+describe('the shell text follows the text size', () => {
+  it('no font size in the studio shell is written in px', async () => {
+    const shell = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+    expect(shell).not.toMatch(/font-size:\s*[\d.]+px/);
   });
 });

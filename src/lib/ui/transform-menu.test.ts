@@ -96,3 +96,40 @@ describe('where the tool windows live', () => {
     expect(menu).toContain('grid-template-columns: auto 1fr');
   });
 });
+
+describe('a field being typed into', () => {
+  it('writes nothing while it holds no number yet', () => {
+    // An emptied field, or a lone "-" on the way to a negative one, reads as
+    // "" — `Number('')` is 0, so X jumped to the edge and a scale collapsed
+    // the selection to nothing before the user had typed a digit.
+    expect(menu).not.toContain('Number(e.currentTarget.value)');
+    expect(menu).not.toContain('Number(raw)');
+    expect(menu).toContain('e.currentTarget.valueAsNumber');
+    expect(menu).toContain('Number.isFinite(value)');
+  });
+});
+
+describe('on a phone', () => {
+  it('keeps the numbers folded, so the window does not take the stage from the selection', () => {
+    // Under 40rem the tool windows sit under the canvas, in the same column:
+    // the full window was ~430 px and squeezed the canvas to nothing, handles
+    // and all — the one thing a finger transforms with.
+    expect(menu).toContain('<details class="numbers"');
+    expect(menu).toContain("matchMedia('(max-width: 40rem)')");
+    expect(t('transform.numbers')).not.toBe('transform.numbers');
+  });
+
+  it('never lets the windows push the canvas below half the stage', () => {
+    const narrow = editorUi.match(/@media \(max-width: 40rem\) \{\n    \.stage \{[^]*?\n  \}\n/)?.[0] ?? '';
+    expect(narrow).toContain('flex: 1 0 50%');
+    expect(narrow).toContain('overflow-y: auto');
+  });
+});
+
+describe('beside the zoom window', () => {
+  it('ends above it, so a tall transform window never runs under the zoom row', () => {
+    // At 200 % text the translucent zoom row lay over «Поворот» and its field.
+    const windows = editorUi.match(/\n  \.tool-windows \{[^}]*\}/)?.[0] ?? '';
+    expect(windows).toContain('- var(--key-h, 2.75rem)');
+  });
+});

@@ -132,10 +132,31 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     watch(false);
   }
 
+  /**
+   * A window dragged once stays `fixed` where it was left; turning the phone
+   * could put that place past the new screen edge, out of reach.
+   */
+  function onResize(): void {
+    if (node.style.position !== 'fixed') {
+      return;
+    }
+    const rect = node.getBoundingClientRect();
+    const { left, top } = clampWindowPosition(
+      rect.left,
+      rect.top,
+      { width: rect.width, height: rect.height },
+      { width: document.body.clientWidth, height: document.body.clientHeight },
+    );
+    node.style.left = `${left}px`;
+    node.style.top = `${top}px`;
+  }
+
   node.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('resize', onResize);
   return {
     destroy() {
       node.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('resize', onResize);
       watch(false);
     },
   };

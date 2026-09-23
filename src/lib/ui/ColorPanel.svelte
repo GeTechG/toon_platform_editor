@@ -44,7 +44,7 @@
       type="color"
       aria-label={t('color.fill_title')}
       value={editor.fillColor}
-      oninput={(e) => (editor.fillColor = e.currentTarget.value.toLowerCase())}
+      oninput={(e) => editor.pickColor(e.currentTarget.value, 'fill', true)}
     />
   </label>
   <button
@@ -144,7 +144,7 @@
     box-shadow: 0 0 0 1px var(--edge), inset 0 0 0 2px var(--canvas);
     cursor: pointer;
   }
-  .color:focus-within {
+  .color:has(:focus-visible) {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
   }

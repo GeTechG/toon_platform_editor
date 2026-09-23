@@ -201,3 +201,35 @@ describe('a short screen keeps each key row to one line', () => {
     expect(landscape).toMatch(/\.studio \.row:not\(:has\(\.timeline\)\)\s*\{[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/);
   });
 });
+
+// The phone branch hid the whole fps control, and fps lives nowhere else:
+// a mult drawn on a phone played at whatever rate it was born with.
+describe('a phone can still set the frame rate', () => {
+  it('the fps box stays, only the slider beside it goes', () => {
+    for (const branch of phoneBranches()) {
+      expect(branch).not.toMatch(/\.fps-inline\s*[,{]/);
+    }
+    expect(phone).toMatch(/\.fps-inline input\[type='range'\][^{]*\{[^}]*display:\s*none/);
+  });
+});
+
+// The floor is written in px measured at 16px text, and the keys and the strip
+// head are in rem: at 200 % text the layer row went under the panel's edge.
+describe('the bar floor grows with the text size', () => {
+  it('the px of the floor and of one key row are scaled by the root text size', () => {
+    expect(editorUi).toMatch(/const textScale = \$derived/);
+    const floor = editorUi.match(/const panelFloor = \$derived\([^]*?\n  \);/)?.[0] ?? '';
+    expect(floor).toContain('* textScale');
+    expect(editorUi).toMatch(/KEY_ROW \* textScale/);
+  });
+});
+
+describe('ninth audit: the phone strip is as wide as the phone', () => {
+  it('the timeline takes the row, not the width of every frame in it', () => {
+    // `flex: none` sized it to its content: thirteen frames made a 772px
+    // strip in a 374px row. The strip's own scroller never scrolled, and the
+    // active frame the keys walked to sat off screen where no finger reaches.
+    const phone = phoneBranch();
+    expect(phone).toMatch(/\.studio \.timeline\s*\{[^}]*width:\s*100%/);
+  });
+});

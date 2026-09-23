@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, mergePalettes, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
@@ -30,10 +31,30 @@
   function onCell(e: MouseEvent, color: string): void {
     if (e.button !== 0 && e.button !== 2) return;
     if (removerMode) {
+      const at = editor.palette.indexOf(color);
+      const hadFocus = gridEl?.contains(document.activeElement) ?? false;
       editor.removePaletteColor(color);
+      if (hadFocus) refocusCell(at);
       return;
     }
     editor.pickColor(color, e.button === 2 ? 'fill' : 'outline', true);
+  }
+
+  /** The removed cell took focus with it; the one that slid into its place gets it. */
+  async function refocusCell(at: number): Promise<void> {
+    await tick();
+    const cells = gridEl?.querySelectorAll<HTMLElement>('.cell');
+    if (!cells?.length) return;
+    rove = Math.min(at, cells.length - 1);
+    cells[rove].focus();
+  }
+
+  /** The preview's own ×: focus goes back to the tile that opened it, not to the page. */
+  async function closePreview(): Promise<void> {
+    const id = preview?.id;
+    preview = null;
+    await tick();
+    document.querySelector<HTMLElement>(`.saved [data-id="${id}"]`)?.focus();
   }
 
   function openSection(next: 'colors' | 'saved' | 'edit'): void {
@@ -205,6 +226,7 @@
       {#each savedList as p (p.id)}
         <button
           class="tile"
+          data-id={p.id}
           class:active={preview?.id === p.id}
           onclick={() => (preview = preview?.id === p.id ? null : p)}
           title={t('palette.tile_title', { name: p.name || t('palette.new_name'), count: p.colours.length })}
@@ -227,12 +249,24 @@
           style:--swatch={color}
           style:color={contrastInk(color)}
           onmousedown={(e) => onCell(e, color)}
+          onclick={(e) => e.detail === 0 && onCell(e, color)}
           oncontextmenu={(e) => e.preventDefault()}
           tabindex={i === stop ? 0 : -1}
           onfocus={() => (rove = i)}
           onkeydown={(e) => onCellKey(e, i, color)}
           title={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour_title', { color })}
-          aria-label={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour', { color })}
+          aria-label={removerMode
+            ? t('palette.remove_colour', { color })
+            : t('palette.colour', {
+                color,
+                role: isOutline && isFill
+                  ? ` — ${t('palette.is_both')}`
+                  : isOutline
+                    ? ` — ${t('palette.is_stroke')}`
+                    : isFill
+                      ? ` — ${t('palette.is_fill')}`
+                      : '',
+              })}
           aria-pressed={isOutline || isFill}
         >
           {#if removerMode}
@@ -295,7 +329,7 @@
   <div class="box preview" role="group" aria-label={t('palette.preview', { name: preview.name || t('palette.new_name') })}>
     <div class="preview-head">
       <strong>{preview.name || t('palette.new_name')}</strong>
-      <button class="close" onclick={() => (preview = null)} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
+      <button class="close" onclick={closePreview} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
     </div>
     <div class="grid preview-grid" role="group" aria-label={t('palette.preview_colours')}>
       {#each preview.colours as c, i (i)}
@@ -304,6 +338,7 @@
           style:--swatch={c}
           style:color={contrastInk(c)}
           onmousedown={(e) => onPreviewCell(e, c)}
+          onclick={(e) => e.detail === 0 && onPreviewCell(e, c)}
           oncontextmenu={(e) => e.preventDefault()}
           onkeydown={(e) => {
             // A key fires `click`, never `mousedown`: the same press as the grid's.

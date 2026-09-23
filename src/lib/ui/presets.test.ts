@@ -464,6 +464,12 @@ test('the smoothing sliders are only for the brushes that say they reach them', 
   expect(brushUsesSmoothing(COARSE, OWN)).toBe(false);
 });
 
+test('the mega-eraser keeps a width of its own but no smoothing: it draws no line to smooth', () => {
+  expect(brushUsesSmoothing('mega-eraser', OWN)).toBe(false);
+  // A help tool edits the pencil's record, and the pencil does smooth.
+  expect(brushUsesSmoothing('pipette', OWN)).toBe(true);
+});
+
 test('single-letter keys are on by default, as in the reference editors', () => {
   expect(DEFAULT_SETTINGS.letterKeys).toBe(true);
 });

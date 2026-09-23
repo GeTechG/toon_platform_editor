@@ -87,7 +87,12 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
   }
   // An address on the site itself (`/plugins/build/`) is the ordinary case
   // while an author works on one, so it is resolved against the page.
-  const base = new URL(address_, ports.base ?? globalThis.location?.href).href;
+  let base: string;
+  try {
+    base = new URL(address_, ports.base ?? globalThis.location?.href).href;
+  } catch {
+    return { plugins: [], error: t('plugin.catalog_bad_url', { address: address_ }) };
+  }
   let index: unknown;
   try {
     index = await (await ports.fetch(new URL('index.json', base).href)).json();

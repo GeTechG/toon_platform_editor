@@ -72,6 +72,15 @@ describe('readCatalog', () => {
     expect(catalog.plugins).toEqual([]);
     expect(catalog.error).toContain('сеть недоступна');
   });
+
+  // The address field takes anything typed; «http://» alone left the catalog
+  // tab on «Читаю каталог…» for good.
+  test('an address that is not a URL is a reason, not a throw', async () => {
+    const catalog = await readCatalog('http://', { fetch: fakeFetch({}), base: 'https://toonop.example/' });
+
+    expect(catalog.plugins).toEqual([]);
+    expect(catalog.error).toContain('http://');
+  });
 });
 
 describe('compareVersions', () => {

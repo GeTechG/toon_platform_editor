@@ -161,9 +161,9 @@ describe('arranging happens in the editor itself', () => {
     expect(stage).not.toContain('<FloatWindow');
     expect(editorUi).toContain('<FloatWindow');
     // …and a viewport that shrinks brings it back in rather than leaving it
-    // outside, where the first drag would snap it.
-    expect(floatWindow).toContain('svelte:window');
-    expect(floatWindow).toContain('onresize');
+    // outside, where the first drag would snap it. The editor is watched, not
+    // the browser window: it is what the window is measured against.
+    expect(floatWindow).toContain('watcher.observe(el.offsetParent)');
   });
 });
 
@@ -268,5 +268,23 @@ describe('eighth audit: the arrange bar', () => {
     expect(arranger).toContain("t('arrange.loaded'");
     expect(arranger).toContain('aria-live="polite"');
     expect(t('arrange.load_failed')).not.toBe('arrange.load_failed');
+  });
+});
+
+describe('ninth audit: the arrange bar leaves the panels in reach on a phone', () => {
+  test('the workspace keys fold away on a narrow screen', () => {
+    // At 320×640 the bar stood 487px tall over the very panels it rearranges:
+    // the tool rail and the palette could not be picked up at all.
+    expect(arranger).toMatch(/<details class="ws"[^>]*open=\{wide\}/);
+    expect(arranger).toContain("matchMedia('(min-width: 40rem)')");
+    expect(arranger).toContain('@media (min-width: 40rem)');
+    expect(t('arrange.workspaces')).not.toBe('arrange.workspaces');
+  });
+});
+
+describe('ninth audit: the arrange bar never runs off the screen', () => {
+  test('it scrolls inside itself when the text is large', () => {
+    expect(arranger).toMatch(/\.arrange-bar \{[^}]*max-height: calc\(100% - 2rem\)/);
+    expect(arranger).toMatch(/\.arrange-bar \{[^}]*overflow-y: auto/);
   });
 });

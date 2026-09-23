@@ -78,8 +78,33 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
   }
   // Only a control reached by keyboard is pressed from it: the mouse leaves a
   // clicked tool focused, and the next Space is the preview's.
-  if (kind.pressed && (e.key === ' ' || e.key === 'Enter') && e.target.matches(':focus-visible')) {
+  // A timeline cell is selected by being active, so Space there is the
+  // preview's too — pressing it collapsed the range about to be played.
+  const cell = e.key === ' ' && e.target.getAttribute('data-frame') !== null;
+  if (kind.pressed && !cell && (e.key === ' ' || e.key === 'Enter') && e.target.matches(':focus-visible')) {
     return 'control';
   }
   return 'editor';
+}
+
+/**
+ * The key as the table spells it, whatever the layout. The table is written in
+ * Latin letters, and on a Russian layout B arrives as «и» and Ctrl+S as
+ * Ctrl+«ы» — none of the letter keys worked, and the browser took Ctrl+S for
+ * «save page». A letter outside Latin is read by where it sits instead; a
+ * layout that types Latin (AZERTY, Dvorak) keeps its own letters.
+ */
+export function latinKey(e: { key: string; code: string }): string {
+  if (e.key.length !== 1 || /[\x00-\x7f]/.test(e.key)) {
+    return e.key;
+  }
+  const upper = e.key !== e.key.toLowerCase();
+  const letter = /^Key([A-Z])$/.exec(e.code)?.[1];
+  if (letter) {
+    return upper ? letter : letter.toLowerCase();
+  }
+  if (e.code === 'Backquote') {
+    return upper ? '~' : '`';
+  }
+  return e.key;
 }

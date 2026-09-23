@@ -60,6 +60,30 @@ export function zoomDelta(zoom: number, direction: number): number {
 }
 
 /**
+ * Wheel travel that makes one zoom notch, CSS px. A mouse notch is 100 in
+ * Chrome and about 50 in Firefox; a trackpad sends a few px per event, and
+ * zooming a whole step per event threw the sheet to 1000% in one swipe.
+ * The calibration knob, if a wheel on some system needs two turns.
+ */
+export const WHEEL_NOTCH_PX = 40;
+
+/**
+ * One wheel event → how many notches it completes (+1 zooms in, -1 out, at
+ * most one per event) and the travel left over for the next one. A sideways
+ * swipe carries no deltaY and zooms nothing.
+ */
+export function wheelNotch(rest: number, deltaY: number, deltaMode: number): { notch: number; rest: number } {
+  // Lines and pages (deltaMode 1, 2) come one notch at a time.
+  const travel = deltaMode === 0 ? deltaY : Math.sign(deltaY) * WHEEL_NOTCH_PX;
+  // A turn of direction starts afresh rather than paying back the other way.
+  const sum = Math.sign(rest) === -Math.sign(travel) ? travel : rest + travel;
+  if (Math.abs(sum) < WHEEL_NOTCH_PX) {
+    return { notch: 0, rest: sum };
+  }
+  return { notch: sum < 0 ? 1 : -1, rest: 0 };
+}
+
+/**
  * The sheet at 100%: the document fitted inside the workspace with air around
  * it, so the whole page — edges, shadow and all — is on screen from the start.
  * An unmeasured height (Infinity) fits by width alone.
@@ -86,10 +110,20 @@ export function fitView(stage: Stage): Viewport2D {
 
 /**
  * Zooms to `zoom` around the workspace point (x, y) in CSS pixels, keeping the
- * document point under it in place, then clamps the pan.
+ * document point under it in place, then clamps the pan. A pinch passes
+ * `snap = false`: fingers move continuously, and the notches made it leap.
  */
-export function zoomAt(view: Viewport2D, zoom: number, x: number, y: number, stage: Stage): Viewport2D {
-  const next = clampZoom(zoom);
+export function zoomAt(
+  view: Viewport2D,
+  zoom: number,
+  x: number,
+  y: number,
+  stage: Stage,
+  snap = true,
+): Viewport2D {
+  const next = snap
+    ? clampZoom(zoom)
+    : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number.isFinite(zoom) ? zoom : view.zoom));
   const ratio = next / view.zoom;
   return clampPan(
     {

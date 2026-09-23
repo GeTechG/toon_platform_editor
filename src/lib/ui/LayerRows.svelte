@@ -6,7 +6,7 @@
   // A row shows the layer's stored name, or its position when it has none,
   // so moving an unnamed layer renumbers its row. The colour tag is a display
   // aid — six of them, picked per layer, never written to the document.
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
   import { dragTargetIndex } from './frame-selection';
@@ -73,11 +73,26 @@
     e.stopPropagation();
     if (e.key === 'Enter') {
       e.preventDefault();
+      const layer = renaming?.layer ?? editor.activeLayer;
       commitRename();
+      focusName(layer);
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      const layer = renaming?.layer ?? editor.activeLayer;
       renaming = null;
+      focusName(layer);
     }
+  }
+
+  /**
+   * Puts the keyboard back on a row's name. The field that closed, the row
+   * that was deleted and the row Svelte moved to reorder the list all take
+   * their focus with them, which leaves it on <body> — the top of the page
+   * for the next Tab.
+   */
+  async function focusName(layerIndex: number): Promise<void> {
+    await tick();
+    listEl?.querySelector<HTMLElement>(`[data-layer="${layerIndex}"]`)?.focus();
   }
 
   function announce(layerIndex: number): void {
@@ -91,6 +106,7 @@
     }
     editor.moveLayerTo(layerIndex, to);
     announce(to);
+    focusName(to);
   }
 
   function removeLayer(layerIndex: number): void {
@@ -100,7 +116,12 @@
     // Deleting a layer is not undoable; the state asks by name through the
     // editor's one `ask`, so Alt+Enter mutes this the way it mutes the rest.
     editor.selectLayer(layerIndex);
+    const count = editor.doc.layers.length;
     editor.removeActiveLayer();
+    // A refused delete leaves the row, and the bin under the keyboard, where they were.
+    if (editor.doc.layers.length < count) {
+      focusName(editor.activeLayer);
+    }
   }
 
   function onRowKeydown(e: KeyboardEvent, layerIndex: number): void {
@@ -332,6 +353,7 @@
             maxlength={MAX_LAYER_NAME}
             bind:value={renaming.text}
             onclick={(e) => e.stopPropagation()}
+            onfocus={(e) => e.currentTarget.select()}
             onkeydown={onRenameKeydown}
             onblur={commitRename}
             aria-label={t('layer.name_field')}
@@ -339,6 +361,8 @@
         {:else}
           <button
             class="name"
+            data-layer={layerIndex}
+            aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"
             aria-pressed={layerIndex === editor.activeLayer}
             title={t('layer.rename_hint')}
             onclick={() => editor.selectLayer(layerIndex)}

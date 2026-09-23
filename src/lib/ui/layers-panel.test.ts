@@ -229,3 +229,33 @@ describe('eighth audit: the layer row', () => {
     expect(row).not.toMatch(/padding:[^;]*rem/);
   });
 });
+
+describe('ninth audit: the keyboard keeps its place in the layer list', () => {
+  it('a row moved down by Alt+↓ keeps the focus — the keyed move had dropped it on <body>', () => {
+    // Svelte moves the focused row's node to reorder it, and a node taken out
+    // of the document loses its focus; Alt+↑ only survived because the other
+    // row was the one moved.
+    expect(rows).toMatch(/function moveBy[\s\S]*?focusName\(to\)/);
+    expect(rows).toContain('data-layer={layerIndex}');
+  });
+
+  it('Enter and Esc in the name field hand the focus back to the name', () => {
+    expect(rows).toMatch(/e\.key === 'Enter'[\s\S]*?commitRename\(\);\s*focusName\(/);
+    expect(rows).toMatch(/e\.key === 'Escape'[\s\S]*?renaming = null;\s*focusName\(/);
+  });
+
+  it('a deleted row hands the focus to the layer that is now active', () => {
+    expect(rows).toMatch(/function removeLayer[\s\S]*?focusName\(editor\.activeLayer\)/);
+  });
+
+  it('F2 opens the name selected, so typing replaces it rather than appending', () => {
+    // «Слой 2» + «Фон» came out «Слой 2Фон».
+    const field = rows.match(/<input\s+class="name rename"[\s\S]*?\/>/)?.[0] ?? '';
+    expect(field).toContain('.select()');
+  });
+
+  it('the name tells a keyboard what it can do beyond a press', () => {
+    // Alt+↑/↓ lived only in the tooltip of the handle, which the keyboard never reaches.
+    expect(rows).toContain('aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"');
+  });
+});

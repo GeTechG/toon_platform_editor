@@ -13,6 +13,8 @@ import {
   type Stage,
   renderDensity,
   reprojection,
+  wheelNotch,
+  WHEEL_NOTCH_PX,
 } from './viewport';
 
 /** A 200×100 sheet lying on a 400×300 workspace. */
@@ -188,5 +190,45 @@ describe('reprojection', () => {
   it('carries a picture drawn at another density', () => {
     const r = reprojection(at(1, 0, 0, 2), at(1, 0, 0, 1));
     expect(r.scale).toBe(0.5);
+  });
+});
+
+describe('wheelNotch', () => {
+  it('a mouse notch is one step, whichever unit the browser counts it in', () => {
+    expect(wheelNotch(0, -100, 0)).toEqual({ notch: 1, rest: 0 });
+    expect(wheelNotch(0, 100, 0)).toEqual({ notch: -1, rest: 0 });
+    // Firefox counts lines (deltaMode 1): three of them are one notch.
+    expect(wheelNotch(0, 3, 1).notch).toBe(-1);
+  });
+
+  it('a trackpad swipe steps once per notch of travel, not once per event', () => {
+    let rest = 0;
+    let steps = 0;
+    for (let i = 0; i < 30; i++) {
+      const out = wheelNotch(rest, -4, 0);
+      rest = out.rest;
+      steps += out.notch;
+    }
+    // 120 px of swipe; thirty events used to be thirty steps, 100% → 1000%.
+    expect(steps).toBe(Math.trunc(120 / WHEEL_NOTCH_PX));
+  });
+
+  it('a sideways swipe is not a zoom out', () => {
+    expect(wheelNotch(0, 0, 0)).toEqual({ notch: 0, rest: 0 });
+  });
+
+  it('a turn of direction drops what the other way had gathered', () => {
+    expect(wheelNotch(-30, 10, 0)).toEqual({ notch: 0, rest: 10 });
+  });
+});
+
+describe('zoomAt under two fingers', () => {
+  it('follows the pinch smoothly instead of jumping between notches', () => {
+    // Snapped, a pinch past 100% leapt 1 → 1.5 → 2 under the fingers.
+    expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 1.37, 200, 150, STAGE, false).zoom).toBe(1.37);
+    expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 42, 200, 150, STAGE, false).zoom).toBe(10);
+    expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 0.01, 200, 150, STAGE, false).zoom).toBe(0.1);
+    // The keys and the wheel still land on the notches.
+    expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 1.37, 200, 150, STAGE).zoom).toBe(1.5);
   });
 });

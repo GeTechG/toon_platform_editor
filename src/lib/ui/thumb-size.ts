@@ -33,3 +33,22 @@ const ROW_FLOOR = 32;
 export function rowHeight(doc: { width: number; height: number }): number {
   return Math.max(ROW_FLOOR, fitThumb(doc.width, doc.height, CELL_BOX.w, CELL_BOX.h).h + CELL_CHROME);
 }
+
+/**
+ * What a cell thumbnail was drawn from, as one number. H, a lasso move and a
+ * transform rewrite the points in place — the same cell with the same count —
+ * so identity and count alone left the timeline showing the old drawing. One
+ * pass over the points, the same order of work as drawing them, and only for
+ * cells on screen.
+ */
+export function cellStamp(cell: { strokes: readonly { points: readonly number[]; tool_id: number }[] }): number {
+  let h = cell.strokes.length;
+  for (const stroke of cell.strokes) {
+    h = (Math.imul(h, 31) + stroke.tool_id) | 0;
+    h = (Math.imul(h, 31) + stroke.points.length) | 0;
+    for (const v of stroke.points) {
+      h = (Math.imul(h, 31) + v) | 0;
+    }
+  }
+  return h;
+}

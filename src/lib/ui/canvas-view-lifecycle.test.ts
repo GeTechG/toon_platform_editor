@@ -126,7 +126,7 @@ describe('transform tools on the canvas', () => {
     // Distort is one of these now (plugins/distort.ts); the canvas knows only
     // that the tool brought callbacks, not which tool it is.
     expect(handler('onPointerDown')).toContain('editor.beginPluginGesture(');
-    expect(handler('onPointerDown')).toContain('.press?.(');
+    expect(handler('onPointerDown')).toContain('spec.press(');
     expect(handler('onPointerMove')).toContain('.move?.(');
     expect(handler('onPointerUp')).toContain('editor.endPluginGesture()');
   });
@@ -148,7 +148,7 @@ describe('transform tools on the canvas', () => {
 
   it('the pressed zone decides whether the drag moves, turns or scales', () => {
     expect(handler('onPointerDown')).toContain('hitMode(');
-    expect(handler('onPointerMove')).toContain('dragTransform(e)');
+    expect(handler('onPointerMove')).toContain('dragTransform(e, rect)');
     const drag = handler('dragTransform');
     expect(drag).toContain('movedBy(');
     expect(drag).toContain('rotatedTo(');

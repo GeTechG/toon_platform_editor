@@ -3,6 +3,7 @@
   // itself. The wave stays on the timeline, where it lines up with the frames;
   // the file, its credits and the bin live here, off the strip, because a row
   // of fields under the frames was in the way of the frames.
+  import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
@@ -15,7 +16,10 @@
 
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
-  let at = $state<{ x: number; top?: number; bottom?: number } | undefined>();
+  let replaceKey = $state<HTMLButtonElement | undefined>();
+  /** What the last pick came to, for a screen reader: the fields appearing say it to the eye. */
+  let loadedNote = $state('');
+  let at = $state<{ x: number; top?: number; bottom?: number; max: number } | undefined>();
 
   /** Bumped by a window resize: the key moves with the layout, the plate follows. */
   let resized = $state(0);
@@ -41,16 +45,31 @@
     const box = plate.getBoundingClientRect();
     const x = Math.max(8, Math.min(key.right - box.width, window.innerWidth - box.width - 8));
     // Held by the edge that faces the key, so a track's fields grow the plate
-    // away from it rather than over it.
-    at = key.top - box.height - 6 >= 8 ? { x, bottom: window.innerHeight - key.top + 6 } : { x, top: key.bottom + 6 };
+    // away from it rather than over it. Too tall for either side (large text),
+    // it takes the roomier one and scrolls inside it.
+    const above = key.top - 6 - 8;
+    const below = window.innerHeight - key.bottom - 6 - 8;
+    at = box.height <= above || above >= below
+      ? { x, bottom: window.innerHeight - key.top + 6, max: above }
+      : { x, top: key.bottom + 6, max: below };
   });
 
   async function pickTrack(e: Event): Promise<void> {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // picking the same file twice must fire change again
-    if (file) {
-      await editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
+    if (!file) {
+      return;
+    }
+    loadedNote = '';
+    if (await editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author)) {
+      loadedNote = t('audio.loaded', { name: editor.audio.name, length: clock(editor.audio.duration) });
+      // «Выбрать файл…» leaves with the empty plate and takes the focus with
+      // it; the key that does the same job in the full plate takes it over.
+      await tick();
+      if (document.activeElement === document.body) {
+        replaceKey?.focus();
+      }
     }
   }
 
@@ -93,6 +112,7 @@
   style:left={at && `${at.x}px`}
   style:top={at?.top !== undefined ? `${at.top}px` : undefined}
   style:bottom={at?.bottom !== undefined ? `${at.bottom}px` : undefined}
+  style:max-height={at && `${at.max}px`}
 >
   <header>
     <h2>{t('audio.panel')}</h2>
@@ -140,7 +160,7 @@
       {/if}
 
       <div class="row">
-        <button class="key wide" onclick={() => picker?.click()}>{t('audio.replace')}</button>
+        <button class="key wide" bind:this={replaceKey} onclick={() => picker?.click()}>{t('audio.replace')}</button>
         <button class="key icon" onclick={removeTrack} title={t('audio.remove')} aria-label={t('audio.remove')}>
           <Icon name="trash" size={16} />
         </button>
@@ -149,6 +169,13 @@
       <p class="hint">{t('audio.pitch')}</p>
       <button class="key wide" onclick={() => picker?.click()}>{t('audio.pick')}</button>
       <p class="hint">{t('audio.formats')}</p>
+    {/if}
+
+    <p class="sr-only" role="status">
+      {#if editor.audio.loading}{t('audio.reading')}{:else}{loadedNote}{/if}
+    </p>
+    {#if editor.audio.loading}
+      <p class="hint" aria-hidden="true">{t('audio.reading')}</p>
     {/if}
 
     {#if editor.audio.error}
@@ -168,6 +195,11 @@
        18rem is 288px and the narrowest screen the studio is built for is 320,
        where the clamp sat 32px above the width it was capping. */
     width: 18rem;
+    /* 200 % text on a phone made it 1210 px tall in a 640 px window, its top
+       — the × and both fields — out of reach above the edge. */
+    max-height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     /* Over the stage by tone, as the scale window: white read as the sheet. */
     background: var(--paper);
     border: none;
@@ -263,6 +295,15 @@
   .hint.error {
     font-weight: 600;
     color: var(--ink);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .row {
     display: flex;

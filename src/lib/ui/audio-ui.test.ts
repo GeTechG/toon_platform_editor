@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { t } from '../i18n';
 
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 const player = await Bun.file(new URL('../player/Player.svelte', import.meta.url)).text();
@@ -233,5 +234,74 @@ describe('eighth audit: the soundtrack plate', () => {
     // WCAG 2.4.3: the × and the bin vanish with the plate, and focus fell to <body>.
     expect(panel).toContain('anchor?.focus()');
     expect(panel).not.toMatch(/onclick=\{onClose\}/);
+  });
+});
+
+describe('ninth audit: the soundtrack', () => {
+  it('a draft whose track fails to load does not keep the last draft\'s track', () => {
+    // Opening draft B after draft A: B's track failed to decode (or came back
+    // short), A's stayed attached, played under B and had its credits written
+    // into B. The draft's own file is kept — named, not decoded — so nothing
+    // on disk is lost and nothing from another draft is played.
+    const restore = state.slice(state.indexOf('async restore('), state.indexOf('#adoptUnread(blob'));
+    expect(restore).toContain('this.#adoptUnread(');
+    expect(state).toMatch(/#adoptUnread\([^)]*\)[^{]*\{[\s\S]*?this\.envelope = new Float32Array\(0\);[\s\S]*?this\.duration = 0;/);
+  });
+
+  it('a replaced track\'s element lets go of its file and says nothing more', () => {
+    // Revoking the URL under an element still fetching it fires its onerror,
+    // which then blamed the *new* track: «Этот звук браузер не проигрывает».
+    const revoke = state.slice(state.indexOf('#revoke(): void'));
+    expect(revoke).toMatch(/onerror = null/);
+    expect(revoke).toContain("removeAttribute('src')");
+  });
+
+  it('the envelope is decoded at a low rate, not at the device rate', () => {
+    // A five-minute song at 48 kHz stereo is ~115 MB of floats for a picture
+    // that keeps 200 levels a second; at 8 kHz it is a sixth of that on the
+    // 2 GB phone the product is built for.
+    expect(state).toContain('new OfflineAudioContext(1, 1, DECODE_RATE)');
+    expect(state).not.toContain('new AudioContext()');
+  });
+
+  it('only the last file picked is kept, however the decodes finish', () => {
+    expect(state).toMatch(/const ticket = \+\+this\.#ticket;/);
+    expect(state).toMatch(/ticket !== this\.#ticket/);
+  });
+
+  it('says it is reading a file and that it took it, in a region that is already there', () => {
+    expect(state).toContain('loading = $state(false)');
+    // Mounted with the plate, so the first message in it is heard at all.
+    expect(panel).toMatch(/<p class="sr-only" role="status">\s*\{#if editor\.audio\.loading\}/);
+    expect(panel).toContain("t('audio.reading')");
+    expect(panel).toContain("t('audio.loaded'");
+  });
+
+  it('the picked file\'s key vanishes with the empty plate, so focus moves to its replacement', () => {
+    expect(panel).toContain('replaceKey?.focus()');
+  });
+
+  it('a refused play is forgotten once a play goes through', () => {
+    expect(state).toMatch(/\.then\(\s*\(\) => \{[\s\S]*?t\('audio\.blocked'\)/);
+  });
+
+  it('talks to the person as «ты», like the rest of the studio', () => {
+    expect(t('audio.undecodable')).not.toMatch(/попробуйте|Попробуйте/);
+  });
+});
+
+describe('ninth audit: the plate fits the window', () => {
+  it('scrolls inside the window rather than growing off its top', () => {
+    // 320 px at 200 % text: 1210 px of plate pinned to the bottom of a 640 px
+    // window, its × and both fields above the top edge and out of reach.
+    const plate = panel.slice(panel.indexOf('  .audio-plate {'));
+    const rule = plate.slice(0, plate.indexOf('}'));
+    expect(rule).toContain('max-height: 100dvh');
+    expect(rule).toContain('overflow-y: auto');
+  });
+
+  it('beside its key, takes the side with more room and stays inside it', () => {
+    expect(panel).toContain('style:max-height=');
+    expect(panel).toMatch(/above >= below/);
   });
 });

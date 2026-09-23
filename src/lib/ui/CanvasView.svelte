@@ -36,6 +36,7 @@
     zoomAt,
     zoomCentredOn,
     zoomDelta,
+    wheelNotch,
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
@@ -82,7 +83,7 @@
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
   /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
-  let pluginGrab: { pointerId: number } | null = null;
+  let pluginGrab: { pointerId: number; spec: NonNullable<ReturnType<typeof toolSpec>> } | null = null;
   /**
    * Drag inside an open transform: which zone was pressed, the session it
    * started from, where it started (document units) and the axis shift locked.
@@ -229,6 +230,14 @@
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
   const hitZoom = $derived(Math.max(1e-6, (sheetWidth * editor.view.zoom) / editor.doc.width));
+  /**
+   * How much further a finger reaches a transform handle than the mouse: the
+   * handles are ±10 px, a 20 px target under a ~34 px fingertip (2.5.8 asks 24).
+   */
+  const TOUCH_REACH = 1.5;
+  function hitScale(e: PointerEvent): number {
+    return e.pointerType === 'touch' ? hitZoom / TOUCH_REACH : hitZoom;
+  }
   /**
    * The brush width in screen pixels — what the ring, the square and the grid
    * measure. A pixel is a pixel: the width the slider shows is the width that
@@ -560,10 +569,12 @@
     }
   }
 
+  /** Long enough to read a sentence, not only a word (2.2.1). */
+  const HINT_MS = 3000;
   function showHint(message: string): void {
     hint = message;
     clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => (hint = ''), 1600) as unknown as number;
+    hintTimer = setTimeout(() => (hint = ''), HINT_MS) as unknown as number;
   }
 
   function scheduleDraw(): void {
@@ -678,8 +689,9 @@
       if (touches.size === 2) {
         if (pointer.discard()) {
           strokeLayer = undefined;
-          scheduleDraw();
         }
+        dropOwnGesture();
+        scheduleDraw();
         gesture = pinchFrom(touches);
         takeNavShot();
         return true;
@@ -694,6 +706,22 @@
       return true;
     }
     return false;
+  }
+
+  /**
+   * Lets go of whatever the canvas itself was holding — a handle, the mega
+   * eraser's sweep, a tool's own drag — without applying the sweep. A tool's
+   * drag is released, not rolled back: what it wrote so far is its business.
+   */
+  function dropOwnGesture(): void {
+    grab = null;
+    megaGesture = null;
+    if (pluginGrab) {
+      pluginGrab.spec.release?.(editor.pluginHost());
+      editor.endPluginGesture();
+      pluginGrab = null;
+    }
+    gesturePointerId = -1;
   }
 
   function pinchFrom(points: Map<number, { x: number; y: number }>) {
@@ -716,8 +744,12 @@
 
   function zoomTo(zoom: number, clientX: number, clientY: number): void {
     const rect = canvasEl.getBoundingClientRect();
-    editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, stage);
+    // Unsnapped: the notches are for keys and the wheel, not for fingers.
+    editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, stage, false);
   }
+
+  /** Wheel travel gathered toward the next notch (`wheelNotch`). */
+  let wheelRest = 0;
 
   /**
    * Wheel zooms in the reference's 0.5 steps and recentres the view on the
@@ -728,11 +760,18 @@
     if (e.ctrlKey || e.metaKey || editor.playing) {
       return;
     }
+    // Taken even when it zooms nothing: a sideways swipe left to the browser
+    // is "back" in the history, and the drawing goes with it.
     e.preventDefault();
+    const { notch, rest } = wheelNotch(wheelRest, e.deltaY, e.deltaMode);
+    wheelRest = rest;
+    if (notch === 0) {
+      return;
+    }
     const rect = canvasEl.getBoundingClientRect();
     editor.view = zoomCentredOn(
       editor.view,
-      editor.view.zoom + zoomDelta(editor.view.zoom, e.deltaY < 0 ? 1 : -1),
+      editor.view.zoom + zoomDelta(editor.view.zoom, notch),
       e.clientX - rect.left,
       e.clientY - rect.top,
       stage,
@@ -751,7 +790,7 @@
     // corner turns, the body moves. It comes before every drawing tool.
     if (editor.transform) {
       const [x, y] = toDocUnits(e);
-      const mode = hitMode(x, y, editor.transform.box, editor.transform.session, hitZoom);
+      const mode = hitMode(x, y, editor.transform.box, editor.transform.session, hitScale(e));
       hoverMode = mode;
       if (mode !== 'none') {
         grab = { pointerId: e.pointerId, mode, base: editor.transform.session, x, y, axis: null };
@@ -770,7 +809,8 @@
     }
     // A tool that brought its own gesture runs it; the canvas knows only that
     // there are callbacks, not which tool it is.
-    if (toolSpec(editor.tool)?.press) {
+    const spec = toolSpec(editor.tool);
+    if (spec?.press) {
       if (editor.activeLayerHidden) {
         showHint(HIDDEN_LAYER_HINT);
         return;
@@ -779,8 +819,9 @@
         return;
       }
       const [x, y] = toDocUnits(e);
-      toolSpec(editor.tool)?.press?.(editor.pluginHost(), { x, y });
-      pluginGrab = { pointerId: e.pointerId };
+      spec.press(editor.pluginHost(), { x, y });
+      // Pinned: a hotkey mid-drag changes the tool in hand, not this gesture.
+      pluginGrab = { pointerId: e.pointerId, spec };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
       return;
@@ -827,6 +868,14 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
+    // A mouse moving with no button held has let go somewhere the canvas did
+    // not hear (a native dialog, the window losing focus): end the gesture
+    // here, or the stroke follows the hovering cursor and refuses the next press.
+    if (e.pointerType === 'mouse' && e.buttons === 0
+      && (pointer.session || grab || megaGesture || pluginGrab || panning)) {
+      onPointerUp(e);
+      return;
+    }
     cursorX = e.clientX;
     cursorY = e.clientY;
     // Where the zoom buttons, the slider and `+`/`-` will zoom around. Read
@@ -848,11 +897,11 @@
       // ponytail: the tool throttles its own writes (distort does it every
       // fifth reference pixel). Batch by rAF if a big frame ever stutters.
       const [x, y] = toDocUnits(e, rect);
-      toolSpec(editor.tool)?.move?.(editor.pluginHost(), { x, y });
+      pluginGrab.spec.move?.(editor.pluginHost(), { x, y });
       return;
     }
     if (grab && e.pointerId === grab.pointerId) {
-      dragTransform(e);
+      dragTransform(e, rect);
       return;
     }
     // No button down over an open transform: the cursor names the zone.
@@ -866,7 +915,9 @@
         const next = pinchFrom(touches);
         zoomTo(gesture.zoom * (next.distance / gesture.distance), next.midX, next.midY);
         panBy(next.midX - gesture.midX, next.midY - gesture.midY);
-        gesture = { ...next, zoom: gesture.zoom * (next.distance / gesture.distance) };
+        // What the view took, clamp and all: past 10× the fingers coming back
+        // together answer at once instead of unwinding a zoom nobody sees.
+        gesture = { ...next, zoom: editor.view.zoom };
         return;
       }
       if (touches.size > 1) {
@@ -928,7 +979,7 @@
       return;
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
-      toolSpec(editor.tool)?.release?.(editor.pluginHost());
+      pluginGrab.spec.release?.(editor.pluginHost());
       editor.endPluginGesture();
       pluginGrab = null;
       gesturePointerId = -1;
@@ -955,12 +1006,12 @@
    * session the press started on, not from the last move, so shift can lock
    * an axis and ctrl can snap an angle without the drag drifting.
    */
-  function dragTransform(e: PointerEvent): void {
+  function dragTransform(e: PointerEvent, rect: DOMRect): void {
     const open = editor.transform;
     if (!open || !grab) {
       return;
     }
-    const [x, y] = toDocUnits(e);
+    const [x, y] = toDocUnits(e, rect);
     const start = { x: grab.x, y: grab.y };
     const pos = { x, y };
     if (grab.mode === 'move') {
@@ -1000,13 +1051,7 @@
       return;
     }
     if (e.pointerId === gesturePointerId) {
-      megaGesture = null;
-      if (pluginGrab) {
-        toolSpec(editor.tool)?.release?.(editor.pluginHost());
-        editor.endPluginGesture();
-        pluginGrab = null;
-      }
-      gesturePointerId = -1;
+      dropOwnGesture();
       scheduleDraw();
       return;
     }
@@ -1055,6 +1100,7 @@
     oncontextmenu={(e) => e.preventDefault()}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
+    onlostpointercapture={onPointerCancel}
     onpointerenter={(event) => {
       cursorVisible = true;
       cursorX = event.clientX;
@@ -1214,6 +1260,12 @@
     bottom: 12px;
     left: 50%;
     transform: translateX(-50%);
+    /* Its own width up to the stage's: a box starting at the middle is
+       otherwise given half the stage and wraps a sentence word by word. */
+    width: max-content;
+    max-width: calc(100% - 24px);
+    box-sizing: border-box;
+    text-align: center;
     margin: 0;
     padding: 6px 12px;
     border-radius: var(--r-pill);

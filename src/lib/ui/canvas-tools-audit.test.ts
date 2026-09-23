@@ -84,3 +84,80 @@ describe('the canvas', () => {
     expect(style).not.toMatch(/font-size:\s*\d+px/);
   });
 });
+
+describe('the wheel over the canvas', () => {
+  it('zooms by notches of travel, so a trackpad swipe or a sideways one does not fling the sheet', () => {
+    expect(canvas).toContain('wheelNotch(wheelRest, e.deltaY, e.deltaMode)');
+    expect(canvas).not.toContain('e.deltaY < 0 ? 1 : -1');
+  });
+});
+
+describe('the transform handles under a finger', () => {
+  it('a touch press reaches a handle from further off than the mouse does', () => {
+    // ±10 px is a 20 px target: under 2.5.8's 24, and a fingertip is ~34.
+    expect(canvas).toContain("e.pointerType === 'touch' ? hitZoom / TOUCH_REACH : hitZoom");
+    expect(canvas).toContain('editor.transform.session, hitScale(e))');
+    expect(canvas).toMatch(/const TOUCH_REACH = 1\.\d+;/);
+  });
+});
+
+describe('the canvas windows follow the reader’s text size', () => {
+  it('the zoom and transform windows size their words in rem, not px', async () => {
+    for (const name of ['./ScaleMenu.svelte', './TransformMenu.svelte']) {
+      const style = (await read(name)).split('<style>')[1] ?? '';
+      expect(style).not.toMatch(/font-size:\s*\d+px/);
+    }
+  });
+});
+
+describe('a pinch', () => {
+  it('zooms without the notches and restarts from the zoom the view took', () => {
+    expect(canvas).toContain('stage, false);');
+    expect(canvas).toContain('gesture = { ...next, zoom: editor.view.zoom };');
+  });
+});
+
+describe('a release the canvas never heard', () => {
+  it('ends the gesture when the mouse moves with no button held', () => {
+    // The up landed elsewhere (a native dialog, the window lost focus): the
+    // stroke stayed glued to a hovering cursor and refused the next press.
+    expect(canvas).toContain("e.pointerType === 'mouse' && e.buttons === 0");
+  });
+
+  it('treats a lost capture as a cancel', () => {
+    expect(canvas).toContain('onlostpointercapture={onPointerCancel}');
+  });
+});
+
+describe('a tool’s own gesture', () => {
+  it('moves and lets go on the tool it was started with, whatever key was pressed meanwhile', () => {
+    // A hotkey mid-drag changed `editor.tool`: the move and the release went
+    // to the new tool, or to none, and the old one was never let go.
+    expect(canvas).toContain('pluginGrab = { pointerId: e.pointerId, spec }');
+    expect(canvas).not.toContain('toolSpec(editor.tool)?.release?.(');
+    expect(canvas).not.toContain('toolSpec(editor.tool)?.move?.(');
+  });
+});
+
+describe('the hidden-layer hint', () => {
+  it('says what to do about it, and stays long enough to be read', () => {
+    // «Слой скрыт» named the trouble and vanished in 1.6 s; where the eye is
+    // was left to guess.
+    expect(t('canvas.hidden_layer')).toContain('глаз');
+    expect(canvas).toContain('HINT_MS = 3000');
+  });
+});
+
+describe('a second finger during a gesture of the canvas’s own', () => {
+  it('drops the mega eraser, the tool’s drag and the handle along with the stroke', () => {
+    // Only the pencil session was discarded: the first finger's release then
+    // went to navigation, the eraser's preview stayed punched into the frame
+    // and a tool's gesture was never let go.
+    const start = canvas.match(/function startNavigation[^]*?\n  }\n/)?.[0] ?? '';
+    expect(start).toContain('dropOwnGesture()');
+    const drop = canvas.match(/function dropOwnGesture[^]*?\n  }\n/)?.[0] ?? '';
+    for (const part of ['megaGesture = null', 'grab = null', 'editor.endPluginGesture()', 'gesturePointerId = -1']) {
+      expect(drop).toContain(part);
+    }
+  });
+});

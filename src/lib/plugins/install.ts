@@ -13,7 +13,7 @@
 import { compareVersions, type CatalogEntry } from './catalog';
 import { pluginNamespace, pluginText, type Plugin } from './contract';
 import type { PluginRegistry } from './registry';
-import { listInstalled, putInstalled } from './store';
+import { listInstalled, putInstalled, type InstalledPlugin } from './store';
 import { t } from '../i18n';
 
 export interface InstallPorts {
@@ -76,6 +76,38 @@ function accept(manifest: unknown, registry: PluginRegistry): string | null {
   return registry.register(manifest);
 }
 
+/**
+ * Puts a manifest in and its record on disk as one step. A plugin already
+ * running under the id comes out first — the register refuses a second copy,
+ * which is how «Обновить» and a new local build never took — and goes back
+ * in if the new one is refused.
+ */
+async function install(
+  id: string,
+  manifest: unknown,
+  record: InstalledPlugin,
+  registry: PluginRegistry,
+  ports: InstallPorts,
+): Promise<string | null> {
+  const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id);
+  if (was) {
+    registry.remove(id);
+  }
+  const failed = accept(manifest, registry);
+  if (!failed) {
+    await putInstalled(record);
+    return null;
+  }
+  if (was) {
+    try {
+      accept(manifestOf(await ports.evaluate(was.code)), registry);
+    } catch (error) {
+      registry.fail(id, reason(error));
+    }
+  }
+  return failed;
+}
+
 /** Installs one plugin of the catalog. `null` means it is in. */
 export async function installFromCatalog(
   entry: CatalogEntry,
@@ -91,11 +123,7 @@ export async function installFromCatalog(
   if (got.manifest.id !== entry.id) {
     return t('plugin.wrong_bundle', { expected: entry.id, got: text(got.manifest.id) || t('plugin.no_id') });
   }
-  const refused = accept(got.manifest, registry);
-  if (refused) {
-    return refused;
-  }
-  await putInstalled({
+  return install(entry.id, got.manifest, {
     id: entry.id,
     version: entry.version,
     name: entry.name,
@@ -104,8 +132,7 @@ export async function installFromCatalog(
     code: got.code,
     source: 'catalog',
     installed: Date.now(),
-  });
-  return null;
+  }, registry, ports);
 }
 
 /**
@@ -124,16 +151,16 @@ export async function installFromFile(
   } catch (error) {
     return reason(error);
   }
-  const refused = accept(manifest, registry);
-  if (refused) {
-    return refused;
-  }
   const id = text(manifest.id);
   // Its own icon, or the first tool's: a plugin that draws one thing has
   // already said what it looks like.
   const icon =
     text(manifest.icon) || text(Object.values(manifest.tools ?? {})[0]?.icon);
-  await putInstalled({
+  // Without an id there is nothing running to swap out; the register says why.
+  if (!id) {
+    return accept(manifest, registry);
+  }
+  return install(id, manifest, {
     id,
     version: text(manifest.version) || '0.0.0',
     name: text(manifest.name, pluginNamespace(id)) || id,
@@ -142,8 +169,7 @@ export async function installFromFile(
     code,
     source: 'local',
     installed: Date.now(),
-  });
-  return null;
+  }, registry, ports);
 }
 
 /** Brings everything installed into the register. One bad bundle costs itself. */

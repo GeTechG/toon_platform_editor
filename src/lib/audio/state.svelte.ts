@@ -16,6 +16,15 @@ import {
 } from './track';
 import { t } from '../i18n';
 
+/**
+ * Rate the file is decoded at for its envelope. `decodeAudioData` resamples to
+ * its context's rate, and the envelope keeps only `ENVELOPE_RATE` levels a
+ * second: at the device's 48 kHz a five-minute song is ~115 MB of floats, at
+ * this a sixth of it — the difference on a 2 GB phone. An offline context
+ * also never wakes the audio output just to read a file.
+ */
+const DECODE_RATE = 8000;
+
 /** A track as it is stored and published: bytes plus the credits. */
 export interface AudioTrackData {
   blob: Blob;
@@ -48,9 +57,13 @@ export class AudioTrackState {
   sync = $state(false);
   /** Why the last load was refused, shown next to the note button. */
   error = $state('');
+  /** A picked file is being read; a long one takes seconds on a cheap phone. */
+  loading = $state(false);
 
   #element: HTMLAudioElement | null = null;
   #url = '';
+  /** Which pick is the latest: a slow decode must not land over a quicker, later one. */
+  #ticket = 0;
 
   get hasTrack(): boolean {
     return this.blob !== null;
@@ -76,31 +89,50 @@ export class AudioTrackState {
 
   /**
    * Accepts a picked file: checks it, decodes it for the envelope, keeps the
-   * bytes. Returns false and fills `error` if the file is not usable.
+   * bytes. Returns false and fills `error` if the file is not usable — and,
+   * with `keep`, holds on to it anyway: a draft's own track that will not
+   * decode here is still that draft's, and dropping it would leave the last
+   * draft's track playing under this one.
    */
-  async load(file: Blob & { type: string; size: number }, name: string, author = ''): Promise<boolean> {
+  async load(
+    file: Blob & { type: string; size: number },
+    name: string,
+    author = '',
+    keep = false,
+  ): Promise<boolean> {
+    const ticket = ++this.#ticket;
     const complaint = checkAudioFile(file);
     if (complaint) {
+      this.loading = false;
       this.error = complaint;
+      if (keep) this.#adoptUnread(file, name, author);
       return false;
     }
+    this.loading = true;
     let tags = { artist: '', title: '' };
+    let envelope: Float32Array;
+    let duration: number;
     try {
       const bytes = await file.arrayBuffer();
       tags = readId3(bytes);
-      const context = new AudioContext();
-      try {
-        const decoded = await context.decodeAudioData(bytes);
-        this.envelope = trackEnvelope(decoded);
-        this.duration = decoded.duration;
-      } finally {
-        void context.close();
-      }
+      const decoded = await new OfflineAudioContext(1, 1, DECODE_RATE).decodeAudioData(bytes);
+      envelope = trackEnvelope(decoded);
+      duration = decoded.duration;
     } catch (err) {
       console.warn('audio decode failed:', err);
-      this.error = t('audio.undecodable');
+      if (ticket === this.#ticket) {
+        this.loading = false;
+        this.error = t('audio.undecodable');
+        if (keep) this.#adoptUnread(file, name, author);
+      }
       return false;
     }
+    if (ticket !== this.#ticket) {
+      return false; // a later pick, or the bin, came first
+    }
+    this.loading = false;
+    this.envelope = envelope;
+    this.duration = duration;
     // What the file says about itself wins over the file name, which is what
     // the caller passes when it knows nothing better.
     this.#adopt(file, tags.title || name, tags.artist || author);
@@ -114,14 +146,24 @@ export class AudioTrackState {
    * turn a three-minute song into a few silent seconds with nothing said.
    */
   async restore(track: AudioTrackData & { bytes?: number }): Promise<void> {
-    if (typeof track.bytes === 'number' && track.bytes !== track.blob.size) {
-      this.error = t('audio.draft_broken');
-      console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
-      return;
-    }
     // A track stored before the flag existed was tied — that was its behaviour.
     this.sync = track.sync ?? true;
-    await this.load(track.blob as Blob & { type: string; size: number }, track.name, track.author);
+    if (typeof track.bytes === 'number' && track.bytes !== track.blob.size) {
+      console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
+      this.#ticket++;
+      this.loading = false;
+      this.#adoptUnread(track.blob, track.name, track.author);
+      this.error = t('audio.draft_broken');
+      return;
+    }
+    await this.load(track.blob as Blob & { type: string; size: number }, track.name, track.author, true);
+  }
+
+  /** A draft's own file that cannot be read here: kept and named, with no wave. */
+  #adoptUnread(blob: Blob, name: string, author: string): void {
+    this.envelope = new Float32Array(0);
+    this.duration = 0;
+    this.#adopt(blob, name, author);
   }
 
   #adopt(blob: Blob, name: string, author: string): void {
@@ -151,6 +193,8 @@ export class AudioTrackState {
 
   /** Drops the track and everything it holds. */
   clear(): void {
+    this.#ticket++; // a decode still running must not bring the track back
+    this.loading = false;
     this.stop();
     this.#revoke();
     this.blob = null;
@@ -163,6 +207,14 @@ export class AudioTrackState {
   }
 
   #revoke(): void {
+    const element = this.#element;
+    if (element) {
+      // Revoking the URL under an element still fetching it fires its
+      // onerror, and the message landed on the track that replaced it.
+      element.onerror = null;
+      element.removeAttribute('src');
+      element.load();
+    }
     this.#element = null;
     if (this.#url) {
       URL.revokeObjectURL(this.#url);
@@ -192,13 +244,19 @@ export class AudioTrackState {
     // whole point.
     this.#element.loop = !this.sync;
     this.#element.currentTime = at;
-    void this.#element.play().catch((err) => {
-      // A refused play is the one failure the person can act on — browsers
-      // block sound until the page has been interacted with. Saying so beats
-      // a console line nobody reads.
-      console.warn('audio playback failed:', err);
-      this.error = t('audio.blocked');
-    });
+    void this.#element.play().then(
+      () => {
+        // The press that got through answers the complaint about the one that did not.
+        if (this.error === t('audio.blocked')) this.error = '';
+      },
+      (err) => {
+        // A refused play is the one failure the person can act on — browsers
+        // block sound until the page has been interacted with. Saying so beats
+        // a console line nobody reads.
+        console.warn('audio playback failed:', err);
+        this.error = t('audio.blocked');
+      },
+    );
   }
 
   /**

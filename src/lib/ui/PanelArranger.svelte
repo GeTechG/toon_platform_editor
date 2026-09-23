@@ -11,6 +11,7 @@
    * panels lets nobody in who was not already in.
    */
   import type { EditorState } from './editor-state.svelte';
+  import { saveFile } from './save-file';
   import { dropPlacement, rowEdge, type Box } from './arrange';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { t } from '../i18n';
@@ -22,17 +23,13 @@
 
   /** Hands the browser the picked arrangement (or the live one) to save. */
   function downloadWorkspace(): void {
-    const url = URL.createObjectURL(
+    // Latin, so the name survives any filesystem it lands on.
+    saveFile(
       new Blob([editor.exportWorkspace(picked ? Number(picked) : undefined)], {
         type: 'application/json',
       }),
+      'layout.json',
     );
-    const a = document.createElement('a');
-    a.href = url;
-    // Latin, so the name survives any filesystem it lands on.
-    a.download = 'layout.json';
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   async function onWorkspaceFile(e: Event): Promise<void> {
@@ -236,6 +233,19 @@
   /** The workspace picked in the list; '' while none is. */
   let picked = $state('');
 
+  /**
+   * On a phone the bar stood 487px over the panels it rearranges; the named
+   * arrangements fold away there, the drag itself needs only the hint, the
+   * shelf and «Готово».
+   */
+  const wideQuery = typeof matchMedia === 'function' ? matchMedia('(min-width: 40rem)') : null;
+  let wide = $state(wideQuery?.matches ?? true);
+  $effect(() => {
+    const follow = (e: MediaQueryListEvent) => (wide = e.matches);
+    wideQuery?.addEventListener('change', follow);
+    return () => wideQuery?.removeEventListener('change', follow);
+  });
+
   /** Name being typed for the next save. */
   let newName = $state('');
 
@@ -303,60 +313,65 @@
   </div>
 
   <div class="arrange-keys">
-    <!-- Named arrangements: «Планшет», «Стол», whatever the hand wants back. -->
-    <select
-      class="workspaces"
-      aria-label={t('arrange.workspace')}
-      value={picked}
-      onchange={(e) => {
-        picked = e.currentTarget.value;
-        if (picked) {
-          editor.applyWorkspace(Number(picked));
-        }
-      }}
-    >
-      <option value="">{t('arrange.workspace_none')}</option>
-      {#each editor.workspaces as workspace (workspace.id)}
-        <option value={String(workspace.id)}>{workspace.name}</option>
-      {/each}
-    </select>
-    <input
-      class="ws-name"
-      type="text"
-      placeholder={t('arrange.name_placeholder')}
-      aria-label={t('arrange.name_label')}
-      bind:value={newName}
-      onkeydown={(e) => e.key === 'Enter' && saveAs()}
-    />
-    <button class="key" disabled={!newName.trim()} onclick={saveAs} title={t('arrange.save_title')}>
-      {t('arrange.save')}
-    </button>
-    <button
-      class="key danger"
-      disabled={!picked}
-      onclick={() => {
-        editor.deleteWorkspace(Number(picked));
-        picked = '';
-      }}
-      title={t('arrange.delete_title')}
-    >{t('arrange.delete')}</button>
-    <button class="key" onclick={downloadWorkspace} title={t('arrange.download_title')}>
-      {t('arrange.download')}
-    </button>
-    <button class="key" onclick={() => workspaceFile?.click()} title={t('arrange.upload_title')}>
-      {t('arrange.upload')}
-    </button>
-    <input
-      bind:this={workspaceFile}
-      type="file"
-      hidden
-      accept="application/json,.json"
-      aria-label={t('arrange.file')}
-      onchange={onWorkspaceFile}
-    />
-    <button class="key" onclick={() => editor.resetPanels()} title={t('arrange.reset_title')}>
-      {t('arrange.reset')}
-    </button>
+    <details class="ws" open={wide}>
+      <summary class="key">{t('arrange.workspaces')}</summary>
+      <div class="ws-keys">
+        <!-- Named arrangements: «Планшет», «Стол», whatever the hand wants back. -->
+        <select
+          class="workspaces"
+          aria-label={t('arrange.workspace')}
+          value={picked}
+          onchange={(e) => {
+            picked = e.currentTarget.value;
+            if (picked) {
+              editor.applyWorkspace(Number(picked));
+            }
+          }}
+        >
+          <option value="">{t('arrange.workspace_none')}</option>
+          {#each editor.workspaces as workspace (workspace.id)}
+            <option value={String(workspace.id)}>{workspace.name}</option>
+          {/each}
+        </select>
+        <input
+          class="ws-name"
+          type="text"
+          placeholder={t('arrange.name_placeholder')}
+          aria-label={t('arrange.name_label')}
+          bind:value={newName}
+          onkeydown={(e) => e.key === 'Enter' && saveAs()}
+        />
+        <button class="key" disabled={!newName.trim()} onclick={saveAs} title={t('arrange.save_title')}>
+          {t('arrange.save')}
+        </button>
+        <button
+          class="key danger"
+          disabled={!picked}
+          onclick={() => {
+            editor.deleteWorkspace(Number(picked));
+            picked = '';
+          }}
+          title={t('arrange.delete_title')}
+        >{t('arrange.delete')}</button>
+        <button class="key" onclick={downloadWorkspace} title={t('arrange.download_title')}>
+          {t('arrange.download')}
+        </button>
+        <button class="key" onclick={() => workspaceFile?.click()} title={t('arrange.upload_title')}>
+          {t('arrange.upload')}
+        </button>
+        <input
+          bind:this={workspaceFile}
+          type="file"
+          hidden
+          accept="application/json,.json"
+          aria-label={t('arrange.file')}
+          onchange={onWorkspaceFile}
+        />
+        <button class="key" onclick={() => editor.resetPanels()} title={t('arrange.reset_title')}>
+          {t('arrange.reset')}
+        </button>
+      </div>
+    </details>
     <button class="key primary" onclick={() => (editor.arranging = false)}>
       {t('arrange.done')}
     </button>
@@ -404,6 +419,9 @@
     gap: 0.5rem;
     /* Fixed: `100%` is the initial containing block, scrollbar excluded. */
     width: min(46rem, calc(100% - 2rem));
+    /* At 200% text it stood taller than a phone, «Готово» under the edge. */
+    max-height: calc(100% - 2rem);
+    overflow-y: auto;
     padding: 0.7rem 0.8rem;
     border: none;
     border-radius: var(--r-md);
@@ -437,7 +455,11 @@
     color: var(--ink-2);
   }
   .chip {
-    padding: 0.2rem 0.5rem;
+    /* A finger picks these up off the shelf; 24px was the bare minimum. */
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
+    padding: 0.2rem 0.6rem;
     border: none;
     border-radius: var(--r-pill);
     background: var(--sub);
@@ -452,6 +474,45 @@
     align-items: center;
     justify-content: flex-end;
     gap: 0.4rem;
+  }
+  .ws {
+    margin-right: auto;
+  }
+  @media (max-width: 39.99rem) {
+    .ws[open] {
+      flex-basis: 100%;
+    }
+  }
+  .ws-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+  }
+  .ws[open] .ws-keys {
+    margin-top: 0.4rem;
+  }
+  /* Under the bar's class too: the studio's `.editor .key` weighs two. */
+  .arrange-bar .ws > summary {
+    display: inline-flex;
+    align-items: center;
+    list-style: none;
+  }
+  .ws > summary::-webkit-details-marker {
+    display: none;
+  }
+  /* A wide screen has the room: the keys stand open with no fold key. */
+  @media (min-width: 40rem) {
+    .arrange-bar .ws > summary {
+      display: none;
+    }
+    .ws {
+      flex: 1;
+    }
+    .ws[open] .ws-keys {
+      margin-top: 0;
+    }
   }
   .ws-name {
     min-height: var(--key-h);

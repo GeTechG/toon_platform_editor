@@ -48,11 +48,15 @@
 
   // Keep the active frame in view (the reference list re-centers on it):
   // after add/delete/paste/hotkeys the strip scrolls just enough to show it.
-  // Not during playback — the strip stays put while frames flip.
+  // Not during playback — the strip stays put while frames flip. A narrower
+  // strip (a phone turned, larger text) is a reason too: the frame it showed
+  // may now sit past its edge, and a clamped scroll fires no scroll event.
   $effect(() => {
     const index = editor.activeFrame;
     void editor.doc;
+    void stripWidth;
     if (editor.playing || !strip) return;
+    stripScroll = strip.scrollLeft;
     // Where the frame sits is arithmetic: its cell may not be built.
     const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth);
     if (to !== null) {
@@ -65,11 +69,17 @@
   // it: when the arrows move the active cell while a cell has focus, focus
   // moves too, so the new cell's name («Кадр 5, Слой 1») is what is read.
   // After the tick: the cell may only now be built by the scroll above.
+  // Not during a preview — focus would walk the strip at 12 frames a second.
+  // Delete on the focused frame unmounts its cell and drops focus to <body>;
+  // the cell that had it is remembered, so focus lands on the new active one.
+  let lastCell: HTMLElement | null = null;
   $effect(() => {
     void editor.displayedFrame;
     void editor.activeLayer;
     const focused = document.activeElement;
-    if (!strip || !(focused instanceof HTMLElement) || !focused.classList.contains('cell') || !strip.contains(focused)) {
+    const inStrip = focused instanceof HTMLElement && focused.classList.contains('cell') && !!strip?.contains(focused);
+    const dropped = focused === document.body && lastCell !== null && !lastCell.isConnected;
+    if (!strip || editor.playing || !(inStrip || dropped)) {
       return;
     }
     void tick().then(() => strip?.querySelector<HTMLElement>('.cell.active')?.focus());
@@ -343,6 +353,7 @@
       bind:this={strip}
       bind:clientWidth={stripWidth}
       onpointerdown={resetSelection}
+      onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
     >
       <div class="head">
         {#if view.before > 0}
@@ -377,7 +388,7 @@
               class:dim={editor.doc.layers[layerIndex].hidden}
               data-frame={i}
               tabindex={i === editor.displayedFrame && layerIndex === editor.activeLayer ? 0 : -1}
-              disabled={editor.playing}
+              aria-disabled={editor.playing}
               aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
                 ? 'true'
                 : undefined}
@@ -567,7 +578,7 @@
     outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
-  .cell:disabled {
+  .cell[aria-disabled='true'] {
     cursor: default;
   }
   /* --- The frame menu ---------------------------------------------------- */

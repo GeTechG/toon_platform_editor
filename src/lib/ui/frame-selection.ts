@@ -311,6 +311,27 @@ export function rangeSelection(anchor: Cell, target: Cell, bounds: CellBounds): 
 }
 
 /**
+ * Where Shift+arrow spans to: one step past the block's far edge — the side
+ * away from the active cell, which is the anchor and stays put. Clamped, not
+ * wrapped: a range that jumped to the other end would select everything.
+ */
+export function extendTarget(
+  selection: CellSelection,
+  active: Cell,
+  dFrame: number,
+  dLayer: number,
+  bounds: CellBounds,
+): Cell {
+  const far = (list: readonly number[], at: number) =>
+    Math.min(...list) === at ? Math.max(...list) : Math.min(...list);
+  const clamp = (value: number, limit: number) => Math.max(0, Math.min(limit - 1, value));
+  return {
+    frame: clamp(far(selection.frames, active.frame) + dFrame, bounds.frames),
+    layer: clamp(far(selection.layers, active.layer) + dLayer, bounds.layers),
+  };
+}
+
+/**
  * Ctrl+click: the layer joins or leaves the selection, which never empties.
  * The reference only reads Ctrl on a cell whose frame is already selected and
  * whose row is not the active one (`bundle:8957-8968`); anywhere else the

@@ -121,9 +121,64 @@ describe('installFromCatalog', () => {
     expect(failed).toContain('сеть недоступна');
     expect(await listInstalled()).toEqual([]);
   });
+
+  // «Обновить» in the catalog is this same call on a plugin that is running:
+  // the register refused the second copy under a taken id, so it never worked.
+  test('an update of a running plugin takes its place', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+    registry.register(manifest('halftone').default);
+    await putInstalled(installed('halftone', '1.0.0'));
+
+    const failed = await installFromCatalog(
+      entry('halftone', '2.0.0'),
+      registry,
+      ports({ 'code:https://plugins.example/halftone/plugin.js': manifest('halftone') }),
+    );
+
+    expect(failed).toBeNull();
+    expect(registry.tool('halftone')).toBeDefined();
+    expect((await listInstalled())[0].version).toBe('2.0.0');
+  });
+
+  test('a refused update puts the working version back', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+    registry.register(manifest('halftone').default);
+    await putInstalled(installed('halftone', '1.0.0'));
+
+    const failed = await installFromCatalog(
+      entry('halftone', '2.0.0'),
+      registry,
+      ports({
+        'code:https://plugins.example/halftone/plugin.js': { default: { id: 'halftone', api: PLUGIN_API + 1 } },
+        'old:halftone': manifest('halftone'),
+      }),
+    );
+
+    expect(failed).toContain('мажор');
+    expect(registry.tool('halftone')).toBeDefined();
+    expect((await listInstalled())[0].version).toBe('1.0.0');
+  });
 });
 
 describe('installFromFile', () => {
+  test('a new build of a local plugin replaces the running one', async () => {
+    setIndexedDB(fakeIndexedDB(new Map(), 1));
+    const registry = new PluginRegistry();
+    registry.register(manifest('halftone').default);
+    await putInstalled(installed('halftone', '1.0.0', 'local'));
+
+    const failed = await installFromFile(
+      'build-2',
+      registry,
+      ports({ 'build-2': manifest('halftone', { version: '1.1.0' }) }),
+    );
+
+    expect(failed).toBeNull();
+    expect((await listInstalled())[0].version).toBe('1.1.0');
+  });
+
   test('takes its name and version from the manifest and marks it local', async () => {
     setIndexedDB(fakeIndexedDB(new Map(), 1));
     const registry = new PluginRegistry();

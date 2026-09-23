@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { keyOwner, type KeyPress } from './key-owner';
+import { keyOwner, latinKey, type KeyPress } from './key-owner';
 
 // The editor listens on the window, so every key a focused control was meant
 // to get reached the hotkey table first. Space played the preview from a
@@ -103,5 +103,50 @@ describe('single-letter keys can be turned off (WCAG 2.1.4)', () => {
 
   it('with the setting on, the page body hands everything to the editor', () => {
     expect(keyOwner(press('b', el('body')))).toBe('editor');
+  });
+});
+
+describe('the hotkeys do not depend on the keyboard layout', () => {
+  // Most of the audience types on a Russian layout: B there is «и», Ctrl+S is
+  // Ctrl+«ы» — which the table missed and the browser took for «save page».
+  it('a Cyrillic letter reads as the Latin key in the same place', () => {
+    expect(latinKey({ key: 'и', code: 'KeyB' })).toBe('b');
+    expect(latinKey({ key: 'У', code: 'KeyE' })).toBe('E');
+    expect(latinKey({ key: 'ы', code: 'KeyS' })).toBe('s');
+    expect(latinKey({ key: 'ё', code: 'Backquote' })).toBe('`');
+    expect(latinKey({ key: 'Ё', code: 'Backquote' })).toBe('~');
+  });
+
+  it('a Latin letter, a sign and a named key stay as they are', () => {
+    expect(latinKey({ key: 'b', code: 'KeyB' })).toBe('b');
+    expect(latinKey({ key: 'H', code: 'KeyH' })).toBe('H');
+    expect(latinKey({ key: '+', code: 'Equal' })).toBe('+');
+    expect(latinKey({ key: 'ArrowLeft', code: 'ArrowLeft' })).toBe('ArrowLeft');
+    expect(latinKey({ key: ' ', code: 'Space' })).toBe(' ');
+    // A layout that moves the letters about (AZERTY, Dvorak) still types
+    // Latin: its own letter wins over the physical place.
+    expect(latinKey({ key: 'a', code: 'KeyQ' })).toBe('a');
+  });
+
+  it('the editor reads its table through it', async () => {
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+    const handler = editorUi.match(/function onKeydown\([^]*?\n  }\n/)![0];
+    expect(handler).toContain('latinKey(e)');
+    expect(handler).not.toMatch(/switch \(e\.key\)/);
+    expect(handler).not.toContain('toolByKey(e.key)');
+  });
+});
+
+describe('ninth audit: Space on a timeline cell plays', () => {
+  // Arrowing through the strip leaves focus on the active cell, and Space
+  // there pressed that cell: it collapsed the Shift+arrow range the preview
+  // was about to play instead of playing it. A cell is already selected by
+  // being active — Space is the preview's, Enter still presses the cell.
+  it('Space from a keyboard-focused cell is the preview', () => {
+    expect(keyOwner(press(' ', el('button', { 'data-frame': '3' })))).toBe('editor');
+  });
+
+  it('Enter still presses the cell', () => {
+    expect(keyOwner(press('Enter', el('button', { 'data-frame': '3' })))).toBe('control');
   });
 });

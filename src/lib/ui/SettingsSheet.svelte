@@ -7,6 +7,7 @@
    * A native <dialog> rather than a hand-rolled sheet — showModal() brings the
    * focus trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
+  import { tick } from 'svelte';
   import { exportDrafts, importDrafts, listDrafts } from '../draft/store';
   import { draftEntries, type DraftEntry } from '../draft/restore';
   import { formatFileSize } from './file-size';
@@ -19,6 +20,7 @@
     presets,
   } from './presets';
   import Icon from './Icon.svelte';
+  import { saveFile } from './save-file';
   import type { EditorState } from './editor-state.svelte';
   import { t } from '../i18n';
 
@@ -45,6 +47,7 @@
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let paletteFile = $state<HTMLInputElement | undefined>();
   let draftFile = $state<HTMLInputElement | undefined>();
+  let saveDraftsEl = $state<HTMLButtonElement | undefined>();
   /** What the last import or save did, shown until the next one. */
   let report = $state('');
 
@@ -77,8 +80,16 @@
         await exportDrafts(chosen, (done, total) => (exporting = { done, total })),
       );
       report = t('draft.saved', { count: chosen.length });
+    } catch (err) {
+      console.warn('drafts export failed:', err);
+      report = t('settings.drafts_save_failed');
     } finally {
       exporting = null;
+      // The key was disabled while it ran, which drops the focus to the page.
+      await tick();
+      if (!dialogEl?.contains(document.activeElement)) {
+        saveDraftsEl?.focus();
+      }
     }
   }
 
@@ -90,14 +101,8 @@
       : t('settings.persist_off');
   }
 
-  /** Hands the browser a file to save; nothing here touches the network. */
   function download(name: string, text: string): void {
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
+    saveFile(new Blob([text], { type: 'application/json' }), name);
   }
 
   async function onPaletteFile(e: Event): Promise<void> {
@@ -119,10 +124,16 @@
     if (editor.warnings && !confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
-    const { loaded, broken } = await importDrafts(await file.text());
-    report = loaded > 0 || broken > 0
-      ? t('settings.drafts_loaded', { loaded, broken })
-      : t('settings.no_drafts');
+    try {
+      const { loaded, broken } = await importDrafts(await file.text());
+      report = loaded > 0 || broken > 0
+        ? t('settings.drafts_loaded', { loaded, broken })
+        : t('settings.no_drafts');
+    } catch (err) {
+      // Storage full or gone: what did go in is listed below all the same.
+      console.warn('drafts import failed:', err);
+      report = t('settings.drafts_load_failed');
+    }
     drafts = draftEntries(await listDrafts());
   }
 
@@ -293,15 +304,17 @@
       </progress>
     {/if}
     <div class="actions">
-      <button class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
+      <button bind:this={saveDraftsEl} class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
         {t('settings.download_drafts')}
       </button>
       <button class="key" onclick={() => draftFile?.click()}>{t('settings.load_drafts')}</button>
       {#if onOpenDrafts}
-        <button class="key" onclick={onOpenDrafts}>{t('settings.drafts')}</button>
+        <button class="key" onclick={() => { dialogEl?.close(); onOpenDrafts(); }}>{t('settings.drafts')}</button>
       {/if}
       {#if onOpenFile}
-        <button class="key" onclick={onOpenFile}>{t('settings.open_toon')}</button>
+        <!-- The sheet steps aside, as it does for the plugins and the arranger:
+             an import error lands on the canvas, under this modal, unseen. -->
+        <button class="key" onclick={() => { dialogEl?.close(); onOpenFile(); }}>{t('settings.open_toon')}</button>
       {/if}
       {#if onSaveNow}
         <button class="key" onclick={onSaveNow}>{t('settings.save_now')}</button>

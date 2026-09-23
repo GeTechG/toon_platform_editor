@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack, type Snippet } from 'svelte';
+  import { onMount, tick, untrack, type Snippet } from 'svelte';
   import { plugins } from '../plugins';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
@@ -25,10 +25,11 @@
   import { loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
+  import { saveFile } from './save-file';
   import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
-  import { wrapIndex } from './frame-selection';
-  import { keyOwner } from './key-owner';
+  import { extendTarget, wrapIndex } from './frame-selection';
+  import { keyOwner, latinKey } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -132,12 +133,7 @@
    */
   function downloadErrorLog(): void {
     const lines = editor.errorLog.length > 0 ? editor.errorLog : [new Date().toISOString()];
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'toonop-errors.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    saveFile(new Blob([lines.join('\n')], { type: 'text/plain' }), 'toonop-errors.txt');
   }
 
   // --- Bottom panel divider ------------------------------------------------
@@ -168,6 +164,16 @@
   /** One key tall: what the floor's arithmetic expects of a row of keys. */
   const KEY_ROW = 44;
   /**
+   * The root text size over the 16px the floor's numbers were measured at. The
+   * keys and the strip head are in rem, so at 200 % text a floor in fixed px
+   * left the layer row under the panel's edge. Read again when the window
+   * resizes — a browser zoom is a resize too.
+   */
+  const textScale = $derived.by(() => {
+    void viewportWidth;
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+  });
+  /**
    * What wrapped key rows take beyond one key each. Between a phone and a wide
    * desktop the transport does not fit one line and wraps; the floor has to
    * hear about it, or the second line comes out of the strip and the layer
@@ -175,17 +181,19 @@
    */
   const wrapExtra = $derived(
     editor.panels.rows.reduce(
-      (sum, row, i) => (row.includes('timeline') ? sum : sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW)),
+      (sum, row, i) => (row.includes('timeline') ? sum : sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW * textScale)),
       0,
     ),
   );
   const panelFloor = $derived(
-    PANEL_HEIGHT_MIN
-      + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0)
-      // The floor is written for a strip and one row; every row beyond that
-      // needs its own height, or it is cut off at the panel's edge.
-      + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP
-      + wrapExtra,
+    Math.round(
+      (PANEL_HEIGHT_MIN
+        + (editor.audio.hasTrack ? PANEL_HEIGHT_AUDIO : 0)
+        // The floor is written for a strip and one row; every row beyond that
+        // needs its own height, or it is cut off at the panel's edge.
+        + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP) * textScale
+        + wrapExtra,
+    ),
   );
   /** The stored panel height, never more than three quarters of the viewport. */
   const panelHeight = $derived(
@@ -284,13 +292,16 @@
   }
 
   /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
-  function moveOrExtend(shift: boolean, frame: number, layer: number): void {
+  function moveOrExtend(shift: boolean, dFrame: number, dLayer: number): void {
+    const active = { frame: editor.activeFrame, layer: editor.activeLayer };
     if (shift) {
-      editor.selectCell(frame, layer, 'range');
+      // Each press moves the block's far edge; the active cell is the anchor.
+      const to = extendTarget(editor.selection, active, dFrame, dLayer, editor.cellBounds);
+      editor.selectCell(to.frame, to.layer, 'range');
       return;
     }
-    editor.selectFrame(frame);
-    editor.selectLayer(layer);
+    editor.selectFrame(wrapIndex(active.frame + dFrame, lastFrame + 1));
+    editor.selectLayer(wrapIndex(active.layer + dLayer, editor.doc.layers.length));
   }
 
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
@@ -300,9 +311,11 @@
     if (editor.updating) {
       return;
     }
+    // Read by place on a non-Latin layout: «и» is B (key-owner.ts).
+    const key = latinKey(e);
     // Alt+E is the reference's mega-eraser; every other modifier is the
     // browser's or the OS's.
-    if (e.altKey && (e.key === 'e' || e.key === 'E') && hasMegaEraser) {
+    if (e.altKey && (key === 'e' || key === 'E') && hasMegaEraser) {
       e.preventDefault();
       editor.selectTool('mega-eraser');
       return;
@@ -310,12 +323,12 @@
     // Reference Ctrl+S / Alt+S / Alt+Enter. These fire from a form field too:
     // the browser would otherwise take Ctrl+S for "save page", and muting the
     // warnings is not a keystroke anyone types by accident.
-    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+    if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
       e.preventDefault();
-      saveNow();
+      saveNow(true);
       return;
     }
-    if (e.altKey && (e.key === 's' || e.key === 'S')) {
+    if (e.altKey && (key === 's' || key === 'S')) {
       e.preventDefault();
       // Reference Alt+S in Toonio saves the project to a file; the other
       // presets have no project file, so there it stays the export.
@@ -326,13 +339,13 @@
       }
       return;
     }
-    if (e.altKey && e.key === 'Enter') {
+    if (e.altKey && key === 'Enter') {
       e.preventDefault();
       editor.warnings = !editor.warnings;
       return;
     }
     // Reference Alt+L: the session's errors as a file, for a bug report.
-    if (e.altKey && (e.key === 'l' || e.key === 'L')) {
+    if (e.altKey && (key === 'l' || key === 'L')) {
       e.preventDefault();
       downloadErrorLog();
       return;
@@ -346,7 +359,7 @@
     // What the focused control, an open sheet or the letter-keys setting
     // keeps for itself never reaches the table (key-owner.ts).
     const owner = keyOwner({
-      key: e.key,
+      key,
       target: e.target instanceof HTMLElement ? e.target : null,
       defaultPrevented: e.defaultPrevented,
       ctrlKey: e.ctrlKey,
@@ -362,7 +375,7 @@
     if (editor.tool === 'drag' && !editor.transform) {
       const step = e.shiftKey ? 30 : 10;
       let taken = true;
-      switch (e.key) {
+      switch (key) {
         case '+':
         case '=':
           editor.zoomBy(zoomDelta(editor.view.zoom, 1));
@@ -396,7 +409,7 @@
     // come before the main switch.
     if (editor.transform) {
       let taken = true;
-      switch (e.key) {
+      switch (key) {
         // Reference: Space applies an unfinished transform instead of playing.
         case ' ':
         case 'Enter':
@@ -462,7 +475,7 @@
     }
 
     let handled = true;
-    switch (e.key) {
+    switch (key) {
       case '+':
       case '=':
         editor.increaseBrushSize();
@@ -582,16 +595,16 @@
       // Shift extends the selection to the neighbor instead of walking the
       // active cell there — the keyboard equivalent of a Shift+click.
       case 'ArrowLeft':
-        moveOrExtend(e.shiftKey, editor.activeFrame === 0 ? lastFrame : editor.activeFrame - 1, editor.activeLayer);
+        moveOrExtend(e.shiftKey, -1, 0);
         break;
       case 'ArrowRight':
-        moveOrExtend(e.shiftKey, editor.activeFrame >= lastFrame ? 0 : editor.activeFrame + 1, editor.activeLayer);
+        moveOrExtend(e.shiftKey, 1, 0);
         break;
       case 'ArrowUp':
-        moveOrExtend(e.shiftKey, editor.activeFrame, wrapIndex(editor.activeLayer + 1, editor.doc.layers.length));
+        moveOrExtend(e.shiftKey, 0, 1);
         break;
       case 'ArrowDown':
-        moveOrExtend(e.shiftKey, editor.activeFrame, wrapIndex(editor.activeLayer - 1, editor.doc.layers.length));
+        moveOrExtend(e.shiftKey, 0, -1);
         break;
       // Onion skin. The reference binds Tab; we do not — Tab is the way out
       // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
@@ -612,7 +625,7 @@
       default: {
         // A plugin's key comes from its manifest, not from a case here: the
         // register already refused it if something above holds it.
-        const added = plugins.toolByKey(e.key);
+        const added = plugins.toolByKey(key);
         if (added && !added.builtin) {
           editor.selectTool(added.id);
         } else {
@@ -675,9 +688,13 @@
   /** Size of the record as last written — what the indicator reports. */
   let savedBytes = $state(0);
 
-  /** Writes the draft right now — the autosave clock, Ctrl+S and the sheet. */
-  function saveNow(): void {
-    if (!editor.touched || saveFailed) {
+  /**
+   * Writes the draft right now — the autosave clock, Ctrl+S and the sheet.
+   * After a failure the clock stays off, but a save asked for by hand tries
+   * again: the user may have freed the room in the drafts list since.
+   */
+  function saveNow(byHand = false): void {
+    if (!editor.touched || (saveFailed && !byHand)) {
       return;
     }
     // The document is a value the editor holds whole, so it goes to storage as
@@ -690,10 +707,12 @@
     void saveDraft(draftId, doc, editor.sessionState()).then(({ ok, bytes }) => {
       if (ok) {
         savedBytes = bytes;
+        saveFailed = false;
         writeScreenshot(doc);
         return;
       }
       saveFailed = true;
+      dirty = true;
       alert(t('editor.save_failed_alert'));
     });
   }
@@ -730,13 +749,7 @@
     if (editor.warnings && !confirm(t('editor.download_project_confirm'))) {
       return;
     }
-    const blob = new Blob([JSON.stringify(editor.doc)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'toonop.toonop';
-    link.click();
-    URL.revokeObjectURL(url);
+    saveFile(new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }), 'toonop.toonop');
   }
 
   // The track rides the draft but not the document: it is written on its own
@@ -846,12 +859,7 @@
    */
   async function downloadDraft(entry: DraftEntry): Promise<void> {
     const text = await exportDrafts([entry.id]);
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'draft.toonops';
-    link.click();
-    URL.revokeObjectURL(url);
+    saveFile(new Blob([text], { type: 'application/json' }), 'draft.toonops');
   }
 
   async function removeAllDrafts(): Promise<void> {
@@ -861,6 +869,18 @@
     await deleteAllDrafts();
     draftId = newDraftId();
     await refreshDrafts();
+    await refocusDrafts(0);
+  }
+
+  /**
+   * A deleted row takes its pressed key with it, and the focus would fall to
+   * the page under the modal sheet. It goes to the row that took the place,
+   * the one above when the last went, or «Закрыть» when none is left.
+   */
+  async function refocusDrafts(at: number): Promise<void> {
+    await tick();
+    const rows = draftsDialog?.querySelectorAll<HTMLButtonElement>('.draft-open') ?? [];
+    (rows[Math.min(at, rows.length - 1)] ?? draftsDialog?.querySelector<HTMLButtonElement>('.sheet-foot .primary'))?.focus();
   }
 
   onMount(async () => {
@@ -913,11 +933,13 @@
     if (!askDelete(t('editor.draft_delete_confirm'))) {
       return;
     }
+    const at = drafts.findIndex((d) => d.id === entry.id);
     await deleteDraft(entry.id);
     if (draftId === entry.id) {
       draftId = newDraftId();
     }
     await refreshDrafts();
+    await refocusDrafts(at);
   }
 
   /** Reference Alt+Enter: with the warnings muted a delete just happens. */
@@ -989,7 +1011,10 @@
         return;
       }
     } catch (err) {
-      importError = t('editor.file_failed', { reason: err instanceof Error ? err.message : err });
+      // What throws here is our own document's validator — a JSON path and
+      // a schema rule, which says nothing to the person holding the file.
+      console.warn('file open failed:', err);
+      importError = t('editor.file_failed', { reason: t('editor.file_not_toonop') });
       return;
     }
     adoptOpenedDoc(doc, original);
@@ -1237,7 +1262,7 @@
          next turn of the autosave clock. Nothing to write, nothing to press. -->
     <button
       class="key icon"
-      onclick={saveNow}
+      onclick={() => saveNow(true)}
       disabled={!dirty}
       data-key="Ctrl+S"
       title={t('editor.save_title')}
@@ -1296,7 +1321,7 @@
         ><Icon name="frame-first" /></button>
         <button
           class="key icon"
-          disabled={editor.playing}
+          disabled={editor.playing || lastFrame === 0}
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
           title={t('editor.prev_frame')}
           aria-label={t('editor.prev_frame')}
@@ -1304,7 +1329,7 @@
       <PlayControls bind:this={playControls} {editor} />
         <button
           class="key icon"
-          disabled={editor.playing}
+          disabled={editor.playing || lastFrame === 0}
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
           title={t('editor.next_frame')}
           aria-label={t('editor.next_frame')}
@@ -1331,7 +1356,7 @@
   {:else if id === 'delete-frame'}
     <button
       class="key"
-      disabled={editor.playing}
+      disabled={editor.playing || !editor.canRemoveFrame}
       onclick={() => editor.removeActiveFrame()}
       data-key="Del"
       title={t('editor.delete_frame_title')}
@@ -1778,7 +1803,7 @@
     <SettingsSheet
       {editor}
       onClose={() => (settingsSheetOpen = false)}
-      onSaveNow={saveNow}
+      onSaveNow={() => saveNow(true)}
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
       onOpenPlugins={() => (pluginsSheetOpen = true)}
@@ -1916,7 +1941,9 @@
     flex-direction: column;
     gap: 0.5rem;
     width: 13rem;
-    max-height: calc(100% - 2 * clamp(0.5rem, 2.2vw, 1.25rem));
+    /* Ends above the zoom window in the same corner column (its keys and 2px
+       inset): a tall transform window ran under it at large text. */
+    max-height: calc(100% - 3 * clamp(0.5rem, 2.2vw, 1.25rem) - var(--key-h, 2.75rem) - 4px);
     overflow-y: auto;
   }
   .scale-window {
@@ -1944,8 +1971,10 @@
       display: flex;
       flex-direction: column;
     }
+    /* Half the stage stays the canvas's whatever window is up: the transform
+       one, unfolded, took all of it, and with it the handles it is for. */
     .stage > :global(.wrap) {
-      flex: 1;
+      flex: 1 0 50%;
       min-height: 0;
       height: auto;
     }
@@ -1956,6 +1985,11 @@
       width: auto;
       max-height: none;
       margin-top: 0.5rem;
+    }
+    .tool-windows {
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow-y: auto;
     }
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
@@ -2170,7 +2204,7 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .pick-title {
     margin: 0 0 0.4rem;
@@ -2184,7 +2218,7 @@
   .pick-source button {
     flex: 1;
     padding: 0 10px;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   /* Undo/redo (and whatever else the config puts beside them) stay a row —
      the studio column turns this into a grid below. */
@@ -2506,9 +2540,15 @@
          someone who already knows the rail moves. When nothing overflows the
          fade lies over paper and is invisible. */
       mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+      /* A key Tab scrolls into view stops short of the fade, ring and all. */
+      scroll-padding-inline: 1.25rem;
     }
     .studio .left {
       max-height: 26dvh;
+      /* The rail of loose keys is the one that runs past the screen. Its end
+         padding is the fade's width: scrolled to its end, the last key
+         («Опубликовать» on the site) stands clear of it. */
+      padding-right: 1.25rem;
     }
     /* Inside a rail the history is one more run of keys in the rail's row,
        with none of the rail's own scrolling around it. Named as the column
@@ -2547,7 +2587,10 @@
     .studio .right :global(.palette .grid) {
       max-height: 64px;
     }
-    .fps-inline,
+    /* The box stays: fps lives nowhere else, and without it a mult drawn on a
+       phone played at the rate it was born with. The slider is the part a
+       390px row has no room for. */
+    .fps-inline input[type='range'],
     .studio .ends {
       display: none;
     }
@@ -2588,6 +2631,11 @@
     .studio .timeline {
       flex: none;
       height: auto;
+    }
+    /* `flex: none` alone sizes the strip to every frame in it — 772px in a
+       374px row — and its own scroller never scrolls. */
+    .studio .timeline {
+      width: 100%;
     }
     .studio .timeline :global(.board) {
       height: auto;
@@ -2631,6 +2679,7 @@
       padding: var(--bleed);
       margin: calc(-1 * var(--bleed));
       mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+      scroll-padding-inline: 1.25rem;
     }
     .studio .row:not(:has(.timeline)) > :global(*) {
       flex: none;
@@ -2640,16 +2689,20 @@
      jump as the percentage changes. */
   /* Import failure: an alert over the canvas, dismissed by the user — an
      error about their file must not vanish before it is read. */
+  /* Centred by margins, not `left: 50%` + a shift: an absolute box shrinks to
+     the room right of its `left`, so the reason wrapped at half the stage and
+     ran under the zoom bar. Above the tool windows, whose rung it shared. */
   .import-error {
     position: absolute;
-    left: 50%;
+    inset-inline: 0;
     bottom: 1rem;
-    transform: translateX(-50%);
+    z-index: var(--z-float);
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    width: max-content;
     max-width: min(32rem, 92%);
-    margin: 0;
+    margin: 0 auto;
     padding: 0.5rem 0.75rem;
     /* DESIGN §5 answers a refusal with the weight of the line, not a colour:
        red belongs to «рисовать» and the Signal Rule names borders and errors
@@ -2701,6 +2754,10 @@
     z-index: var(--z-sheet);
     left: 0;
     right: 0;
+    /* A modal <dialog> brings `inset-block: 0` from the browser's sheet, and
+       with both edges pinned and the height its content's, `top` wins: the
+       sheet hung from the top of the phone, out of the thumb's reach. */
+    top: auto;
     bottom: 0;
     /* A <dialog> is `width: fit-content` by the browser's sheet, so pinning
        both edges was not enough: the sheet grew to its widest line and took
@@ -2743,6 +2800,9 @@
        title breaks rather than running under the key. */
     min-width: 0;
     overflow-wrap: anywhere;
+    /* …and where it must break a word, at a syllable with a hyphen, not
+       «Настрой / ки». */
+    hyphens: auto;
     margin: 0;
     font-size: 1rem;
     font-weight: 700;

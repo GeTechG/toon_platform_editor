@@ -20,7 +20,9 @@
       title={t('brush.size_title', { size })}
       aria-label={t('brush.size_label', { size })}
     >
-      <span class="dot" style:width="{Math.min(size + 2, 22)}px" style:height="{Math.min(size + 2, 22)}px"></span>
+      <!-- Capped at 22, 21 and 43 were the same dot; 30 still sits inside the
+           44 key and keeps all five apart. -->
+      <span class="dot" style:width="{Math.min(size + 2, 30)}px" style:height="{Math.min(size + 2, 30)}px"></span>
     </button>
   {/each}
   <span class="size" title={t('brush.size_hint')}>{editor.brushSizeLogical}px</span>
@@ -75,11 +77,6 @@
     font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .size-btn {
-      transition: background 0.15s ease, border-color 0.15s ease;
-    }
   }
   /* Phone: the readout only repeats what the picked dot already says. */
   @media (max-width: 40rem) {

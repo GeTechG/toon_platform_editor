@@ -22,7 +22,15 @@
   }: { editor: EditorState; id: string; children: Snippet } = $props();
 
   let el = $state<HTMLDivElement | undefined>();
-  let grab: { x: number; y: number; left: number; top: number } | null = null;
+  /** The size and the stage are read once, on the press: neither changes during a drag. */
+  let grab: {
+    x: number;
+    y: number;
+    left: number;
+    top: number;
+    size: { width: number; height: number };
+    bounds: { width: number; height: number };
+  } | null = null;
 
   /** The editor, which is what the window's coordinates are measured against. */
   function frame(): { width: number; height: number } {
@@ -46,6 +54,20 @@
     }
   }
 
+  // A window that grows (the strip gaining frames), or was just dropped near
+  // an edge, comes back inside too — not only when the browser window resizes.
+  $effect(() => {
+    if (!el) {
+      return;
+    }
+    const watcher = new ResizeObserver(() => reframe());
+    watcher.observe(el);
+    if (el.offsetParent) {
+      watcher.observe(el.offsetParent);
+    }
+    return () => watcher.disconnect();
+  });
+
   const pos = $derived(editor.floatPos[id] ?? { x: 24, y: 24 });
   const label = $derived(panelItem(id)?.label ?? id);
 
@@ -55,20 +77,30 @@
     if (!e.isPrimary || editor.arranging || (e.target as HTMLElement | null)?.closest('button')) {
       return;
     }
-    grab = { x: e.clientX, y: e.clientY, left: pos.x, top: pos.y };
+    if (!el) {
+      return;
+    }
+    grab = {
+      x: e.clientX,
+      y: e.clientY,
+      left: pos.x,
+      top: pos.y,
+      size: { width: el.offsetWidth, height: el.offsetHeight },
+      bounds: frame(),
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
   }
 
   function onMove(e: PointerEvent): void {
-    if (!grab || !el) {
+    if (!grab) {
       return;
     }
     const next = clampWindowPosition(
       grab.left + e.clientX - grab.x,
       grab.top + e.clientY - grab.y,
-      { width: el.offsetWidth, height: el.offsetHeight },
-      frame(),
+      grab.size,
+      grab.bounds,
     );
     editor.setFloatPos(id, next.left, next.top);
   }
@@ -95,8 +127,6 @@
     editor.setFloatPos(id, next.left, next.top);
   }
 </script>
-
-<svelte:window onresize={reframe} />
 
 <div
   bind:this={el}
@@ -145,7 +175,9 @@
     max-width: min(90%, 28rem);
     border: none;
     border-radius: var(--r-md);
-    background: var(--canvas);
+    /* Paper, as the zoom window: a white window on the white sheet had no
+       edge at all once the ring went (stage-windows-by-tone). */
+    background: var(--paper);
     overflow: hidden;
   }
   .float-bar {

@@ -98,6 +98,25 @@ describe('nudgePointer', () => {
     expect(next.y).toBe(0.5);
   });
 
+  it('puts the rgb marker on the channel the key moves', () => {
+    expect(nudgePointer('rgb', mid, 'ArrowUp', {}).channel).toBe(1);
+    expect(nudgePointer('rgb', mid, 'ArrowRight', {}).channel).toBe(2);
+    expect(nudgePointer('rgb', mid, 'ArrowUp', { target: 'bar' }).channel).toBe(0);
+    expect(nudgePointer('hsv', mid, 'ArrowUp', {}).channel).toBeUndefined();
+  });
+
+  it('takes ten units on PageUp / PageDown', () => {
+    expect(nudgePointer('hsv', mid, 'PageUp', {}).y).toBeCloseTo(0.4, 6);
+    expect(nudgePointer('hsv', mid, 'PageDown', {}).y).toBeCloseTo(0.6, 6);
+    expect(nudgePointer('hsv', mid, 'PageUp', { target: 'bar' }).bar).toBeCloseTo(0.5 + 10 / 360, 6);
+  });
+
+  it('runs to the ends of the axis on Home / End', () => {
+    expect(nudgePointer('hsv', mid, 'Home', {})).toEqual({ ...mid, x: 0 });
+    expect(nudgePointer('hsv', mid, 'End', {})).toEqual({ ...mid, x: 1 });
+    expect(nudgePointer('hsv', mid, 'End', { target: 'bar' })).toEqual({ ...mid, bar: 1 });
+  });
+
   it('clamps at the edges and ignores other keys', () => {
     const edge = { x: 1, y: 0, bar: 0 };
     expect(nudgePointer('hsv', edge, 'ArrowRight', { shift: true })).toEqual(edge);

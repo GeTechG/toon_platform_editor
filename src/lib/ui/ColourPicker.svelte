@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { hexToRgb, normalizeHexInput, parseHex, rgbToHex } from './color-model';
+  import { hexToRgb, normalizeHexInput, parseHex, rgbToHex, wheelToHsv } from './color-model';
   import {
     barPointer,
     colorToPointer,
@@ -167,7 +167,18 @@
     if ((e.target as HTMLElement).closest('button')) return;
     el.setPointerCapture(e.pointerId);
     const start = { x: e.clientX - offset.x, y: e.clientY - offset.y };
-    const onMove = (m: PointerEvent) => (offset = { x: m.clientX - start.x, y: m.clientY - start.y });
+    // Held inside the screen like the studio's other windows: dragged off it,
+    // the colour window could only be found again with Esc.
+    const onMove = (m: PointerEvent) => {
+      if (!box) return;
+      const r = box.getBoundingClientRect();
+      const base = { left: r.left - offset.x, top: r.top - offset.y };
+      const inside = clampWindowPosition(base.left + m.clientX - start.x, base.top + m.clientY - start.y, r, {
+        width: innerWidth,
+        height: innerHeight,
+      });
+      offset = { x: inside.left - base.left, y: inside.top - base.top };
+    };
     const stop = () => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', stop);
@@ -235,8 +246,38 @@
     pointer = colorToPointer(model, color);
     hexText = color;
   });
-  $effect(() => paint(surface, 'surface', model, pointer));
-  $effect(() => paint(bar, 'bar', model, barPointer(model, pointer)));
+  /* What each canvas really shows: the hsv and wheel fields hang on the bar
+     alone and the hue strip on nothing, so a drag repaints only the canvas it
+     changes — 31 000 pixels a move is a dropped frame on a cheap phone. */
+  const surfaceKey = $derived(model === 'rgb' ? pointerToColor(model, pointer) : pointer.bar);
+  const barKey = $derived(model === 'hsv' ? '' : `${pointer.x} ${pointer.y}`);
+  $effect(() => {
+    void surfaceKey;
+    paint(surface, 'surface', model, untrack(() => pointer));
+  });
+  $effect(() => {
+    void barKey;
+    paint(bar, 'bar', model, barPointer(model, untrack(() => pointer)));
+  });
+
+  /** What the field and the bar say to a screen reader, in the model's own terms. */
+  const fieldReading = $derived.by(() => {
+    if (model === 'rgb') {
+      const key = (['r', 'g', 'b'] as const)[pointer.channel ?? 0];
+      return { now: rgb[key], max: 255, text: t('picker.field_rgb', { color, channel: t(`picker.channel_${key}`), value: rgb[key] }) };
+    }
+    if (model === 'wheel') {
+      const { h, s } = wheelToHsv(pointer.x * 2 - 1, pointer.y * 2 - 1);
+      return { now: s, max: 100, text: t('picker.field_wheel', { color, h, s }) };
+    }
+    const s = Math.round(pointer.x * 100);
+    return { now: s, max: 100, text: t('picker.field_hsv', { color, s, v: Math.round((1 - pointer.y) * 100) }) };
+  });
+  const barReading = $derived(
+    model === 'hsv'
+      ? { label: t('picker.hue'), now: Math.round(pointer.bar * 360), max: 360, text: `${Math.round(pointer.bar * 360)}°` }
+      : { label: t('picker.value'), now: Math.round(pointer.bar * 100), max: 100, text: `${Math.round(pointer.bar * 100)}%` },
+  );
 </script>
 
 <!-- A click outside a modal dialog lands on the dialog element itself, because
@@ -279,10 +320,10 @@
       role="slider"
       tabindex="0"
       aria-label={t('picker.field')}
-      aria-valuetext={t('picker.field_value', { color, x: Math.round(pointer.x * 100), y: Math.round((1 - pointer.y) * 100) })}
-      aria-valuenow={Math.round(pointer.x * 100)}
+      aria-valuetext={fieldReading.text}
+      aria-valuenow={fieldReading.now}
       aria-valuemin={0}
-      aria-valuemax={100}
+      aria-valuemax={fieldReading.max}
       onpointerdown={(e) => drag(e, 'surface')}
       onpointermove={(e) => move(e, 'surface')}
       onpointerup={() => (lastTarget = 'surface')}
@@ -300,10 +341,11 @@
       height={BAR_H}
       role="slider"
       tabindex="0"
-      aria-label={t('picker.ramp')}
-      aria-valuenow={Math.round(pointer.bar * 100)}
+      aria-label={barReading.label}
+      aria-valuetext={barReading.text}
+      aria-valuenow={barReading.now}
       aria-valuemin={0}
-      aria-valuemax={100}
+      aria-valuemax={barReading.max}
       onpointerdown={(e) => drag(e, 'bar')}
       onpointermove={(e) => move(e, 'bar')}
       onpointerup={() => (lastTarget = 'bar')}
@@ -370,10 +412,15 @@
   .picker {
     position: fixed;
     margin: 0;
-    max-width: none;
-    max-height: none;
+    /* 204px holds the canvases; grown text widens the window around them
+       instead of pushing «Круг» and the close key out of it, and a window
+       taller than the screen scrolls rather than hiding the hex field. */
+    min-width: 204px;
+    width: fit-content;
+    max-width: calc(100% - 12px);
+    max-height: calc(100% - 12px);
+    overflow: auto;
     display: grid;
-    width: 204px;
     gap: 10px;
     padding: 0 0 12px;
     border: none;
@@ -458,6 +505,8 @@
   /* No clipping here: at the edges of the field the pointer hangs half out. */
   .stage {
     position: relative;
+    justify-self: center;
+    width: 176px;
     margin: 0 14px;
     line-height: 0;
   }
@@ -500,7 +549,10 @@
     box-shadow: 0 0 0 1px var(--edge);
     pointer-events: none;
   }
+  /* The inputs' own default width must not widen the window: the fields take
+     what the canvases and the keys leave them. */
   .fields {
+    contain: inline-size;
     display: grid;
     margin: 0 14px;
     grid-template-columns: repeat(3, 1fr);

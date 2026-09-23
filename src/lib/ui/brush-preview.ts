@@ -16,7 +16,7 @@ import type { PathSink } from '../render/smoothing';
 import { toonopRules } from '../tools/brush';
 import { PointerStrokeController } from '../tools/profiles';
 import { brushWidthDoc } from '../tools/stroke-builder';
-import type { BrushRecord } from './presets';
+import { drawsNoLine, type BrushRecord } from './presets';
 
 /** The sample box, in document units. */
 export const PREVIEW_BOX = { width: 768, height: 192 };
@@ -68,6 +68,7 @@ export function brushPreview(
   widthLogical: number,
   tuning: BrushRecord,
 ): BrushPreview {
+  if (drawsNoLine(tool)) return { d: '', width: 0, fill: false };
   const stroke = plugins.tool(tool)?.stroke ?? PENCIL;
   const hand: PluginBrush = {
     width: brushWidthDoc(widthLogical),

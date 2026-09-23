@@ -9,6 +9,7 @@
    * A native <dialog> for the same reasons as the settings window: focus
    * trap, Esc, inert page.
    */
+  import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { EXPORT_DEFAULT_WIDTH, EXPORT_WIDTHS } from '../format/constants';
   import { frameCount } from '../model/operations';
@@ -17,6 +18,7 @@
   import { WATERMARK_TEXT, exportSize, type ExportStage } from '../export/rasterize';
   import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
+  import { saveFile as save } from './save-file';
   import { plugins } from '../plugins';
   import { makeScene } from '../plugins/scene';
   import { t } from '../i18n';
@@ -28,6 +30,8 @@
 
   let open = $state(false);
   let dialogEl = $state<HTMLDialogElement | undefined>();
+  let downloadEl = $state<HTMLButtonElement | undefined>();
+  let cancelEl = $state<HTMLButtonElement | undefined>();
   let format = $state<Format>('gif');
   let width = $state(EXPORT_DEFAULT_WIDTH);
   let watermark = $state(true);
@@ -67,14 +71,30 @@
 
   // Which video path exists is a question for the encoders, and the answer
   // changes when a track arrives: mp4 needs an AAC encoder to carry sound.
+  // Asked only while the sheet is up: the button is always mounted, and every
+  // stroke is a new document — each one sent the encoders a round of
+  // `isConfigSupported` for a sheet nobody had opened. An answer for a width
+  // since changed is not written over the newer one's, and an encoder that
+  // throws is an encoder that is not there.
   $effect(() => {
+    if (!open) {
+      return;
+    }
     const hasAudio = editor.audio.hasTrack;
     const target = width;
+    let current = true;
     planned = false;
-    planVideo(editor.doc, hasAudio, target).then((result) => {
-      plan = result;
-      planned = true;
-    });
+    planVideo(editor.doc, hasAudio, target)
+      .catch(() => null)
+      .then((result) => {
+        if (current) {
+          plan = result;
+          planned = true;
+        }
+      });
+    return () => {
+      current = false;
+    };
   });
 
   // The file is what the preview sounds like. Tied, the track is pinned to the
@@ -103,16 +123,6 @@
     }
   });
 
-  /** Hands the browser the finished file. */
-  function save(blob: Blob, name: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
   function track(done: number, total: number, at: ExportStage): void {
     progress = Math.round((done / total) * 100);
     stage = STAGES[at];
@@ -129,6 +139,10 @@
     progress = 0;
     error = '';
     cancelling = new AbortController();
+    // «Скачать» goes disabled under the finger, and a disabled key drops the
+    // focus to the page: it goes to «Отменить», the one thing left to do, and
+    // back to «Скачать» when the file is out or the build is called off.
+    void tick().then(() => cancelEl?.focus());
     const options = { width, watermark, signal: cancelling.signal, onProgress: track };
     try {
       if (format === 'project') {
@@ -166,6 +180,10 @@
       busy = '';
       stage = '';
       cancelling = null;
+      await tick();
+      if (open && !dialogEl?.contains(document.activeElement)) {
+        downloadEl?.focus();
+      }
     }
   }
 
@@ -178,6 +196,8 @@
     // should be on disk before a long encode has a chance to go wrong.
     onOpen?.();
     format = singleFrame ? 'png' : 'gif';
+    // Last time's «Экспорт отменён» is not news on a new visit.
+    error = '';
     open = true;
   }
 
@@ -300,7 +320,7 @@
         {/if}
       {/if}
 
-      <button class="key wide primary download" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
+      <button bind:this={downloadEl} class="key wide primary download" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
         {t('export.download')}
       </button>
 
@@ -311,7 +331,7 @@
       {#if busy}
         <p class="note" aria-hidden="true">{stage} {progress}%</p>
         <progress max="100" value={progress} aria-label={stage}></progress>
-        <button class="key wide" onclick={cancel}>{t('export.cancel')}</button>
+        <button bind:this={cancelEl} class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>

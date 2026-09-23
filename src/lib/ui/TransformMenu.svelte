@@ -16,13 +16,24 @@
 
   const session = $derived(editor.transform?.session);
 
-  /** A field edit is an absolute value, not a step — it replaces that one axis. */
-  function set(field: 'dx' | 'dy' | 'rotate' | 'scaleX' | 'scaleY', raw: string): void {
-    const value = Number(raw);
+  /**
+   * A field edit is an absolute value, not a step — it replaces that one axis.
+   * An emptied field, or a lone "-" on the way to a negative one, is NaN and
+   * writes nothing: read as 0 it threw the selection to the edge.
+   */
+  function set(field: 'dx' | 'dy' | 'rotate' | 'scaleX' | 'scaleY', value: number): void {
     if (session && Number.isFinite(value)) {
       editor.setTransform({ ...session, [field]: value });
     }
   }
+
+  /**
+   * On a phone the window sits under the canvas, in the same column, and the
+   * whole of it took the stage from the selection it transforms. There the
+   * fingers do the work and the numbers wait folded; the width at opening
+   * decides, the reader's toggle after that.
+   */
+  const numbersOpen = !matchMedia('(max-width: 40rem)').matches;
 
   /** Scales are typed as percentages, the way the reference window shows them. */
   function percent(value: number): number {
@@ -49,18 +60,21 @@
     <!-- Label and field are siblings in the grid rather than a wrapping
          <label display:contents>, which older browsers drop out of the
          accessibility tree along with the association it carries. -->
+    <details class="numbers" open={numbersOpen}>
+    <summary>{t('transform.numbers')}<Icon name="chevron-down" size={16} /></summary>
     <div class="fields">
       <label for="tf-dx">X</label>
-      <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.value)} />
+      <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.valueAsNumber)} />
       <label for="tf-dy">Y</label>
-      <input id="tf-dy" type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.value)} />
+      <input id="tf-dy" type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.valueAsNumber)} />
       <label for="tf-rotate">{t('transform.rotate')}</label>
-      <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.value)} />
+      <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.valueAsNumber)} />
       <label for="tf-scale-x">{t('transform.scale_x')}</label>
-      <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', String(Number(e.currentTarget.value) / 100))} />
+      <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', e.currentTarget.valueAsNumber / 100)} />
       <label for="tf-scale-y">{t('transform.scale_y')}</label>
-      <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', String(Number(e.currentTarget.value) / 100))} />
+      <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', e.currentTarget.valueAsNumber / 100)} />
     </div>
+    </details>
 
     <div class="row">
       <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label={t('transform.flip_h')} title={t('transform.flip_h')}><Icon name="flip-h" /></button>
@@ -101,7 +115,26 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    font-size: 13px;
+    font-size: 0.8125rem;
+  }
+  /* A row of the window's own height, like its keys: it is pressed too. */
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: var(--key-h, 2.75rem);
+    list-style: none;
+    cursor: pointer;
+  }
+  /* Flex already took the marker away; the chevron says it folds instead. */
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  .numbers[open] summary :global(svg) {
+    transform: rotate(180deg);
+  }
+  .numbers[open] summary {
+    margin-bottom: 0.3rem;
   }
   /* Label beside its field, not above it: the window is 13rem, and stacked
      labels wrapped "Масштаб X" onto two lines. */
@@ -138,9 +171,11 @@
        transform window is outside it. A standard is a floor under a floor. */
     min-height: var(--key-h, 2.75rem);
   }
+  /* The whole label is the target, a key tall: the box alone is 13 px. */
   .check {
     display: flex;
     align-items: center;
+    min-height: var(--key-h, 2.75rem);
     gap: 0.4rem;
     line-height: 1.25;
   }

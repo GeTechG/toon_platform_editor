@@ -2,9 +2,9 @@
   // Thumbnail of one layer's cell — the layer alone, not the composite, so a
   // layers-panel row shows what that layer contributes. Same stroke path as
   // the canvas (renderStrokesLayer), on a transparent little buffer.
-  import type { Frame, ToonDocument } from '../format/types';
+  import type { ToonDocument } from '../format/types';
   import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
-  import { fitThumb } from './thumb-size';
+  import { cellStamp, fitThumb } from './thumb-size';
   import { whenOnScreen } from './on-screen';
   import { renderDensity } from './viewport';
 
@@ -49,14 +49,13 @@
   });
 
   /**
-   * The cell this thumbnail currently shows, and how many strokes were on it.
-   * A write to the document replaces the whole holder, so every thumbnail on
-   * screen hears every stroke; a block edit writes a fresh cell and a new
-   * stroke is pushed onto the one that is there, so the pair of them is what
-   * says whether this thumbnail has anything new to draw.
+   * What this thumbnail was last drawn from. A write to the document replaces
+   * the whole holder, so every thumbnail on screen hears every stroke; the
+   * stamp of its own cell (`cellStamp`) is what says whether it has anything
+   * new to draw — H and a transform keep the cell and its count but move the
+   * points.
    */
-  let painted: Frame | undefined;
-  let paintedStrokes = -1;
+  let painted: number | undefined;
   let paintedBox = '';
 
   $effect(() => {
@@ -65,11 +64,11 @@
       return;
     }
     const shape = `${box.w}x${box.h}`;
-    if (cell === painted && cell.strokes.length === paintedStrokes && shape === paintedBox) {
+    const stamp = cellStamp(cell);
+    if (stamp === painted && shape === paintedBox) {
       return;
     }
-    painted = cell;
-    paintedStrokes = cell.strokes.length;
+    painted = stamp;
     paintedBox = shape;
     const dpr = renderDensity(window.devicePixelRatio || 1);
     canvasEl.width = Math.max(1, Math.round(box.w * dpr));

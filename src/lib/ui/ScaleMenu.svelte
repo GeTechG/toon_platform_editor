@@ -61,7 +61,7 @@
        edge at all. */
     background: color-mix(in srgb, var(--paper) 80%, transparent);
     transition: background 120ms ease;
-    font-size: 12px;
+    font-size: 0.75rem;
     /* The row is its own handle; only its keys are not. */
     cursor: move;
     touch-action: none;

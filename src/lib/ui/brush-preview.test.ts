@@ -66,6 +66,12 @@ test('a brush that stamps marks has no line to show', () => {
   expect(brushPreview('test.stamp', BRUSH, 8, SETTINGS).d).toBe('');
 });
 
+test('the mega-eraser has no sample: it erases along the gesture and lays no line', () => {
+  expect(brushPreview('mega-eraser', BRUSH, 8, SETTINGS).d).toBe('');
+  // A help tool shows the pencil whose record it edits.
+  expect(brushPreview('pipette', BRUSH, 8, SETTINGS).d).not.toBe('');
+});
+
 test('the sample fits the box it is drawn in', () => {
   const coords = brushPreview('pencil', BRUSH, 4, SETTINGS).d.match(/-?\d+(\.\d+)?/g)!.map(Number);
   const xs = coords.filter((_, i) => i % 2 === 0);

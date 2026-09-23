@@ -7,6 +7,7 @@
    * native <dialog>, like the settings sheet: showModal() brings the focus
    * trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
+  import { tick } from 'svelte';
   import { BUNDLED_PLUGIN, plugins } from '../plugins';
   import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
@@ -19,6 +20,7 @@
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let bundleFile = $state<HTMLInputElement | undefined>();
+  let catalogTab = $state<HTMLButtonElement | undefined>();
   let tab = $state<'mine' | 'catalog'>('mine');
   let installed = $state<InstalledPlugin[]>([]);
   let catalog = $state<CatalogEntry[]>([]);
@@ -58,7 +60,10 @@
 
   // The catalog is read when the window opens and again whenever the address
   // changes — an author pointing the editor at their own build sees it at once.
+  /** «Повторить» after a failed read: a phone that lost the network gets it back. */
+  let attempt = $state(0);
   $effect(() => {
+    void attempt;
     const address = editor.settings.pluginCatalog;
     // An answer for an address that has since changed is not written over the
     // newer one's.
@@ -74,6 +79,7 @@
       catalog = read.plugins.filter((entry) => !plugins.isBundled(entry.id));
       catalogError = read.error ?? '';
       catalogLoading = false;
+      await keepFocus();
     })();
     return () => {
       current = false;
@@ -103,6 +109,21 @@
       busy = '';
     }
     await refresh();
+    // The key went disabled while it downloaded, and an installed record has
+    // no key at all: either way the focus fell to the page.
+    await keepFocus();
+  }
+
+  /**
+   * A key that goes away under the hand — «Установить», «Повторить» — drops
+   * the focus to the page, outside the modal. It comes back to the tab: the
+   * report is in the foot's live region, the list starts under it.
+   */
+  async function keepFocus(): Promise<void> {
+    await tick();
+    if (!dialogEl?.contains(document.activeElement)) {
+      catalogTab?.focus();
+    }
   }
 
   async function remove(plugin: InstalledPlugin): Promise<void> {
@@ -183,6 +204,7 @@
       onclick={() => (tab = 'mine')}
     >{t('plugins.mine')}</button>
     <button
+      bind:this={catalogTab}
       class="key"
       class:active={tab === 'catalog'}
       aria-pressed={tab === 'catalog'}
@@ -230,6 +252,11 @@
       <p class="empty">{t('plugins.catalog_loading')}</p>
     {:else if catalogError}
       <p class="empty">{catalogError}</p>
+      {#if editor.settings.pluginCatalog.trim()}
+        <div class="actions">
+          <button class="key" onclick={() => attempt++}>{t('plugins.retry')}</button>
+        </div>
+      {/if}
     {:else if catalog.length === 0}
       <p class="empty">{t('plugins.catalog_empty')}</p>
     {:else}
@@ -340,6 +367,11 @@
   .empty {
     margin: 0.6rem 0;
     color: var(--ink-2);
+  }
+  /* The register's reasons are lower-case, made to follow «имя: »; alone on
+     a line they start a sentence. */
+  .empty::first-letter {
+    text-transform: uppercase;
   }
   .report {
     flex: 1;

@@ -25,7 +25,7 @@ describe('Alt+S saves the project as a file', () => {
   });
 
   it('is the export everywhere but in the Toonio preset', () => {
-    expect(editorUi).toMatch(/altKey && \(e\.key === 's'[^]*?hasProjectFile[^]*?exportButton\?\.start\(\)/);
+    expect(editorUi).toMatch(/altKey && \(key === 's'[^]*?hasProjectFile[^]*?exportButton\?\.start\(\)/);
   });
 
   it('the shortcut table says what the key does in this preset', () => {
@@ -94,7 +94,7 @@ describe('the autosave record is one per visit', () => {
     expect(editorUi).toContain('let draftId = newDraftId();');
     expect(editorUi).not.toContain('draftId ??= newDraftId()');
     // Still nothing written until something is drawn.
-    expect(editorUi).toMatch(/function saveNow\(\)[^]*?if \(!editor\.touched/);
+    expect(editorUi).toMatch(/function saveNow\([^)]*\)[^]*?if \(!editor\.touched/);
   });
 
   it('a write deferred by playback happens the moment playback stops', () => {
@@ -139,6 +139,20 @@ describe('a failed write is not silent', () => {
     expect(editorUi).toContain('saveFailed = true');
     expect(editorUi).toMatch(/saveFailed[^]*?clearInterval|clearInterval[^]*?saveFailed/);
   });
+
+  // The clock stops after a failure, and the hand was stopped with it: the
+  // key, Ctrl+S and the sheet all returned early, and the alert sent the user
+  // to reload — the one step that loses a drawing nothing has kept.
+  it('a save asked for by hand tries again, and one that lands clears the failure', () => {
+    expect(editorUi).toMatch(/function saveNow\(byHand = false\)[^]*?saveFailed && !byHand/);
+    expect(editorUi).toMatch(/if \(ok\) \{[^}]*saveFailed = false/);
+    // The failed record is still unsaved, so the key stays pressable.
+    expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);
+    expect(editorUi).toContain('onclick={() => saveNow(true)}');
+    expect(editorUi).toContain('onSaveNow={() => saveNow(true)}');
+    expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveNow\(true\)/);
+    expect(t('editor.save_failed_alert')).not.toContain('перезагруз');
+  });
 });
 
 describe('the indicator', () => {
@@ -160,7 +174,7 @@ describe('persistent storage', () => {
   });
 
   it('the Toonio rail has a save key, dimmed while there is nothing to save', () => {
-    expect(editorUi).toContain('onclick={saveNow}');
+    expect(editorUi).toContain('onclick={() => saveNow(true)}');
     expect(editorUi).toContain('disabled={!dirty}');
     expect(editorUi).toContain('dirty');
   });
@@ -188,6 +202,14 @@ describe('the drafts list', () => {
     expect(editorUi).toContain('deleteAllDrafts()');
     expect(editorUi).toContain("t('editor.drafts_wipe_confirm')");
     expect(t('editor.drafts_wipe_confirm')).toStartWith('Удалить все черновики?');
+  });
+
+  // The pressed key went with its row and the focus fell to the page under a
+  // modal sheet: the next Tab started again from the top of the sheet.
+  it('a delete leaves the focus on the row that took its place, or on «Закрыть»', () => {
+    expect(editorUi).toMatch(/async function removeDraft[^]*?refocusDrafts\(at\)/);
+    expect(editorUi).toMatch(/async function removeAllDrafts[^]*?refocusDrafts\(0\)/);
+    expect(editorUi).toMatch(/function refocusDrafts[^]*?await tick\(\)[^]*?\.draft-open[^]*?\.sheet-foot \.primary/);
   });
 });
 

@@ -399,9 +399,11 @@ describe('the strip only pays for the cells it shows', () => {
   it('a cell thumbnail redraws for its own cell, not for the document', async () => {
     // A write replaces the whole document holder, so every thumbnail on
     // screen hears every stroke; the cell it was drawn from is what says
-    // whether this one has anything new to show.
+    // whether this one has anything new to show — its stamp, since H and a
+    // transform keep the cell and move the points (ninth audit).
     const thumb = await Bun.file(new URL('./LayerThumb.svelte', import.meta.url)).text();
-    expect(thumb).toContain('cell === painted');
+    expect(thumb).toContain('const stamp = cellStamp(cell)');
+    expect(thumb).toContain('stamp === painted');
   });
 });
 
@@ -455,5 +457,46 @@ describe('eighth audit: the frame menu keys', () => {
   it('Home and End reach the first and the last item', () => {
     expect(onMenuKey).toContain("'Home'");
     expect(onMenuKey).toContain("'End'");
+  });
+});
+
+describe('ninth audit: focus stays in the strip', () => {
+  const carry = timeline.match(/The strip is one Tab stop[\s\S]*?\n  \}\);/)?.[0] ?? '';
+
+  it('deleting the focused frame hands focus to the new active cell', () => {
+    // Delete on the last frame unmounted the focused cell and focus fell to
+    // <body>: the next arrow or Space went nowhere a keyboard user could see.
+    expect(carry).toContain('isConnected');
+  });
+
+  it('a preview does not throw focus out of the strip, nor walk it frame by frame', () => {
+    // Disabling the cells for a preview dropped focus to <body>; the cells
+    // ignore presses while playing anyway, so they only say so.
+    expect(timeline).not.toMatch(/class="cell"[^>]*\sdisabled=\{editor\.playing\}/);
+    expect(timeline).toContain('aria-disabled={editor.playing}');
+    expect(carry).toContain('editor.playing');
+  });
+});
+
+describe('ninth audit: the transport says when there is nowhere to go', () => {
+  it('⏴ and ⏵ are off on a one-frame document, like ⏮ and ⏭', () => {
+    // They wrapped onto the same frame: two live keys that did nothing,
+    // next to two dimmed ones that said so.
+    const transport = editorUi.match(/id === 'transport'[\s\S]*?<\/div>/)?.[0] ?? '';
+    const steps = [...transport.matchAll(/disabled=\{([^}]*)\}\s*onclick=\{\(\) => editor\.selectFrame\(wrapIndex/g)];
+    expect(steps.length).toBe(2);
+    for (const [, rule] of steps) expect(rule).toContain('lastFrame === 0');
+  });
+
+  it('the shelf delete key is off where Delete would refuse, like the menu item', () => {
+    const key = editorUi.match(/id === 'delete-frame'[\s\S]*?<\/button>/)?.[0] ?? '';
+    expect(key).toContain('!editor.canRemoveFrame');
+  });
+});
+
+describe('ninth audit: a narrower strip keeps the active frame in view', () => {
+  it('the scroll-into-view effect hears the strip width', () => {
+    const effect = timeline.match(/Keep the active frame in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    expect(effect).toContain('void stripWidth');
   });
 });

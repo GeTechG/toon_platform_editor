@@ -55,8 +55,10 @@ describe('the hand owns the keyboard while it is picked', () => {
 
 describe('timeline navigation wraps round (Toonio parity)', () => {
   it('the layer arrows wrap instead of stopping at the ends', () => {
-    expect(onKeydown()).toContain('wrapIndex(editor.activeLayer + 1');
-    expect(onKeydown()).toContain('wrapIndex(editor.activeLayer - 1');
+    // The arrows pass a step; the bare move wraps it (Shift clamps, ninth audit).
+    expect(onKeydown()).toContain('moveOrExtend(e.shiftKey, 0, 1)');
+    expect(onKeydown()).toContain('moveOrExtend(e.shiftKey, 0, -1)');
+    expect(editorUi).toContain('editor.selectLayer(wrapIndex(active.layer + dLayer, editor.doc.layers.length))');
   });
 
   it('the ⏴/⏵ buttons wrap too, so they never go dead at an end', () => {

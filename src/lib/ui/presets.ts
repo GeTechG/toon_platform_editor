@@ -52,7 +52,16 @@ export function brushToolOf(tool: string): BrushToolId {
  * A tool without rules of its own follows the brush the preset named.
  */
 export function brushUsesSmoothing(tool: string, brush: string): boolean {
-  return brushRulesOf(tool, brush)?.smoothing === true;
+  return !drawsNoLine(tool) && brushRulesOf(tool, brush)?.smoothing === true;
+}
+
+/**
+ * A brush with a width record of its own and no stroke — the mega-eraser: it
+ * erases along the raw gesture, so no smoothing reaches it and no sample line
+ * pictures it. A help tool is not one: it edits the pencil's record.
+ */
+export function drawsNoLine(tool: string): boolean {
+  return BRUSH_TOOLS.includes(tool) && !plugins.tool(tool)?.stroke;
 }
 
 /** The rules the tool in hand draws by: its own, else the preset's brush. */

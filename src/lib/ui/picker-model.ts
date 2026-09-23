@@ -77,7 +77,11 @@ export function colorToPointer(model: PickerModel, hex: string): Pointer {
 /**
  * Arrow keys move the pointer one axis unit (Shift: five, `bundle:9925-9941`)
  * along `target`, the surface or the bar the pointer last touched; Alt flips
- * that target for this one step. Any other key leaves the pointer alone.
+ * that target for this one step. PageUp / PageDown are ten units up and down,
+ * Home / End the ends of the horizontal axis (or of the bar) — the slider
+ * keys the reference had no use for. In the rgb model the marker moves to the
+ * channel the key changes: blue sideways, green up and down, red on the bar.
+ * Any other key leaves the pointer alone.
  */
 export function nudgePointer(
   model: PickerModel,
@@ -85,15 +89,23 @@ export function nudgePointer(
   key: string,
   { shift = false, alt = false, target = 'surface' }: { shift?: boolean; alt?: boolean; target?: 'surface' | 'bar' },
 ): Pointer {
-  const dir = key === 'ArrowRight' || key === 'ArrowUp' ? 1 : key === 'ArrowLeft' || key === 'ArrowDown' ? -1 : 0;
-  if (dir === 0) return p;
   const onBar = alt ? target === 'surface' : target === 'bar';
+  const mark = (next: Pointer, channel: 0 | 1 | 2): Pointer => (model === 'rgb' ? { ...next, channel } : next);
+  if (key === 'Home' || key === 'End') {
+    const end = key === 'End' ? 1 : 0;
+    return onBar ? mark({ ...p, bar: end }, 0) : mark({ ...p, x: end }, 2);
+  }
+  const page = key === 'PageUp' || key === 'PageDown';
+  const arrow = key === 'PageUp' ? 'ArrowUp' : key === 'PageDown' ? 'ArrowDown' : key;
+  const dir = arrow === 'ArrowRight' || arrow === 'ArrowUp' ? 1 : arrow === 'ArrowLeft' || arrow === 'ArrowDown' ? -1 : 0;
+  if (dir === 0) return p;
+  const across = arrow === 'ArrowLeft' || arrow === 'ArrowRight';
   const range = RANGES[model];
-  const step = (dir * (shift ? 5 : 1)) / (onBar ? range.bar : key === 'ArrowLeft' || key === 'ArrowRight' ? range.x : range.y);
-  if (onBar) return { ...p, bar: clamp01(p.bar + step) };
+  const step = (dir * (page ? 10 : shift ? 5 : 1)) / (onBar ? range.bar : across ? range.x : range.y);
+  if (onBar) return mark({ ...p, bar: clamp01(p.bar + step) }, 0);
+  if (across) return mark({ ...p, x: clamp01(p.x + step) }, 2);
   // The surface's y grows downward, so ArrowUp has to subtract.
-  if (key === 'ArrowLeft' || key === 'ArrowRight') return { ...p, x: clamp01(p.x + step) };
-  return { ...p, y: clamp01(p.y - step) };
+  return mark({ ...p, y: clamp01(p.y - step) }, 1);
 }
 
 /**

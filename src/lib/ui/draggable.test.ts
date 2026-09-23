@@ -95,3 +95,33 @@ describe('the colour picker opens inside the screen', () => {
     expect(open).toContain('clampWindowPosition(');
   });
 });
+
+// The floating window read its own size and the stage's on every pointermove,
+// right after the previous move had written its position: a forced reflow per
+// sample. And it only came back inside on a window resize — a window that grew
+// (the strip gaining frames) or was just dropped near an edge hung off the stage.
+describe('a floating window measures once and follows its own size', () => {
+  const win = () => Bun.file(new URL('./FloatWindow.svelte', import.meta.url)).text();
+
+  it('reads no layout while it is dragged', async () => {
+    const onMove = (await win()).match(/function onMove\([^]*?\n  }/)?.[0] ?? '';
+    expect(onMove).toContain('clampWindowPosition(');
+    expect(onMove).not.toContain('offsetWidth');
+    expect(onMove).not.toContain('frame()');
+  });
+
+  it('comes back inside when it or the stage changes size', async () => {
+    expect(await win()).toContain('new ResizeObserver(');
+  });
+});
+
+// A zoom or transform window dragged near the right edge stayed `fixed` there:
+// turning the phone put it past the screen, out of reach of both hands.
+describe('a dragged tool window comes back inside when the page turns', () => {
+  it('re-clamps a window that left the flow on resize', () => {
+    const onResize = dragSource.match(/function onResize\([^]*?\n  }/)?.[0] ?? '';
+    expect(onResize).toContain('clampWindowPosition(');
+    expect(dragSource).toContain("addEventListener('resize', onResize)");
+    expect(dragSource).toContain("removeEventListener('resize', onResize)");
+  });
+});

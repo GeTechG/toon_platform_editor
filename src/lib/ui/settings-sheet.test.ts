@@ -202,7 +202,7 @@ describe('autosave on the settings interval', () => {
   });
 
   it('a write waits out playback and records when it happened', () => {
-    expect(editorUi).toMatch(/saveNow\(\)[^]*?editor\.lastSavedAt = Date\.now\(\)/);
+    expect(editorUi).toMatch(/saveNow\([^)]*\)[^]*?editor\.lastSavedAt = Date\.now\(\)/);
     // Deferred, not skipped: the transport writes it the moment it stops.
     expect(editorUi).toMatch(/if \(editor\.playing\) \{[^]*?queued = true/);
   });
@@ -215,9 +215,9 @@ describe('the remaining reference keys', () => {
   });
 
   it('Ctrl+S saves the draft now, Alt+S opens the export, Alt+Enter mutes the warnings', () => {
-    expect(editorUi).toMatch(/e\.key === 's'[^]*?saveNow\(\)/);
-    expect(editorUi).toContain("altKey && (e.key === 's'");
-    expect(editorUi).toMatch(/altKey && e\.key === 'Enter'/);
+    expect(editorUi).toMatch(/key === 's'[^]*?saveNow\(/);
+    expect(editorUi).toContain("altKey && (key === 's'");
+    expect(editorUi).toMatch(/altKey && key === 'Enter'/);
   });
 
   it('the shortcut list names them too, so the sheet does not lie', () => {

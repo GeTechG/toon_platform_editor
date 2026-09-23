@@ -56,10 +56,11 @@
    * The sample of one brush, drawn by the engine that draws its real stroke —
    * with the settings as they stand, so the box answers «what do these
    * numbers do» by showing it. A very thick brush would fill the whole
-   * sample, so it stops at a width where the shape of the line still reads.
+   * sample, so it stops at a width where the shape of the line still reads:
+   * 10 draws 80 units across a wave 112 deep; 16 drew 128 and filled it.
    */
   function preview(tool: string) {
-    return brushPreview(tool, editor.defaultBrush, Math.min(editor.brushSizeLogical, 16), {
+    return brushPreview(tool, editor.defaultBrush, Math.min(editor.brushSizeLogical, 10), {
       width: editor.brushSizeLogical,
       smooth: editor.brushSmooth,
       minDistance: editor.brushMinDistance,
@@ -68,7 +69,15 @@
 
   const current = $derived(types.find(({ id }) => id === editor.brushType) ?? types[0]);
 
-
+  /** Arrows, Home and End walk the list the way a list of choices is walked. */
+  function walk(e: KeyboardEvent): void {
+    const keys = [...(list?.querySelectorAll<HTMLButtonElement>('.type') ?? [])];
+    const from = keys.indexOf(document.activeElement as HTMLButtonElement);
+    const next = ({ ArrowDown: from + 1, ArrowUp: from - 1, Home: 0, End: keys.length - 1 } as Record<string, number>)[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    keys[(next + keys.length) % keys.length]?.focus();
+  }
 
   /** Which heading's help is open: one at a time, until pressed again, Esc or blur. */
   let openNote = $state<string | null>(null);
@@ -143,7 +152,7 @@
   <!-- Only where there is something to switch to: the feather and the pixel
        have no other form, so the list would offer a choice of one. -->
   {#if hasBrushTypes(editor.tool)}
-    <h2>{t('brush.type')}</h2>
+    <h2 class="type-title">{t('brush.type')}</h2>
     <!-- A list that drops down, not a row of keys: three names never fit the
          box's width, and each one is worth a sample of what it draws. -->
     <button
@@ -170,6 +179,13 @@
           class="type"
           class:active={editor.brushType === option.id}
           aria-pressed={editor.brushType === option.id}
+          onkeydown={walk}
+          onfocusout={(e) => {
+            // Tab out of the list closes it: an open list left behind covers
+            // the sliders the focus has moved on to.
+            const to = e.relatedTarget as Node | null;
+            if (to && !list?.contains(to)) list?.hidePopover();
+          }}
           onclick={() => {
             editor.brushType = option.id;
             list?.hidePopover();
@@ -238,6 +254,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
     min-height: var(--key-h, 2.75rem);
     padding: 0 8px;
     border: none;
@@ -376,10 +393,19 @@
   }
   /* The sample keeps the box's own proportions: a line squeezed into another
      aspect would be drawn at a thickness the brush does not have. */
+  /* It gives way first when the box is narrow (320px phone): the name and
+     the caret were pushed out past the edge. */
   .trigger .sample {
     width: 52px;
+    min-width: 0;
     aspect-ratio: 4 / 1;
-    flex: none;
+    flex: 0 100 auto;
+  }
+  .trigger .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .type .sample {
     width: 100%;
@@ -411,5 +437,18 @@
   .brush-box input:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
+  }
+  /* A phone gives the box some 170px: with the heading and the big sample
+     above it, the thickness — the most-turned setting — was under the fold.
+     The trigger already shows the sample and its label names the type. */
+  @media (max-width: 40rem) {
+    .brush-box {
+      gap: 6px;
+      padding: 6px 10px;
+    }
+    .type-title,
+    .live {
+      display: none;
+    }
   }
 </style>
