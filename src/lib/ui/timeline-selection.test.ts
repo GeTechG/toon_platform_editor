@@ -52,8 +52,8 @@ describe('copy, paste and merge of a selection', () => {
   it('both are one undo step: the cells they overwrote go on the edit stack', () => {
     expect(member(state, 'applyCopiedCells')).toContain('this.pushEdit(');
     // The snapshot stack holds a list of cells per entry, so a block edit and
-    // a mega-eraser cut both come back in one undo.
-    expect(state).toContain('edits = $state.raw<CellSnapshot[][]>([])');
+    // a mega-eraser cut both come back in one undo; a delete sits there too.
+    expect(state).toContain('edits = $state.raw<(CellSnapshot[] | StructureEdit)[]>([])');
     expect(member(state, 'undo')).toContain('this.restorableEdit');
     expect(member(state, 'applyMegaEraser')).toContain('this.pushEdit(');
   });

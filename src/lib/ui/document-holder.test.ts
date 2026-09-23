@@ -28,6 +28,9 @@ const READ_ONLY = new Set([
   'pasteNeedsConfirm',
   'onionLayers',
   'onionHistoryLayers',
+  'takeStructure',
+  'structureIntact',
+  'seal',
 ]);
 
 /** The body of the one method that writes to the document. */

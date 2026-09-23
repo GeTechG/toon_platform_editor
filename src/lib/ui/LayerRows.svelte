@@ -145,7 +145,7 @@
     if (!canRemove) {
       return;
     }
-    // Deleting a layer is not undoable; the state asks by name through the
+    // Undo brings a deleted layer back; the state still asks by name through the
     // editor's one `ask`, so Alt+Enter mutes this the way it mutes the rest.
     editor.selectLayer(layerIndex);
     const count = editor.doc.layers.length;

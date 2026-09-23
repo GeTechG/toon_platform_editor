@@ -84,6 +84,7 @@ import {
 } from './color-palette';
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
+import { restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
@@ -204,6 +205,14 @@ interface CellSnapshot {
   strokes: Stroke[];
   /** Stroke count the edit left behind. */
   after: number;
+}
+
+/** A frame or layer delete, as undo puts it back: the shape and what the studio pointed at. */
+interface StructureEdit {
+  snap: StructureSnapshot;
+  layerColors: number[];
+  activeFrame: number;
+  activeLayer: number;
 }
 
 export class EditorState {
@@ -348,7 +357,7 @@ export class EditorState {
    * first and the snapshot only comes back when the cells are in the state
    * the edit produced.
    */
-  edits = $state.raw<CellSnapshot[][]>([]);
+  edits = $state.raw<(CellSnapshot[] | StructureEdit)[]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
   undone = $state.raw<{ cell: Frame; stroke: Stroke }[]>([]);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
@@ -1023,10 +1032,11 @@ export class EditorState {
       return;
     }
     const removed = this.activeLayer;
+    const before = this.takeStructure();
     this.#write((doc) => removeLayer(doc, removed));
     this.layerColors.splice(removed, 1);
     this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
-    this.touched = true;
+    this.pushStructure(before);
   }
 
   /**
@@ -1353,11 +1363,12 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
+    const before = this.takeStructure();
     this.#write((doc) => removeFrame(doc, from, count));
     this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
-    this.touched = true;
+    this.pushStructure(before);
   }
 
   setFps(value: number): void {
@@ -1502,6 +1513,34 @@ export class EditorState {
     this.touched = true;
   }
 
+  /** The document's shape before a delete, with what the studio pointed at. */
+  private takeStructure(): StructureEdit {
+    return {
+      snap: takeStructure(this.doc),
+      layerColors: this.layerColors.slice(),
+      activeFrame: this.activeFrame,
+      activeLayer: this.activeLayer,
+    };
+  }
+
+  /** Files a frame or layer delete as one undo step, sealed on the shape it left. */
+  private pushStructure(edit: StructureEdit): void {
+    edit.snap.seal(this.doc);
+    this.edits = [...this.edits, edit].slice(-EDIT_HISTORY_LIMIT);
+    this.undone = [];
+    this.touched = true;
+  }
+
+  /**
+   * The delete undo would put back: the newest step, while the document is
+   * still what it left. A stroke drawn since is undone first, as over a block
+   * edit; a frame added or a layer moved since closes the way back.
+   */
+  get restorableStructure(): StructureEdit | undefined {
+    const top = this.edits[this.edits.length - 1];
+    return top && !Array.isArray(top) && structureIntact(this.doc, top.snap) ? top : undefined;
+  }
+
   /** The cell the next stroke goes into — undo and redo both work on it. */
   get activeCell(): Frame | undefined {
     return this.doc.layers[this.activeLayer]?.frames[this.activeFrame];
@@ -1513,7 +1552,7 @@ export class EditorState {
    */
   get restorableEdit(): CellSnapshot[] | undefined {
     const top = this.edits[this.edits.length - 1];
-    if (!top) {
+    if (!top || !Array.isArray(top)) {
       return undefined;
     }
     const intact = top.every((s) => {
@@ -1530,7 +1569,9 @@ export class EditorState {
       return this.canUndoTransform;
     }
     return !this.playing
-      && ((this.activeCell?.strokes.length ?? 0) > 0 || this.restorableEdit !== undefined);
+      && ((this.activeCell?.strokes.length ?? 0) > 0
+        || this.restorableStructure !== undefined
+        || this.restorableEdit !== undefined);
   }
 
   /**
@@ -1556,8 +1597,20 @@ export class EditorState {
     if (!this.canUndo) {
       return;
     }
-    // ponytail: a block edit is undoable but not redoable — restoring it
-    // retires the redo stack. Give it a redo entry if anyone asks for one.
+    // ponytail: a block edit or a delete is undoable but not redoable —
+    // restoring it retires the redo stack. Give it a redo entry if anyone asks.
+    const structure = this.restorableStructure;
+    if (structure) {
+      this.edits = this.edits.slice(0, -1);
+      this.#write((doc) => restoreStructure(doc, structure.snap));
+      this.layerColors = structure.layerColors;
+      this.activeFrame = structure.activeFrame;
+      this.activeLayer = structure.activeLayer;
+      this.collapseSelection();
+      this.undone = [];
+      this.touched = true;
+      return;
+    }
     const edit = this.restorableEdit;
     if (edit) {
       this.edits = this.edits.slice(0, -1);
