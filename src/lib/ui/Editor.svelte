@@ -1056,32 +1056,44 @@
   let manualOpen = $state(false);
 
   // Mirrors the key handler above one-for-one. If a case is added there and not
-  // here, the sheet lies — keep them next to each other for that reason.
-  const SHORTCUTS: [string, string][] = $derived([
-    ['B', t('key.pencil')],
-    ['E', t('key.eraser')],
-    ['P', t('key.pipette')],
-    ['+ / −', t('key.brush_size')],
-    ['M', t('key.palette')],
-    ['Z', t('key.undo')],
-    ['Y', t('key.redo')],
-    ['C', t('key.copy')],
-    ['V', t('key.paste')],
-    ['F', t('key.fullscreen')],
-    ['A', t('key.add_frame')],
-    ['Del', t('key.delete_frame')],
-    ['J / L', t('key.ends')],
-    ['← / →', t('key.steps')],
-    ['↑ / ↓', t('key.layers')],
-    ['Shift + ←→↑↓', t('key.extend')],
-    ['K', t('key.onion')],
-    ['X', t('key.swap')],
-    ['Space', t('key.preview')],
-    ['Ctrl + S', t('key.save')],
-    ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
-    ['Alt + Enter', t('key.no_warnings')],
-    ['Alt + L', t('key.error_log')],
-  ]);
+  // here, the sheet lies — keep them next to each other for that reason. A key
+  // whose meaning the preset decides says this studio's meaning, and a tool key
+  // shows only where the tool is on the panel.
+  const has = (tool: string): boolean => editor.availableTools.includes(tool);
+  const SHORTCUTS: [string, string][] = $derived(
+    (
+      [
+        ['B', t('key.pencil')],
+        ['E', t('key.eraser')],
+        hasMegaEraser && ['Alt + E', t('tool.mega_eraser.label')],
+        ['P', t('key.pipette')],
+        has('drag') && ['D / O', t('tool.hand.label')],
+        has('lasso') && ['Q / S', t('tool.transform.label')],
+        has('distort') && ['~', t('tool.jitter.label')],
+        ['H / Shift + H', t('key.mirror')],
+        ['+ / −', t('key.brush_size')],
+        ['M', quickPalette ? t('key.palette') : t('key.merge')],
+        ['Z', t('key.undo')],
+        ['Y', t('key.redo')],
+        ['C', t('key.copy')],
+        ['V', t('key.paste')],
+        ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
+        ['A', t('key.add_frame')],
+        ['Del', t('key.delete_frame')],
+        ['J / L', t('key.ends')],
+        ['← / →', t('key.steps')],
+        ['↑ / ↓', t('key.layers')],
+        ['Shift + ←→↑↓', t('key.extend')],
+        ['K', t('key.onion')],
+        ['X', t('key.swap')],
+        ['Space', t('key.preview')],
+        ['Ctrl + S', t('key.save')],
+        ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
+        ['Alt + Enter', t('key.no_warnings')],
+        ['Alt + L', t('key.error_log')],
+      ] as ([string, string] | false)[]
+    ).filter((row): row is [string, string] => row !== false),
+  );
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
   // (fadeSprite). Skipped under reduced motion.
