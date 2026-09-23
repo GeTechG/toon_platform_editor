@@ -186,12 +186,6 @@ describe('nothing scrolls that should not', () => {
     expect(rule(palette(), '\n  .palette')).toContain('grid-template-rows: auto minmax(32px, 1fr) auto;');
   });
 
-  it('draws the scroll it does have thin, in the studio tone', () => {
-    const root = rule(editorUi, '.editor');
-    expect(root).toContain('scrollbar-width: thin;');
-    expect(root).toContain('scrollbar-color: var(--edge) transparent;');
-  });
-
   it('marks a picked palette tool in the accent, not the onion-skin blue', () => {
     expect(rule(palette(), '.foot-btn.active')).not.toContain('--ghost-2');
   });

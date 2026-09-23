@@ -393,7 +393,6 @@
     flex: 1;
     min-width: 0;
     overflow: auto;
-    scrollbar-width: thin;
   }
   .head {
     display: flex;

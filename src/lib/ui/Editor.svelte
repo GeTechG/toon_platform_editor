@@ -20,6 +20,7 @@
   import PluginsSheet from './PluginsSheet.svelte';
   import Icon from './Icon.svelte';
   import './tokens.css';
+  import './controls.css';
   import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
   import { loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
@@ -1859,10 +1860,6 @@
     width: 100%;
     color: var(--text);
     font-family: var(--font-body);
-    /* What does scroll (the palette grid, a long brush box) scrolls under a
-       thin bar in the studio's tone, not the grey slab of a desktop Chrome. */
-    scrollbar-width: thin;
-    scrollbar-color: var(--edge) transparent;
     /* Reference .draw: nothing here is prose, so a drag across the chrome —
        the panel resizer above all — never leaves a blue smear behind. */
     user-select: none;
@@ -2431,7 +2428,6 @@
   .fps-inline input[type='range'] {
     width: 6rem;
     margin: 0;
-    accent-color: var(--accent);
       /* 16px is the native height of a range and too thin to catch; the track
        stays where it is drawn, the band around it is a finger deep — and a
        finger is the floor DESIGN §5 sets for everything outside the montage
@@ -2794,13 +2790,6 @@
     align-items: center;
     gap: 0.55rem;
     font-size: 0.95rem;
-  }
-  /* Bigger, brand-colored checkboxes — comfortable touch targets. */
-  .editor :global(.toggle input) {
-    width: 1.3rem;
-    height: 1.3rem;
-    accent-color: var(--accent);
-    cursor: pointer;
   }
   /* One row per draft: preview, when it was saved, how big it is, delete. */
   .drafts {

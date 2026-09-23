@@ -463,11 +463,5 @@
     min-height: var(--key-h);
     margin-right: auto;
     max-width: 14rem;
-    padding: 0 0.5rem;
-    border: 1px solid var(--edge);
-    border-radius: var(--r-sm);
-    background: var(--canvas);
-    color: inherit;
-    font: inherit;
   }
 </style>

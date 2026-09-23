@@ -387,7 +387,6 @@
        caught in is a finger deep, and a finger is 44 (DESIGN §5), not 24. */
     height: var(--key-h, 2.75rem);
     margin: 0;
-    accent-color: var(--accent);
   }
   .brush-box input[type='number'] {
     width: 100%;

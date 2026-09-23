@@ -113,7 +113,6 @@
     gap: 3px;
     max-width: 16rem;
     overflow-x: auto;
-    scrollbar-width: thin;
     padding-bottom: 1px;
   }
   .cell {

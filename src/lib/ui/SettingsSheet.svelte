@@ -472,21 +472,11 @@
   }
   .slider input {
     width: 9rem;
-    accent-color: var(--accent);
   }
   .slider output {
     min-width: 2.2rem;
     text-align: right;
     font-variant-numeric: tabular-nums;
-  }
-  select {
-    min-height: var(--key-h);
-    padding: 0 0.5rem;
-    border: 1px solid var(--edge);
-    border-radius: var(--r-sm);
-    background: var(--canvas);
-    color: inherit;
-    font: inherit;
   }
   .actions {
     display: flex;
