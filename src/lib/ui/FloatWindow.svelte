@@ -147,8 +147,6 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     overflow: hidden;
-    /* Dragged over the sheet it needs an edge; a hairline ring, not a lift. */
-    box-shadow: 0 0 0 1px var(--hairline);
   }
   .float-bar {
     display: flex;

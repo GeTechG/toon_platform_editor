@@ -1897,12 +1897,6 @@
     max-height: calc(100% - 2 * clamp(0.5rem, 2.2vw, 1.25rem));
     overflow-y: auto;
   }
-  /* Flat, but over the stage a window can lie on the white sheet: a hairline
-     ring — structure, not a lift — keeps its edge on the sheet and the table. */
-  .tool-windows > :global(*),
-  .scale-window > :global(*) {
-    box-shadow: 0 0 0 1px var(--hairline);
-  }
   .scale-window {
     position: absolute;
     left: clamp(0.5rem, 2.2vw, 1.25rem);

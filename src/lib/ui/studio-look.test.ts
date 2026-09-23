@@ -168,15 +168,13 @@ describe('nothing that lies in the studio casts a soft shadow', () => {
   });
 });
 
-describe('what lies over the stage keeps an edge', () => {
-  // Without a shadow a white window over the white sheet had no edge at all
-  // (the zoom window, 2026-09-23). A hairline ring — structure, not a lift —
-  // holds it apart from the sheet and from the table alike.
-  it('rings the stage windows with the hairline', () => {
-    expect(rule(editorUi, '.scale-window > :global(*)')).toContain('box-shadow: 0 0 0 1px var(--hairline);');
-    expect(editorUi).toMatch(/\.tool-windows > :global\(\*\),\s*\.scale-window > :global\(\*\) \{/);
+describe('what lies over the stage has no ring', () => {
+  // The hairline ring did not fit the look (owner, 2026-09-23): windows over
+  // the stage are told apart by tone alone.
+  it('draws no ring round the stage windows', () => {
+    expect(editorUi).not.toContain('.scale-window > :global(*) {');
     const float = sheets.find((s) => s.file === 'FloatWindow.svelte')!.text;
-    expect(rule(float, '\n  .float')).toContain('box-shadow: 0 0 0 1px var(--hairline);');
+    expect(float).not.toContain('0 0 0 1px var(--hairline)');
   });
 });
 

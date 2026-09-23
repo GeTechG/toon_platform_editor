@@ -56,8 +56,10 @@
     border: none;
     border-radius: var(--r-md);
     /* Quiet over someone's drawing is the fill stepping back — never the
-       window, which would take the readout and the edge down with it. */
-    background: color-mix(in srgb, var(--canvas) 55%, transparent);
+       window, which would take the readout and the edge down with it. Paper,
+       not white: with no shadow and no ring, white on the white sheet had no
+       edge at all. */
+    background: color-mix(in srgb, var(--paper) 80%, transparent);
     transition: background 120ms ease;
     font-size: 12px;
     /* The row is its own handle; only its keys are not. */
@@ -67,7 +69,7 @@
   .scale-menu.up,
   .scale-menu:hover,
   .scale-menu:focus-within {
-    background: var(--canvas);
+    background: var(--paper);
   }
   button {
     /* The floor, not a number that fits the window. DESIGN §5 keeps 44 for

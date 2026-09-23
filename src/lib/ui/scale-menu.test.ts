@@ -36,12 +36,14 @@ describe('ScaleMenu', () => {
     // The fill steps back, never the window: `opacity` on the whole thing took
     // the readout to 4.33:1 and the edge to 1.8:1 (WCAG 1.4.3, 1.4.11).
     expect(editorUi).not.toMatch(/\.scale-window[^{]*\{[^}]*opacity:/s);
-    expect(menu).toMatch(/background: color-mix\(in srgb, var\(--canvas\) 55%/);
+    // Paper, not white: flat and without a ring, a white window over the white
+    // sheet had no edge at all (2026-09-23).
+    expect(menu).toMatch(/background: color-mix\(in srgb, var\(--paper\) 80%/);
   });
 
   it('comes back to full when hovered, focused, or the hand is up', () => {
     expect(menu).toContain('class:up={editor.scaleMenuVisible}');
-    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:hover,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--canvas\)/);
+    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:hover,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--paper\)/);
   });
 
   it('opens with the hand, the tool it belongs to', () => {
