@@ -44,3 +44,17 @@ describe('a sheet is a dialog', () => {
     expect(notModal).toEqual([]);
   });
 });
+
+// The Signal Rule (DESIGN.md): one `.key.primary` on a screen. Export showed a
+// red «Скачать» over a red «Готово», settings three red keys, the catalog a red
+// «Установить» on every row. Editor.svelte is left out: it holds the rail and
+// two sheets, one primary each.
+describe('a sheet has one red key', () => {
+  it('no sheet carries more than one primary', () => {
+    const loud = found
+      .filter(({ file }) => file !== 'Editor.svelte')
+      .map(({ file, text }) => ({ file, n: text.match(/class="key[^"]*\bprimary\b/g)?.length ?? 0 }))
+      .filter(({ n }) => n > 1);
+    expect(loud).toEqual([]);
+  });
+});

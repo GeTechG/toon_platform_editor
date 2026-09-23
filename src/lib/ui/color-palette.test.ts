@@ -114,6 +114,14 @@ describe('contrastInk', () => {
     expect(contrastInk('#000000')).toBe('#fff');
     expect(contrastInk('#0026ff')).toBe('#fff');
   });
+
+  it('picks whichever ink reads better by WCAG contrast, so a label on pure red passes AA', () => {
+    // White on #ff0000 is 4.0:1, black 5.25:1; the old luma cut picked white.
+    expect(contrastInk('#ff0000')).toBe('#000');
+    expect(contrastInk('#ff006e')).toBe('#000');
+    expect(contrastInk('#808080')).toBe('#000');
+    expect(contrastInk('#b200ff')).toBe('#fff');
+  });
 });
 
 describe('the palette limit from the settings', () => {

@@ -349,7 +349,7 @@
     <p class="sheet-hint">{t('settings.arrangement')}</p>
     <div class="actions">
       <button
-        class="key primary"
+        class="key"
         onclick={() => {
           editor.arranging = true;
           dialogEl?.close();
@@ -360,7 +360,7 @@
     <p class="sheet-hint">{t('settings.plugins')}</p>
     <div class="actions">
       <button
-        class="key primary"
+        class="key"
         onclick={() => {
           onOpenPlugins?.();
           dialogEl?.close();
@@ -408,10 +408,12 @@
   .preset-chip:hover {
     background: color-mix(in oklab, var(--sub), var(--text) 8%);
   }
+  /* The picked preset is tinted like a picked key: a solid red chip was a
+     second red key beside «Готово» (the Signal Rule). */
   .preset-chip.active {
-    background: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
     border-color: transparent;
-    color: var(--canvas);
+    color: var(--accent-ink);
   }
   .preset-chip:focus-visible {
     outline: 3px solid var(--accent);
@@ -454,6 +456,13 @@
     gap: 0.75rem;
     min-height: var(--key-h);
     padding: 0.35rem 0.3rem;
+  }
+  /* A label over a full-width field: a URL does not fit beside its name. */
+  .field {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.35rem 0.3rem;
+    font-size: 0.95rem;
   }
   .row-label {
     font-size: 0.95rem;

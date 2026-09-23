@@ -70,6 +70,10 @@ describe('the studio key is a flat pill', () => {
     expect(rule(editorUi, '.editor :global(.key.primary)')).toContain('background: var(--accent);');
   });
 
+  it('a plain key on a white sheet is a ghost capsule, not bare text', () => {
+    expect(rule(editorUi, '.editor :global(.sheet .key:not(.primary):not(.active))')).toContain('background: var(--sub);');
+  });
+
   it('does not squeeze under reduced motion', () => {
     const reduced = editorUi.slice(editorUi.lastIndexOf('@media (prefers-reduced-motion: reduce)'));
     expect(reduced).toMatch(/:global\(\.key:active:not\(:disabled\)\)[^{]*\{\s*transform: none;/s);

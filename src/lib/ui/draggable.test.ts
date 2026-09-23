@@ -83,3 +83,15 @@ describe('a floating window moved by keys stays on the stage', () => {
     expect(win).not.toContain('role="toolbar"');
   });
 });
+
+// The colour picker opened under its swatch with a guessed 212×392 box; since
+// the studio's keys grew it stands ~476px tall, and on a phone the hex field
+// and the new/old swatches opened below the screen edge.
+describe('the colour picker opens inside the screen', () => {
+  it('measures itself on open and goes through the window clamp', async () => {
+    const picker = await Bun.file(new URL('./ColourPicker.svelte', import.meta.url)).text();
+    const open = picker.match(/\$effect\(\(\) => \{\s*if \(box && !box\.open\)[^]*?\n  }\);/)?.[0] ?? '';
+    expect(open).toContain('getBoundingClientRect()');
+    expect(open).toContain('clampWindowPosition(');
+  });
+});

@@ -371,8 +371,10 @@
     background: transparent;
     cursor: pointer;
   }
+  /* The ring is drawn inside the swatch, so it takes the swatch's contrast ink:
+     a red ring vanished on the red fill and on every red cell. */
   .face:focus-visible {
-    outline: 3px solid var(--accent);
+    outline: 3px solid currentColor;
     outline-offset: -3px;
   }
   /* Which swatch is which: the marker sits bottom-right in the contrast ink. */
@@ -457,7 +459,7 @@
     cursor: pointer;
   }
   .cell:focus-visible {
-    outline: 3px solid var(--accent);
+    outline: 3px solid currentColor;
     outline-offset: -3px;
   }
   .grid.remover .cell {

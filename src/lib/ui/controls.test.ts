@@ -35,6 +35,13 @@ describe('the studio draws its own controls', () => {
     expect(rule(`:where(.editor) ${sel}`)).toContain('appearance: none');
   });
 
+  it('a text field left to itself wears the field edge, not the browser inset', () => {
+    // The plugin catalogue address in the settings was a raw 21px browser box.
+    const body = rule("input[type='url']");
+    expect(body).toContain('border: 1px solid var(--edge)');
+    expect(body).toContain('min-height: var(--key-h');
+  });
+
   it('a switch is a pill with a knob, not a box', () => {
     const body = rule("[role='switch']");
     expect(body).toContain('border-radius: var(--r-pill)');

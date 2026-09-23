@@ -97,6 +97,19 @@
   cursor: pointer;
 }
 
+/* A text field: the edge and the height of the select. Zero specificity on
+   purpose — the fields that size themselves (hex, layer name, audio credit)
+   keep their own rules; this catches one nobody dressed. */
+:where(.editor) :where(input[type='text'], input[type='url'], input[type='search'], input:not([type])) {
+  min-height: var(--key-h, 2.75rem);
+  padding: 0 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  color: inherit;
+  font: inherit;
+}
+
 /* A number field keeps its keys (↑↓) and loses the spinner. */
 :where(.editor) input[type='number'] {
   appearance: textfield;

@@ -12,6 +12,7 @@
     type Pointer,
   } from './picker-model';
   import { contrastInk } from './color-palette';
+  import { clampWindowPosition } from './draggable';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
@@ -71,8 +72,15 @@
   // page behind are all `showModal()`'s, and the five sheets of the studio
   // already live on them. The hand-rolled version here wrapped Tab once focus
   // was inside and never brought it in.
+  // It opens under its swatch, but the parent only guesses its size: measured
+  // here, it is nudged back inside the screen (a phone cut off the hex field).
   $effect(() => {
-    if (box && !box.open) box.showModal();
+    if (box && !box.open) {
+      box.showModal();
+      const r = box.getBoundingClientRect();
+      const inside = clampWindowPosition(r.left, r.top, r, { width: innerWidth, height: innerHeight });
+      offset = { x: inside.left - r.left, y: inside.top - r.top };
+    }
   });
   let hexText = $state(origin);
   /** Window offset from where it opened, moved by dragging the header. */
@@ -570,9 +578,13 @@
   }
   .models button:focus-visible,
   .close:focus-visible,
-  .old:focus-visible,
   .fields input:focus-visible {
     outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  /* Inside a swatch the ring is the swatch's own contrast ink (see PaletteBox). */
+  .old:focus-visible {
+    outline: 2px solid currentColor;
     outline-offset: -2px;
   }
 </style>

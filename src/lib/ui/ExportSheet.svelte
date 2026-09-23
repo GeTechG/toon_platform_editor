@@ -319,7 +319,7 @@
     </div>
 
     <footer class="sheet-foot">
-      <button class="key primary" onclick={close}>{t('export.done')}</button>
+      <button class="key" onclick={close}>{t('export.done')}</button>
     </footer>
   </dialog>
 {/if}

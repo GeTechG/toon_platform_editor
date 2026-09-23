@@ -231,7 +231,7 @@
             {:else if offer(entry) === 'local'}
               <span class="saved">{t('plugins.local')}</span>
             {:else}
-              <button class="key primary" disabled={busy === entry.id} onclick={() => install(entry)}>
+              <button class="key" disabled={busy === entry.id} onclick={() => install(entry)}>
                 {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
               </button>
             {/if}

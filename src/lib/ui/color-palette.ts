@@ -150,13 +150,16 @@ export function importPalettes(
   return { palettes: [...list, ...renumbered], loaded: renumbered.length };
 }
 
-/** Reference GetContrastBlack: ink color for a marker drawn over `hex`. */
+/** Ink for a marker or label drawn over `hex`: black or white, whichever has
+ *  the higher WCAG contrast (the reference's luma cut put white on pure red at
+ *  4.0:1). Either one clears 4.5:1 on any color. */
 export function contrastInk(hex: string): '#000' | '#fff' {
   const n = parseInt(hex.slice(1, 7), 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#000' : '#fff';
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const L =
+    0.2126 * lin(((n >> 16) & 255) / 255) + 0.7152 * lin(((n >> 8) & 255) / 255) + 0.0722 * lin((n & 255) / 255);
+  // Black gives (L + 0.05) / 0.05, white 1.05 / (L + 0.05); equal at L ≈ 0.179.
+  return (L + 0.05) ** 2 > 0.0525 ? '#000' : '#fff';
 }
 
 const SAVED_KEY = 'toon-editor:saved-palettes';

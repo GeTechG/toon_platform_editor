@@ -2964,6 +2964,14 @@
     background: var(--accent);
     color: var(--canvas);
   }
+  /* On a sheet the page is white too, so a white key read as a bare word
+     («Скачать палитры», «GIF»): there it takes the ghost fill (DESIGN.md). */
+  .editor :global(.sheet .key:not(.primary):not(.active)) {
+    background: var(--sub);
+  }
+  .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
+    background: color-mix(in oklab, var(--sub), var(--text) 8%);
+  }
   .editor :global(.key.primary.icon) {
     padding: 0;
   }
