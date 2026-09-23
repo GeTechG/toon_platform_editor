@@ -265,6 +265,15 @@
       </select>
     </label>
     <label class="toggle">
+      <span class="toggle-label">{t('settings.mega_eraser_warning')}</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.settings.megaEraserWarning}
+        onchange={(e) => editor.setSetting('megaEraserWarning', e.currentTarget.checked)}
+      />
+    </label>
+    <label class="toggle">
       <span class="toggle-label">{t('settings.show_drafts')}</span>
       <input
         type="checkbox"

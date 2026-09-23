@@ -531,7 +531,7 @@
   }
   /* Onion and copied frames are named in the header, not only tinted. */
   .num.onion {
-    color: var(--accent-ink);
+    color: var(--onion-ink);
     text-decoration: underline dotted;
   }
   .num.copied::after {

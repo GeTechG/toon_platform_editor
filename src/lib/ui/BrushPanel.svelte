@@ -6,6 +6,7 @@
    */
   import { brushOfType, brushTypesFor, hasBrushTypes } from '../plugins/brush-types';
   import { brushPreview, PREVIEW_BOX } from './brush-preview';
+  import { SIZE_TRACK, positionOfSize, sizeAtPosition } from './size-scale';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
   import { t } from '../i18n';
@@ -83,15 +84,45 @@
   let openNote = $state<string | null>(null);
 </script>
 
-{#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void)}
-  <input
-    type="range"
-    {min}
-    {max}
-    {value}
-    aria-label={label}
-    oninput={(e) => set(e.currentTarget.valueAsNumber)}
-  />
+<!-- Thickness runs on a logarithmic track (size-scale.ts): the thin sizes
+     everybody draws with get most of it. The track holds positions, so the
+     reader hears the size, and a key steps one size — at the thin end one
+     step of the track would not reach the next whole size. -->
+{#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void, log = false)}
+  {#if log}
+    <input
+      type="range"
+      min="0"
+      max={SIZE_TRACK}
+      step="any"
+      value={positionOfSize(value, min, max)}
+      aria-label={label}
+      aria-valuetext={String(value)}
+      oninput={(e) => set(sizeAtPosition(e.currentTarget.valueAsNumber, min, max))}
+      onkeydown={(e) => {
+        const next =
+          e.key === 'ArrowUp' || e.key === 'ArrowRight' ? value + 1
+          : e.key === 'ArrowDown' || e.key === 'ArrowLeft' ? value - 1
+          : e.key === 'PageUp' ? Math.max(value + 1, value * 1.25)
+          : e.key === 'PageDown' ? Math.min(value - 1, value / 1.25)
+          : e.key === 'Home' ? min
+          : e.key === 'End' ? max
+          : null;
+        if (next === null) return;
+        e.preventDefault();
+        set(Math.min(max, Math.max(min, next)));
+      }}
+    />
+  {:else}
+    <input
+      type="range"
+      {min}
+      {max}
+      {value}
+      aria-label={label}
+      oninput={(e) => set(e.currentTarget.valueAsNumber)}
+    />
+  {/if}
   <input
     type="number"
     {min}
@@ -208,7 +239,7 @@
     </figure>
   {/if}
   <h2>{t('brush.thickness')}</h2>
-  {@render slider(t('brush.sizes_group'), 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v))}
+  {@render slider(t('brush.sizes_group'), 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v), true)}
   <!-- Only for the brushes the two numbers actually reach: the Multator line,
        the old pen and the pixel are smoothed by their own rule or by none.
        Each one says which way it pulls: a number alone is not an answer to

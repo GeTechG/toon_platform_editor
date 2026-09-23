@@ -37,6 +37,7 @@
     zoomCentredOn,
     zoomDelta,
     wheelNotch,
+    ctrlWheelZoom,
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
@@ -753,16 +754,21 @@
 
   /**
    * Wheel zooms in the reference's 0.5 steps and recentres the view on the
-   * cursor (`NormalizeCoords`). Ctrl+wheel stays the browser's, and the
+   * cursor (`NormalizeCoords`). Ctrl+wheel — a Mac trackpad pinch among
+   * them — zooms the sheet smoothly under the cursor, not the page. The
    * preview owns the canvas while it plays.
    */
   function onWheel(e: WheelEvent): void {
-    if (e.ctrlKey || e.metaKey || editor.playing) {
+    if (editor.playing) {
       return;
     }
     // Taken even when it zooms nothing: a sideways swipe left to the browser
     // is "back" in the history, and the drawing goes with it.
     e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
+      return;
+    }
     const { notch, rest } = wheelNotch(wheelRest, e.deltaY, e.deltaMode);
     wheelRest = rest;
     if (notch === 0) {

@@ -103,6 +103,13 @@
   $effect(() => {
     manualDialog?.showModal();
   });
+  // The mega-eraser warning: a dialog, not alert(), so it can carry
+  // «Больше не показывать» — a reload used to bring the alert back for good.
+  let megaWarnOpen = $state(false);
+  let megaWarnDialog = $state<HTMLDialogElement | undefined>();
+  $effect(() => {
+    megaWarnDialog?.showModal();
+  });
 
   /** Mirrors `document.fullscreenElement`, so the button can show it is on. */
   let isFullscreen = $state(false);
@@ -956,8 +963,8 @@
       return;
     }
     editor.megaEraserWarned = true;
-    if (editor.warnings) {
-      alert(MEGA_ERASER_WARNING);
+    if (editor.warnings && editor.settings.megaEraserWarning) {
+      megaWarnOpen = true;
     }
     saveNow();
   });
@@ -1859,6 +1866,37 @@
       </footer>
     </dialog>
   {/if}
+
+  {#if megaWarnOpen}
+    <dialog
+      bind:this={megaWarnDialog}
+      class="sheet sheet-dialog"
+      aria-labelledby="mega-warn-title"
+      aria-describedby="mega-warn-text"
+      onclose={() => (megaWarnOpen = false)}
+    >
+      <header class="sheet-head">
+        <h2 id="mega-warn-title">{t('editor.mega_eraser_title')}</h2>
+        <button class="key icon" onclick={() => megaWarnDialog?.close()} aria-label={t('editor.close')}>
+          <Icon name="x" />
+        </button>
+      </header>
+      <div class="sheet-body">
+        <p id="mega-warn-text">{MEGA_ERASER_WARNING}</p>
+        <label class="mute-warning">
+          <input
+            type="checkbox"
+            checked={!editor.settings.megaEraserWarning}
+            onchange={(e) => editor.setSetting('megaEraserWarning', !e.currentTarget.checked)}
+          />
+          {t('editor.dont_show_again')}
+        </label>
+      </div>
+      <footer class="sheet-foot">
+        <button class="key primary" onclick={() => megaWarnDialog?.close()}>{t('editor.got_it')}</button>
+      </footer>
+    </dialog>
+  {/if}
 </div>
 
 <style>
@@ -2744,6 +2782,14 @@
     max-width: none;
     border: none;
     color: var(--ink);
+  }
+  /* The whole line is the target, a finger tall (DESIGN §5). */
+  .mute-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--key-h, 2.75rem);
+    cursor: pointer;
   }
   .editor :global(.sheet-dialog)::backdrop {
     background: var(--scrim);

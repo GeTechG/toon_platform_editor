@@ -84,6 +84,19 @@ export function wheelNotch(rest: number, deltaY: number, deltaMode: number): { n
 }
 
 /**
+ * Ctrl+wheel zoom per px of travel. A Mac trackpad pinch arrives as Ctrl+wheel
+ * a few px at a time and wants a smooth zoom, not notches; a mouse notch
+ * (100 px) comes out as ×1.65. The calibration knob.
+ */
+export const WHEEL_ZOOM_RATE = 0.005;
+
+/** The zoom after one Ctrl+wheel event: continuous, a big delta capped at one notch. */
+export function ctrlWheelZoom(zoom: number, deltaY: number, deltaMode: number): number {
+  const travel = deltaMode === 0 ? Math.max(-100, Math.min(100, deltaY)) : Math.sign(deltaY) * 100;
+  return zoom * Math.exp(-travel * WHEEL_ZOOM_RATE);
+}
+
+/**
  * The sheet at 100%: the document fitted inside the workspace with air around
  * it, so the whole page — edges, shadow and all — is on screen from the start.
  * An unmeasured height (Infinity) fits by width alone.

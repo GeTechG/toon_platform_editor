@@ -208,6 +208,8 @@ export interface EditorSettings {
    */
   letterKeys: boolean;
   /** The one-off hint on first entering the palette's remover mode has been shown. */
+  /** The mega-eraser warns on its first pick of a session, until «Больше не показывать». */
+  megaEraserWarning: boolean;
   removerTipShown: boolean;
   /**
    * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
@@ -266,6 +268,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   altLayout: false,
   letterKeys: true,
   removerTipShown: false,
+  megaEraserWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
 };
 
@@ -440,6 +443,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     altLayout: flag('altLayout'),
     letterKeys: flag('letterKeys'),
     removerTipShown: flag('removerTipShown'),
+    megaEraserWarning: flag('megaEraserWarning'),
     pluginCatalog: readCatalogAddress(raw),
   };
 }

@@ -42,6 +42,9 @@
      with the drawing aids — the first layer tag and the onion-skin. */
   --accent: var(--signal-dark);
   --accent-ink: var(--signal-deep);
+  /* The onion-skin is a drawing aid, and its frame numbers in the timeline
+     header are named in its blue — text weight, 6.01:1 on the paper. */
+  --onion-ink: var(--electric-dark);
   /* The edge feather: a plate's own colour blurred one pixel out —
      `box-shadow: var(--feather) <own colour>`. */
   --feather: 0 0 1px 0.25px;
