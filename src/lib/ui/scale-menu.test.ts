@@ -101,3 +101,15 @@ describe('dragging a floating window', () => {
     expect(draggableSrc).toContain('setPointerCapture');
   });
 });
+
+describe('the scale window keys sit concentric in it', () => {
+  it('rounds a key by the window radius less the inset', () => {
+    // A key 2px inside a 14px corner rounded by 7px cut a smaller corner under
+    // the hover fill; concentric, the fill follows the window's edge.
+    const style = menu.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '';
+    const box = style.match(/\.scale-menu\s*\{([^}]*)\}/)?.[1] ?? '';
+    const inset = box.match(/padding:\s*(\S+);/)?.[1];
+    const radius = box.match(/border-radius:\s*(var\([^)]*\));/)?.[1];
+    expect(style).toContain(`border-radius: calc(${radius} - ${inset});`);
+  });
+});

@@ -77,7 +77,9 @@
        canvas — it crowds out no frame and buys nothing by being smaller. */
     min-height: var(--key-h, 2.75rem);
     border: none;
-    border-radius: var(--r-sm);
+    /* Concentric with the window: its radius less the 2px it is inset by,
+       so the hover fill follows the edge instead of cutting a smaller corner. */
+    border-radius: calc(var(--r-md) - 2px);
     background: transparent;
     color: inherit;
     font: inherit;
