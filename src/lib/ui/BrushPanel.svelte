@@ -8,6 +8,7 @@
   import { brushPreview, PREVIEW_BOX } from './brush-preview';
   import { SIZE_TRACK, positionOfSize, sizeAtPosition } from './size-scale';
   import { nudgeBrushSize } from './ux-profile';
+  import { tick } from 'svelte';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
   import { t } from '../i18n';
@@ -156,7 +157,14 @@
       class="info"
       type="button"
       aria-label="{title}: {note}"
-      onclick={() => (openNote = openNote === title ? null : title)}
+      onclick={async (e) => {
+        openNote = openNote === title ? null : title;
+        // The box scrolls, and the words of the last heading opened below
+        // its bottom edge, cut off: the box is scrolled to show them.
+        const note = e.currentTarget.nextElementSibling;
+        await tick();
+        if (openNote === title) note?.scrollIntoView({ block: 'nearest' });
+      }}
       onkeydown={(e) => {
         if (e.key === 'Escape' && openNote === title) {
           e.preventDefault();
@@ -182,6 +190,9 @@
     />
   </svg>
 {/snippet}
+
+<!-- A phone turned with the list open: the list follows its button. -->
+<svelte:window onresize={() => picking && place()} />
 
 <div class="box brush-box" role="group" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
@@ -311,6 +322,9 @@
     /* Fixed, so `100%` is the initial containing block — the room that
        actually exists, where `100vw` counts the scrollbar in as well. */
     max-width: calc(100% - 16px);
+    /* At 400 % zoom the three types stood 389px tall in a window of 200. */
+    max-height: calc(100% - 16px);
+    overflow-y: auto;
     padding: 6px;
     border: none;
     border-radius: var(--r-md);
@@ -472,6 +486,17 @@
   .brush-box input:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
+  }
+  /* The sample is an SVG in `currentColor`, and this mode leaves an SVG's
+     colour alone: near-black on a black high-contrast canvas. The picked type
+     opts out of the mode (controls.css) and sits on Highlight. */
+  @media (forced-colors: active) {
+    .sample {
+      color: CanvasText;
+    }
+    .type.active :is(.name, .hint, .sample) {
+      color: HighlightText;
+    }
   }
   /* A phone gives the box some 170px: with the heading and the big sample
      above it, the thickness — the most-turned setting — was under the fold.

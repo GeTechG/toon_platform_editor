@@ -125,7 +125,28 @@
     editor.audio.playFrom(untrack(() => editor.playbackFrame), editor.doc.frame_rate);
   });
 
-  $effect(() => () => cancelAnimationFrame(rafId));
+  // A file dropped mid-preview replaces the document, and `replaceDoc` clears
+  // the flag behind this component's back: the loop ran on at 60 Hz under a
+  // «play» key, reseeking a tied track at every lap. The flag is the truth
+  // here; the frame to go back to belonged to the drawing that is gone.
+  $effect(() => {
+    if (editor.playing || !player) {
+      return;
+    }
+    cancelAnimationFrame(rafId);
+    untrack(() => editor.audio.stop());
+    player = null;
+  });
+
+  // Going mid-preview (the transport moved to another panel, the studio left)
+  // ends the preview: only the clock used to go, and the track sounded on
+  // under frozen frames with the flag still up.
+  $effect(() => () => {
+    if (player) {
+      stop();
+    }
+    cancelAnimationFrame(rafId);
+  });
 </script>
 
 <button

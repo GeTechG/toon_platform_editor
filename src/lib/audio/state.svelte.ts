@@ -102,7 +102,7 @@ export class AudioTrackState {
    * draft's track playing under this one.
    */
   async load(
-    file: Blob & { type: string; size: number },
+    file: Blob & { type: string; size: number; name?: string },
     name: string,
     author = '',
     keep = false,

@@ -22,6 +22,9 @@
   const stop = $derived(
     rove >= 0 && rove < editor.palette.length ? rove : Math.max(0, editor.palette.indexOf(editor.brushColor)),
   );
+  /** The preview's grid is one Tab stop too — a saved palette holds up to 300 colours. */
+  let previewRove = $state(0);
+  const previewStop = $derived(preview && previewRove < preview.colours.length ? previewRove : 0);
 
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
@@ -170,14 +173,32 @@
       onCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), color);
       return;
     }
-    const cells = gridEl?.querySelectorAll<HTMLElement>('.cell');
-    if (!gridEl || !cells) return;
-    const cols = getComputedStyle(gridEl).gridTemplateColumns.split(' ').length;
+    const next = walkGrid(e, i);
+    if (next !== null) rove = next;
+  }
+
+  /** The arrows, Home and End move focus inside the cell's own grid; the new index, or null. */
+  function walkGrid(e: KeyboardEvent, i: number): number | null {
+    const grid = (e.currentTarget as HTMLElement).parentElement;
+    const cells = grid?.querySelectorAll<HTMLElement>('.cell');
+    if (!grid || !cells) return null;
+    const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
     const next = gridStep(i, e.key, cells.length, cols);
-    if (next === null) return;
+    if (next === null) return null;
     e.preventDefault();
-    rove = next;
     cells[next].focus();
+    return next;
+  }
+
+  /**
+   * A finger and a pen tip have no right button: their long press is the
+   * `contextmenu` the mouse's right button also sends — that one already
+   * pressed the cell on `mousedown`, so it only loses its menu.
+   */
+  function longPress(e: MouseEvent, press: () => void): void {
+    e.preventDefault();
+    if ((e as PointerEvent).pointerType === 'mouse' || !(e as PointerEvent).pointerType) return;
+    press();
   }
 
   /* Reference `bundle:7783`: the grid follows the chosen outline. */
@@ -265,7 +286,7 @@
           style:color={contrastInk(color)}
           onmousedown={(e) => onCell(e, color)}
           onclick={(e) => e.detail === 0 && onCell(e, color)}
-          oncontextmenu={(e) => e.preventDefault()}
+          oncontextmenu={(e) => longPress(e, () => onCell(new MouseEvent('click', { button: 2 }), color))}
           tabindex={i === stop ? 0 : -1}
           onfocus={() => (rove = i)}
           onkeydown={(e) => onCellKey(e, i, color)}
@@ -364,10 +385,16 @@
           style:color={contrastInk(c)}
           onmousedown={(e) => onPreviewCell(e, c)}
           onclick={(e) => e.detail === 0 && onPreviewCell(e, c)}
-          oncontextmenu={(e) => e.preventDefault()}
+          oncontextmenu={(e) => longPress(e, () => onPreviewCell(new MouseEvent('click', { button: 2 }), c))}
+          tabindex={i === previewStop ? 0 : -1}
+          onfocus={() => (previewRove = i)}
           onkeydown={(e) => {
             // A key fires `click`, never `mousedown`: the same press as the grid's.
-            if (e.key !== 'Enter' && e.key !== ' ') return;
+            if (e.key !== 'Enter' && e.key !== ' ') {
+              const next = walkGrid(e, i);
+              if (next !== null) previewRove = next;
+              return;
+            }
             e.preventDefault();
             onPreviewCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), c);
           }}

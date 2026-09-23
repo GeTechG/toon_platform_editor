@@ -301,15 +301,19 @@ export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<
   );
 }
 
-/** Copies a draft under a fresh id; returns it, or null when there was nothing to copy. */
+/**
+ * Copies a draft under a fresh id; returns it, or null when there was nothing
+ * to copy or the copy did not fit — a full quota answered with the id of a
+ * record that was never written.
+ */
 export async function duplicateDraft(id: string): Promise<string | null> {
   const source = (await listDrafts()).find((draft) => draft.id === id);
   if (!source) {
     return null;
   }
   const copy = newDraftId();
-  await queueWrite(() => updateDraft(copy, 'draft duplicate', () => ({ ...source, id: copy, updated: Date.now() })));
-  return copy;
+  const ok = await queueWrite(() => updateDraft(copy, 'draft duplicate', () => ({ ...source, id: copy, updated: Date.now() })));
+  return ok ? copy : null;
 }
 
 /** Empties the list. Never throws. */

@@ -18,7 +18,7 @@
       aria-pressed={editor.brushSizeLogical === size}
       onclick={() => (editor.brushSizeLogical = size)}
       title={t('brush.size_title', { size })}
-      aria-label={t('brush.size_label', { size })}
+      aria-label={t('brush.size_value', { count: size })}
     >
       <!-- Capped at 22, 21 and 43 were the same dot; 30 still sits inside the
            44 key and keeps all five apart. -->
@@ -30,7 +30,7 @@
     class:picked={(BRUSH_SIZES_LOGICAL as readonly number[]).includes(editor.brushSizeLogical)}
     title={t('brush.size_hint')}
     role="status"
-  >{editor.brushSizeLogical}px</span>
+  ><span aria-hidden="true">{editor.brushSizeLogical}px</span><span class="sr-only">{t('brush.size_value', { count: editor.brushSizeLogical })}</span></span>
 </div>
 
 <style>
@@ -89,6 +89,15 @@
     font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
+  }
+  /* «px» on screen, pixels in words to a reader (as the slider says them). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   /* Phone: the readout only repeats what the picked dot already says — and
      stays when a size between the dots picks none. */

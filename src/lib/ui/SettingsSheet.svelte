@@ -127,14 +127,17 @@
     try {
       const { loaded, broken } = await importDrafts(await file.text());
       report = loaded > 0 || broken > 0
-        ? t('settings.drafts_loaded', { loaded, broken })
+        ? t(broken > 0 ? 'settings.drafts_loaded_broken' : 'settings.drafts_loaded', { loaded, broken })
         : t('settings.no_drafts');
     } catch (err) {
       // Storage full or gone: what did go in is listed below all the same.
       console.warn('drafts import failed:', err);
       report = t('settings.drafts_load_failed');
     }
+    // What came in is ticked like the rest: the list opens with everything on.
+    const before = new Set(drafts.map((entry) => entry.id));
     drafts = draftEntries(await listDrafts());
+    chosen = [...chosen, ...drafts.filter((entry) => !before.has(entry.id)).map((entry) => entry.id)];
   }
 
   function wipePalettes(): void {

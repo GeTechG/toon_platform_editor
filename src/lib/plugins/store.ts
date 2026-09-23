@@ -71,13 +71,14 @@ export async function listInstalled(): Promise<InstalledPlugin[]> {
   }
 }
 
-async function write(what: string, run: (store: IDBObjectStore) => void): Promise<void> {
+/** `false` when the record did not reach the disk: the plugin lasts only as long as the page. */
+async function write(what: string, run: (store: IDBObjectStore) => void): Promise<boolean> {
   let db: IDBDatabase;
   try {
     db = await openDb();
   } catch (err) {
     console.warn(`${what} failed:`, err);
-    return;
+    return false;
   }
   try {
     await new Promise<void>((resolve, reject) => {
@@ -86,17 +87,19 @@ async function write(what: string, run: (store: IDBObjectStore) => void): Promis
       tx.onerror = () => reject(tx.error);
       run(tx.objectStore(STORE));
     });
+    return true;
   } catch (err) {
     console.warn(`${what} failed:`, err);
+    return false;
   } finally {
     db.close();
   }
 }
 
-export function putInstalled(plugin: InstalledPlugin): Promise<void> {
+export function putInstalled(plugin: InstalledPlugin): Promise<boolean> {
   return write('plugin install', (store) => store.put(plugin));
 }
 
-export function removeInstalled(id: string): Promise<void> {
+export function removeInstalled(id: string): Promise<boolean> {
   return write('plugin remove', (store) => store.delete(id));
 }

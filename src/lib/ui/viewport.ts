@@ -174,6 +174,25 @@ export function zoomCentredOn(
   );
 }
 
+/**
+ * The view carried over to a workspace of another size — a phone turned, a
+ * panel dragged. The sheet at 100% is refitted to the new workspace, so the
+ * old pan in CSS px pointed somewhere else: an untouched sheet ran off the
+ * edge. The point of the sheet in the middle of the screen stays there.
+ */
+export function resizedView(view: Viewport2D, from: Stage, to: Stage): Viewport2D {
+  const u = (from.width / 2 - view.panX) / (from.sheetWidth * view.zoom);
+  const v = (from.height / 2 - view.panY) / (from.sheetHeight * view.zoom);
+  return clampPan(
+    {
+      zoom: view.zoom,
+      panX: to.width / 2 - u * to.sheetWidth * view.zoom,
+      panY: to.height / 2 - v * to.sheetHeight * view.zoom,
+    },
+    to,
+  );
+}
+
 /** Keeps the sheet on the table: it slides freely, an edge always in reach. */
 export function clampPan(view: Viewport2D, stage: Stage): Viewport2D {
   return {

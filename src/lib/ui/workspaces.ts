@@ -51,13 +51,21 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   if (!Array.isArray(data)) {
     return [];
   }
-  return data.flatMap((entry, i): Workspace[] => {
+  // A repeated id broke the bar's keyed list; a missing or taken one gets the next free.
+  const taken = new Set<number>();
+  const stored = data
+    .map((e) => (e as { id?: unknown } | null)?.id)
+    .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+  const fresh = (): number => Math.max(0, ...taken, ...stored) + 1;
+  return data.flatMap((entry): Workspace[] => {
     const row = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<string, unknown>;
     if (typeof row.name !== 'string' || row.name.trim() === '') {
       return [];
     }
+    const id = typeof row.id === 'number' && Number.isFinite(row.id) && !taken.has(row.id) ? row.id : fresh();
+    taken.add(id);
     return [{
-      id: typeof row.id === 'number' && Number.isFinite(row.id) ? row.id : i + 1,
+      id,
       name: row.name,
       panels: normalizePanels(row.panels),
       floatPos: cleanFloatPos(row.floatPos),

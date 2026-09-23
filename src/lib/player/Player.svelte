@@ -11,10 +11,17 @@
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
   import { frameForTime, trackShouldRestart } from '../audio/track';
-  import { t } from '../i18n';
+  // Only the player's own words: `../i18n` registers the studio's whole
+  // catalogue, and the share page downloaded all of it for three strings. A
+  // named import of the JSON leaves the rest out of the bundle.
+  import { play } from '../i18n/ru.json';
+  import { BASE_LOCALE, i18n, translator } from '../i18n-core';
   // The accent is an alias (`--accent` → `--signal-dark`), which a literal
   // fallback cannot carry: the player brings the table itself, as the studio does.
   import '../ui/tokens.css';
+
+  i18n.addResourceBundle(BASE_LOCALE, 'editor', { play }, true, false);
+  const t = translator('editor');
 
   /**
    * Reduced motion means no autoplay: the visitor lands on the first frame
@@ -111,7 +118,10 @@
     element.preload = 'metadata';
     audio = element;
     return () => {
+      // Paused is not let go: a track that was playing keeps downloading.
       element.pause();
+      element.removeAttribute('src');
+      element.load();
       audio = null;
     };
   });
@@ -186,6 +196,15 @@
         audio.currentTime = (frame % frameCount(view)) / view.frame_rate;
       }
     });
+  });
+
+  // Another document in the same player (the site going from one share page to
+  // the next) may be shorter than the frame on screen: the draw below would
+  // skip it and leave the previous drawing up, counted «кадр 38 из 10».
+  $effect.pre(() => {
+    if (current >= frameCount(view)) {
+      current = 0;
+    }
   });
 
   // Redraw on frame change or resize (client-only; effects do not run in SSR).

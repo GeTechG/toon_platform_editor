@@ -57,6 +57,11 @@
     if (e && (e.target as HTMLElement).closest('button:not(.name), .handle')) {
       return;
     }
+    // A double click inside the open field selects a word; reopening it threw
+    // the typing away for the stored name.
+    if (renaming?.layer === layerIndex) {
+      return;
+    }
     // The state refuses a rename while the preview runs; a field opened then
     // took the typing and threw it away.
     if (editor.playing) {
@@ -171,7 +176,8 @@
   let autoscrollDirection: -1 | 0 | 1 = 0;
 
   function onHandleDown(e: PointerEvent, layerIndex: number): void {
-    if (!e.isPrimary || drag) {
+    // The main button only: a right press on the handle is a context menu.
+    if (!e.isPrimary || e.button !== 0 || drag) {
       return;
     }
     editor.selectLayer(layerIndex); // grabbing a layer selects it
@@ -252,7 +258,10 @@
       return; // another finger's pointerup must not finish this drag
     }
     stopAutoscroll();
-    announce(drag.currentLayer);
+    // A press on the handle that moved nothing has nothing to say.
+    if (drag.currentLayer !== drag.fromLayer) {
+      announce(drag.currentLayer);
+    }
     drag = null;
   }
 
@@ -296,7 +305,7 @@
     disabled={!canAdd}
     aria-disabled={editor.playing || undefined}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
-    title={t('layer.add_title')}
+    title={canAdd ? t('layer.add_title') : t('layer.full', { max: MAX_LAYERS })}
   >
     <Icon name="plus" size={16} /> {t('layer.add')}
   </button>
@@ -370,7 +379,7 @@
             data-layer={layerIndex}
             aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"
             aria-pressed={layerIndex === editor.activeLayer}
-            title={t('layer.rename_hint')}
+            title={`${editor.layerLabel(layerIndex)}\n${t('layer.rename_hint')}`}
             onclick={() => editor.selectLayer(layerIndex)}
             onkeydown={(e) => onRowKeydown(e, layerIndex)}
           >{editor.layerLabel(layerIndex)}</button>
@@ -585,6 +594,12 @@
     .eye,
     .kill {
       height: 24px;
+    }
+    /* The tag's 24 px press circle reaches 5 px past its 14 px key: with the
+       4 px gap it ran over the eye and the name. A pixel each side, and the
+       row still fits the column. */
+    .tag {
+      margin-inline: 1px;
     }
   }
   .sr-only {

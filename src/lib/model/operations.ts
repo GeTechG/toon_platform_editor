@@ -236,13 +236,6 @@ export function setLayerHidden(doc: ToonDocument, index: number, hidden: boolean
 }
 
 /**
- * Overwrites the frame at `index` in every layer with a deep copy of the
- * column — the frame paste. Cell `i` of the buffer goes to layer `i`; layers
- * the buffer has no cell for are cleared, surplus cells are ignored (the
- * source document may have had a different number of layers). Limits are
- * checked before any mutation, so an oversized paste changes nothing.
- */
-/**
  * Replaces one cell's strokes wholesale — what the mega eraser does after it
  * cuts. The strokes must already reference tools of this document; nothing is
  * interned here, because cutting a line never invents a new tool.
@@ -287,6 +280,13 @@ export function pressureOf(stroke: { points: readonly number[]; pressure?: reado
   return pressure && pressure.length === stroke.points.length / 2 ? { pressure: pressure.slice() } : {};
 }
 
+/**
+ * Overwrites the frame at `index` in every layer with a deep copy of the
+ * column — the frame paste. Cell `i` of the buffer goes to layer `i`; layers
+ * the buffer has no cell for are cleared, surplus cells are ignored (the
+ * source document may have had a different number of layers). Limits are
+ * checked before any mutation, so an oversized paste changes nothing.
+ */
 export function replaceColumn(doc: ToonDocument, index: number, column: ResolvedColumn): void {
   assertFrameIndex(doc, index);
   const width = Math.min(doc.layers.length, column.length);

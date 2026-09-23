@@ -76,11 +76,17 @@
   $effect(() => {
     if (box && !box.open) {
       box.showModal();
-      const r = box.getBoundingClientRect();
-      const inside = clampWindowPosition(r.left, r.top, r, { width: innerWidth, height: innerHeight });
-      offset = { x: inside.left - r.left, y: inside.top - r.top };
+      keepInside();
     }
   });
+
+  /** Nudges the window back inside the screen — on opening, and when a phone turns under it. */
+  function keepInside(): void {
+    if (!box?.open) return;
+    const r = box.getBoundingClientRect();
+    const inside = clampWindowPosition(r.left, r.top, r, { width: innerWidth, height: innerHeight });
+    offset = { x: offset.x + inside.left - r.left, y: offset.y + inside.top - r.top };
+  }
   let hexText = $state(origin);
   /** Window offset from where it opened, moved by dragging the header. */
   let offset = $state({ x: 0, y: 0 });
@@ -297,6 +303,8 @@
      the box we paint is the window and everything around it is `::backdrop`.
      That is the click-outside catcher the old `<button>` was standing in for,
      and it needs no element of its own. -->
+<svelte:window onresize={keepInside} />
+
 <dialog
   class="picker"
   bind:this={box}
@@ -375,6 +383,7 @@
         <label>
           <span>{name}</span>
           <input
+            aria-label={`${name}, ${t(`picker.channel_${key}`)}`}
             type="number"
             min="0"
             max="255"
@@ -396,7 +405,6 @@
       <span>HEX</span>
       <input
         type="text"
-        maxlength="7"
         spellcheck="false"
         autocapitalize="off"
         autocomplete="off"

@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+// The studio's catalogue, which every surface that checks a file has loaded.
+import '../i18n';
 import {
   AUDIO_MAX_BYTES,
   AUDIO_MAX_CREDIT,

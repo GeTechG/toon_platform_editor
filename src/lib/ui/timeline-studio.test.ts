@@ -622,7 +622,7 @@ describe('owner answers: picking a block of frames by finger', () => {
 
   it('says the block out loud and shows a way out', () => {
     expect(timeline).toMatch(/role="status"[^>]*>[\s\S]*?spanText/);
-    expect(timeline).toMatch(/class="key primary"[^>]*onclick=\{\(\) => \(picking = false\)\}/);
+    expect(timeline).toMatch(/class="key primary"[^>]*onclick=\{endPicking\}/);
     expect(t('timeline.pick_done')).toBe('Готово');
     expect(t('timeline.picked', { from: 3, to: 7 })).toBe('Кадры 3–7');
   });

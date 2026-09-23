@@ -13,6 +13,7 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
+  import { MAX_FRAMES } from '../format/constants';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -147,6 +148,15 @@
     const frames = t(span.from === span.to ? 'timeline.picked_one' : 'timeline.picked', span);
     return span.layers > 1 ? t('timeline.picked_layers', { frames, n: span.layers }) : frames;
   });
+  /**
+   * «Готово» lives inside the picking bar and goes with it: pressed, it took
+   * focus down with it to <body>. Focus goes back to where picking acts.
+   */
+  function endPicking(): void {
+    picking = false;
+    strip?.querySelector<HTMLElement>('.cell.active')?.focus();
+  }
+
   /** Said on every change of a block wider than one cell — Shift+arrows included. */
   const spanned = $derived(editor.selection.frames.length > 1 || editor.selection.layers.length > 1);
 
@@ -185,10 +195,11 @@
    * A press on the empty part of the strip collapses the block
    * (`bundle:8938-8944`). The rows stretch across the strip, so "empty" is
    * anywhere inside it that is not a cell — comparing the container against
-   * itself would leave nowhere to press.
+   * itself would leave nowhere to press. A mouse convenience: a finger's press
+   * there starts a scroll, and while picking it would undo the block.
    */
   function resetSelection(e: PointerEvent): void {
-    if (editor.playing || (e.target as HTMLElement).closest('.cell')) {
+    if (editor.playing || picking || e.pointerType === 'touch' || (e.target as HTMLElement).closest('.cell')) {
       return;
     }
     editor.collapseSelection();
@@ -431,11 +442,11 @@
 <div class="board">
   <!-- Read out whenever the block is wider than one cell; shown as a bar,
        with the way out, only while picking. -->
-  <div class="pick-bar" class:picking>
+  <div class="pick-bar" class:picking style:--col="{colPx}px">
     <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
     {#if picking}
       <span class="pick-hint">{t('timeline.pick_hint')}</span>
-      <button class="key primary" onclick={() => (picking = false)}>{t('timeline.pick_done')}</button>
+      <button class="key primary" onclick={endPicking}>{t('timeline.pick_done')}</button>
     {/if}
   </div>
   <!-- The names and the cells are two scrollers side by side; a scroll in one
@@ -530,7 +541,10 @@
               onpointerleave={cancelLongPress}
               oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
-              aria-label={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
+              aria-label={t(
+                editor.doc.layers[layerIndex].frames[i]?.strokes.length ? 'timeline.cell' : 'timeline.cell_empty',
+                { frame: i + 1, layer: editor.layerLabel(layerIndex) },
+              )}
             >
               <LayerThumb
                 doc={editor.doc}
@@ -566,7 +580,7 @@
       {@const k = menuKey(action)}
       {#if k}<kbd aria-hidden="true">{k.label}</kbd>{/if}
     {/snippet}
-    <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} onclick={() => run(() => editor.addFrameAfterActive())}>
+    <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={frameTotal >= MAX_FRAMES} onclick={() => run(() => editor.addFrameAfterActive())}>
       <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
@@ -614,6 +628,9 @@
        delete and four gaps — so 11rem left 39 for the name and «Слой 1» needs
        45. The editor's own default name did not fit the editor's own default
        column; the divider is for long names, not for that. */
+    /* 10rem at 200 % text on a 320 px phone is the whole strip: not one
+       cell was left to press. The names give way before the frames do. */
+    max-width: 50%;
     width: 12.5rem;
     min-height: 0;
     border-right: 1px solid var(--hairline);
@@ -739,6 +756,10 @@
     .num.onion {
       text-decoration-thickness: 2px;
     }
+    /* Told from the numbers under it by its shadow alone. */
+    .pick-bar.picking {
+      outline: 1px solid CanvasText;
+    }
   }
   /* --- Picking bar ------------------------------------------------------- */
   /* Out of sight but read out when not picking; a row over the strip when it is. */
@@ -750,19 +771,25 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  /* A chip floating over the strip's top edge rather than a row in it: the
-     panel is often only a row of cells tall, and a row taken from it hid the
-     cells being picked. A drop, so it takes the menu shadow. */
+  /* A chip over the frame numbers rather than a row: the panel is often only
+     a row of cells tall, and a row taken from it hid the cells being picked.
+     Not above the strip either — there it hid the transport keys (WCAG
+     2.4.11), and what lies above is whatever the panels were arranged into.
+     Its own header's height, so the cells stay clear, and short of the layer
+     column. A drop, so it takes the menu shadow. */
   .pick-bar.picking {
+    /* The Dense-Timeline Rule: a key in the strip is 24 px and up. */
+    --key-h: 28px;
     position: absolute;
-    right: 8px;
-    bottom: calc(100% + 6px);
+    right: 0;
+    top: 0;
     z-index: var(--z-menu);
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: calc(100% - 16px);
-    padding: 4px 4px 4px 14px;
+    max-width: calc(100% - var(--col, 0px) - 8px);
+    box-sizing: border-box;
+    padding: 2px 2px 2px 12px;
     border-radius: var(--r-pill);
     background: var(--paper);
     box-shadow: var(--shadow-menu);
@@ -776,6 +803,9 @@
   .pick-hint {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     font-size: 0.8rem;
     color: var(--ink-2);
   }
@@ -875,6 +905,19 @@
        were scrolled out of the column. */
     .layer-col {
       width: 10rem;
+    }
+    /* The phone panel grows to its contents, so here the chip is a row of
+       its own, a finger's keys and the hint in full. */
+    .pick-bar.picking {
+      --key-h: 2.75rem;
+      position: static;
+      max-width: none;
+      margin-bottom: 6px;
+      padding: 0 0 0 12px;
+      box-shadow: none;
+    }
+    .pick-hint {
+      white-space: normal;
     }
   }
 </style>

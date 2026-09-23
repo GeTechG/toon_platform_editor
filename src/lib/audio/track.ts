@@ -3,7 +3,12 @@
  * lines up with the frame strip. DOM-free so it runs under bun test — the
  * decoding itself (`AudioContext.decodeAudioData`) lives in the UI.
  */
-import { t } from '../i18n';
+// The core, not `../i18n`: the share player borrows the maths below, and the
+// catalogue that import registers is the whole studio's vocabulary. Whoever
+// checks a file is a studio surface, which has already registered it.
+import { translator } from '../i18n-core';
+
+const t = translator('editor');
 
 /** Types the «нота» button suggests; anything `audio/*` is accepted. */
 export const AUDIO_MIME_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-wav'] as const;
@@ -62,9 +67,20 @@ export function trackCredits(
   };
 }
 
+/**
+ * Sound by its type, or by its name when the system types it wrong: Firefox
+ * and Windows call an .ogg `video/ogg`, and a file the system does not know
+ * comes with no type at all. The decoder is the real judge either way.
+ */
+const AUDIO_EXTENSIONS = /\.(mp3|ogg|oga|opus|wav|flac|m4a|aac|weba)$/i;
+
+export function isAudioFile(file: { type: string; name?: string }): boolean {
+  return file.type.startsWith('audio/') || AUDIO_EXTENSIONS.test(file.name ?? '');
+}
+
 /** Complaint about a picked file, or null if it may be loaded. */
-export function checkAudioFile(file: { type: string; size: number }): string | null {
-  if (!file.type.startsWith('audio/')) {
+export function checkAudioFile(file: { type: string; size: number; name?: string }): string | null {
+  if (!isAudioFile(file)) {
     return t('audio.need_file');
   }
   if (file.size > AUDIO_MAX_BYTES) {
@@ -228,6 +244,11 @@ export function readId3(buffer: ArrayBuffer): { artist: string; title: string } 
   const end = Math.min(bytes.length, 10 + synchsafe(bytes, 6));
   const found = { ...none };
   let at = 10;
+  // An extended header sits before the frames: v2.4 counts itself in its
+  // synchsafe size, v2.3 stores a plain size that leaves its own four out.
+  if (bytes[5] & 0x40) {
+    at += version === 4 ? synchsafe(bytes, 10) : 4 + ((bytes[10] << 24) | (bytes[11] << 16) | (bytes[12] << 8) | bytes[13]);
+  }
   while (at + 10 <= end) {
     const id = String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
     if (id === '\0\0\0\0') {
@@ -259,10 +280,15 @@ function synchsafe(bytes: Uint8Array, at: number): number {
   return ((bytes[at] & 127) << 21) | ((bytes[at + 1] & 127) << 14) | ((bytes[at + 2] & 127) << 7) | (bytes[at + 3] & 127);
 }
 
-/** An ID3 text frame: one encoding byte, then the string. */
+/**
+ * An ID3 text frame: one encoding byte, then the string. UTF-16 is 2 without a
+ * BOM (big-endian) or 1 with one of either order; `TextDecoder` does not
+ * switch order on a BOM, so the order is read here.
+ */
 function decodeText(frame: Uint8Array): string {
   const body = frame.subarray(1);
-  const label = frame[0] === 1 || frame[0] === 2 ? 'utf-16' : frame[0] === 3 ? 'utf-8' : 'latin1';
+  const bigEndian = frame[0] === 2 || (frame[0] === 1 && body[0] === 0xfe && body[1] === 0xff);
+  const label = bigEndian ? 'utf-16be' : frame[0] === 1 ? 'utf-16le' : frame[0] === 3 ? 'utf-8' : 'latin1';
   try {
     return new TextDecoder(label).decode(body).replace(/\0+$/, '');
   } catch {

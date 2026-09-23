@@ -8,7 +8,7 @@
    * the arranger instead (it is what puts it back into a panel), so the title
    * bar stands down.
    */
-  import { tick, untrack, type Snippet } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { clampWindowPosition } from './draggable';
   import { panelItem, slotOf } from './panels';
@@ -38,29 +38,22 @@
     return { width: root?.clientWidth ?? 0, height: root?.clientHeight ?? 0 };
   }
 
-  /** Puts the window back inside after the editor changed size. */
-  function reframe(): void {
-    if (!el) {
-      return;
-    }
-    const inside = clampWindowPosition(
-      pos.x,
-      pos.y,
-      { width: el.offsetWidth, height: el.offsetHeight },
-      frame(),
-    );
-    if (inside.left !== pos.x || inside.top !== pos.y) {
-      editor.setFloatPos(id, inside.left, inside.top);
-    }
-  }
+  /** The window's own size and the editor's, as last seen by the observer. */
+  let size = $state({ width: 0, height: 0 });
+  let bounds = $state({ width: 0, height: 0 });
 
-  // A window that grows (the strip gaining frames), or was just dropped near
-  // an edge, comes back inside too — not only when the browser window resizes.
+  // A window that grows (the strip gaining frames), or an editor that
+  // shrinks, is measured again — not only when the browser window resizes.
   $effect(() => {
     if (!el) {
       return;
     }
-    const watcher = new ResizeObserver(() => reframe());
+    const watcher = new ResizeObserver(() => {
+      if (el) {
+        size = { width: el.offsetWidth, height: el.offsetHeight };
+        bounds = frame();
+      }
+    });
     watcher.observe(el);
     if (el.offsetParent) {
       watcher.observe(el.offsetParent);
@@ -70,14 +63,36 @@
 
   const pos = $derived(editor.floatPos[id] ?? { x: 24, y: 24 });
 
-  // …and so does one put anywhere by anyone: a drop past the edge, or a
-  // workspace saved on a wider screen, changes the place and not the size,
-  // and the observer above never heard of it.
-  $effect(() => {
-    void pos.x;
-    void pos.y;
-    untrack(reframe);
-  });
+  /**
+   * Where the window is drawn: its place, brought inside the editor — a drop
+   * past the edge, a workspace saved on a wider screen, a phone turned.
+   * Drawn, never stored: written back, one visit on a narrow window (the
+   * keyboard up, a split screen) moved every window for good. A hidden
+   * editor measures nothing and leaves the place alone.
+   */
+  const shown = $derived(
+    bounds.width > 0 && bounds.height > 0
+      ? clampWindowPosition(pos.x, pos.y, size, bounds)
+      : { left: pos.x, top: pos.y },
+  );
+
+  /**
+   * Stacking order is the order of `panels.float`, drawn as a z-index: the
+   * nodes stay put, so raising one keeps the focus and the pointer capture in
+   * it. Five rungs between the windows and the sheets; any deeper window
+   * shares the lowest.
+   */
+  const depth = $derived(
+    Math.max(0, 4 - (editor.panels.float.length - 1 - editor.panels.float.indexOf(id))),
+  );
+
+  /** The window in use comes to the front: pressed anywhere, or Tab reaching into it. */
+  function raise(): void {
+    const floats = editor.panels.float;
+    if (!editor.arranging && floats[floats.length - 1] !== id) {
+      editor.movePanelItem(id, 'float');
+    }
+  }
 
   /**
    * The window goes back into its panel, and the focus goes with it to the
@@ -90,9 +105,13 @@
     if (!at) {
       return;
     }
+    // It lands at the end of its panel. Found by index it was not: a key that
+    // draws nothing (publish off the site) shifted it onto a neighbour.
     const panel = document.querySelector<HTMLElement>(`[data-slot="${at.slot}"]`);
-    const item = panel?.children[at.index] as HTMLElement | undefined;
-    const focusable = 'button, input, select, [tabindex]';
+    const item = panel?.lastElementChild as HTMLElement | null | undefined;
+    // A disabled «Отменить» takes no focus, and it fell to the page.
+    const focusable =
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
     const key = item?.matches(focusable) ? item : item?.querySelector<HTMLElement>(focusable);
     (key ?? panel?.querySelector<HTMLElement>(focusable))?.focus();
   }
@@ -107,26 +126,12 @@
     if (!el) {
       return;
     }
-    // The window pressed comes to the front: the last one drawn is on top,
-    // and one wholly under another could not be reached at all.
-    const floats = editor.panels.float;
-    if (floats[floats.length - 1] !== id) {
-      editor.movePanelItem(id, 'float');
-      // Moving the node lets go of the capture; take it again once it is back.
-      const bar = e.currentTarget as HTMLElement;
-      void tick().then(() => {
-        try {
-          if (grab) bar.setPointerCapture(e.pointerId);
-        } catch {
-          // The pointer is already up — nothing to follow.
-        }
-      });
-    }
+    // Raised by the capture listener on the whole window, before this.
     grab = {
       x: e.clientX,
       y: e.clientY,
-      left: pos.x,
-      top: pos.y,
+      left: shown.left,
+      top: shown.top,
       size: { width: el.offsetWidth, height: el.offsetHeight },
       bounds: frame(),
     };
@@ -161,8 +166,8 @@
     }
     e.preventDefault();
     const next = clampWindowPosition(
-      pos.x + dx,
-      pos.y + dy,
+      shown.left + dx,
+      shown.top + dy,
       { width: el.offsetWidth, height: el.offsetHeight },
       frame(),
     );
@@ -170,12 +175,16 @@
   }
 </script>
 
+<!-- Raising is not an action of its own: the press or the focus is. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   bind:this={el}
   class="float"
   class:handle={editor.arranging}
   data-item={id}
-  style="left: {pos.x}px; top: {pos.y}px"
+  style="left: {shown.left}px; top: {shown.top}px; z-index: calc(var(--z-float) + {depth})"
+  onpointerdowncapture={raise}
+  onfocusin={raise}
 >
   <!-- A named group the arrows move, not a toolbar: a toolbar's arrows
        travel between its items, and these move the window. -->
@@ -254,6 +263,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* Forced colours paint the paper as the canvas under it: no edge left. */
+  @media (forced-colors: active) {
+    .float {
+      outline: 1px solid CanvasText;
+    }
   }
   .float-body {
     display: flex;

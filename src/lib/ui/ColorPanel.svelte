@@ -52,7 +52,7 @@
       type="color"
       aria-label={t('color.stroke_title')}
       value={editor.brushColor}
-      oninput={(e) => editor.setBrushColor(e.currentTarget.value)}
+      oninput={(e) => editor.pickColor(e.currentTarget.value, 'outline', true)}
     />
   </label>
   <!-- Every preset draws with this one under the right button (CanvasView)
@@ -86,7 +86,7 @@
           class:active={editor.brushColor === color && editor.tool !== 'eraser'}
           aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
           style:--swatch={color}
-          onclick={() => editor.setBrushColor(color)}
+          onclick={() => editor.pickColor(color, 'outline', true)}
           tabindex={i === stop ? 0 : -1}
           onfocus={() => (rove = i)}
           onkeydown={(e) => onCellKey(e, i)}

@@ -60,8 +60,8 @@ describe('installed plugins', () => {
     const original = console.warn;
     console.warn = warn;
     try {
-      await expect(putInstalled(record('a'))).resolves.toBeUndefined();
-      await expect(removeInstalled('a')).resolves.toBeUndefined();
+      await expect(putInstalled(record('a'))).resolves.toBe(false);
+      await expect(removeInstalled('a')).resolves.toBe(false);
       expect(await listInstalled()).toEqual([]);
     } finally {
       console.warn = original;

@@ -351,7 +351,9 @@ describe('tenth audit: a window dropped on the canvas lands under the hand', () 
   test('a window moved anywhere by anyone comes back inside', () => {
     // Only a resize brought it back: a drop past the edge, or a workspace
     // saved on a wider screen, left the window hanging off it.
-    expect(floatWindow).toMatch(/\$effect\(\(\) => \{\s*void pos\.x/);
+    // Since the eleventh audit the clamp is derived from the place, so any
+    // place anyone writes is drawn inside (audit11-windows.test.ts).
+    expect(floatWindow).toMatch(/const shown = \$derived\([^;]*clampWindowPosition\(pos\.x, pos\.y/);
   });
 });
 

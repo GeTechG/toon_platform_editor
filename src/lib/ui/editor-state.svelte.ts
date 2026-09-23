@@ -701,7 +701,10 @@ export class EditorState {
 
   /** Leaves a help tool for whatever was drawing before it (reference `ResetHelpTool`). */
   resetHelpTool(): void {
-    this.tool = toolAfterHelp(this.previousDrawingTool);
+    const back = toolAfterHelp(this.previousDrawingTool);
+    // The colour the help tool brought back decides between pencil and
+    // eraser under Multator, the same rule a pick from the grid follows.
+    this.tool = back === 'pencil' ? toolAfterColorChange(this.brushColor, this.ux) ?? back : back;
   }
 
   /**
@@ -979,7 +982,7 @@ export class EditorState {
    * two layers never share one however the stack is reordered.
    */
   addLayerAtActive(ctrlKey = false): void {
-    if (this.playing || this.doc.layers.length >= MAX_LAYERS) {
+    if (this.playing || this.doc.layers.length >= MAX_LAYERS || !this.leaveTransform()) {
       return;
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
@@ -1005,7 +1008,7 @@ export class EditorState {
   }
 
   removeActiveLayer(): void {
-    if (this.playing || this.doc.layers.length <= 1) {
+    if (this.playing || this.doc.layers.length <= 1 || !this.leaveTransform()) {
       return;
     }
     if (!this.confirmed(t('layer.delete_confirm', { name: this.layerLabel(this.activeLayer) }))) {
@@ -1025,7 +1028,7 @@ export class EditorState {
    * started must be able to put the layer back.
    */
   moveLayerTo(from: number, to: number): void {
-    if (from === to || to < 0 || to >= this.doc.layers.length) {
+    if (from === to || to < 0 || to >= this.doc.layers.length || !this.leaveTransform()) {
       return;
     }
     this.#write((doc) => moveLayer(doc, from, to));
@@ -1050,7 +1053,7 @@ export class EditorState {
 
   toggleLayerHidden(index: number): void {
     const layer = this.doc.layers[index];
-    if (!layer) {
+    if (!layer || !this.leaveTransform()) {
       return;
     }
     this.#write((doc) => setLayerHidden(doc, index, !layer.hidden));
@@ -1225,6 +1228,8 @@ export class EditorState {
 
   /** Replaces the document (restored draft); not a user edit, so `touched` stays as is. */
   replaceDoc(doc: ToonDocument): void {
+    // A session open on the old drawing would be applied to this one.
+    this.transform = null;
     this.doc = doc;
     this.layerColors = defaultLayerColors(doc.layers.length);
     this.resetView();
@@ -1258,7 +1263,7 @@ export class EditorState {
   }
 
   addFrameAfterActive(): void {
-    if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
+    if (this.playing || frameCount(this.doc) >= MAX_FRAMES || !this.leaveTransform()) {
       return;
     }
     const left = this.activeFrame;
@@ -1273,7 +1278,7 @@ export class EditorState {
 
   /** Ctrl+add in the reference: a new empty frame in front of the current one. */
   addFrameBeforeActive(): void {
-    if (this.playing || frameCount(this.doc) >= MAX_FRAMES) {
+    if (this.playing || frameCount(this.doc) >= MAX_FRAMES || !this.leaveTransform()) {
       return;
     }
     const left = this.activeFrame;
@@ -1296,7 +1301,7 @@ export class EditorState {
   }
 
   removeActiveFrame(): void {
-    if (this.playing || !this.canRemoveFrame) {
+    if (this.playing || !this.canRemoveFrame || !this.leaveTransform()) {
       return;
     }
     if (!this.confirmed(t('frame.delete_confirm', { n: this.activeFrame + 1 }))) {
@@ -1323,7 +1328,7 @@ export class EditorState {
 
   /** Pastes the clipboard column onto the active frame, replacing every layer's cell. */
   pasteFrame(): void {
-    if (this.playing || !this.copiedColumn) {
+    if (this.playing || !this.copiedColumn || !this.leaveTransform()) {
       return;
     }
     try {
@@ -1365,7 +1370,7 @@ export class EditorState {
 
   private applyCopiedCells(write: typeof replaceCells): void {
     const buffer = this.copiedCells;
-    if (!this.canPasteCells || !buffer) {
+    if (!this.canPasteCells || !buffer || !this.leaveTransform()) {
       return;
     }
     const target = pasteTargetFromSelection(this.selection, {
@@ -1474,6 +1479,11 @@ export class EditorState {
   }
 
   get canUndo(): boolean {
+    // Inside a transform every undo — key or toolbar — walks the session:
+    // the document's would take a stroke from under the live selection.
+    if (this.transform) {
+      return this.canUndoTransform;
+    }
     return !this.playing
       && ((this.activeCell?.strokes.length ?? 0) > 0 || this.restorableEdit !== undefined);
   }
@@ -1485,12 +1495,19 @@ export class EditorState {
    * no longer the active one.
    */
   get canRedo(): boolean {
+    if (this.transform) {
+      return this.canRedoTransform;
+    }
     const last = this.undone[this.undone.length - 1];
     return !this.playing && last !== undefined && last.cell === this.activeCell;
   }
 
   /** Undo: drops the last stroke of the active layer's cell and keeps it for redo. */
   undo(): void {
+    if (this.transform) {
+      this.undoTransform();
+      return;
+    }
     if (!this.canUndo) {
       return;
     }
@@ -1519,6 +1536,10 @@ export class EditorState {
 
   /** Redo: puts the last undone stroke back where it came from. */
   redo(): void {
+    if (this.transform) {
+      this.redoTransform();
+      return;
+    }
     if (!this.canRedo) {
       return;
     }
@@ -1905,10 +1926,12 @@ export class EditorState {
   }
 
   /** Takes a plugin off: out of storage, off the panel, and out of the hand. */
-  async removePlugin(id: string): Promise<void> {
+  async removePlugin(id: string): Promise<boolean> {
     plugins.remove(id);
-    await removeInstalled(id);
+    // `false`: storage refused, and the plugin is back after a reload.
+    const kept = await removeInstalled(id);
     this.refreshPlugins();
+    return kept;
   }
 
   /** Switches a plugin that broke back on — the button beside it in the list. */

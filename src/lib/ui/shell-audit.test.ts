@@ -93,6 +93,7 @@ describe('a draft row', () => {
   });
 
   it('a copy made or a draft deleted is heard, not only seen', () => {
-    expect(editorUi).toMatch(/<p class="sheet-hint" aria-live="polite">\s*\{t\('draft\.count'/);
+    // Eleventh audit: the region wraps the empty-list line too (audit11-shell).
+    expect(editorUi).toMatch(/<div class="drafts-said" aria-live="polite">[^]*?<p class="sheet-hint">\s*\{t\('draft\.count'/);
   });
 });

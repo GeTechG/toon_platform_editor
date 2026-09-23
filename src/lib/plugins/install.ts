@@ -49,7 +49,7 @@ const DEFAULT_PORTS: InstallPorts = {
 export function forPerson(failure: string): string {
   const shape = (key: string) =>
     new RegExp(`^${t(key, { api: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '.*')}$`);
-  const actionable = ['plugins.not_downloaded', 'plugins.not_a_bundle', 'plugin.foreign_api'];
+  const actionable = ['plugins.not_downloaded', 'plugins.not_a_bundle', 'plugin.foreign_api', 'plugins.not_kept'];
   return actionable.some((key) => shape(key).test(failure)) ? failure : t('plugins.faulty');
 }
 
@@ -124,8 +124,9 @@ async function install(
   }
   const failed = accept(manifest, registry);
   if (!failed) {
-    await putInstalled(record);
-    return null;
+    // In the register but not on disk: it works until the page is left, and
+    // «установлен» would promise it back after a reload.
+    return (await putInstalled(record)) ? null : t('plugins.not_kept');
   }
   if (was) {
     try {

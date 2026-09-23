@@ -627,4 +627,10 @@
     /* «— рабочее пространство —» itself needs ~15rem; 14 cut its last word. */
     max-width: 16rem;
   }
+  /* Its paper becomes the canvas under it in forced colours: no edge left. */
+  @media (forced-colors: active) {
+    .arrange-bar {
+      outline: 1px solid CanvasText;
+    }
+  }
 </style>

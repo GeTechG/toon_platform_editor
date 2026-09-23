@@ -8,7 +8,7 @@ describe('the two frame tools say what they do', () => {
   it('the frame grabber is called a transform, not a lasso', () => {
     const tool = BUILTIN_PLUGIN.tools?.lasso;
     expect(tool?.label).toBe('Трансформация');
-    expect(tool?.title).toBe('Трансформация (Q) — взять кадр и трансформировать');
+    expect(tool?.title).toBe('Трансформация (Q) — двигать, вращать и масштабировать кадр');
     expect(tool?.icon).toBe('transform');
   });
 

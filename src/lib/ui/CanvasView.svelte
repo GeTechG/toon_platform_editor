@@ -31,6 +31,7 @@
     fitView,
     renderDensity,
     reprojection,
+    resizedView,
     type DrawnView,
     toDocument,
     zoomAt,
@@ -253,15 +254,16 @@
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
   const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
 
-  /** The sheet has been laid out once; after that the view is the user's. */
-  let placed = false;
+  /** The workspace the sheet was last laid out on; null until it is measured. */
+  let placedStage: Stage | null = null;
   // The zoom buttons clamp against the worktable, which only the view knows.
   // The first measured workspace lays the sheet in the middle of it; later
-  // ones (a panel dragged, the window turned) only keep it within reach.
+  // ones (a panel dragged, the window turned) keep what was in the middle of
+  // the screen there — the sheet is refitted, so the old pan pointed elsewhere.
   $effect(() => {
     editor.stage = stage;
-    editor.view = untrack(() => (placed ? clampPan(editor.view, stage) : fitView(stage)));
-    placed = wrapWidth > 0 && wrapHeight > 0;
+    editor.view = untrack(() => (placedStage ? resizedView(editor.view, placedStage, stage) : fitView(stage)));
+    placedStage = wrapWidth > 0 && wrapHeight > 0 ? stage : null;
   });
 
   /** The view the last composed frame was drawn under. */
@@ -885,6 +887,9 @@
         dropOwnGesture();
         scheduleDraw();
       }
+      // The palm touched down while the pen still hovered and is moving the
+      // sheet: it stops, or the line smears across a sliding page.
+      stopTouchNavigation();
     }
     if (startNavigation(e)) {
       e.preventDefault();
@@ -936,8 +941,9 @@
     if (editor.tool === 'pipette') {
       const picked = pickColor(e);
       // Emptiness arms the eraser and keeps both colours (reference: alpha ≠ 255).
+      // Through the rules, so an eraser taken off the panel is not armed.
       if (picked === null) {
-        editor.tool = 'eraser';
+        editor.selectTool('eraser');
         return;
       }
       // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка);
@@ -1056,9 +1062,32 @@
     return panning !== null || gesture !== null;
   }
 
+  /** Fingers let go of the sheet at once: the picture is composed again, once. */
+  function stopTouchNavigation(): void {
+    if (!gesture && !(panning && touches.has(panning.pointerId))) {
+      return;
+    }
+    gesture = null;
+    panning = null;
+    dropNavShot();
+  }
+
+  function dropNavShot(): void {
+    navShot = null;
+    if (shotCanvas) {
+      shotCanvas.width = 0;
+    }
+    scheduleDraw();
+  }
+
   function endNavigation(e: PointerEvent): boolean {
     const was = navigating();
     touches.delete(e.pointerId);
+    // A third finger lifted: the pinch goes on with the two left, measured
+    // afresh — against the old pair the view leapt.
+    if (gesture && touches.size === 2) {
+      gesture = pinchFrom(touches);
+    }
     if (touches.size < 2) {
       // The finger left after a pinch goes on panning without lifting — only
       // where a finger navigates; under a drawing tool it never draws.
@@ -1075,11 +1104,7 @@
     // composed again, once, for the view it came to rest in. The shot's
     // backing store goes back too — a stage of pixels held for nothing.
     if (was && !navigating()) {
-      navShot = null;
-      if (shotCanvas) {
-        shotCanvas.width = 0;
-      }
-      scheduleDraw();
+      dropNavShot();
       return true;
     }
     return false;

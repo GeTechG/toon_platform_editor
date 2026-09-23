@@ -44,6 +44,13 @@
   border-color: var(--accent);
   background: radial-gradient(circle closest-side, var(--canvas) 82%, transparent 88%) no-repeat right center / 1.1rem 1.1rem var(--accent);
 }
+/* Reduced motion keeps the change of tone, not the knob's travel — the same
+   line the keys draw at their squeeze. */
+@media (prefers-reduced-motion: reduce) {
+  :where(.editor) input[type='checkbox'][role='switch'] {
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+}
 
 /* A range: a pill track in the sub-tone, an accent knob ringed in canvas. The
    track is drawn by the pseudo-element, so the band a finger deep (DESIGN §5)

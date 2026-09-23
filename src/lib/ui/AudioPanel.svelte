@@ -129,7 +129,7 @@
   <div class="body">
     <input
       type="file"
-      accept="audio/*"
+      accept="audio/*,.ogg,.oga,.opus"
       bind:this={picker}
       onchange={pickTrack}
       hidden
@@ -222,6 +222,13 @@
     background: var(--paper);
     border: none;
     border-radius: var(--r-md);
+  }
+  /* Its edge is a tone over the stage, and forced colors paint every tone
+     alike: outlined, as controls.css does for menus and dialogs. */
+  @media (forced-colors: active) {
+    .audio-plate {
+      outline: 1px solid CanvasText;
+    }
   }
   /* Mobile: a bottom drawer instead of a floating plate, as the layers list. */
   @media (max-width: 40rem) {

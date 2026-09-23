@@ -14,6 +14,21 @@ interface ErrorConsole {
 
 const LIMIT = 200;
 
+/** A thrown thing as the log wants it: an error with its stack, an object with its fields. */
+function describe(what: unknown): string {
+  if (what instanceof Error) {
+    return what.stack ?? what.message;
+  }
+  if (typeof what === 'object' && what !== null) {
+    try {
+      return JSON.stringify(what);
+    } catch {
+      return String(what);
+    }
+  }
+  return String(what);
+}
+
 export function createErrorLog() {
   const lines: string[] = [];
   let watching = false;
@@ -22,7 +37,7 @@ export function createErrorLog() {
     if (lines.length >= LIMIT) {
       lines.shift();
     }
-    lines.push(`${new Date().toISOString()} ${what instanceof Error ? what.stack ?? what.message : String(what)}`);
+    lines.push(`${new Date().toISOString()} ${describe(what)}`);
   };
 
   return {
@@ -32,11 +47,20 @@ export function createErrorLog() {
         return;
       }
       watching = true;
-      target.addEventListener('error', (e) => note((e as ErrorEvent).error ?? (e as ErrorEvent).message));
+      target.addEventListener('error', (e) => {
+        const { error, message } = e as ErrorEvent;
+        // The browser's word that a resize was finished next frame, not a
+        // fault: the studio's measured panels raise it on every window resize,
+        // and a dozen of them pushed the real errors out of the 200 lines.
+        if (!error && /^ResizeObserver loop/.test(message ?? '')) {
+          return;
+        }
+        note(error ?? message);
+      });
       target.addEventListener('unhandledrejection', (e) => note((e as PromiseRejectionEvent).reason));
       const wasError = con.error.bind(con);
       con.error = (...args: unknown[]) => {
-        note(args.join(' '));
+        note(args.map(describe).join(' '));
         wasError(...args);
       };
     },

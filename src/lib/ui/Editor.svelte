@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick, untrack, type Snippet } from 'svelte';
+  import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
   import { plugins } from '../plugins';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
@@ -29,7 +29,7 @@
   import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
   import { extendTarget, wrapIndex } from './frame-selection';
-  import { keyOwner, latinKey } from './key-owner';
+  import { keyOwner, latinKey, repeats } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -46,6 +46,7 @@
   } from '../draft/store';
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
+  import { isAudioFile } from '../audio/track';
   import FrameThumb from './FrameThumb.svelte';
   import {
     PANEL_HEIGHT_AUDIO,
@@ -323,11 +324,16 @@
     }
     // Read by place on a non-Latin layout: «и» is B (key-owner.ts).
     const key = latinKey(e);
+    // An open sheet is where the hands are: Alt+E and Alt+S stacked the
+    // mega-eraser warning and the export over it, three modals deep.
+    const modalOpen = document.querySelector('dialog:modal') !== null;
     // Alt+E is the reference's mega-eraser; every other modifier is the
     // browser's or the OS's.
     if (e.altKey && (key === 'e' || key === 'E') && hasMegaEraser) {
       e.preventDefault();
-      editor.selectTool('mega-eraser');
+      if (!e.repeat && !modalOpen) {
+        editor.selectTool('mega-eraser');
+      }
       return;
     }
     // Reference Ctrl+S / Alt+S / Alt+Enter. These fire from a form field too:
@@ -335,11 +341,16 @@
     // warnings is not a keystroke anyone types by accident.
     if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
       e.preventDefault();
-      saveNow(true);
+      if (!e.repeat) {
+        saveNow(true);
+      }
       return;
     }
     if (e.altKey && (key === 's' || key === 'S')) {
       e.preventDefault();
+      if (e.repeat || modalOpen) {
+        return;
+      }
       // Reference Alt+S in Toonio saves the project to a file; the other
       // presets have no project file, so there it stays the export.
       if (hasProjectFile) {
@@ -351,13 +362,17 @@
     }
     if (e.altKey && key === 'Enter') {
       e.preventDefault();
-      editor.warnings = !editor.warnings;
+      if (!e.repeat) {
+        editor.warnings = !editor.warnings;
+      }
       return;
     }
     // Reference Alt+L: the session's errors as a file, for a bug report.
     if (e.altKey && (key === 'l' || key === 'L')) {
       e.preventDefault();
-      downloadErrorLog();
+      if (!e.repeat) {
+        downloadErrorLog();
+      }
       return;
     }
     if (e.altKey) {
@@ -379,10 +394,16 @@
       defaultPrevented: e.defaultPrevented,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
-      modalOpen: document.querySelector('dialog:modal') !== null,
+      modalOpen,
       letterKeys: editor.settings.letterKeys,
     });
     if (owner === 'control') {
+      return;
+    }
+    // A held key runs on only where more of the same is the point (key-owner.ts):
+    // a held Space, K or H flipped its toggle with every auto-repeat.
+    if (e.repeat && !repeats(key)) {
+      e.preventDefault();
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do
@@ -883,6 +904,16 @@
    */
   let thumbUrls = $state<Record<string, string>>({});
 
+  // The site leaves the studio without a reload. The track is a media element
+  // nothing unmounts — a preview running at that moment went on sounding over
+  // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
+  onDestroy(() => {
+    editor.audio.clear();
+    for (const url of Object.values(thumbUrls)) {
+      URL.revokeObjectURL(url);
+    }
+  });
+
   async function refreshDrafts(): Promise<void> {
     drafts = draftEntries(await listDrafts());
     for (const url of Object.values(thumbUrls)) {
@@ -896,8 +927,12 @@
 
   /** Reference «копия»: the same drawing under a new key, the original untouched. */
   async function copyDraft(entry: DraftEntry): Promise<void> {
-    await duplicateDraft(entry.id);
+    const copy = await duplicateDraft(entry.id);
     await refreshDrafts();
+    // The source is still there, so the copy is what did not fit.
+    if (!copy && drafts.some((d) => d.id === entry.id)) {
+      alert(t('editor.draft_copy_failed'));
+    }
   }
 
   /**
@@ -984,6 +1019,7 @@
       editor.audio.clear();
     }
     draftId = entry.id;
+    editor.lastSavedAt = null;
     // close(), not the flag: an unmounted open dialog drops focus on <body>.
     draftsDialog?.close();
   }
@@ -1055,7 +1091,8 @@
   async function openFile(file: File): Promise<void> {
     importError = '';
     if (editor.touched) {
-      if (!confirm(t('editor.file_open_confirm', { name: file.name }))) {
+      // Alt+Enter takes the question away, not the draft: it is written all the same.
+      if (editor.warnings && !confirm(t('editor.file_open_confirm', { name: file.name }))) {
         return;
       }
       if (!(await saveNow(true))) {
@@ -1111,6 +1148,8 @@
     storedBlob = null;
     storedCredits = '';
     draftId = newDraftId();
+    // «Сохранено локально» was the previous drawing's: this one is not on disk yet.
+    editor.lastSavedAt = null;
   }
 
   /**
@@ -1127,7 +1166,7 @@
       void openDraftsFile(file);
     } else if (/\.(toonop|toon|json)$/i.test(file.name)) {
       void openFile(file);
-    } else if (file.type.startsWith('audio/')) {
+    } else if (isAudioFile(file)) {
       void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
       audioOpen = true;
     } else {
@@ -1147,7 +1186,7 @@
       const { loaded, broken } = await importDrafts(await file.text());
       if (broken > 0 || loaded === 0) {
         importError = loaded > 0 || broken > 0
-          ? t('settings.drafts_loaded', { loaded, broken })
+          ? t(broken > 0 ? 'settings.drafts_loaded_broken' : 'settings.drafts_loaded', { loaded, broken })
           : t('settings.no_drafts');
       }
       if (loaded > 0) {
@@ -1391,8 +1430,8 @@
         class:active={isFullscreen}
         aria-pressed={isFullscreen}
         onclick={toggleFullscreen}
-        data-key="F"
-        title={t('editor.fullscreen_title')}
+        data-key={hasFeather ? undefined : 'F'}
+        title={hasFeather ? t('editor.fullscreen') : t('editor.fullscreen_title')}
         aria-label={t('editor.fullscreen')}
       >
         <Icon name="expand" />
@@ -1808,8 +1847,10 @@
   {/if}
 
   <!-- Items taken off the panels: windows over the whole editor — the canvas
-       and the panels alike — so folding a column never moves them. -->
-  {#each editor.panels.float as id (id)}
+       and the panels alike — so folding a column never moves them. In a fixed
+       order: the stack is their z-index, and a node moved to the top lost
+       the focus and the pointer in it. -->
+  {#each [...editor.panels.float].sort() as id (id)}
     <FloatWindow {editor} {id}>
       {@render panelItem(id)}
     </FloatWindow>
@@ -1839,13 +1880,19 @@
       </header>
 
       <div class="sheet-body">
-        {#if drafts.length === 0}
-          <p class="empty">{t('editor.drafts_empty')}</p>
-        {:else}
-          <p class="sheet-hint" aria-live="polite">
-            {t('draft.count', { count: drafts.length })}{t('editor.on_this_device')}
-            {#if storageUsed}{t('editor.storage_used', { size: formatFileSize(storageUsed) })}{/if}
-          </p>
+        <!-- One region for the count and the empty list alike: deleting the
+             last draft swapped the counting region out and was not heard. -->
+        <div class="drafts-said" aria-live="polite">
+          {#if drafts.length === 0}
+            <p class="empty">{t('editor.drafts_empty')}</p>
+          {:else}
+            <p class="sheet-hint">
+              {t('draft.count', { count: drafts.length })}{t('editor.on_this_device')}
+              {#if storageUsed}{t('editor.storage_used', { size: formatFileSize(storageUsed) })}{/if}
+            </p>
+          {/if}
+        </div>
+        {#if drafts.length > 0}
           <ul class="drafts">
             {#each drafts as entry (entry.id)}
               <li class="draft">
@@ -1940,7 +1987,8 @@
 
   <!-- The lock: an update is coming down, and nothing else is to be touched
        while it does. Esc does not call it off — there is nothing to call off. -->
-  <dialog class="updating" bind:this={updatingEl} aria-labelledby="editor-updating" oncancel={(e) => e.preventDefault()}>
+  <dialog class="updating" bind:this={updatingEl} aria-labelledby="editor-updating" oncancel={(e) => e.preventDefault()}
+    onclose={() => editor.updating && updatingEl?.showModal()}>
     <p id="editor-updating">{t('editor.plugins_updating')}</p>
   </dialog>
 
@@ -2356,6 +2404,21 @@
   .editor.arranging .left,
   .editor.arranging .right {
     min-width: 4rem;
+  }
+  /* A panel that scrolls keeps scrolling under a finger while arranging: its
+     handles fill it, and with `touch-action: none` on each a key past the
+     edge could never be reached. A swipe along the panel scrolls it; a drag
+     across it — out, which is where every item goes — picks the item up. */
+  @media (min-width: 40.0625rem) {
+    .editor.arranging .left .arr,
+    .editor.arranging .right .arr {
+      touch-action: pan-y;
+    }
+  }
+  @media (max-width: 40rem) {
+    .editor.arranging .left .arr {
+      touch-action: pan-x;
+    }
   }
   /* The transport is one control: its keys keep the row's own spacing so
      nothing reads as a seam between them. */
@@ -2851,6 +2914,10 @@
     }
     .studio .row:not(:has(.timeline)) > :global(*) {
       flex: none;
+    }
+    /* …and under a finger while arranging too (see the columns above). */
+    .editor.arranging .row:not(:has(.timeline)) .arr {
+      touch-action: pan-x;
     }
   }
   /* Zoom group: two keys around a tabular readout, so the width does not

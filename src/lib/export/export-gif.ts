@@ -39,8 +39,12 @@ export async function exportGif(
   const send = (msg: ExportRequest, transfer: Transferable[] = []) =>
     worker.postMessage(msg, transfer);
 
+  // A worker that failed (or finished) settles this at once; the render loops
+  // below see it and stop instead of drawing both passes for nobody.
+  let settled = false;
   const bytes = new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
     const done = (settle: () => void) => {
+      settled = true;
       worker.terminate();
       signal?.removeEventListener('abort', onAbort);
       settle();
@@ -61,6 +65,8 @@ export async function exportGif(
     };
     worker.onerror = () => done(() => reject(new Error('GIF export worker failed')));
   });
+  // Handled at `return bytes`; a rejection before it is not «unhandled» in the Alt+L log.
+  bytes.catch(() => {});
 
   try {
     send({
@@ -76,6 +82,9 @@ export async function exportGif(
       signal,
       onProgress: (done, count) => onProgress?.(done, count, 'render'),
     })) {
+      if (settled) {
+        break;
+      }
       send({ type: 'sample', frame }, [frame.data]);
     }
     throwIfAborted(signal);
@@ -83,6 +92,9 @@ export async function exportGif(
     // Pass two: the bytes. Progress for this half comes back from the worker,
     // one message per frame it has actually encoded.
     for await (const frame of rasterizeFrames(doc, { ...raster, signal })) {
+      if (settled) {
+        break;
+      }
       send({ type: 'frame', frame }, [frame.data]);
     }
     throwIfAborted(signal);

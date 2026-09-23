@@ -66,7 +66,7 @@ describe('a file dropped on the window', () => {
   it('opens a drawing, attaches a sound and names anything else', () => {
     expect(editorUi).toContain('ondrop={onDrop}');
     expect(editorUi).toContain('function onDrop(');
-    expect(editorUi).toContain("type.startsWith('audio/')");
+    expect(editorUi).toContain("isAudioFile(file)");
     expect(editorUi).toContain("t('editor.file_unsupported')");
     expect(t('editor.file_unsupported')).toContain('.toonop');
   });
@@ -222,8 +222,8 @@ describe('the drafts file', () => {
     // Our own name for our own file; `.toonio` stays readable, not writable.
     expect(sheet).toContain("'drafts.toonops'");
     expect(sheet).toContain('.toonops,.toonio');
-    expect(sheet).toContain("t('settings.drafts_loaded', { loaded, broken })");
-    expect(t('settings.drafts_loaded', { loaded: 3, broken: 1 })).toBe('Загружено 3, повреждено 1');
+    expect(sheet).toContain("t(broken > 0 ? 'settings.drafts_loaded_broken' : 'settings.drafts_loaded', { loaded, broken })");
+    expect(t('settings.drafts_loaded_broken', { loaded: 3, broken: 1 })).toBe('Загружено черновиков: 3, повреждённых пропущено: 1');
   });
 });
 

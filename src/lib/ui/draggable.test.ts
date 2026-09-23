@@ -91,6 +91,15 @@ describe('the colour picker opens inside the screen', () => {
   it('measures itself on open and goes through the window clamp', async () => {
     const picker = await Bun.file(new URL('./ColourPicker.svelte', import.meta.url)).text();
     const open = picker.match(/\$effect\(\(\) => \{\s*if \(box && !box\.open\)[^]*?\n  }\);/)?.[0] ?? '';
+    expect(open).toContain('keepInside()');
+    const inside = picker.match(/function keepInside\(\)[^]*?\n  }/)?.[0] ?? '';
+    expect(inside).toContain('getBoundingClientRect()');
+    expect(inside).toContain('clampWindowPosition(');
+  });
+
+  it('comes back inside when the screen turns under it', async () => {
+    const picker = await Bun.file(new URL('./ColourPicker.svelte', import.meta.url)).text();
+    const open = picker.match(/function keepInside\(\)[^]*?\n  }/)?.[0] ?? '';
     expect(open).toContain('getBoundingClientRect()');
     expect(open).toContain('clampWindowPosition(');
   });

@@ -417,8 +417,8 @@ describe('a navigation gesture moves the picture instead of rebuilding it', () =
   });
 
   it('letting go drops the shot and composes once at full density', () => {
-    const end = handler('endNavigation');
-    expect(end).toContain('navShot = null');
+    expect(handler('endNavigation')).toContain('dropNavShot()');
+    expect(handler('dropNavShot')).toContain('navShot = null');
     expect(source).not.toContain('renderDensity(window.devicePixelRatio || 1, navigating())');
   });
 });

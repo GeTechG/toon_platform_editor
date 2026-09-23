@@ -131,8 +131,8 @@
   }
 
   async function remove(plugin: InstalledPlugin): Promise<void> {
-    await editor.removePlugin(plugin.id);
-    report = t('plugins.removed_report', { name: plugin.name });
+    const kept = await editor.removePlugin(plugin.id);
+    report = t(kept ? 'plugins.removed_report' : 'plugins.remove_not_kept', { name: plugin.name });
     await refresh();
     await keepFocus();
   }
@@ -323,7 +323,8 @@
   .tabs {
     display: flex;
     gap: 0.4rem;
-    padding: 0 1rem;
+    /* Off the header's hairline: the tabs sat right on it. */
+    padding: 0.6rem 1rem 0;
   }
   .tabs .key {
     flex: 1;

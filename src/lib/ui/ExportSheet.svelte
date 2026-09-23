@@ -304,6 +304,10 @@
         {/if}
       {/if}
 
+      {#if format === 'project' && editor.audio.hasTrack}
+        <p class="note">{t('export.project_no_audio')}</p>
+      {/if}
+
       {#if format === 'video'}
         {#if planned && !plan}
           <p class="note">{t('export.no_video_note')}</p>

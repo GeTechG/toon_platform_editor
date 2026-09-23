@@ -108,3 +108,22 @@ export function latinKey(e: { key: string; code: string }): string {
   }
   return e.key;
 }
+
+/**
+ * Keys that mean «more of the same» and run on while held: steps, brush size,
+ * zoom, undo and redo, turning a selection, new frames, deleting. Everything
+ * else is one press per press — a held K flipped the onion skin with every
+ * auto-repeat and stopped wherever the hand let go, a held Space started and
+ * stopped the preview.
+ */
+const HELD = new Set([
+  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
+  '+', '=', '-', '_',
+  'z', 'Z', 'y', 'Y',
+  'q', 'Q', 'w', 'W',
+  'a', 'A', 'F7', 'Delete',
+]);
+
+export function repeats(key: string): boolean {
+  return HELD.has(key);
+}
