@@ -70,11 +70,13 @@ describe('the canvas', () => {
     expect(canvas).not.toMatch(/\{#if hint\}\s*<p class="hint"/);
   });
 
-  it('forgets a held Space when the window loses focus', () => {
-    // Alt+Tab with Space down never delivers the keyup: every press on the
-    // canvas then panned instead of drawing.
-    const win = canvas.match(/<svelte:window[\s\S]*?\/>/)?.[0] ?? '';
-    expect(win).toContain('onblur=');
+  it('leaves Space to the preview: the canvas never pans on it', () => {
+    // Space was both play/stop and a pan modifier: a held Space started the
+    // preview and turned the next press on the sheet into a pan. The owner
+    // keeps Space for playback only; the middle button, two fingers and the
+    // hand still pan.
+    expect(canvas).not.toContain('spaceHeld');
+    expect(canvas).not.toMatch(/<svelte:window/);
   });
 
   it('sizes the hint in rem, so it follows the reader’s text size', () => {

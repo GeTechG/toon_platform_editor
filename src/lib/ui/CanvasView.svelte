@@ -72,9 +72,8 @@
   let cursorVisible = $state(false);
   /** Color the pipette would take, shown next to the cursor (Tonio). */
   let pickPreview = $state<string | null>(null);
-  /** Pointer that is panning the canvas (middle button or space+drag). */
+  /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
-  let spaceHeld = false;
   /** Active touch points, for two-finger pan and pinch. */
   const touches = new Map<number, { x: number; y: number }>();
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
@@ -688,7 +687,7 @@
       return touches.size > 1;
     }
     // The hand is the tool whose whole job is this gesture (reference `Drag`).
-    if (e.button === 1 || spaceHeld || editor.tool === 'drag') {
+    if (e.button === 1 || editor.tool === 'drag') {
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       canvasEl.setPointerCapture(e.pointerId);
       takeNavShot();
@@ -1036,20 +1035,6 @@
     return { pointerId: e.pointerId, isPrimary: e.isPrimary, x, y, coalesced };
   }
 </script>
-
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === ' ') {
-      spaceHeld = true;
-    }
-  }}
-  onkeyup={(e) => {
-    if (e.key === ' ') {
-      spaceHeld = false;
-    }
-  }}
-  onblur={() => (spaceHeld = false)}
-/>
 
 <div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
   <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
