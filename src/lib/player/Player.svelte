@@ -12,6 +12,9 @@
   import { LoopPlayer } from './player';
   import { frameForTime, trackShouldRestart } from '../audio/track';
   import { t } from '../i18n';
+  // The accent is an alias (`--accent` → `--signal-dark`), which a literal
+  // fallback cannot carry: the player brings the table itself, as the studio does.
+  import '../ui/tokens.css';
 
   /**
    * Reduced motion means no autoplay: the visitor lands on the first frame
@@ -241,9 +244,8 @@
     align-items: center;
     justify-content: center;
   }
-  /* The product's physical key (DESIGN §4): a hard offset shadow that the
-     press takes away. Electric, never signal red — red belongs to «рисовать».
-     Tokens fall back so the player works outside the editor's root. */
+  /* The studio's primary key (DESIGN §5): a flat pill in the working red,
+     pressed to 96 %. Electric keeps to the drawing aids since 2026-09-23. */
   .play-key {
     position: absolute;
     left: 50%;
@@ -257,35 +259,31 @@
     min-height: 44px;
     padding: 0 0.9rem;
     border: none;
-    border-radius: var(--r-sm, 7px);
-    background: var(--electric, #1b5cff);
+    border-radius: var(--r-pill, 999px);
+    background: var(--accent);
     color: var(--canvas, #ffffff);
     font: inherit;
     font-weight: 650;
     cursor: pointer;
-    box-shadow: 0 4px 0 var(--electric-dark, #134bd6);
     transition:
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
-      box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1);
+      background-color 0.13s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .play-key:hover {
-    transform: translateX(-50%) translateY(2px);
-    box-shadow: 0 2px 0 var(--electric-dark, #134bd6);
+    background: var(--accent-ink);
   }
   .play-key:active {
-    transform: translateX(-50%) translateY(4px);
-    box-shadow: 0 0 0 var(--electric-dark, #134bd6);
+    transform: translateX(-50%) scale(0.96);
   }
   .play-key:focus-visible {
-    outline: 3px solid var(--electric, #1b5cff);
+    outline: 3px solid var(--accent);
     outline-offset: 3px;
   }
-  /* The key keeps its depth and its pressed state; only the travel goes. */
+  /* The key keeps its colour and its pressed state; only the travel goes. */
   @media (prefers-reduced-motion: reduce) {
     .play-key {
       transition: none;
     }
-    .play-key:hover,
     .play-key:active {
       transform: translateX(-50%);
     }

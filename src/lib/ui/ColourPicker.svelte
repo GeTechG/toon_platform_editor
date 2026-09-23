@@ -501,7 +501,7 @@
   }
   .fields span {
     color: var(--ink-2);
-    font-size: 0.6rem;
+    font-size: 0.74rem;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-align: center;
@@ -553,10 +553,9 @@
     justify-content: center;
     border: none;
     font: inherit;
-    font-size: 0.62rem;
+    font-size: 0.74rem;
     font-weight: 600;
     letter-spacing: 0.02em;
-    opacity: 0.85;
   }
   .old {
     cursor: pointer;

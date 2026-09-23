@@ -412,3 +412,23 @@ describe('the clip margin covers what leans on the seam', () => {
     expect(margin).toBeGreaterThanOrEqual(tab + ring + offset + lift);
   });
 });
+
+// DESIGN's smallest step is the label at 0.74rem. The frame numbers and the
+// colour window's captions sat at 0.6rem — 9.6px, on the phones PRODUCT.md
+// measures against — under anything the system names.
+describe('no text is set below the label step', () => {
+  it('writes no font-size under 0.7rem in the studio or the player', async () => {
+    const player = await Bun.file(new URL('../player/Player.svelte', import.meta.url)).text();
+    const all = [...STYLES, ['player/Player.svelte', player.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? ''] as const];
+    const tiny: string[] = [];
+    for (const [file, css] of all) {
+      for (const [, size] of withoutComments(css).matchAll(/font-size:\s*([^;}]+)/g)) {
+        const rem = size.trim().match(/^([\d.]+)rem$/);
+        const px = size.trim().match(/^([\d.]+)px$/);
+        const at = rem ? Number(rem[1]) * 16 : px ? Number(px[1]) : null;
+        if (at !== null && at < 11.2) tiny.push(`${file} ${size.trim()}`);
+      }
+    }
+    expect(tiny).toEqual([]);
+  });
+});

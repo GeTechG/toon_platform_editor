@@ -293,7 +293,6 @@
       >
         <button
           class="eye"
-          aria-pressed={!editor.doc.layers[layerIndex].hidden}
           aria-label={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
           title={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
           onclick={(e) => {

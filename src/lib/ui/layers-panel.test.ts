@@ -200,3 +200,13 @@ describe('the controls in a row stay controls', () => {
     expect(rows).toMatch(/<button\s+class="name"[^>]*aria-pressed=\{layerIndex === editor\.activeLayer\}/);
   });
 });
+
+describe('the eye says what a press will do', () => {
+  it('names the action and does not also claim a pressed state', () => {
+    // «Скрыть слой, нажата»: a label that already flips with the state plus
+    // aria-pressed reads as a toggle whose name contradicts it (WCAG 4.1.2).
+    const eye = rows.match(/<button\s+class="eye"[\s\S]*?>/)?.[0] ?? '';
+    expect(eye).toContain("t('layer.show') : t('layer.hide')");
+    expect(eye).not.toContain('aria-pressed');
+  });
+});

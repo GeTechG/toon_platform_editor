@@ -430,3 +430,17 @@ describe('the strip sees a frame added', () => {
     expect(timeline).toContain('$derived(editor.doc.layers[0].frames.length)');
   });
 });
+
+describe('the frame menu shows where the keys are', () => {
+  it('a focused item keeps the ring, not only the hover tint', () => {
+    // The tint is 7% ink on white — about 1.1:1 — and was the one sign of
+    // focus while Shift+F10 and the arrows walked the menu (WCAG 2.4.7).
+    const style = timeline.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '';
+    const focus = [...style.matchAll(/([^{}]*\.frame-menu button[^{}]*:focus-visible[^{}]*)\{([^}]*)\}/g)];
+    expect(focus.length).toBeGreaterThan(0);
+    for (const [, , body] of focus) {
+      expect(body).not.toMatch(/outline:\s*(none|0)/);
+    }
+    expect(style).toMatch(/\.frame-menu button:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\)/);
+  });
+});

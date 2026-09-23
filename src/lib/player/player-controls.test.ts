@@ -58,3 +58,22 @@ describe('Player controls contract', () => {
     expect(source).toContain('@media (prefers-reduced-motion: reduce)');
   });
 });
+
+describe('the player is red like the studio', () => {
+  const style = source.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '';
+  const key = style.match(/\.play-key\s*\{([^}]*)\}/)?.[1] ?? '';
+
+  it('fills the play key with the accent, not electric', () => {
+    // Since 2026-09-23 electric keeps to the drawing aids — onion-skin and the
+    // first layer tag; fills and rings of the chrome are the one red accent.
+    expect(key).toMatch(/background:\s*var\(--accent\b/);
+    expect(style).not.toContain('--electric');
+  });
+
+  it('is a flat pill that presses, like the studio key', () => {
+    expect(key).toContain('border-radius: var(--r-pill');
+    expect(key).not.toContain('box-shadow');
+    expect(style).toMatch(/\.play-key:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\b/);
+    expect(style).toMatch(/\.play-key:active\s*\{[^}]*scale\(0\.96\)/);
+  });
+});

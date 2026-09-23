@@ -500,7 +500,7 @@
   .num {
     flex: none;
     text-align: center;
-    font-size: 0.6rem;
+    font-size: 0.74rem;
     line-height: 32px;
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
@@ -595,7 +595,12 @@
   .frame-menu button:hover:not(:disabled),
   .frame-menu button:focus-visible {
     background: var(--hairline-soft);
-    outline: none;
+  }
+  /* The tint alone is 1.1:1 — the arrows need the studio's ring, laid inside
+     the item so the menu's own edge does not clip it. */
+  .frame-menu button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
   }
   .frame-menu button:disabled {
     opacity: 0.4;
