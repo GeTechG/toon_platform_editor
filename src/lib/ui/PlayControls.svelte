@@ -26,8 +26,9 @@
       // The frames run on the player's clock in both modes, as the reference's
       // `UpdatePlayFrame` does. Tied, every time the animation comes back round
       // the track is pulled to where this frame sits in it — so a track shorter
-      // than the animation repeats under it rather than falling silent, and a
-      // longer one is heard only as far as the animation reaches.
+      // than the animation plays once and falls silent until the next pass
+      // (the owner's call, against the reference: frame N is one point of the
+      // track), and a longer one is heard only as far as the animation reaches.
       if (editor.audio.sync && editor.audio.hasTrack && editor.playbackFrame < lastFrame) {
         editor.audio.reseekAtLoop(editor.playbackFrame, editor.doc.frame_rate);
       }

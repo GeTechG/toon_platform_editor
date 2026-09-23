@@ -61,3 +61,36 @@ describe('visible text lives in the dictionary', () => {
     expect(await strays()).toEqual([]);
   });
 });
+
+// Tenth audit: one word per thing, and no slips a reader trips on.
+describe('the dictionary says one thing one way', async () => {
+  const ru = await Bun.file(new URL('./i18n/ru.json', import.meta.url).pathname).json();
+  const all = JSON.stringify(ru);
+
+  it('a saved panel layout is a «раскладка», never a «рабочее пространство»', () => {
+    // The bar, the phone key and the save title said «раскладка»; the picker
+    // beside them said «рабочее пространство» for the same list.
+    expect(all).not.toMatch(/рабоч\S* пространств|выбранное пространство/i);
+  });
+
+  it('the two colour wells are named контур and заливка everywhere', () => {
+    // The palette called them «контур» / «заливка»; the colour window called
+    // the same two wells «цвет кисти» and «цвет правой кнопки».
+    expect(ru.color.stroke_title).toContain('контур');
+    expect(ru.color.fill_title).toContain('заливк');
+  });
+
+  it('a plugin for another API version is told in words, not «чужой мажор»', () => {
+    expect(all).not.toContain('мажор');
+    expect(ru.plugin.foreign_api).toContain('{{api}}');
+    expect(ru.plugin.catalog_foreign_major).toContain('{{api}}');
+  });
+
+  it.each([
+    ['Тониовская', 'the toonio brush is «Туниовская», like «Тунио» in the file errors'],
+    ['видео-кодек', '«видеокодек» is one word'],
+    ['дрожь руки почти не видно', '«не видно» takes the genitive: «дрожи»'],
+  ])('no «%s» — %s', (slip) => {
+    expect(all).not.toContain(slip);
+  });
+});

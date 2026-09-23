@@ -121,7 +121,7 @@ describe('a release the canvas never heard', () => {
   it('ends the gesture when the mouse moves with no button held', () => {
     // The up landed elsewhere (a native dialog, the window lost focus): the
     // stroke stayed glued to a hovering cursor and refused the next press.
-    expect(canvas).toContain("e.pointerType === 'mouse' && e.buttons === 0");
+    expect(canvas).toContain("e.pointerType !== 'touch' && e.buttons === 0");
   });
 
   it('treats a lost capture as a cancel', () => {

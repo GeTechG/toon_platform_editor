@@ -15,7 +15,7 @@
   import { frameCount } from '../model/operations';
   import { exportGif } from '../export/export-gif';
   import { exportPng } from '../export/png';
-  import { WATERMARK_TEXT, exportSize, type ExportStage } from '../export/rasterize';
+  import { WATERMARK_TEXT, exportSize, throwIfAborted, type ExportStage } from '../export/rasterize';
   import { exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
   import { saveFile as save } from './save-file';
@@ -143,23 +143,30 @@
     // focus to the page: it goes to «Отменить», the one thing left to do, and
     // back to «Скачать» when the file is out or the build is called off.
     void tick().then(() => cancelEl?.focus());
-    const options = { width, watermark, signal: cancelling.signal, onProgress: track };
+    const signal = cancelling.signal;
+    const options = { width, watermark, signal, onProgress: track };
+    // PNG and a plugin's format take no signal: a file built after «Отменить»
+    // is not handed over all the same.
+    const deliver = (blob: Blob, name: string) => {
+      throwIfAborted(signal);
+      save(blob, name);
+    };
     try {
       if (format === 'project') {
         // The project, not a picture of it: the document exactly as the draft
         // and the API hold it, the same file Alt+S writes in the Toonio preset.
-        save(
+        deliver(
           new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }),
           'toonop.toonop',
         );
       } else if (pluginFormat) {
         const file = await pluginFormat.run(makeScene(editor.doc, editor.activeFrame));
-        save(file.blob, file.name);
+        deliver(file.blob, file.name);
       } else if (format === 'png') {
-        save(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
+        deliver(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
       } else if (format === 'gif') {
         const bytes = await exportGif(editor.doc, options);
-        save(new Blob([bytes], { type: 'image/gif' }), 'toonop.gif');
+        deliver(new Blob([bytes], { type: 'image/gif' }), 'toonop.gif');
       } else if (plan) {
         const blob = await exportVideo(editor.doc, {
           ...options,
@@ -167,7 +174,7 @@
           audio: editor.audio.blob,
           trackSeconds,
         });
-        save(blob, `toonop.${plan.extension}`);
+        deliver(blob, `toonop.${plan.extension}`);
       }
     } catch (err) {
       if ((err as { name?: string }).name === 'AbortError') {

@@ -15,6 +15,31 @@ export const AUDIO_MIME_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/
  */
 export const AUDIO_MAX_BYTES = 70 * 1024 * 1024;
 
+/**
+ * Longest name or author the API stores (`MAX_CREDIT_CHARS` in
+ * `services/api/src/publications/web.rs`). Past it the upload is refused and
+ * the publication goes out silent, so the editor never holds a longer one.
+ */
+export const AUDIO_MAX_CREDIT = 120;
+
+/**
+ * Credits for a freshly loaded file: its own ID3 tags first, then what the
+ * caller offers — minus an artist that only the previous file's tags put in
+ * the field, which belongs to that song and not to this one.
+ */
+export function trackCredits(
+  tags: { title: string; artist: string },
+  name: string,
+  author: string,
+  previousTagArtist = '',
+): { name: string; author: string } {
+  const offered = author && author === previousTagArtist ? '' : author;
+  return {
+    name: (tags.title || name).slice(0, AUDIO_MAX_CREDIT),
+    author: (tags.artist || offered).slice(0, AUDIO_MAX_CREDIT),
+  };
+}
+
 /** Complaint about a picked file, or null if it may be loaded. */
 export function checkAudioFile(file: { type: string; size: number }): string | null {
   if (!file.type.startsWith('audio/')) {

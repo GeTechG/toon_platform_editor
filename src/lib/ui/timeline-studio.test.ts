@@ -500,3 +500,92 @@ describe('ninth audit: a narrower strip keeps the active frame in view', () => {
     expect(effect).toContain('void stripWidth');
   });
 });
+
+describe('tenth audit: the strip keeps what is active in view', () => {
+  const effect = timeline.match(/Keep the active frame in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
+
+  it('the last frame is scrolled in with the row padding, ring and all', () => {
+    expect(effect).toMatch(/scrollToFrame\(index, thumbWidth, GRID_GAP, strip\.scrollLeft, strip\.clientWidth, GRID_GAP\)/);
+  });
+
+  it('the active row is scrolled in under the sticky frame numbers', () => {
+    // Arrows from the canvas walk the layers; with more rows than the panel
+    // shows, the active one sat under the header or below the fold.
+    const rowEffect = timeline.match(/Keep the active row in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    expect(rowEffect).toContain('editor.activeLayer');
+    expect(rowEffect).toContain('scrollTop');
+    expect(rowEffect).toMatch(/scrollToFrame\(/);
+  });
+});
+
+describe('tenth audit: Home and End in the strip', () => {
+  it('reach the first and the last frame without the letter keys', () => {
+    // J and L do it, but they are letter keys, and the setting can turn those
+    // off (WCAG 2.1.4); three hundred arrows is not a way to the end.
+    const handler = timeline.match(/function onStripKey[\s\S]*?\n  }/)?.[0] ?? '';
+    expect(handler).toContain("'Home'");
+    expect(handler).toContain("'End'");
+    expect(handler).toContain('preventDefault');
+    expect(timeline).toContain('onkeydown={onStripKey}');
+  });
+});
+
+describe('tenth audit: the frame menu on a touch screen', () => {
+  it('a long press on a cell opens it — iOS sends no contextmenu', () => {
+    // Delete, copy, paste and merge live only in this menu in «Toonop»; on an
+    // iPhone a right press does not exist and a long press fires nothing.
+    expect(timeline).toMatch(/pointerType === 'touch'[\s\S]*setTimeout/);
+    expect(timeline).toContain('LONG_PRESS_MS');
+    expect(timeline).toMatch(/onpointerup=\{cancelLongPress\}/);
+    expect(timeline).toMatch(/onpointercancel=\{cancelLongPress\}/);
+  });
+
+  it('the press that opened the menu does not also select the cell', () => {
+    const click = timeline.match(/function onCellClick[\s\S]*?\n  }/)?.[0] ?? '';
+    expect(click).toContain('longPressed');
+  });
+
+  it('the cell gives no callout or text selection under a held finger', () => {
+    const style = timeline.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '';
+    expect(style).toMatch(/\.cell\s*\{[^}]*-webkit-touch-callout:\s*none/);
+    expect(style).toMatch(/\.cell\s*\{[^}]*user-select:\s*none/);
+  });
+});
+
+describe('tenth audit: menu items are named without their key letter', () => {
+  it('the key is a shortcut property, not part of the name', () => {
+    // «Добавить кадрA» was the accessible name: the kbd text ran into it.
+    const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+    const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
+    expect(items.length).toBe(5);
+    for (const item of items) {
+      expect(item).toMatch(/aria-keyshortcuts="[^"]+"/);
+      expect(item).toContain('<kbd aria-hidden="true">');
+    }
+  });
+});
+
+describe('tenth audit: a frame added at the end stays in view', () => {
+  it('the strip is as wide as every frame whatever the window holds mid-update', () => {
+    // The window swaps cells for a wider spacer in steps; a layout between
+    // them saw a shorter row, the browser clamped the scroll to it, and the
+    // frame just added sat several cells past the right edge.
+    const head = timeline.match(/<div\s+class="head"[\s\S]*?>/)?.[0] ?? '';
+    expect(head).toMatch(/style:min-width=\{`\$\{stripExtent\}px`\}/);
+    expect(timeline).toMatch(/const stripExtent = \$derived\(frameTotal \* \(thumbWidth \+ GRID_GAP\) \+ GRID_GAP\)/);
+  });
+});
+
+describe('tenth audit: the strip under forced colours', () => {
+  const style = timeline.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '';
+  const forced = [...style.matchAll(/@media \(forced-colors: active\)\s*\{([\s\S]*?)\n  \}/g)].map((m) => m[1]).join('\n');
+
+  it('the active cell keeps a mark of its own — its inset ring is a shadow, and shadows are dropped', () => {
+    expect(forced).toMatch(/\.cell\.active\s*\{[^}]*border:\s*3px solid Highlight/);
+  });
+
+  it('the selection and the onion frames keep a system colour and their shape', () => {
+    expect(forced).toMatch(/\.cell\.selected\s*\{[^}]*border-color:\s*Highlight/);
+    expect(forced).toMatch(/\.num\.onion\s*\{[^}]*text-decoration-thickness/);
+  });
+});

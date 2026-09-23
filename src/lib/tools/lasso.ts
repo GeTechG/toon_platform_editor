@@ -226,6 +226,16 @@ export function scaledBy(
   return { ...base, scaleX, scaleY };
 }
 
+/**
+ * A scale typed into the window, in percent. It stops at the same 1 % floor
+ * the keys stop at, sign kept: a typed 0 flattened the selection to a line
+ * that nothing could grow back once applied. NaN (an unfinished field) passes.
+ */
+export function scaleFromField(percent: number): number {
+  const scale = percent / 100;
+  return Math.abs(scale) < SCALE_MIN ? (scale < 0 ? -SCALE_MIN : SCALE_MIN) : scale;
+}
+
 /** One keyboard step: arrows move, Q/W rotate, +/- scale. */
 export function nudged(
   session: TransformSession,

@@ -259,3 +259,28 @@ describe('ninth audit: the keyboard keeps its place in the layer list', () => {
     expect(rows).toContain('aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"');
   });
 });
+
+describe('tenth audit: the layer row', () => {
+  it('on a phone the column holds the whole row — the handle and the bin were scrolled out of it', () => {
+    // 7.5rem is 120 px; the row asked for 178, so on 320 and 390 px the drag
+    // handle and the delete sat past the column's edge.
+    const phone = timeline.slice(timeline.indexOf('@media (max-width: 40rem)'));
+    const width = phone.match(/\.layer-col \{[^}]*width:\s*([^;]+);/s)?.[1] ?? '';
+    const phoneRows = layerRows.slice(layerRows.indexOf('@media (max-width: 40rem)'));
+    expect(phoneRows.length).toBeLessThan(layerRows.length);
+    // Padding 3 + 3, eye 24, tag 14, handle 24, bin 24, four 4 px gaps, the
+    // name's 3rem floor and the column's 1 px border.
+    const furniture = 6 + 24 + 14 + 24 + 24 + 16;
+    expect(Number(width.match(/([\d.]+)rem/)?.[1]) * 16).toBeGreaterThanOrEqual(furniture + 48 + 1);
+    expect(phoneRows).toMatch(/\.row \{[^}]*gap: 4px/);
+    expect(phoneRows).toMatch(/\.eye,\s*\.handle,\s*\.kill \{[^}]*width: 24px/);
+  });
+
+  it('during playback the keys that cannot act say so instead of pretending', () => {
+    // «+ Слой» and × did nothing while the preview ran; a double click opened
+    // the name, took the typing and threw it away.
+    expect(rows).toMatch(/class="add-layer"[\s\S]*?aria-disabled=\{editor\.playing \|\| undefined\}/);
+    expect(rows).toMatch(/class="kill"[\s\S]*?aria-disabled=\{editor\.playing \|\| undefined\}/);
+    expect(fn('startRename')).toContain('editor.playing');
+  });
+});

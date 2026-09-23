@@ -8,10 +8,10 @@
    * the arranger instead (it is what puts it back into a panel), so the title
    * bar stands down.
    */
-  import type { Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { clampWindowPosition } from './draggable';
-  import { panelItem } from './panels';
+  import { panelItem, slotOf } from './panels';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
@@ -69,6 +69,33 @@
   });
 
   const pos = $derived(editor.floatPos[id] ?? { x: 24, y: 24 });
+
+  // …and so does one put anywhere by anyone: a drop past the edge, or a
+  // workspace saved on a wider screen, changes the place and not the size,
+  // and the observer above never heard of it.
+  $effect(() => {
+    void pos.x;
+    void pos.y;
+    untrack(reframe);
+  });
+
+  /**
+   * The window goes back into its panel, and the focus goes with it to the
+   * key it became: the × it was on is gone, and the focus fell to the page.
+   */
+  async function dock(): Promise<void> {
+    editor.showPanelItem(id);
+    const at = slotOf(editor.panels, id);
+    await tick();
+    if (!at) {
+      return;
+    }
+    const panel = document.querySelector<HTMLElement>(`[data-slot="${at.slot}"]`);
+    const item = panel?.children[at.index] as HTMLElement | undefined;
+    const focusable = 'button, input, select, [tabindex]';
+    const key = item?.matches(focusable) ? item : item?.querySelector<HTMLElement>(focusable);
+    (key ?? panel?.querySelector<HTMLElement>(focusable))?.focus();
+  }
   const label = $derived(panelItem(id)?.label ?? id);
 
   function onDown(e: PointerEvent): void {
@@ -79,6 +106,21 @@
     }
     if (!el) {
       return;
+    }
+    // The window pressed comes to the front: the last one drawn is on top,
+    // and one wholly under another could not be reached at all.
+    const floats = editor.panels.float;
+    if (floats[floats.length - 1] !== id) {
+      editor.movePanelItem(id, 'float');
+      // Moving the node lets go of the capture; take it again once it is back.
+      const bar = e.currentTarget as HTMLElement;
+      void tick().then(() => {
+        try {
+          if (grab) bar.setPointerCapture(e.pointerId);
+        } catch {
+          // The pointer is already up — nothing to follow.
+        }
+      });
     }
     grab = {
       x: e.clientX,
@@ -131,6 +173,7 @@
 <div
   bind:this={el}
   class="float"
+  class:handle={editor.arranging}
   data-item={id}
   style="left: {pos.x}px; top: {pos.y}px"
 >
@@ -142,6 +185,7 @@
     class="float-bar"
     role="group"
     tabindex="0"
+    inert={editor.arranging}
     aria-label={t('window.drag', { label })}
     onpointerdown={onDown}
     onpointermove={onMove}
@@ -152,14 +196,15 @@
     <span class="float-name">{label}</span>
     <button
       class="key icon"
-      onclick={() => editor.showPanelItem(id)}
+      onclick={dock}
       title={t('window.dock_title')}
       aria-label={t('window.dock', { label })}
     >
       <Icon name="x" size={14} />
     </button>
   </div>
-  <div class="float-body">
+  <!-- While arranging, the whole window is the handle: nothing in it presses. -->
+  <div class="float-body" inert={editor.arranging}>
     {@render children()}
   </div>
 </div>
@@ -179,6 +224,13 @@
        edge at all once the ring went (stage-windows-by-tone). */
     background: var(--paper);
     overflow: hidden;
+  }
+  /* While arranging it is a handle like every item in the panels, and wears
+     the same dashed frame — it wore none, and did not read as movable. */
+  .float.handle {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    cursor: grab;
   }
   .float-bar {
     display: flex;

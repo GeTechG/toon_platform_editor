@@ -7,10 +7,12 @@
  */
 
 import {
+  AUDIO_MAX_CREDIT,
   ENVELOPE_RATE,
   checkAudioFile,
   readId3,
   trackEnvelope,
+  trackCredits,
   trackTimeFor,
   waveformBars,
 } from './track';
@@ -64,6 +66,8 @@ export class AudioTrackState {
   #url = '';
   /** Which pick is the latest: a slow decode must not land over a quicker, later one. */
   #ticket = 0;
+  /** The author field as the last file's own tags filled it — not the person's to keep. */
+  #taggedArtist = '';
 
   get hasTrack(): boolean {
     return this.blob !== null;
@@ -135,7 +139,9 @@ export class AudioTrackState {
     this.duration = duration;
     // What the file says about itself wins over the file name, which is what
     // the caller passes when it knows nothing better.
-    this.#adopt(file, tags.title || name, tags.artist || author);
+    const credits = trackCredits(tags, name, author, this.#taggedArtist);
+    this.#taggedArtist = tags.artist ? credits.author : '';
+    this.#adopt(file, credits.name, credits.author);
     this.error = '';
     return true;
   }
@@ -148,6 +154,8 @@ export class AudioTrackState {
   async restore(track: AudioTrackData & { bytes?: number }): Promise<void> {
     // A track stored before the flag existed was tied — that was its behaviour.
     this.sync = track.sync ?? true;
+    // The draft's author is the draft's, whoever tagged the last file.
+    this.#taggedArtist = '';
     if (typeof track.bytes === 'number' && track.bytes !== track.blob.size) {
       console.warn(`draft track is ${track.blob.size} bytes, was stored at ${track.bytes}`);
       this.#ticket++;
@@ -170,8 +178,9 @@ export class AudioTrackState {
     this.stop();
     this.#revoke();
     this.blob = blob;
-    this.name = name;
-    this.author = author;
+    // A draft from before the cap can carry a longer one; see AUDIO_MAX_CREDIT.
+    this.name = name.slice(0, AUDIO_MAX_CREDIT);
+    this.author = author.slice(0, AUDIO_MAX_CREDIT);
     this.#url = URL.createObjectURL(blob);
     const element = new Audio(this.#url);
     // The frames loop, so the sound does too — a track shorter than the
@@ -200,6 +209,7 @@ export class AudioTrackState {
     this.blob = null;
     this.name = '';
     this.author = '';
+    this.#taggedArtist = '';
     this.sync = false;
     this.envelope = new Float32Array(0);
     this.duration = 0;

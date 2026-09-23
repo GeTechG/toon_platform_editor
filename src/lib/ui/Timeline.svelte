@@ -58,10 +58,27 @@
     if (editor.playing || !strip) return;
     stripScroll = strip.scrollLeft;
     // Where the frame sits is arithmetic: its cell may not be built.
-    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth);
+    // The row's padding is the gap, so the last frame comes in ring and all.
+    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP);
     if (to !== null) {
       strip.scrollLeft = to;
       stripScroll = to;
+    }
+  });
+
+  // Keep the active row in view too: the arrows walk the layers from the
+  // canvas, and with more rows than the panel is tall the active one sat
+  // under the sticky frame numbers or below the fold. The rows are the same
+  // arithmetic as the frames, turned on their side, below the header.
+  $effect(() => {
+    const at = editor.doc.layers.length - 1 - editor.activeLayer;
+    void row;
+    void stripWidth;
+    if (editor.playing || !strip) return;
+    const head = strip.querySelector<HTMLElement>('.head')?.offsetHeight ?? 0;
+    const to = scrollToFrame(at, row, 0, strip.scrollTop, strip.clientHeight - head);
+    if (to !== null) {
+      strip.scrollTop = to;
     }
   });
 
@@ -100,6 +117,12 @@
   }
 
   function onCellClick(e: MouseEvent, frame: number, layer: number): void {
+    // The long press that opened the menu ends in a click: it must not
+    // collapse the block the menu is about to act on.
+    if (longPressed) {
+      longPressed = false;
+      return;
+    }
     const mode = e.shiftKey ? 'range' : e.ctrlKey || e.metaKey ? 'toggle' : 'set';
     editor.selectCell(frame, layer, mode);
   }
@@ -111,6 +134,13 @@
   let dragging = $state(false);
 
   function onCellDown(e: PointerEvent, frame: number, layer: number): void {
+    // Android follows its own long press with a contextmenu, not a click:
+    // what the last press left must not swallow this one.
+    longPressed = false;
+    if (e.pointerType === 'touch' && e.isPrimary) {
+      startLongPress(e, frame, layer);
+      return;
+    }
     // The right button is the frame menu's: it must not collapse the block.
     if (e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
       return;
@@ -146,6 +176,20 @@
     editor.collapseSelection();
   }
 
+  /**
+   * Home and End on a cell: the first and the last frame. J and L do it too,
+   * but they are letter keys the settings can turn off (WCAG 2.1.4), and a
+   * long strip is hundreds of arrows. Taken here, so the window's hotkeys
+   * see a handled key.
+   */
+  function onStripKey(e: KeyboardEvent): void {
+    if ((e.key !== 'Home' && e.key !== 'End') || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
+      return;
+    }
+    e.preventDefault();
+    editor.selectFrame(e.key === 'Home' ? 0 : frameTotal - 1);
+  }
+
   // --- The frame menu -------------------------------------------------------
   // What the key row used to carry — delete, copy, paste, merge — lives on a
   // right press on the cell itself. The keys (A, Del, C, V, M) stay as they were.
@@ -154,6 +198,42 @@
 
   function openMenu(e: MouseEvent, frame: number, layer: number): void {
     e.preventDefault();
+    // Android long-presses into a contextmenu too: the menu is already up.
+    if (menu) {
+      return;
+    }
+    const cell = e.currentTarget as HTMLElement;
+    // The menu key and Shift+F10 fire with no pointer: open under the cell.
+    const box = cell.getBoundingClientRect();
+    showMenu(cell, frame, layer, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: box.left, y: box.bottom });
+  }
+
+  // --- The frame menu under a finger ----------------------------------------
+  // In «Toonop» delete, copy, paste and merge live only in this menu, and iOS
+  // sends no contextmenu for a held finger — so a long press opens it. A move
+  // is a scroll (the browser cancels the pointer), a lift is a tap.
+  const LONG_PRESS_MS = 500;
+  let longPress = 0;
+  let longPressed = false;
+
+  function startLongPress(e: PointerEvent, frame: number, layer: number): void {
+    cancelLongPress();
+    const cell = e.currentTarget as HTMLElement;
+    const at = { x: e.clientX, y: e.clientY };
+    longPress = window.setTimeout(() => {
+      longPress = 0;
+      if (menu || editor.playing) return;
+      longPressed = true;
+      showMenu(cell, frame, layer, at);
+    }, LONG_PRESS_MS);
+  }
+
+  function cancelLongPress(): void {
+    clearTimeout(longPress);
+    longPress = 0;
+  }
+
+  function showMenu(cell: HTMLElement, frame: number, layer: number, at: { x: number; y: number }): void {
     if (editor.playing) {
       return;
     }
@@ -161,10 +241,6 @@
     if (!isSelected(frame, layer)) {
       editor.selectCell(frame, layer);
     }
-    const cell = e.currentTarget as HTMLElement;
-    // The menu key and Shift+F10 fire with no pointer: open under the cell.
-    const box = cell.getBoundingClientRect();
-    const at = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: box.left, y: box.bottom };
     menu = { ...at, cell };
     void tick().then(() => {
       if (!menu || !menuEl) return;
@@ -231,6 +307,14 @@
   /** The frames built right now — the ones in view, plus a screen either side. */
   const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
   const built = $derived(Array.from({ length: view.count }, (_, k) => view.first + k));
+  /**
+   * Every frame's width plus the row padding (a gap each end). The window
+   * swaps cells for a wider spacer in steps, and a layout between them saw a
+   * shorter row: the browser clamped the scroll to it, and a frame added at
+   * the end sat cells past the right edge. The header holds the width, so the
+   * scroll extent is arithmetic too.
+   */
+  const stripExtent = $derived(frameTotal * (thumbWidth + GRID_GAP) + GRID_GAP);
 
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the
@@ -355,7 +439,7 @@
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
     >
-      <div class="head">
+      <div class="head" style:min-width={`${stripExtent}px`}>
         {#if view.before > 0}
           <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
         {/if}
@@ -396,6 +480,10 @@
               onclick={(e) => onCellClick(e, i, layerIndex)}
               onpointerdown={(e) => onCellDown(e, i, layerIndex)}
               onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
+              onkeydown={onStripKey}
+              onpointerup={cancelLongPress}
+              onpointercancel={cancelLongPress}
+              onpointerleave={cancelLongPress}
               oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
               aria-label={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
@@ -430,20 +518,20 @@
     bind:this={menuEl}
     onkeydown={onMenuKey}
   >
-    <button role="menuitem" onclick={() => run(() => editor.addFrameAfterActive())}>
-      <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span><kbd>A</kbd>
+    <button role="menuitem" aria-keyshortcuts="A" onclick={() => run(() => editor.addFrameAfterActive())}>
+      <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span><kbd aria-hidden="true">A</kbd>
     </button>
-    <button role="menuitem" disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
-      <Icon name="trash" size={16} /><span>{t('panel.item.delete_frame')}</span><kbd>Del</kbd>
+    <button role="menuitem" aria-keyshortcuts="Delete" disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
+      <Icon name="trash" size={16} /><span>{t('panel.item.delete_frame')}</span><kbd aria-hidden="true">Del</kbd>
     </button>
-    <button role="menuitem" onclick={() => run(() => editor.copySelection())}>
-      <Icon name="copy" size={16} /><span>{t('panel.item.copy')}</span><kbd>C</kbd>
+    <button role="menuitem" aria-keyshortcuts="C" onclick={() => run(() => editor.copySelection())}>
+      <Icon name="copy" size={16} /><span>{t('panel.item.copy')}</span><kbd aria-hidden="true">C</kbd>
     </button>
-    <button role="menuitem" disabled={!editor.canPasteCells} onclick={() => run(() => editor.pasteSelection())}>
-      <Icon name="paste" size={16} /><span>{t('panel.item.paste')}</span><kbd>V</kbd>
+    <button role="menuitem" aria-keyshortcuts="V" disabled={!editor.canPasteCells} onclick={() => run(() => editor.pasteSelection())}>
+      <Icon name="paste" size={16} /><span>{t('panel.item.paste')}</span><kbd aria-hidden="true">V</kbd>
     </button>
-    <button role="menuitem" disabled={!editor.canPasteCells} onclick={() => run(() => editor.mergeSelection())}>
-      <Icon name="merge" size={16} /><span>{t('panel.item.merge')}</span><kbd>M</kbd>
+    <button role="menuitem" aria-keyshortcuts="M" disabled={!editor.canPasteCells} onclick={() => run(() => editor.mergeSelection())}>
+      <Icon name="merge" size={16} /><span>{t('panel.item.merge')}</span><kbd aria-hidden="true">M</kbd>
     </button>
   </div>
 {/if}
@@ -511,6 +599,7 @@
     overflow: auto;
   }
   .head {
+    box-sizing: border-box;
     display: flex;
     gap: 2px;
     height: 32px;
@@ -555,6 +644,9 @@
     border-radius: 4px;
     background: var(--canvas);
     cursor: pointer;
+    /* A held finger opens the frame menu, not the system callout or a loupe. */
+    -webkit-touch-callout: none;
+    user-select: none;
   }
   .cell.dim {
     opacity: 0.35;
@@ -580,6 +672,21 @@
   }
   .cell[aria-disabled='true'] {
     cursor: default;
+  }
+  /* Forced colours drop the active cell's inset ring (a shadow) and repaint
+     every border alike: the active cell takes a thick Highlight border, the
+     selection keeps its dashes in Highlight, and the onion numbers, whose
+     blue is gone, keep a heavier dotted underline. */
+  @media (forced-colors: active) {
+    .cell.active {
+      border: 3px solid Highlight;
+    }
+    .cell.selected {
+      border-color: Highlight;
+    }
+    .num.onion {
+      text-decoration-thickness: 2px;
+    }
   }
   /* --- The frame menu ---------------------------------------------------- */
   /* A drop, so it takes the menu shadow (DESIGN: only what falls over work). */
@@ -663,11 +770,20 @@
     opacity: 0.6;
     border-radius: 1px;
   }
+  /* The wave is drawn by backgrounds, which forced colors paint as Canvas. */
+  @media (forced-colors: active) {
+    .bar > span {
+      background: CanvasText;
+    }
+  }
 
   /* Phone: a shorter timeline and no room for a wide layer column. */
   @media (max-width: 40rem) {
+    /* No narrower than the phone row (LayerRows): 108 px of furniture, the
+       name's 3rem floor and the border. At 7.5rem the handle and the bin
+       were scrolled out of the column. */
     .layer-col {
-      width: 7.5rem;
+      width: 10rem;
     }
   }
 </style>

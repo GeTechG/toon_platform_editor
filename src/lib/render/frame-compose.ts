@@ -375,11 +375,9 @@ export class FrameComposer {
     if (!fresh) {
       return buffer;
     }
-    buffer.size(width, height);
-    buffer.clear();
-    for (const cell of cells) {
-      renderStrokesLayer(cell, scene.doc.tools, buffer.ctx, viewport);
-    }
+    // Layer by layer through the scratch, as the stack is: an eraser on one
+    // layer must not cut the line of the layer under it in the ghost either.
+    this.#paint(buffer, cells, { ...scene, tools: scene.doc.tools }, width, height);
     return buffer;
   }
 }

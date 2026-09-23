@@ -20,6 +20,7 @@
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let bundleFile = $state<HTMLInputElement | undefined>();
+  let mineTab = $state<HTMLButtonElement | undefined>();
   let catalogTab = $state<HTMLButtonElement | undefined>();
   let tab = $state<'mine' | 'catalog'>('mine');
   let installed = $state<InstalledPlugin[]>([]);
@@ -115,14 +116,15 @@
   }
 
   /**
-   * A key that goes away under the hand — «Установить», «Повторить» — drops
-   * the focus to the page, outside the modal. It comes back to the tab: the
-   * report is in the foot's live region, the list starts under it.
+   * A key that goes away under the hand — «Установить», «Повторить»,
+   * «Удалить», «Включить» — drops the focus to the page, outside the modal.
+   * It comes back to the tab in hand: the report is in the foot's live
+   * region, the list starts under it.
    */
   async function keepFocus(): Promise<void> {
     await tick();
     if (!dialogEl?.contains(document.activeElement)) {
-      catalogTab?.focus();
+      (tab === 'mine' ? mineTab : catalogTab)?.focus();
     }
   }
 
@@ -130,6 +132,12 @@
     await editor.removePlugin(plugin.id);
     report = t('plugins.removed_report', { name: plugin.name });
     await refresh();
+    await keepFocus();
+  }
+
+  async function enable(id: string): Promise<void> {
+    editor.enablePlugin(id);
+    await keepFocus();
   }
 
   async function onBundleFile(event: Event): Promise<void> {
@@ -198,6 +206,7 @@
        carries the label — the same call the site's auth dialog wrote down. -->
   <div class="tabs" role="group" aria-label={t('plugins.sheet')}>
     <button
+      bind:this={mineTab}
       class="key"
       class:active={tab === 'mine'}
       aria-pressed={tab === 'mine'}
@@ -239,7 +248,7 @@
                 </small>
               </span>
               {#if broken(plugin.id)}
-                <button class="key" onclick={() => editor.enablePlugin(plugin.id)}>{t('plugins.enable')}</button>
+                <button class="key" onclick={() => enable(plugin.id)}>{t('plugins.enable')}</button>
               {/if}
               {#if plugin.source !== 'bundled'}
                 <button class="key" onclick={() => remove(plugin)}>{t('plugins.remove')}</button>

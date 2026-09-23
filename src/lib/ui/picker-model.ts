@@ -28,6 +28,7 @@ export function rgbChannelAt(fx: number): 0 | 1 | 2 {
  * so x picks the column and y its value, leaving the other two channels alone.
  */
 export function surfaceToPointer(model: PickerModel, p: Pointer, fx: number, fy: number): Pointer {
+  if (model === 'wheel') return onWheel({ ...p, x: fx, y: fy });
   if (model !== 'rgb') return { ...p, x: fx, y: fy };
   const channel = rgbChannelAt(fx);
   const value = 1 - fy;
@@ -48,6 +49,14 @@ const RANGES: Readonly<Record<PickerModel, Pointer>> = {
 };
 
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
+
+/** The wheel's corners are clipped away: a pointer past the rim is pulled back onto it. */
+function onWheel(p: Pointer): Pointer {
+  const dx = p.x - 0.5;
+  const dy = p.y - 0.5;
+  const r = Math.hypot(dx, dy);
+  return r <= 0.5 ? p : { ...p, x: 0.5 + (dx / r) * 0.5, y: 0.5 + (dy / r) * 0.5 };
+}
 
 export function pointerToColor(model: PickerModel, { x, y, bar }: Pointer): string {
   if (model === 'rgb') {
@@ -93,7 +102,8 @@ export function nudgePointer(
   const mark = (next: Pointer, channel: 0 | 1 | 2): Pointer => (model === 'rgb' ? { ...next, channel } : next);
   if (key === 'Home' || key === 'End') {
     const end = key === 'End' ? 1 : 0;
-    return onBar ? mark({ ...p, bar: end }, 0) : mark({ ...p, x: end }, 2);
+    if (onBar) return mark({ ...p, bar: end }, 0);
+    return model === 'wheel' ? onWheel({ ...p, x: end }) : mark({ ...p, x: end }, 2);
   }
   const page = key === 'PageUp' || key === 'PageDown';
   const arrow = key === 'PageUp' ? 'ArrowUp' : key === 'PageDown' ? 'ArrowDown' : key;
@@ -103,9 +113,10 @@ export function nudgePointer(
   const range = RANGES[model];
   const step = (dir * (page ? 10 : shift ? 5 : 1)) / (onBar ? range.bar : across ? range.x : range.y);
   if (onBar) return mark({ ...p, bar: clamp01(p.bar + step) }, 0);
-  if (across) return mark({ ...p, x: clamp01(p.x + step) }, 2);
+  const next = across ? { ...p, x: clamp01(p.x + step) } : { ...p, y: clamp01(p.y - step) };
+  if (model === 'wheel') return onWheel(next);
   // The surface's y grows downward, so ArrowUp has to subtract.
-  return mark({ ...p, y: clamp01(p.y - step) }, 1);
+  return mark(next, across ? 2 : 1);
 }
 
 /**

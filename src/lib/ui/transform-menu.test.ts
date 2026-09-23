@@ -133,3 +133,51 @@ describe('beside the zoom window', () => {
     expect(windows).toContain('- var(--key-h, 2.75rem)');
   });
 });
+
+// Tenth audit: the tools say why they did nothing, and a held gesture is not
+// pulled from under the hand by a key.
+const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+
+function body(source: string, name: string): string {
+  const match = source.match(new RegExp(`\\n  (?:private )?${name}\\([^]*?\\n  }`));
+  if (!match) throw new Error(`missing ${name}`);
+  return match[0];
+}
+
+describe('tenth audit — tools', () => {
+  it('scales typed into the window stop at the 1 % floor', () => {
+    expect(menu).toContain('scaleFromField(e.currentTarget.valueAsNumber)');
+    expect(menu).not.toContain('valueAsNumber / 100');
+  });
+
+  it('says a unit next to the percent fields and names the session keys', () => {
+    expect(t('transform.scale_x')).toContain('%');
+    expect(t('transform.scale_y')).toContain('%');
+    expect(t('transform.undo')).toContain('(Z)');
+    expect(t('transform.redo')).toContain('(Y)');
+  });
+
+  it('tells why the lasso took nothing, instead of staying silent', () => {
+    expect(body(state, 'beginTransform')).toContain("this.canvasHint = { text: t('canvas.nothing_to_transform') }");
+    expect(t('canvas.nothing_to_transform')).not.toBe('canvas.nothing_to_transform');
+    expect(canvas).toContain('editor.canvasHint');
+  });
+
+  it('tells why a locked transform refused to be left', () => {
+    expect(body(state, 'leaveTransform')).toContain("this.canvasHint = { text: t('canvas.transform_locked') }");
+    expect(t('canvas.transform_locked')).not.toBe('canvas.transform_locked');
+  });
+
+  it('keeps the editor keys off while a canvas gesture holds the pointer', () => {
+    expect(canvas).toContain('ongotpointercapture={() => (editor.gestureHeld = true)}');
+    expect(canvas).toContain('editor.gestureHeld = false');
+    const keys = editorUi.slice(editorUi.indexOf('function onKeydown('));
+    const guard = keys.indexOf('editor.gestureHeld');
+    expect(guard).toBeGreaterThan(0);
+    expect(guard).toBeLessThan(keys.indexOf('keyOwner('));
+  });
+
+  it('gives the phone transform window the zoom window\'s row', () => {
+    expect(editorUi).toContain('.stage:has(> .tool-windows :global(.transform-menu)) > .scale-window');
+  });
+});

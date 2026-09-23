@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import { toolSpec } from './panels';
   import { PENCIL } from '../plugins';
-  import type { EditorState } from './editor-state.svelte';
+  import type { EditorState, Tool } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
   import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
@@ -578,6 +578,14 @@
     hintTimer = setTimeout(() => (hint = ''), HINT_MS) as unknown as number;
   }
 
+  // Why a tool did nothing, when the state is the one that knows (the lasso on
+  // an empty frame, a locked transform) — said in the same live line.
+  $effect(() => {
+    if (editor.canvasHint) {
+      showHint(editor.canvasHint.text);
+    }
+  });
+
   function scheduleDraw(): void {
     if (rafPending) {
       return;
@@ -615,6 +623,24 @@
     void editor.playing;
     void cursorDiameter;
     scheduleDraw();
+  });
+
+  // A window dragged to a screen of another density changes nothing else the
+  // canvas watches — the stage keeps its CSS size — so the lines stayed at the
+  // old screen's density. The screen itself says when it changes.
+  $effect(() => {
+    let query: MediaQueryList;
+    const moved = (): void => {
+      composer.invalidate();
+      scheduleDraw();
+      watch();
+    };
+    const watch = (): void => {
+      query = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      query.addEventListener('change', moved, { once: true });
+    };
+    watch();
+    return () => query.removeEventListener('change', moved);
   });
 
   /**
@@ -658,7 +684,9 @@
       return null;
     }
     pickEl = buffer(pickEl, canvasEl.width, canvasEl.height);
-    const pctx = pickEl.getContext('2d') as unknown as ViewCtx;
+    // Made for reading: the preview reads a pixel back every 100 ms, and a
+    // GPU-backed scratch paid a full readback for each.
+    const pctx = pickEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx;
     pctx.setTransform(1, 0, 0, 1, 0, 0);
     pctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     if (source === 'canvas') {
@@ -668,7 +696,7 @@
     if (source === 'canvas') {
       pctx.drawImage(layers.above, 0, 0);
     }
-    const [r, g, b, a] = pickEl.getContext('2d')!.getImageData(px, py, 1, 1).data;
+    const [r, g, b, a] = (pctx as unknown as CanvasRenderingContext2D).getImageData(px, py, 1, 1).data;
     // Reference: only a fully opaque pixel carries a colour. The soft rim of
     // a stroke reads as emptiness, so the pipette never picks a washed-out
     // version of the line it was aimed at.
@@ -692,12 +720,17 @@
           strokeLayer = undefined;
         }
         dropOwnGesture();
+        // The hand's one-finger pan becomes the pinch, which pans too.
+        panning = null;
         scheduleDraw();
         gesture = pinchFrom(touches);
         takeNavShot();
         return true;
       }
-      return touches.size > 1;
+      if (touches.size > 1) {
+        return true;
+      }
+      // One finger: the hand below still pans with it.
     }
     // The hand is the tool whose whole job is this gesture (reference `Drag`).
     if (e.button === 1 || editor.tool === 'drag') {
@@ -759,12 +792,13 @@
    * preview owns the canvas while it plays.
    */
   function onWheel(e: WheelEvent): void {
+    // Taken even when it zooms nothing — while the preview plays too: a
+    // sideways swipe left to the browser is "back" in the history, and the
+    // drawing goes with it; Ctrl+wheel would zoom the whole page.
+    e.preventDefault();
     if (editor.playing) {
       return;
     }
-    // Taken even when it zooms nothing: a sideways swipe left to the browser
-    // is "back" in the history, and the drawing goes with it.
-    e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
       return;
@@ -784,7 +818,36 @@
     );
   }
 
+  /** The tool the pen's eraser end took over from, given back when it flips. */
+  let penFlippedFrom: Tool | null = null;
+
+  /**
+   * A pen turned over presses with its eraser end (button 5 — Wacom,
+   * Surface and the like): that end erases, like
+   * in every drawing program, and the pen's tip gets its own tool back.
+   */
+  function followPenEnd(e: PointerEvent): void {
+    if (e.pointerType !== 'pen' || editor.transform) {
+      return;
+    }
+    const eraserEnd = e.button === 5 || (e.buttons & 32) !== 0;
+    if (eraserEnd && penFlippedFrom === null && editor.tool !== 'eraser') {
+      const from = editor.tool;
+      editor.selectTool('eraser');
+      if (editor.tool === 'eraser') {
+        penFlippedFrom = from;
+      }
+    } else if (!eraserEnd && penFlippedFrom !== null) {
+      // Only if the eraser is still in hand: a tool picked since wins.
+      if (editor.tool === 'eraser') {
+        editor.selectTool(penFlippedFrom);
+      }
+      penFlippedFrom = null;
+    }
+  }
+
   function onPointerDown(e: PointerEvent): void {
+    followPenEnd(e);
     if (startNavigation(e)) {
       e.preventDefault();
       return;
@@ -867,17 +930,19 @@
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
-    strokeButton = e.button;
+    // The eraser end (5) is the eraser itself, not a second button's colour.
+    strokeButton = e.button === 5 ? 0 : e.button;
     canvasEl.setPointerCapture(e.pointerId);
     pointer.pointerDown(toPointerSample(e, true));
     scheduleDraw();
   }
 
   function onPointerMove(e: PointerEvent): void {
-    // A mouse moving with no button held has let go somewhere the canvas did
-    // not hear (a native dialog, the window losing focus): end the gesture
-    // here, or the stroke follows the hovering cursor and refuses the next press.
-    if (e.pointerType === 'mouse' && e.buttons === 0
+    // A mouse or a pen moving with no button held has let go somewhere the
+    // canvas did not hear (a native dialog, the window losing focus): end the
+    // gesture here, or the stroke follows the hover and refuses the next press.
+    // A finger has no hover — its moves are always pressed.
+    if (e.pointerType !== 'touch' && e.buttons === 0
       && (pointer.session || grab || megaGesture || pluginGrab || panning)) {
       onPointerUp(e);
       return;
@@ -1047,6 +1112,8 @@
   }
 
   function onPointerCancel(e: PointerEvent): void {
+    // Also the lost capture every gesture ends with: the keys come back.
+    editor.gestureHeld = false;
     if (endNavigation(e)) {
       return;
     }
@@ -1106,6 +1173,7 @@
     oncontextmenu={(e) => e.preventDefault()}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
+    ongotpointercapture={() => (editor.gestureHeld = true)}
     onlostpointercapture={onPointerCancel}
     onpointerenter={(event) => {
       cursorVisible = true;
@@ -1215,6 +1283,9 @@
     border-radius: 50%;
     box-shadow: 0 0 0 1px var(--canvas);
     pointer-events: none;
+    /* The drawing under it is never recoloured, so neither is the ring that
+       has to show on it: forced colors would drop the halo. */
+    forced-color-adjust: none;
   }
   .brush-cursor.eraser {
     border-style: dashed;

@@ -6,6 +6,7 @@ import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } f
 import { PluginRegistry } from './registry';
 import { listInstalled, putInstalled, type InstalledPlugin } from './store';
 import { fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
+import { t } from '../i18n';
 
 const entry = (id: string, version = '1.0.0'): CatalogEntry => ({
   id,
@@ -103,7 +104,7 @@ describe('installFromCatalog', () => {
       ports({ 'code:https://plugins.example/halftone/plugin.js': { default: { id: 'halftone', api: PLUGIN_API + 1 } } }),
     );
 
-    expect(failed).toContain('мажор');
+    expect(failed).toContain('другой версии редактора');
     expect(await listInstalled()).toEqual([]);
   });
 
@@ -113,12 +114,13 @@ describe('installFromCatalog', () => {
 
     const failed = await installFromCatalog(entry('halftone'), registry, {
       fetch: async () => {
-        throw new Error('сеть недоступна');
+        throw new TypeError('Failed to fetch');
       },
       evaluate: async () => ({}),
     });
 
-    expect(failed).toContain('сеть недоступна');
+    // The browser's own words are English; the report says it in ours.
+    expect(failed).toBe(t('plugins.not_downloaded'));
     expect(await listInstalled()).toEqual([]);
   });
 
@@ -156,7 +158,7 @@ describe('installFromCatalog', () => {
       }),
     );
 
-    expect(failed).toContain('мажор');
+    expect(failed).toContain('другой версии редактора');
     expect(registry.tool('halftone')).toBeDefined();
     expect((await listInstalled())[0].version).toBe('1.0.0');
   });
@@ -223,7 +225,8 @@ describe('installFromFile', () => {
 
     const failed = await installFromFile('мусор', registry, ports({}));
 
-    expect(failed).toBeTruthy();
+    // «Unexpected identifier» was what the sheet said about a wrong file.
+    expect(failed).toBe(t('plugins.not_a_bundle'));
     expect(await listInstalled()).toEqual([]);
   });
 });
@@ -312,7 +315,7 @@ describe('updateInstalled', () => {
     expect(updated).toEqual([]);
     expect((await listInstalled())[0].version).toBe('1.0.0');
     expect(registry.tool('halftone')).toBeDefined();
-    expect(registry.failures.map((f) => f.reason).join()).toContain('сеть отвалилась');
+    expect(registry.failures.map((f) => f.reason).join()).toContain(t('plugins.not_downloaded'));
   });
 });
 

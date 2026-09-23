@@ -201,3 +201,66 @@
     scrollbar-color: var(--edge) transparent;
   }
 }
+
+/* Forced colors (Windows High Contrast) repaint every author colour with the
+   system pair and drop gradients, box-shadows and every background image that
+   is not a url(). What the studio said with those alone went blank: the picked
+   tool and the on switch looked like the rest, the palette was a white grid,
+   a seam with the focus showed nothing, a menu over the canvas had no edge.
+   `!important` only here: a component's own pressed tint or `outline: none`
+   outweighs this zero-specificity sheet, and in this mode it must not. */
+@media (forced-colors: active) {
+  /* The colour is the content: a swatch, a palette cell, a layer tag. */
+  :where(.editor) [style*='--swatch'],
+  :where(.editor) [style*='background'] {
+    forced-color-adjust: none;
+  }
+  /* Opting out, because text laid on a forced Highlight gets a Canvas
+     backplate and HighlightText on it is white on white. A palette cell keeps
+     its colour; its pencil and feather marks say it is picked. */
+  :where(.editor) :is([aria-pressed='true'], [aria-selected='true'], [aria-current]:not([aria-current='false'])):not([style*='--swatch']) {
+    forced-color-adjust: none;
+    background-color: Highlight !important;
+    color: HighlightText !important;
+  }
+  /* The knob: white with an ink ring reads on any system pair. */
+  :where(.editor) input[type='checkbox'][role='switch'],
+  :where(.editor) input[type='checkbox'][role='switch']:checked {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='5' fill='%23fff' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+  :where(.editor) input[type='checkbox']:checked,
+  :where(.editor) input[type='checkbox'][role='switch']:checked {
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+  :where(.editor) input[type='range']::-webkit-slider-runnable-track {
+    background: CanvasText;
+  }
+  :where(.editor) input[type='range']::-moz-range-track {
+    background: CanvasText;
+  }
+  :where(.editor) input[type='range']::-webkit-slider-thumb {
+    background: Highlight;
+  }
+  :where(.editor) input[type='range']::-moz-range-thumb {
+    background: Highlight;
+  }
+  :where(.editor) progress {
+    outline: 1px solid CanvasText;
+  }
+  :where(.editor) progress::-webkit-progress-value {
+    background: Highlight;
+  }
+  :where(.editor) progress::-moz-progress-bar {
+    background: Highlight;
+  }
+  /* The seams show focus by a gradient line, which this mode drops. */
+  :where(.editor) [role='separator']:focus-visible {
+    outline: 3px solid Highlight !important;
+    outline-offset: -3px;
+  }
+  /* What stood over the canvas by its shadow alone. */
+  :where(.editor) :is(dialog, [popover], [role='menu']) {
+    outline: 1px solid CanvasText;
+  }
+}

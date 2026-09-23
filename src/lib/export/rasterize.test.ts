@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
 import { createDocument } from '../model/operations';
-import { exportSize, rasterViewport, stampWatermark, watermarkLayout } from './rasterize';
+import { exportSize, nextTask, rasterViewport, stampWatermark, watermarkLayout } from './rasterize';
 
 const doc = (logicalWidth: number, logicalHeight: number) =>
   createDocument({
@@ -103,5 +103,25 @@ describe('the rasterizer hands frames over one at a time', () => {
   test('gif export walks the stream instead of collecting it', () => {
     expect(gifExportSource).toContain('for await');
     expect(gifExportSource).not.toMatch(/const frames\s*=/);
+  });
+});
+
+// Between frames the export stepped aside with `await Promise.resolve()` — a
+// microtask, which runs before the page paints or hears a click. A 300-frame
+// film at 2560 froze the editor for eight seconds with no progress bar, and
+// «Отменить» could not be pressed until there was nothing left to cancel.
+describe('an export steps aside for the page between frames', () => {
+  test('nextTask lets a queued task run before it resolves', async () => {
+    let ran = false;
+    setTimeout(() => (ran = true), 0);
+    await nextTask();
+    expect(ran).toBe(true);
+  });
+
+  test('the frame stream and the video encoder both use it', async () => {
+    const videoSource = await Bun.file(new URL('./video.ts', import.meta.url)).text();
+    expect(rasterizeSource).not.toContain('await Promise.resolve()');
+    expect(rasterizeSource).toContain('await nextTask()');
+    expect(videoSource).toContain('await nextTask()');
   });
 });

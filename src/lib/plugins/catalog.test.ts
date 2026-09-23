@@ -59,7 +59,7 @@ describe('readCatalog', () => {
     });
 
     expect(catalog.plugins).toEqual([]);
-    expect(catalog.error).toContain('мажор');
+    expect(catalog.error).toContain('другой версии редактора');
   });
 
   test('an unreachable catalog is a reason, not a throw', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'bun:test';
-import { dropPlacement, insertIndex, rowEdge, type Box } from './arrange';
+import { arrangeBarBox, dropPlacement, insertIndex, rowEdge, type Box } from './arrange';
 import { t } from '../i18n';
 
 /** A row of three 40px-wide boxes at y 0..40. */
@@ -232,7 +232,7 @@ describe('the handle frames the item it grabs', () => {
   });
 
   test('the item keeps its own size inside the handle', () => {
-    const frozen = editorUi.slice(editorUi.indexOf('.editor.arranging .arr > :global(*) {'));
+    const frozen = editorUi.slice(editorUi.indexOf('.editor.arranging .arr-body > :global(*) {'));
     const block = frozen.slice(0, frozen.indexOf('}'));
     expect(block).toContain('box-shadow: none');
     // A zero basis, or a min-width of 0, squeezed the keys in the bar below
@@ -276,7 +276,7 @@ describe('ninth audit: the arrange bar leaves the panels in reach on a phone', (
     // At 320×640 the bar stood 487px tall over the very panels it rearranges:
     // the tool rail and the palette could not be picked up at all.
     expect(arranger).toMatch(/<details class="ws"[^>]*open=\{wide\}/);
-    expect(arranger).toContain("matchMedia('(min-width: 40rem)')");
+    expect(arranger).toContain("matchMedia('(min-width: 40rem) and (min-height: 32rem)')");
     expect(arranger).toContain('@media (min-width: 40rem)');
     expect(t('arrange.workspaces')).not.toBe('arrange.workspaces');
   });
@@ -286,5 +286,120 @@ describe('ninth audit: the arrange bar never runs off the screen', () => {
   test('it scrolls inside itself when the text is large', () => {
     expect(arranger).toMatch(/\.arrange-bar \{[^}]*max-height: calc\(100% - 2rem\)/);
     expect(arranger).toMatch(/\.arrange-bar \{[^}]*overflow-y: auto/);
+  });
+});
+
+// Tenth audit: measured at 320×568, 390×844 and 844×390 in arrange mode.
+describe('tenth audit: the arrange bar lies on the canvas, not over the panels', () => {
+  test('on a phone held upright it clears the tool row above the canvas', () => {
+    // 390×844: the tool row is 0..61, the canvas 61..470. The bar stood at
+    // 16..307 over the tool row, which could not be picked up or dropped on.
+    const bar = arrangeBarBox({ left: 0, top: 61, right: 390, bottom: 470 }, { width: 390, height: 844 });
+    expect(bar.top).toBeGreaterThanOrEqual(61);
+    expect(bar.left).toBeGreaterThanOrEqual(0);
+    expect(bar.left + bar.width).toBeLessThanOrEqual(390);
+  });
+
+  test('on a phone lying down it keeps off both columns', () => {
+    // 844×390: canvas 134..590, columns either side. The bar was 54..790.
+    const bar = arrangeBarBox({ left: 134, top: 0, right: 590, bottom: 245 }, { width: 844, height: 390 });
+    expect(bar.left).toBeGreaterThanOrEqual(134);
+    expect(bar.left + bar.width).toBeLessThanOrEqual(590);
+  });
+
+  test('a band of the canvas stays free to drop a window on', () => {
+    const stage = { left: 0, top: 48, right: 320, bottom: 400 };
+    const bar = arrangeBarBox(stage, { width: 320, height: 568 });
+    expect(stage.bottom - (bar.top + bar.maxHeight)).toBeGreaterThanOrEqual(48);
+  });
+
+  test('a canvas too small to hold it lets it use the screen, but never past the edge', () => {
+    // 400% page zoom: the canvas is a sliver; the bar still has to show «Готово».
+    const bar = arrangeBarBox({ left: 0, top: 40, right: 120, bottom: 90 }, { width: 320, height: 256 });
+    expect(bar.width).toBeGreaterThan(200);
+    expect(bar.left + bar.width).toBeLessThanOrEqual(320);
+    expect(bar.top + bar.maxHeight).toBeLessThanOrEqual(256);
+    expect(bar.maxHeight).toBeGreaterThanOrEqual(150);
+  });
+
+  test('the arranger measures the canvas and places the bar from it', () => {
+    expect(arranger).toContain('arrangeBarBox(');
+    expect(arranger).toContain("'[data-slot=\"float\"]'");
+    // «Готово» stays in view while the bar scrolls inside itself.
+    expect(arranger).toMatch(/\.arrange-keys \{[^}]*position: sticky/);
+  });
+
+  test('a phone lying down folds the workspace keys too', () => {
+    expect(arranger).toContain('(min-height: 32rem)');
+  });
+});
+
+describe('tenth audit: a window dropped on the canvas lands under the hand', () => {
+  test('its place is measured from the editor, the frame it is drawn in', () => {
+    // It was measured from the canvas, 134px right of the editor's edge at
+    // 1280×800: every window landed a column's width left of the pointer.
+    expect(arranger).toContain('[data-float-root]');
+    expect(arranger).not.toContain('x - to.panel.left - drag.dx');
+  });
+
+  test('a drop over a window already on the canvas is a drop on the canvas', () => {
+    // The windows are not in the canvas: a drop over one — or over the very
+    // window being moved, a little way off — hit no panel and did nothing.
+    expect(arranger).toContain("hit?.closest('.float')");
+  });
+
+  test('a window moved anywhere by anyone comes back inside', () => {
+    // Only a resize brought it back: a drop past the edge, or a workspace
+    // saved on a wider screen, left the window hanging off it.
+    expect(floatWindow).toMatch(/\$effect\(\(\) => \{\s*void pos\.x/);
+  });
+});
+
+describe('tenth audit: arrange mode and the keyboard', () => {
+  test('the items under the handles are inert, so Tab and Enter cannot press them', () => {
+    // Tab walked into the palette keys and Enter pressed them while every
+    // pointer on them was stopped.
+    expect(editorUi).toMatch(/class="arr-body"[^>]*inert/);
+    expect(floatWindow).toContain('inert={editor.arranging}');
+  });
+
+  test('the bar takes the focus when the mode opens and gives it to the gear when it closes', () => {
+    expect(arranger).toContain('tabindex="-1"');
+    expect(arranger).toContain('barEl?.focus()');
+    expect(arranger).toContain("t('editor.settings')");
+  });
+
+  test('closing a window hands the focus to its key in the panel', () => {
+    expect(floatWindow).toContain('slotOf(editor.panels, id)');
+    expect(floatWindow).toContain('.focus()');
+  });
+});
+
+describe('tenth audit: handles in a scrolling row', () => {
+  test('a key handle does not shrink under its key', () => {
+    const block = editorUi.slice(editorUi.indexOf('.editor.arranging .arr:not(.wide) {'));
+    expect(block.slice(0, block.indexOf('}'))).toContain('flex-shrink: 0');
+  });
+});
+
+describe('tenth audit: a floating window in arrange mode', () => {
+  test('wears the dashed frame of a handle', () => {
+    expect(floatWindow).toContain('class:handle={editor.arranging}');
+    expect(floatWindow).toMatch(/\.float\.handle \{[^}]*outline: 2px dashed var\(--accent\)/);
+  });
+});
+
+describe('tenth audit: windows over windows', () => {
+  test('the one pressed comes to the front', () => {
+    expect(floatWindow).toContain("editor.movePanelItem(id, 'float')");
+  });
+});
+
+describe('tenth audit: one word for a named arrangement', () => {
+  test('the list, its placeholder and the name field say «раскладка», as the key does', () => {
+    for (const key of ['arrange.workspace', 'arrange.workspace_none', 'arrange.name_label', 'arrange.delete_title']) {
+      expect(t(key).toLowerCase()).toContain('раскладк');
+      expect(t(key)).not.toContain('пространств');
+    }
   });
 });

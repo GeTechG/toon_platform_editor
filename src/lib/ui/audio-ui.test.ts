@@ -305,3 +305,24 @@ describe('ninth audit: the plate fits the window', () => {
     expect(panel).toMatch(/above >= below/);
   });
 });
+
+describe('tenth audit: the soundtrack', () => {
+  it('the credit fields stop where the server stops', () => {
+    // Past 120 characters the publication came out silent, and nobody said so.
+    const fields = panel.match(/<input bind:value=\{editor\.audio\.(name|author)\}[^>]*>/g) ?? [];
+    expect(fields.length).toBe(2);
+    for (const field of fields) expect(field).toContain('maxlength={AUDIO_MAX_CREDIT}');
+  });
+
+  it('a load hands its credits through trackCredits, and remembers which artist came from tags', () => {
+    expect(state).toContain('trackCredits(tags, name, author, this.#taggedArtist)');
+    expect(state).toMatch(/clear\(\): void \{[\s\S]*?this\.#taggedArtist = '';/);
+  });
+
+  it('the switch is named by its label and described by the hint, not named by both', () => {
+    // «Привязать к кадрам мультик крутится сам по себе…» was the switch's name.
+    const toggle = panel.match(/<input\s+type="checkbox"\s+role="switch"[^>]*>/)?.[0] ?? '';
+    expect(toggle).toContain('aria-labelledby=');
+    expect(toggle).toContain('aria-describedby=');
+  });
+});

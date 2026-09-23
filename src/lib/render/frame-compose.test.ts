@@ -99,6 +99,24 @@ describe('the composer stacks a frame', () => {
     expect(target.log).toEqual(['blit b0', 'blit b3 @0.3', 'blit b1', 'blit b2']);
   });
 
+  it('flattens a ghost of several layers one layer at a time, so an eraser cuts only its own', () => {
+    // The visited-frames onion flattens every selected layer into one ghost.
+    // Drawn straight into it, an eraser on the upper layer punched a hole in
+    // the lower one's line — in the ghost only, never on the frame itself.
+    const built = doc(2);
+    addFrame(built, 0);
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0, 1] },
+    });
+    const ghostName = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
+    const ghost = made.find((buffer) => buffer.name === ghostName)!;
+    expect(ghost.log.filter((entry) => entry.startsWith('stroke'))).toEqual([]);
+    expect(ghost.log.filter((entry) => entry.startsWith('blit'))).toHaveLength(2);
+  });
+
   it('composites the frame off-screen when it is blitted at an alpha of its own', () => {
     const { instance } = composer();
     const target = new Recorder('target');

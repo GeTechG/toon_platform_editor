@@ -25,7 +25,12 @@
       <span class="dot" style:width="{Math.min(size + 2, 30)}px" style:height="{Math.min(size + 2, 30)}px"></span>
     </button>
   {/each}
-  <span class="size" title={t('brush.size_hint')}>{editor.brushSizeLogical}px</span>
+  <span
+    class="size"
+    class:picked={(BRUSH_SIZES_LOGICAL as readonly number[]).includes(editor.brushSizeLogical)}
+    title={t('brush.size_hint')}
+    role="status"
+  >{editor.brushSizeLogical}px</span>
 </div>
 
 <style>
@@ -72,18 +77,26 @@
     background: var(--ink);
     border-radius: 50%;
   }
+  /* The dot is the content, and forced colors paint a background as Canvas.
+     The picked key opts out (controls.css) and keeps its white dot. */
+  @media (forced-colors: active) {
+    .dot {
+      background: CanvasText;
+    }
+  }
   .size {
     min-width: 2.75rem;
     font-size: 0.74rem;
     color: var(--ink-2);
     font-variant-numeric: tabular-nums;
   }
-  /* Phone: the readout only repeats what the picked dot already says. */
+  /* Phone: the readout only repeats what the picked dot already says — and
+     stays when a size between the dots picks none. */
   @media (max-width: 40rem) {
     .sizes {
       gap: 0.15rem;
     }
-    .size {
+    .size.picked {
       display: none;
     }
   }

@@ -195,8 +195,17 @@ export async function* rasterizeFrames(
     raster.draw(index);
     yield { data: raster.pixels(), ...raster.size };
     onProgress?.(index + 1, total);
-    await Promise.resolve();
+    await nextTask();
   }
+}
+
+/**
+ * Steps aside for the page: it paints the progress and hears «Отменить». A
+ * resolved promise does not — it is a microtask, run before either.
+ */
+export function nextTask(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  return scheduler?.yield ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /** The rejection every export path speaks: `AbortError`, never a bare Error. */

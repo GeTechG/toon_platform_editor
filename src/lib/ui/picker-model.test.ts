@@ -52,6 +52,13 @@ describe('surfaceToPointer', () => {
     expect(surfaceToPointer('wheel', p, 0.3, 0.4)).toEqual({ x: 0.3, y: 0.4, bar: 0.5 });
   });
 
+  it('keeps the wheel pointer on the wheel when a drag runs into a corner', () => {
+    // The corners are clipped away: the dot hung outside the wheel it picks from.
+    const p = surfaceToPointer('wheel', { x: 0.5, y: 0.5, bar: 1 }, 1, 1);
+    expect(Math.hypot(p.x - 0.5, p.y - 0.5)).toBeCloseTo(0.5, 5);
+    expect(pointerToColor('wheel', p)).toBe(pointerToColor('wheel', { x: 1, y: 1, bar: 1 }));
+  });
+
   it('snaps the gap between columns to the nearest one', () => {
     expect(rgbChannelAt(0)).toBe(0);
     expect(rgbChannelAt(0.33)).toBe(0);
@@ -115,6 +122,12 @@ describe('nudgePointer', () => {
     expect(nudgePointer('hsv', mid, 'Home', {})).toEqual({ ...mid, x: 0 });
     expect(nudgePointer('hsv', mid, 'End', {})).toEqual({ ...mid, x: 1 });
     expect(nudgePointer('hsv', mid, 'End', { target: 'bar' })).toEqual({ ...mid, bar: 1 });
+  });
+
+  it('stops the wheel arrows at the rim, not in the corner', () => {
+    const rim = { x: 1, y: 0.5, bar: 1 };
+    const p = nudgePointer('wheel', rim, 'ArrowUp', { shift: true });
+    expect(Math.hypot(p.x - 0.5, p.y - 0.5)).toBeLessThanOrEqual(0.5 + 1e-9);
   });
 
   it('clamps at the edges and ignores other keys', () => {

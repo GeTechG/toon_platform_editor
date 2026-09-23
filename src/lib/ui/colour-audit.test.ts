@@ -61,3 +61,56 @@ describe('the plain colour widget', () => {
     expect(panel).toContain("editor.pickColor(e.currentTarget.value, 'fill', true)");
   });
 });
+
+describe('tenth audit: the colour window and the palette keep their place', () => {
+  it('the focused field drives itself, not the bar the mouse touched last', () => {
+    // Shift+Tab from the hue strip to the field, ArrowLeft: the hue moved while
+    // the field announced an unchanged saturation.
+    expect(picker).not.toContain('lastTarget');
+    expect(picker).toMatch(/onSurfaceKey[\s\S]*?target: 'surface'/);
+  });
+
+  it('a channel field left empty or out of range shows the channel again', () => {
+    const fields = picker.match(/type="number"[\s\S]*?\/>/)?.[0] ?? '';
+    expect(fields).toMatch(/onchange=/);
+  });
+
+  it('a click on the window’s own padding or past the wheel’s rim keeps it open', () => {
+    // The dialog is both the window and its backdrop: any click on its bare
+    // padding, or on the clipped corners of the wheel, closed the picker.
+    expect(picker).not.toContain('onclick={(e) => e.target === box && requestClose()}');
+    expect(picker).toMatch(/function outside\(/);
+  });
+
+  it('the preview strip grows with the text', () => {
+    expect(picker).not.toMatch(/\.preview \{[^}]*\sheight: 34px/);
+  });
+
+  it('focus survives the keys that vanish under it', () => {
+    // Erase, load, merge and delete each unmount the key that was pressed.
+    expect(palette).toMatch(/function erasePalette[\s\S]*?focusFoot\(/);
+    expect(palette).toMatch(/function usePalette[\s\S]*?focusFoot\(/);
+    expect(palette).toMatch(/function mergePalette[\s\S]*?focusFoot\(/);
+    expect(palette).toMatch(/function deletePalette[\s\S]*?focusFoot\(/);
+    expect(palette).toMatch(/async function refocusCell[\s\S]*?focusFoot\(/);
+  });
+
+  it('a name of spaces is no name', () => {
+    expect(palette).toMatch(/save_prompt[^\n]*\)\?\.trim\(\)/);
+  });
+
+  it('the remover shows its cross under the keyboard too', () => {
+    expect(palette).toContain('.grid.remover .cell:focus-visible :global(svg)');
+  });
+
+  it('the plain strip is one Tab stop with arrows inside', () => {
+    const grid = panel.match(/<div class="grid"[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(grid).toMatch(/tabindex=\{i === stop \? 0 : -1\}/);
+    expect(panel).toContain('gridStep(');
+  });
+
+  it('the merge report names what it counts', () => {
+    expect(t('palette.added', { added: 3 })).toContain('цвет');
+    expect(t('palette.partial_confirm', { skipped: 3, limit: 50 })).toMatch(/цвет/);
+  });
+});

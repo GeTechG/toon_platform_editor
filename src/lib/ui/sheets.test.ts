@@ -137,3 +137,19 @@ describe('the plugin face does not reach the close key', () => {
     expect(pluginsUi).not.toMatch(/^\s*\.icon :global\(svg\)/m);
   });
 });
+
+// Tenth audit: «Удалить» takes its row with it and «Включить» goes when the
+// plugin is back on — the focus fell to <body>, behind the modal.
+describe('a plugin key that goes away hands the focus back to the sheet', () => {
+  const fn = (name: string) => pluginsUi.match(new RegExp(`function ${name}\\([^]*?\\n  }\\n`))?.[0] ?? '';
+
+  it('removing and switching back on both keep the focus', () => {
+    expect(fn('remove')).toContain('await keepFocus()');
+    expect(fn('enable')).toContain('await keepFocus()');
+    expect(pluginsUi).toContain('onclick={() => enable(plugin.id)}');
+  });
+
+  it('the focus goes to the tab in hand, not always to the catalog', () => {
+    expect(fn('keepFocus')).toMatch(/\(tab === 'mine' \? mineTab : catalogTab\)\?\.focus\(\)/);
+  });
+});

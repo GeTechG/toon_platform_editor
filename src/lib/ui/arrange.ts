@@ -87,3 +87,32 @@ export function rowEdge(box: Box, y: number): 'before' | 'after' | null {
 export function insertIndex(boxes: readonly Box[], x: number, y: number): number {
   return dropPlacement(boxes, x, y).index;
 }
+
+/** Air between the bar and the canvas edge, in px. */
+const BAR_INSET = 8;
+/** The canvas left free under the bar, so a window can still be dropped on it. */
+const DROP_BAND = 56;
+/** Narrower or shorter than this, the canvas cannot hold the bar and the screen does. */
+const BAR_MIN_WIDTH = 280;
+const BAR_MIN_HEIGHT = 160;
+
+/**
+ * Where the arrange bar lies: on the canvas, clear of every panel it
+ * rearranges, with a band of the canvas left under it to drop a window on.
+ * A canvas too small for it (400 % page zoom) hands it the screen instead,
+ * and the bar never runs past the screen edge — it scrolls inside itself.
+ */
+export function arrangeBarBox(
+  stage: Box,
+  view: { width: number; height: number },
+): { left: number; top: number; width: number; maxHeight: number } {
+  const roomy = stage.right - stage.left - 2 * BAR_INSET >= BAR_MIN_WIDTH;
+  const left = roomy ? stage.left + BAR_INSET : BAR_INSET;
+  const width = roomy ? stage.right - stage.left - 2 * BAR_INSET : view.width - 2 * BAR_INSET;
+  const inStage = stage.bottom - stage.top - BAR_INSET - DROP_BAND >= BAR_MIN_HEIGHT;
+  const top = inStage ? stage.top + BAR_INSET : BAR_INSET;
+  const maxHeight = inStage
+    ? stage.bottom - DROP_BAND - top
+    : view.height - 2 * BAR_INSET;
+  return { left, top, width, maxHeight: Math.min(maxHeight, view.height - BAR_INSET - top) };
+}

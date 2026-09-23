@@ -57,7 +57,9 @@ export function stripWindow(
 /**
  * Where the strip has to scroll for `frame` to be in view, or null when it
  * already is. The frame's place is arithmetic: its node may not be built, so
- * there is nothing to ask `scrollIntoView`.
+ * there is nothing to ask `scrollIntoView`. `pad` is the row's own padding:
+ * the frame sits that far in, and is shown with that much room either side,
+ * or the last frame's ring ends under the edge.
  */
 export function scrollToFrame(
   frame: number,
@@ -65,13 +67,14 @@ export function scrollToFrame(
   gap: number,
   scrollLeft: number,
   viewWidth: number,
+  pad = 0,
 ): number | null {
   const pitch = cellWidth + gap;
   if (pitch <= 0 || viewWidth <= 0) {
     return null;
   }
   const left = frame * pitch;
-  const right = left + cellWidth;
+  const right = left + cellWidth + 2 * pad;
   if (left < scrollLeft) {
     return left;
   }

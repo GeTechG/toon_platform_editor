@@ -221,6 +221,17 @@ export class EditorState {
   megaEraserWarned = $state(false);
   /** The open lasso/distort session; null when nothing is selected. */
   transform = $state<TransformState | null>(null);
+  /**
+   * A line the canvas shows in its live hint: why a tool did nothing. A fresh
+   * object each time, so the same reason twice is said twice.
+   */
+  canvasHint = $state<{ text: string } | null>(null);
+  /**
+   * A canvas gesture holds the pointer (stroke, eraser, handle, tool drag).
+   * The editor keys wait meanwhile: a frame deleted or undone under the hand
+   * left the gesture writing into a cell that was no longer there.
+   */
+  gestureHeld = false;
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
   transformWidthWithScale = $state(false);
   /** The live gesture of a tool that brought its own (plugins): the cells as they were on press. */
@@ -529,7 +540,12 @@ export class EditorState {
    * inside `$derived` and MUST NOT touch state there.
    */
   get brush(): BrushRecord {
-    return this.byTool[brushToolOf(this.tool)] ?? defaultBrushOf(this.brushSource);
+    const brush = this.byTool[brushToolOf(this.tool)] ?? defaultBrushOf(this.brushSource);
+    // A width grown under a wider preset (Multator's 640) is read at this
+    // preset's ceiling (Toonop's 500): the field, the track and the stroke
+    // agree, and the record keeps the number for the way back.
+    const max = this.ux.brushSizeMax;
+    return brush.width > max ? { ...brush, width: max } : brush;
   }
 
   /** Whose defaults a brush met for the first time reads: its own, else the preset's. */
@@ -966,11 +982,6 @@ export class EditorState {
     this.layerCounter++;
     this.#write((doc) => renameLayer(doc, at, t('layer.default_name', { n: this.layerCounter })));
     this.touched = true;
-  }
-
-  /** Whether a layer holds any stroke — the panel asks before deleting one that does. */
-  layerHasStrokes(index: number): boolean {
-    return this.doc.layers[index]?.frames.some((cell) => cell.strokes.length > 0) ?? false;
   }
 
   /** What the panel calls a layer: its stored name, or its position. */
@@ -1629,6 +1640,9 @@ export class EditorState {
     ));
     if (this.playing || !box) {
       this.transform = null;
+      if (!this.playing) {
+        this.canvasHint = { text: t('canvas.nothing_to_transform') };
+      }
       return false;
     }
     this.selection = { frames: [this.activeFrame], layers: this.selection.layers };
@@ -1928,6 +1942,7 @@ export class EditorState {
       return true;
     }
     if (this.transformLock) {
+      this.canvasHint = { text: t('canvas.transform_locked') };
       return false;
     }
     this.commitTransform();

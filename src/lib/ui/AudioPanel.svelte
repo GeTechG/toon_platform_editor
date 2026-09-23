@@ -6,6 +6,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
+  import { AUDIO_MAX_CREDIT } from '../audio/track';
   import { t } from '../i18n';
 
   let {
@@ -13,6 +14,9 @@
     anchor,
     onClose,
   }: { editor: EditorState; anchor?: HTMLElement; onClose: () => void } = $props();
+
+  /** The switch's name and its hint are two things: ids to point at each. */
+  const uid = $props.id();
 
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
@@ -133,23 +137,28 @@
     {#if editor.audio.hasTrack}
       <label class="field">
         <span>{t('audio.name')}</span>
-        <input bind:value={editor.audio.name} placeholder={t('audio.name_placeholder')} />
+        <input bind:value={editor.audio.name} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.name_placeholder')} />
       </label>
       <label class="field">
         <span>{t('audio.author')}</span>
-        <input bind:value={editor.audio.author} placeholder={t('audio.author_placeholder')} />
+        <input bind:value={editor.audio.author} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.author_placeholder')} />
       </label>
 
       <label class="toggle">
         <span>
-          {t('audio.tie')}
-          <small>
+          <span id="{uid}-tie">{t('audio.tie')}</span>
+          <small id="{uid}-tie-hint">
             {editor.audio.sync
               ? t('audio.tie_on')
               : t('audio.tie_off')}
           </small>
         </span>
-        <input type="checkbox" role="switch" bind:checked={editor.audio.sync} />
+        <input
+          type="checkbox"
+          role="switch"
+          aria-labelledby="{uid}-tie"
+          aria-describedby="{uid}-tie-hint"
+          bind:checked={editor.audio.sync} />
       </label>
 
       <p class="lengths">

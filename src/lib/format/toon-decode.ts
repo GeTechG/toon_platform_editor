@@ -19,6 +19,7 @@ import {
 import { SQUARE_STAMP } from './types';
 import type { Layer, ToolDescriptor, ToonDocument } from './types';
 import { laySmoothPoints } from '../render/smoothing';
+import { validateDocument } from './validate';
 import { t } from '../i18n';
 
 /** The reference canvas is fixed; the file carries no size of its own. */
@@ -46,6 +47,8 @@ export type ToonImportResult =
   | { ok: false; error: string };
 
 class Truncated extends Error {}
+/** A refusal worded for the person holding the file. */
+class Refusal extends Error {}
 
 /** Cursor over the Int16 stream that refuses to read past the end. */
 class Reader {
@@ -90,12 +93,17 @@ export function decodeToon(buffer: ArrayBuffer): ToonImportResult {
     return { ok: false, error: t('file.empty') };
   }
   try {
-    return { ok: true, ...read(new Reader(new Int16Array(buffer))) };
+    const { doc, original } = read(new Reader(new Int16Array(buffer)));
+    return checked(doc, original);
   } catch (error) {
     if (error instanceof Truncated) {
       return { ok: false, error: t('file.truncated_long') };
     }
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    if (error instanceof Refusal) {
+      return { ok: false, error: error.message };
+    }
+    console.warn('toon decode failed:', error);
+    return { ok: false, error: t('file.truncated_long') };
   }
 }
 
@@ -109,10 +117,10 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
     version = reader.next();
   }
   if (version < 1 || version > MAX_VERSION) {
-    throw new Error(t('file.version_unsupported', { version }));
+    throw new Refusal(t('file.version_unsupported', { version }));
   }
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
-    throw new Error(t('file.bad_header'));
+    throw new Refusal(t('file.bad_header'));
   }
   const original = version >= 3 ? reader.string() : '';
 
@@ -152,7 +160,7 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
     // The writer emits exactly as many words as the drawing needs, so a tail
     // means this is not a `.toon` — version 1 files carry no signature to
     // check instead.
-    throw new Error(t('file.trailing_data'));
+    throw new Refusal(t('file.trailing_data'));
   }
   return {
     original,
@@ -181,7 +189,7 @@ function readStrokes(
     if (version >= 5) {
       toolId = reader.next();
       if (!tools[toolId]) {
-        throw new Error(t('file.unknown_tool_ref', { tool: toolId }));
+        throw new Refusal(t('file.unknown_tool_ref', { tool: toolId }));
       }
     } else {
       toolId = internLegacyTool(readLegacyTool(reader), tools);
@@ -240,9 +248,9 @@ function toolDescriptor(type: number, width: number, color: string, fill: string
     case PIXEL:
       return { kind: 'stamp', geometry: 'line', width: clamped, color, shape: [...SQUARE_STAMP] };
     case MEGAERASER:
-      throw new Error(t('file.mega_eraser'));
+      throw new Refusal(t('file.mega_eraser'));
     default:
-      throw new Error(t('file.unknown_tool', { type }));
+      throw new Refusal(t('file.unknown_tool', { type }));
   }
 }
 
@@ -284,13 +292,16 @@ export function decodeLegacyJson(text: string): ToonImportResult {
   try {
     data = JSON.parse(text);
   } catch (error) {
-    return { ok: false, error: t('file.not_json', { reason: error instanceof Error ? error.message : error }) };
+    // The parser's words are English and about characters; they stay in the console.
+    console.warn('legacy json parse failed:', error);
+    return { ok: false, error: t('file.not_json') };
   }
   const source = Array.isArray(data) ? data : (data as { Frames?: unknown } | null)?.Frames;
-  if (!Array.isArray(source) || source.length === 0) {
+  // A frame is a list of lines: `[1,2,3]` is some other JSON, not three empty frames.
+  if (!Array.isArray(source) || source.length === 0 || !source.every(Array.isArray)) {
     return { ok: false, error: t('file.no_frames') };
   }
-  const fps = Number((data as { Data?: { FPS?: unknown } }).Data?.FPS) || LEGACY_JSON_FPS;
+  const fps = Math.round(Number((data as { Data?: { FPS?: unknown } }).Data?.FPS) || LEGACY_JSON_FPS);
 
   const tools: ToolDescriptor[] = [];
   const frames = source.map((frame) => ({
@@ -307,17 +318,15 @@ export function decodeLegacyJson(text: string): ToonImportResult {
       const tool = toolDescriptor(
         PENCIL,
         scale(Number(raw?.Width) || LEGACY_JSON_WIDTH),
-        typeof raw?.Color === 'string' ? raw.Color : '#000000',
+        hexColor(raw?.Color),
         '#000000',
       );
       return [{ points: laySmoothPoints(points), tool_id: internLegacyTool(tool, tools) }];
     }),
   }));
 
-  return {
-    ok: true,
-    original: '',
-    doc: {
+  return checked(
+    {
       schema_version: SCHEMA_VERSION,
       width: TOONIO_CANVAS_WIDTH * FIXED_POINT_SCALE,
       height: TOONIO_CANVAS_HEIGHT * FIXED_POINT_SCALE,
@@ -325,5 +334,30 @@ export function decodeLegacyJson(text: string): ToonImportResult {
       tools,
       layers: [{ hidden: false, frames }],
     },
-  };
+    '',
+  );
+}
+
+/** `#abc`, `#ABCDEF` → `#aabbcc`, `#abcdef`; anything else is drawn in black. */
+function hexColor(value: unknown): string {
+  const hex = typeof value === 'string' ? /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value)?.[1] : undefined;
+  if (!hex) {
+    return '#000000';
+  }
+  return `#${(hex.length === 3 ? hex.replace(/./g, '$&$&') : hex).toLowerCase()}`;
+}
+
+/**
+ * What a decoder builds becomes the draft: a document the validator refuses
+ * is a draft that never opens again and a work the API will not take. Colours
+ * and rates are mended on the way in, so what is left is a file past the
+ * limits — too many frames, lines or points.
+ */
+function checked(doc: ToonDocument, original: string): ToonImportResult {
+  const result = validateDocument(doc);
+  if (!result.ok) {
+    console.warn('imported document does not validate:', result.issues);
+    return { ok: false, error: t('file.over_limits') };
+  }
+  return { ok: true, doc, original };
 }

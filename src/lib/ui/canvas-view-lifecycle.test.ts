@@ -432,3 +432,57 @@ describe('the cursor follows the pointer on the compositor', () => {
     expect(source).toContain('style:transform="translate({cursorX}px, {cursorY}px)');
   });
 });
+
+// Tenth audit: what the canvas still did wrong with a pen, a wheel during the
+// preview, a readback per pipette move and a window dragged to another screen.
+describe('the canvas after the tenth audit', () => {
+  it('the pipette reads back from a context made for reading', () => {
+    // Chrome warned on every hover: each getImageData pulled the scratch off
+    // the GPU.
+    expect(handler('pickColor')).toContain('willReadFrequently: true');
+  });
+
+  it('takes the wheel even while the preview plays', () => {
+    // Ctrl+wheel zoomed the whole page and a sideways swipe went back in the
+    // history — with the drawing — while the preview ran.
+    const wheel = handler('onWheel');
+    expect(wheel.indexOf('e.preventDefault()')).toBeLessThan(wheel.indexOf('editor.playing'));
+  });
+
+  it('ends a pen stroke whose release it never heard, the way it does for a mouse', () => {
+    // A pen hovers: a lost pointerup left the stroke following the hover.
+    const move = handler('onPointerMove');
+    expect(move).toContain("e.pointerType !== 'touch' && e.buttons === 0");
+  });
+
+  it("the pen's eraser end erases, and flipping it back gives the tool back", () => {
+    // Button 5 is the eraser end; it read as "not the left button" and drew
+    // with the fill colour.
+    const flip = handler('followPenEnd');
+    expect(flip).toContain('e.button === 5');
+    expect(flip).toContain("editor.selectTool('eraser')");
+    expect(handler('onPointerDown')).toContain('followPenEnd(e)');
+  });
+
+  it('redraws when the window moves to a screen of another density', () => {
+    // Nothing else changes size there, so nothing asked for a frame and the
+    // lines stayed at the old screen's density — blurry or oversized.
+    expect(source).toContain('(resolution: ${window.devicePixelRatio}dppx)');
+  });
+});
+
+describe('the hand under a finger', () => {
+  it('one finger with the hand pans instead of drawing a line', () => {
+    // The touch branch returned before the hand was asked: on a phone the
+    // hand drew with the pencil's brush.
+    const nav = handler('startNavigation');
+    expect(nav).not.toContain('return touches.size > 1;');
+    expect(nav.indexOf("editor.tool === 'drag'")).toBeGreaterThan(nav.indexOf("e.pointerType === 'touch'"));
+  });
+
+  it('a second finger turns the hand\'s pan into a pinch, not both at once', () => {
+    const nav = handler('startNavigation');
+    const pinch = nav.slice(nav.indexOf('touches.size === 2'));
+    expect(pinch.slice(0, pinch.indexOf('return true'))).toContain('panning = null');
+  });
+});

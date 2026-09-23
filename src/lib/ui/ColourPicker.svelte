@@ -48,8 +48,6 @@
 
   const origin = untrack(() => color);
   let pointer = $state<Pointer>(untrack(() => colorToPointer(model, color)));
-  /** Which of the two the arrows drive; a drag moves it (`bundle:10058-10063`). */
-  let lastTarget = $state<'surface' | 'bar'>('surface');
   /** Last colour this window produced — anything else came from outside. */
   let applied = $state(origin);
   let surface = $state<HTMLCanvasElement | null>(null);
@@ -141,8 +139,11 @@
     apply(target === 'bar' ? { ...pointer, bar: fx } : surfaceToPointer(model, pointer, fx, fy));
   }
 
+  /* The reference's arrows drove whichever of the two the mouse touched last
+     (`bundle:10058-10063`); here each canvas takes focus, so the focused one
+     is the one they drive — a field that moved the hue announced nothing. */
   function onSurfaceKey(e: KeyboardEvent): void {
-    const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: lastTarget });
+    const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: 'surface' });
     if (next === pointer) return;
     e.preventDefault();
     apply(next);
@@ -159,6 +160,16 @@
     if (action === 'commit') commitHex();
     e.stopPropagation();
     requestClose();
+  }
+
+  /**
+   * The dialog is the window and its backdrop at once: a click on the bare
+   * padding between the keys, or past the wheel's rim where the canvas is
+   * clipped, also lands on the element. Only a click past its edge is outside.
+   */
+  function outside(e: MouseEvent): boolean {
+    const r = box?.getBoundingClientRect();
+    return !r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
   }
 
   function dragWindow(e: PointerEvent): void {
@@ -289,7 +300,7 @@
   bind:this={box}
   aria-label={t('picker.title', { label })}
   onkeydown={onKeydown}
-  onclick={(e) => e.target === box && requestClose()}
+  onclick={(e) => e.target === box && outside(e) && requestClose()}
   oncancel={(e) => {
     e.preventDefault();
     requestClose({ revert: true });
@@ -326,7 +337,6 @@
       aria-valuemax={fieldReading.max}
       onpointerdown={(e) => drag(e, 'surface')}
       onpointermove={(e) => move(e, 'surface')}
-      onpointerup={() => (lastTarget = 'surface')}
       onkeydown={onSurfaceKey}
     ></canvas>
     <span class="dot" style:left="{marker.x * SURFACE}px" style:top="{marker.y * SURFACE}px"></span>
@@ -348,7 +358,6 @@
       aria-valuemax={barReading.max}
       onpointerdown={(e) => drag(e, 'bar')}
       onpointermove={(e) => move(e, 'bar')}
-      onpointerup={() => (lastTarget = 'bar')}
       onkeydown={(e) => {
         const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: 'bar' });
         if (next !== pointer) (e.preventDefault(), apply(next));
@@ -372,6 +381,10 @@
               // An emptied field is on its way to a new number, not a zero.
               const v = e.currentTarget.valueAsNumber;
               if (Number.isFinite(v)) setChannel(key, v);
+            }}
+            onchange={(e) => {
+              // Left empty or past 255, the field shows what the colour holds.
+              e.currentTarget.value = String(rgb[key]);
             }}
           />
         </label>
@@ -605,7 +618,7 @@
     display: grid;
     margin: 0 14px;
     grid-template-columns: 1fr 1fr;
-    height: 34px;
+    min-height: 34px;
     border-radius: var(--r-sm);
     box-shadow: inset 0 0 0 1px var(--hairline);
     overflow: hidden;

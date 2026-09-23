@@ -82,7 +82,7 @@
   // piling up a new draft per stroke (reference `autosave_worker.js:14-22`); a
   // draft opened from the list continues under its own id, and opening a file
   // starts a fresh one. Nothing is written until something is drawn.
-  let draftId = newDraftId();
+  let draftId = $state(newDraftId());
 
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
@@ -107,6 +107,8 @@
   // «Больше не показывать» — a reload used to bring the alert back for good.
   let megaWarnOpen = $state(false);
   let megaWarnDialog = $state<HTMLDialogElement | undefined>();
+  /** The draft written as the tool was picked actually reached storage. */
+  let megaDraftSaved = $state(false);
   $effect(() => {
     megaWarnDialog?.showModal();
   });
@@ -360,6 +362,11 @@
     if (e.altKey) {
       return;
     }
+    // A stroke, an eraser pass or a dragged handle is under the hand: a frame
+    // deleted, undone or switched now would pull its cell from under it.
+    if (editor.gestureHeld) {
+      return;
+    }
     // The reference dispatches its hotkey table whatever modifier is held, so
     // Ctrl+Z, Ctrl+C, Ctrl+V and Ctrl+M land on the same handlers as the bare
     // keys; only A and F7 change meaning under Ctrl.
@@ -582,10 +589,10 @@
         editor.addLayerAtActive(e.ctrlKey || e.metaKey);
         break;
       case 'Delete':
+        // The state asks «Удалить «Слой N»?» itself; a second question here
+        // made Shift+Delete ask twice.
         if (e.shiftKey) {
-          if (editor.doc.layers.length > 1 && (!editor.layerHasStrokes(editor.activeLayer) || askDelete(t('editor.layer_has_strokes')))) {
-            editor.removeActiveLayer();
-          }
+          editor.removeActiveLayer();
         } else {
           editor.removeActiveFrame();
         }
@@ -690,6 +697,8 @@
 
   /** A write into working storage failed: stop trying and say so, once. */
   let saveFailed = $state(false);
+  /** The browser keeps no storage for this page: nothing is ever written. */
+  let storageBlocked = $state(false);
   /** The clock came round during playback; the write waits for the stop. */
   let queued = false;
   /** Size of the record as last written — what the indicator reports. */
@@ -700,9 +709,12 @@
    * After a failure the clock stays off, but a save asked for by hand tries
    * again: the user may have freed the room in the drafts list since.
    */
-  function saveNow(byHand = false): void {
-    if (!editor.touched || (saveFailed && !byHand)) {
-      return;
+  function saveNow(byHand = false): Promise<boolean> {
+    if (!editor.touched) {
+      return Promise.resolve(true);
+    }
+    if (saveFailed && !byHand) {
+      return Promise.resolve(false);
     }
     // The document is a value the editor holds whole, so it goes to storage as
     // it is: no snapshot to take, and no second pass over every stroke of the
@@ -710,17 +722,26 @@
     const doc = editor.doc;
     queued = false;
     dirty = false;
-    editor.lastSavedAt = Date.now();
-    void saveDraft(draftId, doc, editor.sessionState()).then(({ ok, bytes }) => {
+    return saveDraft(draftId, doc, editor.sessionState()).then(({ ok, bytes }) => {
+      if (ok && bytes === 0) {
+        // No storage at all (blocked by the browser): the store degrades
+        // quietly, but «сохранено» would be a lie, and a clean `dirty` would
+        // let the tab close over the only copy without a word.
+        storageBlocked = true;
+        dirty = true;
+        return true;
+      }
       if (ok) {
+        editor.lastSavedAt = Date.now();
         savedBytes = bytes;
         saveFailed = false;
         writeScreenshot(doc);
-        return;
+        return true;
       }
       saveFailed = true;
       dirty = true;
       alert(t('editor.save_failed_alert'));
+      return false;
     });
   }
 
@@ -910,12 +931,22 @@
   }
 
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
-  function openDraft(entry: DraftEntry): void {
+  async function openDraft(entry: DraftEntry): Promise<void> {
+    // The draft on the canvas is newer than its card: the list was read when
+    // the sheet opened, and loading it would put back the older copy.
+    if (entry.id === draftId) {
+      draftsDialog?.close();
+      return;
+    }
     if (editor.touched) {
       if (!confirm(t('editor.draft_open_confirm'))) {
         return;
       }
-      saveNow();
+      // By hand, so a clock stopped by a failure tries once more; a drawing
+      // that did not reach the disk is not replaced.
+      if (!(await saveNow(true))) {
+        return;
+      }
     }
     editor.openDraft(entry.doc);
     if (entry.state) {
@@ -933,7 +964,8 @@
       editor.audio.clear();
     }
     draftId = entry.id;
-    draftsOpen = false;
+    // close(), not the flag: an unmounted open dialog drops focus on <body>.
+    draftsDialog?.close();
   }
 
   async function removeDraft(entry: DraftEntry): Promise<void> {
@@ -966,7 +998,8 @@
     if (editor.warnings && editor.settings.megaEraserWarning) {
       megaWarnOpen = true;
     }
-    saveNow();
+    // «Сохранён» only once it is: the write may fail, or reach no storage.
+    saveNow().then((ok) => (megaDraftSaved = ok && !storageBlocked));
   });
 
   function askDelete(message: string): boolean {
@@ -990,7 +1023,9 @@
       if (!confirm(t('editor.file_open_confirm', { name: file.name }))) {
         return;
       }
-      saveNow();
+      if (!(await saveNow(true))) {
+        return;
+      }
     }
     const name = file.name.toLowerCase();
     let doc: ToonDocument;
@@ -1523,7 +1558,9 @@
         data-item={id}
         title={t('editor.drag_item', { label: panelItemSpec(id)?.label ?? id })}
       >
-        {@render panelItem(id)}
+        <!-- Inert: Tab walked into these keys and Enter pressed them while
+             every pointer on them was stopped. No box of its own. -->
+        <div class="arr-body" inert>{@render panelItem(id)}</div>
       </div>
     {:else}
       {@render panelItem(id)}
@@ -1608,6 +1645,20 @@
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
     {/if}
+    <!-- Modes that change what a press does or where the drawing lives. The
+         region is always there, so its first words are announced. Alt+Enter
+         used to mute every delete question with nothing on screen saying so. -->
+    <div class="warnings-off" role="status">
+      {#if !editor.warnings}
+        <p class="stage-note">
+          {t('editor.warnings_off')}
+          <button class="key" onclick={() => (editor.warnings = true)}>{t('editor.warnings_on')}</button>
+        </p>
+      {/if}
+      {#if storageBlocked}
+        <p class="stage-note">{t('editor.save_unavailable')}</p>
+      {/if}
+    </div>
     {#if importError}
       <p class="import-error" role="alert">
         {importError}
@@ -1728,7 +1779,7 @@
         {#if drafts.length === 0}
           <p class="empty">{t('editor.drafts_empty')}</p>
         {:else}
-          <p class="sheet-hint">
+          <p class="sheet-hint" aria-live="polite">
             {t('draft.count', { count: drafts.length })}{t('editor.on_this_device')}
             {#if storageUsed}{t('editor.storage_used', { size: formatFileSize(storageUsed) })}{/if}
           </p>
@@ -1747,7 +1798,7 @@
                     {/if}
                   </span>
                   <span class="draft-meta">
-                    <span class="draft-date">{new Date(entry.updated).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                    <span class="draft-date" id="draft-date-{entry.id}">{new Date(entry.updated).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
                     <span class="draft-size">
                       {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
                       {t('draft.layers', { count: entry.doc.layers.length })}
@@ -1771,6 +1822,7 @@
                   onclick={() => copyDraft(entry)}
                   title={t('editor.draft_copy_title')}
                   aria-label={t('editor.draft_copy')}
+                  aria-describedby="draft-date-{entry.id}"
                 >
                   <Icon name="copy" />
                 </button>
@@ -1779,6 +1831,7 @@
                   onclick={() => downloadDraft(entry)}
                   title={t('editor.draft_download_title')}
                   aria-label={t('editor.draft_download')}
+                  aria-describedby="draft-date-{entry.id}"
                 >
                   <Icon name="download" />
                 </button>
@@ -1787,6 +1840,7 @@
                   onclick={() => removeDraft(entry)}
                   title={t('editor.draft_delete_title')}
                   aria-label={t('editor.draft_delete')}
+                  aria-describedby="draft-date-{entry.id}"
                 >
                   <Icon name="trash" />
                 </button>
@@ -1882,7 +1936,7 @@
         </button>
       </header>
       <div class="sheet-body">
-        <p id="mega-warn-text">{MEGA_ERASER_WARNING}</p>
+        <p id="mega-warn-text">{MEGA_ERASER_WARNING}{#if megaDraftSaved}{' '}{t('editor.mega_eraser_saved')}{/if}</p>
         <label class="mute-warning">
           <input
             type="checkbox"
@@ -2028,6 +2082,11 @@
       flex: 0 1 auto;
       min-height: 0;
       overflow-y: auto;
+    }
+    /* The transform window takes the zoom window's row: at 200 % text on 320px
+       the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
+    .stage:has(> .tool-windows :global(.transform-menu)) > .scale-window {
+      display: none;
     }
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
@@ -2187,11 +2246,19 @@
     cursor: grab;
     touch-action: none;
   }
+  /* In a row that scrolls (the tool row on a phone) a handle keeps its
+     key's width: shrunk, thirteen handles overlapped in 390px. */
+  .editor.arranging .arr:not(.wide) {
+    flex-shrink: 0;
+  }
   /* Whatever takes the whole row — the strip, the palette box — still does. */
   .editor.arranging .arr.wide {
     place-self: stretch;
   }
-  .editor.arranging .arr > :global(*) {
+  .editor.arranging .arr-body {
+    display: contents;
+  }
+  .editor.arranging .arr-body > :global(*) {
     pointer-events: none;
     /* The item grows into the whole handle, so the frame keeps its 2px on
        every side where the grid cell is wider than the key — from its own
@@ -2207,7 +2274,7 @@
   }
   /* A key the profile does not draw leaves an empty handle behind; there is
      nothing to grab, so there is nothing to show. */
-  .editor.arranging .arr:not(:has(*)) {
+  .editor.arranging .arr:not(:has(.arr-body > *)) {
     display: none;
   }
   /* The bar sizes to its contents while things are being moved into it. */
@@ -2751,6 +2818,40 @@
     background: var(--canvas);
     color: var(--ink);
     font-size: 0.85rem;
+  }
+  /* Mode notes along the stage's top edge, drawn like the import error: the
+     weight of the line, not a colour. The box lets the pointer through to the
+     canvas where there is no note. */
+  .warnings-off {
+    position: absolute;
+    inset-inline: 0;
+    top: 0.5rem;
+    z-index: var(--z-float);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    pointer-events: none;
+  }
+  .stage-note {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: min(32rem, 92%);
+    margin: 0;
+    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+    border: 2px solid var(--ink);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font-size: 0.85rem;
+    pointer-events: auto;
+  }
+  .stage-note:not(:has(button)) {
+    padding-right: 0.75rem;
+  }
+  .stage-note .key {
+    flex: none;
   }
   .layers {
     position: relative;

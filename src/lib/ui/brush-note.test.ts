@@ -20,3 +20,30 @@ describe('the brush help opens on a press and stays until dismissed', () => {
     expect(style).toContain('.note.open');
   });
 });
+
+// Tenth audit. The «i» sits inside its heading, and the heading took its name
+// from everything in it: a reader walking headings heard «Сглаживание
+// Сглаживание: Больше — ровнее линия…». The heading is named by its title.
+describe('the heading with a help key is named by its title alone', () => {
+  it('the h2 carries its own name', () => {
+    expect(panel).toMatch(/<h2 class="field" aria-label=\{title\}>/);
+  });
+});
+
+// A brush may declare a range that does not start at 1: the track and the
+// field started at 1 anyway, and the setter pushed the value back up.
+describe('the thickness controls start where the brush range starts', () => {
+  it('min is the range of the brush in hand', () => {
+    expect(panel).toContain("slider(t('brush.sizes_group'), editor.brushRange.min,");
+  });
+});
+
+// Tenth audit. The track holds positions, and it handed the unrounded one out
+// as its value: an accessibility tree read aria-valuenow 258.976573734829.
+// The position is rounded; the size itself is what aria-valuetext speaks.
+describe('the thickness track exposes a whole position', () => {
+  it('its value is rounded', () => {
+    expect(panel).toContain('value={Math.round(positionOfSize(value, min, max))}');
+    expect(panel).toContain('aria-valuetext={String(value)}');
+  });
+});

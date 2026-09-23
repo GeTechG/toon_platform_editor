@@ -91,3 +91,80 @@ describe('scrollbars stay out of the way', () => {
     expect(rule('::-webkit-scrollbar-button')).toContain('display: none');
   });
 });
+
+// Windows High Contrast (forced colors) repaints every author colour with the
+// system pair and drops every background image that is not a url(), every
+// gradient and every box-shadow. What the studio said with those alone — the
+// picked tool, the on switch, the palette itself, the focus on a seam, the
+// edge of a menu over the canvas — went blank.
+describe('forced colors keep what colour and shadow were saying', () => {
+  const forced = controlsCss.slice(controlsCss.indexOf('@media (forced-colors: active)'));
+  const block = (sel: string): string => {
+    const at = forced.indexOf(sel);
+    expect(at).toBeGreaterThan(-1);
+    const open = forced.indexOf('{', at);
+    return forced.slice(open, forced.indexOf('}', open));
+  };
+
+  it('the sheet has a forced-colors block', () => {
+    expect(controlsCss).toContain('@media (forced-colors: active)');
+  });
+
+  it('a colour that is the content — a swatch, a layer tag — keeps its colour', () => {
+    const body = block("[style*='--swatch']");
+    expect(body).toContain('forced-color-adjust: none');
+    expect(forced).toContain("[style*='background']");
+  });
+
+  it('a pressed, selected or current control is marked in the system highlight', () => {
+    const body = block("[aria-pressed='true']");
+    expect(body).toContain('Highlight');
+    expect(body).toContain('HighlightText');
+    // Text on a forced highlight gets a Canvas backplate and vanishes.
+    expect(body).toContain('forced-color-adjust: none');
+    expect(forced).toContain("[aria-selected='true']");
+  });
+
+  it('an on switch and a ticked box are told apart by the highlight', () => {
+    expect(block("input[type='checkbox']:checked")).toContain('Highlight');
+  });
+
+  it('the switch knob is an image, which forced colors keeps — a gradient it drops', () => {
+    expect(block("[role='switch']")).toContain('url(');
+  });
+
+  it('a range keeps its track and a progress bar its fill', () => {
+    expect(block('::-webkit-slider-runnable-track')).toContain('CanvasText');
+    expect(block('::-webkit-progress-value')).toContain('Highlight');
+  });
+
+  it('a seam that shows focus with a gradient gets an outline back', () => {
+    expect(block("[role='separator']:focus-visible")).toMatch(/outline: [^;]*Highlight/);
+  });
+
+  it('a brush-size dot, drawn by its background, is drawn in CanvasText', () => {
+    const sizes = sheets.find((s) => s.file === 'BrushSizes.svelte')!.text;
+    expect(sizes).toMatch(/@media \(forced-colors: active\)\s*\{\s*\.dot\s*\{\s*background: CanvasText/);
+  });
+
+  it('the brush cursor keeps its ink ring and canvas halo — the sheet under it is never recoloured', () => {
+    const view = sheets.find((s) => s.file === 'CanvasView.svelte')!.text;
+    expect(view).toMatch(/\.brush-cursor \{[^}]*forced-color-adjust: none/);
+  });
+
+  it.each([
+    ['Timeline.svelte', '.bar > span'],
+    ['PanelArranger.svelte', '.drop-line'],
+  ])('%s: %s, a mark drawn by its background, is drawn in CanvasText', (file, sel) => {
+    const text = sheets.find((s) => s.file === file)!.text;
+    const at = text.indexOf('@media (forced-colors: active)');
+    expect(at).toBeGreaterThan(-1);
+    expect(text.slice(at)).toMatch(new RegExp(sel.replace(/[.>]/g, (c) => '\\' + c) + '\\s*\\{\\s*background: CanvasText'));
+  });
+
+  it('a surface over the canvas that stood out by its shadow gets an edge', () => {
+    expect(block('dialog')).toContain('outline: 1px solid CanvasText');
+    expect(forced).toContain('[popover]');
+    expect(forced).toContain("[role='menu']");
+  });
+});

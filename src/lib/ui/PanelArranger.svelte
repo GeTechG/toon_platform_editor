@@ -10,9 +10,10 @@
    * Deliberate — drawing needs a pointer anyway, so a keyboard path to the
    * panels lets nobody in who was not already in.
    */
+  import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { saveFile } from './save-file';
-  import { dropPlacement, rowEdge, type Box } from './arrange';
+  import { arrangeBarBox, dropPlacement, rowEdge, type Box } from './arrange';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { t } from '../i18n';
 
@@ -147,7 +148,12 @@
     if (!drag) {
       return null;
     }
-    const panelEl = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-slot]');
+    // A window over the canvas is the canvas too: a drop over one, or over
+    // the very window being moved, hit no panel and did nothing.
+    const hit = document.elementFromPoint(x, y);
+    const panelEl = hit?.closest('.float')
+      ? document.querySelector<HTMLElement>('[data-slot="float"]')
+      : hit?.closest<HTMLElement>('[data-slot]');
     const slot = panelEl?.dataset.slot as PanelSlot | undefined;
     if (!panelEl || !slot) {
       return null;
@@ -201,7 +207,10 @@
       return;
     }
     if (to.slot === 'float') {
-      editor.setFloatPos(drag.id, x - to.panel.left - drag.dx, y - to.panel.top - drag.dy);
+      // A window is drawn in the editor, not in the canvas: measured from the
+      // canvas it landed a column's width off the hand.
+      const root = document.querySelector('[data-float-root]')?.getBoundingClientRect();
+      editor.setFloatPos(drag.id, x - (root?.left ?? 0) - drag.dx, y - (root?.top ?? 0) - drag.dy);
       if (!editor.panels.float.includes(drag.id)) {
         editor.movePanelItem(drag.id, 'float');
       }
@@ -238,12 +247,57 @@
    * arrangements fold away there, the drag itself needs only the hint, the
    * shelf and «Готово».
    */
-  const wideQuery = typeof matchMedia === 'function' ? matchMedia('(min-width: 40rem)') : null;
+  const wideQuery =
+    typeof matchMedia === 'function' ? matchMedia('(min-width: 40rem) and (min-height: 32rem)') : null;
   let wide = $state(wideQuery?.matches ?? true);
   $effect(() => {
     const follow = (e: MediaQueryListEvent) => (wide = e.matches);
     wideQuery?.addEventListener('change', follow);
     return () => wideQuery?.removeEventListener('change', follow);
+  });
+
+  /**
+   * The bar lies on the canvas, clear of the panels it rearranges: fixed
+   * over the whole screen it hid the tool row on a phone held upright and
+   * both columns on one lying down.
+   */
+  let barEl = $state<HTMLDivElement | undefined>();
+  let place = $state('');
+  $effect(() => {
+    const stage = document.querySelector<HTMLElement>('[data-slot="float"]');
+    if (!stage) {
+      return;
+    }
+    const measure = (): void => {
+      const b = arrangeBarBox(stage.getBoundingClientRect(), {
+        width: document.documentElement.clientWidth,
+        height: document.documentElement.clientHeight,
+      });
+      // No wider than it ever was, centred on a wide canvas.
+      place = `left: ${b.left}px; top: ${b.top}px; width: min(46rem, ${b.width}px);`
+        + ` margin-left: max(0px, (${b.width}px - 46rem) / 2); max-height: ${b.maxHeight}px; transform: none`;
+    };
+    const watcher = new ResizeObserver(measure);
+    watcher.observe(stage);
+    addEventListener('resize', measure);
+    return () => {
+      watcher.disconnect();
+      removeEventListener('resize', measure);
+    };
+  });
+
+  // The mode opens with the focus on the bar, so a screen reader hears where
+  // it is; it closes with the focus on the gear it was opened from — both
+  // times it fell to the page.
+  $effect(() => {
+    barEl?.focus();
+    return () => {
+      void tick().then(() => {
+        if (document.activeElement === document.body || !document.activeElement) {
+          document.querySelector<HTMLElement>(`button[aria-label="${t('editor.settings')}"]`)?.focus();
+        }
+      });
+    };
   });
 
   /** Name being typed for the next save. */
@@ -286,7 +340,14 @@
   {/if}
 {/if}
 
-<div class="arrange-bar" role="region" aria-label={t('arrange.bar')}>
+<div
+  bind:this={barEl}
+  class="arrange-bar"
+  role="region"
+  aria-label={t('arrange.bar')}
+  tabindex="-1"
+  style={place}
+>
   <p class="arrange-hint" aria-live="polite">
     {#if notice}
       {notice}
@@ -400,6 +461,11 @@
     border-radius: 2px;
     background: var(--accent);
   }
+  @media (forced-colors: active) {
+    .drop-line {
+      background: CanvasText;
+    }
+  }
   /* The panel that would take it, so a drop is never a guess. */
   .drop-panel {
     border: 2px solid var(--accent);
@@ -469,6 +535,12 @@
     user-select: none;
   }
   .arrange-keys {
+    /* «Готово» stays in view while the bar scrolls inside itself. */
+    position: sticky;
+    bottom: -0.7rem;
+    margin-bottom: -0.7rem;
+    padding-bottom: 0.7rem;
+    background: var(--paper);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -478,7 +550,7 @@
   .ws {
     margin-right: auto;
   }
-  @media (max-width: 39.99rem) {
+  @media (max-width: 39.99rem), (max-height: 31.99rem) {
     .ws[open] {
       flex-basis: 100%;
     }
@@ -503,7 +575,7 @@
     display: none;
   }
   /* A wide screen has the room: the keys stand open with no fold key. */
-  @media (min-width: 40rem) {
+  @media (min-width: 40rem) and (min-height: 32rem) {
     .arrange-bar .ws > summary {
       display: none;
     }

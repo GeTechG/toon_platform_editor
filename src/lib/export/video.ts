@@ -19,6 +19,7 @@ import {
   logicalSize,
   rasterViewport,
   stampWatermark,
+  nextTask,
   throwIfAborted,
   type ExportStage,
   type RasterizeOptions,
@@ -216,6 +217,7 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
       rasterizer.draw(index % frames);
       await video.add(index / fps, 1 / fps);
       onProgress?.(index + 1, total, 'encode');
+      await nextTask();
     }
     video.close();
     await output.finalize();

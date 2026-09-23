@@ -92,3 +92,23 @@ describe('where the strip scrolls to show a frame', () => {
     expect(scrollToFrame(5, CELL, GAP, 0, 0)).toBeNull();
   });
 });
+
+describe('tenth audit: the strip padding counts', () => {
+  // The row starts 2px in (its padding), so frame N sits at 2 + N × pitch.
+  // Scrolling to N × pitch + width left the last frame 2px under the edge:
+  // its active ring and focus ring were cut off.
+  const PAD = 2;
+  const view = 20 * PITCH;
+
+  it('brings the right edge in with the padding after it', () => {
+    expect(scrollToFrame(40, CELL, GAP, 10 * PITCH, view, PAD)).toBe(PAD + 40 * PITCH + CELL + PAD - view);
+  });
+
+  it('brings the left edge in with the padding before it', () => {
+    expect(scrollToFrame(3, CELL, GAP, 10 * PITCH, view, PAD)).toBe(3 * PITCH);
+  });
+
+  it('a frame already clear of both edges stays put', () => {
+    expect(scrollToFrame(15, CELL, GAP, 10 * PITCH, view, PAD)).toBeNull();
+  });
+});

@@ -68,7 +68,7 @@ describe('a file dropped on the window', () => {
     expect(editorUi).toContain('function onDrop(');
     expect(editorUi).toContain("type.startsWith('audio/')");
     expect(editorUi).toContain("t('editor.file_unsupported')");
-    expect(t('editor.file_unsupported')).toBe('Кажется, такой формат файла не поддерживается');
+    expect(t('editor.file_unsupported')).toContain('.toonop');
   });
 });
 
@@ -91,7 +91,7 @@ describe('opening a file takes the palette and drops the track', () => {
 
 describe('the autosave record is one per visit', () => {
   it('mints the id when the editor opens, not on the first change', () => {
-    expect(editorUi).toContain('let draftId = newDraftId();');
+    expect(editorUi).toContain('let draftId = $state(newDraftId());');
     expect(editorUi).not.toContain('draftId ??= newDraftId()');
     // Still nothing written until something is drawn.
     expect(editorUi).toMatch(/function saveNow\([^)]*\)[^]*?if \(!editor\.touched/);

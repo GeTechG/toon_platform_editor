@@ -57,6 +57,11 @@
     if (e && (e.target as HTMLElement).closest('button:not(.name), .handle')) {
       return;
     }
+    // The state refuses a rename while the preview runs; a field opened then
+    // took the typing and threw it away.
+    if (editor.playing) {
+      return;
+    }
     renaming = { layer: layerIndex, text: editor.layerLabel(layerIndex) };
   }
 
@@ -289,6 +294,7 @@
   <button
     class="add-layer"
     disabled={!canAdd}
+    aria-disabled={editor.playing || undefined}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
     title={t('layer.add_title')}
   >
@@ -380,6 +386,7 @@
         <button
           class="kill"
           disabled={!canRemove}
+          aria-disabled={editor.playing || undefined}
           aria-label={t('layer.remove', { name: editor.layerLabel(layerIndex) })}
           title={t('layer.remove_title')}
           onclick={(e) => {
@@ -538,7 +545,10 @@
     font-size: 0.8rem;
     cursor: pointer;
   }
-  .add-layer:disabled {
+  /* aria-disabled rather than disabled while the preview runs (as the
+     strip's cells): a key that loses `disabled` under the focus drops it. */
+  .add-layer:disabled,
+  .add-layer[aria-disabled='true'] {
     opacity: 0.4;
     cursor: default;
   }
@@ -554,9 +564,28 @@
     color: var(--ink-2);
     cursor: pointer;
   }
-  .kill:disabled {
+  .kill:disabled,
+  .kill[aria-disabled='true'] {
     opacity: 0.3;
     cursor: default;
+  }
+  /* Phone: the column is 10rem, and the row's desktop furniture (137 px)
+     plus the name's floor asked for 178 — the handle and the bin sat past
+     the edge. Every key here keeps the 24 px floor (WCAG 2.5.8). */
+  @media (max-width: 40rem) {
+    .row {
+      gap: 4px;
+      padding: 0 3px;
+    }
+    .eye,
+    .handle,
+    .kill {
+      width: 24px;
+    }
+    .eye,
+    .kill {
+      height: 24px;
+    }
   }
   .sr-only {
     position: absolute;

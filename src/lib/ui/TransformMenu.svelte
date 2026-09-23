@@ -11,6 +11,7 @@
   import Icon from './Icon.svelte';
   import { draggable } from './draggable';
   import { t } from '../i18n';
+  import { scaleFromField } from '../tools/lasso';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -70,9 +71,9 @@
       <label for="tf-rotate">{t('transform.rotate')}</label>
       <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.valueAsNumber)} />
       <label for="tf-scale-x">{t('transform.scale_x')}</label>
-      <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', e.currentTarget.valueAsNumber / 100)} />
+      <input id="tf-scale-x" type="number" step="10" value={percent(session.scaleX)} oninput={(e) => set('scaleX', scaleFromField(e.currentTarget.valueAsNumber))} />
       <label for="tf-scale-y">{t('transform.scale_y')}</label>
-      <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', e.currentTarget.valueAsNumber / 100)} />
+      <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', scaleFromField(e.currentTarget.valueAsNumber))} />
     </div>
     </details>
 

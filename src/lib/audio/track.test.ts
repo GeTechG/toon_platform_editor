@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import {
   AUDIO_MAX_BYTES,
+  AUDIO_MAX_CREDIT,
+  trackCredits,
   AUDIO_MIME_TYPES,
   checkAudioFile,
   ENVELOPE_RATE,
@@ -248,5 +250,31 @@ describe('readId3', () => {
     const bytes = new Uint8Array(tag(3, [['TIT2', 0, 'Kukushka']]));
     bytes[17] = 200; // the frame claims 200 bytes of text
     expect(readId3(bytes.buffer)).toEqual({ artist: '', title: '' });
+  });
+});
+
+describe('tenth audit: trackCredits', () => {
+  test('clips a tag longer than the server takes, so the publish keeps its sound', () => {
+    // The API answers 400 to credits over 120 characters and the web shell
+    // drops the track without a word; a long ID3 title did exactly that.
+    const long = 'Очень'.repeat(40);
+    const credits = trackCredits({ title: long, artist: long }, 'file', '');
+    expect(credits.name.length).toBe(AUDIO_MAX_CREDIT);
+    expect(credits.author.length).toBe(AUDIO_MAX_CREDIT);
+    expect(AUDIO_MAX_CREDIT).toBe(120);
+  });
+
+  test('the file\'s own tags win over the file name', () => {
+    expect(trackCredits({ title: 'Песня', artist: 'Кто-то' }, 'file', 'я')).toEqual({ name: 'Песня', author: 'Кто-то' });
+  });
+
+  test('an untagged file does not inherit the artist the last file\'s tags put there', () => {
+    // «Заменить файл…» passed the field on as the fallback, so song B went
+    // out credited to song A's artist.
+    expect(trackCredits({ title: '', artist: '' }, 'b', 'Кто-то', 'Кто-то')).toEqual({ name: 'b', author: '' });
+  });
+
+  test('an author the person typed survives the replacement', () => {
+    expect(trackCredits({ title: '', artist: '' }, 'b', 'Я сам', 'Кто-то')).toEqual({ name: 'b', author: 'Я сам' });
   });
 });

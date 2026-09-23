@@ -59,11 +59,27 @@ async function bundle(
   url: string,
   ports: InstallPorts,
 ): Promise<{ code: string; manifest: Partial<Plugin> & Record<string, unknown> } | string> {
+  // The browser's own words are English and about the machine: they go to
+  // the console, and the report says what happened in ours.
+  let code: string;
   try {
-    const code = await (await ports.fetch(url)).text();
+    code = await (await ports.fetch(url)).text();
+  } catch (error) {
+    console.warn('plugin download failed:', error);
+    return t('plugins.not_downloaded');
+  }
+  return evaluated(code, ports);
+}
+
+async function evaluated(
+  code: string,
+  ports: InstallPorts,
+): Promise<{ code: string; manifest: Partial<Plugin> & Record<string, unknown> } | string> {
+  try {
     return { code, manifest: manifestOf(await ports.evaluate(code)) };
   } catch (error) {
-    return reason(error);
+    console.warn('plugin bundle failed:', error);
+    return t('plugins.not_a_bundle');
   }
 }
 
@@ -145,12 +161,11 @@ export async function installFromFile(
   registry: PluginRegistry,
   ports: InstallPorts = DEFAULT_PORTS,
 ): Promise<string | null> {
-  let manifest: Partial<Plugin> & Record<string, unknown>;
-  try {
-    manifest = manifestOf(await ports.evaluate(code));
-  } catch (error) {
-    return reason(error);
+  const got = await evaluated(code, ports);
+  if (typeof got === 'string') {
+    return got;
   }
+  const { manifest } = got;
   const id = text(manifest.id);
   // Its own icon, or the first tool's: a plugin that draws one thing has
   // already said what it looks like.

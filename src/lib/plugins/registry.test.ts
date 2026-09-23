@@ -30,10 +30,10 @@ describe('PluginRegistry', () => {
     const registry = new PluginRegistry();
 
     registry.register(toolPlugin('a.one'));
-    expect(registry.register({ ...toolPlugin('a.future') as object, api: PLUGIN_API + 1 })).toContain('api');
+    expect(registry.register({ ...toolPlugin('a.future') as object, api: PLUGIN_API + 1 })).toContain('API');
 
     expect(registry.tools().map((entry) => entry.id)).toEqual(['a.one']);
-    expect(registry.failures).toEqual([{ id: 'a.future', reason: `чужой мажор api: ${PLUGIN_API + 1}` }]);
+    expect(registry.failures).toEqual([{ id: 'a.future', reason: `плагин написан для другой версии редактора (API ${PLUGIN_API + 1})` }]);
   });
 
   test('a manifest without the fields a tool needs is skipped', () => {

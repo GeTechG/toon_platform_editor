@@ -7,6 +7,7 @@ import {
   movedBy,
   nudged,
   rotatedTo,
+  scaleFromField,
   scaledBy,
   selectionBounds,
   sessionMatrix,
@@ -240,5 +241,22 @@ describe('scaledBy', () => {
     const s = scaledBy(turned, box, 'scale-r', { x: 50, y: 75 }, { x: 50, y: 125 }, false);
     expect(s.scaleX).toBeCloseTo(2, 6);
     expect(s.scaleY).toBe(1);
+  });
+});
+
+describe('scaleFromField', () => {
+  test('reads a typed percent as a scale factor', () => {
+    expect(scaleFromField(150)).toBe(1.5);
+    expect(scaleFromField(-100)).toBe(-1);
+  });
+
+  test('never lets a typed 0 flatten the selection past the nudge floor', () => {
+    expect(scaleFromField(0)).toBe(0.01);
+    expect(scaleFromField(0.2)).toBe(0.01);
+    expect(scaleFromField(-0.2)).toBe(-0.01);
+  });
+
+  test('passes an unfinished field through as NaN, which writes nothing', () => {
+    expect(scaleFromField(Number.NaN)).toBeNaN();
   });
 });

@@ -18,6 +18,7 @@
   let gridEl = $state<HTMLElement | null>(null);
   /** The grid is one Tab stop: the cell focus last stood on, else the outline. */
   let rove = $state(-1);
+  let boxEl = $state<HTMLElement | null>(null);
   const stop = $derived(
     rove >= 0 && rove < editor.palette.length ? rove : Math.max(0, editor.palette.indexOf(editor.brushColor)),
   );
@@ -44,9 +45,19 @@
   async function refocusCell(at: number): Promise<void> {
     await tick();
     const cells = gridEl?.querySelectorAll<HTMLElement>('.cell');
-    if (!cells?.length) return;
+    if (!cells?.length) return focusFoot('remover');
     rove = Math.min(at, cells.length - 1);
     cells[rove].focus();
+  }
+
+  /**
+   * Erase, load, merge and delete each take away the key that was pressed
+   * (the edit strip folds, the preview closes); focus lands on the foot key
+   * that is still there instead of falling to the page.
+   */
+  async function focusFoot(key: 'edit' | 'saved' | 'remover'): Promise<void> {
+    await tick();
+    boxEl?.querySelector<HTMLElement>(`.foot-btn[data-key="${key}"]`)?.focus();
   }
 
   /** The preview's own ×: focus goes back to the tile that opened it, not to the page. */
@@ -64,7 +75,7 @@
   }
 
   function savePalette(): void {
-    const name = prompt(t('palette.save_prompt'), t('palette.new_name'));
+    const name = prompt(t('palette.save_prompt'), t('palette.new_name'))?.trim();
     if (name) editor.saveCurrentPalette(name);
   }
 
@@ -73,6 +84,7 @@
     editor.replacePalette(p.colours);
     preview = null;
     section = 'colors';
+    focusFoot('saved');
   }
 
   /**
@@ -99,6 +111,7 @@
     alert(t('palette.added', { added }));
     preview = null;
     section = 'colors';
+    focusFoot('saved');
   }
 
   /** Reference `bundle:10493-10506`: the remover explains itself once, then never again. */
@@ -113,12 +126,14 @@
     if (!confirm(t('palette.delete_confirm'))) return;
     editor.deleteSavedPalette(p.id);
     preview = null;
+    focusFoot('saved');
   }
 
   function erasePalette(): void {
     if (!confirm(t('palette.erase_confirm'))) return;
     editor.replacePalette([]);
     openSection('colors');
+    focusFoot('edit');
   }
 
   /** The big swatch opens the picker under itself, clamped to the window. */
@@ -180,7 +195,7 @@
 
 <!-- Reference `.panel.palette`: the two big colors with swap and «add», the
      grid (or the saved list) in the middle, a three-key strip at the foot. -->
-<div class="box palette" role="group" aria-label={t('palette.box')}>
+<div class="box palette" role="group" aria-label={t('palette.box')} bind:this={boxEl}>
   <div class="main-colors">
     <div class="big" style:--swatch={editor.brushColor} style:color={contrastInk(editor.brushColor)}>
       <button
@@ -286,6 +301,7 @@
   <div class="foot" role="group" aria-label={t('palette.tools')}>
     <button
       class="foot-btn"
+      data-key="edit"
       class:active={section === 'edit'}
       aria-pressed={section === 'edit'}
       onclick={() => openSection('edit')}
@@ -295,6 +311,7 @@
     {#if section === 'edit'}
       <button
         class="foot-btn"
+        data-key="remover"
         class:active={removerMode}
         aria-pressed={removerMode}
         onclick={toggleRemover}
@@ -305,6 +322,7 @@
     {:else}
       <button
         class="foot-btn"
+        data-key="saved"
         class:active={section === 'saved'}
         aria-pressed={section === 'saved'}
         onclick={() => openSection('saved')}
@@ -509,7 +527,8 @@
   .grid.remover .cell :global(svg) {
     opacity: 0;
   }
-  .grid.remover .cell:hover :global(svg) {
+  .grid.remover .cell:hover :global(svg),
+  .grid.remover .cell:focus-visible :global(svg) {
     opacity: 1;
   }
   /* Saved palettes: 60px tiles of micro colors plus the «save» tile. */

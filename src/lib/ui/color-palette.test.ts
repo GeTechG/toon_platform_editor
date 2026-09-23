@@ -289,9 +289,10 @@ describe('the colour picker follows the reference window', () => {
     expect(picker).toContain('surfaceToPointer(model, pointer,');
   });
 
-  it('remembers which of the surface and the bar the arrows drive', () => {
-    expect(picker).toContain('onpointerup');
-    expect(picker).toContain('target: lastTarget');
+  it('lets the focused canvas take the arrows (tenth audit)', () => {
+    // Each canvas is focusable now; the mouse's last target no longer overrides focus.
+    expect(picker).toContain("target: 'surface'");
+    expect(picker).toContain("target: 'bar'");
   });
 
   it('takes its model from the settings and writes the choice back', () => {

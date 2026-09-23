@@ -6,9 +6,28 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
+  import { gridStep } from './color-palette';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
+
+  /** The strip is one Tab stop, like the palette box's grid: the cell focus
+      last stood on, else the brush colour; the arrows walk the rest. */
+  let rove = $state(-1);
+  const stop = $derived(
+    rove >= 0 && rove < editor.palette.length ? rove : Math.max(0, editor.palette.indexOf(editor.brushColor)),
+  );
+
+  function onCellKey(e: KeyboardEvent, i: number): void {
+    const cells = (e.currentTarget as HTMLElement).parentElement?.children;
+    if (!cells) return;
+    // One row that scrolls sideways: up and down have nowhere to go.
+    const next = gridStep(i, e.key, cells.length, cells.length);
+    if (next === null || next === i) return;
+    e.preventDefault();
+    rove = next;
+    (cells[next] as HTMLElement).focus();
+  }
 
   const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
 </script>
@@ -61,13 +80,16 @@
       aria-label={t('color.add')}
     ><Icon name="plus" /></button>
     <div class="grid" role="group" aria-label={t('color.grid')}>
-      {#each editor.palette as color (color)}
+      {#each editor.palette as color, i (color)}
         <button
           class="cell"
           class:active={editor.brushColor === color && editor.tool !== 'eraser'}
           aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
           style:--swatch={color}
           onclick={() => editor.setBrushColor(color)}
+          tabindex={i === stop ? 0 : -1}
+          onfocus={() => (rove = i)}
+          onkeydown={(e) => onCellKey(e, i)}
           title={t('color.swatch', { color })}
           aria-label={t('color.swatch', { color })}
         ></button>

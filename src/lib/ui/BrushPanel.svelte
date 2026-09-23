@@ -95,7 +95,7 @@
       min="0"
       max={SIZE_TRACK}
       step="any"
-      value={positionOfSize(value, min, max)}
+      value={Math.round(positionOfSize(value, min, max))}
       aria-label={label}
       aria-valuetext={String(value)}
       oninput={(e) => set(sizeAtPosition(e.currentTarget.valueAsNumber, min, max))}
@@ -146,7 +146,9 @@
      it, and a finger never opened it (WCAG 1.4.13). The reader gets the same
      words from the button's own label. -->
 {#snippet heading(title: string, note: string)}
-  <h2 class="field">
+  <!-- Named by its title: the «i» inside would lend the heading its whole
+       label, and a reader walking headings heard the title twice. -->
+  <h2 class="field" aria-label={title}>
     {title}
     <button
       class="info"
@@ -239,7 +241,7 @@
     </figure>
   {/if}
   <h2>{t('brush.thickness')}</h2>
-  {@render slider(t('brush.sizes_group'), 1, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v), true)}
+  {@render slider(t('brush.sizes_group'), editor.brushRange.min, editor.brushSizeMax, editor.brushSizeLogical, (v) => (editor.brushSizeLogical = v), true)}
   <!-- Only for the brushes the two numbers actually reach: the Multator line,
        the old pen and the pixel are smoothed by their own rule or by none.
        Each one says which way it pulls: a number alone is not an answer to

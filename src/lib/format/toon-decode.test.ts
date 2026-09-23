@@ -230,8 +230,61 @@ describe('decodeLegacyJson', () => {
     if (!result.ok) expect(result.error).toBeString();
   });
 
+  // The parser's own words are English and about characters: «Unexpected
+  // token n in JSON at position 1» said nothing to the person with the file.
+  it('refuses text that is not JSON in its own words, not the parser\'s', () => {
+    const result = decodeLegacyJson('{not json');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.replace('JSON', '')).not.toMatch(/[a-z]/i);
+  });
+
   it('refuses JSON that carries no frames', () => {
     expect(decodeLegacyJson('{"Data":{"FPS":10}}').ok).toBe(false);
     expect(decodeLegacyJson('[]').ok).toBe(false);
+  });
+
+  // A frame is a list of lines: `[1,2,3]` is some other JSON, and taking it
+  // for three empty frames replaced the drawing with a blank one.
+  it('refuses frames that are not lists of lines', () => {
+    expect(decodeLegacyJson('[1,2,3]').ok).toBe(false);
+    expect(decodeLegacyJson('{"Frames":["a"]}').ok).toBe(false);
+  });
+
+  const line = (color: string) => [{ Width: 5, Color: color, Cs: [{ x: 1, y: 2 }, { x: 3, y: 4 }] }];
+
+  it('takes an upper-case or short hex colour as the colour it names', () => {
+    expect(ok(decodeLegacyJson(JSON.stringify([line('#ABCDEF')]))).tools[0]).toMatchObject({ color: '#abcdef' });
+    expect(ok(decodeLegacyJson(JSON.stringify([line('#F00')]))).tools[0]).toMatchObject({ color: '#ff0000' });
+  });
+
+  it('draws a colour it cannot read in black rather than keeping it', () => {
+    const doc = ok(decodeLegacyJson(JSON.stringify([line('red')])));
+    expect(doc.tools[0]).toMatchObject({ color: '#000000' });
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('rounds a fractional frame rate to a whole one', () => {
+    const doc = ok(decodeLegacyJson(JSON.stringify({ Data: { FPS: 12.5 }, Frames: [[]] })));
+    expect(doc.frame_rate).toBe(13);
+  });
+});
+
+// Whatever a decoder builds becomes the draft: a document the validator
+// refuses is a draft that never opens again and a work the API will not take.
+describe('decoders hand out only documents that validate', () => {
+  it('refuses a legacy save with more frames than a document holds', () => {
+    const result = decodeLegacyJson(JSON.stringify(Array.from({ length: 5000 }, () => [])));
+    expect(result.ok).toBe(false);
+  });
+
+  it('refuses a .toon with more frames than a document holds', () => {
+    const frames = 5000;
+    const result = decodeToon(encode([
+      ...header(1, frames),
+      1, ...PENCIL,
+      1, 0,
+      ...Array.from({ length: frames }, () => [0, 0]).flat(),
+    ]));
+    expect(result.ok).toBe(false);
   });
 });

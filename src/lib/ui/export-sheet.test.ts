@@ -48,7 +48,7 @@ describe('a format a plugin brings', () => {
   });
 
   it('is handed the scene of the frame in hand and saves what it returns', () => {
-    expect(sheet).toMatch(/pluginFormat\.run\(makeScene\(editor\.doc, editor\.activeFrame\)\)[^]*?save\(file\.blob, file\.name\)/);
+    expect(sheet).toMatch(/pluginFormat\.run\(makeScene\(editor\.doc, editor\.activeFrame\)\)[^]*?deliver\(file\.blob, file\.name\)/);
   });
 
   it('falls back to ours when its plugin goes away', () => {
@@ -91,6 +91,14 @@ describe('progress', () => {
     expect(t('export.stage_encode')).toContain('Кодирование');
     expect(sheet).toContain("t('export.cancel')");
     expect(t('export.cancel')).toStartWith('Отмен');
+  });
+
+  // A plugin's format and PNG take no signal: «Отменить» was pressed, the
+  // sheet said nothing, and the file came down anyway when the build ended.
+  it('saves nothing once the build is called off, whichever format built it', () => {
+    const body = sheet.match(/async function download\(\)[^]*?\n  }\n/)?.[0] ?? '';
+    expect(body).toMatch(/const deliver = \(blob: Blob, name: string\) => \{\s*throwIfAborted\(signal\);\s*save\(blob, name\);/);
+    expect(body.match(/\bsave\(/g)).toHaveLength(1);
   });
 
   it('promises a real-time wait only on the MediaRecorder path', () => {
