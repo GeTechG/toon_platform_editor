@@ -142,10 +142,15 @@ describe('a draft row gives its words the room', () => {
   it('leaves the icon keys bare, their hover circle smaller than the target', () => {
     // Once the sheet keys took the ghost fill, three 44px circles stood rim
     // to rim. The press area stays 44; the drawn circle is the content box.
-    const body = rule(editorUi, '.editor .draft .key.icon');
+    const body = rule(editorUi, '.editor :global(.sheet .draft .key.icon:not(.active))');
     expect(body).toContain('background: none;');
     expect(body).toContain('background-clip: content-box;');
     expect(body).toMatch(/padding: \d/);
+    // Svelte weighs a scoped `.draft .key` as one class; the ghost fill is a
+    // global rule of six. Only a later, heavier global rule gets through.
+    expect(editorUi.indexOf('.sheet .draft .key.icon')).toBeGreaterThan(
+      editorUi.indexOf('.editor :global(.sheet .key:not(.primary):not(.active)) {'),
+    );
   });
 });
 

@@ -2843,19 +2843,6 @@
   .draft-open:hover {
     background: var(--sub);
   }
-  /* An icon is form enough: the ghost fill is for word keys, and three ghost
-     circles shoulder to shoulder stood rim to rim. At rest the key is bare;
-     under the cursor its circle is drawn in the content box, 4px in from each
-     side, so it never touches a neighbour. The target stays 44. */
-  .editor .draft .key.icon {
-    padding: 4px;
-    background: none;
-    background-clip: content-box;
-  }
-  /* The sheet's hover writes the `background` shorthand, which resets the clip. */
-  .editor .draft .key.icon:hover:not(:disabled) {
-    background-clip: content-box;
-  }
   .draft-thumb {
     display: flex;
     border: 1px solid var(--hairline);
@@ -2984,6 +2971,21 @@
   }
   .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
     background: color-mix(in oklab, var(--sub), var(--text) 8%);
+  }
+  /* An icon is form enough: the ghost fill is for word keys, and three ghost
+     circles shoulder to shoulder in a draft row stood rim to rim. At rest the
+     key is bare; under the cursor its circle is drawn in the content box, 4px
+     in from each side, so it never touches a neighbour. The target stays 44.
+     Global and after the ghost rules: Svelte scopes every class past the
+     first with `:where()`, and a scoped rule weighed less than the fill. */
+  .editor :global(.sheet .draft .key.icon:not(.active)) {
+    padding: 4px;
+    background: none;
+    background-clip: content-box;
+  }
+  /* The hover above writes the `background` shorthand, which resets the clip. */
+  .editor :global(.sheet .draft .key.icon:hover:not(:disabled)) {
+    background-clip: content-box;
   }
   .editor :global(.key.primary.icon) {
     padding: 0;
