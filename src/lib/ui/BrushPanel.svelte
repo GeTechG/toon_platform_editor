@@ -89,7 +89,14 @@
     {max}
     {value}
     aria-label={label}
-    onchange={(e) => set(e.currentTarget.valueAsNumber)}
+    onchange={(e) => {
+      // An emptied field is NaN, and the brush saved it as `width: null`.
+      const v = e.currentTarget.valueAsNumber;
+      if (Number.isFinite(v)) set(v);
+      // What the brush holds, back in the field: the setter clamps, and a
+      // refused or clamped number would otherwise stay on show.
+      e.currentTarget.value = String(value);
+    }}
   />
 {/snippet}
 

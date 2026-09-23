@@ -5,6 +5,7 @@
     barPointer,
     colorToPointer,
     nudgePointer,
+    pickerKeyAction,
     pointerToColor,
     rgbChannelAt,
     surfaceToPointer,
@@ -153,11 +154,9 @@
    * function's business any more.
    */
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'Enter' && e.key !== ' ') return;
-    // A field owns its own keys: Space types, Enter commits what was typed.
-    const inField = (e.target as HTMLElement | null)?.tagName === 'INPUT';
-    if (inField && e.key === ' ') return;
-    if (inField) commitHex();
+    const action = pickerKeyAction(e.key, (e.target as HTMLElement | null)?.tagName ?? '');
+    if (!action) return;
+    if (action === 'commit') commitHex();
     e.stopPropagation();
     requestClose();
   }
@@ -265,7 +264,7 @@
   </header>
 
   <div class="models" role="group" aria-label={t('picker.models')}>
-    {#each [['hsv', 'HSV'], ['rgb', 'RGB'], ['wheel', 'Wheel']] as const as [id, name] (id)}
+    {#each [['hsv', 'HSV'], ['rgb', 'RGB'], ['wheel', t('picker.wheel')]] as const as [id, name] (id)}
       <button class:active={model === id} aria-pressed={model === id} onclick={() => setModel(id)}>{name}</button>
     {/each}
   </div>
@@ -327,7 +326,11 @@
             min="0"
             max="255"
             value={rgb[key]}
-            oninput={(e) => setChannel(key, Number(e.currentTarget.value))}
+            oninput={(e) => {
+              // An emptied field is on its way to a new number, not a zero.
+              const v = e.currentTarget.valueAsNumber;
+              if (Number.isFinite(v)) setChannel(key, v);
+            }}
           />
         </label>
       {/each}

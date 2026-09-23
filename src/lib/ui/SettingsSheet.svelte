@@ -161,7 +161,7 @@
   </header>
 
   <div class="sheet-body">
-    <p class="sheet-hint">{t('settings.drawing')}</p>
+    <h3 class="sheet-hint">{t('settings.drawing')}</h3>
     <!--
       The option is Tonio's `toonio_old_pen`: one point per event instead of
       the coalesced batch. It is the editor's own, not a brush's — the batch
@@ -208,7 +208,7 @@
       />
     </label>
 
-    <p class="sheet-hint">{t('settings.palette')}</p>
+    <h3 class="sheet-hint">{t('settings.palette')}</h3>
     <label class="toggle">
       <span class="toggle-label">{t('settings.auto_add_colour')}</span>
       <input
@@ -241,7 +241,7 @@
       <button class="key danger" onclick={wipePalettes}>{t('settings.wipe_palettes')}</button>
     </div>
 
-    <p class="sheet-hint">{t('settings.autosave')}</p>
+    <h3 class="sheet-hint">{t('settings.autosave')}</h3>
     <label class="row">
       <span class="row-label">{t('settings.interval')}</span>
       <select
@@ -309,7 +309,7 @@
       <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
     </div>
 
-    <p class="sheet-hint">{t('settings.view')}</p>
+    <h3 class="sheet-hint">{t('settings.view')}</h3>
     <label class="toggle">
       <span class="toggle-label">{t('settings.mirror_layout')}</span>
       <input
@@ -332,7 +332,7 @@
     <!-- Reference «Настроить панель»: which buttons the toolbar shows, and the
          preset they come from. The gear is never hideable, so this is always
          reachable. Last, because it is a set-once concern. -->
-    <p class="sheet-hint">{t('settings.panel')}</p>
+    <h3 class="sheet-hint">{t('settings.panel')}</h3>
     <div class="presets" role="group" aria-label={t('settings.preset_group')}>
       {#each presets() as p (p.id)}
         <button
@@ -346,7 +346,7 @@
 
     <!-- Расположение: arranged by hand in the editor, where the panels are.
          A list of selects said the same thing twice and nobody used it. -->
-    <p class="sheet-hint">{t('settings.arrangement')}</p>
+    <h3 class="sheet-hint">{t('settings.arrangement')}</h3>
     <div class="actions">
       <button
         class="key"
@@ -357,7 +357,7 @@
       >{t('settings.edit_panels')}</button>
     </div>
 
-    <p class="sheet-hint">{t('settings.plugins')}</p>
+    <h3 class="sheet-hint">{t('settings.plugins')}</h3>
     <div class="actions">
       <button
         class="key"
@@ -376,14 +376,14 @@
         onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
       />
     </label>
-
-    {#if report}
-      <p class="report" role="status">{report}</p>
-    {/if}
   </div>
 
+  <!-- What the last import or save did, in the foot: the buttons that cause it
+       are high up a scrolling body, where a line at its bottom went unseen.
+       Mounted before its words, or a reader may not announce them. -->
   <footer class="sheet-foot">
     <button class="key primary" onclick={() => dialogEl?.close()}>{t('settings.done')}</button>
+    <p class="report" role="status">{report}</p>
   </footer>
 </dialog>
 
@@ -451,6 +451,8 @@
   }
   .row {
     display: flex;
+    /* A control that does not fit beside its name goes under it. */
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
@@ -464,6 +466,11 @@
     padding: 0.35rem 0.3rem;
     font-size: 0.95rem;
   }
+  /* A text field is as wide as its `size` wants — 607px at 200 % text — and
+     a grid item does not shrink below that unless told. */
+  .field input {
+    min-width: 0;
+  }
   .row-label {
     font-size: 0.95rem;
   }
@@ -472,8 +479,12 @@
     align-items: center;
     gap: 0.5rem;
   }
+  .slider {
+    max-width: 100%;
+  }
   .slider input {
     width: 9rem;
+    min-width: 0;
     /* The finger-deep band reaches into the row's padding, so the row stays
        as tall as its neighbours. */
     margin-block: -0.35rem;
@@ -490,7 +501,9 @@
     padding: 0.3rem 0 0.1rem;
   }
   .report {
-    margin: 0.7rem 0 0.2rem;
+    flex: 1;
+    align-self: center;
+    margin: 0;
     font-size: 0.9rem;
     color: var(--ink-2);
   }

@@ -53,8 +53,7 @@
     current?: number;
   } = $props();
 
-  // Old publications are still v1/v2 (flat `frames`, no layers). The renderer
-  // speaks v3 only, so the document is lifted once, here, at the boundary.
+  // The server stores v7 only (no migrations), so the document is drawn as is.
   const view = $derived(doc);
 
   const renderer = new Canvas2DFrameRenderer();
@@ -107,7 +106,9 @@
       return;
     }
     const element = new Audio(audioSrc);
-    element.preload = 'auto';
+    // Only its length up front: a track with the picture never autoplays, and
+    // most visits never press play. Play and a paused step fetch the rest.
+    element.preload = 'metadata';
     audio = element;
     return () => {
       element.pause();

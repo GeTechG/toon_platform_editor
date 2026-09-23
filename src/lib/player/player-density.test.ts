@@ -11,3 +11,14 @@ describe('the player draws at the same capped density as the editor', () => {
     expect(player).not.toContain('const dpr = window.devicePixelRatio || 1;');
   });
 });
+
+// A publication with sound never autoplays, so most share-page visits never
+// press play — yet `preload = 'auto'` pulled the whole track down on every one,
+// on the phone data plan PRODUCT.md calls the main one. Its length is all the
+// page needs up front; play and a paused step fetch the rest on demand.
+describe('the soundtrack waits for the visitor', () => {
+  it('preloads only the metadata', () => {
+    expect(player).toContain("element.preload = 'metadata';");
+    expect(player).not.toContain("element.preload = 'auto';");
+  });
+});

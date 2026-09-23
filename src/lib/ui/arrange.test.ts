@@ -1,5 +1,6 @@
 import { describe, expect, it, test } from 'bun:test';
 import { dropPlacement, insertIndex, rowEdge, type Box } from './arrange';
+import { t } from '../i18n';
 
 /** A row of three 40px-wide boxes at y 0..40. */
 const row: Box[] = [
@@ -250,5 +251,22 @@ describe('a host can put a note on the stage', () => {
     expect(editorUi).toContain('stageNote?: Snippet');
     const stage = editorUi.slice(editorUi.indexOf('<div class="stage" data-slot="float">'));
     expect(stage.slice(0, 400)).toContain('{@render stageNote?.()}');
+  });
+});
+
+describe('eighth audit: the arrange bar', () => {
+  test('lies in the paper tone, so its white keys have a form and it parts from the sheet', () => {
+    // On the white bar «Сохранить», «Скачать», «Сбросить» read as bare words,
+    // and the bar ran into the white sheet under it. Plates part by tone.
+    expect(arranger).toMatch(/\.arrange-bar \{[^}]*background:\s*var\(--paper\)/);
+    expect(arranger).not.toMatch(/\.arrange-bar \{[^}]*box-shadow/);
+  });
+
+  test('a loaded file says what it brought, and a wrong one says so', () => {
+    expect(arranger).toContain('const loaded = editor.importWorkspaces(');
+    expect(arranger).toContain("t('arrange.load_failed')");
+    expect(arranger).toContain("t('arrange.loaded'");
+    expect(arranger).toContain('aria-live="polite"');
+    expect(t('arrange.load_failed')).not.toBe('arrange.load_failed');
   });
 });

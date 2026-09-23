@@ -40,9 +40,14 @@
     const file = input.files?.[0];
     input.value = '';
     if (file) {
-      editor.importWorkspaces(await file.text());
+      // A wrong file used to change nothing and say nothing.
+      const loaded = editor.importWorkspaces(await file.text());
+      notice = loaded ? t('arrange.loaded', { n: loaded }) : t('arrange.load_failed');
     }
   }
+
+  /** What the last file load brought, until the hand picks something up. */
+  let notice = $state('');
 
   /** How far the pointer travels before a press counts as a drag, in px. */
   const DRAG_THRESHOLD = 4;
@@ -104,6 +109,7 @@
       y: e.clientY,
       moved: false,
     };
+    notice = '';
     e.preventDefault();
   }
 
@@ -271,8 +277,10 @@
 {/if}
 
 <div class="arrange-bar" role="region" aria-label={t('arrange.bar')}>
-  <p class="arrange-hint">
-    {#if refused}
+  <p class="arrange-hint" aria-live="polite">
+    {#if notice}
+      {notice}
+    {:else if refused}
       {t('arrange.refused', { label: dragLabel })}
     {:else if newRow}
       {t('arrange.new_row', { label: dragLabel })}
@@ -399,7 +407,10 @@
     padding: 0.7rem 0.8rem;
     border: none;
     border-radius: var(--r-md);
-    background: var(--canvas);
+    /* Paper, as the soundtrack plate: told from the white sheet under it by
+       tone (no soft shadow on a plate), and a white key on it has its form
+       again — on white, «Сохранить» and «Скачать» read as bare words. */
+    background: var(--paper);
   }
   .arrange-hint {
     margin: 0;
@@ -455,6 +466,7 @@
   .workspaces {
     min-height: var(--key-h);
     margin-right: auto;
-    max-width: 14rem;
+    /* «— рабочее пространство —» itself needs ~15rem; 14 cut its last word. */
+    max-width: 16rem;
   }
 </style>

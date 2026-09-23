@@ -132,7 +132,11 @@ describe('a draft row gives its words the room', () => {
   // the date two lines and the size line three.
   it('writes the date to the minute, on one line', () => {
     expect(editorUi).toContain("toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })");
-    expect(rule(editorUi, '.draft-date')).toContain('white-space: nowrap;');
+    // One line because the keys make way — the date's own box is its content
+    // and the row wraps them under it — not `nowrap`: at 200 % text the date
+    // alone is wider than a 320px sheet, and a nowrap pushed the sheet out.
+    expect(rule(editorUi, '.draft-open')).toContain('flex: 1 1 auto;');
+    expect(rule(editorUi, '.draft-date')).not.toContain('white-space: nowrap;');
   });
 
   it('packs the row keys shoulder to shoulder', () => {

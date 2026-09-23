@@ -539,6 +539,9 @@ export class EditorState {
 
   /** One slider move: the record of the tool in hand, written whole. */
   private editBrush(patch: Partial<BrushRecord>): void {
+    // An emptied number field reads NaN, and Math.round/min/max pass it on:
+    // the record would be saved as `null`. Such a value changes nothing.
+    if (Object.values(patch).some((v) => typeof v === 'number' && !Number.isFinite(v))) return;
     this.byTool = { ...this.byTool, [brushToolOf(this.tool)]: { ...this.brush, ...patch } };
     this.persistUiConfig();
   }

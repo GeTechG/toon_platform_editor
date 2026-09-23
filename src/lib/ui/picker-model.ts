@@ -105,3 +105,16 @@ export function nudgePointer(
 export function barPointer(model: PickerModel, p: Pointer): Pointer {
   return model === 'hsv' ? { ...p, x: 1, y: 0 } : p;
 }
+
+/**
+ * What Enter and Space do inside the colour window (`bundle:9942-9987`): on
+ * the surface and the bar they close on what is chosen, in a field Enter
+ * commits the typing first and Space types. A key presses itself — the model
+ * segments, «исходный», the cross — so the window leaves it alone.
+ */
+export function pickerKeyAction(key: string, tagName: string): 'close' | 'commit' | null {
+  if (key !== 'Enter' && key !== ' ') return null;
+  if (tagName === 'BUTTON') return null;
+  if (tagName === 'INPUT') return key === 'Enter' ? 'commit' : null;
+  return 'close';
+}

@@ -444,3 +444,16 @@ describe('the frame menu shows where the keys are', () => {
     expect(style).toMatch(/\.frame-menu button:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\)/);
   });
 });
+
+describe('eighth audit: the frame menu keys', () => {
+  const onMenuKey = timeline.match(/function onMenuKey[\s\S]*?\n  }/)?.[0] ?? '';
+  it('Tab leaves the menu closed rather than walking out of an open one', () => {
+    // A role="menu" is one stop: Tab closes it (WAI-ARIA menu pattern), or
+    // focus wanders the page with the menu still floating over the strip.
+    expect(onMenuKey).toMatch(/e\.key === 'Tab'[\s\S]*closeMenu\(true\)/);
+  });
+  it('Home and End reach the first and the last item', () => {
+    expect(onMenuKey).toContain("'Home'");
+    expect(onMenuKey).toContain("'End'");
+  });
+});

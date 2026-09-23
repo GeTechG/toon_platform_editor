@@ -206,7 +206,26 @@ describe('the eye says what a press will do', () => {
     // «Скрыть слой, нажата»: a label that already flips with the state plus
     // aria-pressed reads as a toggle whose name contradicts it (WCAG 4.1.2).
     const eye = rows.match(/<button\s+class="eye"[\s\S]*?>/)?.[0] ?? '';
-    expect(eye).toContain("t('layer.show') : t('layer.hide')");
+    expect(eye).toMatch(/t\('layer\.show'[\s\S]*?:\s*t\('layer\.hide'/);
     expect(eye).not.toContain('aria-pressed');
+  });
+});
+
+describe('eighth audit: the layer row', () => {
+  it('each eye names its own layer, so four rows are not four «Скрыть слой»', () => {
+    // WCAG 2.4.6: identical names on every row say nothing about which one.
+    const eye = rows.match(/<button\s+class="eye"[\s\S]*?>/)?.[0] ?? '';
+    expect(eye).toContain("t('layer.show', { name: editor.layerLabel(layerIndex) })");
+    expect(eye).toContain("t('layer.hide', { name: editor.layerLabel(layerIndex) })");
+    expect(t('layer.hide', { name: 'Фон' })).toBe('Скрыть «Фон»');
+    expect(t('layer.show', { name: 'Фон' })).toBe('Показать «Фон»');
+  });
+
+  it('the row furniture is spaced in px, so 200 % text does not push the bin off the column', () => {
+    // At 320 px and 200 % text the rem gaps and paddings grew by 40 px and the
+    // delete key left the 7.5rem column.
+    const row = rows.match(/\n  \.row \{[^}]*\}/)?.[0] ?? '';
+    expect(row).not.toMatch(/gap:\s*[\d.]+rem/);
+    expect(row).not.toMatch(/padding:[^;]*rem/);
   });
 });

@@ -64,3 +64,17 @@ describe('a sheet with nothing to focus can still be scrolled from the keys', ()
     expect(editorUi).toMatch(/\.editor :global\(\.sheet-body:focus-visible\) \{[^}]*outline-offset: -3px/);
   });
 });
+
+describe('the fps pair on the bar', () => {
+  it('both fields have a name — a label names only its first control (WCAG 4.1.2)', () => {
+    const fps = editorUi.slice(editorUi.indexOf('<label class="fps-inline"'), editorUi.indexOf('</label>', editorUi.indexOf('<label class="fps-inline"')));
+    expect(fps).toMatch(/type="number"[^>]*aria-label=\{t\('editor\.fps'\)\}/);
+  });
+});
+
+describe('the bottom panel divider states its range', () => {
+  it('a focusable separator with a value has a maximum (ARIA 1.2), or it reads 0–100', () => {
+    const resizer = editorUi.slice(editorUi.indexOf('class="resizer"'), editorUi.indexOf('></div>', editorUi.indexOf('class="resizer"')));
+    expect(resizer).toContain('aria-valuemax=');
+  });
+});

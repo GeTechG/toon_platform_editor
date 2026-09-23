@@ -210,3 +210,28 @@ describe('the draft keeps the track without inventing sessions', () => {
     expect(editorUi).toContain('editor.audio.hasTrack');
   });
 });
+
+describe('eighth audit: the soundtrack plate', () => {
+  it('the wide key grows along the row but keeps its height in a column', () => {
+    // `flex: 1` is a zero basis: in the empty plate's column «Выбрать файл…»
+    // lost its 44 px and stood 27 px tall.
+    const wide = panel.match(/\.wide \{[^}]*\}/)?.[0] ?? '';
+    expect(wide).not.toMatch(/flex:\s*1\b/);
+    expect(wide).toContain('flex-grow: 1');
+  });
+
+  it('is placed again when the window changes, and lets go of it on a phone', () => {
+    // A left from the desktop stayed inline after the window narrowed and
+    // squeezed the phone drawer into a 90 px column at the right edge.
+    expect(panel).toMatch(/<svelte:window[^>]*onresize=/);
+    expect(panel).toMatch(/matches\)\s*\{\s*at = undefined/);
+    // The strip grows by the wave's lane when a track lands, and the key moves.
+    expect(panel).toMatch(/void editor\.audio\.hasTrack/);
+  });
+
+  it('hands focus back to its key when it closes', () => {
+    // WCAG 2.4.3: the × and the bin vanish with the plate, and focus fell to <body>.
+    expect(panel).toContain('anchor?.focus()');
+    expect(panel).not.toMatch(/onclick=\{onClose\}/);
+  });
+});

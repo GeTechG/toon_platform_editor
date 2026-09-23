@@ -307,7 +307,8 @@ describe('the colour picker follows the reference window', () => {
     expect(picker).toContain('onclose: (options?: { revert?: boolean }) => void');
     expect(picker).toMatch(/oncancel=\{[^]{0,200}requestClose\(\{ revert: true \}\)/);
     expect(picker).toContain('onclose={() => onclose(intent)}');
-    expect(picker).toMatch(/e\.key !== 'Enter'[^]{0,400}requestClose\(\)/);
+    // Which key closes is `pickerKeyAction`'s (canvas-tools-audit.test.ts).
+    expect(picker).toMatch(/pickerKeyAction\([^]{0,200}requestClose\(\)/);
   });
 
   it('opens under the swatch, clamped to the viewport', () => {

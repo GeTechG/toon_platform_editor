@@ -53,8 +53,87 @@ describe('a sheet has one red key', () => {
   it('no sheet carries more than one primary', () => {
     const loud = found
       .filter(({ file }) => file !== 'Editor.svelte')
-      .map(({ file, text }) => ({ file, n: text.match(/class="key[^"]*\bprimary\b/g)?.length ?? 0 }))
+      // A primary put on by a directive counts too: the plugins window lit
+      // its picked tab red beside a red «Готово».
+      .map(({ file, text }) => ({ file, n: text.match(/class="key[^"]*\bprimary\b|class:primary=/g)?.length ?? 0 }))
       .filter(({ n }) => n > 1);
     expect(loud).toEqual([]);
+  });
+});
+
+// Eighth audit, 320 px and 200 % text. A `<dialog>` is `width: fit-content`
+// by the browser's own sheet, so the phone sheet, pinned `left: 0; right: 0`,
+// still grew to its widest line: settings 691 px on a 320 screen (the catalog
+// address field alone asked 607), drafts 323 px at plain 100 % text — the
+// close key went off the edge.
+const editorUi = found.find(({ file }) => file === 'Editor.svelte')!.text;
+const settings = found.find(({ file }) => file === 'SettingsSheet.svelte')!.text;
+const pluginsUi = found.find(({ file }) => file === 'PluginsSheet.svelte')!.text;
+const exportUi = found.find(({ file }) => file === 'ExportSheet.svelte')!.text;
+
+/** The body of the first rule whose selector is exactly `selector`. */
+function rule(text: string, selector: string): string {
+  const at = text.indexOf(`${selector} {`);
+  expect(at).toBeGreaterThan(-1);
+  return text.slice(at, text.indexOf('}', at));
+}
+
+describe('a sheet is never wider than the screen', () => {
+  it('the phone sheet takes the screen width, not its content width', () => {
+    expect(rule(editorUi, '.editor :global(.sheet)')).toMatch(/width:\s*auto/);
+  });
+
+  it('a long word breaks rather than widening the body', () => {
+    expect(rule(editorUi, '.editor :global(.sheet-body)')).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it('the catalog address field shrinks to its column', () => {
+    expect(rule(settings, '.field input')).toMatch(/min-width:\s*0/);
+  });
+
+  it('a row whose control does not fit beside its name puts it below', () => {
+    expect(rule(settings, '.row')).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule(settings, '.slider input')).toMatch(/min-width:\s*0/);
+  });
+
+  it('a draft row lets its keys go under the date', () => {
+    expect(rule(editorUi, '.draft')).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule(editorUi, '.draft-date')).not.toMatch(/white-space:\s*nowrap/);
+  });
+
+  it('the three draft keys wrap as one group, not one by one', () => {
+    expect(editorUi).toMatch(/<span class="draft-keys">[^]*copyDraft[^]*downloadDraft[^]*removeDraft[^]*<\/span>\s*<\/li>/);
+  });
+
+  it('a sheet title breaks rather than running under its close key', () => {
+    expect(rule(editorUi, '.editor :global(.sheet-head h2)')).toMatch(/min-width:\s*0/);
+  });
+});
+
+describe('what a sheet says back is seen and heard', () => {
+  it('the report region is mounted before its words, in the foot where it is seen', () => {
+    for (const text of [settings, pluginsUi]) {
+      expect(text).not.toContain('{#if report}');
+      expect(text).toMatch(/<footer class="sheet-foot">[^]*role="status"[^]*<\/footer>/);
+    }
+  });
+
+  it('the catalog says it is reading, not that it is empty, while it reads', () => {
+    expect(pluginsUi).toContain("t('plugins.catalog_loading')");
+  });
+});
+
+describe('a sheet section is a heading (WCAG 1.3.1)', () => {
+  it('settings and export name their sections with headings', () => {
+    for (const text of [settings, exportUi]) {
+      expect(text).not.toContain('<p class="sheet-hint">');
+      expect(text).toContain('<h3 class="sheet-hint">');
+    }
+  });
+});
+
+describe('the plugin face does not reach the close key', () => {
+  it('the face rule is not the `.icon` every icon key wears', () => {
+    expect(pluginsUi).not.toMatch(/^\s*\.icon :global\(svg\)/m);
   });
 });

@@ -183,11 +183,24 @@
       closeMenu(true);
       return;
     }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
+    // A menu is one stop (WAI-ARIA menu pattern): Tab puts it away and hands
+    // focus back to the cell, rather than walking out of a menu left open.
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      closeMenu(true);
+      return;
+    }
     const items = [...(menuEl?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])];
     const at = items.indexOf(document.activeElement as HTMLElement);
-    items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+    const to =
+      e.key === 'Home' ? 0
+      : e.key === 'End' ? items.length - 1
+      : e.key === 'ArrowDown' ? (at + 1) % items.length
+      : e.key === 'ArrowUp' ? (at - 1 + items.length) % items.length
+      : null;
+    if (to === null) return;
+    e.preventDefault();
+    items[to]?.focus();
   }
 
   function onWindowDown(e: PointerEvent): void {

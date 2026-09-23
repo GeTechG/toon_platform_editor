@@ -1048,6 +1048,7 @@
       spaceHeld = false;
     }
   }}
+  onblur={() => (spaceHeld = false)}
 />
 
 <div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
@@ -1100,9 +1101,9 @@
       {/each}
     </svg>
   {/if}
-  {#if hint}
-    <p class="hint" role="status" aria-live="polite">{hint}</p>
-  {/if}
+  <!-- Always in the tree: a live region mounted with its words is not
+       announced by most screen readers; one that is there already is. -->
+  <p class="hint" class:shown={hint} role="status" aria-live="polite">{hint}</p>
   {#if cursorVisible && editor.tool === 'pipette' && pickPreview}
     <span
       class="pick-preview"
@@ -1233,7 +1234,13 @@
     border-radius: var(--r-pill);
     background: var(--ink);
     color: var(--canvas);
-    font-size: 13px;
+    font-size: 0.8125rem;
     pointer-events: none;
+  }
+  /* Empty, it stays in the tree for the reader and draws nothing: `display:
+     none` would take the live region away with it. */
+  .hint:not(.shown) {
+    padding: 0;
+    background: none;
   }
 </style>

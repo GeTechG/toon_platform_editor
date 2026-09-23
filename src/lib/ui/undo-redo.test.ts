@@ -203,6 +203,13 @@ describe('the brush each tool remembers', () => {
     expect(member(state, 'get brush')).not.toMatch(/byTool\[[^\]]*\] =/);
   });
 
+  it('a number that is not a number never reaches the record', () => {
+    // An emptied field reads NaN; Math.round/min/max pass it through, and the
+    // record would be saved with `width: null`. Guarded where every setter
+    // routes, not in each panel that calls one.
+    expect(member(state, 'editBrush')).toContain('Number.isFinite');
+  });
+
   it('the width is not chosen by the preset: the record belongs to the tool', () => {
     expect(member(state, 'get brushSizeLogical')).not.toContain('defaultBrush');
     expect(state).not.toContain('multatorBrushSizeLogical');

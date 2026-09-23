@@ -1370,6 +1370,7 @@
         value={editor.doc.frame_rate}
         onchange={onFpsChange}
         disabled={editor.playing}
+        aria-label={t('editor.fps')}
       />
     </label>
   {:else if id === 'audio'}
@@ -1630,6 +1631,7 @@
         aria-orientation="horizontal"
         aria-valuenow={panelHeight}
         aria-valuemin={panelFloor}
+        aria-valuemax={Math.max(panelFloor, Math.round((viewportHeight || 800) * 0.75))}
         tabindex="0"
         onpointerdown={(e) =>
           startResize(e, 'y', -1, panelHeight, (px) => editor.setPanelHeight(px), 'panel')}
@@ -1729,6 +1731,9 @@
                     {/if}
                   </span>
                 </button>
+                <!-- The three keys travel together: where the row wraps, they
+                     go under the date as one group, not one by one. -->
+                <span class="draft-keys">
                 <button
                   class="key icon"
                   onclick={() => copyDraft(entry)}
@@ -1753,6 +1758,7 @@
                 >
                   <Icon name="trash" />
                 </button>
+                </span>
               </li>
             {/each}
           </ul>
@@ -2696,6 +2702,10 @@
     left: 0;
     right: 0;
     bottom: 0;
+    /* A <dialog> is `width: fit-content` by the browser's sheet, so pinning
+       both edges was not enough: the sheet grew to its widest line and took
+       its close key off a 320px screen. */
+    width: auto;
     display: flex;
     flex-direction: column;
     max-height: 85dvh;
@@ -2724,10 +2734,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.5rem;
     padding: 0.9rem 1rem 0.6rem;
     border-bottom: 1px solid var(--hairline);
   }
   .editor :global(.sheet-head h2) {
+    /* At 200 % text on a phone the title and the close key share 256px: the
+       title breaks rather than running under the key. */
+    min-width: 0;
+    overflow-wrap: anywhere;
     margin: 0;
     font-size: 1rem;
     font-weight: 700;
@@ -2738,6 +2753,9 @@
     min-height: 0;
     overflow-y: auto;
     padding: 0.4rem 1rem 0.6rem;
+    /* A file name, an address or a long word at 200 % text breaks inside the
+       sheet instead of widening it. */
+    overflow-wrap: anywhere;
   }
   /* The sheet clips its sides: the ring goes inside the body it marks. */
   .editor :global(.sheet-body:focus-visible) {
@@ -2817,17 +2835,26 @@
   }
   /* The keys stand shoulder to shoulder: on a phone-width sheet the gaps
      between them were the room the date needed. */
+  /* Where the date and the keys do not share a line (320px, 200 % text) the
+     keys go under it, to the right, instead of pushing the sheet wider. */
   .draft {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     align-items: center;
     gap: 0;
+  }
+  .draft-keys {
+    display: flex;
   }
   .draft + .draft {
     border-top: 1px solid var(--hairline-soft);
   }
   .draft-open {
     display: flex;
-    flex: 1;
+    /* Its content as the basis: the date keeps its line, and the keys are
+       what moves down when the two do not fit. */
+    flex: 1 1 auto;
     align-items: center;
     gap: 0.75rem;
     min-height: 3.4rem;
@@ -2857,7 +2884,6 @@
   }
   .draft-date {
     font-size: 0.95rem;
-    white-space: nowrap;
   }
   .draft-size {
     font-size: 0.8rem;

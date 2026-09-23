@@ -305,6 +305,12 @@
           style:color={contrastInk(c)}
           onmousedown={(e) => onPreviewCell(e, c)}
           oncontextmenu={(e) => e.preventDefault()}
+          onkeydown={(e) => {
+            // A key fires `click`, never `mousedown`: the same press as the grid's.
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
+            onPreviewCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), c);
+          }}
           title={t('palette.colour_title', { color: c })}
           aria-label={t('palette.take_colour', { color: c })}
         ></button>

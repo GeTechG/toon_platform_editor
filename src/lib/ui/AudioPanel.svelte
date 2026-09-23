@@ -17,6 +17,9 @@
   let plate = $state<HTMLDivElement | undefined>();
   let at = $state<{ x: number; top?: number; bottom?: number } | undefined>();
 
+  /** Bumped by a window resize: the key moves with the layout, the plate follows. */
+  let resized = $state(0);
+
   /**
    * Over its key, right edges flush — under it when the key sits too near the
    * top. Fixed and placed rather than absolute in the key's wrapper: the bar
@@ -24,7 +27,16 @@
    * a phone the plate is a drawer along the bottom and places itself.
    */
   $effect(() => {
-    if (!anchor || !plate || matchMedia('(max-width: 40rem)').matches) return;
+    void resized;
+    // A track lays the wave's lane under the strip, which lifts the key.
+    void editor.audio.hasTrack;
+    if (!anchor || !plate) return;
+    // The drawer places itself; a left kept from the desktop would pin it
+    // to one side of a narrowed window.
+    if (matchMedia('(max-width: 40rem)').matches) {
+      at = undefined;
+      return;
+    }
     const key = anchor.getBoundingClientRect();
     const box = plate.getBoundingClientRect();
     const x = Math.max(8, Math.min(key.right - box.width, window.innerWidth - box.width - 8));
@@ -42,10 +54,16 @@
     }
   }
 
+  /** The × and the bin go with the plate: focus goes back to the key, not to <body>. */
+  function close(): void {
+    anchor?.focus();
+    onClose();
+  }
+
   function removeTrack(): void {
     if (!editor.warnings || confirm(t('audio.remove_confirm'))) {
       editor.audio.clear();
-      onClose();
+      close();
     }
   }
 
@@ -62,6 +80,8 @@
   const trackOutruns = $derived(editor.audio.duration - filmSeconds > 1);
 </script>
 
+<svelte:window onresize={() => resized++} />
+
 <!-- A group, not a dialog: the plate is docked, it takes no focus of its own
      and Esc does not close it, so the role that promises a window would be
      promising three things it does not do. -->
@@ -76,7 +96,7 @@
 >
   <header>
     <h2>{t('audio.panel')}</h2>
-    <button class="key icon" onclick={onClose} aria-label={t('audio.close')}>
+    <button class="key icon" onclick={close} aria-label={t('audio.close')}>
       <Icon name="x" />
     </button>
   </header>
@@ -248,8 +268,10 @@
     display: flex;
     gap: 0.35rem;
   }
+  /* Grow, not `flex: 1`: a zero basis cost the key its height in the empty
+     plate's column, where «Выбрать файл…» stood 27 px tall. */
   .wide {
-    flex: 1;
+    flex-grow: 1;
     justify-content: center;
   }
 </style>

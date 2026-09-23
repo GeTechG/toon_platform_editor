@@ -24,6 +24,8 @@
   let catalog = $state<CatalogEntry[]>([]);
   /** Why the catalog has nothing to show, when it has nothing to show. */
   let catalogError = $state('');
+  /** The address is being read: nothing to show yet is not an empty catalog. */
+  let catalogLoading = $state(true);
   /** The plugin being downloaded right now; its row says so. */
   let busy = $state('');
   /** What the last install or removal did, shown until the next one. */
@@ -58,13 +60,24 @@
   // changes — an author pointing the editor at their own build sees it at once.
   $effect(() => {
     const address = editor.settings.pluginCatalog;
+    // An answer for an address that has since changed is not written over the
+    // newer one's.
+    let current = true;
+    catalogLoading = true;
     void (async () => {
       const read = await readCatalog(address);
+      if (!current) {
+        return;
+      }
       // A record under the delivery's id is not on offer: the delivery
       // changes with the editor, not past it.
       catalog = read.plugins.filter((entry) => !plugins.isBundled(entry.id));
       catalogError = read.error ?? '';
+      catalogLoading = false;
     })();
+    return () => {
+      current = false;
+    };
   });
 
   $effect(() => {
@@ -156,6 +169,8 @@
     </button>
   </header>
 
+  <!-- The picked tab is tinted like a picked key: a red one was a second red
+       key beside «Готово» (the Signal Rule). -->
   <!-- Two buttons that swap what is under them, not an ARIA tablist: `role="tab"`
        promises arrow-key navigation, `aria-controls` and tabpanels that this does
        not implement. `aria-pressed` states the same thing honestly, and the group
@@ -163,13 +178,13 @@
   <div class="tabs" role="group" aria-label={t('plugins.sheet')}>
     <button
       class="key"
-      class:primary={tab === 'mine'}
+      class:active={tab === 'mine'}
       aria-pressed={tab === 'mine'}
       onclick={() => (tab = 'mine')}
     >{t('plugins.mine')}</button>
     <button
       class="key"
-      class:primary={tab === 'catalog'}
+      class:active={tab === 'catalog'}
       aria-pressed={tab === 'catalog'}
       onclick={() => (tab = 'catalog')}
     >{t('plugins.catalog')}</button>
@@ -187,7 +202,7 @@
         <ul class="plugins">
           {#each listed as plugin (plugin.id)}
             <li class:off={broken(plugin.id)}>
-              <span class="icon" aria-hidden="true">
+              <span class="face" aria-hidden="true">
                 {#if plugin.icon}<Icon name={plugin.icon} />{/if}
               </span>
               <span class="about">
@@ -211,6 +226,8 @@
           {/each}
         </ul>
       {/if}
+    {:else if catalogLoading}
+      <p class="empty">{t('plugins.catalog_loading')}</p>
     {:else if catalogError}
       <p class="empty">{catalogError}</p>
     {:else if catalog.length === 0}
@@ -219,7 +236,7 @@
       <ul class="plugins">
         {#each catalog as entry (entry.id)}
           <li>
-            <span class="icon">
+            <span class="face">
               {#if entry.icon}<img src={iconUrl(entry.icon)} alt="" width="48" height="48" />{/if}
             </span>
             <span class="about">
@@ -239,14 +256,13 @@
         {/each}
       </ul>
     {/if}
-
-    {#if report}
-      <p class="report" role="status">{report}</p>
-    {/if}
   </div>
 
+  <!-- What the last install or removal did, in the foot where it is seen
+       whatever the list's scroll, and mounted before its words. -->
   <footer class="sheet-foot">
     <button class="key primary" onclick={() => dialogEl?.close()}>{t('plugins.done')}</button>
+    <p class="report" role="status">{report}</p>
   </footer>
 </dialog>
 
@@ -293,16 +309,17 @@
   .plugins li.off .name {
     color: var(--ink-2);
   }
-  /* The plugin's face, big enough to read: the row grows to it. */
-  .icon {
+  /* The plugin's face, big enough to read: the row grows to it. Not `.icon`:
+     the close key wears that class too, and its cross grew to the whole key. */
+  .face {
     display: inline-flex;
     width: 48px;
     height: 48px;
     justify-content: center;
     flex: none;
   }
-  .icon :global(svg),
-  .icon img {
+  .face :global(svg),
+  .face img {
     width: 100%;
     height: 100%;
   }
@@ -325,7 +342,9 @@
     color: var(--ink-2);
   }
   .report {
-    margin: 0.7rem 0 0.2rem;
+    flex: 1;
+    align-self: center;
+    margin: 0;
     font-size: 0.9rem;
     color: var(--ink-2);
   }

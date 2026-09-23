@@ -224,7 +224,7 @@
     </header>
 
     <div class="sheet-body">
-      <p class="sheet-hint">{t('export.format')}</p>
+      <h3 class="sheet-hint">{t('export.format')}</h3>
       <div class="choices" role="group" aria-label={t('export.format')}>
         {#if singleFrame}
           <button class="key" class:active={format === 'png'} aria-pressed={format === 'png'} onclick={() => (format = 'png')}>PNG</button>
@@ -255,7 +255,7 @@
       </div>
 
       {#if format !== 'project' && !format.startsWith('plugin:')}
-        <p class="sheet-hint">{t('export.resolution')}</p>
+        <h3 class="sheet-hint">{t('export.resolution')}</h3>
         <div class="choices" role="group" aria-label={t('export.resolution')}>
           {#each EXPORT_WIDTHS as w (w)}
             {@const s = exportSize(editor.doc, w)}

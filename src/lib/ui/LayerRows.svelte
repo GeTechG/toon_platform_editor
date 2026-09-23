@@ -293,8 +293,12 @@
       >
         <button
           class="eye"
-          aria-label={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
-          title={editor.doc.layers[layerIndex].hidden ? t('layer.show') : t('layer.hide')}
+          aria-label={editor.doc.layers[layerIndex].hidden
+            ? t('layer.show', { name: editor.layerLabel(layerIndex) })
+            : t('layer.hide', { name: editor.layerLabel(layerIndex) })}
+          title={editor.doc.layers[layerIndex].hidden
+            ? t('layer.show', { name: editor.layerLabel(layerIndex) })
+            : t('layer.hide', { name: editor.layerLabel(layerIndex) })}
           onclick={(e) => {
             e.stopPropagation();
             editor.toggleLayerHidden(layerIndex);
@@ -376,10 +380,12 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    /* In px, like the eye, the tag and the bin they space: in rem the gaps
+       doubled with 200 % text and pushed the bin out of the column. */
+    gap: 6px;
     box-sizing: border-box;
     min-height: 32px;
-    padding: 0 0.3rem 0 0.5rem;
+    padding: 0 5px 0 8px;
     cursor: pointer;
   }
   .row.active {
