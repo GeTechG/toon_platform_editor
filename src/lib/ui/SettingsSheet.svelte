@@ -474,6 +474,9 @@
   }
   .slider input {
     width: 9rem;
+    /* The finger-deep band reaches into the row's padding, so the row stays
+       as tall as its neighbours. */
+    margin-block: -0.35rem;
   }
   .slider output {
     min-width: 2.2rem;

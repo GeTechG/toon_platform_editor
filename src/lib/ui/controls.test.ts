@@ -42,6 +42,12 @@ describe('the studio draws its own controls', () => {
     expect(body).toContain('min-height: var(--key-h');
   });
 
+  it('a range left to itself is a finger deep, not the 6px of its track', () => {
+    // The palette limit in the settings sized nothing and fell to the track:
+    // a 144×6 band, while the brush and fps sliders each pinned their own 44.
+    expect(rule(":where(.editor) input[type='range']")).toContain('height: var(--key-h');
+  });
+
   it('a switch is a pill with a knob, not a box', () => {
     const body = rule("[role='switch']");
     expect(body).toContain('border-radius: var(--r-pill)');

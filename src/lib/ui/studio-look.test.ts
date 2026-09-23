@@ -138,6 +138,15 @@ describe('a draft row gives its words the room', () => {
   it('packs the row keys shoulder to shoulder', () => {
     expect(rule(editorUi, '.draft')).toContain('gap: 0;');
   });
+
+  it('leaves the icon keys bare, their hover circle smaller than the target', () => {
+    // Once the sheet keys took the ghost fill, three 44px circles stood rim
+    // to rim. The press area stays 44; the drawn circle is the content box.
+    const body = rule(editorUi, '.editor .draft .key.icon');
+    expect(body).toContain('background: none;');
+    expect(body).toContain('background-clip: content-box;');
+    expect(body).toMatch(/padding: \d/);
+  });
 });
 
 describe('nothing that lies in the studio casts a soft shadow', () => {

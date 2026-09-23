@@ -2843,6 +2843,19 @@
   .draft-open:hover {
     background: var(--sub);
   }
+  /* An icon is form enough: the ghost fill is for word keys, and three ghost
+     circles shoulder to shoulder stood rim to rim. At rest the key is bare;
+     under the cursor its circle is drawn in the content box, 4px in from each
+     side, so it never touches a neighbour. The target stays 44. */
+  .editor .draft .key.icon {
+    padding: 4px;
+    background: none;
+    background-clip: content-box;
+  }
+  /* The sheet's hover writes the `background` shorthand, which resets the clip. */
+  .editor .draft .key.icon:hover:not(:disabled) {
+    background-clip: content-box;
+  }
   .draft-thumb {
     display: flex;
     border: 1px solid var(--hairline);

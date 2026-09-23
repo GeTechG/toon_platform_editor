@@ -46,10 +46,12 @@
 }
 
 /* A range: a pill track in the sub-tone, an accent knob ringed in canvas. The
-   track is drawn by the pseudo-element, so a component's taller band (a finger
-   deep) is only catch area around it. */
+   track is drawn by the pseudo-element, so the band a finger deep (DESIGN §5)
+   is only catch area around it. Without a height the input shrinks to its 6px
+   track — the palette limit in the settings did. */
 :where(.editor) input[type='range'] {
   appearance: none;
+  height: var(--key-h, 2.75rem);
   background: transparent;
   cursor: pointer;
 }
