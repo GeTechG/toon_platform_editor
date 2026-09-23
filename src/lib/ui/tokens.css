@@ -89,7 +89,9 @@
      number inside a component that only orders its own children stays a
      number. The tool windows and the zoom window, the empty-frame flash, the
      floating windows and the audio plate, the sheets, the arrange bar, the
-     brush cursor, and the panel being dragged in arrange mode. */
+     brush cursor, the panel being dragged in arrange mode, and the menu
+     that drops from a frame. `.editor` isolates, so the ladder never
+     competes with the page that hosts the studio. */
   --z-tool: 3;
   --z-flash: 5;
   --z-float: 6;
@@ -97,6 +99,7 @@
   --z-arrange: 30;
   --z-cursor: 31;
   --z-drop: 40;
+  --z-menu: 41;
 }
 
 /* The ring the package carries itself. Everything exported here — the editor,

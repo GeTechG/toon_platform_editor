@@ -561,7 +561,7 @@
   /* A drop, so it takes the menu shadow (DESIGN: only what falls over work). */
   .frame-menu {
     position: fixed;
-    z-index: 50;
+    z-index: var(--z-menu);
     display: flex;
     flex-direction: column;
     min-width: 13rem;

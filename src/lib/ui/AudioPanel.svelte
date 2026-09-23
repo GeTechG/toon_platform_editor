@@ -7,9 +7,31 @@
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
-  let { editor, onClose }: { editor: EditorState; onClose: () => void } = $props();
+  let {
+    editor,
+    anchor,
+    onClose,
+  }: { editor: EditorState; anchor?: HTMLElement; onClose: () => void } = $props();
 
   let picker = $state<HTMLInputElement | undefined>();
+  let plate = $state<HTMLDivElement | undefined>();
+  let at = $state<{ x: number; top?: number; bottom?: number } | undefined>();
+
+  /**
+   * Over its key, right edges flush — under it when the key sits too near the
+   * top. Fixed and placed rather than absolute in the key's wrapper: the bar
+   * that holds the key scrolls, and a scroll box cut the plate off whole. On
+   * a phone the plate is a drawer along the bottom and places itself.
+   */
+  $effect(() => {
+    if (!anchor || !plate || matchMedia('(max-width: 40rem)').matches) return;
+    const key = anchor.getBoundingClientRect();
+    const box = plate.getBoundingClientRect();
+    const x = Math.max(8, Math.min(key.right - box.width, window.innerWidth - box.width - 8));
+    // Held by the edge that faces the key, so a track's fields grow the plate
+    // away from it rather than over it.
+    at = key.top - box.height - 6 >= 8 ? { x, bottom: window.innerHeight - key.top + 6 } : { x, top: key.bottom + 6 };
+  });
 
   async function pickTrack(e: Event): Promise<void> {
     const input = e.currentTarget as HTMLInputElement;
@@ -43,7 +65,15 @@
 <!-- A group, not a dialog: the plate is docked, it takes no focus of its own
      and Esc does not close it, so the role that promises a window would be
      promising three things it does not do. -->
-<div class="audio-plate" role="group" aria-label={t('audio.panel')}>
+<div
+  class="audio-plate"
+  role="group"
+  aria-label={t('audio.panel')}
+  bind:this={plate}
+  style:left={at && `${at.x}px`}
+  style:top={at?.top !== undefined ? `${at.top}px` : undefined}
+  style:bottom={at?.bottom !== undefined ? `${at.bottom}px` : undefined}
+>
   <header>
     <h2>{t('audio.panel')}</h2>
     <button class="key icon" onclick={onClose} aria-label={t('audio.close')}>
@@ -109,25 +139,23 @@
 
 <style>
   .audio-plate {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.4rem);
+    position: fixed;
     z-index: var(--z-float);
     display: flex;
     flex-direction: column;
-    /* The plate is docked to its key, so `100%` here is that key's wrapper
-       and means nothing. The viewport clamp it replaced meant nothing either:
+    /* Fixed, so `100%` would be the whole window. The viewport clamp this
+       replaced meant nothing either:
        18rem is 288px and the narrowest screen the studio is built for is 320,
        where the clamp sat 32px above the width it was capping. */
     width: 18rem;
-    background: var(--canvas);
+    /* Over the stage by tone, as the scale window: white read as the sheet. */
+    background: var(--paper);
     border: none;
     border-radius: var(--r-md);
   }
   /* Mobile: a bottom drawer instead of a floating plate, as the layers list. */
   @media (max-width: 40rem) {
     .audio-plate {
-      position: fixed;
       inset: auto 0 0 0;
       width: auto;
       border-radius: var(--r-md) var(--r-md) 0 0;

@@ -149,7 +149,28 @@ describe('the soundtrack panel', () => {
   it('opens from its own key rather than sitting on the timeline', () => {
     expect(editorUi).toContain('<AudioPanel');
     expect(editorUi).toContain('audioOpen');
-    expect(editorUi).toContain("aria-haspopup=\"dialog\"");
+  });
+
+  it('the key does not promise a dialog the plate is not', () => {
+    // The plate is a group: no focus of its own, no Esc. `haspopup="dialog"`
+    // told a screen reader a window was coming.
+    const key = editorUi.slice(editorUi.indexOf("id === 'audio'"), editorUi.indexOf("id === 'export'"));
+    expect(key).toContain('aria-expanded={audioOpen}');
+    expect(key).not.toContain('aria-haspopup');
+  });
+
+  it('the plate stands over the bar that scrolls, not inside its clip', () => {
+    // Absolute inside the scrolling toolbar, the plate was cut off whole on a
+    // wide screen. Fixed, placed from its key, it is clipped by nothing.
+    const plate = panel.slice(panel.indexOf('  .audio-plate {'));
+    expect(plate.slice(0, plate.indexOf('}'))).toContain('position: fixed');
+    expect(panel).toContain('anchor.getBoundingClientRect()');
+    expect(editorUi).toContain('anchor={audioKey}');
+  });
+
+  it('lies in the paper tone, apart from the white sheet it stands over', () => {
+    const plate = panel.slice(panel.indexOf('  .audio-plate {'));
+    expect(plate.slice(0, plate.indexOf('}'))).toContain('background: var(--paper)');
   });
 
   it('holds the file, the credits and the bin', () => {

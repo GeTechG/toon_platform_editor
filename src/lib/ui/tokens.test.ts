@@ -147,7 +147,7 @@ describe('the brand table is written once', () => {
 // overlay was placed by guesswork. The order is written once now; a number
 // inside a component that only orders its own children stays a number.
 describe('the overlays over the canvas stack by name', () => {
-  const LADDER = ['--z-tool', '--z-flash', '--z-float', '--z-sheet', '--z-arrange', '--z-cursor', '--z-drop'];
+  const LADDER = ['--z-tool', '--z-flash', '--z-float', '--z-sheet', '--z-arrange', '--z-cursor', '--z-drop', '--z-menu'];
   const tokens = files.find((f) => f.file.endsWith('ui/tokens.css'))!.text;
 
   it('the ladder is declared once, bottom to top', () => {
@@ -168,6 +168,7 @@ describe('the overlays over the canvas stack by name', () => {
       ['ui/CanvasView.svelte', '.pick-preview', '--z-cursor'],
       ['ui/PanelArranger.svelte', '.arrange-bar', '--z-arrange'],
       ['ui/PanelArranger.svelte', '.drop-panel', '--z-drop'],
+      ['ui/Timeline.svelte', '.frame-menu', '--z-menu'],
     ];
     for (const [file, selector, rung] of uses) {
       const text = files.find((f) => f.file.endsWith(file))!.text;
@@ -175,6 +176,15 @@ describe('the overlays over the canvas stack by name', () => {
       expect(at).toBeGreaterThan(-1);
       expect(text.slice(at, text.indexOf('}', at))).toContain(`z-index: var(${rung})`);
     }
+  });
+
+  it('the ladder stays inside the editor', () => {
+    // Without a context of its own the rungs compete with the host page: the
+    // timeline head (z 1) covered the site's publish message, which the page
+    // paints after the studio.
+    const editor = files.find((f) => f.file.endsWith('ui/Editor.svelte'))!.text;
+    const at = editor.indexOf('  .editor {');
+    expect(editor.slice(at, editor.indexOf('}', at))).toContain('isolation: isolate');
   });
 });
 

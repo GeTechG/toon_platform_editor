@@ -86,6 +86,7 @@
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
   let audioOpen = $state(false);
+  let audioKey = $state<HTMLButtonElement | undefined>();
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
   let exportButton = $state<ExportSheet | undefined>();
@@ -1367,7 +1368,7 @@
         class="key"
         class:active={audioOpen}
         aria-expanded={audioOpen}
-        aria-haspopup="dialog"
+        bind:this={audioKey}
         onclick={() => (audioOpen = !audioOpen)}
         title={editor.audio.hasTrack ? t('editor.audio_of', { name: editor.audio.name || t('editor.audio_unnamed') }) : t('editor.audio')}
         aria-label={t('editor.audio')}
@@ -1375,7 +1376,7 @@
         <Icon name="note" />
       </button>
       {#if audioOpen}
-        <AudioPanel {editor} onClose={() => (audioOpen = false)} />
+        <AudioPanel {editor} anchor={audioKey} onClose={() => (audioOpen = false)} />
       {/if}
     </div>
   {:else if id === 'export'}
@@ -1825,6 +1826,9 @@
      Declared on `.editor` so every child inherits through the DOM; scoped
      styles still resolve `var(--…)` at runtime. */
   .editor {
+    /* The z ladder in tokens.css is one context, and this is it: without it
+       the timeline head (z 1) painted over the host page's publish message. */
+    isolation: isolate;
     /* The worktable: one tonal step under the chrome, same blue bias. Four
        surfaces read apart without a single extra line — panels on paper, the
        drawing on white, the table between them. */
