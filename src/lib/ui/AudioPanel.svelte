@@ -6,14 +6,15 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { AUDIO_MAX_CREDIT } from '../audio/track';
+  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES } from '../audio/track';
   import { t } from '../i18n';
 
   let {
     editor,
     anchor,
+    publishes = false,
     onClose,
-  }: { editor: EditorState; anchor?: HTMLElement; onClose: () => void } = $props();
+  }: { editor: EditorState; anchor?: HTMLElement; publishes?: boolean; onClose: () => void } = $props();
 
   /** The switch's name and its hint are two things: ids to point at each. */
   const uid = $props.id();
@@ -166,6 +167,14 @@
       </p>
       {#if trackOutruns}
         <p class="hint">{t('audio.outruns')}</p>
+      {/if}
+      <!-- The server keeps 10 MB of mp3, ogg or wav; the rest is published silent. -->
+      {#if publishes && editor.audio.unpublishable}
+        <p class="hint error">
+          {editor.audio.unpublishable === 'size'
+            ? t('audio.unpublishable_size', { limit: PUBLISH_AUDIO_MAX_BYTES / 1024 / 1024 })
+            : t('audio.unpublishable_format')}
+        </p>
       {/if}
 
       <div class="row">

@@ -8,6 +8,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import { scrollToFrame, stripWindow } from './strip-window';
+  import { frameMenuKey, selectionSpan, type FrameMenuAction } from './frame-selection';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
@@ -123,7 +124,8 @@
       longPressed = false;
       return;
     }
-    const mode = e.shiftKey ? 'range' : e.ctrlKey || e.metaKey ? 'toggle' : 'set';
+    // Picking spans from the active cell, like Shift does: a finger has no Shift.
+    const mode = e.shiftKey || picking ? 'range' : e.ctrlKey || e.metaKey ? 'toggle' : 'set';
     editor.selectCell(frame, layer, mode);
   }
 
@@ -133,6 +135,21 @@
   // the strip, which is the only way to reach a frame off screen on a phone.
   let dragging = $state(false);
 
+  // --- Picking a block by finger ---------------------------------------------
+  // A finger has no Shift, and a drag on the strip scrolls it. «Выделить
+  // кадры» in the frame menu turns taps into Shift+clicks: the active cell is
+  // the anchor, every tap spans the block to the tapped cell, and the strip
+  // still scrolls between taps. The frame menu then acts on the block;
+  // «Готово» (or Escape) turns picking off and leaves the block selected.
+  let picking = $state(false);
+  const span = $derived(selectionSpan(editor.selection));
+  const spanText = $derived.by(() => {
+    const frames = t(span.from === span.to ? 'timeline.picked_one' : 'timeline.picked', span);
+    return span.layers > 1 ? t('timeline.picked_layers', { frames, n: span.layers }) : frames;
+  });
+  /** Said on every change of a block wider than one cell — Shift+arrows included. */
+  const spanned = $derived(editor.selection.frames.length > 1 || editor.selection.layers.length > 1);
+
   function onCellDown(e: PointerEvent, frame: number, layer: number): void {
     // Android follows its own long press with a contextmenu, not a click:
     // what the last press left must not swallow this one.
@@ -141,8 +158,9 @@
       startLongPress(e, frame, layer);
       return;
     }
-    // The right button is the frame menu's: it must not collapse the block.
-    if (e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
+    // The right button is the frame menu's: it must not collapse the block,
+    // and while picking a press is a tap that spans it.
+    if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
       return;
     }
     dragging = true;
@@ -183,6 +201,11 @@
    * see a handled key.
    */
   function onStripKey(e: KeyboardEvent): void {
+    if (picking && e.key === 'Escape') {
+      e.preventDefault();
+      picking = false;
+      return;
+    }
     if ((e.key !== 'Home' && e.key !== 'End') || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) {
       return;
     }
@@ -224,7 +247,7 @@
       longPress = 0;
       if (menu || editor.playing) return;
       longPressed = true;
-      showMenu(cell, frame, layer, at);
+      showMenu(cell, frame, layer, at, true);
     }, LONG_PRESS_MS);
   }
 
@@ -233,7 +256,10 @@
     longPress = 0;
   }
 
-  function showMenu(cell: HTMLElement, frame: number, layer: number, at: { x: number; y: number }): void {
+  /** How far a finger-opened menu keeps from the fingertip, in px. */
+  const FINGER_GAP = 16;
+
+  function showMenu(cell: HTMLElement, frame: number, layer: number, at: { x: number; y: number }, finger = false): void {
     if (editor.playing) {
       return;
     }
@@ -246,7 +272,11 @@
       if (!menu || !menuEl) return;
       // The strip sits at the bottom: a menu that would run off the screen opens up/left instead.
       menu.x = Math.max(4, Math.min(menu.x, innerWidth - menuEl.offsetWidth - 4));
-      menu.y = Math.max(4, Math.min(menu.y, innerHeight - menuEl.offsetHeight - 4));
+      // Under a finger it opens above the fingertip (below, if there is no
+      // room): opened under it, the lift clicked the item it landed on.
+      const h = menuEl.offsetHeight;
+      const y = !finger ? menu.y : menu.y - h - FINGER_GAP >= 4 ? menu.y - h - FINGER_GAP : menu.y + FINGER_GAP;
+      menu.y = Math.max(4, Math.min(y, innerHeight - h - 4));
       menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
     });
   }
@@ -254,6 +284,11 @@
   function closeMenu(refocus = false): void {
     if (refocus) menu?.cell.focus();
     menu = null;
+  }
+
+  /** The key an item names — none, the letter, or what still works with the letters off. */
+  function menuKey(action: FrameMenuAction) {
+    return frameMenuKey(action, editor.settings.letterKeys, editor.ux.quickPalette !== null);
   }
 
   function run(action: () => void): void {
@@ -394,6 +429,15 @@
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
+  <!-- Read out whenever the block is wider than one cell; shown as a bar,
+       with the way out, only while picking. -->
+  <div class="pick-bar" class:picking>
+    <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
+    {#if picking}
+      <span class="pick-hint">{t('timeline.pick_hint')}</span>
+      <button class="key primary" onclick={() => (picking = false)}>{t('timeline.pick_done')}</button>
+    {/if}
+  </div>
   <!-- The names and the cells are two scrollers side by side; a scroll in one
        is a scroll in the other, or the rows stop meaning the same layer.
        Scroll does not bubble, so this listens in the capture phase. -->
@@ -518,20 +562,27 @@
     bind:this={menuEl}
     onkeydown={onMenuKey}
   >
-    <button role="menuitem" aria-keyshortcuts="A" onclick={() => run(() => editor.addFrameAfterActive())}>
-      <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span><kbd aria-hidden="true">A</kbd>
+    {#snippet key(action: FrameMenuAction)}
+      {@const k = menuKey(action)}
+      {#if k}<kbd aria-hidden="true">{k.label}</kbd>{/if}
+    {/snippet}
+    <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} onclick={() => run(() => editor.addFrameAfterActive())}>
+      <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
-    <button role="menuitem" aria-keyshortcuts="Delete" disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
-      <Icon name="trash" size={16} /><span>{t('panel.item.delete_frame')}</span><kbd aria-hidden="true">Del</kbd>
+    <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
+      <Icon name="trash" size={16} /><span>{t('panel.item.delete_frame')}</span>{@render key('delete')}
     </button>
-    <button role="menuitem" aria-keyshortcuts="C" onclick={() => run(() => editor.copySelection())}>
-      <Icon name="copy" size={16} /><span>{t('panel.item.copy')}</span><kbd aria-hidden="true">C</kbd>
+    <button role="menuitem" aria-keyshortcuts={menuKey('copy')?.aria} onclick={() => run(() => editor.copySelection())}>
+      <Icon name="copy" size={16} /><span>{t('panel.item.copy')}</span>{@render key('copy')}
     </button>
-    <button role="menuitem" aria-keyshortcuts="V" disabled={!editor.canPasteCells} onclick={() => run(() => editor.pasteSelection())}>
-      <Icon name="paste" size={16} /><span>{t('panel.item.paste')}</span><kbd aria-hidden="true">V</kbd>
+    <button role="menuitem" aria-keyshortcuts={menuKey('paste')?.aria} disabled={!editor.canPasteCells} onclick={() => run(() => editor.pasteSelection())}>
+      <Icon name="paste" size={16} /><span>{t('panel.item.paste')}</span>{@render key('paste')}
     </button>
-    <button role="menuitem" aria-keyshortcuts="M" disabled={!editor.canPasteCells} onclick={() => run(() => editor.mergeSelection())}>
-      <Icon name="merge" size={16} /><span>{t('panel.item.merge')}</span><kbd aria-hidden="true">M</kbd>
+    <button role="menuitem" aria-keyshortcuts={menuKey('merge')?.aria} disabled={!editor.canPasteCells} onclick={() => run(() => editor.mergeSelection())}>
+      <Icon name="merge" size={16} /><span>{t('panel.item.merge')}</span>{@render key('merge')}
+    </button>
+    <button role="menuitemcheckbox" aria-checked={picking} onclick={() => run(() => (picking = !picking))}>
+      <Icon name="expand" size={16} /><span>{t('timeline.pick')}</span>
     </button>
   </div>
 {/if}
@@ -540,6 +591,7 @@
 
   /* --- The layer × frame grid -------------------------------------------- */
   .board {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -687,6 +739,45 @@
     .num.onion {
       text-decoration-thickness: 2px;
     }
+  }
+  /* --- Picking bar ------------------------------------------------------- */
+  /* Out of sight but read out when not picking; a row over the strip when it is. */
+  .pick-bar:not(.picking) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* A chip floating over the strip's top edge rather than a row in it: the
+     panel is often only a row of cells tall, and a row taken from it hid the
+     cells being picked. A drop, so it takes the menu shadow. */
+  .pick-bar.picking {
+    position: absolute;
+    right: 8px;
+    bottom: calc(100% + 6px);
+    z-index: var(--z-menu);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100% - 16px);
+    padding: 4px 4px 4px 14px;
+    border-radius: var(--r-pill);
+    background: var(--paper);
+    box-shadow: var(--shadow-menu);
+  }
+  .pick-bar p {
+    margin: 0;
+    white-space: nowrap;
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .pick-hint {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8rem;
+    color: var(--ink-2);
   }
   /* --- The frame menu ---------------------------------------------------- */
   /* A drop, so it takes the menu shadow (DESIGN: only what falls over work). */

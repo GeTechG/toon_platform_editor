@@ -12,6 +12,7 @@
   import { draggable } from './draggable';
   import { t } from '../i18n';
   import { scaleFromField } from '../tools/lasso';
+  import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -82,6 +83,13 @@
       <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label={t('transform.flip_v')} title={t('transform.flip_v')}><Icon name="flip-v" /></button>
       <button class="key icon" onclick={() => editor.undoTransform()} disabled={!editor.canUndoTransform} aria-label={t('transform.undo')} title={t('transform.undo')}><Icon name="undo" /></button>
       <button class="key icon" onclick={() => editor.redoTransform()} disabled={!editor.canRedoTransform} aria-label={t('transform.redo')} title={t('transform.redo')}><Icon name="redo" /></button>
+    </div>
+
+    <!-- On a phone the zoom window gives this one its row; its keys come along. -->
+    <div class="row zoom" role="group" aria-label={t('scale.group')}>
+      <button class="key icon" disabled={editor.view.zoom <= ZOOM_MIN} onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, -1))} aria-label={t('scale.out')} title={t('scale.out')}><Icon name="minus" /></button>
+      <button class="key" onclick={() => editor.resetView()} aria-label={t('scale.value', { percent: Math.round(editor.view.zoom * 100) })} title={t('scale.reset')}>{Math.round(editor.view.zoom * 100)}%</button>
+      <button class="key icon" disabled={editor.view.zoom >= ZOOM_MAX} onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, 1))} aria-label={t('scale.in')} title={t('scale.in')}><Icon name="plus" /></button>
     </div>
 
     <label class="check">
@@ -171,6 +179,14 @@
        DESIGN §5 asks 44 of everything outside the montage grid, and a floating
        transform window is outside it. A standard is a floor under a floor. */
     min-height: var(--key-h, 2.75rem);
+  }
+  .zoom {
+    display: none;
+  }
+  @media (max-width: 40rem) {
+    .row.zoom {
+      display: flex;
+    }
   }
   /* The whole label is the target, a key tall: the box alone is 13 px. */
   .check {

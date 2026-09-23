@@ -154,7 +154,7 @@ describe('tenth audit — tools', () => {
     expect(t('transform.scale_x')).toContain('%');
     expect(t('transform.scale_y')).toContain('%');
     expect(t('transform.undo')).toContain('(Z)');
-    expect(t('transform.redo')).toContain('(Y)');
+    expect(t('transform.redo')).toContain('(Y или Ctrl+Shift+Z)');
   });
 
   it('tells why the lasso took nothing, instead of staying silent', () => {
@@ -169,8 +169,12 @@ describe('tenth audit — tools', () => {
   });
 
   it('keeps the editor keys off while a canvas gesture holds the pointer', () => {
-    expect(canvas).toContain('ongotpointercapture={() => (editor.gestureHeld = true)}');
-    expect(canvas).toContain('editor.gestureHeld = false');
+    // Counted per pointer: a second pointer letting go (the palm the pen
+    // pushed aside, one finger of two) must not free the keys under the first.
+    expect(canvas).toContain('heldPointers.add(e.pointerId)');
+    expect(canvas).toContain('heldPointers.delete(e.pointerId)');
+    expect(canvas).toContain('editor.gestureHeld = heldPointers.size > 0');
+    expect(canvas).not.toContain('editor.gestureHeld = false');
     const keys = editorUi.slice(editorUi.indexOf('function onKeydown('));
     const guard = keys.indexOf('editor.gestureHeld');
     expect(guard).toBeGreaterThan(0);
@@ -179,5 +183,20 @@ describe('tenth audit — tools', () => {
 
   it('gives the phone transform window the zoom window\'s row', () => {
     expect(editorUi).toContain('.stage:has(> .tool-windows :global(.transform-menu)) > .scale-window');
+  });
+});
+
+describe('owner after the tenth audit: zoom inside the transform window on a phone', () => {
+  it('carries the zoom window\'s three keys, with its actions and names', () => {
+    expect(menu).toContain('class="row zoom"');
+    expect(menu).toContain('editor.zoomBy(zoomDelta(editor.view.zoom, -1))');
+    expect(menu).toContain('editor.zoomBy(zoomDelta(editor.view.zoom, 1))');
+    expect(menu).toContain('editor.resetView()');
+    for (const key of ['scale.out', 'scale.in', 'scale.reset']) expect(menu).toContain(`t('${key}')`);
+  });
+
+  it('shows them only where the zoom window gives up its row', () => {
+    expect(menu).toMatch(/\.zoom \{[^}]*display: none/);
+    expect(menu).toMatch(/@media \(max-width: 40rem\) \{\s*\.row\.zoom \{[^}]*display: flex/);
   });
 });

@@ -379,3 +379,36 @@ export function cursorShape(width: number, crossCursor: boolean): { ring: boolea
   const thin = width <= 3;
   return { ring: !(thin && crossCursor), cross: (thin && crossCursor) || width >= 25 };
 }
+
+/** What the frame menu offers. */
+export type FrameMenuAction = 'add' | 'delete' | 'copy' | 'paste' | 'merge';
+
+const MENU_LETTERS: Record<FrameMenuAction, string> = { add: 'A', delete: '', copy: 'C', paste: 'V', merge: 'M' };
+
+/**
+ * The key a frame-menu item names, or `null` when it has none. With the letter
+ * keys off (WCAG 2.1.4) a bare letter would be a promise the studio breaks, so
+ * the item names what still works: F7 adds a frame, and a chord reaches the
+ * same handler as the letter (key-owner lets Ctrl through). Under Multator M
+ * is the palette's, so merge has no key at all.
+ */
+export function frameMenuKey(
+  action: FrameMenuAction,
+  letterKeys: boolean,
+  quickPalette: boolean,
+): { aria: string; label: string } | null {
+  if (action === 'delete') return { aria: 'Delete', label: 'Del' };
+  if (action === 'merge' && quickPalette) return null;
+  if (letterKeys) return { aria: MENU_LETTERS[action], label: MENU_LETTERS[action] };
+  if (action === 'add') return { aria: 'F7', label: 'F7' };
+  return { aria: `Control+${MENU_LETTERS[action]}`, label: `Ctrl+${MENU_LETTERS[action]}` };
+}
+
+/** The block as a reader says it: first and last frame (from 1) and how many layers. */
+export function selectionSpan(selection: CellSelection): { from: number; to: number; layers: number } {
+  return {
+    from: Math.min(...selection.frames) + 1,
+    to: Math.max(...selection.frames) + 1,
+    layers: selection.layers.length,
+  };
+}

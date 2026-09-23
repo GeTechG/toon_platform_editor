@@ -44,6 +44,6 @@ describe('the thickness controls start where the brush range starts', () => {
 describe('the thickness track exposes a whole position', () => {
   it('its value is rounded', () => {
     expect(panel).toContain('value={Math.round(positionOfSize(value, min, max))}');
-    expect(panel).toContain('aria-valuetext={String(value)}');
+    expect(panel).toContain("aria-valuetext={t('brush.size_value', { count: value })}");
   });
 });

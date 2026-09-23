@@ -48,7 +48,7 @@ describe('a format a plugin brings', () => {
   });
 
   it('is handed the scene of the frame in hand and saves what it returns', () => {
-    expect(sheet).toMatch(/pluginFormat\.run\(makeScene\(editor\.doc, editor\.activeFrame\)\)[^]*?deliver\(file\.blob, file\.name\)/);
+    expect(sheet).toMatch(/pluginFormat\.run\(makeScene\(editor\.doc, editor\.activeFrame\), signal\)[^]*?deliver\(file\.blob, file\.name\)/);
   });
 
   it('falls back to ours when its plugin goes away', () => {

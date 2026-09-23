@@ -181,12 +181,27 @@
       picked in the brush box.)
     -->
     <label class="toggle">
-      <span class="toggle-label">{t('settings.mouse_mode')}</span>
+      <span class="toggle-label">
+        {t('settings.mouse_mode')}
+        <small>{t('settings.mouse_mode_hint')}</small>
+      </span>
       <input
         type="checkbox"
         role="switch"
         checked={editor.settings.mouseMode}
         onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
+      />
+    </label>
+    <label class="toggle">
+      <span class="toggle-label">
+        {t('settings.pen_pressure')}
+        <small>{t('settings.pen_pressure_hint')}</small>
+      </span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.settings.penPressure}
+        onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
       />
     </label>
     {#if hasEyeDropper}
@@ -450,12 +465,12 @@
     max-height: 13rem;
     overflow-y: auto;
   }
-  .picklist .toggle-label {
+  .toggle .toggle-label:has(small) {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.1rem;
   }
-  .picklist small {
+  .toggle-label small {
     font-size: 0.8rem;
     opacity: 0.7;
   }

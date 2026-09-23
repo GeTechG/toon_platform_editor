@@ -10,6 +10,7 @@
   import { tick } from 'svelte';
   import { BUNDLED_PLUGIN, plugins } from '../plugins';
   import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
+  import { forPerson } from '../plugins/install';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -105,7 +106,8 @@
     busy = entry.id;
     try {
       const failed = await editor.installPlugin(entry);
-      report = failed ? t('plugins.failed_report', { name: entry.name, reason: failed }) : t('plugins.installed_report', { name: entry.name });
+      if (failed) console.error(`plugin ${entry.id} refused:`, failed);
+      report = failed ? t('plugins.failed_report', { name: entry.name, reason: forPerson(failed) }) : t('plugins.installed_report', { name: entry.name });
     } finally {
       busy = '';
     }
@@ -150,7 +152,10 @@
     busy = file.name;
     try {
       const failed = await editor.installPluginFile(await file.text());
-      report = failed ? t('plugins.failed_report', { name: file.name, reason: failed }) : t('plugins.installed_report', { name: file.name });
+      // The register's reason is for the plugin's author: the console and the
+      // Alt+L log keep it whole, the window says what the person can do.
+      if (failed) console.error(`plugin file ${file.name} refused:`, failed);
+      report = failed ? t('plugins.failed_report', { name: file.name, reason: forPerson(failed) }) : t('plugins.installed_report', { name: file.name });
     } finally {
       busy = '';
     }

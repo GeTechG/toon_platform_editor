@@ -102,6 +102,11 @@ export interface Stroke {
    */
   points: number[];
   tool_id: number;
+  /**
+   * Pen pressure, one integer 0–`PRESSURE_MAX` per point. Absent — the stroke
+   * is its tool's width all along, exactly as before the field existed.
+   */
+  pressure?: number[];
 }
 
 export interface Frame {

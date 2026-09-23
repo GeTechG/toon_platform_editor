@@ -191,6 +191,24 @@ describe('draft audio track', () => {
     expect(saved.audio?.name).toBe('Песня');
   });
 
+  // A track attached before the first write, or before the write that makes
+  // a new record after the drawing's own was deleted, had no record to land in
+  // and was dropped: the saved drawing came back silent.
+  it('a write that makes the record brings the track along', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await setDraftAudio('a', track());
+    await saveDraft('a', doc(12), undefined, track());
+    expect((await listDrafts())[0].audio?.name).toBe('Песня');
+  });
+
+  it('a track already on the record is not rewritten by a save', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', track());
+    await saveDraft('a', doc(24), undefined, { ...track(), name: 'Другая' });
+    expect((await listDrafts())[0].audio?.name).toBe('Песня');
+  });
+
   it('replaces one track with another', async () => {
     setIndexedDB(fakeIndexedDB());
     await saveDraft('a', doc(12));

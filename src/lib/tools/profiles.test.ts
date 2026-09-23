@@ -453,3 +453,60 @@ describe('what reaches the document', () => {
     expect(committed!.points.every((coord) => Number.isInteger(coord))).toBe(true);
   });
 });
+
+describe('pen pressure', () => {
+  const line: ToolDescriptor = { kind: 'pencil', geometry: 'line', width: 100, color: '#123456' };
+  const raw: profiles.StrokeRules = { capture: (_line, batch) => batch.slice() };
+  const pen = (x: number, pressure?: number): profiles.PointerSample =>
+    ({ ...sample(1, x, 0), pressure });
+
+  it('lands the pen pressure on the kept points', () => {
+    const session = profiles.beginStrokeSession(pen(0, 0.2), line, raw);
+    profiles.appendStrokeEvent(session, pen(50, 0.5));
+    profiles.appendStrokeEvent(session, pen(100, 0.9));
+    profiles.finishStrokeEvent(session, pen(100, 0));
+    const stroke = profiles.commitStrokeSession(session);
+    expect(stroke.pressure).toEqual([20, 50, 90, 90]);
+    expect(stroke.tool.kind === 'pencil' && stroke.tool.width).toBe(100);
+  });
+
+  it('does not take the release pressure, which a pen always reports as zero', () => {
+    const session = profiles.beginStrokeSession(pen(0, 0.2), line, raw);
+    profiles.appendStrokeEvent(session, pen(100, 0.9));
+    profiles.finishStrokeEvent(session, pen(110, 0));
+    expect(profiles.commitStrokeSession(session).pressure?.at(-1)).toBe(90);
+  });
+
+  it('bakes a pressure that never changed into the width and stores none', () => {
+    const session = profiles.beginStrokeSession(pen(0, 0.6), line, raw);
+    profiles.finishStrokeEvent(session, pen(100, 0.6));
+    const stroke = profiles.commitStrokeSession(session);
+    expect('pressure' in stroke).toBe(false);
+    expect(stroke.tool.kind === 'pencil' && stroke.tool.width).toBe(66);
+  });
+
+  it('stores nothing for a gesture without pressure', () => {
+    const session = profiles.beginStrokeSession(pen(0), line, raw);
+    profiles.finishStrokeEvent(session, pen(100));
+    expect('pressure' in profiles.commitStrokeSession(session)).toBe(false);
+  });
+
+  it('never gives a stamp pressure', () => {
+    const cell: ToolDescriptor = { kind: 'stamp', geometry: 'line', width: 8, color: '#123456', shape: SQUARE_STAMP };
+    const session = profiles.beginStrokeSession(pen(0, 0.2), cell as never, stamp);
+    profiles.finishStrokeEvent(session, pen(100, 0.9));
+    const stroke = profiles.commitStrokeSession(session);
+    expect('pressure' in stroke).toBe(false);
+    expect(stroke.tool).toEqual(cell);
+  });
+
+  it('carries the pressure through the controller into the document', () => {
+    const controller = new profiles.PointerStrokeController(() => ({ descriptor: line, rules: raw }));
+    controller.pointerDown(pen(0, 0.2));
+    controller.pointerMove(pen(100, 0.9));
+    controller.pointerUp(pen(100, 0));
+    const doc = createDocument();
+    addStroke(doc, 0, 0, controller.takeCommitted()!);
+    expect(loadDocument(doc).layers[0].frames[0].strokes[0].pressure).toEqual([20, 90, 90]);
+  });
+});

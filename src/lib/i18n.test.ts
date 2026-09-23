@@ -93,4 +93,22 @@ describe('the dictionary says one thing one way', async () => {
   ])('no «%s» — %s', (slip) => {
     expect(all).not.toContain(slip);
   });
+
+  it('a press is «нажми» / «нажатие» and the buttons are «левая» / «правая», for mouse and touch alike', () => {
+    // The strings mixed «Щёлкай», «клик», «Ctrl+клик» and «ЛКМ/ПКМ» for the same act.
+    expect(all).not.toMatch(/клик|щёлк|щелк|ЛКМ|ПКМ/i);
+    expect(ru.editor.add_frame_title).toContain('Ctrl+нажатие');
+    expect(ru.layer.rename_hint).toContain('Двойное нажатие');
+  });
+
+  it('the help sheet is «Справка», never «Мануал»', () => {
+    expect(all).not.toMatch(/мануал/i);
+    expect(ru.editor.manual).toBe('Справка');
+  });
+
+  it('the one-point-per-event switch says what it does, not how', () => {
+    // Owner could not read «Режим мышки (точка на событие)».
+    expect(all).not.toContain('точка на событие');
+    expect(ru.settings.mouse_mode_hint).toBeTruthy();
+  });
 });

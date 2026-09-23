@@ -326,3 +326,19 @@ describe('tenth audit: the soundtrack', () => {
     expect(toggle).toContain('aria-describedby=');
   });
 });
+
+// Owner, after the tenth audit: the server keeps 10 MB of mp3/ogg/wav and the
+// editor holds far more. The limit stays; the «Звук» window says so up front.
+describe('a track the server will not keep is named before publishing', () => {
+  it('the state sniffs every adopted file the way the server does', () => {
+    expect(state).toContain('publishProblem(');
+    expect(state).toMatch(/unpublishable = \$state/);
+    expect(state).toMatch(/clear\(\): void \{[\s\S]*?this\.unpublishable = null;/);
+  });
+
+  it('the window shows the reason next to the track', () => {
+    expect(panel).toContain('editor.audio.unpublishable');
+    expect(t('audio.unpublishable_format')).toMatch(/mp3, ogg или wav/);
+    expect(t('audio.unpublishable_size', { limit: 10 })).toMatch(/10 МБ/);
+  });
+});

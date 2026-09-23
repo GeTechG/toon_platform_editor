@@ -559,9 +559,10 @@ describe('tenth audit: menu items are named without their key letter', () => {
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
     expect(items.length).toBe(5);
     for (const item of items) {
-      expect(item).toMatch(/aria-keyshortcuts="[^"]+"/);
-      expect(item).toContain('<kbd aria-hidden="true">');
+      expect(item).toMatch(/aria-keyshortcuts=\{/);
+      expect(item).toContain('{@render key(');
     }
+    expect(menu).toContain('<kbd aria-hidden="true">');
   });
 });
 
@@ -587,5 +588,55 @@ describe('tenth audit: the strip under forced colours', () => {
   it('the selection and the onion frames keep a system colour and their shape', () => {
     expect(forced).toMatch(/\.cell\.selected\s*\{[^}]*border-color:\s*Highlight/);
     expect(forced).toMatch(/\.num\.onion\s*\{[^}]*text-decoration-thickness/);
+  });
+});
+
+describe('owner answers: the frame menu honours the letter-keys setting', () => {
+  const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+  it('no item promises a bare letter the setting has turned off', () => {
+    // With the letter keys off, «C» next to «Копировать» was a key that did nothing.
+    expect(menu).not.toMatch(/aria-keyshortcuts="[A-Z]"/);
+    expect(timeline).toMatch(/frameMenuKey\([^)]*editor\.settings\.letterKeys/);
+  });
+});
+
+describe('owner answers: picking a block of frames by finger', () => {
+  const click = timeline.match(/function onCellClick[\s\S]*?\n  }/)?.[0] ?? '';
+  const down = timeline.match(/function onCellDown[\s\S]*?\n  }/)?.[0] ?? '';
+  const keys = timeline.match(/function onStripKey[\s\S]*?\n  }/)?.[0] ?? '';
+
+  it('the frame menu turns picking on and off', () => {
+    const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(menu).toMatch(/role="menuitemcheckbox"[^>]*aria-checked=\{picking\}/);
+    expect(t('timeline.pick')).toBe('Выделить кадры');
+  });
+
+  it('while picking, a tap spans the block from the active cell to the tapped one', () => {
+    // Shift+click has no finger; a drag on the strip scrolls it.
+    expect(click).toMatch(/picking[\s\S]*'range'/);
+  });
+
+  it('while picking, a mouse press does not start a fresh drag that would collapse the block', () => {
+    expect(down).toMatch(/picking/);
+  });
+
+  it('says the block out loud and shows a way out', () => {
+    expect(timeline).toMatch(/role="status"[^>]*>[\s\S]*?spanText/);
+    expect(timeline).toMatch(/class="key primary"[^>]*onclick=\{\(\) => \(picking = false\)\}/);
+    expect(t('timeline.pick_done')).toBe('Готово');
+    expect(t('timeline.picked', { from: 3, to: 7 })).toBe('Кадры 3–7');
+  });
+
+  it('Escape ends picking from the strip', () => {
+    expect(keys).toMatch(/Escape[\s\S]*picking = false/);
+  });
+});
+
+describe('owner answers: a long-pressed menu opens clear of the finger', () => {
+  it('opens above the finger, so the lift does not press the item under it', () => {
+    // The menu opened at the finger and the release clicked «Добавить кадр».
+    expect(timeline).toMatch(/showMenu\(cell, frame, layer, at, true\)/);
+    const show = timeline.match(/function showMenu[\s\S]*?\n  }/)?.[0] ?? '';
+    expect(show).toMatch(/finger[\s\S]*FINGER_GAP/);
   });
 });

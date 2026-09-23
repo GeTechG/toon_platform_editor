@@ -17,6 +17,7 @@
 import { MAX_STROKE_WIDTH } from '../format/constants';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
+import { pressureAlong, pressureWidth } from '../render/pressure';
 import type { ResolvedStroke } from '../model/operations';
 import { t } from '../i18n';
 
@@ -26,6 +27,8 @@ export interface PointerSample {
   /** Float coordinates in fixed-point document units. */
   x: number;
   y: number;
+  /** Pen pressure 0..1 — only a pen reports it, and only when the setting is on. */
+  pressure?: number;
   /** Already unpacked coalesced samples, when supported. */
   coalesced?: PointerSample[];
 }
@@ -116,6 +119,12 @@ export interface StrokeSession {
   readonly rules: StrokeRules;
   /** Viewport zoom frozen at pointerdown — a brush's threshold may divide by it. */
   readonly zoom: number;
+  /**
+   * The pen's own samples `[x, y, p, …]`, before any brush rule saw them —
+   * a brush thins and relays points by its own rules, so the pressure is laid
+   * onto whatever it keeps afterwards. Empty for a mouse or a finger.
+   */
+  readonly pressureSamples: number[];
 }
 
 export function beginStrokeSession(
@@ -128,6 +137,7 @@ export function beginStrokeSession(
     pointerId: event.pointerId,
     descriptor: { ...descriptor, width: storedStrokeWidth(descriptor.width) },
     rawPoints: [],
+    pressureSamples: [],
     rules,
     zoom: positive(zoom),
   };
@@ -162,7 +172,13 @@ export function appendStrokeEvent(session: StrokeSession, event: PointerSample):
  */
 export function finishStrokeEvent(session: StrokeSession, event: PointerSample): void {
   if (!event.isPrimary || event.pointerId !== session.pointerId) return;
-  collect(session, event, session.rules.release ?? session.rules.capture);
+  // A pen lifts with zero pressure — that is the lift, not how hard it drew.
+  const lift = (sample: PointerSample): PointerSample => ({ ...sample, pressure: undefined });
+  collect(
+    session,
+    { ...lift(event), coalesced: event.coalesced?.map(lift) },
+    session.rules.release ?? session.rules.capture,
+  );
 }
 
 /**
@@ -181,12 +197,44 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
   // The brush's own rule, when it has one: it owns the stroke end to end and
   // may hand back a kind other than the one it drew with.
   if (commit) {
-    return commit(session.rawPoints, session.descriptor);
+    return withPressure(commit(session.rawPoints, session.descriptor), session);
   }
   const thinned = prepare
     ? prepare(session.rawPoints, session.descriptor.width, session.zoom)
     : session.rawPoints.slice();
-  return { points: path ? path(thinned) : thinned, tool: { ...session.descriptor } };
+  return withPressure({ points: path ? path(thinned) : thinned, tool: { ...session.descriptor } }, session);
+}
+
+/**
+ * The pen's pressure at each point of the line under the hand, or undefined
+ * when the gesture has none or its tool has no line width to vary.
+ */
+export function previewStrokePressure(
+  session: StrokeSession,
+  points: readonly number[],
+): number[] | undefined {
+  const { kind } = session.descriptor;
+  if (session.pressureSamples.length === 0 || points.length < 2 || kind === 'stamp') return undefined;
+  return pressureAlong(points, session.pressureSamples);
+}
+
+/**
+ * Lays the pen's pressure onto the committed points. Only a line with a width
+ * takes it — a stamp's marks and a contour's baked ring do not. A pressure
+ * that never changed is not stored: it is the tool's width, scaled once.
+ */
+function withPressure(stroke: ResolvedStroke, session: StrokeSession): ResolvedStroke {
+  const tool = stroke?.tool;
+  if (session.pressureSamples.length === 0 || !tool
+    || (tool.kind !== 'pencil' && tool.kind !== 'eraser' && tool.kind !== 'feather')
+    || !Array.isArray(stroke.points) || stroke.points.length < 2) {
+    return stroke;
+  }
+  const pressure = pressureAlong(stroke.points, session.pressureSamples);
+  if (pressure.every((q) => q === pressure[0])) {
+    return { ...stroke, tool: { ...tool, width: storedStrokeWidth(pressureWidth(tool.width, pressure[0])) } };
+  }
+  return { ...stroke, pressure };
 }
 
 export class PointerStrokeController {
@@ -289,7 +337,10 @@ function collect(
   const coalesced = event.coalesced?.filter((sample) => sample.pointerId === session.pointerId);
   const samples = coalesced && coalesced.length > 0 ? coalesced : [event];
   const batch: number[] = [];
-  for (const sample of samples) batch.push(sample.x, sample.y);
+  for (const sample of samples) {
+    batch.push(sample.x, sample.y);
+    if (sample.pressure !== undefined) session.pressureSamples.push(sample.x, sample.y, sample.pressure);
+  }
   const added = take(session.rawPoints, batch, session.descriptor.width);
   for (let i = 0; i < added.length; i++) {
     session.rawPoints.push(added[i]);

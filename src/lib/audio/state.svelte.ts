@@ -10,6 +10,7 @@ import {
   AUDIO_MAX_CREDIT,
   ENVELOPE_RATE,
   checkAudioFile,
+  publishProblem,
   readId3,
   trackEnvelope,
   trackCredits,
@@ -61,6 +62,8 @@ export class AudioTrackState {
   error = $state('');
   /** A picked file is being read; a long one takes seconds on a cheap phone. */
   loading = $state(false);
+  /** Why this track would not go out with a published toon, or null if it would. */
+  unpublishable = $state<'format' | 'size' | null>(null);
 
   #element: HTMLAudioElement | null = null;
   #url = '';
@@ -178,6 +181,14 @@ export class AudioTrackState {
     this.stop();
     this.#revoke();
     this.blob = blob;
+    this.unpublishable = null;
+    void blob
+      .slice(0, 12)
+      .arrayBuffer()
+      .then((head) => {
+        if (this.blob === blob) this.unpublishable = publishProblem(new Uint8Array(head), blob.size);
+      })
+      .catch(() => {});
     // A draft from before the cap can carry a longer one; see AUDIO_MAX_CREDIT.
     this.name = name.slice(0, AUDIO_MAX_CREDIT);
     this.author = author.slice(0, AUDIO_MAX_CREDIT);
@@ -214,6 +225,7 @@ export class AudioTrackState {
     this.envelope = new Float32Array(0);
     this.duration = 0;
     this.error = '';
+    this.unpublishable = null;
   }
 
   #revoke(): void {

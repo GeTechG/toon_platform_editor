@@ -5,7 +5,12 @@ describe('normalizeHexInput', () => {
   it('drops what is not a hex digit and pads the rest with zeros', () => {
     expect(normalizeHexInput('12g')).toBe('#120000');
     expect(normalizeHexInput('#AbC')).toBe('#abc000');
-    expect(normalizeHexInput('')).toBe('#000000');
+  });
+
+  it('gives nothing when no hex digit is left, so «zz» does not paint black', () => {
+    expect(normalizeHexInput('')).toBeNull();
+    expect(normalizeHexInput('zz')).toBeNull();
+    expect(normalizeHexInput('#')).toBeNull();
   });
 
   it('keeps only the first six digits', () => {

@@ -43,6 +43,32 @@ export default {
 
 Язык редактор выбирает сам; плагин его не спрашивает и не переключает.
 
+## Свой формат экспорта
+
+`exporters` — форматы окна экспорта. `run(scene, signal)` собирает файл;
+`signal` — `AbortSignal`, его обрывает кнопка «Отменить». Долгий формат
+проверяет его между кадрами и останавливается — это отмена, а не поломка,
+плагин не выключается:
+
+```js
+exporters: {
+  svg: {
+    label: 'SVG',
+    async run(scene, signal) {
+      const parts = [];
+      for (let frame = 0; frame < scene.frames; frame++) {
+        signal.throwIfAborted();            // «Отменить» — и дальше не идём
+        parts.push(await drawFrame(scene, frame));
+      }
+      return { blob: new Blob(parts, { type: 'image/svg+xml' }), name: 'toonop.svg' };
+    },
+  },
+},
+```
+
+Старый формат с `run(scene)` работает как прежде: сигнал он просто не
+читает, а готовый после отмены файл редактор не сохраняет.
+
 Кнопки, переключатели и листы плагин рисует классами редактора
 (`src/lib/ui/public-classes.ts`): они объявлены глобально под `.editor`, а
 токены приходят каскадом — своего CSS для родного вида не нужно. Если он всё же

@@ -36,6 +36,7 @@
     deleteDraft,
     duplicateDraft,
     exportDrafts,
+    importDrafts,
     listDrafts,
     newDraftId,
     saveDraft,
@@ -471,8 +472,16 @@
         // Z and Y walk the session's own steps. With none left they are
         // swallowed rather than falling through to the document's undo,
         // which would delete the strokes under the live frame.
-        case 'z':
+        // Ctrl+Shift+Z is redo, as everywhere outside the reference;
+        // bare Shift+Z stays undo.
         case 'Z':
+          if (e.ctrlKey || e.metaKey) {
+            editor.redoTransform();
+          } else {
+            editor.undoTransform();
+          }
+          break;
+        case 'z':
           editor.undoTransform();
           break;
         case 'y':
@@ -547,12 +556,20 @@
       case 'V':
         editor.pasteSelection();
         break;
-      case 'z':
+      // Ctrl+Shift+Z is redo, as everywhere outside the reference; bare
+      // Shift+Z stays undo there.
       case 'Z':
+        if (e.ctrlKey || e.metaKey) {
+          editor.redo();
+        } else {
+          editor.undo();
+        }
+        break;
+      case 'z':
         editor.undo();
         break;
-      // Redo takes a bare key of its own, like every other shortcut here —
-      // z/Z already both mean undo, so shift cannot carry it.
+      // Redo also takes a bare key of its own, like every other shortcut here —
+      // bare z/Z both mean undo, so shift alone cannot carry it.
       case 'y':
       case 'Y':
         editor.redo();
@@ -720,9 +737,12 @@
     // it is: no snapshot to take, and no second pass over every stroke of the
     // drawing to size what the write is about to size anyway.
     const doc = editor.doc;
+    // Lands only on a record that has no track yet — see `saveDraft`.
+    const { blob, name, author, sync } = editor.audio;
+    const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
     queued = false;
     dirty = false;
-    return saveDraft(draftId, doc, editor.sessionState()).then(({ ok, bytes }) => {
+    return saveDraft(draftId, doc, editor.sessionState(), track).then(({ ok, bytes }) => {
       if (ok && bytes === 0) {
         // No storage at all (blocked by the browser): the store degrades
         // quietly, but «сохранено» would be a lie, and a clean `dirty` would
@@ -895,7 +915,7 @@
       return;
     }
     await deleteAllDrafts();
-    draftId = newDraftId();
+    forgetStoredDraft();
     await refreshDrafts();
     await refocusDrafts(0);
   }
@@ -975,10 +995,25 @@
     const at = drafts.findIndex((d) => d.id === entry.id);
     await deleteDraft(entry.id);
     if (draftId === entry.id) {
-      draftId = newDraftId();
+      forgetStoredDraft();
     }
     await refreshDrafts();
     await refocusDrafts(at);
+  }
+
+  /**
+   * The record behind the drawing on screen is gone (owner, after the tenth
+   * audit): the drawing is unsaved again — Save lights up, closing the tab
+   * warns — and the next save makes a new record, track and all.
+   */
+  function forgetStoredDraft(): void {
+    draftId = newDraftId();
+    // `storedBlob` stays: the save that makes the record carries that track.
+    editor.lastSavedAt = null;
+    if (!isEmptyDocument(editor.doc)) {
+      editor.touched = true;
+      dirty = true;
+    }
   }
 
   /** Reference Alt+Enter: with the warnings muted a delete just happens. */
@@ -1088,7 +1123,9 @@
       return;
     }
     e.preventDefault();
-    if (/\.(toonop|toon|json)$/i.test(file.name)) {
+    if (/\.(toonops|toonio)$/i.test(file.name)) {
+      void openDraftsFile(file);
+    } else if (/\.(toonop|toon|json)$/i.test(file.name)) {
       void openFile(file);
     } else if (file.type.startsWith('audio/')) {
       void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
@@ -1097,6 +1134,31 @@
       importError = t('editor.file_unsupported');
     }
   }
+  /**
+   * A drafts bundle dropped on the window: the same load as «Загрузить
+   * черновики…» in the settings, then the list, where they now are.
+   */
+  async function openDraftsFile(file: File): Promise<void> {
+    importError = '';
+    if (editor.warnings && !confirm(t('settings.drafts_confirm', { name: file.name }))) {
+      return;
+    }
+    try {
+      const { loaded, broken } = await importDrafts(await file.text());
+      if (broken > 0 || loaded === 0) {
+        importError = loaded > 0 || broken > 0
+          ? t('settings.drafts_loaded', { loaded, broken })
+          : t('settings.no_drafts');
+      }
+      if (loaded > 0) {
+        await openDrafts();
+      }
+    } catch (err) {
+      console.warn('drafts import failed:', err);
+      importError = t('settings.drafts_load_failed');
+    }
+  }
+
   // The reference's settings window: drawing, palette, autosave, view.
   let settingsSheetOpen = $state(false);
 
@@ -1134,6 +1196,7 @@
         ['E', t('key.eraser')],
         hasMegaEraser && ['Alt + E', t('tool.mega_eraser.label')],
         ['P', t('key.pipette')],
+        ['Shift + Enter', t('key.pick_fill')],
         has('drag') && ['D / O', t('tool.hand.label')],
         has('lasso') && ['Q / S', t('tool.transform.label')],
         has('distort') && ['~', t('tool.jitter.label')],
@@ -1141,7 +1204,7 @@
         ['+ / −', t('key.brush_size')],
         ['M', quickPalette ? t('key.palette') : t('key.merge')],
         ['Z', t('key.undo')],
-        ['Y', t('key.redo')],
+        ['Y, Ctrl+Shift+Z', t('key.redo')],
         ['C', t('key.copy')],
         ['V', t('key.paste')],
         ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
@@ -1456,7 +1519,7 @@
         <Icon name="note" />
       </button>
       {#if audioOpen}
-        <AudioPanel {editor} anchor={audioKey} onClose={() => (audioOpen = false)} />
+        <AudioPanel {editor} anchor={audioKey} publishes={!!onPublish} onClose={() => (audioOpen = false)} />
       {/if}
     </div>
   {:else if id === 'export'}

@@ -101,11 +101,12 @@ const BAR_MIN_HEIGHT = 160;
  * rearranges, with a band of the canvas left under it to drop a window on.
  * A canvas too small for it (400 % page zoom) hands it the screen instead,
  * and the bar never runs past the screen edge — it scrolls inside itself.
+ * Handed the screen, it is `compact`: only the shelf and «Готово» are shown.
  */
 export function arrangeBarBox(
   stage: Box,
   view: { width: number; height: number },
-): { left: number; top: number; width: number; maxHeight: number } {
+): { left: number; top: number; width: number; maxHeight: number; compact: boolean } {
   const roomy = stage.right - stage.left - 2 * BAR_INSET >= BAR_MIN_WIDTH;
   const left = roomy ? stage.left + BAR_INSET : BAR_INSET;
   const width = roomy ? stage.right - stage.left - 2 * BAR_INSET : view.width - 2 * BAR_INSET;
@@ -114,5 +115,11 @@ export function arrangeBarBox(
   const maxHeight = inStage
     ? stage.bottom - DROP_BAND - top
     : view.height - 2 * BAR_INSET;
-  return { left, top, width, maxHeight: Math.min(maxHeight, view.height - BAR_INSET - top) };
+  return {
+    left,
+    top,
+    width,
+    maxHeight: Math.min(maxHeight, view.height - BAR_INSET - top),
+    compact: !roomy || !inStage,
+  };
 }

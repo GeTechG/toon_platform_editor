@@ -162,3 +162,17 @@ describe('eraseStrokes by primitive', () => {
     expect(eraseStrokes([square()], [500, 500, 500, 500], 5, contourTools)).toEqual([square()]);
   });
 });
+
+describe('pen pressure', () => {
+  it('cuts the pressure with the points, interpolated at the cut', () => {
+    const stroke = { points: [0, 0, 100, 0], tool_id: 0, pressure: [0, 100] };
+    const pieces = eraseStrokes([stroke], [50, 0], 10);
+    expect(pieces.map((piece) => piece.points)).toEqual([[0, 0, 40, 0], [60, 0, 100, 0]]);
+    expect(pieces.map((piece) => piece.pressure)).toEqual([[0, 40], [60, 100]]);
+  });
+
+  it('keeps it on a stroke the gesture missed', () => {
+    const stroke = { points: [0, 0, 100, 0], tool_id: 0, pressure: [0, 100] };
+    expect(eraseStrokes([stroke], [50, 500], 10)[0].pressure).toEqual([0, 100]);
+  });
+});

@@ -168,6 +168,7 @@ describe('nothing that lies in the studio casts a soft shadow', () => {
     'ColourPicker.svelte .picker',
     'PanelArranger.svelte .ghost',
     'Timeline.svelte .frame-menu',
+    'Timeline.svelte .pick-bar.picking',
     'Editor.svelte .editor :global(.sheet)',
   ]);
 

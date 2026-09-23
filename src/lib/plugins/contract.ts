@@ -354,7 +354,14 @@ export interface PluginExporter {
   readonly label: PluginText;
   /** One line on what it writes. */
   readonly hint?: PluginText;
-  run(scene: PluginScene): PluginExport | Promise<PluginExport>;
+  /**
+   * Builds the file. `signal` is aborted when the person presses «Отменить»:
+   * a long format checks it (`signal.throwIfAborted()`, or hands it to its
+   * own `fetch`/workers) and stops. Throwing on an aborted signal is a
+   * cancel, not a fault — the plugin stays on. A format that ignores it
+   * still works: its file is simply not saved once the export is called off.
+   */
+  run(scene: PluginScene, signal: AbortSignal): PluginExport | Promise<PluginExport>;
 }
 
 export interface Plugin {

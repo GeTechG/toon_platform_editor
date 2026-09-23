@@ -21,6 +21,8 @@ import {
   rangeSelection,
   toggleLayerInSelection,
   extendTarget,
+  frameMenuKey,
+  selectionSpan,
 } from './frame-selection';
 import type { CellSelection } from './frame-selection';
 
@@ -575,5 +577,35 @@ describe('ninth audit: Shift+arrow grows the block a step at a time', () => {
   it('stops at the edges instead of wrapping', () => {
     const active = { frame: 0, layer: 3 };
     expect(extendTarget({ frames: [0], layers: [3] }, active, -1, 1, bounds)).toEqual({ frame: 0, layer: 3 });
+  });
+});
+
+describe('frameMenuKey', () => {
+  it('shows the letter while the letter keys are on', () => {
+    expect(frameMenuKey('copy', true, false)).toEqual({ aria: 'C', label: 'C' });
+    expect(frameMenuKey('add', true, false)).toEqual({ aria: 'A', label: 'A' });
+  });
+
+  it('with the letter keys off shows the key that still works, never a bare letter', () => {
+    expect(frameMenuKey('add', false, false)).toEqual({ aria: 'F7', label: 'F7' });
+    expect(frameMenuKey('copy', false, false)).toEqual({ aria: 'Control+C', label: 'Ctrl+C' });
+    expect(frameMenuKey('paste', false, false)).toEqual({ aria: 'Control+V', label: 'Ctrl+V' });
+    expect(frameMenuKey('merge', false, false)).toEqual({ aria: 'Control+M', label: 'Ctrl+M' });
+  });
+
+  it('Delete is not a letter: the setting leaves it alone', () => {
+    expect(frameMenuKey('delete', false, false)).toEqual({ aria: 'Delete', label: 'Del' });
+    expect(frameMenuKey('delete', true, false)).toEqual({ aria: 'Delete', label: 'Del' });
+  });
+
+  it('merge has no key where M opens the palette (Multator)', () => {
+    expect(frameMenuKey('merge', true, true)).toBeNull();
+    expect(frameMenuKey('merge', false, true)).toBeNull();
+  });
+});
+
+describe('selectionSpan', () => {
+  it('reads the block as 1-based first and last frame and a layer count', () => {
+    expect(selectionSpan({ frames: [4, 2, 3], layers: [0, 1] })).toEqual({ from: 3, to: 5, layers: 2 });
   });
 });

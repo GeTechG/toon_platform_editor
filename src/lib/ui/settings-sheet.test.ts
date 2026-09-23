@@ -35,9 +35,10 @@ describe('the rail and the chrome follow the reference studio', () => {
     expect(tools).toContain('editor.ux.pipetteOffRail');
   });
 
-  it('gives the rail a Мануал button with no key caption', () => {
+  it('gives the rail a Справка button with no key caption', () => {
     expect(editorUi).toContain('manualOpen = true');
-    expect(editorUi).toMatch(/Мануал/);
+    expect(editorUi).toContain("aria-label={t('editor.manual')}");
+    expect(t('editor.manual')).toBe('Справка');
   });
 
   it('opens the settings sheet straight from the gear, with no popover left', () => {
@@ -280,7 +281,8 @@ describe('«режим мышки» is the coalesced switch, and nothing else', 
   it('has one label, because it now means one thing', () => {
     expect(sheet).not.toContain('mouseModeLabel');
     expect(sheet).toContain("t('settings.mouse_mode')");
-    expect(t('settings.mouse_mode')).toBe('Режим мышки (точка на событие)');
+    expect(t('settings.mouse_mode')).toBe('Ровнее линия с мышкой');
+    expect(sheet).toContain("t('settings.mouse_mode_hint')");
   });
 
   it('belongs to the editor, not to a brush', () => {

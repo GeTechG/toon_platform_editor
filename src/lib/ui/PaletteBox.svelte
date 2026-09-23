@@ -295,6 +295,9 @@
           {/if}
         </button>
       {/each}
+      {#if editor.palette.length === 0}
+        <p class="empty">{t('palette.empty')}</p>
+      {/if}
     </div>
   {/if}
 
@@ -335,6 +338,10 @@
         aria-pressed={editor.tool === 'pipette'}
         onclick={() => editor.selectTool('pipette')}
         oncontextmenu={(e) => (e.preventDefault(), editor.selectTool('pipette', 'fill'))}
+        onkeydown={(e) => {
+          // The keys' right button, as on a palette cell.
+          if (e.key === 'Enter' && e.shiftKey) (e.preventDefault(), editor.selectTool('pipette', 'fill'));
+        }}
         title={t('palette.pipette_title')}
         aria-label={t('palette.pipette')}
       ><Icon name="pipette" size={18} /></button>
@@ -505,6 +512,13 @@
     max-height: 120px;
     overflow: auto;
     background: var(--sub);
+  }
+  .empty {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 0.5rem;
+    color: var(--ink-2);
+    font-size: 0.8rem;
   }
   .cell {
     display: flex;

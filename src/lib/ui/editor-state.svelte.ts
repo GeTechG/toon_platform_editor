@@ -36,6 +36,7 @@ import {
   replaceCells,
   replaceColumn,
   replaceStrokes,
+  pressureOf,
   mirrorCell,
   transformStrokes,
   setFrameRate,
@@ -232,6 +233,11 @@ export class EditorState {
    * left the gesture writing into a cell that was no longer there.
    */
   gestureHeld = false;
+  /**
+   * A pen has touched the canvas this session: from then on a finger only
+   * pans and pinches, never draws (palm rejection, as in Procreate).
+   */
+  penSeen = false;
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
   transformWidthWithScale = $state(false);
   /** The live gesture of a tool that brought its own (plugins): the cells as they were on press. */
@@ -1423,7 +1429,7 @@ export class EditorState {
           cell,
           layer,
           frame,
-          strokes: cell.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id })),
+          strokes: cell.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id, ...pressureOf(s) })),
           after: 0,
         });
       }

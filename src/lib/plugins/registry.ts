@@ -269,12 +269,15 @@ export class PluginRegistry {
       return false;
     }
     // A format has no fallback to degrade to: its exception switches the
-    // plugin off and still reaches the export window, which says it failed.
-    const run: PluginExporter['run'] = async (scene) => {
+    // plugin off and still reaches the export window, which says it failed —
+    // unless the window called it off, and stopping is what was asked.
+    const run: PluginExporter['run'] = async (scene, signal) => {
       try {
-        return await format.run(scene);
+        return await format.run(scene, signal);
       } catch (error) {
-        this.breakDown(plugin, error);
+        if (!signal?.aborted) {
+          this.breakDown(plugin, error);
+        }
         throw error;
       }
     };

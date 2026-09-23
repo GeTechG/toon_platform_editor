@@ -23,6 +23,8 @@ import { interpolatePixelLine } from './pixel';
 export interface ErasableStroke {
   points: number[];
   tool_id: number;
+  /** Pen pressure per point; a polyline cut carries it along, piece by piece. */
+  pressure?: number[];
 }
 
 /** What the capsule does to a stroke of this primitive. */
@@ -199,7 +201,7 @@ function crossing(
   x0: number, y0: number, x1: number, y1: number,
   lo: number, hi: number,
   gesture: readonly number[], radius: number,
-): [number, number] {
+): [number, number, number] {
   const insideLo = inside(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo, gesture, radius);
   for (let step = 0; step < 20; step++) {
     const mid = (lo + hi) / 2;
@@ -210,7 +212,7 @@ function crossing(
     }
   }
   const t = (lo + hi) / 2;
-  return [Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t)];
+  return [Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t), t];
 }
 
 /**
@@ -220,18 +222,26 @@ function crossing(
  */
 function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius: number): ErasableStroke[] {
   const { points } = stroke;
+  // Pressure is cut with the points: every kept point takes its own, and a
+  // cut point the value between its segment's ends.
+  const pressure = stroke.pressure?.length === points.length / 2 ? stroke.pressure : undefined;
   const pieces: ErasableStroke[] = [];
   let current: number[] = [];
+  let currentPressure: number[] = [];
   const flush = (): void => {
     if (current.length >= 2) {
-      pieces.push({ points: current, tool_id: stroke.tool_id });
+      pieces.push(pressure
+        ? { points: current, tool_id: stroke.tool_id, pressure: currentPressure }
+        : { points: current, tool_id: stroke.tool_id });
     }
     current = [];
+    currentPressure = [];
   };
 
   let previousInside = inside(points[0], points[1], gesture, radius);
   if (!previousInside) {
     current.push(points[0], points[1]);
+    if (pressure) currentPressure.push(pressure[0]);
   }
   for (let i = 2; i < points.length; i += 2) {
     const x0 = points[i - 2];
@@ -244,11 +254,13 @@ function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius:
       const t = s / steps;
       const nowInside = inside(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, gesture, radius);
       if (nowInside !== previousInside) {
-        const [cx, cy] = crossing(x0, y0, x1, y1, (s - 1) / steps, t, gesture, radius);
-        if (previousInside) {
-          current.push(cx, cy);
-        } else {
-          current.push(cx, cy);
+        const [cx, cy, at] = crossing(x0, y0, x1, y1, (s - 1) / steps, t, gesture, radius);
+        current.push(cx, cy);
+        if (pressure) {
+          const a = pressure[i / 2 - 1];
+          currentPressure.push(Math.round(a + (pressure[i / 2] - a) * at));
+        }
+        if (!previousInside) {
           flush();
         }
         previousInside = nowInside;
@@ -256,6 +268,7 @@ function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius:
     }
     if (!previousInside) {
       current.push(x1, y1);
+      if (pressure) currentPressure.push(pressure[i / 2]);
     }
   }
   flush();
@@ -277,7 +290,7 @@ export function eraseStrokes(
   cutOf?: (tool: ToolDescriptor) => CutPolicy | undefined,
 ): ErasableStroke[] {
   if (gesture.length < 2 || radius <= 0) {
-    return strokes.map((stroke) => ({ points: stroke.points.slice(), tool_id: stroke.tool_id }));
+    return strokes.map((stroke) => ({ ...stroke, points: stroke.points.slice() }));
   }
   const result: ErasableStroke[] = [];
   for (const stroke of strokes) {

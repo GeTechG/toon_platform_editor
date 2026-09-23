@@ -17,6 +17,7 @@ import {
   isStampTool,
   resolveTool,
 } from './dispatch';
+import { emitPressuredOutline, flattenPressured } from './pressure';
 
 /**
  * Subset of CanvasRenderingContext2D used by the renderer.
@@ -158,10 +159,12 @@ export function renderResolvedPreview(
   color: string,
   target: Canvas2DLike,
   viewport: Viewport,
+  /** Pen pressure per point, when the line under the hand carries it. */
+  pressure?: readonly number[],
 ): void {
   if (points.length < 2) return;
   applyDocTransform(target, viewport);
-  drawResolvedStroke(target, points, tool, color);
+  drawResolvedStroke(target, points, tool, color, pressure);
 }
 
 /**
@@ -227,7 +230,9 @@ export function renderStrokesLayer(
     if (erase) {
       target.globalCompositeOperation = 'destination-out';
     }
-    drawResolvedStroke(target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)));
+    drawResolvedStroke(
+      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure,
+    );
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }
@@ -245,6 +250,7 @@ function drawResolvedStroke(
   points: readonly number[],
   tool: ToolDescriptor,
   color: string,
+  pressure?: readonly number[],
 ): void {
   if (isStampTool(tool)) {
     // Every stored point is a place the tool's polygon is stamped at, `width`
@@ -293,6 +299,23 @@ function drawResolvedStroke(
     // Oldschool contour: the thickness is in the geometry — fill it.
     target.fillStyle = color;
     emitPathForTool(points, tool, target);
+    target.fill();
+    return;
+  }
+  // Pen pressure: the width changes along the line, which a canvas stroke
+  // cannot do — the outline is filled instead. A stamp and a contour have no
+  // line width to vary and never reach here; an array that does not match the
+  // points is not this stroke's and is not read.
+  if (pressure && pressure.length === points.length / 2) {
+    const flat = flattenPressured(points, pressure, tool.geometry);
+    if (isFilledLineTool(tool)) {
+      target.fillStyle = tool.fill;
+      emitPathForTool(points, tool, target);
+      target.fill();
+      target.beginPath();
+    }
+    target.fillStyle = color;
+    emitPressuredOutline(flat, tool.width, target);
     target.fill();
     return;
   }

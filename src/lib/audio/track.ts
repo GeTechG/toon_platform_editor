@@ -23,6 +23,28 @@ export const AUDIO_MAX_BYTES = 70 * 1024 * 1024;
 export const AUDIO_MAX_CREDIT = 120;
 
 /**
+ * What the API keeps of a published soundtrack (`MAX_AUDIO_BYTES` and
+ * `audio_type` in `services/api/src/publications/web.rs`): 10 MB of mp3, ogg
+ * or wav. The editor holds more than that; the owner's call is to say so,
+ * not to raise the server's cap. The platform page reads the same number.
+ */
+export const PUBLISH_AUDIO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Why a track would not go out with the toon, from its first 12 bytes and its
+ * size — the server's own sniff, byte for byte — or null if it would.
+ */
+export function publishProblem(head: Uint8Array, size: number): 'format' | 'size' | null {
+  if (size > PUBLISH_AUDIO_MAX_BYTES) return 'size';
+  if (head.length < 12) return 'format';
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.subarray(from, to));
+  const mp3 = ascii(0, 3) === 'ID3' || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
+  const ogg = ascii(0, 4) === 'OggS';
+  const wav = ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE';
+  return mp3 || ogg || wav ? null : 'format';
+}
+
+/**
  * Credits for a freshly loaded file: its own ID3 tags first, then what the
  * caller offers — minus an artist that only the previous file's tags put in
  * the field, which belongs to that song and not to this one.

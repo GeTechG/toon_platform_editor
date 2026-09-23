@@ -46,6 +46,7 @@
     PointerStrokeController,
     swapStrokeColours,
     previewStrokeSession,
+    previewStrokePressure,
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
@@ -78,6 +79,8 @@
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
   /** Active touch points, for two-finger pan and pinch. */
   const touches = new Map<number, { x: number; y: number }>();
+  /** Pointers the canvas holds captured; the editor keys wait for all of them. */
+  const heldPointers = new Set<number>();
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
@@ -448,7 +451,7 @@
         // real result instead of a smooth version of it that snaps on Enter.
         const tool_id = open.widthWithScale ? stroke.tool_id + editor.doc.tools.length : stroke.tool_id;
         quantizeStrokePoints(points, previewTools[tool_id]);
-        return { points, tool_id };
+        return { ...stroke, points, tool_id };
       }),
     };
   }
@@ -527,7 +530,8 @@
     const erase = session.descriptor.kind === 'eraser';
     const color = erase ? BACKGROUND_COLOR : session.descriptor.color;
     const geometry = session.rules.previewGeometry ?? session.descriptor.geometry;
-    const grows = session.descriptor.kind === 'pencil'
+    // A pen's line changes width along it and is redrawn whole, like a feather.
+    const grows = session.pressureSamples.length === 0 && session.descriptor.kind === 'pencil'
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
       return {
@@ -553,6 +557,15 @@
     viewport: Viewport,
     color: string,
   ): void {
+    const raw = session.rules.previewGeometry === 'line';
+    const points = raw ? session.rawPoints : previewStrokeSession(session);
+    const pressure = previewStrokePressure(session, points);
+    if (pressure) {
+      // The pen's line under the hand has the width it will land with.
+      const tool = raw ? { ...session.descriptor, geometry: 'line' as const } : session.descriptor;
+      renderResolvedPreview(points, tool as LineToolDescriptor, color, target, viewport, pressure);
+      return;
+    }
     if (session.rules.previewGeometry === 'line') {
       // The reference press is a bare moveTo: the dot appears on release.
       if (session.rawPoints.length < 4) return;
@@ -714,6 +727,11 @@
    */
   function startNavigation(e: PointerEvent): boolean {
     if (e.pointerType === 'touch') {
+      // A palm resting while the pen works is not a gesture: it would move
+      // or pinch the sheet under the nib.
+      if (editor.penSeen && penBusy()) {
+        return true;
+      }
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (touches.size === 2) {
         if (pointer.discard()) {
@@ -732,8 +750,9 @@
       }
       // One finger: the hand below still pans with it.
     }
-    // The hand is the tool whose whole job is this gesture (reference `Drag`).
-    if (e.button === 1 || editor.tool === 'drag') {
+    // The hand is the tool whose whole job is this gesture (reference `Drag`);
+    // once a pen has been used, a finger is always the hand.
+    if (e.button === 1 || editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)) {
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       canvasEl.setPointerCapture(e.pointerId);
       takeNavShot();
@@ -846,8 +865,27 @@
     }
   }
 
+  /** The pen (or mouse) is in the middle of something on the sheet. */
+  function penBusy(): boolean {
+    return pointer.session !== null || grab !== null || gesturePointerId !== -1
+      || (panning !== null && !touches.has(panning.pointerId));
+  }
+
   function onPointerDown(e: PointerEvent): void {
     followPenEnd(e);
+    if (e.pointerType === 'pen') {
+      editor.penSeen = true;
+      // The palm landed first and started a stroke: it goes, unrecorded, and
+      // the pen draws.
+      if (pointer.session && touches.has(pointer.session.pointerId) && pointer.discard()) {
+        strokeLayer = undefined;
+        scheduleDraw();
+      }
+      if (touches.has(gesturePointerId)) {
+        dropOwnGesture();
+        scheduleDraw();
+      }
+    }
     if (startNavigation(e)) {
       e.preventDefault();
       return;
@@ -1022,6 +1060,12 @@
     const was = navigating();
     touches.delete(e.pointerId);
     if (touches.size < 2) {
+      // The finger left after a pinch goes on panning without lifting — only
+      // where a finger navigates; under a drawing tool it never draws.
+      if (gesture && touches.size === 1 && (editor.tool === 'drag' || editor.penSeen)) {
+        const [[pointerId, at]] = touches;
+        panning = { pointerId, x: at.x, y: at.y };
+      }
       gesture = null;
     }
     if (panning && e.pointerId === panning.pointerId) {
@@ -1112,8 +1156,10 @@
   }
 
   function onPointerCancel(e: PointerEvent): void {
-    // Also the lost capture every gesture ends with: the keys come back.
-    editor.gestureHeld = false;
+    // Also the lost capture every gesture ends with: the keys come back once
+    // no other pointer still holds one.
+    heldPointers.delete(e.pointerId);
+    editor.gestureHeld = heldPointers.size > 0;
     if (endNavigation(e)) {
       return;
     }
@@ -1139,6 +1185,9 @@
   function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
     const rect = canvasRect();
     const [x, y] = toDocUnits(e, rect);
+    // Only a pen knows how hard it is pressed: a mouse reports a constant, and
+    // a finger whatever its screen guesses.
+    const pressed = e.pointerType === 'pen' && editor.settings.penPressure;
     // «Режим мышки» is the reference `oldPen`: one point per event, no
     // coalesced batch. What a brush does with the samples a browser held back
     // is its own rule — one takes them all, one keeps only the event itself —
@@ -1147,10 +1196,13 @@
       && !editor.settings.mouseMode
       ? e.getCoalescedEvents?.().map((sample) => {
           const [sampleX, sampleY] = toDocUnits(sample, rect);
-          return { pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY };
+          return {
+            pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY,
+            pressure: pressed ? sample.pressure : undefined,
+          };
         })
       : undefined;
-    return { pointerId: e.pointerId, isPrimary: e.isPrimary, x, y, coalesced };
+    return { pointerId: e.pointerId, isPrimary: e.isPrimary, x, y, coalesced, pressure: pressed ? e.pressure : undefined };
   }
 </script>
 
@@ -1173,7 +1225,10 @@
     oncontextmenu={(e) => e.preventDefault()}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
-    ongotpointercapture={() => (editor.gestureHeld = true)}
+    ongotpointercapture={(e) => {
+      heldPointers.add(e.pointerId);
+      editor.gestureHeld = true;
+    }}
     onlostpointercapture={onPointerCancel}
     onpointerenter={(event) => {
       cursorVisible = true;

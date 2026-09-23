@@ -13,6 +13,8 @@ export type { ToonDocument } from './lib/format/types';
 
 // The soundtrack the editor hands back with a published document.
 export type { AudioTrackData } from './lib/audio/state.svelte';
+// What the API keeps of a soundtrack; the platform names it when one is refused.
+export { PUBLISH_AUDIO_MAX_BYTES } from './lib/audio/track';
 
 // Animated-WebP gallery preview built from a document at publish time.
 export { buildPreview } from './lib/export/preview-webp';

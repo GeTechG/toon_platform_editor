@@ -263,6 +263,8 @@
    */
   let barEl = $state<HTMLDivElement | undefined>();
   let place = $state('');
+  /** Handed the whole screen (400 % zoom): only the shelf and «Готово» show. */
+  let compact = $state(false);
   $effect(() => {
     const stage = document.querySelector<HTMLElement>('[data-slot="float"]');
     if (!stage) {
@@ -273,6 +275,7 @@
         width: document.documentElement.clientWidth,
         height: document.documentElement.clientHeight,
       });
+      compact = b.compact;
       // No wider than it ever was, centred on a wide canvas.
       place = `left: ${b.left}px; top: ${b.top}px; width: min(46rem, ${b.width}px);`
         + ` margin-left: max(0px, (${b.width}px - 46rem) / 2); max-height: ${b.maxHeight}px; transform: none`;
@@ -343,6 +346,7 @@
 <div
   bind:this={barEl}
   class="arrange-bar"
+  class:compact
   role="region"
   aria-label={t('arrange.bar')}
   tabindex="-1"
@@ -400,7 +404,15 @@
           placeholder={t('arrange.name_placeholder')}
           aria-label={t('arrange.name_label')}
           bind:value={newName}
-          onkeydown={(e) => e.key === 'Enter' && saveAs()}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') saveAs();
+            // Esc here empties the name; only an Esc outside the field closes the mode.
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              newName = '';
+              e.stopPropagation();
+            }
+          }}
         />
         <button class="key" disabled={!newName.trim()} onclick={saveAs} title={t('arrange.save_title')}>
           {t('arrange.save')}
@@ -500,6 +512,19 @@
     margin: 0;
     font-size: 0.88rem;
     color: var(--ink-2);
+  }
+  /* A bar that took the whole screen: the hint is still spoken, not shown,
+     and the named arrangements wait for a bigger canvas. */
+  .arrange-bar.compact .arrange-hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .arrange-bar.compact .ws {
+    display: none;
   }
   .tray {
     display: flex;

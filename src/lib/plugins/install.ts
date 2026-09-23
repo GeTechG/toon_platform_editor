@@ -40,6 +40,19 @@ const DEFAULT_PORTS: InstallPorts = {
   evaluate,
 };
 
+/**
+ * The one line the plugins window shows for a refused install. The register's
+ * reasons are written for the plugin's author («без label», «бандл отдаёт не
+ * тот плагин»); only the ones the person can act on are passed through, the
+ * rest become «плагин собран с ошибкой» and go to the console whole.
+ */
+export function forPerson(failure: string): string {
+  const shape = (key: string) =>
+    new RegExp(`^${t(key, { api: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '.*')}$`);
+  const actionable = ['plugins.not_downloaded', 'plugins.not_a_bundle', 'plugin.foreign_api'];
+  return actionable.some((key) => shape(key).test(failure)) ? failure : t('plugins.faulty');
+}
+
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

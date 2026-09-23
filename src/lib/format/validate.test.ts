@@ -196,3 +196,32 @@ describe('cross-language parity: number spelling', () => {
     expect(validateDocument(doc).ok).toBe(true);
   });
 });
+
+describe('stroke pressure', () => {
+  function withPressure(pressure: unknown, points = [10, 20, 30, 40]): unknown {
+    const doc = docWithPoints(points) as { layers: { frames: { strokes: Record<string, unknown>[] }[] }[] };
+    doc.layers[0].frames[0].strokes[0].pressure = pressure;
+    return doc;
+  }
+
+  it('accepts one integer 0–100 per point', () => {
+    expect(validateDocument(withPressure([0, 100]))).toEqual({ ok: true, issues: [] });
+  });
+
+  it('rejects a pressure array whose length is not the point count', () => {
+    const result = validateDocument(withPressure([20, 90], [0, 0, 1, 1, 2, 2]));
+    expect(result.ok).toBe(false);
+    expect(result.issues[0].path).toBe('/layers/0/frames/0/strokes/0/pressure');
+  });
+
+  it('rejects a value outside 0–100 or a fraction', () => {
+    expect(validateDocument(withPressure([20, 101])).ok).toBe(false);
+    expect(validateDocument(withPressure([20, 0.5])).ok).toBe(false);
+  });
+});
+
+it('a document with pressure survives the .toonop and draft round-trip (JSON and back)', () => {
+  const doc = validDoc() as { layers: { frames: { strokes: Record<string, unknown>[] }[] }[] };
+  doc.layers[0].frames[0].strokes[0].pressure = [5, 95];
+  expect(loadDocument(JSON.parse(JSON.stringify(doc))).layers[0].frames[0].strokes[0].pressure).toEqual([5, 95]);
+});

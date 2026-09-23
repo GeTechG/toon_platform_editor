@@ -403,3 +403,27 @@ describe('tenth audit: one word for a named arrangement', () => {
     }
   });
 });
+
+describe('owner after the tenth audit: Esc in the name field', () => {
+  test('clears the field and stops there, the mode stays open', () => {
+    const at = arranger.indexOf('class="ws-name"');
+    const field = arranger.slice(at, arranger.indexOf('/>', at));
+    expect(field).toMatch(/Escape[^]*newName = ''[^]*stopPropagation\(\)/);
+  });
+});
+
+describe('owner after the tenth audit: a compact bar on a tiny canvas', () => {
+  test('a canvas that cannot hold the bar makes it compact', () => {
+    expect(arrangeBarBox({ left: 0, top: 40, right: 120, bottom: 90 }, { width: 320, height: 256 }).compact).toBe(true);
+  });
+
+  test('a canvas that holds it keeps the full bar', () => {
+    expect(arrangeBarBox({ left: 0, top: 61, right: 390, bottom: 470 }, { width: 390, height: 844 }).compact).toBe(false);
+  });
+
+  test('compact, the hint and the arrangements step aside: the shelf and «Готово» stay', () => {
+    expect(arranger).toContain('class:compact');
+    expect(arranger).toMatch(/\.arrange-bar\.compact \.arrange-hint[^{]*\{/);
+    expect(arranger).toMatch(/\.arrange-bar\.compact \.ws[^{]*\{[^}]*display: none/);
+  });
+});

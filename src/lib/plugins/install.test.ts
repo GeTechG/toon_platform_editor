@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { CatalogEntry } from './catalog';
 import { PLUGIN_API } from './contract';
-import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from './install';
+import { forPerson, installFromCatalog, installFromFile, loadInstalled, updateInstalled } from './install';
 import { PluginRegistry } from './registry';
 import { listInstalled, putInstalled, type InstalledPlugin } from './store';
 import { fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
@@ -375,5 +375,26 @@ describe('the plugin the editor ships with', () => {
 
     expect(registry.register({ id: 'core', api: PLUGIN_API }, { bundled: true })).toContain('ничего');
     expect(registry.failures.map((failure) => failure.id)).toEqual(['core']);
+  });
+});
+
+// Owner, after the tenth audit: the register's reasons are written for the
+// plugin's author. The person installing gets one line they can act on.
+describe('what the person is told when a plugin will not go in', () => {
+  test('an author-facing reason becomes one short human line', () => {
+    for (const reason of [
+      t('plugin.tool_incomplete', { id: 'x' }),
+      t('plugin.wrong_bundle', { expected: 'a', got: 'b' }),
+      t('plugin.brings_nothing'),
+      t('plugin.update_failed', { reason: t('plugin.key_taken', { key: 'q' }) }),
+    ]) {
+      expect(forPerson(reason)).toBe(t('plugins.faulty'));
+    }
+  });
+
+  test('a reason the person can act on is kept as it is', () => {
+    for (const reason of [t('plugins.not_downloaded'), t('plugins.not_a_bundle'), t('plugin.foreign_api', { api: 7 })]) {
+      expect(forPerson(reason)).toBe(reason);
+    }
   });
 });

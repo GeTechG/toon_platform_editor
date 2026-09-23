@@ -262,13 +262,23 @@ export interface DraftWrite {
  * second full pass over every stroke of the drawing, on the main thread, for
  * an indicator.
  */
-export async function saveDraft(id: string, doc: unknown, state?: DraftState): Promise<DraftWrite> {
+export async function saveDraft(
+  id: string,
+  doc: unknown,
+  state?: DraftState,
+  /** The track on screen: written only when the record has none yet — a
+   * track attached before the record existed had nowhere to land. */
+  audio?: DraftAudio | null,
+): Promise<DraftWrite> {
   let bytes = 0;
   const ok = await queueWrite(() =>
     updateDraft(id, 'draft save', (previous) => {
       const next: DraftRecord = { ...previous, id, updated: Date.now(), doc };
       if (state) {
         next.state = state;
+      }
+      if (audio && !next.audio) {
+        next.audio = audio;
       }
       return next;
     }, (written) => {

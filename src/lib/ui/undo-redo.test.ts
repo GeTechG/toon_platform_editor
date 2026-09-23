@@ -76,6 +76,15 @@ describe('editor toolbar and hotkeys', () => {
     expect(editorUi).toContain('editor.redo()');
   });
 
+  // Owner, after the tenth audit: Ctrl+Shift+Z is redo everywhere else, and
+  // here it undid. Bare Z and Shift+Z stay undo, as in the reference.
+  it('Ctrl+Shift+Z redoes, in the document and in a transform session', () => {
+    const redoUnderCtrl = /case 'Z':\s*if \(e\.ctrlKey \|\| e\.metaKey\) \{\s*editor\.(redo|redoTransform)\(\);/g;
+    expect([...editorUi.matchAll(redoUnderCtrl)].map((m) => m[1]).sort()).toEqual(['redo', 'redoTransform']);
+    expect(t('editor.redo_title')).toContain('Ctrl+Shift+Z');
+    expect(t('transform.redo')).toContain('Ctrl+Shift+Z');
+  });
+
   it('shows undo and redo keys that disable when there is nothing to do', () => {
     expect(editorUi).toContain("t('editor.undo')");
     expect(editorUi).toContain("t('editor.redo')");

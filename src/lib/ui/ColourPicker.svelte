@@ -115,6 +115,8 @@
   function typeHex(raw: string): void {
     hexText = raw;
     const hex = normalizeHexInput(raw);
+    // Unrecognised: the colour stays, and the blur or Enter gives the field it back.
+    if (!hex) return;
     applied = hex;
     pointer = colorToPointer(model, hex);
     onpick(hex);

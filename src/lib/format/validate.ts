@@ -121,6 +121,13 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
           return;
         }
         totalPoints += stroke.points.length / 2;
+        if (stroke.pressure && stroke.pressure.length !== stroke.points.length / 2) {
+          issues.push({
+            category: 'semantic',
+            path: `${base}/pressure`,
+            message: `pressure needs one value per point (${stroke.points.length / 2}), got ${stroke.pressure.length}`,
+          });
+        }
         // A cubic stroke is a start point plus whole segments of six numbers;
         // anything else would leave the reader with half a curve in hand.
         const tool: ToolDescriptor | undefined = doc.tools[stroke.tool_id];

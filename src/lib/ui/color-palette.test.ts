@@ -280,6 +280,11 @@ describe('the colour picker follows the reference window', () => {
     expect(picker).toMatch(/function typeHex[^]{0,200}normalizeHexInput/);
   });
 
+  it('keeps the last valid colour on unrecognised input and gives it back to the field on blur', () => {
+    expect(picker).toMatch(/function typeHex[^]{0,300}if \(!hex\) return;/);
+    expect(picker).toMatch(/function commitHex[^]{0,200}else hexText = color;/);
+  });
+
   it('shows the R/G/B fields and hides the bar in the rgb model only', () => {
     expect(picker).toContain("{#if model === 'rgb'}");
     expect(picker).toContain("{#if model !== 'rgb'}");
@@ -383,5 +388,19 @@ describe('gridStep', () => {
   it('leaves every other key to someone else', () => {
     expect(gridStep(7, 'Enter', 30, 6)).toBeNull();
     expect(gridStep(7, 'a', 30, 6)).toBeNull();
+  });
+});
+
+describe('owner after the tenth audit: an empty palette says how to fill it', () => {
+  const panel = Bun.file(new URL('./ColorPanel.svelte', import.meta.url)).text();
+
+  it('the palette box points at the «+» on the big swatch', async () => {
+    expect(paletteBox).toMatch(/\{#if editor\.palette\.length === 0\}[^]{0,120}t\('palette\.empty'\)/);
+    expect(t('palette.empty')).toContain('«+»');
+  });
+
+  it('the colour widget points at its own «+»', async () => {
+    expect(await panel).toMatch(/\{#if editor\.palette\.length === 0\}[^]{0,120}t\('color\.empty'\)/);
+    expect(t('color.empty')).toContain('«+»');
   });
 });

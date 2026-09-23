@@ -183,6 +183,8 @@ export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
 export interface EditorSettings {
   /** One point per pointer event: the coalesced batch is not unpacked. */
   mouseMode: boolean;
+  /** A pen's pressure changes the width of its line (mouse and finger never do). */
+  penPressure: boolean;
   /** Crosshair on the brush cursor at very thin and very thick widths. */
   crossCursor: boolean;
   /** Picking the pipette opens the browser's own eyedropper, where there is one. */
@@ -257,6 +259,7 @@ export const PALETTE_LIMIT_STEP = 10;
 
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
+  penPressure: true,
   crossCursor: true,
   chromePicker: true,
   lockTransform: false,
@@ -427,6 +430,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     typeof raw[key] === 'boolean' ? raw[key] as boolean : DEFAULT_SETTINGS[key] as boolean;
   return {
     mouseMode: flag('mouseMode'),
+    penPressure: flag('penPressure'),
     crossCursor: flag('crossCursor'),
     chromePicker: flag('chromePicker'),
     lockTransform: flag('lockTransform'),

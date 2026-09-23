@@ -15,6 +15,8 @@ import {
   trackShouldRestart,
   waveformBars,
   waveformPeaks,
+  publishProblem,
+  PUBLISH_AUDIO_MAX_BYTES,
 } from './track';
 
 /** Mono signal: `n` samples, amplitude from `amp(i)`. */
@@ -276,5 +278,29 @@ describe('tenth audit: trackCredits', () => {
 
   test('an author the person typed survives the replacement', () => {
     expect(trackCredits({ title: '', artist: '' }, 'b', 'Я сам', 'Кто-то')).toEqual({ name: 'b', author: 'Я сам' });
+  });
+});
+
+// The API keeps a soundtrack only if its bytes open as mp3, ogg or wav and it
+// weighs no more than 10 MB (`audio_type` / `MAX_AUDIO_BYTES` in
+// services/api/src/publications/web.rs). Anything else goes out silent.
+describe('publishProblem', () => {
+  const head = (s: number[]) => Uint8Array.from([...s, ...new Array(12).fill(0)].slice(0, 12));
+  test('an ID3 mp3 under the limit publishes', () => {
+    expect(publishProblem(head([0x49, 0x44, 0x33]), 1024)).toBeNull();
+  });
+  test('a bare mp3 frame, ogg and wav publish', () => {
+    expect(publishProblem(head([0xff, 0xfb]), 1024)).toBeNull();
+    expect(publishProblem(head([0x4f, 0x67, 0x67, 0x53]), 1024)).toBeNull();
+    const wav = new TextEncoder().encode('RIFF\0\0\0\0WAVE');
+    expect(publishProblem(wav, 1024)).toBeNull();
+  });
+  test('a flac or m4a will not publish', () => {
+    expect(publishProblem(new TextEncoder().encode('fLaC\0\0\0\0\0\0\0\0'), 1024)).toBe('format');
+    expect(publishProblem(new TextEncoder().encode('\0\0\0\x20ftypM4A '), 1024)).toBe('format');
+  });
+  test('past the server cap it will not publish', () => {
+    expect(publishProblem(head([0x49, 0x44, 0x33]), PUBLISH_AUDIO_MAX_BYTES)).toBeNull();
+    expect(publishProblem(head([0x49, 0x44, 0x33]), PUBLISH_AUDIO_MAX_BYTES + 1)).toBe('size');
   });
 });

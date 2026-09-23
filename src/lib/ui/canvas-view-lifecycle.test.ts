@@ -486,3 +486,42 @@ describe('the hand under a finger', () => {
     expect(pinch.slice(0, pinch.indexOf('return true'))).toContain('panning = null');
   });
 });
+
+describe('palm rejection once a pen has touched the sheet', () => {
+  it('a pen down marks the session as pen-seen, for as long as the editor lives', () => {
+    expect(handler('onPointerDown')).toContain('editor.penSeen = true');
+  });
+
+  it('after the pen, one finger pans the sheet instead of drawing', () => {
+    const nav = handler('startNavigation');
+    expect(nav).toContain("editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)");
+  });
+
+  it('a palm that lands while the pen is busy neither pans nor pinches', () => {
+    const nav = handler('startNavigation');
+    const touch = nav.slice(nav.indexOf("e.pointerType === 'touch'"));
+    expect(touch.indexOf('penBusy()')).toBeGreaterThan(-1);
+    expect(touch.indexOf('penBusy()')).toBeLessThan(touch.indexOf('touches.set('));
+  });
+
+  it('a pen panning as the hand is busy too: the palm does not pan under it', () => {
+    expect(handler('penBusy')).toContain('panning !== null && !touches.has(panning.pointerId)');
+  });
+
+  it('a pen landing on a finger stroke drops that stroke before drawing', () => {
+    const down = handler('onPointerDown');
+    const pen = down.slice(down.indexOf("e.pointerType === 'pen'"));
+    // Before the one-gesture guard, or the finger's stroke would block the pen.
+    expect(pen.indexOf('pointer.discard()')).toBeGreaterThan(-1);
+    expect(pen.indexOf('pointer.discard()')).toBeLessThan(pen.indexOf('pointer.session) {'));
+    expect(pen).toContain('touches.has(pointer.session.pointerId)');
+  });
+});
+
+describe('the finger left after a pinch', () => {
+  it('keeps panning with the hand or after the pen, without lifting', () => {
+    const end = handler('endNavigation');
+    expect(end).toMatch(/touches\.size === 1 && \(editor\.tool === 'drag' \|\| editor\.penSeen\)/);
+    expect(end).toContain('panning = { pointerId');
+  });
+});

@@ -112,7 +112,7 @@ describe('the autosave record is one per visit', () => {
 
 describe('what the record holds and what comes back', () => {
   it('writes the hand along with the drawing', () => {
-    expect(editorUi).toContain('saveDraft(draftId, doc, editor.sessionState())');
+    expect(editorUi).toContain('saveDraft(draftId, doc, editor.sessionState(), track)');
     // The document is a value the editor holds whole: it goes to storage as it
     // is, with no snapshot taken and no second pass to size it.
     expect(editorUi).toContain('const doc = editor.doc;');

@@ -890,3 +890,26 @@ describe('isEmptyDocument', () => {
     expect(isEmptyDocument(doc)).toBe(true);
   });
 });
+
+describe('pen pressure travels with the points', () => {
+  const pencil = { kind: 'pencil', geometry: 'line', width: 10, color: '#000000' } as const;
+
+  it('keeps it through a column copy and paste', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0, 10, 0], tool: pencil, pressure: [10, 90] });
+    replaceColumn(doc, 0, cloneColumn(doc, 0));
+    expect(doc.layers[0].frames[0].strokes[0].pressure).toEqual([10, 90]);
+  });
+
+  it('keeps a matching array and drops one that no longer fits the points', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0], tool: pencil });
+    replaceStrokes(doc, 0, 0, [
+      { points: [0, 0, 5, 5], tool_id: 0, pressure: [1, 2] },
+      { points: [0, 0, 5, 5, 9, 9], tool_id: 0, pressure: [1, 2] },
+    ]);
+    const [kept, dropped] = doc.layers[0].frames[0].strokes;
+    expect(kept.pressure).toEqual([1, 2]);
+    expect('pressure' in dropped).toBe(false);
+  });
+});

@@ -33,8 +33,10 @@ export function parseHex(text: string): string | null {
  * that is not a hex digit is dropped, the rest is cut to six and padded with
  * zeros, so the colour follows the typing instead of waiting for Enter.
  */
-export function normalizeHexInput(raw: string): string {
-  return `#${raw.toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 6).padEnd(6, '0')}`;
+export function normalizeHexInput(raw: string): string | null {
+  // No digit at all («zz», an emptied field) is no colour, not black.
+  const body = raw.toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 6);
+  return body ? `#${body.padEnd(6, '0')}` : null;
 }
 
 export function hexToRgb(hex: string): Rgb {

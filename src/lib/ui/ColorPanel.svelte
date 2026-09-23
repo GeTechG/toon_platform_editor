@@ -94,6 +94,9 @@
           aria-label={t('color.swatch', { color })}
         ></button>
       {/each}
+      {#if editor.palette.length === 0}
+        <p class="empty">{t('color.empty')}</p>
+      {/if}
     </div>
   {/if}
 {/if}
@@ -136,6 +139,12 @@
     max-width: 16rem;
     overflow-x: auto;
     padding-bottom: 1px;
+  }
+  .empty {
+    margin: 0;
+    align-self: center;
+    color: var(--ink-2);
+    font-size: 0.8rem;
   }
   .cell {
     flex: 0 0 auto;

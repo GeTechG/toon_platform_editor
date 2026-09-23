@@ -219,6 +219,7 @@ test('settings fall back to the reference defaults when absent or corrupted', ()
 test('settings round-trip through the stored config', () => {
   const settings = {
     mouseMode: true,
+    penPressure: false,
     crossCursor: false,
     chromePicker: false,
     lockTransform: true,
@@ -473,4 +474,8 @@ test('the mega-eraser keeps a width of its own but no smoothing: it draws no lin
 
 test('single-letter keys are on by default, as in the reference editors', () => {
   expect(DEFAULT_SETTINGS.letterKeys).toBe(true);
+});
+
+test('pen pressure starts on', () => {
+  expect(DEFAULT_SETTINGS.penPressure).toBe(true);
 });

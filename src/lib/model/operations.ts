@@ -44,6 +44,8 @@ import { pixelCellNearest } from '../tools/pixel';
 export interface ResolvedStroke {
   points: number[];
   tool: ToolDescriptor;
+  /** Pen pressure per point (see `Stroke.pressure`). */
+  pressure?: number[];
 }
 
 export interface ResolvedFrame {
@@ -268,8 +270,21 @@ export function replaceStrokes(
     throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
   doc.layers[layerIndex].frames[frameIndex] = {
-    strokes: strokes.map((stroke) => ({ points: stroke.points.slice(), tool_id: stroke.tool_id })),
+    strokes: strokes.map((stroke) => ({
+      points: stroke.points.slice(), tool_id: stroke.tool_id, ...pressureOf(stroke),
+    })),
   };
+}
+
+/**
+ * A stroke's pressure, copied, as a spread — or nothing when it has none or
+ * an edit left it out of step with the points. An array that does not fit is
+ * dropped whole rather than guessed at: the line keeps its tool's width, and
+ * the document stays valid.
+ */
+export function pressureOf(stroke: { points: readonly number[]; pressure?: readonly number[] }): { pressure?: number[] } {
+  const { pressure } = stroke;
+  return pressure && pressure.length === stroke.points.length / 2 ? { pressure: pressure.slice() } : {};
 }
 
 export function replaceColumn(doc: ToonDocument, index: number, column: ResolvedColumn): void {
@@ -326,7 +341,7 @@ export function cloneFrame(frameOrDoc: BuiltFrame | ToonDocument, maybeFrame?: F
       strokes: maybeFrame.strokes.map((stroke) => {
         const tool = doc.tools[stroke.tool_id];
         if (!tool) throw new RangeError(`tool_id ${stroke.tool_id} does not reference an existing tool`);
-        return { points: stroke.points.slice(), tool: copyTool(tool) };
+        return { points: stroke.points.slice(), tool: copyTool(tool), ...pressureOf(stroke) };
       }),
     };
   }
@@ -354,6 +369,7 @@ export function addStroke(
   target.strokes.push({
     points: resolved.points.slice(),
     tool_id: internTool(doc, resolved.tool),
+    ...('tool' in stroke ? pressureOf(stroke) : {}),
   });
 }
 
@@ -415,7 +431,7 @@ function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): Frame {
     strokes: frame.strokes.map((stroke) => {
       assertStrokePoints(stroke.points);
       assertTool(stroke.tool);
-      return { points: stroke.points.slice(), tool_id: internTool(doc, stroke.tool) };
+      return { points: stroke.points.slice(), tool_id: internTool(doc, stroke.tool), ...pressureOf(stroke) };
     }),
   };
 }
@@ -554,6 +570,7 @@ function strokeEquals(a: ResolvedStroke, b: ResolvedStroke): boolean {
   return (
     a.points.length === b.points.length &&
     a.points.every((value, i) => value === b.points[i]) &&
+    String(a.pressure) === String(b.pressure) &&
     toolEquals(a.tool, b.tool)
   );
 }

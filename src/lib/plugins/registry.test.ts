@@ -453,17 +453,42 @@ describe('a plugin brings an export format', () => {
     const registry = new PluginRegistry();
     registry.register(exporterPlugin('a.bad', { svg: { label: 'SVG', run: () => { throw new Error('ой'); } } }));
 
-    await expect(Promise.resolve().then(() => registry.exporters()[0].run({} as never))).rejects.toThrow('ой');
+    await expect(Promise.resolve().then(() => registry.exporters()[0].run({} as never, new AbortController().signal))).rejects.toThrow('ой');
 
     expect(registry.brokenReason('a.bad')).toContain('ой');
     expect(registry.exporters()).toEqual([]);
+  });
+
+  // Owner, after the tenth audit: «Отменить» reaches the format, and a format
+  // that stops on it has done nothing wrong.
+  test('a run gets the export window\'s signal', async () => {
+    const registry = new PluginRegistry();
+    let got: unknown;
+    registry.register(exporterPlugin('a.svg', { svg: { label: 'SVG', run: (_: unknown, signal: unknown) => ((got = signal), file()) } }));
+    const signal = new AbortController().signal;
+
+    await registry.exporters()[0].run({} as never, signal);
+
+    expect(got).toBe(signal);
+  });
+
+  test('a run that stops on a called-off signal keeps the plugin on', async () => {
+    const registry = new PluginRegistry();
+    registry.register(exporterPlugin('a.svg', { svg: { label: 'SVG', run: (_: unknown, signal: AbortSignal) => { signal.throwIfAborted(); return file(); } } }));
+    const cancel = new AbortController();
+    cancel.abort();
+
+    await expect(registry.exporters()[0].run({} as never, cancel.signal)).rejects.toThrow();
+
+    expect(registry.brokenReason('a.svg')).toBeFalsy();
+    expect(registry.exporters()).toHaveLength(1);
   });
 
   test('a run whose promise is refused switches the plugin off the same way', async () => {
     const registry = new PluginRegistry();
     registry.register(exporterPlugin('a.bad', { svg: { label: 'SVG', run: async () => { throw new Error('ой'); } } }));
 
-    await expect(registry.exporters()[0].run({} as never)).rejects.toThrow('ой');
+    await expect(registry.exporters()[0].run({} as never, new AbortController().signal)).rejects.toThrow('ой');
 
     expect(registry.brokenReason('a.bad')).toContain('ой');
   });

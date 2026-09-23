@@ -145,8 +145,8 @@
     void tick().then(() => cancelEl?.focus());
     const signal = cancelling.signal;
     const options = { width, watermark, signal, onProgress: track };
-    // PNG and a plugin's format take no signal: a file built after «Отменить»
-    // is not handed over all the same.
+    // PNG takes no signal, and a plugin's format may ignore the one it gets:
+    // a file built after «Отменить» is not handed over all the same.
     const deliver = (blob: Blob, name: string) => {
       throwIfAborted(signal);
       save(blob, name);
@@ -160,7 +160,7 @@
           'toonop.toonop',
         );
       } else if (pluginFormat) {
-        const file = await pluginFormat.run(makeScene(editor.doc, editor.activeFrame));
+        const file = await pluginFormat.run(makeScene(editor.doc, editor.activeFrame), signal);
         deliver(file.blob, file.name);
       } else if (format === 'png') {
         deliver(await exportPng(editor.doc, { width, watermark, transparent }), 'toonop.png');
@@ -177,7 +177,7 @@
         deliver(blob, `toonop.${plan.extension}`);
       }
     } catch (err) {
-      if ((err as { name?: string }).name === 'AbortError') {
+      if (signal.aborted || (err as { name?: string }).name === 'AbortError') {
         error = t('export.cancelled_msg');
       } else {
         console.warn('export failed:', err);

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { ctrlWheelZoom, WHEEL_ZOOM_RATE } from './viewport';
 import { SIZE_TRACK, sizeAtPosition, positionOfSize } from './size-scale';
 import { parseUiConfig, DEFAULT_SETTINGS } from './presets';
+import { t } from '../i18n';
 
 // The owner's answers after the ninth audit: onion frame numbers in the
 // blue of the onion-skin, a thickness track that gives the thin sizes room,
@@ -93,5 +94,22 @@ describe('the mega-eraser warning can be muted for good', () => {
 
   it('can be turned back on in the settings', () => {
     expect(settingsSheet).toContain('editor.settings.megaEraserWarning');
+  });
+});
+
+describe('owner after the tenth audit: the thickness slider', () => {
+  it('arrow keys step as +/− do in the preset (nudgeBrushSize)', () => {
+    const at = brushPanel.indexOf('{#snippet slider(');
+    const block = brushPanel.slice(at, brushPanel.indexOf('{:else}', at));
+    expect(block).toMatch(/ArrowUp[^]*?nudgeBrushSize\(value, 1, editor\.ux\)/);
+    expect(block).toMatch(/ArrowDown[^]*?nudgeBrushSize\(value, -1, editor\.ux\)/);
+  });
+
+  it('speaks the size with its unit in the right Russian plural', () => {
+    expect(t('brush.size_value', { count: 9 })).toBe('9 пикселей');
+    expect(t('brush.size_value', { count: 1 })).toBe('1 пиксель');
+    expect(t('brush.size_value', { count: 2 })).toBe('2 пикселя');
+    expect(t('brush.size_value', { count: 21 })).toBe('21 пиксель');
+    expect(brushPanel).toContain("aria-valuetext={t('brush.size_value', { count: value })}");
   });
 });
