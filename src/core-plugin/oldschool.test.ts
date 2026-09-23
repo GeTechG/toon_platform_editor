@@ -46,6 +46,12 @@ describe('the oldschool pen is a brush', () => {
     expect(stroke.points.every(Number.isInteger)).toBe(true);
   });
 
+  it('adds nothing on release — the line is not drawn over again', () => {
+    // The engine appends what the release returns; handing the line back
+    // doubled it, and the contour jumped from the end back to the start.
+    expect(plugins.probeRules('oldschool')?.release?.([0, 0, 800, 0], [800, 0], 64)).toEqual([]);
+  });
+
   it('commits the eraser as a contour-eraser', () => {
     expect(commit('oldschool-eraser', ERASER, [0, 0, 800, 0]).tool)
       .toEqual({ kind: 'contour-eraser', geometry: 'smooth' });

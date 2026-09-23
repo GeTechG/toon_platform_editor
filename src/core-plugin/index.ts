@@ -88,7 +88,7 @@ const oldschoolCommit: NonNullable<StrokeRules['commit']> = (points, descriptor)
  */
 const oldschoolRules = (): StrokeRules => ({
   ...MULTATOR_RULES,
-  release: (line) => [...line],
+  release: () => [],
   prepare: undefined,
   commit: oldschoolCommit,
 });
