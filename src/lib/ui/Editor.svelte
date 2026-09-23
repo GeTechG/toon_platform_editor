@@ -1814,7 +1814,7 @@
 </div>
 
 <style>
-  /* The brand table (ink / paper / canvas / electric / signal) comes from
+  /* The brand table (ink / paper / canvas / signal / accent) comes from
      `tokens.css`, imported above: one file, read by the editor and by the site
      that embeds it. What is left here is the editor's own chrome — the
      worktable tone, the key height, the bleed — which no other surface has.
@@ -1857,8 +1857,8 @@
     flex: 1;
     min-height: 0;
     width: 100%;
-    color: var(--ink);
-    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    font-family: var(--font-body);
     /* Reference .draw: nothing here is prose, so a drag across the chrome —
        the panel resizer above all — never leaves a blue smear behind. */
     user-select: none;
@@ -1988,11 +1988,11 @@
   /* Same seam language as the columns: drawn only while it is in use. */
   .resizer:hover,
   .panel.dragging .resizer {
-    background: linear-gradient(var(--electric), var(--electric)) center / 100% 2px no-repeat;
+    background: linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat;
   }
   .resizer:focus-visible {
     outline: none;
-    background: linear-gradient(var(--electric), var(--electric)) center / 100% 3px no-repeat;
+    background: linear-gradient(var(--accent), var(--accent)) center / 100% 3px no-repeat;
   }
   /* The bar's own tab: the side tab turned on its side, at the corner of the
      seam where the tools column ends. */
@@ -2026,7 +2026,7 @@
   .panel.collapsed .fold:focus-visible,
   .side-edge.folded .fold:hover,
   .side-edge.folded .fold:focus-visible {
-    background: var(--sky);
+    background: var(--sub);
   }
   .toolbar {
     display: flex;
@@ -2092,7 +2092,7 @@
        key plus 2px, and the radius follows it, so the corners clear the
        key's own 7px ones. */
     border-radius: calc(var(--r-sm) + 2px);
-    outline: 2px dashed var(--electric);
+    outline: 2px dashed var(--accent);
     cursor: grab;
     touch-action: none;
   }
@@ -2148,7 +2148,7 @@
      zoom one (ScaleMenu). */
   .pick-window {
     padding: 0.5rem;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     font-size: 13px;
@@ -2326,13 +2326,13 @@
   }
   .side-resizer:hover,
   .side-edge.dragging .side-resizer {
-    background: linear-gradient(var(--electric), var(--electric)) center / 2px 100% no-repeat;
+    background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
   }
   /* Focus lands on the seam itself, so it is the seam that has to show it —
      an outline on a 1px box is a hairline halo nobody can see. */
   .side-resizer:focus-visible {
     outline: none;
-    background: linear-gradient(var(--electric), var(--electric)) center / 3px 100% no-repeat;
+    background: linear-gradient(var(--accent), var(--accent)) center / 3px 100% no-repeat;
   }
   /* The fold tab: the editor's own key — hairline, 7px radius, 2px of travel
      under the press — grown sideways out of the panel edge. Square where it
@@ -2352,17 +2352,13 @@
     width: 15px;
     height: var(--key-h);
     padding: 0;
-    border: 1px solid var(--edge);
+    border: none;
     background: var(--canvas);
-    color: var(--ink-2);
-    box-shadow: 0 2px 0 var(--edge);
+    color: var(--text-2);
     cursor: pointer;
     transition:
-      transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
-      box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       opacity 0.13s ease,
-      background 0.15s ease,
-      border-color 0.15s ease;
+      background 0.15s ease;
   }
   /* The tab leans out over the stage, never over the panel's own contents. */
   .at-left .fold {
@@ -2376,20 +2372,11 @@
     border-radius: var(--r-sm) 0 0 var(--r-sm);
   }
   .fold:hover {
-    background: var(--sky);
-    border-color: var(--electric);
-    color: var(--ink);
-    box-shadow: 0 1px 0 var(--edge);
-  }
-  .fold:hover {
-    transform: translateY(1px);
-  }
-  .fold:active {
-    box-shadow: 0 0 0 var(--edge);
-    transform: translateY(2px);
+    background: var(--sub);
+    color: var(--text);
   }
   .fold:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* Folded, the tab is all that is left of the column: it waits at the screen
@@ -2447,7 +2434,7 @@
   .fps-inline input[type='range'] {
     width: 6rem;
     margin: 0;
-    accent-color: var(--electric);
+    accent-color: var(--accent);
       /* 16px is the native height of a range and too thin to catch; the track
        stays where it is drawn, the band around it is a finger deep — and a
        finger is the floor DESIGN §5 sets for everything outside the montage
@@ -2800,7 +2787,7 @@
     cursor: pointer;
   }
   .editor :global(.toggle:hover) {
-    background: var(--sky);
+    background: var(--sub);
   }
   .editor :global(.toggle + .toggle) {
     border-top: 1px solid var(--hairline-soft);
@@ -2815,7 +2802,7 @@
   .editor :global(.toggle input) {
     width: 1.3rem;
     height: 1.3rem;
-    accent-color: var(--electric);
+    accent-color: var(--accent);
     cursor: pointer;
   }
   /* One row per draft: preview, when it was saved, how big it is, delete. */
@@ -2850,7 +2837,7 @@
     cursor: pointer;
   }
   .draft-open:hover {
-    background: var(--sky);
+    background: var(--sub);
   }
   .draft-thumb {
     display: flex;
@@ -2885,12 +2872,10 @@
   }
 
   /* ---- Shared button vocabulary (global so child components inherit it) ---- */
-  /* Ghost key: quiet toolbar action on canvas, 1px hairline, physical press.
-     DESIGN §4 (The Physical-Key Rule) — a flat key with no travel is banned;
-     the action has to be felt. In a dense toolbar the offset is 2px rather
-     than the page's 5px, so the rule holds without the bar reading as a wall
-     of protruding blocks. box-shadow takes no layout space, so the rows keep
-     their heights. */
+  /* Key: a flat white pill on the panel's paper (web-look «Студия в том же
+     виде»), known by its fill and its icon like the site's buttons — a control
+     with a visible label needs no 3:1 edge (WCAG 1.4.11 Understanding). The
+     press is felt as a squeeze, not a hard key under it. */
   .editor :global(.key) {
     position: relative;
     display: inline-flex;
@@ -2899,20 +2884,18 @@
     gap: 0.4rem;
     min-width: var(--key-h);
     height: var(--key-h);
-    padding: 0 0.5rem;
-    border: 1px solid var(--edge);
-    border-radius: var(--r-sm);
+    padding: 0 0.7rem;
+    border: none;
+    border-radius: var(--r-pill);
     background: var(--canvas);
-    color: var(--ink);
+    color: var(--text);
     font: inherit;
-    font-weight: 650;
+    font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 2px 0 var(--edge);
     transition:
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
-      box-shadow 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       background 0.15s ease,
-      border-color 0.15s ease;
+      color 0.15s ease;
   }
   /* Reference `.control p`: hovering a key with a shortcut swaps its icon for
      the key itself. Drawn over the icon, so no button reflows on hover; the
@@ -2948,73 +2931,47 @@
     padding: 0;
   }
   .editor :global(.key:hover:not(:disabled)) {
-    background: var(--sky);
-    border-color: var(--electric);
-    transform: translateY(1px);
-    box-shadow: 0 1px 0 var(--edge);
+    background: var(--sub);
   }
   .editor :global(.key:active:not(:disabled)) {
-    transform: translateY(2px);
-    box-shadow: 0 0 0 var(--edge);
+    transform: scale(0.96);
   }
   .editor :global(.key:focus-visible) {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   .editor :global(.key:disabled) {
     opacity: 0.4;
     cursor: default;
-    box-shadow: 0 2px 0 var(--edge);
   }
+  /* Picked: a light wash of the accent under a red icon. */
   .editor :global(.key.active) {
-    background: color-mix(in srgb, var(--electric) 10%, var(--canvas));
-    border-color: var(--electric);
-    color: var(--electric);
-    box-shadow: 0 2px 0 var(--electric-dark);
+    background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
+    color: var(--accent-ink);
   }
   .editor :global(.key.active:hover:not(:disabled)) {
-    box-shadow: 0 1px 0 var(--electric-dark);
+    background: color-mix(in srgb, var(--accent) 22%, var(--canvas));
   }
-  .editor :global(.key.active:active:not(:disabled)) {
-    box-shadow: 0 0 0 var(--electric-dark);
-  }
-  /* Primary key: the one positive "ship" action — electric physical key. It
-     keeps the shared footprint and is set apart by the electric fill and a
-     deeper key travel than its neighbours. */
+  /* Primary key: the one positive "ship" action — the red fill, white icon
+     (4.76:1), a step darker under the cursor like the site's red button. */
   .editor :global(.key.primary) {
-    padding: 0 0.9rem;
-    border-color: transparent;
-    background: var(--electric);
+    padding: 0 1rem;
+    background: var(--accent);
     color: var(--canvas);
-    box-shadow: 0 4px 0 var(--electric-dark);
   }
   .editor :global(.key.primary.icon) {
     padding: 0;
   }
   .editor :global(.key.primary:hover:not(:disabled)) {
-    background: var(--electric);
-    border-color: transparent;
-    transform: translateY(2px);
-    box-shadow: 0 2px 0 var(--electric-dark);
-  }
-  .editor :global(.key.primary:active:not(:disabled)) {
-    transform: translateY(4px);
-    box-shadow: 0 0 0 var(--electric-dark);
-  }
-  .editor :global(.key.primary:disabled) {
-    box-shadow: 0 4px 0 var(--electric-dark);
+    background: var(--accent-ink);
   }
 
-  /* Reduced motion keeps the key's depth and its pressed state — only the
-     animated travel goes, so the button still reads as pressed. */
+  /* Reduced motion keeps the pressed tone, not the squeeze. */
   @media (prefers-reduced-motion: reduce) {
     .editor :global(.key) {
-      transition: background 0.15s ease, border-color 0.15s ease;
+      transition: background 0.15s ease, color 0.15s ease;
     }
-    .editor :global(.key:hover:not(:disabled)),
-    .editor :global(.key:active:not(:disabled)),
-    .editor :global(.key.primary:hover:not(:disabled)),
-    .editor :global(.key.primary:active:not(:disabled)) {
+    .editor :global(.key:active:not(:disabled)) {
       transform: none;
     }
   }

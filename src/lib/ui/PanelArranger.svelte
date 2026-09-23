@@ -373,7 +373,7 @@
   .ghost {
     padding: 0.2rem 0.55rem;
     border-radius: var(--r-pill);
-    background: var(--electric);
+    background: var(--accent);
     color: var(--canvas);
     font-size: 0.82rem;
     font-weight: 650;
@@ -382,13 +382,13 @@
   }
   .drop-line {
     border-radius: 2px;
-    background: var(--electric);
+    background: var(--accent);
   }
   /* The panel that would take it, so a drop is never a guess. */
   .drop-panel {
-    border: 2px solid var(--electric);
+    border: 2px solid var(--accent);
     border-radius: var(--r-sm);
-    background: color-mix(in srgb, var(--electric) 8%, transparent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
   }
   /* A strip over the editor, not a dialog: the panels behind it stay usable
      as drop targets, which is the whole point of the mode. */
@@ -404,7 +404,7 @@
     /* Fixed: `100%` is the initial containing block, scrollbar excluded. */
     width: min(46rem, calc(100% - 2rem));
     padding: 0.7rem 0.8rem;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-plate);
@@ -435,9 +435,9 @@
   }
   .chip {
     padding: 0.2rem 0.5rem;
-    border: 1px solid var(--edge);
+    border: none;
     border-radius: var(--r-pill);
-    background: var(--sky);
+    background: var(--sub);
     font-size: 0.82rem;
     cursor: grab;
     touch-action: none;

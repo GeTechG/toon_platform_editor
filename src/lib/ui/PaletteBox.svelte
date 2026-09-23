@@ -313,7 +313,7 @@
   .box {
     width: 225px;
     max-width: 100%;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-plate);
@@ -349,7 +349,7 @@
     cursor: pointer;
   }
   .face:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
   /* Which swatch is which: the marker sits bottom-right in the contrast ink. */
@@ -400,9 +400,9 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    border: 1px solid var(--edge);
+    border: none;
     border-radius: 50%;
-    background: var(--canvas);
+    background: var(--sub);
     color: var(--ink);
     font: inherit;
     transform: translate(-50%, -50%);
@@ -411,7 +411,7 @@
   .add:focus-visible,
   .swap:focus-visible,
   .close:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* The reference grid: 35px cells edge to edge, no gaps. */
@@ -420,7 +420,7 @@
     grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
     max-height: 120px;
     overflow: auto;
-    background: var(--sky);
+    background: var(--sub);
   }
   .cell {
     display: flex;
@@ -434,7 +434,7 @@
     cursor: pointer;
   }
   .cell:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
   .grid.remover .cell {
@@ -454,7 +454,7 @@
     max-height: 120px;
     padding: 0.5em;
     overflow: auto;
-    background: var(--sky);
+    background: var(--sub);
   }
   .tile {
     display: grid;
@@ -469,10 +469,10 @@
     cursor: pointer;
   }
   .tile.active {
-    outline: 2px solid var(--electric);
+    outline: 2px solid var(--accent);
   }
   .tile:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
   }
   .add-tile {
     display: flex;
@@ -506,11 +506,11 @@
     border-left: 1px solid var(--hairline);
   }
   .foot-btn:hover {
-    background: var(--sky);
+    background: var(--sub);
   }
   .foot-btn.active {
     background: var(--ghost-2);
-    color: var(--electric);
+    color: var(--accent-ink);
   }
   /* Full ink against the footer's secondary text: the key that throws work
      away reads heavier than the keys that keep it. Red is the drawing
@@ -519,7 +519,7 @@
     color: var(--ink);
   }
   .foot-btn:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
   .preview-head {

@@ -397,24 +397,24 @@
     flex: 1;
     height: var(--key-h);
     padding: 0 0.5rem;
-    border: 1px solid var(--edge);
+    border: none;
     border-radius: var(--r-sm);
-    background: var(--canvas);
+    background: var(--sub);
     color: var(--ink);
     font: inherit;
     font-weight: 650;
     cursor: pointer;
   }
   .preset-chip:hover {
-    background: var(--sky);
+    background: color-mix(in oklab, var(--sub), var(--text) 8%);
   }
   .preset-chip.active {
-    background: var(--electric);
+    background: var(--accent);
     border-color: transparent;
     color: var(--canvas);
   }
   .preset-chip:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* A picked record needs two lines: when it was written, and what is in it —
@@ -472,7 +472,7 @@
   }
   .slider input {
     width: 9rem;
-    accent-color: var(--electric);
+    accent-color: var(--accent);
   }
   .slider output {
     min-width: 2.2rem;

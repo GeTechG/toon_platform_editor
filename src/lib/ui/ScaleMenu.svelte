@@ -53,7 +53,7 @@
     padding: 2px;
     /* The window is dragged by its own row, so this is the boundary of a
        control and takes the edge, not the divider. */
-    border: 1px solid var(--edge);
+    border: none;
     border-radius: var(--r-md);
     /* Quiet over someone's drawing is the fill stepping back — never the
        window, which would take the readout and the edge down with it. */

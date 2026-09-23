@@ -121,7 +121,7 @@
        where the clamp sat 32px above the width it was capping. */
     width: 18rem;
     background: var(--canvas);
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     box-shadow: var(--shadow-plate);
   }
@@ -174,7 +174,7 @@
      of the promised indicator, winning on specificity rather than on a
      decision. */
   .field input:focus-visible {
-    border-color: var(--electric);
+    border-color: var(--accent);
   }
   .toggle {
     display: flex;

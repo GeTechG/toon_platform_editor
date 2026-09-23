@@ -343,8 +343,8 @@
     gap: 0.3rem;
   }
   .choices .key.active {
-    color: var(--electric);
-    box-shadow: inset 0 0 0 2px var(--electric);
+    color: var(--accent-ink);
+    box-shadow: inset 0 0 0 2px var(--accent);
   }
   .wide {
     width: 100%;

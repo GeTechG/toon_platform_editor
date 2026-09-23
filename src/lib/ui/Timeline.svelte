@@ -345,7 +345,7 @@
     display: flex;
     flex: 1;
     min-height: 0;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-sm);
     background: var(--canvas);
     overflow: hidden;
@@ -386,7 +386,7 @@
     transform: translateX(-50%);
   }
   .col-resizer:focus-visible {
-    outline: 2px solid var(--electric);
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
   .grid {
@@ -416,7 +416,7 @@
   }
   /* Onion and copied frames are named in the header, not only tinted. */
   .num.onion {
-    color: var(--electric);
+    color: var(--accent-ink);
     text-decoration: underline dotted;
   }
   .num.copied::after {
@@ -448,19 +448,19 @@
      dotted one — three shapes, so colour is never the only signal. */
   .cell.selected {
     border-style: dashed;
-    border-color: var(--electric);
-    background: color-mix(in srgb, var(--electric) 10%, transparent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
   .cell.copied {
     border-style: dotted;
   }
   .cell.active {
     border-style: solid;
-    border-color: var(--electric);
-    box-shadow: inset 0 0 0 2px var(--electric);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent);
   }
   .cell:focus-visible {
-    outline: 2px solid var(--electric);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
   .cell:disabled {
@@ -478,7 +478,7 @@
     margin-top: 2px;
     padding: 2px;
     align-items: flex-end;
-    background: color-mix(in srgb, var(--electric) 7%, transparent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
     border-radius: var(--r-sm, 7px);
   }
   /* What stands in for the frames the strip has not built: the width they
@@ -495,7 +495,7 @@
   }
   .bar > span {
     flex: 1;
-    background: var(--electric);
+    background: var(--accent);
     opacity: 0.6;
     border-radius: 1px;
   }

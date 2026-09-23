@@ -208,35 +208,34 @@ describe('side panel dividers', () => {
 
   it('the seam shows itself only under the cursor, and stays lit for the whole drag', () => {
     // No hairline down the stage: the tab marks the edge. The seam lights up
-    // electric while it is hovered, focused or being dragged — and the drag
+    // red while it is hovered, focused or being dragged — and the drag
     // keeps it lit after the pointer has left the 9px band.
     expect(editorUi).toContain('class="side-edge');
     expect(editorUi).toMatch(/\.side-edge \{[^}]*background: transparent/s);
     expect(editorUi).toMatch(
-      /\.side-resizer:hover,\s*\.side-edge\.dragging \.side-resizer \{[^}]*var\(--electric\)/s,
+      /\.side-resizer:hover,\s*\.side-edge\.dragging \.side-resizer \{[^}]*var\(--accent\)/s,
     );
     expect(editorUi).toContain('class:dragging={');
   });
 
-  it('the fold handle is a key-shaped tab growing out of the panel edge', () => {
-    // The editor speaks in physical keys: 7px radius, a 2px key shadow, sky on
-    // hover. A tab is one of them, rounded on the stage side and square where
-    // it meets the panel. The key is drawn with `--edge`, not the divider
-    // hairline: a key you cannot see does not read as a key (WCAG 1.4.11).
+  it('the fold handle is a flat tab growing out of the panel edge', () => {
+    // A flat key like the rest of the studio: white on the paper, the
+    // sub-surface tone on hover, rounded on the stage side and square where it
+    // meets the panel. No hard key under it (web-look «Студия в том же виде»).
     expect(editorUi).toContain('editor.toggleSide(');
     const fold = editorUi.match(/\n  \.fold \{[^}]*\}/s)?.[0] ?? '';
     expect(fold).toContain('height: var(--key-h)');
-    expect(fold).toContain('box-shadow: 0 2px 0 var(--edge)');
+    expect(fold).not.toContain('box-shadow');
     expect(fold).not.toContain('border-radius: 50%');
     expect(editorUi).toMatch(/\.at-left \.fold \{[^}]*border-radius: 0 var\(--r-sm\) var\(--r-sm\) 0/s);
-    expect(editorUi).toMatch(/\.fold:hover \{[^}]*background: var\(--sky\)/s);
+    expect(editorUi).toMatch(/\.fold:hover \{[^}]*background: var\(--sub\)/s);
   });
 
   it('the tab that brings a folded column back waits pale at the screen edge', () => {
     // Pale is the fill, not the tab: fading the tab itself took the `--edge`
     // outline down to 1.8:1 and the arrow with it (WCAG 1.4.11).
     expect(editorUi).toMatch(/\.side-edge\.folded \.fold \{\n\s*background: color-mix\(in srgb, var\(--canvas\) 55%/s);
-    expect(editorUi).toMatch(/\.side-edge\.folded \.fold:focus-visible \{\n\s*background: var\(--sky\)/s);
+    expect(editorUi).toMatch(/\.side-edge\.folded \.fold:focus-visible \{\n\s*background: var\(--sub\)/s);
     expect(editorUi).not.toMatch(/\.fold[^{]*\{[^}]*opacity:/s);
   });
 
@@ -321,7 +320,7 @@ describe('the bottom panel folds like the sides', () => {
 
   it('the seam shows itself only under the cursor, like the side ones', () => {
     expect(editorUi).toMatch(
-      /\.resizer:hover,\s*\.panel\.dragging \.resizer \{[^}]*var\(--electric\)/s,
+      /\.resizer:hover,\s*\.panel\.dragging \.resizer \{[^}]*var\(--accent\)/s,
     );
     expect(editorUi).not.toMatch(/\.resizer \{[^}]*3rem 2px no-repeat/s);
   });

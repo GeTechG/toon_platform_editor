@@ -313,6 +313,6 @@ describe('the tool rail wears one colour', () => {
   });
 
   it('an active key is opaque, so nothing shows through its tint', () => {
-    expect(editorUi).toMatch(/\.key\.active\)\s*\{\s*background: color-mix\(in srgb, var\(--electric\) \d+%, var\(--canvas\)\)/);
+    expect(editorUi).toMatch(/\.key\.active\)\s*\{\s*background: color-mix\(in srgb, var\(--accent\) \d+%, var\(--canvas\)\)/);
   });
 });

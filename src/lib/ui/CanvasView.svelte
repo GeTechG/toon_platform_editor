@@ -1191,13 +1191,13 @@
   }
   .overlay .frame {
     fill: none;
-    stroke: var(--electric);
+    stroke: var(--accent);
     stroke-width: 1;
     stroke-dasharray: 5 3;
   }
   .overlay .handle {
     fill: var(--canvas);
-    stroke: var(--electric);
+    stroke: var(--accent);
     stroke-width: 2;
   }
   /* Pinned to the corner and carried by the transform on the element: moving

@@ -365,7 +365,7 @@
     width: 204px;
     gap: 10px;
     padding: 0 0 12px;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     color: var(--ink);
@@ -408,7 +408,7 @@
     cursor: pointer;
   }
   .close:hover {
-    background: var(--sky);
+    background: var(--sub);
     color: var(--ink);
   }
   /* Segmented control: one pill, three equal shares. */
@@ -419,7 +419,7 @@
     grid-auto-columns: 1fr;
     padding: 2px;
     border-radius: var(--r-sm);
-    background: var(--sky);
+    background: var(--sub);
   }
   .models button {
     /* Three segments of a pill, side by side: adjacent targets get no help
@@ -441,7 +441,7 @@
   }
   .models button.active {
     background: var(--canvas);
-    color: var(--electric);
+    color: var(--accent-ink);
   }
   /* The canvas and its pointer share one frame. */
   /* No clipping here: at the edges of the field the pointer hangs half out. */
@@ -566,14 +566,14 @@
   }
   .surface:focus-visible,
   .bar:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
   .models button:focus-visible,
   .close:focus-visible,
   .old:focus-visible,
   .fields input:focus-visible {
-    outline: 2px solid var(--electric);
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
 </style>

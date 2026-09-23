@@ -98,7 +98,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.6rem;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     font-size: 13px;

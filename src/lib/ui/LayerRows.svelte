@@ -384,7 +384,7 @@
     cursor: pointer;
   }
   .row.active {
-    background: color-mix(in srgb, var(--electric) 12%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
   .row.dragging {
     opacity: 0.7;
@@ -434,7 +434,7 @@
     text-overflow: ellipsis;
   }
   .rename {
-    border: 1px solid var(--electric);
+    border: 1px solid var(--accent);
     border-radius: var(--r-sm, 7px);
     padding: 0 0.25rem;
     background: var(--canvas);
@@ -472,7 +472,7 @@
     transform: translate(-50%, -50%);
   }
   .tag:focus-visible {
-    outline: 2px solid var(--electric);
+    outline: 2px solid var(--accent);
     outline-offset: 1px;
   }
   /* The handle is the only drag surface, so the list still scrolls by touch. */

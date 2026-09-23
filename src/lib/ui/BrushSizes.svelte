@@ -33,7 +33,7 @@
     align-items: center;
     gap: 0.3rem;
   }
-  /* Size dots read as one control group — quiet until picked, electric ring
+  /* Size dots read as one control group — quiet until picked, red ring
      when active, echoing the reference's row of growing dots. */
   .size-btn {
     display: flex;
@@ -50,20 +50,20 @@
       border-color 0.15s ease;
   }
   .size-btn:hover {
-    background: var(--sky);
+    background: var(--sub);
   }
   /* Five black dots differing only in diameter are not a selection state —
-     the picked one inverts to a filled electric key with a white dot. */
+     the picked one inverts to a filled red key with a white dot. */
   .size-btn.active {
-    background: var(--electric);
-    border-color: var(--electric);
+    background: var(--accent);
+    border-color: var(--accent);
   }
   .size-btn.active .dot {
     background: var(--canvas);
-    box-shadow: 0 0 0 1px var(--electric);
+    box-shadow: 0 0 0 1px var(--accent);
   }
   .size-btn:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   .dot {

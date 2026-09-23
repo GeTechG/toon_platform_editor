@@ -201,7 +201,7 @@
   .box {
     width: 225px;
     max-width: 100%;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-plate);
@@ -234,9 +234,9 @@
     gap: 8px;
     min-height: var(--key-h, 2.75rem);
     padding: 0 8px;
-    border: 1px solid var(--edge);
+    border: none;
     border-radius: var(--r-sm);
-    background: var(--canvas);
+    background: var(--sub);
     color: var(--ink);
     font: inherit;
     cursor: pointer;
@@ -254,7 +254,7 @@
        actually exists, where `100vw` counts the scrollbar in as well. */
     max-width: calc(100% - 16px);
     padding: 6px;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-menu);
@@ -283,13 +283,13 @@
     background: var(--paper);
   }
   .type.active {
-    border-color: var(--electric);
+    border-color: var(--accent);
   }
   .type .name {
     font-weight: 600;
   }
   .type.active .name {
-    color: var(--electric);
+    color: var(--accent-ink);
   }
   .hint {
     font-size: 0.75rem;
@@ -297,7 +297,7 @@
   }
   .trigger:focus-visible,
   .type:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   .sample {
@@ -308,7 +308,7 @@
     grid-column: 1 / 3;
     margin: 0;
     padding: 2px 6px;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-sm);
     background: var(--canvas);
   }
@@ -328,7 +328,7 @@
     z-index: 2;
     display: none;
     padding: 6px 8px;
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-sm);
     background: var(--canvas);
     box-shadow: var(--shadow-menu);
@@ -362,10 +362,10 @@
   }
   .info:hover,
   .info:focus-visible {
-    color: var(--electric);
+    color: var(--accent-ink);
   }
   .info:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* The sample keeps the box's own proportions: a line squeezed into another
@@ -388,7 +388,7 @@
        caught in is a finger deep, and a finger is 44 (DESIGN §5), not 24. */
     height: var(--key-h, 2.75rem);
     margin: 0;
-    accent-color: var(--electric);
+    accent-color: var(--accent);
   }
   .brush-box input[type='number'] {
     width: 100%;
@@ -404,7 +404,7 @@
     text-align: center;
   }
   .brush-box input:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
 </style>

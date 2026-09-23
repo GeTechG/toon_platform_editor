@@ -116,7 +116,7 @@ describe('the scrim under a modal is a token', () => {
 // `apps/web`, including this package's own dev host, got the browser default.
 describe('the package carries its own focus ring', () => {
   it('ships a ring beside the tokens', () => {
-    expect(tokensCss).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--electric\)/s);
+    expect(tokensCss).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px solid var\(--accent\)/s);
     // Same zero specificity as the table above it, and inside the editor only:
     // the file offers its look to a host, it does not paint the host's page.
     expect(tokensCss).toMatch(/:where\([^)]*\)\s+:focus-visible/);
@@ -180,10 +180,14 @@ describe('no layer tag wears the signal red', () => {
 // and three had taken it for other work — a two-pixel border round an import
 // error (the very case DESIGN §5 answers with the weight of the line), the
 // label on a delete key, and the name of a plugin that is switched off.
-describe('red stays with the action that owns it', () => {
+// Since 2026-09-23 red is the studio's accent too (web-look «Студия в том же
+// виде»), but a sheet still says so by role: `--accent`, which the table builds
+// from the signal. The signal names themselves stay in the table.
+describe('red reaches the studio by role', () => {
   it('names no signal token in any sheet of the studio', () => {
     const wearing: string[] = [];
     for (const [file, css] of STYLES) {
+      if (file.endsWith('tokens.css')) continue;
       for (const [, token] of withoutComments(css).matchAll(/var\(\s*(--signal[\w-]*)/g)) {
         wearing.push(`${file} ${token}`);
       }

@@ -77,7 +77,7 @@
 {/if}
 
 <style>
-  /* Quick two-color palette (Multator): round swatches, electric ring when picked. */
+  /* Quick two-color palette (Multator): round swatches, red ring when picked. */
   .quick {
     display: flex;
     align-items: center;
@@ -99,10 +99,10 @@
   }
   .swatch.active {
     border-color: var(--canvas);
-    box-shadow: 0 0 0 2px var(--electric);
+    box-shadow: 0 0 0 2px var(--accent);
   }
   .swatch:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* Saved colour strip (Tonio): the row it stands in is already a key tall,
@@ -129,10 +129,10 @@
   }
   .cell.active {
     border-color: var(--canvas);
-    box-shadow: 0 0 0 2px var(--electric);
+    box-shadow: 0 0 0 2px var(--accent);
   }
   .cell:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   /* Native picker as a round brand swatch showing the live color. */
@@ -146,7 +146,7 @@
     cursor: pointer;
   }
   .color:focus-within {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
   .color input {

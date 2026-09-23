@@ -143,7 +143,7 @@
     display: flex;
     flex-direction: column;
     max-width: min(90%, 28rem);
-    border: 1px solid var(--hairline);
+    border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
     /* Lifted off the paper the way a window is, not painted onto it. */
@@ -155,12 +155,12 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.15rem 0.15rem 0.15rem 0.6rem;
-    background: var(--sky);
+    background: var(--sub);
     cursor: grab;
     touch-action: none;
   }
   .float-bar:focus-visible {
-    outline: 3px solid var(--electric);
+    outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
   .float-name {

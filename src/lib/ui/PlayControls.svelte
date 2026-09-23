@@ -141,17 +141,17 @@
 
 <style>
   /* Play leads the transport row like the reference ▶: wider than an icon
-     key, and flips to a filled electric key while previewing. */
+     key, and flips to a filled red key while previewing. */
   .play {
     min-width: 3.4rem;
   }
   .play.playing {
-    background: var(--electric);
+    background: var(--accent);
     border-color: transparent;
     color: var(--canvas);
   }
   .play.playing:hover {
-    background: var(--electric);
+    background: var(--accent);
     border-color: transparent;
   }
 </style>
