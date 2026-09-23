@@ -10,7 +10,9 @@
 
 import {
   FIXED_POINT_SCALE,
+  MAX_FRAMES,
   MAX_LAYERS,
+  MAX_TOTAL_POINTS,
   MAX_LAYER_NAME,
   SCHEMA_VERSION,
   STROKE_COORD_MAX,
@@ -122,6 +124,21 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
     throw new Refusal(t('file.bad_header'));
   }
+  // The limits are known before a single frame is read. A clone frame is one
+  // word in the file and a whole copy in memory: a small crafted file would
+  // otherwise build millions of points before `checked` got to say no.
+  if (frameCount > MAX_FRAMES) {
+    throw new Refusal(t('file.over_limits'));
+  }
+  let points = 0;
+  const tally = (strokes: readonly { points: readonly number[] }[]) => {
+    for (const stroke of strokes) {
+      points += stroke.points.length / 2;
+    }
+    if (points > MAX_TOTAL_POINTS) {
+      throw new Refusal(t('file.over_limits'));
+    }
+  };
   const original = version >= 3 ? reader.string() : '';
 
   const tools: ToolDescriptor[] = [];
@@ -143,6 +160,7 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
         // A clone frame shares its predecessor's object in the reference; our
         // frames are independent, so it becomes a copy.
         const previous = frames[f - 1];
+        tally(previous?.strokes ?? []);
         frames.push({
           strokes: (previous?.strokes ?? []).map((stroke) => ({
             points: stroke.points.slice(),
@@ -151,7 +169,9 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
         });
         continue;
       }
-      frames.push({ strokes: readStrokes(reader, version, tools) });
+      const strokes = readStrokes(reader, version, tools);
+      tally(strokes);
+      frames.push({ strokes });
     }
     layers.push(name ? { hidden, name, frames } : { hidden, frames });
   }

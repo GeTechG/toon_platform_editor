@@ -15,6 +15,7 @@ import {
   type Plugin,
   type PluginBrush,
   type PluginBrushType,
+  type PluginExport,
   type PluginExporter,
   type PluginPreset,
   type PluginTool,
@@ -273,7 +274,13 @@ export class PluginRegistry {
     // unless the window called it off, and stopping is what was asked.
     const run: PluginExporter['run'] = async (scene, signal) => {
       try {
-        return await format.run(scene, signal);
+        const file: Partial<PluginExport> | null = await format.run(scene, signal);
+        // What comes back is handed to the browser as a download: a thing
+        // that is not a file is the format's fault, not the editor's.
+        if (!(file?.blob instanceof Blob)) {
+          throw new Error(`format ${id} returned no Blob`);
+        }
+        return { blob: file.blob, name: typeof file.name === 'string' && file.name.trim() ? file.name : 'toonop' };
       } catch (error) {
         if (!signal?.aborted) {
           this.breakDown(plugin, error);

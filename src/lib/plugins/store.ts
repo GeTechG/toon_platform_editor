@@ -85,6 +85,8 @@ async function write(what: string, run: (store: IDBObjectStore) => void): Promis
       const tx = db.transaction(STORE, 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      // A full disk aborts the commit: `abort` fires, `error` never does.
+      tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
       run(tx.objectStore(STORE));
     });
     return true;

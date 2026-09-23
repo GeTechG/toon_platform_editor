@@ -35,7 +35,8 @@ describe('sound never fails silently', () => {
   });
 
   it('the sound loops with the frames, so a short track is not silence later', () => {
-    expect(state).toContain('element.loop = true');
+    // Untied it loops; tied, the animation's loop re-seeks it (audit12).
+    expect(state).toContain('element.loop = !this.sync');
   });
 });
 

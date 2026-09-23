@@ -283,7 +283,9 @@ function synchsafe(bytes: Uint8Array, at: number): number {
 /**
  * An ID3 text frame: one encoding byte, then the string. UTF-16 is 2 without a
  * BOM (big-endian) or 1 with one of either order; `TextDecoder` does not
- * switch order on a BOM, so the order is read here.
+ * switch order on a BOM, so the order is read here. v2.4 lists several values
+ * split by NUL; they read as a list, since a NUL inside a credit is one the
+ * server's database will not store.
  */
 function decodeText(frame: Uint8Array): string {
   const body = frame.subarray(1);
@@ -294,14 +296,18 @@ function decodeText(frame: Uint8Array): string {
   // it — a cp1251 guess would garble the Western tags that are latin1.
   if (label === 'latin1') {
     try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(body).replace(/\0+$/, '');
+      return values(new TextDecoder('utf-8', { fatal: true }).decode(body));
     } catch {
       // not UTF-8: latin1 below
     }
   }
   try {
-    return new TextDecoder(label).decode(body).replace(/\0+$/, '');
+    return values(new TextDecoder(label).decode(body));
   } catch {
     return '';
   }
+}
+
+function values(text: string): string {
+  return text.split('\0').map((v) => v.trim()).filter(Boolean).join(', ');
 }

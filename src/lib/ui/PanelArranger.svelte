@@ -143,6 +143,18 @@
     target = null;
   }
 
+  /**
+   * The browser took the gesture (a rail panning under the finger, a system
+   * swipe): nothing is dropped — it was read as a drop, and a key only
+   * scrolled past jumped to wherever the last move had aimed.
+   */
+  function onPointerCancel(e: PointerEvent): void {
+    if (drag && e.pointerId === drag.pointerId) {
+      drag = null;
+      target = null;
+    }
+  }
+
   /** The drop the pointer is over now — measured, never applied. */
   function aim(x: number, y: number): Target | null {
     if (!drag) {
@@ -321,7 +333,7 @@
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
-  onpointercancel={onPointerUp}
+  onpointercancel={onPointerCancel}
   onkeydown={onKeydown}
 />
 
@@ -387,10 +399,15 @@
           aria-label={t('arrange.workspace')}
           value={picked}
           onchange={(e) => {
-            picked = e.currentTarget.value;
-            if (picked) {
-              editor.applyWorkspace(Number(picked));
+            const value = e.currentTarget.value;
+            if (value) {
+              // A «no» to losing the hand's arrangement: the list shows what is on.
+              if (!editor.applyWorkspace(Number(value))) {
+                e.currentTarget.value = picked;
+                return;
+              }
             }
+            picked = value;
           }}
         >
           <option value="">{t('arrange.workspace_none')}</option>
@@ -422,7 +439,10 @@
           disabled={!picked}
           onclick={() => {
             editor.deleteWorkspace(Number(picked));
-            picked = '';
+            // Still there after a «no».
+            if (!editor.workspaces.some((w) => String(w.id) === picked)) {
+              picked = '';
+            }
           }}
           title={t('arrange.delete_title')}
         >{t('arrange.delete')}</button>

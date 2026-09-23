@@ -102,9 +102,14 @@ function eraseCells(
 ): ErasableStroke[] {
   const pieces: ErasableStroke[] = [];
   const points = drawnCells(stroke.points, width);
+  const half = width / 2;
+  // A miss gives the stroke back as it was stored, not with every in-between
+  // cell written out: that would be a rewrite, and an undo step, of nothing.
+  if (!points.some((v, i) => i % 2 === 0 && inside(v + half, points[i + 1] + half, gesture, radius))) {
+    return [stroke];
+  }
   let run: number[] = [];
   for (let i = 0; i < points.length; i += 2) {
-    const half = width / 2;
     if (inside(points[i] + half, points[i + 1] + half, gesture, radius)) {
       if (run.length >= 2) {
         pieces.push({ points: run, tool_id: stroke.tool_id });
@@ -309,4 +314,17 @@ export function eraseStrokes(
     result.push(...eraseStroke(stroke, gesture, radius));
   }
   return result;
+}
+
+/**
+ * Whether the eraser took anything: the pieces differ from the strokes in any
+ * coordinate, not only in count — a trimmed end keeps its point count.
+ */
+export function strokesChanged(
+  before: readonly ErasableStroke[],
+  after: readonly ErasableStroke[],
+): boolean {
+  return after.length !== before.length
+    || after.some((piece, i) => piece.points.length !== before[i].points.length
+      || piece.points.some((v, j) => v !== before[i].points[j]));
 }

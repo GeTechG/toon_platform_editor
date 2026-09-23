@@ -85,7 +85,7 @@ import {
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
-import { eraseStrokes } from '../tools/mega-eraser';
+import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
   EMPTY_TRANSFORM,
@@ -146,6 +146,7 @@ import {
   panelItemVisible,
   showPanelItem,
   samePanels,
+  slotOf,
   type PanelLayout,
   type PanelSlot,
 } from './panels';
@@ -253,7 +254,7 @@ export class EditorState {
   /** Reference checkbox: the stroke width follows the scale. Sticky across selections. */
   transformWidthWithScale = $state(false);
   /** The live gesture of a tool that brought its own (plugins): the cells as they were on press. */
-  private pluginGesture: { snapshots: CellSnapshot[] } | null = null;
+  private pluginGesture: { snapshots: CellSnapshot[]; wrote: boolean } | null = null;
   /**
    * Bumped whenever the register changed. The register is plain data outside
    * the runes (it is read by pure tests), so this is what tells the rail and
@@ -477,6 +478,7 @@ export class EditorState {
       this.floatPos = saved.floatPos;
       this.defaultBrush = saved.drawing.defaultBrush;
       this.byTool = copyBrushes(saved.drawing.byTool);
+      this.brushType = saved.drawing.brushType;
       this.pickSource = saved.drawing.pickSource;
       this.panelHeight = saved.drawing.panelHeight;
       this.sides = saved.drawing.sides;
@@ -613,6 +615,12 @@ export class EditorState {
   set brushSizeLogical(value: number) {
     const range = this.brushRange;
     this.editBrush({ width: Math.min(range.max, Math.max(range.min, Math.round(value))) });
+  }
+
+  /** The type picked in the brush box: it stays until the next preset, reloads included. */
+  setBrushType(type: BrushType): void {
+    this.brushType = type;
+    this.persistUiConfig();
   }
 
   setBrushSmooth(value: number): void {
@@ -861,16 +869,21 @@ export class EditorState {
     saveWorkspaces(this.workspaces);
   }
 
-  applyWorkspace(id: number): void {
+  /** False when the panels made by hand were kept (the question got a «no»). */
+  applyWorkspace(id: number): boolean {
     const workspace = this.workspaces.find((w) => w.id === id);
     if (!workspace) {
-      return;
+      return false;
+    }
+    if (!this.mayReplacePanels(workspace.panels, this.preset, t('arrange.workspace_confirm', { name: workspace.name }))) {
+      return false;
     }
     // A stored workspace is a runes proxy here, which structuredClone refuses:
     // snapshot it back to plain data before it becomes the live arrangement.
     const plain = $state.snapshot(workspace);
     this.floatPos = plain.floatPos;
     this.setPanels(plain.panels);
+    return true;
   }
 
   /** One arrangement as a file: the named one, or the live one by default. */
@@ -893,13 +906,24 @@ export class EditorState {
   }
 
   deleteWorkspace(id: number): void {
+    const name = this.workspaces.find((w) => w.id === id)?.name ?? '';
+    if (!this.confirmed(t('arrange.delete_confirm', { name }))) {
+      return;
+    }
     this.workspaces = removeWorkspace(this.workspaces, id);
     saveWorkspaces(this.workspaces);
   }
 
   /** Back into the panel this layout keeps it in. */
   showPanelItem(id: string): void {
-    this.panels = showPanelItem(this.panels, id);
+    this.panels = showPanelItem(this.panels, id, presetPanels(this.preset));
+    // A folded panel draws none of its items: the window would just vanish.
+    const at = slotOf(this.panels, id);
+    if (at?.slot === 'left' || at?.slot === 'right') {
+      this.sides[at.slot].collapsed = false;
+    } else if (at) {
+      this.panelCollapsed = false;
+    }
     this.persistUiConfig();
   }
 
@@ -907,7 +931,7 @@ export class EditorState {
   togglePanelItem(id: string): void {
     this.panels = panelItemVisible(this.panels, id)
       ? hidePanelItem(this.panels, id)
-      : showPanelItem(this.panels, id);
+      : showPanelItem(this.panels, id, presetPanels(this.preset));
     this.ensureActiveLayerVisible();
     this.persistUiConfig();
   }
@@ -1007,6 +1031,9 @@ export class EditorState {
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
     this.#write((doc) => renameLayer(doc, at, t('layer.default_name', { n: this.layerCounter })));
+    // The selection holds layer numbers, and every one from `at` up has just
+    // shifted: left alone, the lasso and H took the layer under the old number.
+    this.collapseSelection();
     this.touched = true;
   }
 
@@ -1036,6 +1063,7 @@ export class EditorState {
     this.#write((doc) => removeLayer(doc, removed));
     this.layerColors.splice(removed, 1);
     this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
+    this.collapseSelection();
     this.pushStructure(before);
   }
 
@@ -1052,6 +1080,7 @@ export class EditorState {
     this.#write((doc) => moveLayer(doc, from, to));
     this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1));
     this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
+    this.collapseSelection();
     this.touched = true;
   }
 
@@ -1097,10 +1126,14 @@ export class EditorState {
    * arrangement made by hand — one that is neither `next` already nor the
    * current preset's own — and muted by Alt+Enter like every other question.
    */
-  private mayReplacePanels(next: PanelLayout, id = this.preset): boolean {
+  private mayReplacePanels(next: PanelLayout, id = this.preset, question?: string): boolean {
     return samePanels(this.panels, next)
       || samePanels(this.panels, presetPanels(this.preset))
-      || this.confirmed(t('arrange.replace_confirm', { name: presets().find((p) => p.id === id)?.label ?? id }));
+      // Saved under a name, it is not lost: the list brings it back.
+      || this.workspaces.some((w) => samePanels(this.panels, w.panels))
+      || (question !== undefined
+        ? this.confirmed(question)
+        : this.confirmed(t('arrange.replace_confirm', { name: presets().find((p) => p.id === id)?.label ?? id })));
   }
 
   /** A key hint as shown: with single-letter keys off, their letters go (owner, 11th audit). */
@@ -1294,7 +1327,7 @@ export class EditorState {
 
   /**
    * Back to the single active cell. A block left over the frame you have just
-   * left would still be what V pastes into, so every frame operation ends here.
+   * left would still be what V pastes into, so every frame and layer operation ends here.
    */
   collapseSelection(): void {
     this.selection = { frames: [this.activeFrame], layers: [this.activeLayer] };
@@ -1648,6 +1681,7 @@ export class EditorState {
     this.#write((doc) => addStroke(doc, this.activeLayer, this.activeFrame, {
       points: stroke.points,
       tool,
+      ...pressureOf(stroke),
     }));
     this.touched = true;
   }
@@ -1697,8 +1731,7 @@ export class EditorState {
     // down; the eraser knows only the contour, which no tool lays down.
     const after = eraseStrokes(before, gesture, radius, this.doc.tools, (tool) =>
       plugins.tools().find((entry) => entry.stroke?.kind === tool.kind)?.stroke?.cut);
-    if (after.length === before.length
-      && after.every((piece, i) => piece.points.length === before[i].points.length)) {
+    if (!strokesChanged(before, after)) {
       return;
     }
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
@@ -1785,8 +1818,11 @@ export class EditorState {
   /**
    * Replaces the accumulated transform — what the fields, the handles and the
    * hotkeys all write, so it is also the one place a session step is recorded.
+   * `continuing` is the same gesture going on — a drag's later moves, a number
+   * still being typed — and replaces the step it began instead of filing one
+   * per event.
    */
-  setTransform(session: TransformSession): void {
+  setTransform(session: TransformSession, continuing = false): void {
     const open = this.transform;
     if (!open) {
       return;
@@ -1794,7 +1830,9 @@ export class EditorState {
     this.transform = {
       ...open,
       session,
-      past: [...open.past, open.session].slice(-TRANSFORM_HISTORY_LIMIT),
+      past: continuing && open.past.length > 0
+        ? open.past
+        : [...open.past, open.session].slice(-TRANSFORM_HISTORY_LIMIT),
       future: [],
     };
   }
@@ -1903,14 +1941,19 @@ export class EditorState {
     if (this.playing || layers.length === 0) {
       return false;
     }
-    this.pluginGesture = { snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }) };
+    this.pluginGesture = { snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }), wrote: false };
     return true;
   }
 
-  /** Pointer up: the whole gesture becomes one undo step. */
+  /**
+   * Pointer up: the whole gesture becomes one undo step — if it wrote
+   * anything. An empty step would take the first Ctrl+Z and the redo stack.
+   */
   endPluginGesture(): void {
     if (this.pluginGesture) {
-      this.pushEdit(this.pluginGesture.snapshots);
+      if (this.pluginGesture.wrote) {
+        this.pushEdit(this.pluginGesture.snapshots);
+      }
       this.pluginGesture = null;
     }
   }
@@ -1937,16 +1980,23 @@ export class EditorState {
     if (!gesture) {
       return;
     }
-    const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
-    const next = editCells(cells, fn);
-    gesture.snapshots.forEach(({ layer, frame }, i) => {
-      // A fresh cell object, not a rewrite in place: that identity change is
-      // what tells the canvas its buffers are stale.
-      this.#write((doc) => replaceStrokes(doc, layer, frame, next[i]));
-    });
-    this.touched = true;
-    if (standalone) {
-      this.endPluginGesture();
+    // A plugin that throws from its own window's button would otherwise leave
+    // this gesture open: the next edit joined a stale one, on a frame since
+    // left, and never became a step of undo.
+    try {
+      const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+      const next = editCells(cells, fn, this.doc.tools);
+      gesture.snapshots.forEach(({ layer, frame }, i) => {
+        // A fresh cell object, not a rewrite in place: that identity change is
+        // what tells the canvas its buffers are stale.
+        this.#write((doc) => replaceStrokes(doc, layer, frame, next[i]));
+      });
+      gesture.wrote = true;
+      this.touched = true;
+    } finally {
+      if (standalone) {
+        this.endPluginGesture();
+      }
     }
   }
 
@@ -2118,6 +2168,7 @@ export class EditorState {
       drawing: {
         defaultBrush: this.defaultBrush,
         byTool: copyBrushes(this.byTool),
+        brushType: this.brushType,
         pickSource: this.pickSource,
         panelHeight: this.panelHeight,
         sides: $state.snapshot(this.sides),

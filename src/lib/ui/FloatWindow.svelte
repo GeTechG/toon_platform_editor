@@ -24,6 +24,8 @@
   let el = $state<HTMLDivElement | undefined>();
   /** The size and the stage are read once, on the press: neither changes during a drag. */
   let grab: {
+    /** The finger that took it: a second one on the bar steered it too. */
+    pointerId: number;
     x: number;
     y: number;
     left: number;
@@ -128,6 +130,7 @@
     }
     // Raised by the capture listener on the whole window, before this.
     grab = {
+      pointerId: e.pointerId,
       x: e.clientX,
       y: e.clientY,
       left: shown.left,
@@ -140,7 +143,7 @@
   }
 
   function onMove(e: PointerEvent): void {
-    if (!grab) {
+    if (!grab || e.pointerId !== grab.pointerId) {
       return;
     }
     const next = clampWindowPosition(
@@ -152,8 +155,10 @@
     editor.setFloatPos(id, next.left, next.top);
   }
 
-  function onUp(): void {
-    grab = null;
+  function onUp(e: PointerEvent): void {
+    if (grab?.pointerId === e.pointerId) {
+      grab = null;
+    }
   }
 
   /** Arrow keys move it too — a drag must never be the only way (WCAG 2.5.7). */

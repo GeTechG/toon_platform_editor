@@ -15,7 +15,8 @@ const UNITS = ['size.b', 'size.kb', 'size.mb', 'size.gb'];
 export function formatFileSize(bytes: number): string {
   let value = bytes;
   let unit = 0;
-  while (value >= 1024 && unit < UNITS.length - 1) {
+  // Compared as it will be printed: 1023.99 КБ reads «1024 КБ», which is 1 МБ.
+  while (Math.round(value) >= 1024 && unit < UNITS.length - 1) {
     value /= 1024;
     unit++;
   }

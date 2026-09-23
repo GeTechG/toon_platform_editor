@@ -108,6 +108,8 @@ export interface DrawingUiConfig {
    * five pixels whoever's line they are.
    */
   byTool: Record<BrushToolId, BrushRecord>;
+  /** The type picked in the brush box; the preset's own until one is picked. */
+  brushType: BrushType;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
   /** Studio bottom-panel height in CSS px, set by dragging its divider. */
@@ -166,6 +168,7 @@ const DEFAULT_BRUSH_TOOL = 'toonop-brush';
 export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   defaultBrush: DEFAULT_BRUSH_TOOL,
   byTool: {},
+  brushType: NORMAL_BRUSH_TYPE,
   pickSource: 'canvas',
   panelHeight: PANEL_HEIGHT_MIN,
   sides: {
@@ -406,7 +409,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     preset,
     panels,
     floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
-    drawing: normalizeDrawingConfig(drawing, presetDefaultBrush(preset)),
+    drawing: normalizeDrawingConfig(drawing, presetDefaultBrush(preset), presetBrushType(preset)),
     settings: normalizeSettings((data as Record<string, unknown>).settings),
   };
 }
@@ -545,7 +548,7 @@ function brushRecords(stored: Record<string, unknown>): Record<BrushToolId, Brus
   return Object.keys(stored).length > 0 ? normalizeBrushes(stored, {}, byTool(FALLBACK_BRUSH)) : {};
 }
 
-function normalizeDrawingConfig(value: unknown, defaultBrush: string): DrawingUiConfig {
+function normalizeDrawingConfig(value: unknown, defaultBrush: string, brushType: BrushType): DrawingUiConfig {
   const drawing = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const buckets: CanvasBucket[] = Object.entries(record(drawing.byCanvas))
     .map(([canvas, stored]) => ({ canvas: Number(canvas), brushes: storedBrushes(stored) }));
@@ -559,6 +562,7 @@ function normalizeDrawingConfig(value: unknown, defaultBrush: string): DrawingUi
   return {
     defaultBrush,
     byTool: brushRecords(drawing.byTool !== undefined ? record(drawing.byTool) : fromCanvasBuckets(buckets)),
+    brushType: typeof drawing.brushType === 'string' ? drawing.brushType : brushType,
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
     panelHeight: clampNumber(
       drawing.panelHeight,

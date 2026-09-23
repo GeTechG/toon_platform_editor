@@ -10,14 +10,12 @@
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
   import { dragTargetIndex, layerGridStep } from './frame-selection';
-  import LayerThumb from './LayerThumb.svelte';
   import { rowHeight } from './thumb-size';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
-  // `compact` drops the per-row thumbnail: the studio timeline already shows
-  // every cell, so a second thumbnail in the layer column would be noise.
-  let { editor, compact = false }: { editor: EditorState; compact?: boolean } = $props();
+  // No thumbnail per row: the timeline beside it already shows every cell.
+  let { editor }: { editor: EditorState } = $props();
 
   /**
    * Row height in px — one number for the whole list, so a drag converts
@@ -412,12 +410,6 @@
         </button>
         </span>
 
-        {#if !compact}
-          <span class="thumb" aria-hidden="true" class:hidden={editor.doc.layers[layerIndex].hidden}>
-            <LayerThumb doc={editor.doc} {layerIndex} frameIndex={editor.displayedFrame} maxW={28} />
-          </span>
-        {/if}
-
         <span class="cell" role="gridcell">
         <button
           class="tag"
@@ -534,14 +526,6 @@
     border-radius: var(--r-sm, 7px);
     background: transparent;
     cursor: pointer;
-  }
-  .thumb {
-    display: block;
-    border: 1px solid var(--hairline);
-    line-height: 0;
-  }
-  .thumb.hidden {
-    opacity: 0.35;
   }
   .name {
     flex: 1;

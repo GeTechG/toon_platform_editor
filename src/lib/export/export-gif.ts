@@ -22,6 +22,9 @@ import {
 import type { ExportRequest, ExportResponse } from './worker';
 import { t } from '../i18n';
 
+/** Frames of pass two handed to the worker ahead of the one it is encoding. */
+const FRAMES_IN_FLIGHT = 2;
+
 export interface ExportGifOptions extends RasterizeOptions {
   signal?: AbortSignal;
   onProgress?: (done: number, total: number, stage: ExportStage) => void;
@@ -42,9 +45,20 @@ export async function exportGif(
   // A worker that failed (or finished) settles this at once; the render loops
   // below see it and stop instead of drawing both passes for nobody.
   let settled = false;
+  // Encoding a frame takes the worker longer than drawing it takes us: sent
+  // unasked, the frames of pass two waited in its message queue — all of them,
+  // 14.7 MB each at 2560 px, the very pile the two passes exist to avoid.
+  let encoded = 0;
+  let wake: (() => void) | null = null;
+  const caughtUp = async (sent: number): Promise<void> => {
+    while (!settled && sent - encoded > FRAMES_IN_FLIGHT) {
+      await new Promise<void>((resolve) => (wake = resolve));
+    }
+  };
   const bytes = new Promise<Uint8Array<ArrayBuffer>>((resolve, reject) => {
     const done = (settle: () => void) => {
       settled = true;
+      wake?.();
       worker.terminate();
       signal?.removeEventListener('abort', onAbort);
       settle();
@@ -56,6 +70,8 @@ export async function exportGif(
     worker.onmessage = (e: MessageEvent<ExportResponse>) => {
       const msg = e.data;
       if (msg.type === 'progress') {
+        encoded = msg.done;
+        wake?.();
         onProgress?.(msg.done, msg.total, 'encode');
       } else if (msg.type === 'done') {
         done(() => resolve(new Uint8Array(msg.bytes)));
@@ -91,11 +107,13 @@ export async function exportGif(
     send({ type: 'begin' });
     // Pass two: the bytes. Progress for this half comes back from the worker,
     // one message per frame it has actually encoded.
+    let sent = 0;
     for await (const frame of rasterizeFrames(doc, { ...raster, signal })) {
       if (settled) {
         break;
       }
       send({ type: 'frame', frame }, [frame.data]);
+      await caughtUp(++sent);
     }
     throwIfAborted(signal);
     send({ type: 'finish' });

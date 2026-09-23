@@ -56,8 +56,19 @@ export class AudioTrackState {
    * one-frame document a tied track is rewound twelve times a second, and the
    * preview looks right while sounding like nothing at all. A track stored
    * without the flag still reads as tied — that was its behaviour.
+   *
+   * The element's own looping goes with it the moment the switch moves: set
+   * only on a press of «Проиграть», untying mid-preview left a short track
+   * stopped at its end for the rest of the preview.
    */
-  sync = $state(false);
+  #sync = $state(false);
+  get sync(): boolean {
+    return this.#sync;
+  }
+  set sync(value: boolean) {
+    this.#sync = value;
+    if (this.#element) this.#element.loop = !value;
+  }
   /** Why the last load was refused, shown next to the note button. */
   error = $state('');
   /** A picked file is being read; a long one takes seconds on a cheap phone. */
@@ -194,10 +205,11 @@ export class AudioTrackState {
     this.author = author.slice(0, AUDIO_MAX_CREDIT);
     this.#url = URL.createObjectURL(blob);
     const element = new Audio(this.#url);
-    // The frames loop, so the sound does too — a track shorter than the
-    // animation would otherwise run out part-way through the preview and
-    // leave the rest of it silent. Same rule as the share player.
-    element.loop = true;
+    // Untied, the frames loop, so the sound does too — a track shorter than
+    // the animation would otherwise run out part-way through the preview and
+    // leave the rest of it silent. Same rule as the share player. Tied, the
+    // loop is the animation's (see `playFrom`).
+    element.loop = !this.sync;
     // Fetch it now rather than on the first press: a preview started against
     // an element that has not loaded yet plays nothing and says nothing.
     element.preload = 'auto';
@@ -262,9 +274,7 @@ export class AudioTrackState {
     }
     // Tied, the loop belongs to the animation, not to the track: the element
     // must not wrap on its own, or the tail of a long pass would hear the
-    // beginning of the track again. Untied, looping under the frames is the
-    // whole point.
-    this.#element.loop = !this.sync;
+    // beginning of the track again (`sync` keeps `loop` in step).
     this.#element.currentTime = at;
     void this.#element.play().then(
       () => {

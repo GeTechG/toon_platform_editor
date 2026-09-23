@@ -35,9 +35,10 @@ describe('the palette grid answers every way of pressing', () => {
     // The cells listened to mousedown and keydown only; a virtual cursor sends
     // a bare click (detail 0), and nothing happened.
     const grid = palette.match(/<div class="grid" class:remover[\s\S]*?<\/div>/)?.[0] ?? '';
-    expect(grid).toMatch(/onclick=\{\(e\) => e\.detail === 0/);
+    // pressesCell takes a detail-0 click from any pointer (audit12-colour).
+    expect(grid).toMatch(/onclick=\{\(e\) => pressesCell\('click', pointerKind, e\.detail\)/);
     const preview = palette.match(/<div class="grid preview-grid"[\s\S]*?<\/div>/)?.[0] ?? '';
-    expect(preview).toMatch(/onclick=\{\(e\) => e\.detail === 0/);
+    expect(preview).toMatch(/onclick=\{\(e\) => pressesCell\('click', pointerKind, e\.detail\)/);
   });
 
   it('removing a colour keeps focus in the grid', () => {

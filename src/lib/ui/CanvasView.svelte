@@ -48,6 +48,7 @@
     swapStrokeColours,
     previewStrokeSession,
     previewStrokePressure,
+    feelsPressure,
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
@@ -91,7 +92,8 @@
   let pluginGrab: { pointerId: number; spec: NonNullable<ReturnType<typeof toolSpec>> } | null = null;
   /**
    * Drag inside an open transform: which zone was pressed, the session it
-   * started from, where it started (document units) and the axis shift locked.
+   * started from, where it started (document units), the axis shift locked,
+   * and whether it has moved yet — the whole drag is one step of the session.
    */
   let grab: {
     pointerId: number;
@@ -100,6 +102,7 @@
     x: number;
     y: number;
     axis: 'x' | 'y' | null;
+    moved: boolean;
   } | null = null;
   /** Zone the pointer hovers inside an open transform — only the cursor reads it. */
   let hoverMode = $state<HitMode>('none');
@@ -533,7 +536,7 @@
     const color = erase ? BACKGROUND_COLOR : session.descriptor.color;
     const geometry = session.rules.previewGeometry ?? session.descriptor.geometry;
     // A pen's line changes width along it and is redrawn whole, like a feather.
-    const grows = session.pressureSamples.length === 0 && session.descriptor.kind === 'pencil'
+    const grows = !feelsPressure(session) && session.descriptor.kind === 'pencil'
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
       return {
@@ -680,6 +683,12 @@
     );
   }
 
+  /** The pointer is on the table, beside the sheet rather than over it. */
+  function offSheet(e: { clientX: number; clientY: number }): boolean {
+    const [x, y] = toDocUnits(e);
+    return x < 0 || y < 0 || x >= editor.doc.width || y >= editor.doc.height;
+  }
+
   /**
    * Color under the pointer. "Canvas" reads the visible composite of the
    * current frame (no onion, no live stroke); "Layer" reads the active layer
@@ -698,20 +707,23 @@
     if (!layers) {
       return null;
     }
-    pickEl = buffer(pickEl, canvasEl.width, canvasEl.height);
+    // One pixel is all it reads, so one pixel is all it flattens: the layers
+    // land shifted onto a 1×1 scratch. A stage-sized copy was three full blits
+    // every 100 ms of the preview and megabytes held for the rest of the session.
+    pickEl = buffer(pickEl, 1, 1);
     // Made for reading: the preview reads a pixel back every 100 ms, and a
     // GPU-backed scratch paid a full readback for each.
     const pctx = pickEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx;
     pctx.setTransform(1, 0, 0, 1, 0, 0);
-    pctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    pctx.clearRect(0, 0, 1, 1);
     if (source === 'canvas') {
-      pctx.drawImage(layers.below, 0, 0);
+      pctx.drawImage(layers.below, -px, -py);
     }
-    pctx.drawImage(layers.active, 0, 0);
+    pctx.drawImage(layers.active, -px, -py);
     if (source === 'canvas') {
-      pctx.drawImage(layers.above, 0, 0);
+      pctx.drawImage(layers.above, -px, -py);
     }
-    const [r, g, b, a] = (pctx as unknown as CanvasRenderingContext2D).getImageData(px, py, 1, 1).data;
+    const [r, g, b, a] = (pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, 1, 1).data;
     // Reference: only a fully opaque pixel carries a colour. The soft rim of
     // a stroke reads as emptiness, so the pipette never picks a washed-out
     // version of the line it was aimed at.
@@ -821,7 +833,13 @@
       return;
     }
     if (e.ctrlKey || e.metaKey) {
+      // A trackpad pinch is a stream of these: it moves the picture it grabbed,
+      // as two fingers on glass do, and composes afresh once the stream stops.
+      takeNavShot();
+      clearTimeout(wheelZoomTimer);
+      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
       zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
+      editor.flashScaleMenu();
       return;
     }
     const { notch, rest } = wheelNotch(wheelRest, e.deltaY, e.deltaMode);
@@ -837,6 +855,23 @@
       e.clientY - rect.top,
       stage,
     );
+    editor.flashScaleMenu();
+  }
+
+  /** How long a Ctrl+wheel stream may pause before it counts as over, ms. */
+  const WHEEL_ZOOM_IDLE_MS = 150;
+  /** Pending end of a Ctrl+wheel stream; 0 when none is running. */
+  let wheelZoomTimer = 0;
+
+  function endWheelZoom(): void {
+    if (!wheelZoomTimer) {
+      return;
+    }
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = 0;
+    if (!navigating()) {
+      dropNavShot();
+    }
   }
 
   /** The tool the pen's eraser end took over from, given back when it flips. */
@@ -895,6 +930,9 @@
       e.preventDefault();
       return;
     }
+    // A press right after a trackpad pinch draws on the picture as it is now,
+    // not on the moved shot of it.
+    endWheelZoom();
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
@@ -905,7 +943,7 @@
       const mode = hitMode(x, y, editor.transform.box, editor.transform.session, hitScale(e));
       hoverMode = mode;
       if (mode !== 'none') {
-        grab = { pointerId: e.pointerId, mode, base: editor.transform.session, x, y, axis: null };
+        grab = { pointerId: e.pointerId, mode, base: editor.transform.session, x, y, axis: null, moved: false };
         canvasEl.setPointerCapture(e.pointerId);
         return;
       }
@@ -939,6 +977,11 @@
       return;
     }
     if (editor.tool === 'pipette') {
+      // The table beside the sheet holds no colour and no emptiness to erase:
+      // a press that missed the sheet takes nothing, and the tool stays.
+      if (offSheet(e)) {
+        return;
+      }
       const picked = pickColor(e);
       // Emptiness arms the eraser and keeps both colours (reference: alpha ≠ 255).
       // Through the rules, so an eraser taken off the panel is not armed.
@@ -1057,9 +1100,9 @@
     scheduleDraw();
   }
 
-  /** Whether the hand is moving the picture right now — pan, or two fingers. */
+  /** Whether the hand is moving the picture right now — pan, two fingers, or a trackpad pinch. */
   function navigating(): boolean {
-    return panning !== null || gesture !== null;
+    return panning !== null || gesture !== null || wheelZoomTimer !== 0;
   }
 
   /** Fingers let go of the sheet at once: the picture is composed again, once. */
@@ -1154,14 +1197,17 @@
     const [x, y] = toDocUnits(e, rect);
     const start = { x: grab.x, y: grab.y };
     const pos = { x, y };
+    // The first move files the step, the rest of the drag replaces it.
+    const continuing = grab.moved;
+    grab.moved = true;
     if (grab.mode === 'move') {
       const moved = movedBy(grab.base, start, pos, e.shiftKey, grab.axis);
       grab.axis = moved.axis;
-      editor.setTransform(moved.session);
+      editor.setTransform(moved.session, continuing);
     } else if (grab.mode === 'rotate') {
-      editor.setTransform(rotatedTo(grab.base, open.box, start, pos, e.ctrlKey || e.metaKey));
+      editor.setTransform(rotatedTo(grab.base, open.box, start, pos, e.ctrlKey || e.metaKey), continuing);
     } else {
-      editor.setTransform(scaledBy(grab.base, open.box, grab.mode, start, pos, e.shiftKey));
+      editor.setTransform(scaledBy(grab.base, open.box, grab.mode, start, pos, e.shiftKey), continuing);
     }
   }
 

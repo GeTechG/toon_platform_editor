@@ -406,9 +406,12 @@ export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, 
   return next;
 }
 
-/** Back into the slot the layout default gives it. */
-export function showPanelItem(layout: PanelLayout, id: string): PanelLayout {
-  const home = defaultPanels();
+/**
+ * Back into the slot `home` (the preset's arrangement) gives it, or the
+ * editor's own default where the preset puts it away.
+ */
+export function showPanelItem(layout: PanelLayout, id: string, preset?: PanelLayout): PanelLayout {
+  const home = preset && !preset.hidden.includes(id) ? preset : defaultPanels();
   if (home.left.includes(id)) {
     return movePanelItem(layout, id, 'left');
   }

@@ -13,15 +13,19 @@ interface ErrorConsole {
 }
 
 const LIMIT = 200;
+/** One line's length: an object logged whole (a document) is megabytes. */
+const LINE_LIMIT = 4000;
 
 /** A thrown thing as the log wants it: an error with its stack, an object with its fields. */
 function describe(what: unknown): string {
   if (what instanceof Error) {
-    return what.stack ?? what.message;
+    // Firefox and Safari write a stack of frames only, without the message.
+    const head = `${what.name}: ${what.message}`;
+    return what.stack?.includes(what.message) ? what.stack : `${head}\n${what.stack ?? ''}`.trimEnd();
   }
   if (typeof what === 'object' && what !== null) {
     try {
-      return JSON.stringify(what);
+      return JSON.stringify(what) ?? String(what);
     } catch {
       return String(what);
     }
@@ -37,7 +41,8 @@ export function createErrorLog() {
     if (lines.length >= LIMIT) {
       lines.shift();
     }
-    lines.push(`${new Date().toISOString()} ${describe(what)}`);
+    const text = describe(what);
+    lines.push(`${new Date().toISOString()} ${text.length > LINE_LIMIT ? `${text.slice(0, LINE_LIMIT)}…` : text}`);
   };
 
   return {

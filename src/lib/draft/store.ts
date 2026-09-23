@@ -5,6 +5,8 @@
  * throws to the caller, so drawing is never interrupted by storage.
  */
 
+import { parseDraft } from './restore';
+
 const DB_NAME = 'toon-editor';
 const STORE = 'drafts';
 /** Version 1 kept a single draft under one fixed key; carried over on upgrade. */
@@ -237,6 +239,9 @@ async function updateDraft(
       };
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      // A full quota aborts the commit: `abort` fires, `error` never does,
+      // and a promise left pending here held up every write queued after it.
+      tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
     });
     return true;
   } catch (err) {
@@ -323,9 +328,12 @@ export async function deleteAllDrafts(): Promise<void> {
   }
 }
 
-/** Attaches, replaces or (with `null`) removes the session's track. Never throws. */
-export async function setDraftAudio(id: string, audio: DraftAudio | null): Promise<void> {
-  await queueWrite(() =>
+/**
+ * Attaches, replaces or (with `null`) removes the session's track. Never
+ * throws; `false` is a track that did not fit (see `updateDraft`).
+ */
+export async function setDraftAudio(id: string, audio: DraftAudio | null): Promise<boolean> {
+  return queueWrite(() =>
     updateDraft(id, 'draft audio save', (previous) => {
       if (!previous) {
         // Nothing drawn yet, or the record is gone: a track alone is not a draft.
@@ -355,6 +363,9 @@ async function removeDraft(id: string): Promise<void> {
       tx.objectStore(STORE).delete(id);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      // A full quota aborts the commit: `abort` fires, `error` never does,
+      // and a promise left pending here held up every write queued after it.
+      tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
     });
   } catch (err) {
     console.warn('draft delete failed:', err);
@@ -457,7 +468,8 @@ export async function exportDrafts(
  * the editor used to write. An id
  * already in use is reminted rather than overwritten — an import must never
  * swallow a draft already on the device — and a record that will not read is
- * counted as broken instead of stopping the rest. Never throws.
+ * counted as broken instead of stopping the rest. Throws only when storage
+ * refuses a write (a full quota): what went in before it stays.
  */
 export async function importDrafts(raw: string): Promise<{ loaded: number; broken: number }> {
   let data: unknown;
@@ -481,12 +493,40 @@ export async function importDrafts(raw: string): Promise<{ loaded: number; broke
     }
     const fresh = taken.has(record.id) ? newDraftId() : record.id;
     taken.add(fresh);
-    await queueWrite(() =>
+    const ok = await queueWrite(() =>
       updateDraft(fresh, 'draft import', () => ({ ...record, id: fresh })),
     );
+    if (!ok) {
+      // Storage full: what did go in stays, and the caller says it stopped.
+      throw new Error('draft import did not fit');
+    }
     loaded++;
   }
   return { loaded, broken };
+}
+
+const HEX = /^#[0-9a-f]{6}$/;
+const isInt = (value: unknown): boolean => Number.isInteger(value);
+const numbers = (value: unknown): boolean =>
+  typeof value === 'object' && value !== null
+  && Object.values(value).every((n) => typeof n === 'number' && Number.isFinite(n));
+
+/**
+ * A file's `state` is the editor's own shape, or it is left behind — the draft
+ * opens without it. The file is from anywhere: a colour like «red» went
+ * straight into the brush, every stroke after it failed the document schema,
+ * and the draft dropped off the list with the drawing in it.
+ */
+function isDraftState(value: unknown): value is DraftState {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const state = value as Record<string, unknown>;
+  return isInt(state.frame) && isInt(state.layer) && typeof state.tool === 'string'
+    && numbers(state.widths) && numbers(state.smooth) && numbers(state.minDistance)
+    && HEX.test(String(state.outline)) && HEX.test(String(state.fill))
+    && Array.isArray(state.palette) && state.palette.every((c) => typeof c === 'string' && HEX.test(c))
+    && (state.layerColors === undefined || (Array.isArray(state.layerColors) && state.layerColors.every(isInt)));
 }
 
 /** One entry of either file shape as a record, or null when it is not one. */
@@ -506,7 +546,9 @@ function readSave(entry: unknown): DraftRecord | null {
       return null;
     }
   }
-  if (doc == null) {
+  // A drawing that will not open is dropped from the list when it is read;
+  // counted as loaded, «загружено: 2» showed one card.
+  if (!parseDraft(doc)) {
     return null;
   }
   const record: DraftRecord = {
@@ -514,8 +556,8 @@ function readSave(entry: unknown): DraftRecord | null {
     updated: typeof save.updated === 'number' ? save.updated : Date.now(),
     doc,
   };
-  if (save.state && typeof save.state === 'object') {
-    record.state = save.state as DraftState;
+  if (isDraftState(save.state)) {
+    record.state = save.state;
   }
   try {
     if (typeof save.screenshot === 'string') {

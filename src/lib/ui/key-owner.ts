@@ -34,6 +34,15 @@ const PRESSED = new Set(['button', 'switch', 'checkbox', 'radio', 'option', 'tab
 const SLIDERS = new Set(['slider', 'separator', 'spinbutton', 'range']);
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
+/**
+ * The chords the table takes: the reference's Ctrl+Z, Y, C, V and M, and Ctrl+A
+ * / Ctrl+F7 (a frame in front). Every other Ctrl chord went down the table as
+ * well and was prevented — Ctrl+= thickened the brush instead of zooming the
+ * page (WCAG 1.4.4), Ctrl+P picked the pipette instead of printing, Ctrl+L
+ * never reached the address bar. Ctrl+S is the editor's own, before this.
+ */
+const CHORDS = new Set(['z', 'Z', 'y', 'Y', 'c', 'C', 'v', 'V', 'm', 'M', 'a', 'A', 'F7']);
+
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);
 
@@ -63,6 +72,9 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
     return 'control';
   }
   const chord = e.ctrlKey || e.metaKey;
+  if (chord && !CHORDS.has(e.key)) {
+    return 'control';
+  }
   if (!e.letterKeys && !chord && e.key.length === 1 && e.key !== ' ') {
     return 'control';
   }
@@ -95,10 +107,13 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
  * layout that types Latin (AZERTY, Dvorak) keeps its own letters.
  */
 export function latinKey(e: { key: string; code: string }): string {
-  if (e.key.length !== 1 || /[\x00-\x7f]/.test(e.key)) {
+  // A dead key types nothing yet — macOS makes Option+E one, US-International
+  // the backquote — so it is read by place too, as a lower-case letter.
+  const dead = e.key === 'Dead';
+  if (!dead && (e.key.length !== 1 || /[\x00-\x7f]/.test(e.key))) {
     return e.key;
   }
-  const upper = e.key !== e.key.toLowerCase();
+  const upper = !dead && e.key !== e.key.toLowerCase();
   const letter = /^Key([A-Z])$/.exec(e.code)?.[1];
   if (letter) {
     return upper ? letter : letter.toLowerCase();

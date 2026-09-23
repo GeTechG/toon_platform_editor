@@ -130,6 +130,9 @@
 
   /** Pointer events cover mouse and touch alike; the capture keeps the drag alive outside. */
   function drag(e: PointerEvent, target: 'surface' | 'bar'): void {
+    // The primary button only: a right click moved the colour and then opened
+    // the canvas's «save image» menu over it.
+    if (e.button !== 0) return;
     const el = e.currentTarget as HTMLCanvasElement;
     el.setPointerCapture(e.pointerId);
     // `move` prevents the default, which would otherwise focus the canvas for us.
@@ -139,7 +142,7 @@
 
   function move(e: PointerEvent, target: 'surface' | 'bar'): void {
     const el = e.currentTarget as HTMLCanvasElement;
-    if (e.buttons === 0 && e.type === 'pointermove') return;
+    if ((e.buttons & 1) === 0 && e.type === 'pointermove') return;
     e.preventDefault();
     const r = el.getBoundingClientRect();
     const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
@@ -198,12 +201,16 @@
       });
       offset = { x: inside.left - base.left, y: inside.top - base.top };
     };
+    // A drag the browser cancels (a pan, a palm) ends too: left listening, the
+    // next touch on the header stacked a second follower on the first.
     const stop = () => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', stop);
+      el.removeEventListener('pointercancel', stop);
     };
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
   }
 
   /** Per-pixel fill: 176² calls is nothing next to one canvas draw, and every model draws the same way. */
@@ -664,5 +671,14 @@
   .old:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: -2px;
+  }
+  /* Forced colors drop the box-shadow ring and repaint the border in one
+     system colour: on the matching corner of the field the pointer was gone.
+     They sit over drawn colour, so they keep their own pair. */
+  @media (forced-colors: active) {
+    .dot,
+    .knob {
+      forced-color-adjust: none;
+    }
   }
 </style>

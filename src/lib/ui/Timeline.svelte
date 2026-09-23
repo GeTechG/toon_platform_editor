@@ -77,12 +77,32 @@
     void row;
     void stripWidth;
     if (editor.playing || !strip) return;
+    // On a phone the strip grows to its rows and the panel scrolls instead:
+    // the active row (the bottom one, by default) opened under its fold.
+    // The panel alone — `scrollIntoView` would scroll the host page too.
+    if (strip.scrollHeight <= strip.clientHeight) {
+      void tick().then(() => revealInPanel(strip?.querySelector('.cell.active')));
+      return;
+    }
     const head = strip.querySelector<HTMLElement>('.head')?.offsetHeight ?? 0;
     const to = scrollToFrame(at, row, 0, strip.scrollTop, strip.clientHeight - head);
     if (to !== null) {
       strip.scrollTop = to;
     }
   });
+
+  /** Scrolls the nearest scrolling box below the page just enough to show `el`. */
+  function revealInPanel(el: Element | null | undefined): void {
+    let box = el?.parentElement;
+    while (box && box !== document.body && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) {
+      box = box.parentElement;
+    }
+    if (!el || !box || box === document.body) return;
+    const at = el.getBoundingClientRect();
+    const view = box.getBoundingClientRect();
+    if (at.bottom > view.bottom) box.scrollTop += at.bottom - view.bottom;
+    else if (at.top < view.top) box.scrollTop -= view.top - at.top;
+  }
 
   // The strip is one Tab stop — the active cell — and focus rides along with
   // it: when the arrows move the active cell while a cell has focus, focus
@@ -458,7 +478,7 @@
       bind:clientWidth={colPx}
       style:width={colWidth === null ? undefined : `${colWidth}px`}
     >
-      <LayerRows {editor} compact />
+      <LayerRows {editor} />
     </div>
 
     <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
@@ -494,7 +514,7 @@
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
     >
-      <div class="head" style:min-width={`${stripExtent}px`}>
+      <div class="head" style:min-width={`${stripExtent}px`} style:--pitch="{thumbWidth}px">
         {#if view.before > 0}
           <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
         {/if}
@@ -679,10 +699,13 @@
     z-index: 1;
     background: var(--canvas);
   }
+  /* Four digits never outgrow the cell: at 200 % text «1485» was 54 px over
+     48, and a portrait board's 28 px cell overflowed at 100 % — the header
+     read «14851486…». 0.42 of the pitch is four digits and a hair of air. */
   .num {
     flex: none;
     text-align: center;
-    font-size: 0.74rem;
+    font-size: min(0.74rem, calc(var(--pitch) * 0.42));
     line-height: 32px;
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
@@ -817,6 +840,10 @@
     display: flex;
     flex-direction: column;
     min-width: 13rem;
+    /* Six 44 px items outgrow a 200 px window (1280×800 at 400 %): the last
+       two sat under the edge. The menu scrolls inside the screen instead. */
+    max-height: calc(100dvh - 8px);
+    overflow-y: auto;
     padding: 4px;
     border-radius: var(--r-md);
     background: var(--paper);

@@ -191,8 +191,9 @@
   </svg>
 {/snippet}
 
-<!-- A phone turned with the list open: the list follows its button. -->
-<svelte:window onresize={() => picking && place()} />
+<!-- A phone turned, or the box scrolled, with the list open: the list follows
+     its button. -->
+<svelte:window onresize={() => picking && place()} onscrollcapture={() => picking && place()} />
 
 <div class="box brush-box" role="group" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
@@ -233,7 +234,7 @@
             if (to && !list?.contains(to)) list?.hidePopover();
           }}
           onclick={() => {
-            editor.brushType = option.id;
+            editor.setBrushType(option.id);
             list?.hidePopover();
           }}
         >

@@ -223,7 +223,8 @@ export function scaledBy(
   if (shift && signX && signY && base.scaleX !== 0) {
     scaleY = scaleX * (base.scaleY / base.scaleX);
   }
-  return { ...base, scaleX, scaleY };
+  // Crossing the centre mirrors; stopping on it would flatten for good.
+  return { ...base, scaleX: atLeastMin(scaleX, base.scaleX), scaleY: atLeastMin(scaleY, base.scaleY) };
 }
 
 /**
@@ -232,8 +233,15 @@ export function scaledBy(
  * that nothing could grow back once applied. NaN (an unfinished field) passes.
  */
 export function scaleFromField(percent: number): number {
-  const scale = percent / 100;
-  return Math.abs(scale) < SCALE_MIN ? (scale < 0 ? -SCALE_MIN : SCALE_MIN) : scale;
+  return atLeastMin(percent / 100);
+}
+
+/** A scale kept off zero by the 1 % floor, its sign kept (or `from`'s, at zero). */
+function atLeastMin(scale: number, from = 1): number {
+  if (Math.abs(scale) >= SCALE_MIN || Number.isNaN(scale)) {
+    return scale;
+  }
+  return (scale < 0 || (scale === 0 && from < 0)) ? -SCALE_MIN : SCALE_MIN;
 }
 
 /** One keyboard step: arrows move, Q/W rotate, +/- scale. */

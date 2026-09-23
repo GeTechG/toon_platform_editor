@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
-  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, mergePalettes, type SavedPalette } from './color-palette';
+  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, mergePalettes, pressesCell, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
   import ColourPicker from './ColourPicker.svelte';
   import { t } from '../i18n';
@@ -25,6 +25,8 @@
   /** The preview's grid is one Tab stop too — a saved palette holds up to 300 colours. */
   let previewRove = $state(0);
   const previewStop = $derived(preview && previewRove < preview.colours.length ? previewRove : 0);
+  /** What went down on a cell last: a mouse presses it then, a pen or a finger on release. */
+  let pointerKind = 'mouse';
 
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
@@ -193,12 +195,15 @@
   /**
    * A finger and a pen tip have no right button: their long press is the
    * `contextmenu` the mouse's right button also sends — that one already
-   * pressed the cell on `mousedown`, so it only loses its menu.
+   * pressed the cell on `mousedown`, so it only loses its menu. A pen or a
+   * finger presses on release (`pressesCell`), so the release after a long
+   * press is told it is not theirs: the fill must not land on the outline too.
    */
   function longPress(e: MouseEvent, press: () => void): void {
     e.preventDefault();
     if ((e as PointerEvent).pointerType === 'mouse' || !(e as PointerEvent).pointerType) return;
     press();
+    pointerKind = 'mouse';
   }
 
   /* Reference `bundle:7783`: the grid follows the chosen outline. */
@@ -264,6 +269,7 @@
           class="tile"
           data-id={p.id}
           class:active={preview?.id === p.id}
+          aria-expanded={preview?.id === p.id}
           onclick={() => (preview = preview?.id === p.id ? null : p)}
           title={t('palette.tile_title', { name: p.name || t('palette.new_name'), count: p.colours.length })}
           aria-label={t('palette.tile', { name: p.name || t('palette.new_name'), count: p.colours.length })}
@@ -284,8 +290,9 @@
           data-color={color}
           style:--swatch={color}
           style:color={contrastInk(color)}
-          onmousedown={(e) => onCell(e, color)}
-          onclick={(e) => e.detail === 0 && onCell(e, color)}
+          onpointerdown={(e) => (pointerKind = e.pointerType)}
+          onmousedown={(e) => pressesCell('mousedown', pointerKind, e.detail) && onCell(e, color)}
+          onclick={(e) => pressesCell('click', pointerKind, e.detail) && onCell(e, color)}
           oncontextmenu={(e) => longPress(e, () => onCell(new MouseEvent('click', { button: 2 }), color))}
           tabindex={i === stop ? 0 : -1}
           onfocus={() => (rove = i)}
@@ -383,8 +390,9 @@
           class="cell"
           style:--swatch={c}
           style:color={contrastInk(c)}
-          onmousedown={(e) => onPreviewCell(e, c)}
-          onclick={(e) => e.detail === 0 && onPreviewCell(e, c)}
+          onpointerdown={(e) => (pointerKind = e.pointerType)}
+          onmousedown={(e) => pressesCell('mousedown', pointerKind, e.detail) && onPreviewCell(e, c)}
+          onclick={(e) => pressesCell('click', pointerKind, e.detail) && onPreviewCell(e, c)}
           oncontextmenu={(e) => longPress(e, () => onPreviewCell(new MouseEvent('click', { button: 2 }), c))}
           tabindex={i === previewStop ? 0 : -1}
           onfocus={() => (previewRove = i)}

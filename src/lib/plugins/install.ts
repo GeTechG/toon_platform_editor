@@ -206,7 +206,16 @@ export async function loadInstalled(
   registry: PluginRegistry,
   ports: InstallPorts = DEFAULT_PORTS,
 ): Promise<void> {
+  // The register lives as long as the page; the studio is mounted again each
+  // time the site comes back to it. A plugin already in did not need its code
+  // run again — that only filled the failures with «такой id уже загружен».
+  const carried = new Set(
+    [...registry.tools(), ...registry.presets(), ...registry.brushTypes(), ...registry.exporters()].map((entry) => entry.plugin),
+  );
   for (const plugin of await listInstalled()) {
+    if (carried.has(plugin.id)) {
+      continue;
+    }
     try {
       const refused = accept(manifestOf(await ports.evaluate(plugin.code)), registry);
       if (refused) {
@@ -258,9 +267,19 @@ export async function updateInstalled(
     const refused = accept(got.manifest, registry);
     if (refused) {
       registry.fail(plugin.id, t('plugin.update_failed', { reason: refused }));
+      // The working version goes back in: a refused update is not a removal.
+      try {
+        accept(manifestOf(await ports.evaluate(plugin.code)), registry);
+      } catch (error) {
+        registry.fail(plugin.id, reason(error));
+      }
       continue;
     }
-    await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, code: got.code });
+    // Not on disk, the old code comes back after a reload: not «обновлён».
+    if (!(await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, code: got.code }))) {
+      registry.fail(plugin.id, t('plugins.not_kept'));
+      continue;
+    }
     updated.push(plugin.id);
   }
   return updated;

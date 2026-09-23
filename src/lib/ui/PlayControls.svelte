@@ -14,8 +14,8 @@
   // The frame being edited when playback started — where stop returns to,
   // whether the loop began there or (Multator) from the first frame.
   let resumeFrame = 0;
-  /** Previous frame on screen — a drop means the animation came back round. */
-  let lastFrame = 0;
+  /** The last step went past the loop's end — the animation came back round. */
+  let lapped = false;
 
   function tick(now: number): void {
     // Whatever goes wrong inside one frame, the next one still gets scheduled.
@@ -29,10 +29,12 @@
       // than the animation plays once and falls silent until the next pass
       // (the owner's call, against the reference: frame N is one point of the
       // track), and a longer one is heard only as far as the animation reaches.
-      if (editor.audio.sync && editor.audio.hasTrack && editor.playbackFrame < lastFrame) {
+      // The lap is the player's to say: a hitch of a whole lap lands on the
+      // frame it left, and a two-frame loop never counted down past one.
+      if (lapped && editor.audio.sync && editor.audio.hasTrack) {
         editor.audio.reseekAtLoop(editor.playbackFrame, editor.doc.frame_rate);
       }
-      lastFrame = editor.playbackFrame;
+      lapped = false;
     } catch (err) {
       console.warn('playback tick failed:', err);
     }
@@ -73,10 +75,13 @@
       startFrame,
       loopStart: span.start,
       loopEnd: span.end,
-      onFrame: (frame) => (editor.playbackFrame = frame),
+      onFrame: (frame, lap) => {
+        editor.playbackFrame = frame;
+        lapped ||= lap;
+      },
     });
     editor.playbackFrame = startFrame;
-    lastFrame = startFrame;
+    lapped = false;
     editor.audio.playFrom(startFrame, editor.doc.frame_rate);
     editor.playing = true;
     rafId = requestAnimationFrame(tick);

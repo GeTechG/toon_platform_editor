@@ -9,7 +9,7 @@
    * A native <dialog> for the same reasons as the settings window: focus
    * trap, Esc, inert page.
    */
-  import { tick } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { EXPORT_DEFAULT_WIDTH, EXPORT_WIDTHS } from '../format/constants';
   import { frameCount } from '../model/operations';
@@ -212,6 +212,10 @@
     cancelling?.abort();
   }
 
+  // The sheet goes with its panel, or with the studio when the site moves on:
+  // a build left running handed its file over on whatever page came next.
+  onDestroy(cancel);
+
   function close(): void {
     cancel();
     dialogEl?.close();
@@ -331,7 +335,7 @@
         {/if}
       {/if}
 
-      <button bind:this={downloadEl} class="key wide primary download" disabled={busy !== '' || (format === 'video' && !plan)} onclick={download}>
+      <button bind:this={downloadEl} class="key wide primary download" disabled={busy !== '' || (format === 'video' && (!plan || !planned))} onclick={download}>
         {t('export.download')}
       </button>
 

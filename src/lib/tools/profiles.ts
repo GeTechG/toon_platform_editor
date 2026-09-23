@@ -14,7 +14,8 @@
  * application: a preset picks a brush, and the brush brings its rules.
  */
 
-import { MAX_STROKE_WIDTH } from '../format/constants';
+import { MAX_STROKE_COORDS, MAX_STROKE_WIDTH } from '../format/constants';
+import { clampCoord } from '../model/geom';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import { pressureAlong, pressureWidth } from '../render/pressure';
@@ -214,8 +215,21 @@ export function previewStrokePressure(
   points: readonly number[],
 ): number[] | undefined {
   const { kind } = session.descriptor;
-  if (session.pressureSamples.length === 0 || points.length < 2 || kind === 'stamp') return undefined;
+  if (!feelsPressure(session) || points.length < 2 || kind === 'stamp') return undefined;
   return pressureAlong(points, session.pressureSamples);
+}
+
+/**
+ * Whether the pen measured its pressure at all. Hardware that cannot sense it
+ * reports 0.5 for as long as it touches (Pointer Events), and that is not a
+ * half press: read as one, the line landed at 57.5 % of the width in the box.
+ */
+export function feelsPressure(session: StrokeSession): boolean {
+  const samples = session.pressureSamples;
+  for (let i = 2; i < samples.length; i += 3) {
+    if (samples[i] !== 0.5) return true;
+  }
+  return false;
 }
 
 /**
@@ -225,7 +239,7 @@ export function previewStrokePressure(
  */
 function withPressure(stroke: ResolvedStroke, session: StrokeSession): ResolvedStroke {
   const tool = stroke?.tool;
-  if (session.pressureSamples.length === 0 || !tool
+  if (!feelsPressure(session) || !tool
     || (tool.kind !== 'pencil' && tool.kind !== 'eraser' && tool.kind !== 'feather')
     || !Array.isArray(stroke.points) || stroke.points.length < 2) {
     return stroke;
@@ -285,10 +299,11 @@ export class PointerStrokeController {
       console.error(t('brush.unknown_kind', { kind: String(kind) }));
       return null;
     }
-    // The document stores whole coordinates. A brush quantizes on its own way,
-    // but one that hands back whatever the pointer gave would cost the whole
-    // stroke to a fraction.
-    return { ...stroke, points: stroke.points.map(Math.round) };
+    // The document stores whole coordinates inside int16. A brush quantizes on
+    // its own way, but one that hands back whatever the pointer gave would cost
+    // the whole stroke to a fraction — or, drawn out over the table at 10 %,
+    // to a point past the format's range.
+    return fitFormat({ ...stroke, points: stroke.points.map((v) => clampCoord(Math.round(v))) });
   }
 
   pointerCancel(event: PointerSample): boolean {
@@ -345,6 +360,23 @@ function collect(
   for (let i = 0; i < added.length; i++) {
     session.rawPoints.push(added[i]);
   }
+}
+
+/**
+ * A stroke over the format's point limit is cut rather than lost; its last
+ * point replaces the cut tail, and the pen pressure is cut along with it.
+ */
+function fitFormat(stroke: ResolvedStroke): ResolvedStroke {
+  const { points, pressure } = stroke;
+  if (points.length <= MAX_STROKE_COORDS) {
+    return stroke;
+  }
+  const keep = MAX_STROKE_COORDS / 2 - 1;
+  const cut: ResolvedStroke = { ...stroke, points: [...points.slice(0, keep * 2), ...points.slice(-2)] };
+  if (pressure) {
+    cut.pressure = [...pressure.slice(0, keep), pressure[pressure.length - 1]];
+  }
+  return cut;
 }
 
 function positive(value: number): number {

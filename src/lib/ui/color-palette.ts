@@ -215,6 +215,18 @@ export function savePalette(palette: readonly string[]): void {
 }
 
 /**
+ * Which event presses a palette cell. A mouse presses on the way down, as the
+ * reference did. A pen sends its compat mousedown at contact too, but its long
+ * press is the fill's `contextmenu`: pressed on the way down, it put the colour
+ * on the outline as well, and in remover mode the menu took the cell that had
+ * slid under the tip. So a pen and a finger press on release. A key's click
+ * (detail 0) always presses.
+ */
+export function pressesCell(type: 'mousedown' | 'click', pointer: string, detail: number): boolean {
+  return type === 'mousedown' ? pointer === 'mouse' : detail === 0 || pointer !== 'mouse';
+}
+
+/**
  * Where an arrow key moves focus in a grid of `count` cells, `cols` to a row.
  * The edges stop, not wrap (WAI-ARIA APG grid). Null: the key is not the grid's.
  */

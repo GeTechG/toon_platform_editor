@@ -14,12 +14,12 @@ import {
 } from './store';
 import type { DraftState } from './store';
 
+import { createDocument } from '../model/operations';
 import { FakeReq, fakeIndexedDB, setIndexedDB, type Stores } from '../test-support/fake-idb';
 
 
-const doc = (id: number) => ({
-  schema_version: 1, width: 4800, height: 2400, frame_rate: id, frames: [{ strokes: [] }],
-});
+// A drawing the editor opens: an import drops one that will not.
+const doc = (id: number) => ({ ...createDocument(), frame_rate: id });
 
 afterEach(() => {
   delete (globalThis as { indexedDB?: unknown }).indexedDB;

@@ -50,13 +50,22 @@ export function clampZoom(value: number): number {
 }
 
 /**
- * One notch of the wheel, the `+`/`-` keys or the zoom buttons. The step is
- * picked for where the notch lands, so 100% is never a wall to climb.
+ * One notch of the wheel, the `+`/`-` keys or the zoom buttons: the way to the
+ * next notch of the ladder (0.1 below 100%, 0.5 above) in that direction. A
+ * pinch leaves the zoom between notches, and a flat step from there skipped
+ * one — out of 104% landed on 50%.
  */
 export function zoomDelta(zoom: number, direction: number): number {
-  const fine = direction > 0 ? zoom < 1 : zoom <= 1;
+  // A hair of slack, so a zoom that is a notch but for float noise counts as it.
+  const eps = 1e-6;
+  const up = direction > 0;
+  const fine = up ? zoom < 1 - eps : zoom <= 1 + eps;
   const step = fine ? FINE_STEP : ZOOM_STEP;
-  return direction > 0 ? step : -step;
+  const next = up
+    ? Math.floor(zoom / step + eps) * step + step
+    : Math.ceil(zoom / step - eps) * step - step;
+  // Rounded to the hundredth the snap keeps; every caller snaps what it adds up.
+  return Math.round((next - zoom) * 100) / 100;
 }
 
 /**

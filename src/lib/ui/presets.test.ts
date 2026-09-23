@@ -101,6 +101,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
       byTool: Object.fromEntries(
         BRUSH_TOOLS.map((tool) => [tool, { width: 4, smooth: 3, minDistance: 3 }]),
       ),
+      brushType: 'normal',
       pickSource: 'layer' as const,
       panelHeight: 200,
       sides: { ...DEFAULT_DRAWING_UI_CONFIG.sides },
@@ -140,6 +141,7 @@ test('brush records are clamped to supported ranges', () => {
   expect(parsed?.drawing).toEqual({
     defaultBrush: OWN,
     byTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
+    brushType: 'normal',
     pickSource: 'canvas',
     panelHeight: PANEL_HEIGHT_MIN,
     sides: DEFAULT_DRAWING_UI_CONFIG.sides,

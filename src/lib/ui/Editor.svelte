@@ -779,11 +779,19 @@
         writeScreenshot(doc);
         return true;
       }
-      saveFailed = true;
-      dirty = true;
-      alert(t('editor.save_failed_alert'));
+      saveFailedNow();
       return false;
     });
+  }
+
+  /**
+   * A write into working storage failed: the status says so, the clock stops,
+   * the tab warns before closing, and Ctrl+S tries again.
+   */
+  function saveFailedNow(): void {
+    saveFailed = true;
+    dirty = true;
+    alert(t('editor.save_failed_alert'));
   }
 
   /** Called by the transport when a preview stops: the deferred write lands now. */
@@ -847,7 +855,12 @@
     void setDraftAudio(
       draftId,
       blob ? { blob, name, author, sync, bytes: blob.size } : null,
-    );
+    ).then((ok) => {
+      if (!ok && blob) {
+        // The record still has no track, so the save by hand carries it.
+        saveFailedNow();
+      }
+    });
   });
 
   // The credits are their own write. Reading them in the effect above would
@@ -904,10 +917,24 @@
    */
   let thumbUrls = $state<Record<string, string>>({});
 
+  /**
+   * The studio goes without `beforeunload`: a site link unmounts it, and a
+   * phone sends the tab to the background and may kill it there. Either way
+   * the strokes since the last turn of the clock went with it, unasked. They
+   * are written now — unless autosave is «никогда», where Ctrl+S is the only
+   * way to disk by the owner's choice.
+   */
+  function flushOnLeave(): void {
+    if (dirty && editor.settings.autosaveMs !== 0) {
+      void saveNow();
+    }
+  }
+
   // The site leaves the studio without a reload. The track is a media element
   // nothing unmounts — a preview running at that moment went on sounding over
   // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
   onDestroy(() => {
+    flushOnLeave();
     editor.audio.clear();
     for (const url of Object.values(thumbUrls)) {
       URL.revokeObjectURL(url);
@@ -994,7 +1021,7 @@
       return;
     }
     if (editor.touched) {
-      if (!confirm(t('editor.draft_open_confirm'))) {
+      if (editor.warnings && !confirm(t('editor.draft_open_confirm'))) {
         return;
       }
       // By hand, so a clock stopped by a failure tries once more; a drawing
@@ -1162,6 +1189,10 @@
       return;
     }
     e.preventDefault();
+    // The update lock: the keys are off, and a drop is no different.
+    if (editor.updating) {
+      return;
+    }
     if (/\.(toonops|toonio)$/i.test(file.name)) {
       void openDraftsFile(file);
     } else if (/\.(toonop|toon|json)$/i.test(file.name)) {
@@ -1298,7 +1329,10 @@
 
 <!-- A file dropped anywhere would otherwise navigate the page away from the
      unsaved drawing, so the window takes the drop and opens it instead. -->
-<svelte:document onfullscreenchange={() => (isFullscreen = document.fullscreenElement !== null)} />
+<svelte:document
+  onfullscreenchange={() => (isFullscreen = document.fullscreenElement !== null)}
+  onvisibilitychange={() => document.visibilityState === 'hidden' && flushOnLeave()}
+/>
 
 <svelte:window
   bind:innerHeight={viewportHeight}
@@ -2118,6 +2152,10 @@
     flex: 1;
     min-height: 0;
     width: 100%;
+    /* `viewport-fit=cover` hands the page the whole glass: on a phone lying
+       down the pencil sat under the notch. Zero everywhere else. */
+    box-sizing: border-box;
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
     color: var(--text);
     font-family: var(--font-body);
     /* Reference .draw: nothing here is prose, so a drag across the chrome —
@@ -2224,6 +2262,9 @@
     background: var(--paper);
     border-top: 1px solid var(--hairline);
     padding: 0.6rem 0.9rem;
+    /* A phone lying down is wider than the phone branch, and its home
+       indicator sat over the strip's last row. */
+    padding-bottom: max(0.6rem, env(safe-area-inset-bottom));
   }
   .studio .panel {
     position: relative;

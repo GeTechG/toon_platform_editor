@@ -342,7 +342,7 @@ test('the brush type is picked in the brush box, not typed as a word', () => {
   expect(editorUi).not.toContain('lastThreeKeys');
   expect(state).not.toContain('toggleOldschool');
   expect(state).not.toContain('beforeOldschool');
-  expect(brushPanel).toContain("editor.brushType = ");
+  expect(brushPanel).toContain("editor.setBrushType(");
 });
 
 test('the type decides which brush draws, the tool in hand stays the tool', () => {

@@ -56,7 +56,7 @@ describe('session history in the state', () => {
     expect(state).toContain('redoTransform');
     // Every write goes through setTransform, so that is the one place a step
     // is recorded — no second path can slip past the history.
-    const setTransform = state.match(/setTransform\(session: TransformSession\)[^]*?\n  }/)?.[0] ?? '';
+    const setTransform = state.match(/setTransform\(session: TransformSession[^)]*\)[^]*?\n  }/)?.[0] ?? '';
     expect(setTransform).toContain('past');
   });
 });

@@ -22,10 +22,17 @@
    * A field edit is an absolute value, not a step — it replaces that one axis.
    * An emptied field, or a lone "-" on the way to a negative one, is NaN and
    * writes nothing: read as 0 it threw the selection to the edge.
+   *
+   * A number typed key by key is one step of the session, not one per key:
+   * the field being typed into replaces its own step until it is left
+   * (`change`). A spinner click is an input and a change, so a step each.
    */
-  function set(field: 'dx' | 'dy' | 'rotate' | 'scaleX' | 'scaleY', value: number): void {
+  type Field = 'dx' | 'dy' | 'rotate' | 'scaleX' | 'scaleY';
+  let typing: Field | null = null;
+  function set(field: Field, value: number): void {
     if (session && Number.isFinite(value)) {
-      editor.setTransform({ ...session, [field]: value });
+      editor.setTransform({ ...session, [field]: value }, typing === field);
+      typing = field;
     }
   }
 
@@ -64,7 +71,7 @@
          accessibility tree along with the association it carries. -->
     <details class="numbers" open={numbersOpen}>
     <summary>{t('transform.numbers')}<Icon name="chevron-down" size={16} /></summary>
-    <div class="fields">
+    <div class="fields" onchange={() => (typing = null)} onfocusout={() => (typing = null)}>
       <label for="tf-dx">X</label>
       <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.valueAsNumber)} />
       <label for="tf-dy">Y</label>
