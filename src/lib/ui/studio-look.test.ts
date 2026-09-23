@@ -135,3 +135,66 @@ describe('a draft row gives its words the room', () => {
     expect(rule(editorUi, '.draft')).toContain('gap: 0;');
   });
 });
+
+describe('nothing that lies in the studio casts a soft shadow', () => {
+  // As on the site, only what drops over the work keeps its shadow: menus, the
+  // popover note, the panel being dragged, the modal sheets. Plates, windows,
+  // the zoom window and the paper itself are told apart by tone.
+  const FLOATS = new Set([
+    'BrushPanel.svelte .types',
+    'BrushPanel.svelte .note',
+    'ColourPicker.svelte .picker',
+    'PanelArranger.svelte .ghost',
+    'Editor.svelte .editor :global(.sheet)',
+  ]);
+
+  it('keeps soft shadows for what drops over the work', () => {
+    const cast: string[] = [];
+    for (const { file, text } of sheets) {
+      const style = text.slice(text.indexOf('<style'));
+      for (const m of style.matchAll(/box-shadow:\s*var\(--shadow-/g)) {
+        const open = style.lastIndexOf('{', m.index);
+        const sel = style.slice(style.lastIndexOf('\n', open) + 1, open).trim();
+        if (!FLOATS.has(`${file} ${sel}`)) cast.push(`${file} ${sel}`);
+      }
+    }
+    expect(cast).toEqual([]);
+  });
+
+  it('lays the paper on the table without a shadow', async () => {
+    const view = await Bun.file(UI + 'CanvasView.svelte').text();
+    expect(view).not.toContain('shadowBlur =');
+    expect(view).not.toContain('shadowColor =');
+  });
+});
+
+describe('what lies over the stage keeps an edge', () => {
+  // Without a shadow a white window over the white sheet had no edge at all
+  // (the zoom window, 2026-09-23). A hairline ring — structure, not a lift —
+  // holds it apart from the sheet and from the table alike.
+  it('rings the stage windows with the hairline', () => {
+    expect(rule(editorUi, '.scale-window > :global(*)')).toContain('box-shadow: 0 0 0 1px var(--hairline);');
+    expect(editorUi).toMatch(/\.tool-windows > :global\(\*\),\s*\.scale-window > :global\(\*\) \{/);
+    const float = sheets.find((s) => s.file === 'FloatWindow.svelte')!.text;
+    expect(rule(float, '\n  .float')).toContain('box-shadow: 0 0 0 1px var(--hairline);');
+  });
+});
+
+describe('nothing scrolls that should not', () => {
+  const palette = () => sheets.find((s) => s.file === 'PaletteBox.svelte')!.text;
+
+  it('gives the palette footer the height its 44px keys take', () => {
+    // A 40px track under a 44px floor (+1px rule) made the whole box scroll by 5px.
+    expect(rule(palette(), '\n  .palette')).toContain('grid-template-rows: auto minmax(32px, 1fr) auto;');
+  });
+
+  it('draws the scroll it does have thin, in the studio tone', () => {
+    const root = rule(editorUi, '.editor');
+    expect(root).toContain('scrollbar-width: thin;');
+    expect(root).toContain('scrollbar-color: var(--edge) transparent;');
+  });
+
+  it('marks a picked palette tool in the accent, not the onion-skin blue', () => {
+    expect(rule(palette(), '.foot-btn.active')).not.toContain('--ghost-2');
+  });
+});

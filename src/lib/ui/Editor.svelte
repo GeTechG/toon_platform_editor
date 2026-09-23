@@ -1859,6 +1859,10 @@
     width: 100%;
     color: var(--text);
     font-family: var(--font-body);
+    /* What does scroll (the palette grid, a long brush box) scrolls under a
+       thin bar in the studio's tone, not the grey slab of a desktop Chrome. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--edge) transparent;
     /* Reference .draw: nothing here is prose, so a drag across the chrome —
        the panel resizer above all — never leaves a blue smear behind. */
     user-select: none;
@@ -1893,12 +1897,11 @@
     max-height: calc(100% - 2 * clamp(0.5rem, 2.2vw, 1.25rem));
     overflow-y: auto;
   }
-  /* Lifted off the paper the way a window is. A shadow, not a filter: a
-     filtered wrapper would become the frame of the window it holds once that
-     window goes `position: fixed` to be dragged. */
+  /* Flat, but over the stage a window can lie on the white sheet: a hairline
+     ring — structure, not a lift — keeps its edge on the sheet and the table. */
   .tool-windows > :global(*),
   .scale-window > :global(*) {
-    box-shadow: var(--shadow-plate);
+    box-shadow: 0 0 0 1px var(--hairline);
   }
   .scale-window {
     position: absolute;

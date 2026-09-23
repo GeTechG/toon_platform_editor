@@ -123,7 +123,6 @@
     background: var(--canvas);
     border: none;
     border-radius: var(--r-md);
-    box-shadow: var(--shadow-plate);
   }
   /* Mobile: a bottom drawer instead of a floating plate, as the layers list. */
   @media (max-width: 40rem) {

@@ -357,10 +357,9 @@ describe('the sheet lies on a worktable', () => {
     // The table shows through around the sheet instead of a full-bleed fill.
     expect(draw).toContain('clearRect(0, 0, pxWidth, pxHeight)');
     expect(draw).toContain('ctx.clip()');
-    // The paper itself is filled in its own buffer now — same paint, drawn
-    // once per shape instead of once per frame — and `draw` places it.
-    expect(handler('paperBuffer')).toContain('fillStyle = BACKGROUND_COLOR');
-    expect(draw).toMatch(/drawImage\(\s*paperEl/);
+    // The paper is a flat fill where the sheet lands — no shadow to buffer.
+    expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
+    expect(draw).toContain('fillRect(sheet.x, sheet.y, sheet.w, sheet.h)');
   });
 
   it('reads pointer positions against the sheet, not the workspace', () => {
@@ -385,19 +384,12 @@ describe('what the canvas asks whom', () => {
 describe('the frame pays only for what changed', () => {
   const draw = handler('draw');
 
-  // `shadowBlur` is one of the most expensive things a 2D context does, and
-  // the paper's shadow was being laid down from scratch on every `draw` —
-  // every playback frame included, at `24 * dpr` of blur, which is a 72px
-  // radius on a common Android panel. The stack above it was already behind a
-  // dirty flag; the shadow, which changes only when the sheet is panned,
-  // zoomed or resized, was not behind anything.
-  it('does not blur the paper shadow on every draw', () => {
+  // `shadowBlur` is one of the most expensive things a 2D context does; the
+  // paper had one on every draw, then behind a buffer. Since the studio went
+  // flat (2026-09-23) the paper has no shadow at all, and no buffer for it.
+  it('fills the paper flat, with no blur in the frame', () => {
     expect(draw).not.toContain('shadowBlur');
-  });
-
-  it('keeps the paper and its shadow as a buffer, like the layer stack', () => {
-    expect(source).toContain('function paperBuffer');
-    expect(draw).toMatch(/drawImage\(\s*paperEl/);
+    expect(source).not.toContain('function paperBuffer');
   });
 
   // Every coalesced sample of a pointermove called `toDocUnits`, and every

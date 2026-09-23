@@ -56,9 +56,6 @@
   type ViewCtx = Canvas2DLike &
     BlitTarget & {
       globalAlpha: number;
-      shadowColor: string;
-      shadowBlur: number;
-      shadowOffsetY: number;
       clearRect(x: number, y: number, w: number, h: number): void;
       rect(x: number, y: number, w: number, h: number): void;
       strokeRect(x: number, y: number, w: number, h: number): void;
@@ -154,8 +151,6 @@
    */
   const composer = new FrameComposer();
   /** The paper and its shadow, and the shape they were drawn for. */
-  let paperEl: HTMLCanvasElement | null = null;
-  let paperKey = '';
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
   let rafPending = false;
@@ -182,32 +177,6 @@
     return canvas;
   }
 
-  /**
-   * The white sheet with its plate shadow around it, drawn once per shape.
-   * Returns the margin the shadow needs on every side, which is also where
-   * the paper sits inside the buffer: the blur reaches `24 * dpr` and the
-   * drop is `10 * dpr`, so the far side of the offset sizes the room.
-   */
-  function paperBuffer(w: number, h: number, dpr: number): number {
-    const margin = Math.ceil(34 * dpr);
-    const key = `${w}x${h}@${dpr}`;
-    if (paperKey === key && paperEl) {
-      return margin;
-    }
-    paperEl = buffer(paperEl, Math.ceil(w + margin * 2), Math.ceil(h + margin * 2));
-    const pctx = paperEl.getContext('2d') as unknown as ViewCtx;
-    pctx.setTransform(1, 0, 0, 1, 0, 0);
-    pctx.clearRect(0, 0, paperEl.width, paperEl.height);
-    // The ink of `--shadow-plate`: the paper floats over the table by the
-    // same recipe every plate in the system floats by.
-    pctx.shadowColor = 'rgba(15, 23, 60, 0.35)';
-    pctx.shadowBlur = 24 * dpr;
-    pctx.shadowOffsetY = 10 * dpr;
-    pctx.fillStyle = BACKGROUND_COLOR;
-    pctx.fillRect(margin, margin, w, h);
-    paperKey = key;
-    return margin;
-  }
 
   // The sheet at 100%: the document fitted inside the wrap (whose size the
   // page layout sets, not the canvas itself), with air around it.
@@ -347,12 +316,9 @@
     };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
-    // The paper and the shadow under it are the same picture until the sheet
-    // is zoomed or resized — a pan changes where it lands, not what it is.
-    // Blurring it again every frame was the one expensive thing left in
-    // `draw` that nothing was watching, playback frames included.
-    const margin = paperBuffer(sheet.w, sheet.h, dpr);
-    ctx.drawImage(paperEl!, sheet.x - margin, sheet.y - margin);
+    // The paper lies flat on the table: white on the table's tone, no shadow.
+    ctx.fillStyle = BACKGROUND_COLOR;
+    ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
     // Everything drawn stays on the paper — a stroke that runs off the edge
     // is cut by it, the way it is on export.
     ctx.save();

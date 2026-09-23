@@ -407,7 +407,6 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: var(--shadow-plate);
   }
   .arrange-hint {
     margin: 0;

@@ -316,14 +316,13 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: var(--shadow-plate);
     /* Same reason as the brush box: the radius clips either way, and a rail
        with a ceiling squeezes this one too. */
     overflow: auto;
   }
   .palette {
     display: grid;
-    grid-template-rows: auto minmax(32px, 1fr) 40px;
+    grid-template-rows: auto minmax(32px, 1fr) auto;
   }
   .main-colors {
     position: relative;
@@ -509,7 +508,7 @@
     background: var(--sub);
   }
   .foot-btn.active {
-    background: var(--ghost-2);
+    background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
     color: var(--accent-ink);
   }
   /* Full ink against the footer's secondary text: the key that throws work

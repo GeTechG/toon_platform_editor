@@ -146,9 +146,9 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    /* Lifted off the paper the way a window is, not painted onto it. */
-    box-shadow: var(--shadow-plate);
     overflow: hidden;
+    /* Dragged over the sheet it needs an edge; a hairline ring, not a lift. */
+    box-shadow: 0 0 0 1px var(--hairline);
   }
   .float-bar {
     display: flex;

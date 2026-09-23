@@ -204,7 +204,6 @@
     border: none;
     border-radius: var(--r-md);
     background: var(--canvas);
-    box-shadow: var(--shadow-plate);
     /* `auto`, not `hidden`: the radius still clips, but the box lives in a rail
        with a ceiling and is routinely shorter than what is in it — 319 around
        385 on a desktop, 173 around 377 on a phone — and `hidden` does not offer
