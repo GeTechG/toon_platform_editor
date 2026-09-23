@@ -9,7 +9,7 @@
   import { onDestroy, tick } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
-  import { dragTargetIndex } from './frame-selection';
+  import { dragTargetIndex, layerGridStep } from './frame-selection';
   import LayerThumb from './LayerThumb.svelte';
   import { rowHeight } from './thumb-size';
   import Icon from './Icon.svelte';
@@ -38,6 +38,20 @@
   );
   const canAdd = $derived(editor.doc.layers.length < MAX_LAYERS);
   const canRemove = $derived(editor.doc.layers.length > 1);
+
+  // --- One Tab stop ---------------------------------------------------------
+  // The list is a layout grid (WAI-ARIA APG): only one control of it is in the
+  // Tab order — the active layer's, in the column the arrows last left — so
+  // twenty layers are one stop, not eighty. ↑/↓ pick a layer, ←/→ walk the
+  // row's eye · tag · name · bin, Home/End the top and the bottom layer.
+  const NAME_COL = 2;
+  let col = $state(NAME_COL);
+  /** Columns a row can focus: the bin is disabled, so unreachable, on the last layer. */
+  const cols = $derived(canRemove ? 4 : 3);
+
+  function stop(layerIndex: number, c: number): 0 | -1 {
+    return layerIndex === editor.activeLayer && c === Math.min(col, cols - 1) ? 0 : -1;
+  }
 
   /** Row number shown to the user: 1 for the topmost layer. */
   function rowNumber(layerIndex: number): number {
@@ -100,9 +114,17 @@
    * their focus with them, which leaves it on <body> — the top of the page
    * for the next Tab.
    */
-  async function focusName(layerIndex: number): Promise<void> {
+  function focusName(layerIndex: number): Promise<void> {
+    col = NAME_COL;
+    return focusCell(layerIndex);
+  }
+
+  /** The keyboard onto a row's control in the current column. */
+  async function focusCell(layerIndex: number): Promise<void> {
     await tick();
-    listEl?.querySelector<HTMLElement>(`[data-layer="${layerIndex}"]`)?.focus();
+    listEl
+      ?.querySelector<HTMLElement>(`[data-layer="${layerIndex}"] [data-col="${Math.min(col, cols - 1)}"]`)
+      ?.focus();
   }
 
   function announce(layerIndex: number): void {
@@ -116,7 +138,7 @@
     }
     editor.moveLayerTo(layerIndex, to);
     announce(to);
-    focusName(to);
+    focusCell(to);
   }
 
   function removeLayer(layerIndex: number): void {
@@ -134,7 +156,18 @@
     }
   }
 
-  function onRowKeydown(e: KeyboardEvent, layerIndex: number): void {
+  /**
+   * The grid's keys, from whichever control of a row holds the focus. Every
+   * key it owns is kept from the editor's hotkeys — an arrow at an edge would
+   * otherwise walk the frames, and Delete would take a frame.
+   */
+  function onGridKey(e: KeyboardEvent): void {
+    const target = e.target as HTMLElement;
+    const row = target.closest<HTMLElement>('[data-layer]');
+    if (!row || target.dataset.col === undefined) {
+      return;
+    }
+    const layerIndex = Number(row.dataset.layer);
     // Alt+↑/↓ reorders without dragging (WCAG 2.2 AA 2.5.7); focus stays put.
     if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
@@ -148,12 +181,33 @@
       e.preventDefault();
       editor.selectLayer(layerIndex);
       startRename(null, layerIndex);
+      // autofocus only takes the focus from the name button the field replaces.
+      tick().then(() => listEl?.querySelector<HTMLElement>('.rename')?.focus());
       return;
     }
-    if (e.key === 'Enter' || e.key === ' ') {
+    // The bin's key; the state asks «Удалить «Слой N»?» before it takes the layer.
+    if (e.key === 'Delete') {
       e.preventDefault();
-      editor.selectLayer(layerIndex);
+      removeLayer(layerIndex);
+      return;
     }
+    if (!/^(Arrow(Up|Down|Left|Right)|Home|End)$/.test(e.key) || e.altKey || e.ctrlKey || e.metaKey) {
+      return;
+    }
+    e.preventDefault();
+    const count = editor.doc.layers.length;
+    const next = layerGridStep(count - 1 - layerIndex, Number(target.dataset.col), e.key, count, cols);
+    if (!next) {
+      return;
+    }
+    const to = count - 1 - next.row;
+    editor.selectLayer(to);
+    // A refused pick (a transform that will not let go) leaves the keyboard where it was.
+    if (editor.activeLayer !== to) {
+      return;
+    }
+    col = next.col;
+    focusCell(to);
   }
 
   // --- Drag by the handle ---------------------------------------------------
@@ -305,30 +359,44 @@
     disabled={!canAdd}
     aria-disabled={editor.playing || undefined}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
-    title={canAdd ? t('layer.add_title') : t('layer.full', { max: MAX_LAYERS })}
+    title={canAdd ? editor.keyHint(t('layer.add_title')) : t('layer.full', { max: MAX_LAYERS })}
   >
     <Icon name="plus" size={16} /> {t('layer.add')}
   </button>
 </div>
 
-<div class="list" data-layer-list bind:this={listEl} role="list" aria-label={t('layer.list')} tabindex="-1">
+<!-- A layout grid (WAI-ARIA APG): one Tab stop, the arrows inside. Each cell
+     holds one button, so every control stays a control — an option role
+     would have flattened them into the row's text. -->
+<div
+  class="list"
+  data-layer-list
+  bind:this={listEl}
+  role="grid"
+  aria-label={t('layer.list')}
+  tabindex="-1"
+  onkeydown={onGridKey}
+>
     {#each rows as layerIndex (editor.doc.layers[layerIndex])}
       <!-- A click anywhere on the row picks the layer, as the reference does;
-           the keyboard's way to the same thing is the name button below. An
-           option role would have flattened every control in the row. -->
+           the keyboard's way to the same thing is the arrows. -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <!-- svelte-ignore a11y_interactive_supports_focus -->
       <div
         class="row"
         style:height="{ROW_HEIGHT}px"
         class:active={layerIndex === editor.activeLayer}
         class:dragging={drag?.currentLayer === layerIndex}
-        role="listitem"
+        role="row"
+        data-layer={layerIndex}
         onclick={() => editor.selectLayer(layerIndex)}
         ondblclick={(e) => startRename(e, layerIndex)}
       >
+        <span class="cell" role="gridcell">
         <button
           class="eye"
+          data-col="0"
+          tabindex={stop(layerIndex, 0)}
           aria-label={editor.doc.layers[layerIndex].hidden
             ? t('layer.show', { name: editor.layerLabel(layerIndex) })
             : t('layer.hide', { name: editor.layerLabel(layerIndex) })}
@@ -342,15 +410,19 @@
         >
           <Icon name={editor.doc.layers[layerIndex].hidden ? 'eye-off' : 'eye'} size={16} />
         </button>
+        </span>
 
         {#if !compact}
-          <span class="thumb" class:hidden={editor.doc.layers[layerIndex].hidden}>
+          <span class="thumb" aria-hidden="true" class:hidden={editor.doc.layers[layerIndex].hidden}>
             <LayerThumb doc={editor.doc} {layerIndex} frameIndex={editor.displayedFrame} maxW={28} />
           </span>
         {/if}
 
+        <span class="cell" role="gridcell">
         <button
           class="tag"
+          data-col="1"
+          tabindex={stop(layerIndex, 1)}
           style="background: var(--layer-tag-{editor.layerColor(layerIndex)})"
           title={t('layer.colour_title')}
           aria-label={t('layer.colour', { name: editor.layerLabel(layerIndex) })}
@@ -359,7 +431,9 @@
             editor.cycleLayerColor(layerIndex);
           }}
         ></button>
+        </span>
 
+        <span class="cell" role="gridcell">
         {#if renaming?.layer === layerIndex}
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -376,24 +450,30 @@
         {:else}
           <button
             class="name"
-            data-layer={layerIndex}
+            data-col="2"
+            tabindex={stop(layerIndex, 2)}
             aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"
             aria-pressed={layerIndex === editor.activeLayer}
             title={`${editor.layerLabel(layerIndex)}\n${t('layer.rename_hint')}`}
             onclick={() => editor.selectLayer(layerIndex)}
-            onkeydown={(e) => onRowKeydown(e, layerIndex)}
           >{editor.layerLabel(layerIndex)}</button>
         {/if}
+        </span>
 
+        <!-- The pointer's way to reorder; the keyboard's is Alt+↑/↓ on any cell. -->
         <span
           class="handle"
-          role="presentation"
+          aria-hidden="true"
           title={t('layer.drag')}
           onpointerdown={(e) => onHandleDown(e, layerIndex)}
         ><Icon name="move-vertical" size={16} /></span>
 
+        <span class="cell" role="gridcell">
         <button
           class="kill"
+          data-col="3"
+          tabindex={stop(layerIndex, 3)}
+          aria-keyshortcuts="Delete"
           disabled={!canRemove}
           aria-disabled={editor.playing || undefined}
           aria-label={t('layer.remove', { name: editor.layerLabel(layerIndex) })}
@@ -405,6 +485,7 @@
         >
           <Icon name="x" size={14} />
         </button>
+        </span>
       </div>
   {/each}
 </div>
@@ -433,6 +514,10 @@
   }
   .row.dragging {
     opacity: 0.7;
+  }
+  /* A cell is only a role for the grid; its button stays the row's flex item. */
+  .cell {
+    display: contents;
   }
   /* The name button carries the keyboard; its ring sits inside, where the
      scrolling list cannot shave it off. */

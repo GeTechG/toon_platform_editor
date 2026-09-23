@@ -127,3 +127,39 @@ const HELD = new Set([
 export function repeats(key: string): boolean {
   return HELD.has(key);
 }
+
+/**
+ * A key a person presses on its own, Shift or not: what the «single-letter
+ * keys» setting turns off (keyOwner). Arrows are named keys, not typed ones.
+ */
+const BARE = /^(?:Shift ?\+ ?)?[^\s←→↑↓]$/;
+
+/** Between keys: a slash, a comma, a semicolon or a word («или»); key names are capitalised. */
+const BETWEEN = / \/ |[,;] | \p{Ll}+ /u;
+
+/** A key list — «H / Shift + H», «Y, Ctrl+Shift+Z» — without its bare keys. */
+function keysLeft(list: string): string {
+  const sep = BETWEEN.exec(list)?.[0] ?? ' / ';
+  return list.split(BETWEEN).filter((key) => !BARE.test(key)).join(sep);
+}
+
+/**
+ * A hint with the bare keys taken out, for when single-letter keys are off:
+ * «Карандаш (B)» is «Карандаш», «Шаг вперёд (Y или Ctrl+Shift+Z)» keeps the
+ * chord. Nothing is swapped for a Ctrl hint — the owner's call. Text without
+ * brackets is read as a key list, the way data-key and the manual spell it.
+ */
+export function withoutLetterKeys(text: string): string {
+  if (!text.includes('(')) {
+    return keysLeft(text);
+  }
+  return text.replace(/\s*\(([^()]*)\)/g, (group, inner: string) => {
+    const [keys, ...rest] = inner.split(' — ');
+    const left = keysLeft(keys);
+    if (left === keys) {
+      return group;
+    }
+    const kept = [left, ...rest].filter((part) => part !== '').join(' — ');
+    return kept === '' ? '' : `${group.match(/^\s*/)![0]}(${kept})`;
+  });
+}

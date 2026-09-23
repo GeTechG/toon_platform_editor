@@ -229,6 +229,7 @@
       "transport": "Управление воспроизведением",
       "add_frame": "Добавить кадр",
       "delete_frame": "Удалить кадр",
+      "delete_frames": "Удалить кадры {{from}}–{{to}}",
       "onion": "Калька",
       "fps": "Частота кадров",
       "audio": "Звук",
@@ -300,6 +301,10 @@
   },
   "frame": {
     "delete_confirm": "Удалить кадр {{n}}?",
+    "delete_block_confirm_one": "Удалить кадры {{from}}–{{to}} ({{count}} кадр)?",
+    "delete_block_confirm_few": "Удалить кадры {{from}}–{{to}} ({{count}} кадра)?",
+    "delete_block_confirm_many": "Удалить кадры {{from}}–{{to}} ({{count}} кадров)?",
+    "delete_block_confirm_other": "Удалить кадры {{from}}–{{to}} ({{count}} кадра)?",
     "replace_confirm": "Ячейки не пустые. Заменить их содержимое?",
     "affects_confirm": "Это затронет кадров: {{frames}}, слоёв: {{layers}}. Продолжить?"
   },
@@ -462,6 +467,7 @@
     "file": "Файл расположения",
     "reset_title": "Вернуть раскладку набора",
     "reset": "Сбросить",
+    "replace_confirm": "Разложить панели, как в наборе «{{name}}»? Твоя расстановка пропадёт.",
     "done": "Готово"
   },
   "draft": {

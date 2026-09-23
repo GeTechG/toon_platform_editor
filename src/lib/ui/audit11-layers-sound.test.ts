@@ -73,7 +73,7 @@ describe('layer rows', () => {
   });
 
   it('the full stack says why «+ Слой» is off', () => {
-    expect(rows).toContain("canAdd ? t('layer.add_title') : t('layer.full', { max: MAX_LAYERS })");
+    expect(rows).toContain("canAdd ? editor.keyHint(t('layer.add_title')) : t('layer.full', { max: MAX_LAYERS })");
     expect(t('layer.full', { max: 20 })).toBe('Больше 20 слоёв нельзя');
   });
 

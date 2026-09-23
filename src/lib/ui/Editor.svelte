@@ -1261,7 +1261,11 @@
         ['Alt + Enter', t('key.no_warnings')],
         ['Alt + L', t('key.error_log')],
       ] as ([string, string] | false)[]
-    ).filter((row): row is [string, string] => row !== false),
+    )
+      .filter((row): row is [string, string] => row !== false)
+      // With single-letter keys off their letters are not offered at all.
+      .map(([keys, what]): [string, string] => [editor.keyHint(keys), what])
+      .filter(([keys]) => keys !== ''),
   );
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
@@ -1334,8 +1338,8 @@
     class="key"
     disabled={!editor.canUndo}
     onclick={() => editor.undo()}
-    data-key="Z"
-    title={t('editor.undo_title')}
+    data-key={editor.keyHint('Z') || undefined}
+    title={editor.keyHint(t('editor.undo_title'))}
     aria-label={t('editor.undo')}
   >
     <Icon name="undo" />
@@ -1344,8 +1348,8 @@
     class="key"
     disabled={!editor.canRedo}
     onclick={() => editor.redo()}
-    data-key="Y"
-    title={t('editor.redo_title')}
+    data-key={editor.keyHint('Y') || undefined}
+    title={editor.keyHint(t('editor.redo_title'))}
     aria-label={t('editor.redo')}
   >
     <Icon name="redo" />
@@ -1430,8 +1434,8 @@
         class:active={isFullscreen}
         aria-pressed={isFullscreen}
         onclick={toggleFullscreen}
-        data-key={hasFeather ? undefined : 'F'}
-        title={hasFeather ? t('editor.fullscreen') : t('editor.fullscreen_title')}
+        data-key={hasFeather ? undefined : editor.keyHint('F') || undefined}
+        title={hasFeather ? t('editor.fullscreen') : editor.keyHint(t('editor.fullscreen_title'))}
         aria-label={t('editor.fullscreen')}
       >
         <Icon name="expand" />
@@ -1491,8 +1495,8 @@
       class="key"
       disabled={editor.playing}
       onclick={onAddFrame}
-      data-key="A"
-      title={t('editor.add_frame_title')}
+      data-key={editor.keyHint('A') || undefined}
+      title={editor.keyHint(t('editor.add_frame_title'))}
       aria-label={t('editor.add_frame')}
     >
       <Icon name="plus" />
@@ -1514,8 +1518,8 @@
       class:active={editor.onionSkin}
       aria-pressed={editor.onionSkin}
       onclick={() => editor.toggleOnionSkin()}
-      data-key="K"
-      title={editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off')}
+      data-key={editor.keyHint('K') || undefined}
+      title={editor.keyHint(editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off'))}
       aria-label={t('editor.onion')}
     >
       <Icon name="onion" />
@@ -1589,8 +1593,8 @@
       class="key icon"
       disabled={editor.playing}
       onclick={() => editor.copySelection()}
-      data-key="C"
-      title={t('editor.copy_title')}
+      data-key={editor.keyHint('C') || undefined}
+      title={editor.keyHint(t('editor.copy_title'))}
       aria-label={t('editor.copy')}
     ><Icon name="copy" /></button>
   {:else if id === 'paste'}
@@ -1598,8 +1602,8 @@
       class="key icon"
       disabled={!editor.canPasteCells}
       onclick={() => editor.pasteSelection()}
-      data-key="V"
-      title={t('editor.paste_title')}
+      data-key={editor.keyHint('V') || undefined}
+      title={editor.keyHint(t('editor.paste_title'))}
       aria-label={t('editor.paste')}
     ><Icon name="paste" /></button>
   {:else if id === 'settings'}
@@ -1642,8 +1646,8 @@
       class="key icon"
       disabled={!editor.canPasteCells}
       onclick={() => editor.mergeSelection()}
-      data-key="M"
-      title={t('editor.merge_title')}
+      data-key={editor.keyHint('M') || undefined}
+      title={editor.keyHint(t('editor.merge_title'))}
       aria-label={t('editor.merge')}
     ><Icon name="merge" /></button>
   {/if}
@@ -2085,10 +2089,13 @@
        hues, none of them in the signal band: The Signal Rule reserves red for
        «рисовать» and names icons and borders as off-limits, and the written
        carve-out in DESIGN §2 covers paint inside a drawing (the mascot), not
-       interface chrome. The fourth was #c0392b, 6° from the signal. */
+       interface chrome. The fourth was #c0392b, 6° from the signal. Each tag
+       is a button, so it holds 3:1 (WCAG 1.4.11) on the paper and on the
+       active row: the second and third were #00997a and #b8860b, 2.6 and 2.4
+       on the active row, now the same hues darkened. */
     --layer-tag-0: var(--electric);
-    --layer-tag-1: #00997a;
-    --layer-tag-2: #b8860b;
+    --layer-tag-1: #008a6e;
+    --layer-tag-2: #9e7309;
     --layer-tag-3: #c2185b;
     --layer-tag-4: #7d3cc7;
     --layer-tag-5: #0f7d9e;

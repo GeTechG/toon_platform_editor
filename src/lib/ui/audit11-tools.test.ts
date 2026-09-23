@@ -67,8 +67,8 @@ describe('the fullscreen key does not promise F while F picks the feather', () =
   it('the badge and the tooltip drop F when the feather is on the panel', () => {
     const key = editorUi.match(/\{:else if id === 'fullscreen'\}[^]*?<\/button>/)?.[0] ?? '';
     expect(key).not.toContain('data-key="F"');
-    expect(key).toContain("data-key={hasFeather ? undefined : 'F'}");
-    expect(key).toContain("hasFeather ? t('editor.fullscreen') : t('editor.fullscreen_title')");
+    expect(key).toContain("data-key={hasFeather ? undefined : editor.keyHint('F') || undefined}");
+    expect(key).toContain("hasFeather ? t('editor.fullscreen') : editor.keyHint(t('editor.fullscreen_title'))");
   });
 });
 

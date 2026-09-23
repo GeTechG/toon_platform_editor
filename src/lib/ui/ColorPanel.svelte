@@ -33,7 +33,7 @@
 </script>
 
 {#if quickPalette}
-  <div class="quick" role="group" aria-label={t('color.quick_group')}>
+  <div class="quick" role="group" aria-label={editor.keyHint(t('color.quick_group'))}>
     {#each quickPalette as color (color)}
       <button
         class="swatch"
@@ -41,16 +41,16 @@
         aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
         style:--swatch={color}
         onclick={() => editor.setBrushColor(color)}
-        title={t('color.quick_title', { color })}
+        title={editor.keyHint(t('color.quick_title', { color }))}
         aria-label={t('color.swatch', { color })}
       ></button>
     {/each}
   </div>
 {:else if editor.paletteExpanded}
-  <label class="color" title={t('color.stroke_title')} style:--swatch={editor.brushColor}>
+  <label class="color" title={editor.keyHint(t('color.stroke_title'))} style:--swatch={editor.brushColor}>
     <input
       type="color"
-      aria-label={t('color.stroke_title')}
+      aria-label={editor.keyHint(t('color.stroke_title'))}
       value={editor.brushColor}
       oninput={(e) => editor.pickColor(e.currentTarget.value, 'outline', true)}
     />
@@ -69,7 +69,7 @@
   <button
     class="key icon"
     onclick={() => editor.swapColors()}
-    title={t('color.swap_title')}
+    title={editor.keyHint(t('color.swap_title'))}
     aria-label={t('color.swap')}
   ><Icon name="swap" /></button>
   {#if editor.ux.colorGrid}

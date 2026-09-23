@@ -28,8 +28,8 @@
     class:active={editor.tool === tool}
     aria-pressed={editor.tool === tool}
     onclick={() => editor.selectTool(tool)}
-    data-key={spec.key || undefined}
-    title={spec.title}
+    data-key={editor.keyHint(spec.key) || undefined}
+    title={editor.keyHint(spec.title)}
     aria-label={spec.label}
   >
     <Icon name={spec.icon} />

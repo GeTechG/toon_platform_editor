@@ -241,7 +241,7 @@ test('a preset whose plugin was not there yet comes up when it arrives', () => {
   const from = state.indexOf('refreshPlugins(): void');
   const refresh = state.slice(from, state.indexOf('\n  }', from));
   expect(refresh).toContain('presetPending');
-  expect(refresh).toContain('applyPreset(this.preset)');
+  expect(refresh).toContain('applyPreset(this.preset, false)');
 });
 
 test('the plugin the editor ships with goes through the register like any other', async () => {
@@ -297,7 +297,7 @@ test('a tool with no shortcut carries no data-key at all', () => {
   // to say it rubs the icon out (the pixel tool has had no key from the start,
   // and a plugin need not ask for one).
   expect(editorUi).toContain('.editor :global(.key[data-key]:hover:not(:disabled))::after');
-  expect(toolKey).toContain('data-key={spec.key || undefined}');
+  expect(toolKey).toContain('data-key={editor.keyHint(spec.key) || undefined}');
 });
 
 const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();

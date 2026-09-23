@@ -446,3 +446,9 @@ export function visibleTools(layout: PanelLayout): string[] {
 export function panelItemVisible(layout: PanelLayout, id: string): boolean {
   return !layout.hidden.includes(id);
 }
+
+/** The same arrangement: every panel in the same order; the shelf is a heap, its order is nobody's work. */
+export function samePanels(a: PanelLayout, b: PanelLayout): boolean {
+  const key = (p: PanelLayout) => JSON.stringify([p.left, p.right, p.rows, p.float, [...p.hidden].sort()]);
+  return key(a) === key(b);
+}

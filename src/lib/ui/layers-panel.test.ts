@@ -187,13 +187,13 @@ describe('a layer is called by one name everywhere', () => {
 
 // `role="option"` makes everything inside the row presentational, so the eye,
 // the colour tag and the delete button were flattened into the row's text
-// (WCAG 4.1.2). A list of rows, each selected by its own name button, keeps
-// every control a control.
+// (WCAG 4.1.2). A grid of rows, one button per cell, keeps every control a
+// control (see owner-eleventh-layer-keys.test.ts).
 describe('the controls in a row stay controls', () => {
-  it('the list is a list, not a listbox of options', () => {
+  it('the list is a grid of cells, not a listbox of options', () => {
     expect(rows).not.toContain('role="option"');
     expect(rows).not.toContain('role="listbox"');
-    expect(rows).toContain('role="listitem"');
+    expect(rows).toContain('role="gridcell"');
   });
 
   it('the name is the button that selects the layer', () => {
@@ -235,7 +235,7 @@ describe('ninth audit: the keyboard keeps its place in the layer list', () => {
     // Svelte moves the focused row's node to reorder it, and a node taken out
     // of the document loses its focus; Alt+↑ only survived because the other
     // row was the one moved.
-    expect(rows).toMatch(/function moveBy[\s\S]*?focusName\(to\)/);
+    expect(rows).toMatch(/function moveBy[\s\S]*?focusCell\(to\)/);
     expect(rows).toContain('data-layer={layerIndex}');
   });
 

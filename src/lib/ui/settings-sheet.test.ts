@@ -230,7 +230,7 @@ describe('the remaining reference keys', () => {
 
 describe('key hints on the buttons', () => {
   it('every tool carries its key', () => {
-    expect(tools).toContain('data-key={spec.key || undefined}');
+    expect(tools).toContain('data-key={editor.keyHint(spec.key) || undefined}');
     for (const key of ['B', 'E', 'P', 'F', 'Q', 'D']) {
       expect(panels).toContain(`key: '${key}'`);
     }
@@ -238,7 +238,7 @@ describe('key hints on the buttons', () => {
 
   it('the transport keys are on the transport', () => {
     for (const key of ['Z', 'Y', 'K', 'A', 'C', 'V', 'M']) {
-      expect(editorUi).toContain(`data-key="${key}"`);
+      expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
     }
     expect(play).toContain('data-key="Space"');
   });

@@ -289,6 +289,16 @@ function decodeText(frame: Uint8Array): string {
   const body = frame.subarray(1);
   const bigEndian = frame[0] === 2 || (frame[0] === 1 && body[0] === 0xfe && body[1] === 0xff);
   const label = bigEndian ? 'utf-16be' : frame[0] === 1 ? 'utf-16le' : frame[0] === 3 ? 'utf-8' : 'latin1';
+  // Encoding 0 is latin1 on paper, but Russian tags write UTF-8 there (or
+  // cp1251). UTF-8 is tried strictly; anything else is shown as latin1 reads
+  // it — a cp1251 guess would garble the Western tags that are latin1.
+  if (label === 'latin1') {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(body).replace(/\0+$/, '');
+    } catch {
+      // not UTF-8: latin1 below
+    }
+  }
   try {
     return new TextDecoder(label).decode(body).replace(/\0+$/, '');
   } catch {

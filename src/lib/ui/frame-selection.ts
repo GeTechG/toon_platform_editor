@@ -254,6 +254,27 @@ export function dragTargetIndex(
   return Math.min(count - 1, Math.max(0, target));
 }
 
+/**
+ * The layer list's arrows (WAI-ARIA APG layout grid): ↑/↓ a row, ←/→ a
+ * control within it, Home/End the top and the bottom layer. Rows are counted
+ * top-down; `cols` is how many controls a row can take focus on. No wrapping:
+ * `null` at an edge or for a key the grid does not own.
+ */
+export function layerGridStep(row: number, col: number, key: string, rows: number, cols: number): { row: number; col: number } | null {
+  const to =
+    key === 'ArrowUp' ? { row: row - 1, col }
+    : key === 'ArrowDown' ? { row: row + 1, col }
+    : key === 'ArrowLeft' ? { row, col: col - 1 }
+    : key === 'ArrowRight' ? { row, col: col + 1 }
+    : key === 'Home' ? { row: 0, col }
+    : key === 'End' ? { row: rows - 1, col }
+    : null;
+  if (!to || to.row < 0 || to.row >= rows || to.col < 0 || (to.col >= cols && to.col !== col)) {
+    return null;
+  }
+  return { row: to.row, col: Math.min(to.col, cols - 1) };
+}
+
 /** Color-picker source: the visible composite, or the active layer alone. */
 export type PickSource = 'canvas' | 'layer';
 

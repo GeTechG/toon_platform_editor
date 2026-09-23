@@ -162,18 +162,18 @@ function insertEmptyFrame(doc: ToonDocument, at: number): number {
 }
 
 /**
- * Removes a frame from every layer. A document always keeps at least one
- * frame: removing the last remaining one clears its cells instead, so the
- * layers themselves survive.
+ * Removes `count` frames from `index` on, in every layer. A document always
+ * keeps at least one frame: a run that takes them all leaves the first one
+ * with its cells cleared, so the layers themselves survive.
  */
-export function removeFrame(doc: ToonDocument, index: number): void {
+export function removeFrame(doc: ToonDocument, index: number, count = 1): void {
   assertFrameIndex(doc, index);
-  const last = frameCount(doc) === 1;
+  assertFrameIndex(doc, index + count - 1);
+  const all = count >= frameCount(doc);
   for (const layer of doc.layers) {
-    if (last) {
+    layer.frames.splice(index + (all ? 1 : 0), all ? count - 1 : count);
+    if (all) {
       layer.frames[0].strokes.length = 0;
-    } else {
-      layer.frames.splice(index, 1);
     }
   }
 }

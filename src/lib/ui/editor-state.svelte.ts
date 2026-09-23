@@ -144,9 +144,11 @@ import {
   visibleTools,
   panelItemVisible,
   showPanelItem,
+  samePanels,
   type PanelLayout,
   type PanelSlot,
 } from './panels';
+import { withoutLetterKeys } from './key-owner';
 import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
@@ -162,6 +164,7 @@ import {
   presetDefaultBrush,
   presetExists,
   presetPanels,
+  presets,
   presetUx,
   saveUiConfig,
   PANEL_HEIGHT_MAX,
@@ -616,11 +619,16 @@ export class EditorState {
    * UX defaults. An untouched document also takes the preset's frame rate;
    * work in progress keeps its own tempo.
    */
-  applyPreset(id: string): void {
-    this.preset = id;
+  applyPreset(id: string, ask = true): void {
     // A preset brings its own starting set — fewer keys under Multator, its
-    // own colour widget — on the same panels.
-    this.panels = presetPanels(id);
+    // own colour widget — on the same panels. An arrangement made by hand is
+    // not thrown away unasked (owner, 11th audit); a «no» still switches the
+    // preset — it was picked — and only the panels stay as they are.
+    const keepPanels = ask && !this.mayReplacePanels(presetPanels(id), id);
+    this.preset = id;
+    if (!keepPanels) {
+      this.panels = presetPanels(id);
+    }
     this.ensureActiveLayerVisible();
     this.defaultBrush = presetDefaultBrush(id);
     // Multator opens with its own line in hand; the other presets with the
@@ -1067,7 +1075,27 @@ export class EditorState {
 
   /** Back to the arrangement this preset starts from. */
   resetPanels(): void {
-    this.setPanels(presetPanels(this.preset));
+    const next = presetPanels(this.preset);
+    if (!this.mayReplacePanels(next)) {
+      return;
+    }
+    this.setPanels(next);
+  }
+
+  /**
+   * Whether the panels may become `next`. Asked only when that throws away an
+   * arrangement made by hand — one that is neither `next` already nor the
+   * current preset's own — and muted by Alt+Enter like every other question.
+   */
+  private mayReplacePanels(next: PanelLayout, id = this.preset): boolean {
+    return samePanels(this.panels, next)
+      || samePanels(this.panels, presetPanels(this.preset))
+      || this.confirmed(t('arrange.replace_confirm', { name: presets().find((p) => p.id === id)?.label ?? id }));
+  }
+
+  /** A key hint as shown: with single-letter keys off, their letters go (owner, 11th audit). */
+  keyHint(text: string): string {
+    return this.settings.letterKeys ? text : withoutLetterKeys(text);
   }
 
   /** The frame that should currently be on the canvas. */
@@ -1294,22 +1322,39 @@ export class EditorState {
 
   /**
    * Whether Delete may take the frame. Toonio refuses the last one outright
-   * (`bundle:8619-8644`); the other presets clear its cells instead.
+   * (`bundle:8619-8644`), and so a block that would take every frame; the
+   * other presets clear the one left instead.
    */
   get canRemoveFrame(): boolean {
-    return this.ux.playbackRange === 'selection' ? frameCount(this.doc) > 1 : true;
+    const { count } = this.framesToRemove;
+    return this.ux.playbackRange === 'selection' ? frameCount(this.doc) > count : true;
   }
 
+  /** What Delete takes: the selected block of frames, or the active frame alone. */
+  get framesToRemove(): { from: number; count: number } {
+    const frames = this.selection.frames;
+    if (frames.length < 2) {
+      return { from: this.activeFrame, count: 1 };
+    }
+    const from = Math.min(...frames);
+    return { from, count: Math.max(...frames) - from + 1 };
+  }
+
+  /** Owner: a block goes whole, after one question that names the range. */
   removeActiveFrame(): void {
     if (this.playing || !this.canRemoveFrame || !this.leaveTransform()) {
       return;
     }
-    if (!this.confirmed(t('frame.delete_confirm', { n: this.activeFrame + 1 }))) {
+    const { from, count } = this.framesToRemove;
+    const question = count > 1
+      ? t('frame.delete_block_confirm', { from: from + 1, to: from + count, count })
+      : t('frame.delete_confirm', { n: from + 1 });
+    if (!this.confirmed(question)) {
       return;
     }
     const left = this.activeFrame;
-    this.#write((doc) => removeFrame(doc, this.activeFrame));
-    this.activeFrame = activeFrameAfterRemove(this.activeFrame, frameCount(this.doc), this.ux.afterRemove);
+    this.#write((doc) => removeFrame(doc, from, count));
+    this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
     this.touched = true;
@@ -1902,7 +1947,7 @@ export class EditorState {
     // way it was left.
     if (this.presetPending && presetExists(this.preset)) {
       this.presetPending = false;
-      this.applyPreset(this.preset);
+      this.applyPreset(this.preset, false);
     }
     this.panels = normalizePanels(this.panels);
     this.pluginsVersion++;
