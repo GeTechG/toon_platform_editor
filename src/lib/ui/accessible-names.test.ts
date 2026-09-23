@@ -52,3 +52,15 @@ describe('the save status is heard when it changes', () => {
     expect(editorUi).toContain("role={saveFailed ? 'alert' : 'status'}");
   });
 });
+
+describe('a sheet with nothing to focus can still be scrolled from the keys', () => {
+  it('the manual body is a Tab stop (WCAG 2.1.1)', () => {
+    // The shortcut list scrolls, and nothing inside it takes focus — so the
+    // arrow keys had nowhere to scroll from.
+    const manual = editorUi.slice(editorUi.indexOf("<h2>{t('editor.manual')}</h2>"));
+    expect(manual.match(/<div class="sheet-body"[^>]*>/)![0]).toContain('tabindex="0"');
+    // The sheet clips what stands outside it: a ring drawn out there showed
+    // as two red rules, top and bottom. Drawn inside, it is a whole ring.
+    expect(editorUi).toMatch(/\.editor :global\(\.sheet-body:focus-visible\) \{[^}]*outline-offset: -3px/);
+  });
+});

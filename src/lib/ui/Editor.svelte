@@ -1792,7 +1792,10 @@
         </button>
       </header>
 
-      <div class="sheet-body">
+      <!-- Nothing inside takes focus, so the body itself does: otherwise the
+           arrow keys have nowhere to scroll the list from. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="sheet-body" tabindex="0">
         <!-- Every shortcut the key handler above actually implements, in one
              place. They were reachable but undocumented: nothing in the UI said
              the editor had any. Behind the sheet, so the toolbar stays quiet. -->
@@ -2719,6 +2722,10 @@
     min-height: 0;
     overflow-y: auto;
     padding: 0.4rem 1rem 0.6rem;
+  }
+  /* The sheet clips its sides: the ring goes inside the body it marks. */
+  .editor :global(.sheet-body:focus-visible) {
+    outline-offset: -3px;
   }
   .editor :global(.sheet-hint) {
     margin: 0.7rem 0 0.4rem;
