@@ -188,12 +188,37 @@ describe('copy, paste and merge on the studio transport', () => {
 
 
 describe('frame buttons follow the reference bar', () => {
-  it('add and delete frame sit on the studio transport, not beside the timeline', () => {
-    // Reference: ⏮ ⏴ ▶ ⏵ ⏭ + × 👻 fps … — the frame keys are part of the bar.
+  it('add frame sits on the studio transport; the cell keys wait on the shelf', () => {
     const studio = defaultPanels();
     expect(studio.rows[0]).toContain('add-frame');
-    expect(studio.rows[0]).toContain('delete-frame');
+    for (const id of ['delete-frame', 'copy', 'paste', 'merge']) {
+      expect(studio.hidden).toContain(id);
+    }
     expect(studio.rows[1]).toEqual(['timeline']);
+  });
+});
+
+describe('the frame menu on a right press', () => {
+  it('a right press on a cell opens the menu instead of the browser one', () => {
+    expect(timeline).toContain('oncontextmenu={(e) => openMenu(e, i, layerIndex)}');
+    expect(timeline).toContain('role="menu"');
+  });
+
+  it('the menu runs the same operations as the keys', () => {
+    for (const call of [
+      'editor.addFrameAfterActive()',
+      'editor.removeActiveFrame()',
+      'editor.copySelection()',
+      'editor.pasteSelection()',
+      'editor.mergeSelection()',
+    ]) {
+      expect(timeline).toContain(call);
+    }
+    expect(timeline).toContain('disabled={!editor.canPasteCells}');
+  });
+
+  it('a cell outside the selection becomes the selection first', () => {
+    expect(timeline).toMatch(/if \(!isSelected\(frame, layer\)\) \{\s*editor\.selectCell\(frame, layer\)/);
   });
 });
 
@@ -394,5 +419,14 @@ describe('the strip is one stop on the Tab path', () => {
 
   it('focus follows the active cell, so its name is announced', () => {
     expect(strip).toContain(".querySelector<HTMLElement>('.cell.active')?.focus()");
+  });
+});
+
+describe('the strip sees a frame added', () => {
+  it('derives the count, not the array the write mutates in place', () => {
+    // `#write` splices the frames array and swaps only the document object:
+    // a derived array is the same reference, so the window never rebuilt.
+    expect(timeline).not.toContain('$derived(editor.doc.layers[0].frames)');
+    expect(timeline).toContain('$derived(editor.doc.layers[0].frames.length)');
   });
 });

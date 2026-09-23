@@ -216,11 +216,12 @@ describe('the default layouts', () => {
     ]);
     expect(studio.right).toEqual(['palette', 'brush']);
     expect(studio.rows).toEqual([
-      ['fps', 'transport', 'add-frame', 'delete-frame', 'copy', 'paste', 'merge',
-        'onion', 'audio', 'settings', 'drafts', 'saved'],
+      ['fps', 'transport', 'add-frame', 'onion', 'audio', 'settings', 'drafts', 'saved'],
       ['timeline'],
     ]);
-    expect(studio.hidden).toEqual(['color', 'brush-sizes', toolItem('pixel')]);
+    expect(studio.hidden).toEqual([
+      'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge', toolItem('pixel'),
+    ]);
   });
 
   test('every item is placed or hidden, exactly once', () => {

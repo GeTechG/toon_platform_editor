@@ -10,6 +10,7 @@
   import { scrollToFrame, stripWindow } from './strip-window';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
+  import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
@@ -75,7 +76,9 @@
   });
 
   // --- Studio grid ----------------------------------------------------------
-  const frames = $derived(editor.doc.layers[0].frames);
+  // The count, not the array: a write splices the array in place, so a derived
+  // array would be the same reference and the window would never rebuild.
+  const frameTotal = $derived(editor.doc.layers[0].frames.length);
   // Rows top-down: row 0 is the topmost layer, matching the layer column.
   const rows = $derived(editor.doc.layers.map((_, i) => editor.doc.layers.length - 1 - i));
   const onionFrames = $derived(
@@ -98,7 +101,8 @@
   let dragging = $state(false);
 
   function onCellDown(e: PointerEvent, frame: number, layer: number): void {
-    if (e.pointerType === 'touch' || !e.isPrimary || e.shiftKey || e.ctrlKey || e.metaKey) {
+    // The right button is the frame menu's: it must not collapse the block.
+    if (e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
       return;
     }
     dragging = true;
@@ -132,6 +136,64 @@
     editor.collapseSelection();
   }
 
+  // --- The frame menu -------------------------------------------------------
+  // What the key row used to carry — delete, copy, paste, merge — lives on a
+  // right press on the cell itself. The keys (A, Del, C, V, M) stay as they were.
+  let menu = $state<{ x: number; y: number; cell: HTMLElement } | null>(null);
+  let menuEl = $state<HTMLDivElement | undefined>();
+
+  function openMenu(e: MouseEvent, frame: number, layer: number): void {
+    e.preventDefault();
+    if (editor.playing) {
+      return;
+    }
+    // A press inside the block keeps it: the menu acts on what is selected.
+    if (!isSelected(frame, layer)) {
+      editor.selectCell(frame, layer);
+    }
+    const cell = e.currentTarget as HTMLElement;
+    // The menu key and Shift+F10 fire with no pointer: open under the cell.
+    const box = cell.getBoundingClientRect();
+    const at = e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: box.left, y: box.bottom };
+    menu = { ...at, cell };
+    void tick().then(() => {
+      if (!menu || !menuEl) return;
+      // The strip sits at the bottom: a menu that would run off the screen opens up/left instead.
+      menu.x = Math.max(4, Math.min(menu.x, innerWidth - menuEl.offsetWidth - 4));
+      menu.y = Math.max(4, Math.min(menu.y, innerHeight - menuEl.offsetHeight - 4));
+      menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+    });
+  }
+
+  function closeMenu(refocus = false): void {
+    if (refocus) menu?.cell.focus();
+    menu = null;
+  }
+
+  function run(action: () => void): void {
+    closeMenu(true);
+    action();
+  }
+
+  function onMenuKey(e: KeyboardEvent): void {
+    // The menu owns the keys while open: the arrows are not the studio's layer keys here.
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeMenu(true);
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = [...(menuEl?.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+  }
+
+  function onWindowDown(e: PointerEvent): void {
+    if (menu && !menuEl?.contains(e.target as Node)) closeMenu();
+  }
+
   // --- Soundtrack -----------------------------------------------------------
   // The reference's wave: half a bar per pixel of frame width, recomputed when
   // fps changes — the wave stretches over the strip rather than being re-read
@@ -144,7 +206,7 @@
   const row = $derived(rowHeight(editor.doc));
   const thumbWidth = $derived(cell.w + 2);
   /** The frames built right now — the ones in view, plus a screen either side. */
-  const view = $derived(stripWindow(frames.length, thumbWidth, GRID_GAP, stripScroll, stripWidth));
+  const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
   const built = $derived(Array.from({ length: view.count }, (_, k) => view.first + k));
 
   // --- Layer column width ---------------------------------------------------
@@ -221,7 +283,7 @@
 
 <!-- The release may land anywhere — outside the grid, outside the window —
      so the drag always ends on the window rather than on a cell. -->
-<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} />
+<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} onpointerdown={onWindowDown} onblur={() => closeMenu()} />
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
@@ -310,6 +372,7 @@
               onclick={(e) => onCellClick(e, i, layerIndex)}
               onpointerdown={(e) => onCellDown(e, i, layerIndex)}
               onpointerenter={(e) => onCellEnter(e, i, layerIndex)}
+              oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
               aria-label={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
             >
@@ -331,6 +394,35 @@
     </div>
   </div>
 </div>
+
+{#if menu}
+  <div
+    class="frame-menu"
+    role="menu"
+    tabindex="-1"
+    aria-label={t('timeline.menu')}
+    style:left="{menu.x}px"
+    style:top="{menu.y}px"
+    bind:this={menuEl}
+    onkeydown={onMenuKey}
+  >
+    <button role="menuitem" onclick={() => run(() => editor.addFrameAfterActive())}>
+      <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span><kbd>A</kbd>
+    </button>
+    <button role="menuitem" disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
+      <Icon name="trash" size={16} /><span>{t('panel.item.delete_frame')}</span><kbd>Del</kbd>
+    </button>
+    <button role="menuitem" onclick={() => run(() => editor.copySelection())}>
+      <Icon name="copy" size={16} /><span>{t('panel.item.copy')}</span><kbd>C</kbd>
+    </button>
+    <button role="menuitem" disabled={!editor.canPasteCells} onclick={() => run(() => editor.pasteSelection())}>
+      <Icon name="paste" size={16} /><span>{t('panel.item.paste')}</span><kbd>V</kbd>
+    </button>
+    <button role="menuitem" disabled={!editor.canPasteCells} onclick={() => run(() => editor.mergeSelection())}>
+      <Icon name="merge" size={16} /><span>{t('panel.item.merge')}</span><kbd>M</kbd>
+    </button>
+  </div>
+{/if}
 
 <style>
 
@@ -463,6 +555,50 @@
     outline-offset: 1px;
   }
   .cell:disabled {
+    cursor: default;
+  }
+  /* --- The frame menu ---------------------------------------------------- */
+  /* A drop, so it takes the menu shadow (DESIGN: only what falls over work). */
+  .frame-menu {
+    position: fixed;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    min-width: 13rem;
+    padding: 4px;
+    border-radius: var(--r-md);
+    background: var(--paper);
+    box-shadow: var(--shadow-menu);
+  }
+  .frame-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--key-h, 2.75rem);
+    padding: 0 10px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .frame-menu span {
+    flex: 1;
+  }
+  .frame-menu kbd {
+    font: inherit;
+    font-size: 0.75rem;
+    color: var(--ink-2);
+  }
+  .frame-menu button:hover:not(:disabled),
+  .frame-menu button:focus-visible {
+    background: var(--hairline-soft);
+    outline: none;
+  }
+  .frame-menu button:disabled {
+    opacity: 0.4;
     cursor: default;
   }
   /* --- Soundtrack --------------------------------------------------------- */

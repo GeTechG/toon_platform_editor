@@ -177,7 +177,8 @@ export const FEATURE_ITEM: Record<string, string> = {
  * the bottom, colour and brush on the right, the keys over the strip — the
  * strip sits right above the canvas, where the hand leaves it. Anything left
  * out is hidden — the plain colour and thickness pair, because the boxes are
- * on the right, and the layers popup, because the strip carries the rows.
+ * on the right, and the cell keys (delete, copy, paste, merge), because a
+ * right press on the cell itself brings them.
  */
 function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
   return {
@@ -195,10 +196,6 @@ function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
     'fps',
     'transport',
     'add-frame',
-    'delete-frame',
-    'copy',
-    'paste',
-    'merge',
     'onion',
     'audio',
     'settings',

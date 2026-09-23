@@ -323,7 +323,8 @@
     "grid": "Кадры и слои",
     "frame": "Кадр {{n}}",
     "frame_onion": "Кадр {{n}} — на кальке",
-    "cell": "Кадр {{frame}}, {{layer}}"
+    "cell": "Кадр {{frame}}, {{layer}}",
+    "menu": "Действия с кадром"
   },
   "palette": {
     "default_name": "По умолчанию",
