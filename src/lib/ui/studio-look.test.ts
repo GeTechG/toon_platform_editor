@@ -122,3 +122,16 @@ describe('what lies in the studio is flat', () => {
     expect(sky).toEqual([]);
   });
 });
+
+describe('a draft row gives its words the room', () => {
+  // The row is a phone-width sheet: three 44px keys with gaps between them left
+  // the date two lines and the size line three.
+  it('writes the date to the minute, on one line', () => {
+    expect(editorUi).toContain("toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })");
+    expect(rule(editorUi, '.draft-date')).toContain('white-space: nowrap;');
+  });
+
+  it('packs the row keys shoulder to shoulder', () => {
+    expect(rule(editorUi, '.draft')).toContain('gap: 0;');
+  });
+});

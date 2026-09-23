@@ -1699,7 +1699,7 @@
                     {/if}
                   </span>
                   <span class="draft-meta">
-                    <span class="draft-date">{new Date(entry.updated).toLocaleString('ru')}</span>
+                    <span class="draft-date">{new Date(entry.updated).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })}</span>
                     <span class="draft-size">
                       {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
                       {t('draft.layers', { count: entry.doc.layers.length })}
@@ -2813,10 +2813,12 @@
     padding: 0;
     list-style: none;
   }
+  /* The keys stand shoulder to shoulder: on a phone-width sheet the gaps
+     between them were the room the date needed. */
   .draft {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0;
   }
   .draft + .draft {
     border-top: 1px solid var(--hairline-soft);
@@ -2853,6 +2855,7 @@
   }
   .draft-date {
     font-size: 0.95rem;
+    white-space: nowrap;
   }
   .draft-size {
     font-size: 0.8rem;
