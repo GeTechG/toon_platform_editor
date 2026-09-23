@@ -290,7 +290,7 @@
   }
   canvas {
     display: block;
-    background: #fff;
+    background: var(--canvas);
     max-width: 100%;
     max-height: 100%;
   }

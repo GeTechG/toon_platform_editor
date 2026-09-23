@@ -1135,8 +1135,8 @@
 <input
   bind:this={fileInput}
   type="file"
+  hidden
   accept=".toonop,.toon,.json"
-  class="file"
   aria-label={t('editor.open_project')}
   onchange={(e) => {
     const file = e.currentTarget.files?.[0];
@@ -2635,13 +2635,6 @@
     background: var(--canvas);
     color: var(--ink);
     font-size: 0.85rem;
-  }
-  .file {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
   }
   .layers {
     position: relative;

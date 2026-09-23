@@ -432,3 +432,38 @@ describe('no text is set below the label step', () => {
     expect(tiny).toEqual([]);
   });
 });
+
+// A file input opened by a key of its own is plumbing, not a control. Parked at
+// 1px and `opacity: 0` it stayed in the tab order: the sixth Tab of the studio
+// landed on «Открыть файл проекта», a box nobody can see, and the ring drawn
+// round it was a dot. `hidden` takes it out of the order and out of the
+// accessibility tree; `click()` still opens it.
+describe('a file picker opened by a key is not a Tab stop', () => {
+  it('hides every file input', () => {
+    const visible: string[] = [];
+    for (const [file, source] of MARKUP) {
+      for (const input of withoutMarkupComments(source).matchAll(/<input\b[^>]*type="file"[^>]*>/g)) {
+        if (!/\shidden\b/.test(input[0])) {
+          visible.push(file);
+        }
+      }
+    }
+    expect(visible).toEqual([]);
+  });
+});
+
+// The palette holds up to fifty colours, each a button. Fifty Tab stops stood
+// between the brush and the timeline. A grid is one stop, and the arrows walk
+// it (WAI-ARIA APG, roving tabindex).
+describe('the palette grid is one Tab stop', () => {
+  const palette = MARKUP.get('PaletteBox.svelte') ?? '';
+  const cell = palette.match(/<button\s+class="cell"[\s\S]*?<\/button>/)?.[0] ?? '';
+
+  it('keeps one cell in the tab order', () => {
+    expect(cell).toMatch(/tabindex=\{[^}]*\?\s*0\s*:\s*-1\s*\}/);
+  });
+
+  it('moves between cells with the arrows', () => {
+    expect(palette).toContain('gridStep(');
+  });
+});

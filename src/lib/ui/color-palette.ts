@@ -210,3 +210,27 @@ export function savePalette(palette: readonly string[]): void {
     // private mode / blocked storage — degrade to no-op.
   }
 }
+
+/**
+ * Where an arrow key moves focus in a grid of `count` cells, `cols` to a row.
+ * The edges stop, not wrap (WAI-ARIA APG grid). Null: the key is not the grid's.
+ */
+export function gridStep(at: number, key: string, count: number, cols: number): number | null {
+  const last = count - 1;
+  switch (key) {
+    case 'ArrowLeft':
+      return Math.max(0, at - 1);
+    case 'ArrowRight':
+      return Math.min(last, at + 1);
+    case 'ArrowUp':
+      return at - cols >= 0 ? at - cols : at;
+    case 'ArrowDown':
+      return at + cols <= last ? at + cols : at;
+    case 'Home':
+      return 0;
+    case 'End':
+      return last;
+    default:
+      return null;
+  }
+}

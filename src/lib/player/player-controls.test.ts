@@ -77,3 +77,10 @@ describe('the player is red like the studio', () => {
     expect(style).toMatch(/\.play-key:active\s*\{[^}]*scale\(0\.96\)/);
   });
 });
+
+describe('the player takes its colours from the table', () => {
+  it('writes no bare colour literal', () => {
+    const style = (source.match(/<style>([\s\S]*)<\/style>/)?.[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(style.replace(/var\([^()]*\)/g, '').match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
+  });
+});

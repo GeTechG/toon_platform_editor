@@ -340,8 +340,8 @@
     </button>
     <input
       bind:this={workspaceFile}
-      class="ws-file"
       type="file"
+      hidden
       accept="application/json,.json"
       aria-label={t('arrange.file')}
       onchange={onWorkspaceFile}
@@ -356,13 +356,6 @@
 </div>
 
 <style>
-  .ws-file {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
-  }
   .ghost,
   .drop-line,
   .drop-panel {

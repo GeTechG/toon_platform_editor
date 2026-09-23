@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EditorState } from './editor-state.svelte';
-  import { TONIO_DEFAULT_PALETTE, contrastInk, mergePalettes, type SavedPalette } from './color-palette';
+  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, mergePalettes, type SavedPalette } from './color-palette';
   import Icon from './Icon.svelte';
   import ColourPicker from './ColourPicker.svelte';
   import { t } from '../i18n';
@@ -15,6 +15,11 @@
   let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number; origin: string } | null>(null);
   /** The grid, for scrolling the chosen outline into view. */
   let gridEl = $state<HTMLElement | null>(null);
+  /** The grid is one Tab stop: the cell focus last stood on, else the outline. */
+  let rove = $state(-1);
+  const stop = $derived(
+    rove >= 0 && rove < editor.palette.length ? rove : Math.max(0, editor.palette.indexOf(editor.brushColor)),
+  );
 
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
@@ -122,6 +127,23 @@
     picking = null;
   }
 
+  /** Enter / Space press the cell; the arrows, Home and End walk the grid. */
+  function onCellKey(e: KeyboardEvent, i: number, color: string): void {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), color);
+      return;
+    }
+    const cells = gridEl?.querySelectorAll<HTMLElement>('.cell');
+    if (!gridEl || !cells) return;
+    const cols = getComputedStyle(gridEl).gridTemplateColumns.split(' ').length;
+    const next = gridStep(i, e.key, cells.length, cols);
+    if (next === null) return;
+    e.preventDefault();
+    rove = next;
+    cells[next].focus();
+  }
+
   /* Reference `bundle:7783`: the grid follows the chosen outline. */
   $effect(() => {
     gridEl?.querySelector(`[data-color="${editor.brushColor}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -196,7 +218,7 @@
     </div>
   {:else}
     <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label={t('palette.grid')}>
-      {#each editor.palette as color (color)}
+      {#each editor.palette as color, i (color)}
         {@const isOutline = editor.brushColor === color}
         {@const isFill = editor.fillColor === color}
         <button
@@ -206,7 +228,9 @@
           style:color={contrastInk(color)}
           onmousedown={(e) => onCell(e, color)}
           oncontextmenu={(e) => e.preventDefault()}
-          onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onCell(new MouseEvent('click', { button: e.shiftKey ? 2 : 0 }), color))}
+          tabindex={i === stop ? 0 : -1}
+          onfocus={() => (rove = i)}
+          onkeydown={(e) => onCellKey(e, i, color)}
           title={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour_title', { color })}
           aria-label={removerMode ? t('palette.remove_colour', { color }) : t('palette.colour', { color })}
           aria-pressed={isOutline || isFill}

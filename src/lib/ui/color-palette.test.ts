@@ -5,6 +5,7 @@ import {
   TONIO_DEFAULT_PALETTE,
   addPaletteColor,
   contrastInk,
+  gridStep,
   exportPalettes,
   importPalettes,
   loadPalette,
@@ -345,5 +346,32 @@ describe('the palette box follows the reference palette', () => {
     // The canvas pick honours that target as well as the button it is made with.
     expect(state).toContain("pipetteTarget = $state<'outline' | 'fill'>('outline')");
     expect(canvas).toContain("editor.pipetteTarget === 'fill'");
+  });
+});
+
+describe('gridStep', () => {
+  // Thirty colours six to a row: five rows, the last one full.
+  it('walks a row with the horizontal arrows and stops at its ends', () => {
+    expect(gridStep(7, 'ArrowRight', 30, 6)).toBe(8);
+    expect(gridStep(7, 'ArrowLeft', 30, 6)).toBe(6);
+    expect(gridStep(0, 'ArrowLeft', 30, 6)).toBe(0);
+    expect(gridStep(29, 'ArrowRight', 30, 6)).toBe(29);
+  });
+
+  it('walks a column with the vertical arrows and stays inside the grid', () => {
+    expect(gridStep(7, 'ArrowDown', 30, 6)).toBe(13);
+    expect(gridStep(7, 'ArrowUp', 30, 6)).toBe(1);
+    expect(gridStep(2, 'ArrowUp', 30, 6)).toBe(2);
+    expect(gridStep(26, 'ArrowDown', 28, 6)).toBe(26);
+  });
+
+  it('jumps to the first and last cell with Home and End', () => {
+    expect(gridStep(7, 'Home', 30, 6)).toBe(0);
+    expect(gridStep(7, 'End', 30, 6)).toBe(29);
+  });
+
+  it('leaves every other key to someone else', () => {
+    expect(gridStep(7, 'Enter', 30, 6)).toBeNull();
+    expect(gridStep(7, 'a', 30, 6)).toBeNull();
   });
 });

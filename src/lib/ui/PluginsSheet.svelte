@@ -141,8 +141,8 @@
 
 <input
   bind:this={bundleFile}
-  class="file"
   type="file"
+  hidden
   accept=".js,text/javascript"
   aria-label={t('plugins.file')}
   onchange={onBundleFile}
@@ -270,13 +270,6 @@
   }
   .tabs .key {
     flex: 1;
-  }
-  .file {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
   }
   .actions {
     display: flex;

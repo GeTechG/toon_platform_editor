@@ -137,16 +137,16 @@
 <!-- Both pickers stay out of the layout; the visible buttons click them. -->
 <input
   bind:this={paletteFile}
-  class="file"
   type="file"
+  hidden
   accept="application/json,.json"
   aria-label={t('settings.palette_file')}
   onchange={onPaletteFile}
 />
 <input
   bind:this={draftFile}
-  class="file"
   type="file"
+  hidden
   accept=".toonops,.toonio,application/json,.json"
   aria-label={t('settings.draft_file')}
   onchange={onDraftFile}
@@ -434,13 +434,6 @@
   .picklist small {
     font-size: 0.8rem;
     opacity: 0.7;
-  }
-  .file {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
   }
   /* The shape comes from the shared `.sheet` chrome; a <dialog> only needs
      its own defaults cleared and a backdrop of its own. */
