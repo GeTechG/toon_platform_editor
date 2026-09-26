@@ -3129,7 +3129,8 @@
     border: none;
     /* The open tab is told by a bar and by weight, not by tone alone. */
     border-top: 3px solid transparent;
-    border-radius: var(--r-sm);
+    /* Square on top, so the bar of the open tab runs straight to its ends. */
+    border-radius: 0 0 var(--r-sm) var(--r-sm);
     background: transparent;
     color: var(--ink-2);
     font: inherit;
