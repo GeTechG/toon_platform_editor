@@ -43,7 +43,8 @@ describe('a plugin that will not go in', () => {
   it('is told in one human line, the author\'s reason going to the console and the log', async () => {
     const sheet = await Bun.file(new URL('./PluginsSheet.svelte', import.meta.url)).text();
     const reports = [...sheet.matchAll(/t\('plugins\.failed_report', \{ name: [^,]+, reason: ([^}]+) \}\)/g)].map((m) => m[1].trim());
-    expect(reports).toEqual(['forPerson(failed)', 'forPerson(failed)']);
+    // Three: a download the plugins window does itself, an install, a file.
+    expect(reports).toEqual(['forPerson(failed)', 'forPerson(failed)', 'forPerson(failed)']);
     expect(sheet.match(/console\.error\([^)]*failed\)/g)).toHaveLength(2);
   });
 });

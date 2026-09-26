@@ -1,17 +1,13 @@
 import { describe, expect, it } from 'bun:test';
 import { FileWriteError, guardSink } from '../export/video';
-import { OFFICIAL_CATALOG, readCatalog } from '../plugins/catalog';
-import { PLUGIN_API } from '../plugins/contract';
 import { t } from '../i18n';
 
 // Owner's answers after the twelfth audit, the export and plugins sheets.
 // 1. Video streams straight into a file where File System Access is there.
-// 2. Plugins are official or community; a community or local one asks first.
+// 2. Plugins are official or community; whatever is not ours asks first.
 const UI = new URL('./', import.meta.url).pathname;
 const exportSheet = await Bun.file(UI + 'ExportSheet.svelte').text();
-const pluginsSheet = await Bun.file(UI + 'PluginsSheet.svelte').text();
 const video = await Bun.file(UI + '../export/video.ts').text();
-const install = await Bun.file(UI + '../plugins/install.ts').text();
 
 /** A sink that records what happened to it; `failWrites` makes every write reject. */
 function recorder(failWrites = false) {
@@ -82,51 +78,7 @@ describe('a video streamed into a file', () => {
 });
 
 describe('official and community plugins', () => {
-  const record = (id: string, official?: boolean) => ({
-    id,
-    name: id,
-    version: '1.0.0',
-    icon: '<path d="M4 4h16" />',
-    entry: `${id}/plugin.js`,
-    ...(official === undefined ? {} : { official }),
-  });
-  const fetchOf = (body: unknown) => async () => ({ json: async () => body });
-  const body = { api: PLUGIN_API, plugins: [record('ours', true), record('theirs'), record('liar', true)] };
-
-  it('the official catalog marks what it says is official', async () => {
-    const catalog = await readCatalog(OFFICIAL_CATALOG, { fetch: fetchOf(body) });
-    expect(catalog.plugins.map((p) => [p.id, p.official])).toEqual([
-      ['ours', true],
-      ['theirs', false],
-      ['liar', true],
-    ]);
-  });
-
-  it('any other address is a link: nothing it offers is official, whatever it claims', async () => {
-    const catalog = await readCatalog('https://plugins.example/build/', { fetch: fetchOf(body) });
-    expect(catalog.plugins.every((p) => p.official === false)).toBe(true);
-  });
-
-  it('the installed record keeps whether it came in official', () => {
-    expect(install).toMatch(/source: 'catalog',\s*official: entry\.official/);
-    expect(install).toMatch(/official: entry\.official, code: got\.code/);
-  });
-
-  it('every row says official or community, the delivery is official', () => {
-    expect(pluginsSheet).toMatch(/source === 'bundled' \|\| plugin\.official/);
-    expect(pluginsSheet).toContain("t('plugins.official')");
-    expect(pluginsSheet).toContain("t('plugins.community')");
-  });
-
-  it('a community catalog plugin and every file ask first; an official one does not', () => {
-    const catalogInstall = pluginsSheet.match(/function askInstall\(entry: CatalogEntry\)[^]*?\n  }\n/)![0];
-    expect(catalogInstall).toMatch(/entry\.official/);
-    const fromFile = pluginsSheet.match(/async function onBundleFile[^]*?\n  }\n/)![0];
-    expect(fromFile).toContain('pending =');
-    expect(pluginsSheet).toContain("t('plugins.warn_install')");
-    expect(pluginsSheet).toContain("t('plugins.warn_cancel')");
-  });
-
+  // Who is official is the hash of the code now: owner-twelfth-plugin-trust.test.ts.
   it('the warning is on ty, says unchecked and full access, and never says «оп»', () => {
     const words = [t('plugins.warn_title'), t('plugins.warn_body'), t('plugins.official'), t('plugins.community')];
     const body = t('plugins.warn_body');

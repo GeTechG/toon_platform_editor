@@ -9,8 +9,16 @@
    */
   import { tick } from 'svelte';
   import { BUNDLED_PLUGIN, plugins } from '../plugins';
-  import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
-  import { forPerson } from '../plugins/install';
+  import {
+    OFFICIAL_CATALOG,
+    compareVersions,
+    isOfficial,
+    readCatalog,
+    readOfficial,
+    type CatalogEntry,
+    type OfficialEntry,
+  } from '../plugins/catalog';
+  import { download, forPerson } from '../plugins/install';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -22,8 +30,9 @@
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let warnEl = $state<HTMLDialogElement | undefined>();
   /**
-   * An install waiting on the warning: a community plugin of the catalog, or
-   * any bundle from a file. `run` goes ahead on «Установить».
+   * An install waiting on the warning: any code whose hash is not in our
+   * register of official plugins, from the catalog or from a file. `run`
+   * goes ahead on «Установить».
    */
   let pending = $state<{ name: string; run: () => Promise<void> } | null>(null);
   let bundleFile = $state<HTMLInputElement | undefined>();
@@ -31,6 +40,17 @@
   let catalogTab = $state<HTMLButtonElement | undefined>();
   let tab = $state<'mine' | 'catalog'>('mine');
   let installed = $state<InstalledPlugin[]>([]);
+  /**
+   * The owner's register, read once a window. Nothing is marked official from
+   * a record's word: an installed plugin is checked by its code on every
+   * read of the list, so one put in before the register existed becomes
+   * official by itself, and changed code stops being so.
+   */
+  const official = readOfficial();
+  let blessed = $state<readonly OfficialEntry[]>([]);
+  void official.then((read) => (blessed = read));
+  /** The installed plugins whose code is in the register. */
+  let officialIds = $state(new Set<string>());
   let catalog = $state<CatalogEntry[]>([]);
   /** Why the catalog has nothing to show, when it has nothing to show. */
   let catalogError = $state('');
@@ -60,17 +80,50 @@
     void run?.();
   }
 
-  /** Ours installs at once; anything else is somebody's code and says so first. */
-  function askInstall(entry: CatalogEntry): void {
-    if (entry.official) {
-      void install(entry);
+  /**
+   * The code is downloaded first and checked by its hash: ours installs at
+   * once, anything else is somebody's code and says so first. What installs
+   * is the very text that was checked.
+   */
+  async function askInstall(entry: CatalogEntry): Promise<void> {
+    busy = entry.id;
+    const got = await download(entry.url);
+    busy = '';
+    if (typeof got === 'string') {
+      // `download` has put the browser's own words in the console already.
+      const failed = got;
+      report = t('plugins.failed_report', { name: entry.name, reason: forPerson(failed) });
+      await keepFocus();
       return;
     }
-    pending = { name: entry.name, run: () => install(entry) };
+    if (await isOfficial(got.code, await official)) {
+      await install(entry, got.code);
+      return;
+    }
+    pending = { name: entry.name, run: () => install(entry, got.code) };
+  }
+
+  /**
+   * What the catalog's list says before anything is downloaded: our address
+   * and a register record for this id and version. A hint only — the install
+   * checks the code itself.
+   */
+  function listedOfficial(entry: CatalogEntry): boolean {
+    return entry.url.startsWith(OFFICIAL_CATALOG)
+      && blessed.some((record) => record.id === entry.id && record.version === entry.version);
   }
 
   async function refresh(): Promise<void> {
-    installed = await listInstalled();
+    const list = await listInstalled();
+    const register = await official;
+    const ours = new Set<string>();
+    for (const plugin of list) {
+      if (await isOfficial(plugin.code, register)) {
+        ours.add(plugin.id);
+      }
+    }
+    installed = list;
+    officialIds = ours;
   }
 
   /**
@@ -132,10 +185,10 @@
     return installed.find((plugin) => plugin.id === id);
   }
 
-  async function install(entry: CatalogEntry): Promise<void> {
+  async function install(entry: CatalogEntry, code: string): Promise<void> {
     busy = entry.id;
     try {
-      const failed = await editor.installPlugin(entry);
+      const failed = await editor.installPlugin(entry, code);
       if (failed) console.error(`plugin ${entry.id} refused:`, failed);
       report = failed ? t('plugins.failed_report', { name: entry.name, reason: forPerson(failed) }) : t('plugins.installed_report', { name: entry.name });
     } finally {
@@ -180,7 +233,11 @@
       return;
     }
     const code = await file.text();
-    // A file is never checked by toonop, whoever wrote it.
+    // Our code is ours however it came in; any other file is unchecked.
+    if (await isOfficial(code, await official)) {
+      await installFile(file.name, code);
+      return;
+    }
     pending = { name: file.name, run: () => installFile(file.name, code) };
   }
 
@@ -280,7 +337,7 @@
               <span class="about">
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
                 <small>
-                  {plugin.source === 'bundled' || plugin.official ? t('plugins.official') : t('plugins.community')},
+                  {plugin.source === 'bundled' || officialIds.has(plugin.id) ? t('plugins.official') : t('plugins.community')},
                   {plugin.source === 'bundled'
                     ? t('plugins.source_bundled')
                     : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
@@ -319,14 +376,14 @@
             </span>
             <span class="about">
               <span class="name">{entry.name} <span class="saved">{entry.version}</span></span>
-              <small>{entry.official ? t('plugins.official') : t('plugins.community')} · {entry.description}</small>
+              <small>{listedOfficial(entry) ? t('plugins.official') : t('plugins.community')} · {entry.description}</small>
             </span>
             {#if offer(entry) === 'installed'}
               <span class="saved">{t('plugins.installed')}</span>
             {:else if offer(entry) === 'local'}
               <span class="saved">{t('plugins.local')}</span>
             {:else}
-              <button class="key" disabled={busy === entry.id} onclick={() => askInstall(entry)}>
+              <button class="key" disabled={busy === entry.id} onclick={() => void askInstall(entry)}>
                 {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
               </button>
             {/if}

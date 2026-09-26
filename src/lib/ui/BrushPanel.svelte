@@ -6,8 +6,7 @@
    */
   import { brushOfType, brushTypesFor, hasBrushTypes } from '../plugins/brush-types';
   import { brushPreview, PREVIEW_BOX } from './brush-preview';
-  import { SIZE_TRACK, positionOfSize, sizeAtPosition } from './size-scale';
-  import { nudgeBrushSize } from './ux-profile';
+  import { SIZE_TRACK, positionOfSize, sizeAtPosition, sizeByKey } from './size-scale';
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -102,18 +101,11 @@
       aria-valuetext={t('brush.size_value', { count: value })}
       oninput={(e) => set(sizeAtPosition(e.currentTarget.valueAsNumber, min, max))}
       onkeydown={(e) => {
-        const next =
-          // The arrows step as + and − do, by the preset's own ladder.
-          e.key === 'ArrowUp' || e.key === 'ArrowRight' ? nudgeBrushSize(value, 1, editor.ux)
-          : e.key === 'ArrowDown' || e.key === 'ArrowLeft' ? nudgeBrushSize(value, -1, editor.ux)
-          : e.key === 'PageUp' ? Math.max(value + 1, value * 1.25)
-          : e.key === 'PageDown' ? Math.min(value - 1, value / 1.25)
-          : e.key === 'Home' ? min
-          : e.key === 'End' ? max
-          : null;
+        // The arrows step as + and − do, by the preset's own ladder.
+        const next = sizeByKey(e.key, value, min, max, editor.ux);
         if (next === null) return;
         e.preventDefault();
-        set(Math.min(max, Math.max(min, next)));
+        set(next);
       }}
     />
   {:else}

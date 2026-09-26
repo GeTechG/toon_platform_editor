@@ -2103,9 +2103,12 @@ export class EditorState {
     }
   }
 
-  /** Installs one plugin of the catalog; the reason comes back when it did not. */
-  async installPlugin(entry: CatalogEntry): Promise<string | null> {
-    const failed = await installFromCatalog(entry, plugins);
+  /**
+   * Installs one plugin of the catalog; the reason comes back when it did not.
+   * `code` is the bundle the plugins window already downloaded and checked.
+   */
+  async installPlugin(entry: CatalogEntry, code?: string): Promise<string | null> {
+    const failed = await installFromCatalog(entry, plugins, undefined, code);
     this.refreshPlugins();
     return failed;
   }

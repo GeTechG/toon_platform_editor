@@ -13,6 +13,7 @@ const tokensCss = await Bun.file(UI + 'tokens.css').text();
 const timeline = await Bun.file(UI + 'Timeline.svelte').text();
 const canvasView = await Bun.file(UI + 'CanvasView.svelte').text();
 const brushPanel = await Bun.file(UI + 'BrushPanel.svelte').text();
+const sizeScale = await Bun.file(UI + 'size-scale.ts').text();
 const editorUi = await Bun.file(UI + 'Editor.svelte').text();
 const settingsSheet = await Bun.file(UI + 'SettingsSheet.svelte').text();
 const ru = await Bun.file(UI + '../i18n/ru.json').json();
@@ -53,7 +54,8 @@ describe('the thickness track is logarithmic', () => {
   it('the slider speaks the size and keys step one size at a time', () => {
     expect(brushPanel).toContain('sizeAtPosition(');
     expect(brushPanel).toContain('aria-valuetext');
-    expect(brushPanel).toMatch(/ArrowUp[^]*?ArrowDown/);
+    // The key steps live in size-scale.ts (sizeByKey), shared with the canvas rail.
+    expect(brushPanel).toContain('sizeByKey(e.key, value, min, max, editor.ux)');
   });
 });
 
@@ -101,8 +103,9 @@ describe('owner after the tenth audit: the thickness slider', () => {
   it('arrow keys step as +/− do in the preset (nudgeBrushSize)', () => {
     const at = brushPanel.indexOf('{#snippet slider(');
     const block = brushPanel.slice(at, brushPanel.indexOf('{:else}', at));
-    expect(block).toMatch(/ArrowUp[^]*?nudgeBrushSize\(value, 1, editor\.ux\)/);
-    expect(block).toMatch(/ArrowDown[^]*?nudgeBrushSize\(value, -1, editor\.ux\)/);
+    expect(block).toContain('sizeByKey(e.key, value, min, max, editor.ux)');
+    expect(sizeScale).toMatch(/ArrowUp[^]*?nudgeBrushSize\(value, 1, ux\)/);
+    expect(sizeScale).toMatch(/ArrowDown[^]*?nudgeBrushSize\(value, -1, ux\)/);
   });
 
   it('speaks the size with its unit in the right Russian plural', () => {

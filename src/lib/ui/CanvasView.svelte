@@ -42,7 +42,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { sizeFromDrag } from './size-scale';
+  import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import type { LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
@@ -83,6 +83,50 @@
    * started from and the one it has reached. Nothing is written until it ends.
    */
   let sizing = $state<{ pointerId: number; x: number; y: number; start: number; size: number } | null>(null);
+  /**
+   * The finger's way to the thickness (Procreate Dreams' sidebar): a vertical
+   * rail on the edge of the stage, for a hand that touches — a coarse pointer
+   * or the first finger seen. Held (a finger, or a key a moment), it shows the
+   * ring in the middle of the stage, at the sheet's scale.
+   */
+  let touchSeen = $state(false);
+  let railHeld = $state<{ pointerId: number; x: number; y: number } | null>(null);
+  let railTrack = $state<HTMLElement>();
+  /** The size ring of a gesture: the Shift+drag where it began, the rail in the middle. */
+  const ring = $derived(
+    sizing ? { x: sizing.x, y: sizing.y, size: sizing.size }
+    : railHeld ? { x: railHeld.x, y: railHeld.y, size: editor.brushSizeLogical }
+    : null,
+  );
+  function holdRail(pointerId: number): void {
+    const r = canvasRect();
+    railHeld = { pointerId, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function railTo(e: PointerEvent): void {
+    const r = railTrack!.getBoundingClientRect();
+    // Through the slider's own setter: clamped, saved to the brush record.
+    editor.brushSizeLogical = sizeAtRail(e.clientY, r.top, r.height, editor.brushRange.min, editor.brushSizeMax);
+  }
+  function onRailDown(e: PointerEvent): void {
+    if (!e.isPrimary || e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    holdRail(e.pointerId);
+    // A tap jumps there (Procreate), a drag follows.
+    railTo(e);
+  }
+  function onRailMove(e: PointerEvent): void {
+    if (railHeld?.pointerId === e.pointerId) railTo(e);
+  }
+  function onRailUp(e: PointerEvent): void {
+    if (railHeld?.pointerId === e.pointerId) railHeld = null;
+  }
+  function onRailKey(e: KeyboardEvent): void {
+    const next = sizeByKey(e.key, editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax, editor.ux);
+    if (next === null) return;
+    e.preventDefault();
+    editor.brushSizeLogical = next;
+    holdRail(-1);
+  }
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
   /** Active touch points, for two-finger pan and pinch. */
@@ -917,6 +961,10 @@
 
   function onPointerDown(e: PointerEvent): void {
     followPenEnd(e);
+    // The first finger on the sheet brings the thickness rail.
+    if (e.pointerType === 'touch') {
+      touchSeen = true;
+    }
     if (e.pointerType === 'pen') {
       editor.penSeen = true;
       // The palm landed first and started a stroke: it goes, unrecorded, and
@@ -1370,24 +1418,56 @@
       aria-hidden="true"
     ></span>
   {/if}
-  {#if sizing}
-    <!-- Where the drag began, at the size it has reached, in the sheet's
-         real scale — the number beside it for a size too big or too thin to read. -->
+  {#if ring}
+    <!-- Where the drag began (the rail: the middle of the stage), at the size
+         it has reached, in the sheet's real scale — the number beside it for
+         a size too big or too thin to read. -->
     <span
       class="brush-cursor size-ring"
       class:square={toolSpec(editor.brushTool)?.stroke?.grid}
-      style:transform="translate({sizing.x}px, {sizing.y}px) translate(-50%, -50%)"
-      style:width="{diameterOf(sizing.size)}px"
-      style:height="{diameterOf(sizing.size)}px"
+      style:transform="translate({ring.x}px, {ring.y}px) translate(-50%, -50%)"
+      style:width="{diameterOf(ring.size)}px"
+      style:height="{diameterOf(ring.size)}px"
       aria-hidden="true"
     ></span>
     <span
       class="size-number"
-      style:transform="translate({sizing.x}px, {sizing.y}px) translate(-50%, calc(-100% - 12px))"
+      style:transform="translate({ring.x}px, {ring.y}px) translate(-50%, calc(-100% - 12px))"
       aria-hidden="true"
-    >{t('brush.size_title', { size: sizing.size })}</span>
+    >{t('brush.size_title', { size: ring.size })}</span>
   {/if}
-  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !sizing}
+  {#if !editor.playing}
+    <!-- The thickness for a finger (Procreate Dreams' sidebar): on the stage,
+         not in a column, so it stays whatever the panels around it do. -->
+    <div
+      class="size-rail"
+      class:touched={touchSeen}
+      role="slider"
+      tabindex="0"
+      aria-orientation="vertical"
+      aria-label={t('brush.sizes_group')}
+      aria-valuemin={editor.brushRange.min}
+      aria-valuemax={editor.brushSizeMax}
+      aria-valuenow={editor.brushSizeLogical}
+      aria-valuetext={t('brush.size_value', { count: editor.brushSizeLogical })}
+      onpointerdown={onRailDown}
+      onpointermove={onRailMove}
+      onpointerup={onRailUp}
+      onpointercancel={onRailUp}
+      onlostpointercapture={onRailUp}
+      onkeydown={onRailKey}
+      onkeyup={() => { if (railHeld?.pointerId === -1) railHeld = null; }}
+      onblur={() => (railHeld = null)}
+    >
+      <span class="rail-track" bind:this={railTrack}>
+        <span
+          class="rail-knob"
+          style:bottom="{(positionOfSize(editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax) / SIZE_TRACK) * 100}%"
+        ></span>
+      </span>
+    </div>
+  {/if}
+  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !ring}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
@@ -1503,6 +1583,80 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
     pointer-events: none;
+  }
+  /* The finger's thickness rail: a flat key-wide plate on the stage's left
+     edge, where Dreams keeps its sidebar, out of a right hand's way. Hidden
+     for a mouse; a coarse pointer or the first finger brings it. */
+  .size-rail {
+    position: absolute;
+    /* Clear of the side column's fold tab on the stage's edge. */
+    left: max(1.25rem, env(safe-area-inset-left));
+    /* Up to 16rem in the middle of the stage; a short landscape stage keeps
+       its foot clear of the zoom bar in the corner below (4.5rem). */
+    top: max(0.75rem, 50% - 8rem);
+    bottom: max(4.5rem, 50% - 8rem);
+    display: none;
+    width: var(--key-h, 2.75rem);
+    box-sizing: border-box;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-pill);
+    background: var(--canvas);
+    touch-action: none;
+    cursor: pointer;
+  }
+  .size-rail.touched {
+    display: block;
+  }
+  @media (pointer: coarse) {
+    .size-rail {
+      display: block;
+    }
+  }
+  .size-rail:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* The track and knob of the editor's range (controls.css), stood upright;
+     the track is inset by half a knob so the ends are reachable. */
+  .rail-track {
+    position: absolute;
+    left: 50%;
+    top: 0.875rem;
+    bottom: 0.875rem;
+    width: 6px;
+    transform: translateX(-50%);
+    border-radius: var(--r-pill);
+    background: var(--sub);
+  }
+  .rail-knob {
+    position: absolute;
+    left: 50%;
+    width: 1.25rem;
+    height: 1.25rem;
+    box-sizing: border-box;
+    transform: translate(-50%, 50%);
+    border: 3px solid var(--canvas);
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    box-shadow: 0 0 0 1px var(--edge);
+  }
+  @media (forced-colors: active) {
+    .size-rail {
+      forced-color-adjust: none;
+      border-color: CanvasText;
+      background: Canvas;
+    }
+    .rail-track {
+      background: CanvasText;
+    }
+    .rail-knob {
+      border-color: Canvas;
+      background: Highlight;
+      box-shadow: 0 0 0 1px CanvasText;
+    }
+    .size-rail:focus-visible {
+      outline-color: Highlight;
+    }
   }
   /* Tonio draws a 25px swatch down-right of the pipette cursor. */
   .pick-preview {

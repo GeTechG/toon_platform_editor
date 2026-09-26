@@ -67,21 +67,31 @@ function manifestOf(module: Record<string, unknown>): Partial<Plugin> & Record<s
   return typeof manifest === 'object' && manifest !== null ? manifest as Partial<Plugin> : {};
 }
 
+/**
+ * Downloads a bundle's text; the reason comes back instead of throwing. Its own
+ * step so the plugins window can check the code before anything runs it.
+ */
+export async function download(
+  url: string,
+  ports: Pick<InstallPorts, 'fetch'> = DEFAULT_PORTS,
+): Promise<{ code: string } | string> {
+  // The browser's own words are English and about the machine: they go to
+  // the console, and the report says what happened in ours.
+  try {
+    return { code: await (await ports.fetch(url)).text() };
+  } catch (error) {
+    console.warn('plugin download failed:', error);
+    return t('plugins.not_downloaded');
+  }
+}
+
 /** Downloads and evaluates a bundle; the reason comes back instead of throwing. */
 async function bundle(
   url: string,
   ports: InstallPorts,
 ): Promise<{ code: string; manifest: Partial<Plugin> & Record<string, unknown> } | string> {
-  // The browser's own words are English and about the machine: they go to
-  // the console, and the report says what happened in ours.
-  let code: string;
-  try {
-    code = await (await ports.fetch(url)).text();
-  } catch (error) {
-    console.warn('plugin download failed:', error);
-    return t('plugins.not_downloaded');
-  }
-  return evaluated(code, ports);
+  const got = await download(url, ports);
+  return typeof got === 'string' ? got : evaluated(got.code, ports);
 }
 
 async function evaluated(
@@ -138,13 +148,18 @@ async function install(
   return failed;
 }
 
-/** Installs one plugin of the catalog. `null` means it is in. */
+/**
+ * Installs one plugin of the catalog. `null` means it is in. `code` is the
+ * bundle the window already downloaded and checked: it is installed as is,
+ * not fetched a second time (the second copy is not the one that was checked).
+ */
 export async function installFromCatalog(
   entry: CatalogEntry,
   registry: PluginRegistry,
   ports: InstallPorts = DEFAULT_PORTS,
+  code?: string,
 ): Promise<string | null> {
-  const got = await bundle(entry.url, ports);
+  const got = code === undefined ? await bundle(entry.url, ports) : await evaluated(code, ports);
   if (typeof got === 'string') {
     return got;
   }
@@ -161,7 +176,6 @@ export async function installFromCatalog(
     icon: entry.icon,
     code: got.code,
     source: 'catalog',
-    official: entry.official,
     installed: Date.now(),
   }, registry, ports);
 }
@@ -277,7 +291,7 @@ export async function updateInstalled(
       continue;
     }
     // Not on disk, the old code comes back after a reload: not «обновлён».
-    if (!(await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, official: entry.official, code: got.code }))) {
+    if (!(await putInstalled({ ...plugin, version: entry.version, name: entry.name, description: entry.description, icon: entry.icon, code: got.code }))) {
       registry.fail(plugin.id, t('plugins.not_kept'));
       continue;
     }
