@@ -319,7 +319,7 @@
   const tabKeys = $state<Partial<Record<TabId, HTMLButtonElement>>>({});
   let tabWindow = $state<HTMLElement | undefined>();
   let tabBar = $state<HTMLElement | undefined>();
-  const TAB_ICONS: Record<TabId, IconName> = { color: 'palette', brush: 'edit', layers: 'layers', sound: 'note', more: 'more' };
+  const TAB_ICONS: Record<TabId, IconName> = { color: 'palette', brush: 'edit', timeline: 'timeline', sound: 'note', more: 'more' };
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
@@ -1854,11 +1854,17 @@
   bind:clientHeight={boxH}
 >
   {#if cut}
-    <!-- A small screen: the phone's one-key strip of tools and history, or
-         the tablet's own column; everything else is behind the tabs. -->
-    {#if cut.rail.length > 0}
+    <!-- A small screen: the desktop's left column down the left edge, one
+         key wide on a phone, with «Отправить мульт» at its foot; everything
+         else is behind the tabs. -->
+    {#if cut.rail.length > 0 || (onPublish && cut.foot.length > 0)}
       <aside class="left" aria-label={t('editor.tools_side')} style={step === 'tablet' ? sideStyle('left') : undefined}>
-        {@render slot(cut.rail)}
+        <div class="rail-keys">
+          {@render slot(cut.rail)}
+        </div>
+        {#if onPublish && cut.foot.length > 0}
+          <div class="rail-foot">{@render slot(cut.foot)}</div>
+        {/if}
       </aside>
     {/if}
   {:else if editor.panels.left.length > 0 || editor.arranging}
@@ -2993,80 +2999,104 @@
      keep, not read off the screen width: a width query saw neither the
      columns (in rem, twice as wide at 200 % text) nor the height, and a
      portrait tablet was never small at all. `.compact` is both small steps,
-     `.phone` the one with a one-key strip, `.tall` a screen standing up.
+     `.phone` the one with a one-key column, `.tall` a screen standing up.
      The right column, the bottom bar and the floating windows are not drawn
      there — what they hold is behind the tabs, one window at a time. */
   .editor.studio.compact {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
   }
+  /* The desktop's left column down the left edge, standing or lying, over
+     the dock: a flex column whose keys scroll inside it and whose foot — «Отправить
+     мульт» — stays at the bottom, in view however far the keys scrolled. */
   .studio.compact .left {
     grid-column: 1;
-    grid-row: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
   }
   .studio.compact .stage {
     grid-column: 2;
     grid-row: 1;
   }
+  /* The dock runs under the column as the desktop's bottom bar does: the
+     tabs keep the whole width, and «Таймлайн» its one line at 390 px. */
   .studio.compact .dock {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  /* Lying down height is what the column lacks: it keeps all of it, and the
+     dock — one line there — goes beside it. */
+  .studio.compact:not(.tall) .left {
+    grid-row: 1 / -1;
+  }
+  .studio.compact:not(.tall) .dock {
     grid-column: 2;
     grid-row: 2;
   }
-  /* A phone standing up: the strip across the top, the dock at the bottom,
-     the canvas the whole width between them. */
-  .editor.studio.phone.tall {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The keys pair up as the desktop's column does; a phone's column is one
+     key wide, so there they stand one under another. */
+  .rail-keys,
+  .rail-foot {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(var(--key-h), 100%), 1fr));
+    align-content: start;
+    gap: 0.6rem;
+    box-sizing: border-box;
   }
-  .studio.phone.tall .left {
-    grid-column: 1;
-    grid-row: 1;
-    display: flex;
-    flex-direction: row;
-    width: auto;
-    padding: 0.4rem 1.25rem 0.4rem 0.5rem;
-    gap: 0.4rem;
-    border-right: none;
-    border-bottom: 1px solid var(--hairline);
-    overflow-x: auto;
-    overflow-y: hidden;
+  /* Alone in its row the key would stretch across it: it takes one cell. */
+  .rail-foot {
+    grid-template-columns: repeat(auto-fill, minmax(min(var(--key-h), 100%), 1fr));
+  }
+  .rail-keys {
+    flex: 0 1 auto;
+    min-height: 0;
+    padding: 1rem 0.9rem;
+    overflow-y: auto;
     overscroll-behavior: contain;
-    /* The strip says that it scrolls: on 390px it shows seven of eleven
-       keys, and a cleanly cut key is a signal only to someone who already
-       knows the strip moves. Over paper, when nothing overflows, the fade is
-       invisible. */
-    mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
-    scroll-padding-inline: 1.25rem;
   }
-  .studio.phone.tall .stage {
-    grid-column: 1;
-    grid-row: 2;
+  .rail-keys > :global(*:not(.key):not(.arr)) {
+    grid-column: 1 / -1;
   }
-  .studio.phone.tall .dock {
-    grid-column: 1;
-    grid-row: 3;
+  .rail-keys > :global(.key),
+  .rail-foot > :global(.key) {
+    min-width: 0;
   }
-  /* Lying down, the strip is one key wide down the side and scrolls the
-     other way, with the same fade. */
-  .studio.phone:not(.tall) .left {
-    width: calc(var(--key-h) + 1rem);
-    padding: 0.5rem 0.5rem 1.25rem;
-    gap: 0.4rem;
-    overscroll-behavior: contain;
+  /* The keys say that they scroll, with a fade at their end; over paper,
+     when nothing overflows, it is invisible. */
+  .studio.compact .rail-keys {
     mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
     scroll-padding-block: 1.25rem;
   }
-  /* A key is 44 wide or it is not a key (DESIGN §5): in the strip nothing
-     shrinks, the strip scrolls. Named as the column rule names the history
-     (`.studio .left .history` is three classes), or it loses to it. */
-  .studio.phone.tall .left .history {
-    display: flex;
+  .studio.compact .rail-foot {
     flex: none;
+    margin-top: auto;
+    padding: 0.6rem 0.9rem 1rem;
+    border-top: 1px solid var(--hairline);
+  }
+  /* A phone: one key wide. */
+  .studio.phone .left {
+    width: calc(var(--key-h) + 1rem);
+  }
+  .studio.phone .rail-keys {
+    padding: 0.5rem 0.5rem 1.25rem;
     gap: 0.4rem;
   }
-  .studio.phone .left > :global(.key),
+  .studio.phone .rail-foot {
+    padding: 0.5rem;
+  }
+  /* A key is 44 wide or it is not a key (DESIGN §5): in the column nothing
+     shrinks, the column scrolls. Named as the column rule names the history
+     (`.studio .left .history` is three classes), or it loses to it. */
+  .studio.phone .left .history {
+    gap: 0.4rem;
+  }
+  .studio.phone .rail-keys > :global(.key),
+  .studio.phone .rail-foot > :global(.key),
   .studio.phone .left .history :global(.key) {
-    flex: none;
     min-width: var(--key-h);
   }
   /* The dock: the mini transport and the tabs. One line lying down, two

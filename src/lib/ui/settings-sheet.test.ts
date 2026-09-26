@@ -80,9 +80,10 @@ describe('the rail and the chrome follow the reference studio', () => {
     const claims = [...studioCss.matchAll(/grid-column: [^;]+;\s*(grid-row: [^;]+;)?/g)];
     expect(claims.length).toBeGreaterThanOrEqual(4);
     expect(claims.filter((m) => m[1] !== undefined).length).toBeGreaterThanOrEqual(4);
-    // Only a wide item's span, the seams (a row of their own already) and the
-    // `.alt` swap claim a column alone.
-    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(7);
+    // Only a wide item's span (the columns' and the small screen's column
+    // keys'), the seams (a row of their own already) and the `.alt` swap
+    // claim a column alone.
+    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(8);
   });
 
   it('keeps the panel section as the last one in the settings sheet', () => {

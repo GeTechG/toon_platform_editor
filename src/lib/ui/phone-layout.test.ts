@@ -22,21 +22,19 @@ function rule(selector: string): string {
 }
 
 describe('a phone keeps room to draw', () => {
-  it('the strip is one key thick and scrolls what does not fit', () => {
-    const strip = rule('.studio.phone.tall .left');
-    expect(strip).toMatch(/flex-direction:\s*row/);
-    expect(strip).toMatch(/overflow-x:\s*auto/);
-    expect(rule('.studio.phone:not(.tall) .left')).toMatch(/width:\s*calc\(var\(--key-h\) \+ 1rem\)/);
+  it('the column is one key thick and scrolls what does not fit', () => {
+    // Down the left standing and lying alike (small-screens-closer-to-desktop).
+    expect(rule('.studio.phone .left')).toMatch(/width:\s*calc\(var\(--key-h\) \+ 1rem\)/);
+    expect(rule('.rail-keys')).toMatch(/overflow-y:\s*auto/);
   });
 
   it('a key keeps its finger-sized width in the strip', () => {
     // Nine tools split 360px into 17px slivers once: under WCAG 2.2 AA 2.5.8.
-    expect(style).toMatch(/\.studio\.phone \.left > :global\(\.key\)[^}]*min-width:\s*var\(--key-h\)/s);
+    expect(style).toMatch(/\.studio\.phone \.rail-keys > :global\(\.key\)[^}]*min-width:\s*var\(--key-h\)/s);
   });
 
   it('the strip says it scrolls, with a fade at its end', () => {
-    expect(rule('.studio.phone.tall .left')).toMatch(/mask-image:\s*linear-gradient\(to right/);
-    expect(rule('.studio.phone:not(.tall) .left')).toMatch(/mask-image:\s*linear-gradient\(to bottom/);
+    expect(rule('.studio.compact .rail-keys')).toMatch(/mask-image:\s*linear-gradient\(to bottom/);
   });
 
   it('the dock clears the home indicator', () => {
@@ -48,7 +46,8 @@ describe('a phone keeps room to draw', () => {
 // two lost to it and the history stayed a 16px grid in the strip.
 describe('undo and redo stay reachable on a phone', () => {
   it('the phone rule for the history outranks the column rule', () => {
-    expect(rule('.studio.phone.tall .left .history')).toMatch(/display:\s*flex/);
+    // Three classes and more, so the phone's gap and key width reach it.
+    expect(style).toMatch(/\.studio\.phone \.left \.history :global\(\.key\)[^}]*min-width:\s*var\(--key-h\)/s);
   });
 
   it('the history rides in the strip with the tools', () => {
@@ -88,9 +87,9 @@ describe('the strip in its window is as wide as the phone', () => {
 });
 
 describe('a phone can still set the frame rate', () => {
-  it('the fps box waits behind «⋯»', () => {
-    const more = compactLayout(defaultPanels(), 'phone', DEFAULT_TAB_ORDER).tabs.find((tab) => tab.id === 'more');
-    expect(more?.items).toContain('fps');
+  it('the fps box is in the timeline', () => {
+    const tab = compactLayout(defaultPanels(), 'phone', DEFAULT_TAB_ORDER).tabs.find((tab) => tab.id === 'timeline');
+    expect(tab?.items).toContain('fps');
   });
 });
 

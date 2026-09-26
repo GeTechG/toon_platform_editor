@@ -68,15 +68,15 @@ describe('the layout step is worked out from the room the canvas would get', () 
 
 describe('the tabs are cut from the user’s own layout', () => {
   it('a phone rail holds every placed tool and the history; the rest goes to the tabs', () => {
+    // Since small-screens-closer-to-desktop the rail is the desktop's left
+    // column (small-screens-desktop-like.test.ts), publishing at its foot.
     const cut = compactLayout(defaultPanels(), 'phone', DEFAULT_TAB_ORDER);
-    expect(cut.rail).toEqual([...toolOrder().map(toolItem), 'history']);
-    expect(cut.tabs.map((tab) => tab.id)).toEqual(['color', 'brush', 'layers', 'sound', 'more']);
+    expect(cut.rail).toEqual(expect.arrayContaining([...toolOrder().map(toolItem), 'history']));
+    expect(cut.tabs.map((tab) => tab.id)).toEqual(['color', 'brush', 'timeline', 'sound', 'more']);
     expect(cut.tabs.find((tab) => tab.id === 'color')?.items).toEqual(['palette']);
-    expect(cut.tabs.find((tab) => tab.id === 'layers')?.items).toEqual(['timeline']);
+    expect(cut.tabs.find((tab) => tab.id === 'timeline')?.items.at(-1)).toBe('timeline');
     const more = cut.tabs.find((tab) => tab.id === 'more')?.items ?? [];
-    expect(more).toContain('save');
     expect(more).toContain('settings');
-    expect(more).toContain('publish');
     // The mini transport does the transport's work; the rail holds the tools.
     expect(more).not.toContain('transport');
     expect(more).not.toContain(toolItem('pencil'));
@@ -86,7 +86,7 @@ describe('the tabs are cut from the user’s own layout', () => {
   it('the tablet keeps the left column as it is', () => {
     const layout = defaultPanels();
     const cut = compactLayout(layout, 'tablet', DEFAULT_TAB_ORDER);
-    expect(cut.rail).toEqual(layout.left);
+    expect([...cut.rail, ...cut.foot].sort()).toEqual([...layout.left].sort());
     const more = cut.tabs.find((tab) => tab.id === 'more')?.items ?? [];
     expect(more).not.toContain('save');
   });
@@ -104,21 +104,21 @@ describe('the tabs are cut from the user’s own layout', () => {
 
   it('the tabs come in the user’s order', () => {
     const order = moveTab(DEFAULT_TAB_ORDER, 'sound', 0);
-    expect(order).toEqual(['sound', 'color', 'brush', 'layers', 'more']);
+    expect(order).toEqual(['sound', 'color', 'brush', 'timeline', 'more']);
     expect(compactLayout(defaultPanels(), 'phone', order).tabs.map((tab) => tab.id)).toEqual(order);
   });
 });
 
 describe('the tab order is a setting', () => {
   it('reads back clean: unknown ids out, missing ones back at the end', () => {
-    expect(normalizeTabOrder(['layers', 'nope', 'layers', 'color'])).toEqual(['layers', 'color', 'brush', 'sound', 'more']);
+    expect(normalizeTabOrder(['timeline', 'nope', 'timeline', 'color'])).toEqual(['timeline', 'color', 'brush', 'sound', 'more']);
     expect(normalizeTabOrder(undefined)).toEqual([...DEFAULT_TAB_ORDER]);
   });
 
   it('is stored with the rest of the settings', () => {
     expect(DEFAULT_SETTINGS.tabOrder).toEqual([...DEFAULT_TAB_ORDER]);
     const saved = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { tabOrder: ['more', 'color'] } }));
-    expect(saved?.settings.tabOrder).toEqual(['more', 'color', 'brush', 'layers', 'sound']);
+    expect(saved?.settings.tabOrder).toEqual(['more', 'color', 'brush', 'timeline', 'sound']);
   });
 });
 
