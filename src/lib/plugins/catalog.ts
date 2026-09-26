@@ -19,8 +19,7 @@ import { t } from '../i18n';
 /**
  * The catalog the editor opens with: the build branch of the plugin
  * repository, read straight from GitHub — no hosting to set up, and a cache of
- * minutes rather than of hours. Its `official.json` is the one register of
- * official plugins, whatever address the settings point the catalog at.
+ * minutes rather than of hours. What it offers went through a pull request.
  */
 export const OFFICIAL_CATALOG = 'https://raw.githubusercontent.com/GeTechG/toonop_plugins/build/';
 
@@ -122,77 +121,9 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
 }
 
 /**
- * One record of `official.json`: the owner blessed exactly this code. The
- * register lives in the plugin repository and only its owner writes it — a
- * plugin cannot mark itself, and a catalog at another address has no say.
+ * Reviewed: it came from our catalog, where every plugin went through a pull
+ * request. A catalog at another address, like a file, is nobody's review.
  */
-export interface OfficialEntry {
-  readonly id: string;
-  readonly version: string;
-  /** sha256 of the bundle as the editor receives it, hex. */
-  readonly sha256: string;
-}
-
-export interface OfficialPorts {
-  fetch: (url: string) => Promise<{ json(): Promise<unknown> }>;
-  storage?: Pick<Storage, 'getItem' | 'setItem'>;
-}
-
-const OFFICIAL_KEY = 'toonop-plugins-official';
-
-function officialEntries(value: unknown): OfficialEntry[] | null {
-  const list = typeof value === 'object' && value !== null ? (value as Record<string, unknown>).plugins : null;
-  if (!Array.isArray(list)) {
-    return null;
-  }
-  return list.flatMap((record: Record<string, unknown>) =>
-    record && text(record.id) && /^[0-9a-f]{64}$/.test(text(record.sha256))
-      ? [{ id: text(record.id), version: text(record.version), sha256: text(record.sha256) }]
-      : []);
-}
-
-/**
- * The register, from our catalog. Offline it is the last copy that came in;
- * with none kept it is empty — everything is community, and nothing already
- * installed is switched off for it.
- */
-export async function readOfficial(
-  ports: OfficialPorts = { fetch: (url) => globalThis.fetch(url) },
-): Promise<OfficialEntry[]> {
-  // Read lazily: in a sandboxed frame merely touching `localStorage` throws.
-  const storage = () => ports.storage ?? globalThis.localStorage;
-  try {
-    const body = await (await ports.fetch(`${OFFICIAL_CATALOG}official.json`)).json();
-    const read = officialEntries(body);
-    if (read) {
-      try {
-        storage()?.setItem(OFFICIAL_KEY, JSON.stringify({ plugins: read }));
-      } catch {
-        // A private window keeps nothing; the register is still in hand.
-      }
-      return read;
-    }
-  } catch (error) {
-    console.warn('official plugins register unreadable:', error);
-  }
-  try {
-    return officialEntries(JSON.parse(storage()?.getItem(OFFICIAL_KEY) ?? 'null')) ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/** sha256 of a bundle's text as UTF-8, hex: the bytes `scripts/bless.mjs` hashed. */
-export async function sha256(code: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-/** Ours: this very code is in the register. Changed code is not, whatever it calls itself. */
-export async function isOfficial(code: string, official: readonly OfficialEntry[]): Promise<boolean> {
-  if (official.length === 0) {
-    return false;
-  }
-  const hash = await sha256(code);
-  return official.some((entry) => entry.sha256 === hash);
+export function reviewed(entry: Pick<CatalogEntry, 'url'>): boolean {
+  return entry.url.startsWith(OFFICIAL_CATALOG);
 }

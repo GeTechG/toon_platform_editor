@@ -4,7 +4,7 @@ import { t } from '../i18n';
 
 // Owner's answers after the twelfth audit, the export and plugins sheets.
 // 1. Video streams straight into a file where File System Access is there.
-// 2. Plugins are official or community; whatever is not ours asks first.
+// 2. A plugin nobody reviewed asks first.
 const UI = new URL('./', import.meta.url).pathname;
 const exportSheet = await Bun.file(UI + 'ExportSheet.svelte').text();
 const video = await Bun.file(UI + '../export/video.ts').text();
@@ -77,10 +77,10 @@ describe('a video streamed into a file', () => {
   });
 });
 
-describe('official and community plugins', () => {
-  // Who is official is the hash of the code now: owner-twelfth-plugin-trust.test.ts.
+describe('the warning before an unreviewed plugin', () => {
+  // Who warns is owner-twelfth-plugin-trust.test.ts: a file, or a foreign catalog.
   it('the warning is on ty, says unchecked and full access, and never says «оп»', () => {
-    const words = [t('plugins.warn_title'), t('plugins.warn_body'), t('plugins.official'), t('plugins.community')];
+    const words = [t('plugins.warn_title'), t('plugins.warn_body')];
     const body = t('plugins.warn_body');
     expect(body).toMatch(/не провер/);
     expect(body).toMatch(/полный доступ/);

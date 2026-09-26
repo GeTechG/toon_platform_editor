@@ -10,13 +10,10 @@
   import { tick } from 'svelte';
   import { BUNDLED_PLUGIN, plugins } from '../plugins';
   import {
-    OFFICIAL_CATALOG,
     compareVersions,
-    isOfficial,
     readCatalog,
-    readOfficial,
+    reviewed,
     type CatalogEntry,
-    type OfficialEntry,
   } from '../plugins/catalog';
   import { download, forPerson } from '../plugins/install';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
@@ -30,9 +27,8 @@
   let dialogEl = $state<HTMLDialogElement | undefined>();
   let warnEl = $state<HTMLDialogElement | undefined>();
   /**
-   * An install waiting on the warning: any code whose hash is not in our
-   * register of official plugins, from the catalog or from a file. `run`
-   * goes ahead on «Установить».
+   * An install waiting on the warning: a file, or a catalog at an address
+   * other than ours. `run` goes ahead on «Установить».
    */
   let pending = $state<{ name: string; run: () => Promise<void> } | null>(null);
   let bundleFile = $state<HTMLInputElement | undefined>();
@@ -40,17 +36,6 @@
   let catalogTab = $state<HTMLButtonElement | undefined>();
   let tab = $state<'mine' | 'catalog'>('mine');
   let installed = $state<InstalledPlugin[]>([]);
-  /**
-   * The owner's register, read once a window. Nothing is marked official from
-   * a record's word: an installed plugin is checked by its code on every
-   * read of the list, so one put in before the register existed becomes
-   * official by itself, and changed code stops being so.
-   */
-  const official = readOfficial();
-  let blessed = $state<readonly OfficialEntry[]>([]);
-  void official.then((read) => (blessed = read));
-  /** The installed plugins whose code is in the register. */
-  let officialIds = $state(new Set<string>());
   let catalog = $state<CatalogEntry[]>([]);
   /** Why the catalog has nothing to show, when it has nothing to show. */
   let catalogError = $state('');
@@ -81,9 +66,8 @@
   }
 
   /**
-   * The code is downloaded first and checked by its hash: ours installs at
-   * once, anything else is somebody's code and says so first. What installs
-   * is the very text that was checked.
+   * Our catalog installs at once: it went through a pull request. A catalog
+   * at another address is somebody's code and says so first.
    */
   async function askInstall(entry: CatalogEntry): Promise<void> {
     busy = entry.id;
@@ -96,34 +80,15 @@
       await keepFocus();
       return;
     }
-    if (await isOfficial(got.code, await official)) {
+    if (reviewed(entry)) {
       await install(entry, got.code);
       return;
     }
     pending = { name: entry.name, run: () => install(entry, got.code) };
   }
 
-  /**
-   * What the catalog's list says before anything is downloaded: our address
-   * and a register record for this id and version. A hint only — the install
-   * checks the code itself.
-   */
-  function listedOfficial(entry: CatalogEntry): boolean {
-    return entry.url.startsWith(OFFICIAL_CATALOG)
-      && blessed.some((record) => record.id === entry.id && record.version === entry.version);
-  }
-
   async function refresh(): Promise<void> {
-    const list = await listInstalled();
-    const register = await official;
-    const ours = new Set<string>();
-    for (const plugin of list) {
-      if (await isOfficial(plugin.code, register)) {
-        ours.add(plugin.id);
-      }
-    }
-    installed = list;
-    officialIds = ours;
+    installed = await listInstalled();
   }
 
   /**
@@ -233,11 +198,7 @@
       return;
     }
     const code = await file.text();
-    // Our code is ours however it came in; any other file is unchecked.
-    if (await isOfficial(code, await official)) {
-      await installFile(file.name, code);
-      return;
-    }
+    // A file went through nobody's review: it always says so first.
     pending = { name: file.name, run: () => installFile(file.name, code) };
   }
 
@@ -337,7 +298,6 @@
               <span class="about">
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
                 <small>
-                  {plugin.source === 'bundled' || officialIds.has(plugin.id) ? t('plugins.official') : t('plugins.community')},
                   {plugin.source === 'bundled'
                     ? t('plugins.source_bundled')
                     : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
@@ -376,7 +336,7 @@
             </span>
             <span class="about">
               <span class="name">{entry.name} <span class="saved">{entry.version}</span></span>
-              <small>{listedOfficial(entry) ? t('plugins.official') : t('plugins.community')} · {entry.description}</small>
+              <small>{entry.description}</small>
             </span>
             {#if offer(entry) === 'installed'}
               <span class="saved">{t('plugins.installed')}</span>
