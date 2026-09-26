@@ -1,187 +1,119 @@
 import { describe, expect, it } from 'bun:test';
+import { plugins } from '../plugins';
+import { defaultPanels } from './panels';
+import { DEFAULT_TAB_ORDER, compactLayout } from './small-screen';
 
-// Measured on a 360×732 phone before this was fixed: `.left` 119px, `.right`
-// 379px, `.panel` 178px, and `.stage` — the only child that grows — **0**. The
-// canvas still painted, outside its zero-height box, over the toolbar. There
-// was nowhere to draw on a phone at all. The keys in the rail had lost their
-// width the same way: `min-width: 0` from the desktop columns survived into the
-// phone branch and nine tools split 360px into 17.2px slivers, 6.4px apart —
-// closer than WCAG 2.2 AA 2.5.8 forgives even with the spacing exception.
-//
-// Both are a line of CSS each, and both are a line someone will tidy away. This
-// is the note that says they are load-bearing.
+// The phone, after «одно окно за раз» (small-screens-one-window). The columns
+// stacked above and below the canvas are gone, and with them the rails capped
+// in dvh, the bar sized to its contents and the short-screen branch: a phone
+// has the canvas, a one-key strip, the dock and at most one window. What the
+// old notes measured and still holds is kept here — the key's width in a
+// strip, the strip's fade, the history outranking the column rule, the
+// windows un-floated under the canvas, the strip as wide as the phone.
+void plugins;
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+const style = editorUi.slice(editorUi.indexOf('<style>'));
 
-/** The body of the `@media` block that opens at `from`. */
-function block(from: number): string {
-  const open = editorUi.indexOf('{', from);
-  let depth = 0;
-  for (let i = open; i < editorUi.length; i++) {
-    if (editorUi[i] === '{') depth++;
-    if (editorUi[i] === '}' && --depth === 0) return editorUi.slice(open, i);
-  }
-  throw new Error('unterminated media block');
+/** One rule's body by its exact selector. */
+function rule(selector: string): string {
+  const at = style.indexOf(`\n  ${selector} {`);
+  expect(at).toBeGreaterThan(-1);
+  return style.slice(at, style.indexOf('}', at));
 }
-
-/** The phone branch of the studio stylesheet. */
-function phoneBranch(): string {
-  const start = editorUi.indexOf('/* Phone: no room for side columns');
-  expect(start).toBeGreaterThan(-1);
-  return block(editorUi.indexOf('@media (max-width: 40rem)', start));
-}
-
-/** Every phone branch there is — the studio has more than one. */
-function phoneBranches(): string[] {
-  return [...editorUi.matchAll(/@media \(max-width: 40rem\)/g)].map((m) => block(m.index!));
-}
-
-const phone = phoneBranch();
 
 describe('a phone keeps room to draw', () => {
-  it('the stage has a floor it does not give up', () => {
-    expect(phone).toMatch(/\.studio \.stage \{[^}]*min-height:\s*\d+dvh/);
+  it('the strip is one key thick and scrolls what does not fit', () => {
+    const strip = rule('.studio.phone.tall .left');
+    expect(strip).toMatch(/flex-direction:\s*row/);
+    expect(strip).toMatch(/overflow-x:\s*auto/);
+    expect(rule('.studio.phone:not(.tall) .left')).toMatch(/width:\s*calc\(var\(--key-h\) \+ 1rem\)/);
   });
 
-  it('the rails are capped and scroll what does not fit', () => {
-    expect(phone).toMatch(/\.studio \.right \{[^}]*max-height:\s*\d+dvh/);
-    expect(phone).toMatch(/\.studio \.panel \{[^}]*max-height:\s*\d+dvh/);
-    // Capping without a scroller would clip the palette instead of moving it.
-    expect(phone).toMatch(/overflow:\s*auto/);
+  it('a key keeps its finger-sized width in the strip', () => {
+    // Nine tools split 360px into 17px slivers once: under WCAG 2.2 AA 2.5.8.
+    expect(style).toMatch(/\.studio\.phone \.left > :global\(\.key\)[^}]*min-width:\s*var\(--key-h\)/s);
   });
 
-  it('the bottom rail scrolls too, and stops leaking into the document', () => {
-    // Measured on 390×844: left 114 + stage 321 + right 186 + panel 167 fills
-    // the 788 exactly, and the panel wanted 177. It is `overflow: clip` with a
-    // 20px clip margin — which exists so the fold tab and the resizer can paint
-    // outside it — so the missing 10px painted past the studio and handed the
-    // *document* a scrollbar: 855 against a 844 viewport. On a phone both of
-    // those children are `display: none`, so the margin buys nothing and costs
-    // a page that slides under a thumb meant for the canvas.
-    expect(phone).toMatch(/\.studio \.panel \{[^}]*overflow:\s*auto/s);
-    expect(phone).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin:\s*0/s);
+  it('the strip says it scrolls, with a fade at its end', () => {
+    expect(rule('.studio.phone.tall .left')).toMatch(/mask-image:\s*linear-gradient\(to right/);
+    expect(rule('.studio.phone:not(.tall) .left')).toMatch(/mask-image:\s*linear-gradient\(to bottom/);
   });
 
-  it('a key keeps its finger-sized width in the rail', () => {
-    expect(phone).toMatch(/:global\(\.key\)[^}]*min-width:\s*var\(--key-h\)/s);
+  it('the dock clears the home indicator', () => {
+    expect(rule('.dock')).toMatch(/padding-bottom:\s*max\([^)]*env\(safe-area-inset-bottom\)\)/);
+  });
+});
+
+// The column rule `.studio .left .history` is three classes; a phone rule of
+// two lost to it and the history stayed a 16px grid in the strip.
+describe('undo and redo stay reachable on a phone', () => {
+  it('the phone rule for the history outranks the column rule', () => {
+    expect(rule('.studio.phone.tall .left .history')).toMatch(/display:\s*flex/);
+  });
+
+  it('the history rides in the strip with the tools', () => {
+    expect(compactLayout(defaultPanels(), 'phone', DEFAULT_TAB_ORDER).rail).toContain('history');
+  });
+});
+
+describe('a window that stops floating gets a row of its own', () => {
+  // A static child in a stage the canvas fills edge to edge laid itself out
+  // under the next panel, present and unpressable. The stage is a column on a
+  // small screen and the canvas gives the rows back.
+  it('un-floats the tool windows and turns the stage into a column', () => {
+    expect(rule('.studio.compact .stage')).toMatch(/flex-direction:\s*column/);
+    expect(rule('.studio.compact .tool-windows')).toMatch(/position:\s*static/);
+  });
+
+  it('the zoom window stays a small float, in the top corner, out of the windows’ row', () => {
+    // As a row of its own at 200 % text lying down, it took 88 of the
+    // stage's 179 px: the canvas had 90.
+    const zoom = rule('.studio.compact .scale-window');
+    expect(zoom).toMatch(/top:/);
+    expect(zoom).toMatch(/bottom:\s*auto/);
+    expect(zoom).not.toMatch(/position:\s*static/);
+  });
+
+  it('lets the canvas shrink instead of filling the stage', () => {
+    const wrap = rule('.studio.compact .stage > :global(.wrap)');
+    expect(wrap).toMatch(/flex:\s*1/);
+    expect(wrap).toMatch(/height:\s*auto/);
+  });
+});
+
+describe('the strip in its window is as wide as the phone', () => {
+  it('the timeline takes the window’s width, not the width of every frame', () => {
+    expect(style).toMatch(/\.tab-window > :global\(\.timeline\)[^{]*\{[^}]*width:\s*100%/);
+  });
+});
+
+describe('a phone can still set the frame rate', () => {
+  it('the fps box waits behind «⋯»', () => {
+    const more = compactLayout(defaultPanels(), 'phone', DEFAULT_TAB_ORDER).tabs.find((tab) => tab.id === 'more');
+    expect(more?.items).toContain('fps');
   });
 });
 
 describe('the phone branch and the desktop branch do not overlap', () => {
   it('no breakpoint matches on both sides of the same edge', () => {
-    // `max-width: 40rem` and `min-width: 40rem` both match at exactly 640px, so
-    // a sheet took its desktop centring while the studio was still stacked. The
-    // complement of `max-width: 40rem` is `min-width: 40.0625rem` — which one
-    // rule already used and another did not.
     const phoneEdges = [...editorUi.matchAll(/@media \(max-width: ([\d.]+)rem\)/g)].map((m) => m[1]);
     const deskEdges = [...editorUi.matchAll(/@media \(min-width: ([\d.]+)rem\)/g)].map((m) => m[1]);
     expect(deskEdges.filter((edge) => phoneEdges.includes(edge))).toEqual([]);
   });
 });
 
-describe('a window that stops floating gets a row of its own', () => {
-  // Measured on 390×844 before this was fixed: `.stage` ended at y=498.5 and
-  // `.scale-window` — turned `position: static` by the branch below, but still
-  // a child of a stage the canvas fills edge to edge — laid itself out at
-  // y=506–540, outside its own parent, under the panel that comes next.
-  // `elementFromPoint` across the whole «100 %» readout returned the palette,
-  // the brush box and an <h2>; never the zoom window. It was in the tree, it
-  // had geometry, and it could be neither seen nor pressed. The `z-index: 3`
-  // left over from the floating layout does not help: a static element has none.
-  //
-  // Un-floating a child is only half a layout. The other half is the row it
-  // now needs, and that row has to come out of the canvas.
-  const branch = phoneBranches().find((b) => b.includes('.scale-window'));
-
-  it('has a branch that un-floats the tool windows', () => {
-    expect(branch).toBeDefined();
-    expect(branch).toMatch(/position:\s*static/);
-  });
-
-  it('turns the stage into a column so the windows get rows', () => {
-    expect(branch).toMatch(/\.stage \{[^}]*flex-direction:\s*column/s);
-  });
-
-  it('lets the canvas shrink instead of filling the stage', () => {
-    // `.wrap` carries `height: 100%`, which in a column resolves against the
-    // whole stage and pushes every sibling straight back out of it.
-    expect(branch).toMatch(/\.stage > :global\(\.wrap\) \{[^}]*flex:\s*1/s);
-    expect(branch).toMatch(/\.stage > :global\(\.wrap\) \{[^}]*height:\s*auto/s);
-  });
-});
-
-describe('a rail that scrolls says so', () => {
-  it('fades its inline end, so the keys past the edge are not a secret', () => {
-    // On 390px the left rail carries ten keys and shows six. The tenth is
-    // «Опубликовать» — the only way out of the editor into the product — and
-    // the rail gave no sign it went further. A clipped key is a signal for
-    // someone who already knows the rail moves; the edge has to say it first.
-    expect(phone).toMatch(/mask-image:\s*linear-gradient\(to right/);
-  });
-});
-
-describe('a short screen keeps room to draw as well', () => {
-  // The floor above is inside `@media (max-width: 40rem)`. Turn the same phone
-  // on its side — 844×390 — and the branch does not match: the studio is wide
-  // now, and short instead. `panelFloor` keeps the bottom bar off the canvas's
-  // throat (151px, more with a soundtrack or a third row), so nothing collapses
-  // to nothing the way portrait did; but `max-height: 75vh` lets the bar be
-  // dragged to 292 of those 390 and leaves the canvas under a hundred pixels,
-  // with no floor of its own to stop at. Width is not the only way a screen
-  // runs out.
-  const short = [...editorUi.matchAll(/@media \(max-height: ([\d.]+)rem\)/g)].map((m) =>
-    block(m.index!),
-  );
-
-  it('has a branch that answers the height of the screen', () => {
-    expect(short.length).toBeGreaterThan(0);
-  });
-
-  it('gives the stage a floor the row cannot go under', () => {
-    // Portrait stacks the studio with flex, where `min-height` on the child is
-    // the floor. Landscape keeps the grid, where it is not: a `1fr` row hands
-    // its item whatever is left, and `min-height` on the item overflows the row
-    // rather than growing it. The floor for a grid row is written on the row.
-    expect(short.join('\n')).toMatch(/grid-template-rows:\s*minmax\(\s*\d+dvh/);
-  });
-
-  it('lowers the bar ceiling so the floor is reachable', () => {
-    expect(short.join('\n')).toMatch(/\.studio \.panel \{[^}]*max-height:\s*\d+dvh/);
-  });
-});
-
 describe('height in the studio is written in dvh', () => {
-  // `phone-layout` already requires `dvh` for the rails, the panel and the
-  // stage: `vh` is the tall viewport, so a value written in it jumps the moment
-  // Mobile Safari collapses its address bar. Three heights were still in `vh`
-  // — two of them in the same media block as their `dvh` neighbours, one of
-  // them the ceiling a landscape phone actually uses.
+  // `vh` is the tall viewport: a value in it jumps the moment Mobile Safari
+  // collapses its address bar.
   it('no rule measures a height in vh', () => {
-    // A rule this file explains is not a rule this file breaks.
-    const style = editorUi
-      .slice(editorUi.indexOf('<style>'))
-      .replace(/\/\*[\s\S]*?\*\//g, '');
-    const stray = [...style.matchAll(/[\w-]+:\s*[^;]*?\b[\d.]+vh\b[^;]*/g)].map((m) => m[0].trim());
+    const bare = style.replace(/\/\*[\s\S]*?\*\//g, '');
+    const stray = [...bare.matchAll(/[\w-]+:\s*[^;]*?\b[\d.]+vh\b[^;]*/g)].map((m) => m[0].trim());
     expect(stray).toEqual([]);
   });
 });
 
-// The column rule `.studio .left .history` is three classes; the phone rule
-// that turns the history into a row was two. A media query adds nothing to
-// specificity, so on a phone the history stayed a grid inside a rail with no
-// width: 16px wide, «Отменить» under «Полный экран», «Вернуть» dropped into an
-// empty band that doubled the rail and took the height from the canvas.
-describe('undo and redo stay reachable on a phone', () => {
-  it('the phone rule for the history outranks the column rule', () => {
-    const branch = phoneBranches().find((b) => b.includes('.history')) ?? '';
-    expect(branch).toContain('.studio .left .history');
-    expect(branch).toContain('.studio .right .history');
-  });
-});
-
-// The floor under the bottom bar is arithmetic for rows that stay one key
-// tall. Between a phone and a wide desktop the transport wraps to a second
-// line — measured at 768×1024 and 844×390 — and the 53px it takes came out of
-// the strip: the panel showed «+ Слой | 1» and no layer at all.
+// The floor under the bottom bar is arithmetic for rows one key tall; a
+// transport that wraps took its second line out of the strip.
 describe('a wrapped row raises the floor under the bar', () => {
   it('each key row is measured and what it takes over one key is added', () => {
     expect(editorUi).toContain('bind:contentRect={rowBoxes[i]}');
@@ -190,46 +122,11 @@ describe('a wrapped row raises the floor under the bar', () => {
   });
 });
 
-// Turned on its side a phone has 334px under the site bar: the canvas row
-// keeps 38dvh, and a transport wrapped to two lines asked the bar for 204 —
-// together past the screen, which scrolled the page by 15px. On a short screen
-// a line that scrolls sideways is cheaper than a second line.
-describe('a short screen keeps each key row to one line', () => {
-  it('the landscape block stops the key rows wrapping and lets them scroll', () => {
-    const at = editorUi.indexOf('@media (max-height: 30rem)');
-    const landscape = block(at);
-    expect(landscape).toMatch(/\.studio \.row:not\(:has\(\.timeline\)\)\s*\{[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/);
-  });
-});
-
-// The phone branch hid the whole fps control, and fps lives nowhere else:
-// a mult drawn on a phone played at whatever rate it was born with.
-describe('a phone can still set the frame rate', () => {
-  it('the fps box stays, only the slider beside it goes', () => {
-    for (const branch of phoneBranches()) {
-      expect(branch).not.toMatch(/\.fps-inline\s*[,{]/);
-    }
-    expect(phone).toMatch(/\.fps-inline input\[type='range'\][^{]*\{[^}]*display:\s*none/);
-  });
-});
-
-// The floor is written in px measured at 16px text, and the keys and the strip
-// head are in rem: at 200 % text the layer row went under the panel's edge.
 describe('the bar floor grows with the text size', () => {
   it('the px of the floor and of one key row are scaled by the root text size', () => {
     expect(editorUi).toMatch(/const textScale = \$derived/);
     const floor = editorUi.match(/const panelFloor = \$derived\([^]*?\n  \);/)?.[0] ?? '';
     expect(floor).toContain('* textScale');
     expect(editorUi).toMatch(/KEY_ROW \* textScale/);
-  });
-});
-
-describe('ninth audit: the phone strip is as wide as the phone', () => {
-  it('the timeline takes the row, not the width of every frame in it', () => {
-    // `flex: none` sized it to its content: thirteen frames made a 772px
-    // strip in a 374px row. The strip's own scroller never scrolled, and the
-    // active frame the keys walked to sat off screen where no finger reaches.
-    const phone = phoneBranch();
-    expect(phone).toMatch(/\.studio \.timeline\s*\{[^}]*width:\s*100%/);
   });
 });

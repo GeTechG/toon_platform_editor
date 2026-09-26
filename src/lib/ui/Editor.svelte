@@ -18,7 +18,7 @@
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
   import PluginsSheet from './PluginsSheet.svelte';
-  import Icon from './Icon.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
   import './tokens.css';
   import './controls.css';
   import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
@@ -57,6 +57,8 @@
   } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
+  import { compactLayout, moveTab, pickStep, type LayoutStep, type TabId } from './small-screen';
+  import { dropPlacement } from './arrange';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
   import { t } from '../i18n';
@@ -275,14 +277,131 @@
   const SIDE_STEP = 16;
   /** Whether the column is the one on the screen's left, after the alt swap. */
   const atLeft = (id: SideId): boolean => (id === 'left') !== editor.settings.altLayout;
+  // --- Small screens (small-screen.ts) -------------------------------------
+  // The step is a sum: what the canvas would keep beside the columns and over
+  // the bar, measured from the editor's own box — which the layout inside it
+  // does not change, so the sum cannot chase its own tail.
+  let boxW = $state(0);
+  let boxH = $state(0);
+  let step = $state<LayoutStep>('full');
+  /** One rem now: the columns are in rem, twice as wide at 200 % text. */
+  const rem = $derived(16 * textScale);
+  /** A column as the full layout would draw it: its dragged width, its rem default, or its strip. */
+  function columnPx(id: SideId, remWidth: number): number {
+    if (editor.panels[id].length === 0) return 0;
+    if (editor.sides[id].collapsed) return 0.75 * rem;
+    return editor.sides[id].width ?? remWidth * rem;
+  }
+  $effect(() => {
+    if (!boxW || !boxH) return;
+    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelHeight;
+    const full = { w: boxW - columnPx('left', 8.4) - columnPx('right', 15.9), h: boxH - bar };
+    // The tablet's column is never folded; its dock is one line lying down, two standing.
+    const column = editor.panels.left.length ? (editor.sides.left.width ?? 8.4 * rem) : 0;
+    const tablet = { w: boxW - column, h: boxH - (boxW < boxH ? 2 : 1) * 3.5 * rem };
+    const view = { w: viewportWidth || boxW, h: viewportHeight || boxH };
+    step = pickStep(untrack(() => step), { full, tablet }, view);
+  });
+  /** A small screen: one window at a time instead of the columns and the bar. */
+  const compact = $derived(step !== 'full');
+  /** Standing up: the strip lies across the top, the window comes up from the bottom. */
+  const tall = $derived(boxH >= boxW);
+  const cut = $derived(compact ? compactLayout(editor.panels, step as 'tablet' | 'phone', editor.settings.tabOrder) : null);
+  // A small screen rearranges only its tabs (the owner's call): the arranger
+  // is for the columns it no longer draws.
+  $effect(() => {
+    if (compact && editor.arranging) editor.arranging = false;
+  });
+
+  let openTab = $state<TabId | null>(null);
+  /** The open tab's window — none when its tab has gone (its item put away). */
+  const shownTab = $derived(cut?.tabs.find((tab) => tab.id === openTab) ?? null);
+  const tabKeys = $state<Partial<Record<TabId, HTMLButtonElement>>>({});
+  let tabWindow = $state<HTMLElement | undefined>();
+  let tabBar = $state<HTMLElement | undefined>();
+  const TAB_ICONS: Record<TabId, IconName> = { color: 'palette', brush: 'edit', layers: 'layers', sound: 'note', more: 'more' };
+  const FOCUSABLE =
+    'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+  /** Opens a tab's window (closing whichever was open) or, pressed again, closes it. */
+  async function toggleTab(id: TabId): Promise<void> {
+    if (openTab === id) {
+      closeTab();
+      return;
+    }
+    openTab = id;
+    await tick();
+    (tabWindow?.querySelector<HTMLElement>(FOCUSABLE) ?? tabWindow)?.focus();
+  }
+
+  /** Closes the window; the focus goes back to its tab, not to the page. */
+  function closeTab(): void {
+    const was = openTab;
+    openTab = null;
+    if (was) tabKeys[was]?.focus();
+  }
+
+  /** Esc closes the window — unless a control inside took it first (a menu, a field). */
+  function onTabWindowKey(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && !e.defaultPrevented) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeTab();
+    }
+  }
+
+  // A tab moves under a pointer — mouse, finger or pen alike; there is no
+  // keyboard way to do it (the owner's call: drawing is by hand anyway).
+  let tabDrag: { id: TabId; pointerId: number; x: number; y: number; moved: boolean } | null = null;
+  let tabDragging = $state<TabId | null>(null);
+  /** The click a finished drag would fire is not a press. */
+  let tabDropped = false;
+
+  function onTabDown(e: PointerEvent, id: TabId): void {
+    if (!e.isPrimary || e.button > 0) return;
+    // A finger's drag may end with no click at all: the flag is the last
+    // drag's, not this press's.
+    tabDropped = false;
+    tabDrag = { id, pointerId: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+  }
+
+  function onTabMove(e: PointerEvent): void {
+    if (!tabDrag || e.pointerId !== tabDrag.pointerId || tabDrag.moved) return;
+    if (Math.hypot(e.clientX - tabDrag.x, e.clientY - tabDrag.y) < 8) return;
+    tabDrag.moved = true;
+    tabDragging = tabDrag.id;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function onTabUp(e: PointerEvent): void {
+    const drag = tabDrag;
+    tabDrag = null;
+    tabDragging = null;
+    if (!drag?.moved || e.pointerId !== drag.pointerId || !tabBar || e.type === 'pointercancel') return;
+    tabDropped = true;
+    const others = [...tabBar.querySelectorAll<HTMLElement>('[data-tab]')].filter((el) => el.dataset.tab !== drag.id);
+    const at = dropPlacement(others.map((el) => el.getBoundingClientRect()), e.clientX, e.clientY).index;
+    // The drop is among the tabs on screen; the order also holds the empty ones.
+    const before = others[at]?.dataset.tab as TabId | undefined;
+    const without = editor.settings.tabOrder.filter((id) => id !== drag.id);
+    editor.setSetting('tabOrder', moveTab(editor.settings.tabOrder, drag.id, before ? without.indexOf(before) : without.length));
+  }
+
+  function onTabClick(id: TabId): void {
+    if (tabDropped) {
+      tabDropped = false;
+      return;
+    }
+    void toggleTab(id);
+  }
+
   /**
-   * Folded away — but never on a phone, where the columns are rows across the
-   * screen and the strip they would fold to has nowhere to sit. A fold made on
-   * a desktop must not leave the tools unreachable there.
+   * Folded away — but never on a small screen, where there are no columns to
+   * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => editor.sides[id].collapsed && viewportWidth > 640;
+  const folded = (id: SideId): boolean => editor.sides[id].collapsed && !compact;
   /** The bottom bar, folded away by the same rule. */
-  const panelFolded = $derived(editor.panelCollapsed && viewportWidth > 640);
+  const panelFolded = $derived(editor.panelCollapsed && !compact);
   const sideWidth = (id: SideId): number => editor.sides[id].width ?? sidePx[id];
   /** A folded column is sized by its strip rule, not by the width it remembers. */
   const sideStyle = (id: SideId): string | undefined =>
@@ -327,6 +446,13 @@
     // An open sheet is where the hands are: Alt+E and Alt+S stacked the
     // mega-eraser warning and the export over it, three modals deep.
     const modalOpen = document.querySelector('dialog:modal') !== null;
+    // A small screen's window closes on Esc wherever the focus is — except
+    // under a sheet, and in a live transform, whose Esc is the cancel.
+    if (key === 'Escape' && openTab && shownTab && !modalOpen && !editor.transform && !e.defaultPrevented) {
+      e.preventDefault();
+      closeTab();
+      return;
+    }
     // Alt+E is the reference's mega-eraser; every other modifier is the
     // browser's or the OS's.
     if (e.altKey && (key === 'e' || key === 'E') && hasMegaEraser) {
@@ -1719,10 +1845,23 @@
   class="editor studio"
   class:alt={editor.settings.altLayout}
   class:arranging={editor.arranging}
+  class:compact={compact}
+  class:phone={step === 'phone'}
+  class:tall
   data-float-root
   bind:this={editorEl}
+  bind:clientWidth={boxW}
+  bind:clientHeight={boxH}
 >
-  {#if editor.panels.left.length > 0 || editor.arranging}
+  {#if cut}
+    <!-- A small screen: the phone's one-key strip of tools and history, or
+         the tablet's own column; everything else is behind the tabs. -->
+    {#if cut.rail.length > 0}
+      <aside class="left" aria-label={t('editor.tools_side')} style={step === 'tablet' ? sideStyle('left') : undefined}>
+        {@render slot(cut.rail)}
+      </aside>
+    {/if}
+  {:else if editor.panels.left.length > 0 || editor.arranging}
     <aside
       class="left"
       class:collapsed={folded('left')}
@@ -1795,6 +1934,28 @@
         <p class="stage-note">{t('editor.save_unavailable')}</p>
       {/if}
     </div>
+    {#if shownTab}
+      <!-- The one window a small screen has open: up from the bottom standing,
+           in from the side lying down, never over the whole sheet. -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <section
+        id="tab-window"
+        class="tab-window"
+        class:side={!tall}
+        tabindex="-1"
+        aria-label={t(`editor.tab.${shownTab.id}`)}
+        bind:this={tabWindow}
+        onkeydown={onTabWindowKey}
+      >
+        {#each shownTab.items as id (id)}
+          {#if id === 'audio'}
+            <AudioPanel {editor} docked publishes={!!onPublish} onClose={closeTab} />
+          {:else}
+            {@render panelItem(id)}
+          {/if}
+        {/each}
+      </section>
+    {/if}
     {#if importError}
       <p class="import-error" role="alert">
         {importError}
@@ -1804,7 +1965,7 @@
       </p>
     {/if}
   </div>
-  {#if editor.panels.right.length > 0 || editor.arranging}
+  {#if !compact && (editor.panels.right.length > 0 || editor.arranging)}
     <aside
       class="right"
       class:collapsed={folded('right')}
@@ -1820,7 +1981,7 @@
     {@render sideEdge('right', t('editor.palette_side'))}
   {/if}
   <!-- A panel with nothing in it is not drawn — the canvas takes the room. -->
-  {#if editor.panels.rows.length > 0 || editor.arranging}
+  {#if !compact && (editor.panels.rows.length > 0 || editor.arranging)}
   <div
     class="panel"
     class:collapsed={panelFolded}
@@ -1884,11 +2045,60 @@
        and the panels alike — so folding a column never moves them. In a fixed
        order: the stack is their z-index, and a node moved to the top lost
        the focus and the pointer in it. -->
-  {#each [...editor.panels.float].sort() as id (id)}
-    <FloatWindow {editor} {id}>
-      {@render panelItem(id)}
-    </FloatWindow>
-  {/each}
+  {#if !compact}
+    {#each [...editor.panels.float].sort() as id (id)}
+      <FloatWindow {editor} {id}>
+        {@render panelItem(id)}
+      </FloatWindow>
+    {/each}
+  {/if}
+
+  {#if cut}
+    <!-- The dock: the mini transport, there whatever window is open, and
+         the tabs. A tab is a disclosure — pressed again it closes. -->
+    <div class="dock">
+      <div class="mini-transport" role="group" aria-label={t('editor.transport')}>
+        <span class="frame-of">{t('editor.frame_of', { n: (editor.playing ? editor.playbackFrame : editor.activeFrame) + 1, total: lastFrame + 1 })}</span>
+        <button
+          class="key icon"
+          disabled={editor.playing || lastFrame === 0}
+          onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
+          title={t('editor.prev_frame')}
+          aria-label={t('editor.prev_frame')}
+        ><Icon name="frame-prev" /></button>
+        <PlayControls bind:this={playControls} {editor} />
+        <button
+          class="key icon"
+          disabled={editor.playing || lastFrame === 0}
+          onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
+          title={t('editor.next_frame')}
+          aria-label={t('editor.next_frame')}
+        ><Icon name="frame-next" /></button>
+      </div>
+      <div class="tabs" role="group" aria-label={t('editor.tabs')} title={t('editor.tabs_title')} bind:this={tabBar}>
+        {#each cut.tabs as tab (tab.id)}
+          <button
+            class="tab"
+            class:open={openTab === tab.id}
+            class:lifted={tabDragging === tab.id}
+            data-tab={tab.id}
+            bind:this={tabKeys[tab.id]}
+            aria-expanded={openTab === tab.id}
+            aria-controls="tab-window"
+            onclick={() => onTabClick(tab.id)}
+            onpointerdown={(e) => onTabDown(e, tab.id)}
+            onpointermove={onTabMove}
+            onpointerup={onTabUp}
+            onpointercancel={onTabUp}
+            onkeydown={onTabWindowKey}
+          >
+            <Icon name={TAB_ICONS[tab.id]} />
+            <span class="tab-label">{t(`editor.tab.${tab.id}`)}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   {#if editor.arranging}
     <PanelArranger {editor} />
@@ -2007,6 +2217,7 @@
   {#if settingsSheetOpen}
     <SettingsSheet
       {editor}
+      {compact}
       onClose={() => (settingsSheetOpen = false)}
       onSaveNow={() => saveNow(true)}
       onOpenFile={() => fileInput?.click()}
@@ -2134,6 +2345,9 @@
     --flash: #cccccce6;
     /* WCAG/DESIGN tap floor — every key is at least 44x44. */
     --key-h: 2.75rem;
+    /* The same floor where a control must not grow with the text: the
+       small screen's tabs share one row whatever the text size. */
+    --tap: 44px;
     /* How far a control paints outside its own box: the focus ring (3px at
        2px offset) is the widest, then the active swatch's 2px ring and the
        key's 2px shadow. Anything that scrolls has to leave this much room,
@@ -2201,8 +2415,8 @@
   /* Quiet at rest is the window's own business now (ScaleMenu.svelte): it is
      the fill that steps back, not the window, so the readout and the edge keep
      their contrast while the hand is down. */
-  /* On a phone the stage is short — a floating window would cover the drawing,
-     so the windows sit under the canvas and span the width.
+  /* On a small screen a floating window would cover the drawing, so the
+     windows sit under the canvas and span the width.
      Un-floating them is only half of that: a static child needs a row, and the
      stage is a frame the canvas fills edge to edge. Without the other half the
      zoom window laid itself out past the stage's own bottom, under the panel
@@ -2210,36 +2424,43 @@
      nor pressable. So the stage becomes a column here and the canvas gives the
      rows back: `height: 100%` on the wrap would resolve against the whole
      stage and push its siblings straight out again. */
-  @media (max-width: 40rem) {
-    .stage {
-      display: flex;
-      flex-direction: column;
-    }
-    /* Half the stage stays the canvas's whatever window is up: the transform
-       one, unfolded, took all of it, and with it the handles it is for. */
-    .stage > :global(.wrap) {
-      flex: 1 0 50%;
-      min-height: 0;
-      height: auto;
-    }
-    .tool-windows,
-    .scale-window {
-      position: static;
-      flex: none;
-      width: auto;
-      max-height: none;
-      margin-top: 0.5rem;
-    }
-    .tool-windows {
-      flex: 0 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-    }
-    /* The transform window takes the zoom window's row: at 200 % text on 320px
-       the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
-    .stage:has(> .tool-windows :global(.transform-menu)) > .scale-window {
-      display: none;
-    }
+  .studio.compact .stage {
+    display: flex;
+    flex-direction: column;
+    /* The window slides in from past the stage's edge: clipped there, it
+       does not hand the page a scrollbar while it travels. */
+    overflow: clip;
+  }
+  /* Half the stage stays the canvas's whatever window is up: the transform
+     one, unfolded, took all of it, and with it the handles it is for. */
+  .studio.compact .stage > :global(.wrap) {
+    flex: 1 0 50%;
+    min-height: 0;
+    height: auto;
+  }
+  .studio.compact .tool-windows {
+    position: static;
+    flex: 0 1 auto;
+    width: auto;
+    max-height: none;
+    min-height: 0;
+    margin: 0.5rem;
+    overflow-y: auto;
+  }
+  /* The zoom window is three keys: as a row of its own it took 88 of a
+     landscape stage's 179 px at 200 % text. It stays a float, in the top
+     corner — away from the windows' row at the bottom, and from the tab
+     window, which comes up from the bottom or lies over the right side. */
+  .studio.compact .scale-window {
+    top: clamp(0.5rem, 2.2vw, 1.25rem);
+    right: clamp(0.5rem, 2.2vw, 1.25rem);
+    bottom: auto;
+    left: auto;
+  }
+  /* The transform window takes the zoom window's row: at 200 % text on 320px
+     the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
+  .studio.compact .stage:has(> .tool-windows :global(.transform-menu)) > .scale-window {
+    display: none;
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
      parity and cannot move; what it can do is be declared, like the worktable
@@ -2452,17 +2673,11 @@
   /* A panel that scrolls keeps scrolling under a finger while arranging: its
      handles fill it, and with `touch-action: none` on each a key past the
      edge could never be reached. A swipe along the panel scrolls it; a drag
-     across it — out, which is where every item goes — picks the item up. */
-  @media (min-width: 40.0625rem) {
-    .editor.arranging .left .arr,
-    .editor.arranging .right .arr {
-      touch-action: pan-y;
-    }
-  }
-  @media (max-width: 40rem) {
-    .editor.arranging .left .arr {
-      touch-action: pan-x;
-    }
+     across it — out, which is where every item goes — picks the item up.
+     (A small screen does not arrange: only its tabs move.) */
+  .editor.arranging .left .arr,
+  .editor.arranging .right .arr {
+    touch-action: pan-y;
   }
   /* The transport is one control: its keys keep the row's own spacing so
      nothing reads as a seam between them. */
@@ -2506,25 +2721,11 @@
     flex: 1;
     min-width: 0;
   }
-  /* Phone: the toolbar is a wall between the drawing and the thumb, so it
-     gives back every spare pixel it can — the stage keeps the rest. */
-  @media (max-width: 40rem) {
-    .panel {
-      padding: 0.4rem 0.5rem;
-      padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
-    }
-    .toolbar {
-      gap: 0.35rem;
-    }
-    .row {
-      gap: 0.3rem;
-    }
-    /* The timeline's scroll arrows are a mouse affordance: a phone swipes the
-       strip and Tab walks the frames, so they give their 88px back to the
-       thumbnails. Both classes, to outrank the shared .key vocabulary below. */
-    .editor :global(.arrow.key) {
-      display: none;
-    }
+  /* The timeline's scroll arrows are a mouse affordance: a small screen
+     swipes the strip and Tab walks the frames, so they give their 88px back to
+     the thumbnails. Both classes, to outrank the shared .key vocabulary below. */
+  .editor.compact :global(.arrow.key) {
+    display: none;
   }
   /* ---- Studio layout (toonio.ru editor.html) ----
      tools | canvas | panels, the bar under all three. The bar keeps its own
@@ -2721,26 +2922,24 @@
   }
   /* Reference «альтернативная раскладка» (`S:2321-2331`): the two side columns
      swap places. Classes only — the DOM order, and so the tab order, is
-     untouched. Above the phone breakpoint, where there are columns to swap. */
-  @media (min-width: 40.0625rem) {
-    .studio.alt .left {
-      grid-column: 3;
-      border-right: none;
-      border-left: 1px solid var(--hairline);
-    }
-    .studio.alt .right {
-      grid-column: 1;
-      border-left: none;
-      border-right: 1px solid var(--hairline);
-    }
-    .studio.alt .side-edge.edge-left {
-      grid-column: 3;
-      justify-self: start;
-    }
-    .studio.alt .side-edge.edge-right {
-      grid-column: 1;
-      justify-self: end;
-    }
+     untouched. Only in the full layout, where there are columns to swap. */
+  .studio.alt:not(.compact) .left {
+    grid-column: 3;
+    border-right: none;
+    border-left: 1px solid var(--hairline);
+  }
+  .studio.alt:not(.compact) .right {
+    grid-column: 1;
+    border-left: none;
+    border-right: 1px solid var(--hairline);
+  }
+  .studio.alt:not(.compact) .side-edge.edge-left {
+    grid-column: 3;
+    justify-self: start;
+  }
+  .studio.alt:not(.compact) .side-edge.edge-right {
+    grid-column: 1;
+    justify-self: end;
   }
   /* In a column the keys fill whatever width it was dragged to: even columns
      when there is room, one when there is not. In a row they stay a row. */
@@ -2789,179 +2988,258 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
-  /* Phone: no room for side columns — they stack above and below the canvas
-     and lay their contents out in a row. */
-  @media (max-width: 40rem) {
-    .editor.studio {
-      display: flex;
-    }
-    .studio .left,
-    .studio .right {
-      display: flex;
-      flex-direction: row;
-      width: auto !important;
-      padding: 0.4rem 0.5rem;
-      gap: 0.4rem;
-      /* A rail takes a slice of the screen it cannot exceed and scrolls what
-         does not fit inside itself. Holding its content height was how the
-         canvas ended up with nothing: `.right` alone measured 379px of 676. */
-      flex: 0 1 auto;
-      min-height: 0;
-      overflow: auto;
-      overscroll-behavior: contain;
-      /* And it says that it scrolls. On 390px the left rail carries ten keys
-         and shows six; the tenth is «Опубликовать», the only way out of the
-         editor into the product, and a cleanly cut key is a signal only to
-         someone who already knows the rail moves. When nothing overflows the
-         fade lies over paper and is invisible. */
-      mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
-      /* A key Tab scrolls into view stops short of the fade, ring and all. */
-      scroll-padding-inline: 1.25rem;
-    }
-    .studio .left {
-      max-height: 26dvh;
-      /* The rail of loose keys is the one that runs past the screen. Its end
-         padding is the fade's width: scrolled to its end, the last key
-         («Опубликовать» on the site) stands clear of it. */
-      padding-right: 1.25rem;
-    }
-    /* Inside a rail the history is one more run of keys in the rail's row,
-       with none of the rail's own scrolling around it. Named as the column
-       rule names it: `.studio .left .history` is three classes, and a phone
-       rule of two lost to it whatever the media query — the history stayed a
-       16px grid, «Отменить» under «Полный экран», «Вернуть» in a band of its
-       own that took the height from the canvas. */
-    .studio .left .history,
-    .studio .right .history {
-      display: flex;
-      flex: none;
-      gap: 0.4rem;
-    }
-    .studio .right {
-      max-height: 22dvh;
-    }
-    /* A key is 44 wide or it is not a key (DESIGN §5). The desktop columns
-       drop that floor so loose keys fill the width they were dragged to; here
-       there is no width to fill, and nine keys split 360px into 17px slivers —
-       under the 24px WCAG 2.2 AA asks for, and closer together (6.4px) than the
-       spacing exception forgives. The rail scrolls sideways instead. */
-    .studio .left > :global(.key),
-    .studio .right > :global(.key),
-    .studio .history :global(.key) {
-      flex: none;
-      min-width: var(--key-h);
-    }
-    .side-edge {
-      display: none;
-    }
-    .studio .right :global(.box) {
-      flex: 1;
-      min-width: 0;
-      width: auto;
-    }
-    .studio .right :global(.palette .grid) {
-      max-height: 64px;
-    }
-    /* The box stays: fps lives nowhere else, and without it a mult drawn on a
-       phone played at the rate it was born with. The slider is the part a
-       390px row has no room for. */
-    .fps-inline input[type='range'],
-    .studio .ends {
-      display: none;
-    }
-    /* A height dragged out on a desktop must not swallow the canvas here: the
-       phone sizes the panel to its contents instead, the timeline to its rows,
-       and the divider that sets that height goes away with them. */
-    .studio .panel {
-      height: auto !important;
-      padding-top: 0.4rem;
-      flex: 0 1 auto;
-      min-height: 0;
-      max-height: 26dvh;
-      /* The third rail, and it scrolls like the other two. `clip` plus the 20px
-         margin is a desktop arrangement: the margin is there so the fold tab
-         and the resizer can paint outside, and both are `display: none` below.
-         What it did here instead was hand the *document* a scrollbar — the
-         column fits 788 exactly, the panel wanted 177 of its 167, and the
-         missing ten painted past the studio: 855 against a 844 viewport. */
-      overflow: auto;
-      overflow-clip-margin: 0;
-      overscroll-behavior: contain;
-    }
-    /* The floor the canvas never gives up. It is the last child to be sized
-       and the only one that grows, so without a floor it takes whatever the
-       others leave — which, when they leave nothing, is nothing: `.stage`
-       measured 0 on a phone and the drawing painted outside it, over the
-       toolbar. There was nowhere to draw. */
-    .studio .stage {
-      flex: 1 1 auto;
-      min-height: 38dvh;
-    }
-    .resizer,
-    .fold {
-      display: none;
-    }
-    .studio .toolbar,
-    .studio .row:has(.timeline),
-    .studio .timeline {
-      flex: none;
-      height: auto;
-    }
-    /* `flex: none` alone sizes the strip to every frame in it — 772px in a
-       374px row — and its own scroller never scrolls. */
-    .studio .timeline {
-      width: 100%;
-    }
-    .studio .timeline :global(.board) {
-      height: auto;
-      max-height: 40dvh;
-    }
-    /* Transport and output do not fit one 390px line — they wrap instead of
-       pushing the page into a horizontal scroll. Every layout, not just the
-       studio: a row that overflows widens the whole layout viewport, and the
-       fixed sheets (drafts, settings) then hang their right edge — the delete
-       key of a draft row — off the screen. */
-    .row {
-      flex-wrap: wrap;
+  /* ---- Small screens (small-screen.ts) ----
+     The step is worked out in the script from the room the canvas would
+     keep, not read off the screen width: a width query saw neither the
+     columns (in rem, twice as wide at 200 % text) nor the height, and a
+     portrait tablet was never small at all. `.compact` is both small steps,
+     `.phone` the one with a one-key strip, `.tall` a screen standing up.
+     The right column, the bottom bar and the floating windows are not drawn
+     there — what they hold is behind the tabs, one window at a time. */
+  .editor.studio.compact {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .studio.compact .left {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+  .studio.compact .stage {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .studio.compact .dock {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  /* A phone standing up: the strip across the top, the dock at the bottom,
+     the canvas the whole width between them. */
+  .editor.studio.phone.tall {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .studio.phone.tall .left {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex;
+    flex-direction: row;
+    width: auto;
+    padding: 0.4rem 1.25rem 0.4rem 0.5rem;
+    gap: 0.4rem;
+    border-right: none;
+    border-bottom: 1px solid var(--hairline);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: contain;
+    /* The strip says that it scrolls: on 390px it shows seven of eleven
+       keys, and a cleanly cut key is a signal only to someone who already
+       knows the strip moves. Over paper, when nothing overflows, the fade is
+       invisible. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+    scroll-padding-inline: 1.25rem;
+  }
+  .studio.phone.tall .stage {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .studio.phone.tall .dock {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  /* Lying down, the strip is one key wide down the side and scrolls the
+     other way, with the same fade. */
+  .studio.phone:not(.tall) .left {
+    width: calc(var(--key-h) + 1rem);
+    padding: 0.5rem 0.5rem 1.25rem;
+    gap: 0.4rem;
+    overscroll-behavior: contain;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+    scroll-padding-block: 1.25rem;
+  }
+  /* A key is 44 wide or it is not a key (DESIGN §5): in the strip nothing
+     shrinks, the strip scrolls. Named as the column rule names the history
+     (`.studio .left .history` is three classes), or it loses to it. */
+  .studio.phone.tall .left .history {
+    display: flex;
+    flex: none;
+    gap: 0.4rem;
+  }
+  .studio.phone .left > :global(.key),
+  .studio.phone .left .history :global(.key) {
+    flex: none;
+    min-width: var(--key-h);
+  }
+  /* The dock: the mini transport and the tabs. One line lying down, two
+     standing up — the wrap decides, whatever the text size. */
+  .dock {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 0.75rem;
+    min-width: 0;
+    padding: 0.35rem 0.25rem;
+    /* The home indicator sits over the bottom of the glass. */
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+    background: var(--paper);
+    border-top: 1px solid var(--hairline);
+  }
+  /* At 200 % text on 390px three 88px keys and the count just fit; any
+     narrower and the group wraps rather than widening the page. */
+  .mini-transport {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .frame-of {
+    min-width: 5ch;
+    text-align: center;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  /* Grown from nothing, not from its words: lying down it then shares the
+     transport's line, and only a real lack of room sends it to its own. */
+  .tabs {
+    display: flex;
+    flex: 1 1 0;
+    justify-content: flex-end;
+    gap: 0.25rem;
+  }
+  .studio.tall .tabs {
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+  .tab {
+    flex: 1 1 0;
+    max-width: 6rem;
+    /* 44 CSS px, not a rem key: five 88px keys at 200 % text are 440 on a
+       390 screen. The tab shares the row instead, and its word wraps. */
+    min-width: var(--tap);
+    min-height: var(--tap);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0.15rem 0.25rem;
+    border: none;
+    /* The open tab is told by a bar and by weight, not by tone alone. */
+    border-top: 3px solid transparent;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 0.74rem;
+    line-height: 1.1;
+    cursor: pointer;
+    /* A finger on a tab is either a press or a drag to a new place. */
+    touch-action: none;
+  }
+  .tab:hover {
+    background: var(--sub);
+    color: var(--ink);
+  }
+  .tab.open {
+    border-top-color: var(--accent);
+    background: var(--canvas);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .tab.lifted {
+    opacity: 0.6;
+    cursor: grabbing;
+  }
+  .tab:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .tab-label {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  /* The one window: up from the bottom standing, in from the side lying
+     down. Never the whole stage — the sheet above or beside it still draws.
+     Over the canvas's own furniture (the size rail), under the sheets. */
+  .tab-window {
+    position: absolute;
+    z-index: var(--z-float);
+    inset: auto 0 0 0;
+    max-height: 55%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    align-content: flex-start;
+    gap: 0.5rem;
+    box-sizing: border-box;
+    padding: 0.6rem 0.75rem;
+    overflow: auto;
+    overscroll-behavior: contain;
+    background: var(--paper);
+    border-top: 1px solid var(--hairline);
+    border-radius: var(--r-md) var(--r-md) 0 0;
+    animation: tab-window-up 0.18s ease-out;
+  }
+  .tab-window.side {
+    inset: 0 0 0 auto;
+    width: min(55%, 24rem);
+    max-height: none;
+    border-top: none;
+    border-left: 1px solid var(--hairline);
+    border-radius: var(--r-md) 0 0 var(--r-md);
+    animation-name: tab-window-in;
+  }
+  .tab-window:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  /* The boxes, the strip and the sound plate take the window's width. */
+  .tab-window > :global(.box),
+  .tab-window > :global(.timeline),
+  .tab-window > :global(.audio-plate),
+  .tab-window > :global(.history) {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  .tab-window > .timeline {
+    height: auto;
+  }
+  .tab-window :global(.board) {
+    height: auto;
+    max-height: 40dvh;
+  }
+  @keyframes tab-window-up {
+    from {
+      transform: translateY(100%);
     }
   }
-
-  /* A phone turned on its side is not a narrow screen — it is a short one, and
-     `max-width` never hears about it. At 844×390 the studio keeps its grid,
-     where the canvas row is `1fr` and takes whatever the bar leaves:
-     `panelFloor` stops that at 151px, so nothing collapses to nothing the way
-     portrait did, but the bar can be dragged to three quarters of 390 and
-     leave the canvas under a hundred pixels with nothing to stop at. A `1fr`
-     row does not grow for a child's `min-height` — the child overflows it
-     instead — so the floor is written on the row, and the bar's ceiling comes
-     down to where that floor is reachable. */
-  @media (max-height: 30rem) {
-    .editor.studio {
-      grid-template-rows: minmax(38dvh, 1fr) auto;
+  @keyframes tab-window-in {
+    from {
+      transform: translateX(100%);
     }
-    .studio .panel {
-      max-height: 55dvh;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tab-window {
+      animation: none;
     }
-    /* 334px under the site bar hold the canvas's 38dvh and a bar of one key
-       row plus the strip — not a transport wrapped to two lines, which pushed
-       the page 15px past the screen. Here the row scrolls sideways like the
-       phone rail and says so with the same fade; the bleed keeps the keys'
-       travel and focus rings inside the scroll box. */
-    .studio .row:not(:has(.timeline)) {
-      flex-wrap: nowrap;
-      overflow-x: auto;
-      overscroll-behavior: contain;
-      padding: var(--bleed);
-      margin: calc(-1 * var(--bleed));
-      mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
-      scroll-padding-inline: 1.25rem;
+  }
+  /* Forced colors paint every tone alike: the window is outlined, and the
+     open tab keeps its bar in the system's own colour. */
+  @media (forced-colors: active) {
+    .tab-window {
+      outline: 1px solid CanvasText;
     }
-    .studio .row:not(:has(.timeline)) > :global(*) {
-      flex: none;
+    /* A transparent border is painted in forced colors: every tab wore the
+       bar. The shut ones hide theirs in the page's own colour. */
+    .tab {
+      border-top-color: Canvas;
     }
-    /* …and under a finger while arranging too (see the columns above). */
-    .editor.arranging .row:not(:has(.timeline)) .arr {
-      touch-action: pan-x;
+    .tab.open {
+      border-top-color: Highlight;
     }
   }
   /* Zoom group: two keys around a tabular readout, so the width does not

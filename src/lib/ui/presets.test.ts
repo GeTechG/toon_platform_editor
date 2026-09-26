@@ -1,3 +1,4 @@
+import type { TabId } from './small-screen';
 import { expect, test } from 'bun:test';
 import {
   BRUSH_TOOLS,
@@ -235,6 +236,7 @@ test('settings round-trip through the stored config', () => {
     removerTipShown: true,
     megaEraserWarning: false,
     pluginCatalog: 'https://plugins.example/',
+    tabOrder: ['more', 'sound', 'layers', 'brush', 'color'] as TabId[],
   };
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',

@@ -28,6 +28,7 @@ import {
 import type { PickerModel } from './picker-model';
 import { type UxProfile } from './ux-profile';
 import { t } from '../i18n';
+import { DEFAULT_TAB_ORDER, normalizeTabOrder, type TabId } from './small-screen';
 
 
 /** Tools that keep their own Tonio brush (reference: one record per tool). */
@@ -224,6 +225,8 @@ export interface EditorSettings {
    * cache either way.
    */
   pluginCatalog: string;
+  /** The small screen's tabs, in the order the user dragged them to. */
+  tabOrder: TabId[];
 }
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
@@ -273,6 +276,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   removerTipShown: false,
   megaEraserWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
+  tabOrder: [...DEFAULT_TAB_ORDER],
 };
 
 export interface UiConfig {
@@ -449,6 +453,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     removerTipShown: flag('removerTipShown'),
     megaEraserWarning: flag('megaEraserWarning'),
     pluginCatalog: readCatalogAddress(raw),
+    tabOrder: normalizeTabOrder(raw.tabOrder),
   };
 }
 

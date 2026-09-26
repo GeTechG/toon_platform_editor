@@ -209,11 +209,13 @@ describe('the pipette over emptiness', () => {
     // Reference: alpha ≠ 255 is "no colour here", including the antialiased
     // rim of a stroke — not the background colour.
     expect(handler('pickColor')).toContain('a !== 255');
-    expect(source).toContain('function pickColor(e: PointerEvent): string | null');
+    expect(source).toContain('function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null');
   });
 
   it('arms the eraser and leaves both colours alone', () => {
-    const down = handler('onPointerDown');
+    // The tool and the held finger share the take (canvas-colour-gesture).
+    const down = handler('takeColour');
+    expect(handler('onPointerDown')).toContain('takeColour(e, toFill)');
     expect(down).toContain('picked === null');
     expect(down).not.toContain('editor.brushColor = picked');
   });

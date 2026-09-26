@@ -57,10 +57,10 @@ describe('the window in use is the one in front', () => {
 // in it is a handle with `touch-action: none`: a finger could not scroll the
 // rail, so «Экспорт» or «Справка» past the edge could not be picked up.
 describe('a rail that scrolls still scrolls while arranging by touch', () => {
-  test('a side column pans along itself, and so do the phone rail and the short screen rows', () => {
+  test('a side column pans along itself; a small screen does not arrange at all', () => {
     expect(editorUi).toMatch(/\.editor\.arranging \.right \.arr \{\s*touch-action: pan-y;/);
-    expect(editorUi).toMatch(/\.editor\.arranging \.left \.arr \{\s*touch-action: pan-x;/);
-    expect(editorUi).toMatch(/\.editor\.arranging \.row:not\(:has\(\.timeline\)\) \.arr \{\s*touch-action: pan-x;/);
+    // The phone rail and the short screen rows are gone: there only the tabs move.
+    expect(editorUi).toMatch(/if \(compact && editor\.arranging\) editor\.arranging = false;/);
   });
 });
 

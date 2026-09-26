@@ -120,7 +120,7 @@ describe('on a phone', () => {
   });
 
   it('never lets the windows push the canvas below half the stage', () => {
-    const narrow = editorUi.match(/@media \(max-width: 40rem\) \{\n    \.stage \{[^]*?\n  \}\n/)?.[0] ?? '';
+    const narrow = editorUi.slice(editorUi.indexOf('.studio.compact .stage {'), editorUi.indexOf('The zoom row stands on the dock'));
     expect(narrow).toContain('flex: 1 0 50%');
     expect(narrow).toContain('overflow-y: auto');
   });

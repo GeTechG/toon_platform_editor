@@ -271,7 +271,8 @@ describe('side panel dividers', () => {
 
   it('the stored width drives the column, and the phone layout ignores it', () => {
     expect(editorUi).toContain('width: ${');
-    expect(editorUi).toMatch(/@media \(max-width: 40rem\)[^]*width: auto !important/);
+    // The phone's strip is one key thick whatever the desktop column was dragged to.
+    expect(editorUi).toContain("style={step === 'tablet' ? sideStyle('left') : undefined}");
   });
 });
 
@@ -305,8 +306,8 @@ describe('four surfaces, not one field', () => {
     expect(editorUi).toMatch(/\.studio \.left \{[^}]*border-right: 1px solid var\(--hairline\)/s);
     expect(editorUi).toMatch(/\.studio \.right \{[^}]*border-left: 1px solid var\(--hairline\)/s);
     // The alternative layout swaps the columns, so it swaps the edges too.
-    expect(editorUi).toMatch(/\.studio\.alt \.left \{[^}]*border-left: 1px solid var\(--hairline\)/s);
-    expect(editorUi).toMatch(/\.studio\.alt \.right \{[^}]*border-right: 1px solid var\(--hairline\)/s);
+    expect(editorUi).toMatch(/\.studio\.alt:not\(\.compact\) \.left \{[^}]*border-left: 1px solid var\(--hairline\)/s);
+    expect(editorUi).toMatch(/\.studio\.alt:not\(\.compact\) \.right \{[^}]*border-right: 1px solid var\(--hairline\)/s);
   });
 });
 
@@ -353,7 +354,10 @@ describe('the bottom panel folds like the sides', () => {
   it('a phone has no folding at all, so it carries none of the tabs', () => {
     // The columns are rows there and the bar sizes to its contents; a tab
     // that folds nothing is a dead control.
-    expect(editorUi).toMatch(/@media \(max-width: 40rem\)[^]*\.fold \{\n      display: none;/);
+    // A small screen draws neither the bar nor the column seams at all.
+    expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.rows\.length > 0/);
+    expect(editorUi).toMatch(/\{#if cut\}[^]*?\{:else if editor\.panels\.left\.length > 0[^]*?\{@render sideEdge\('left'/);
+    expect(editorUi).toContain('editor.sides[id].collapsed && !compact');
   });
 
   it('folded, the bar is a strip with the tab still on it and no toolbar behind it', () => {

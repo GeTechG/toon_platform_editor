@@ -54,6 +54,7 @@
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
   import { t } from '../i18n';
+  import { HOLD_PICK_MS, mayHoldPick, stillHeld } from './hold-pick';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -126,6 +127,19 @@
     e.preventDefault();
     editor.brushSizeLogical = next;
     holdRail(-1);
+  }
+  /** A finger held still, waiting to become the pipette (hold-pick.ts). */
+  let hold: { pointerId: number; x: number; y: number; timer: number } | null = null;
+  /**
+   * The pipette a held finger brought (Procreate Dreams' eyedropper): where
+   * the finger is, the colour under it, and whether it is off the sheet.
+   */
+  let dropper = $state<{ pointerId: number; x: number; y: number; color: string | null; off: boolean } | null>(null);
+  function cancelHold(): void {
+    if (hold) {
+      clearTimeout(hold.timer);
+      hold = null;
+    }
   }
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
@@ -747,7 +761,7 @@
    * A transparent pixel is the background.
    */
   /** Colour under the pointer, or null where the canvas is not fully opaque. */
-  function pickColor(e: PointerEvent): string | null {
+  function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null {
     const source = pickSource(editor.pickSource, e.altKey);
     const rect = canvasEl.getBoundingClientRect();
     const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * canvasEl.width)));
@@ -785,6 +799,78 @@
   }
 
   /**
+   * The pipette's take: the colour under the pointer into the outline or the
+   * fill; emptiness arms the eraser and keeps both colours (reference: alpha
+   * ≠ 255) — through the rules, so an eraser taken off the panel is not armed.
+   * The tool and the held finger both come here. Returns what it took.
+   */
+  function takeColour(e: { clientX: number; clientY: number; altKey: boolean }, toFill: boolean): string | null {
+    const picked = pickColor(e);
+    if (picked === null) {
+      editor.selectTool('eraser');
+      return null;
+    }
+    editor.pickColor(picked, toFill ? 'fill' : 'outline');
+    return picked;
+  }
+
+  /**
+   * The finger stayed put: whatever it began while waiting goes, unrecorded —
+   * the line (no step to undo), the pan, the mega eraser's sweep — and the
+   * pipette with its loupe takes the finger.
+   */
+  function startDropper(): void {
+    if (!hold) {
+      return;
+    }
+    const { pointerId, x, y } = hold;
+    hold = null;
+    if (touches.size > 1) {
+      return;
+    }
+    if (pointer.discard()) {
+      strokeLayer = undefined;
+    }
+    dropOwnGesture();
+    if (panning) {
+      panning = null;
+      dropNavShot();
+    }
+    try {
+      canvasEl.setPointerCapture(pointerId);
+    } catch {
+      // The finger left in the same tick; its pointerup ends nothing.
+    }
+    dropper = { pointerId, x, y, color: null, off: false };
+    aimDropper({ clientX: x, clientY: y, altKey: false });
+    scheduleDraw();
+  }
+
+  function aimDropper(e: { clientX: number; clientY: number; altKey: boolean }): void {
+    if (!dropper) {
+      return;
+    }
+    const off = offSheet(e);
+    dropper = { ...dropper, x: e.clientX, y: e.clientY, off, color: off ? null : pickColor(e) };
+  }
+
+  /** The finger lifted: the colour under it goes to the outline, as the pipette takes it. */
+  function finishDropper(e: PointerEvent): void {
+    const at = { clientX: e.clientX, clientY: e.clientY, altKey: false };
+    dropper = null;
+    // The table beside the sheet holds no colour: nothing is taken.
+    if (offSheet(at)) {
+      return;
+    }
+    const took = takeColour(at, false);
+    if (took) {
+      showHint(t('canvas.hold_picked', { color: took }));
+    } else {
+      showHint(t('canvas.hold_empty'));
+    }
+  }
+
+  /**
    * Navigation gestures, before drawing gets a say: middle button or a held
    * space pans, two fingers pan and pinch. The first finger always lands
    * before the second, so the stroke it started is discarded rather than
@@ -799,6 +885,8 @@
       }
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (touches.size === 2) {
+        cancelHold();
+        dropper = null;
         if (pointer.discard()) {
           strokeLayer = undefined;
         }
@@ -981,6 +1069,25 @@
       // sheet: it stops, or the line smears across a sliding page.
       stopTouchNavigation();
     }
+    // Any other pointer landing ends the hold and the pipette it brought:
+    // a second finger is the pinch, a pen draws.
+    cancelHold();
+    dropper = null;
+    // Touch and hold brings the pipette (Procreate Dreams). The timer runs
+    // alongside whatever the press starts below; startDropper undoes it.
+    if (mayHoldPick({
+      pointerType: e.pointerType,
+      isPrimary: e.isPrimary,
+      fingers: touches.size,
+      playing: editor.playing,
+      transform: editor.transform !== null,
+      tool: editor.tool,
+      ownGesture: !!toolSpec(editor.tool)?.press,
+      onSheet: e.pointerType === 'touch' && !offSheet(e),
+      penBusy: editor.penSeen && penBusy(),
+    })) {
+      hold = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, timer: setTimeout(startDropper, HOLD_PICK_MS) as unknown as number };
+    }
     if (startNavigation(e)) {
       e.preventDefault();
       return;
@@ -1043,18 +1150,10 @@
       if (offSheet(e)) {
         return;
       }
-      const picked = pickColor(e);
-      // Emptiness arms the eraser and keeps both colours (reference: alpha ≠ 255).
-      // Through the rules, so an eraser taken off the panel is not armed.
-      if (picked === null) {
-        editor.selectTool('eraser');
-        return;
-      }
       // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка);
       // the palette's pipette can arm the fill for the left button too.
       const toFill = e.button === 2 || editor.pipetteTarget === 'fill';
-      editor.pickColor(picked, toFill ? 'fill' : 'outline');
-      if (!toFill) {
+      if (takeColour(e, toFill) !== null && !toFill) {
         // Back to whatever was drawing — the pen stays a pen (ResetHelpTool).
         editor.resetHelpTool();
       }
@@ -1092,6 +1191,20 @@
       && (pointer.session || grab || megaGesture || pluginGrab || panning || sizing)) {
       onPointerUp(e);
       return;
+    }
+    if (dropper && e.pointerId === dropper.pointerId) {
+      const now = performance.now();
+      if (now - lastPickPreview >= PIPETTE_THROTTLE_MS) {
+        lastPickPreview = now;
+        aimDropper(e);
+      } else {
+        dropper = { ...dropper, x: e.clientX, y: e.clientY };
+      }
+      return;
+    }
+    // A finger that travels has begun a line or a pan: it stays that.
+    if (hold && e.pointerId === hold.pointerId && !stillHeld(hold, { x: e.clientX, y: e.clientY })) {
+      cancelHold();
     }
     if (sizing && e.pointerId === sizing.pointerId) {
       sizing.size = sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y,
@@ -1218,7 +1331,14 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (hold?.pointerId === e.pointerId) {
+      cancelHold();
+    }
     if (endNavigation(e)) {
+      return;
+    }
+    if (dropper && e.pointerId === dropper.pointerId) {
+      finishDropper(e);
       return;
     }
     if (sizing && e.pointerId === sizing.pointerId) {
@@ -1301,6 +1421,13 @@
     // no other pointer still holds one.
     heldPointers.delete(e.pointerId);
     editor.gestureHeld = heldPointers.size > 0;
+    // A cancelled finger takes nothing.
+    if (hold?.pointerId === e.pointerId) {
+      cancelHold();
+    }
+    if (dropper?.pointerId === e.pointerId) {
+      dropper = null;
+    }
     if (endNavigation(e)) {
       return;
     }
@@ -1418,6 +1545,23 @@
       aria-hidden="true"
     ></span>
   {/if}
+  {#if dropper}
+    <!-- Dreams' loupe: the colour the finger would take on top, the outline
+         now below; lifted over the finger that would hide it. -->
+    <span
+      class="loupe"
+      class:below={dropper.y < 140}
+      style:transform="translate({dropper.x}px, {dropper.y}px)"
+      aria-hidden="true"
+    >
+      <span
+        class="loupe-new"
+        class:empty={!dropper.off && dropper.color === null}
+        style:background={dropper.off ? editor.brushColor : dropper.color}
+      ></span>
+      <span style:background={editor.brushColor}></span>
+    </span>
+  {/if}
   {#if ring}
     <!-- Where the drag began (the rail: the middle of the stage), at the size
          it has reached, in the sheet's real scale — the number beside it for
@@ -1467,7 +1611,7 @@
       </span>
     </div>
   {/if}
-  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !ring}
+  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser'}
@@ -1670,6 +1814,52 @@
     border: 1px solid var(--ink);
     box-shadow: 0 0 0 1px var(--canvas);
     pointer-events: none;
+  }
+  /* The held finger's loupe: a flat disc, the new colour over the current. */
+  .loupe {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: var(--z-cursor);
+    display: flex;
+    flex-direction: column;
+    width: 72px;
+    height: 72px;
+    margin: -124px 0 0 -36px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 3px solid var(--canvas);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--ink);
+    pointer-events: none;
+    /* The colours are the drawing's, not the theme's. */
+    forced-color-adjust: none;
+  }
+  .loupe.below {
+    margin-top: 52px;
+  }
+  .loupe > span {
+    flex: 1;
+  }
+  /* Emptiness is the eraser: the loupe shows no colour there. */
+  .loupe-new.empty {
+    background: repeating-linear-gradient(45deg, var(--canvas) 0 6px, var(--sub) 6px 12px);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .loupe {
+      animation: loupe-in 120ms ease-out;
+    }
+  }
+  @keyframes loupe-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @media (forced-colors: active) {
+    .loupe {
+      border-color: Canvas;
+      box-shadow: 0 0 0 1px CanvasText;
+    }
   }
   .hint {
     position: absolute;

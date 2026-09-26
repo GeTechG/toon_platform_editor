@@ -51,6 +51,7 @@
     | 'jitter'
     | 'note'
     | 'help'
+    | 'more'
     | 'info';
 
   const PATHS: Record<IconName, string> = {
@@ -130,6 +131,8 @@
     expand: 'M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5',
     drafts: 'M3 14h18M3 14l2-8h14l2 8M3 14v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M7 17h.01M11 17h.01',
     // The floppy nobody has held in twenty years and everybody still reads.
+    // Three dots in a row: everything else, the small screen's last tab.
+    more: 'M5 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM19 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z',
     save: 'M4 4h12l4 4v12H4zM8 4v5h7V4M8 20v-7h8v7',
   };
 

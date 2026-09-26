@@ -31,8 +31,11 @@
     onOpenFile,
     onOpenDrafts,
     onOpenPlugins,
+    compact = false,
   }: {
     editor: EditorState;
+    /** A small screen: its tabs are what moves, the panels are not drawn. */
+    compact?: boolean;
     onClose: () => void;
     onSaveNow?: () => void;
     /** The file dialog, the draft list and the plugins window live in the editor. */
@@ -389,15 +392,19 @@
     <!-- Расположение: arranged by hand in the editor, where the panels are.
          A list of selects said the same thing twice and nobody used it. -->
     <h3 class="sheet-hint">{t('settings.arrangement')}</h3>
-    <div class="actions">
-      <button
-        class="key"
-        onclick={() => {
-          editor.arranging = true;
-          dialogEl?.close();
-        }}
-      >{t('settings.edit_panels')}</button>
-    </div>
+    {#if compact}
+      <p class="hint">{t('settings.tabs_hint')}</p>
+    {:else}
+      <div class="actions">
+        <button
+          class="key"
+          onclick={() => {
+            editor.arranging = true;
+            dialogEl?.close();
+          }}
+        >{t('settings.edit_panels')}</button>
+      </div>
+    {/if}
 
     <h3 class="sheet-hint">{t('settings.plugins')}</h3>
     <div class="actions">
@@ -541,6 +548,11 @@
     flex-wrap: wrap;
     gap: 0.4rem;
     padding: 0.3rem 0 0.1rem;
+  }
+  .hint {
+    margin: 0.3rem 0 0.1rem;
+    font-size: 0.9rem;
+    color: var(--ink-2);
   }
   .report {
     flex: 1;

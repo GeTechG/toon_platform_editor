@@ -14,8 +14,16 @@
     editor,
     anchor,
     publishes = false,
+    docked = false,
     onClose,
-  }: { editor: EditorState; anchor?: HTMLElement; publishes?: boolean; onClose: () => void } = $props();
+  }: {
+    editor: EditorState;
+    anchor?: HTMLElement;
+    publishes?: boolean;
+    /** Inside a small screen's window: the window places it, not the plate. */
+    docked?: boolean;
+    onClose: () => void;
+  } = $props();
 
   /** The switch's name and its hint are two things: ids to point at each. */
   const uid = $props.id();
@@ -40,6 +48,10 @@
     void resized;
     // A track lays the wave's lane under the strip, which lifts the key.
     void editor.audio.hasTrack;
+    if (docked) {
+      at = undefined;
+      return;
+    }
     if (!anchor || !plate) return;
     // The drawer places itself; a left kept from the desktop would pin it
     // to one side of a narrowed window.
@@ -106,6 +118,7 @@
      promising three things it does not do. -->
 <div
   class="audio-plate"
+  class:docked
   role="group"
   aria-label={t('audio.panel')}
   bind:this={plate}
@@ -217,6 +230,13 @@
     background: var(--paper);
     border: none;
     border-radius: var(--r-md);
+  }
+  /* In a small screen's window: the window is the frame, the plate its body. */
+  .audio-plate.docked {
+    position: static;
+    width: auto;
+    max-height: none;
+    overflow: visible;
   }
   /* Its edge is a tone over the stage, and forced colors paint every tone
      alike: outlined, as controls.css does for menus and dialogs. */
