@@ -80,8 +80,11 @@ describe('the canvas wires the hold', () => {
     expect(fire).toContain('panning = null');
   });
 
-  it('the pipette tool and the gesture take the colour through one path', () => {
-    expect(canvas.match(/takeColour\(/g)?.length).toBeGreaterThanOrEqual(3);
+  it('the pipette tool and the gesture read the colour through one path', () => {
+    // Both read with pickColor; only the tool hands the eraser on an empty spot.
+    const finish = canvas.match(/function finishDropper[^]*?\n  }\n/)![0];
+    expect(finish).toContain('pickColor(at)');
+    expect(canvas.match(/function takeColour[^]*?\n  }\n/)![0]).toContain('pickColor(e)');
   });
 
   it('the loupe shows the new colour over the current outline', () => {
@@ -99,5 +102,15 @@ describe('the canvas wires the hold', () => {
   it('the colour taken is said in the canvas live line', () => {
     expect(canvas).toContain("showHint(t('canvas.hold_picked'");
     expect(t('canvas.hold_picked', { color: '#ff0000' })).toContain('#ff0000');
+  });
+
+  // Owner: «не бери ластик». A finger held a little too long over nothing
+  // must not leave the eraser in hand; the pipette tool keeps its eraser.
+  it('a hold over an empty spot takes nothing, the tool in hand stays', () => {
+    const finish = canvas.match(/function finishDropper[^]*?\n  }\n/)![0];
+    expect(finish).not.toContain('takeColour(');
+    expect(finish).not.toContain("selectTool('eraser')");
+    expect(finish).toContain("showHint(t('canvas.hold_empty'))");
+    expect(t('canvas.hold_empty')).not.toMatch(/ластик/);
   });
 });

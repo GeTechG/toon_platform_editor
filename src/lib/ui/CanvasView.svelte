@@ -862,12 +862,15 @@
     if (offSheet(at)) {
       return;
     }
-    const took = takeColour(at, false);
-    if (took) {
-      showHint(t('canvas.hold_picked', { color: took }));
-    } else {
+    // Unlike the pipette tool, an empty spot hands no eraser: a finger held a
+    // little too long must not change what is in the hand.
+    const picked = pickColor(at);
+    if (picked === null) {
       showHint(t('canvas.hold_empty'));
+      return;
     }
+    editor.pickColor(picked, 'outline');
+    showHint(t('canvas.hold_picked', { color: picked }));
   }
 
   /**
