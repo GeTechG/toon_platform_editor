@@ -19,9 +19,10 @@ const rule = (selector: string) => {
 };
 
 describe('the small screen’s column is the desktop’s left column', () => {
-  it('a phone gets the left column in its order, the publish key taken to the foot', () => {
+  // A phone keeps only the essentials of it: small-screens-essentials.test.ts.
+  it('a tablet gets the left column in its order, the publish key taken to the foot', () => {
     const layout = defaultPanels();
-    const cut = compactLayout(layout, 'phone', DEFAULT_TAB_ORDER);
+    const cut = compactLayout(layout, 'tablet', DEFAULT_TAB_ORDER);
     expect(cut.rail).toEqual(layout.left.filter((id) => id !== 'publish'));
     expect(cut.rail).toEqual([...toolOrder().map(toolItem), 'save', 'export', 'history', 'fullscreen', 'manual']);
     expect(cut.foot).toEqual(['publish']);

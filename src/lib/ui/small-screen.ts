@@ -8,7 +8,7 @@
  * Pure, so `bun test` runs it; Editor.svelte measures and draws.
  */
 
-import { allPlaced, panelItem, toolOfItem, type PanelLayout } from './panels';
+import { allPlaced, panelItem, toolOfItem, toolSpec, type PanelLayout } from './panels';
 
 export type LayoutStep = 'full' | 'tablet' | 'phone';
 
@@ -80,6 +80,23 @@ export function moveTab(order: readonly TabId[], id: TabId, index: number): TabI
   return rest;
 }
 
+/**
+ * What a phone's column keeps of a preset's tools (the owner: «оставим только
+ * важные»): its first drawing tool, the eraser, the lasso — and the pipette
+ * only where the preset draws it as a tool key (Multator's reference three);
+ * elsewhere it sits by the palette and a held finger does its work.
+ */
+export function phoneTools(ux: { tools: readonly string[]; pipetteOffRail: boolean }): string[] {
+  const primary = ux.tools.find((tool) => toolSpec(tool)?.stroke) ?? 'pencil';
+  return [primary, 'eraser', 'lasso', ...(ux.pipetteOffRail ? [] : ['pipette'])];
+}
+
+/** A phone's cut: the essential tools, and the one in hand wherever it came from. */
+export interface PhoneKeep {
+  tools: readonly string[];
+  active: string;
+}
+
 export interface CompactLayout {
   /** The desktop's left column: one key wide on a phone, as wide as it is on a tablet. */
   rail: string[];
@@ -98,13 +115,26 @@ export interface CompactLayout {
  * windows (their places stay stored for the big screen) — goes to the tabs;
  * the shelf does not, and the transport's work is done by the mini transport.
  */
-export function compactLayout(layout: PanelLayout, step: Exclude<LayoutStep, 'full'>, order: readonly TabId[]): CompactLayout {
+export function compactLayout(
+  layout: PanelLayout,
+  step: Exclude<LayoutStep, 'full'>,
+  order: readonly TabId[],
+  keep?: PhoneKeep,
+): CompactLayout {
   const placed = allPlaced({ ...layout, hidden: [] });
   const fits = (id: string) => step === 'tablet' || id === 'history' || !panelItem(id)?.wide;
   const own = layout.left.filter((id) => id !== 'publish' && fits(id));
-  const rail = [...own, ...placed.filter((id) => !own.includes(id) && (toolOfItem(id) !== null || id === 'history'))];
+  const column = [...own, ...placed.filter((id) => !own.includes(id) && (toolOfItem(id) !== null || id === 'history'))];
+  // A phone keeps the essentials; the rest goes to «⋯», and the tool in hand
+  // shows in the column as well while it is in hand.
+  const essential = (id: string, tools: readonly string[]) => {
+    const tool = toolOfItem(id);
+    return tool === null ? id === 'history' : tools.includes(tool);
+  };
+  const base = step === 'phone' && keep ? column.filter((id) => essential(id, keep.tools)) : column;
+  const rail = step === 'phone' && keep ? column.filter((id) => essential(id, [...keep.tools, keep.active])) : column;
   const foot: string[] = placed.filter((id) => id === 'publish');
-  const rest = placed.filter((id) => !rail.includes(id) && !foot.includes(id) && id !== 'transport');
+  const rest = placed.filter((id) => !base.includes(id) && !foot.includes(id) && id !== 'transport');
   const named = Object.values(TAB_ITEMS).flat();
   const tabs = order.map((id) => ({
     id,

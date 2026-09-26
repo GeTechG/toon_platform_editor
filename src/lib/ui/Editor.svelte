@@ -57,7 +57,7 @@
   } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
-  import { compactLayout, moveTab, pickStep, type LayoutStep, type TabId } from './small-screen';
+  import { compactLayout, moveTab, phoneTools, pickStep, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -306,7 +306,11 @@
   const compact = $derived(step !== 'full');
   /** Standing up: the strip lies across the top, the window comes up from the bottom. */
   const tall = $derived(boxH >= boxW);
-  const cut = $derived(compact ? compactLayout(editor.panels, step as 'tablet' | 'phone', editor.settings.tabOrder) : null);
+  const cut = $derived(
+    compact
+      ? compactLayout(editor.panels, step as 'tablet' | 'phone', editor.settings.tabOrder, { tools: phoneTools(editor.ux), active: editor.tool })
+      : null,
+  );
   // A small screen rearranges only its tabs (the owner's call): the arranger
   // is for the columns it no longer draws.
   $effect(() => {
