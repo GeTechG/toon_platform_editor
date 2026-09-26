@@ -57,7 +57,7 @@
   } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
-  import { compactLayout, moveTab, phoneTools, pickStep, type LayoutStep, type TabId } from './small-screen';
+  import { compactLayout, moveTab, phoneTools, pickStep, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -323,6 +323,26 @@
   const tabKeys = $state<Partial<Record<TabId, HTMLButtonElement>>>({});
   let tabWindow = $state<HTMLElement | undefined>();
   let tabBar = $state<HTMLElement | undefined>();
+  /**
+   * Only icons, when a tab's word does not fit on one line. Measured, not a
+   * width threshold: the words are laid out in their tab's width whether shown
+   * or not, so hiding them changes nothing that is measured — no flicker.
+   */
+  let tabsBare = $state(false);
+  const tabIds = $derived(cut?.tabs.map((tab) => tab.id).join() ?? '');
+  $effect(() => {
+    void tabIds;
+    if (!tabBar) return;
+    const labels = [...tabBar.querySelectorAll<HTMLElement>('.tab-label')];
+    const measure = () => (tabsBare = !tabLabelsFit(labels));
+    // The bar for the screen, the words for the text size.
+    const watch = new ResizeObserver(measure);
+    watch.observe(tabBar);
+    labels.forEach((label) => watch.observe(label));
+    // The web font changes the words' width and no box.
+    void document.fonts?.ready.then(measure);
+    return () => watch.disconnect();
+  });
   const TAB_ICONS: Record<TabId, IconName> = { color: 'palette', brush: 'edit', timeline: 'timeline', sound: 'note', more: 'more' };
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -2085,13 +2105,15 @@
           aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
       </div>
-      <div class="tabs" role="group" aria-label={t('editor.tabs')} title={t('editor.tabs_title')} bind:this={tabBar}>
+      <div class="tabs" class:bare={tabsBare} role="group" aria-label={t('editor.tabs')} title={t('editor.tabs_title')} bind:this={tabBar}>
         {#each cut.tabs as tab (tab.id)}
           <button
             class="tab"
             class:open={openTab === tab.id}
             class:lifted={tabDragging === tab.id}
             data-tab={tab.id}
+            aria-label={t(`editor.tab.${tab.id}`)}
+            title={t(`editor.tab.${tab.id}`)}
             bind:this={tabKeys[tab.id]}
             aria-expanded={openTab === tab.id}
             aria-controls="tab-window"
@@ -2461,11 +2483,27 @@
      landscape stage's 179 px at 200 % text. It stays a float, in the top
      corner — away from the windows' row at the bottom, and from the tab
      window, which comes up from the bottom or lies over the right side. */
+  .studio.compact .stage {
+    --zoom-inset: clamp(0.5rem, 2.2vw, 1.25rem);
+    /* The zoom window's foot: its inset, a key and its 2px frame, a gap. */
+    --zoom-foot: calc(var(--zoom-inset) + var(--key-h) + 4px + 0.5rem);
+  }
   .studio.compact .scale-window {
-    top: clamp(0.5rem, 2.2vw, 1.25rem);
-    right: clamp(0.5rem, 2.2vw, 1.25rem);
+    top: var(--zoom-inset);
+    right: var(--zoom-inset);
     bottom: auto;
     left: auto;
+  }
+  /* The thickness rail starts below the zoom window's row: at 200 % text on
+     390×844 the window (293 px of a 270 px stage) lay over the rail's top.
+     Shortened rather than moved — its left edge is where the thumb is, and
+     every other corner holds the tab window. The zoom corner at the bottom
+     is empty here, so the rail's foot comes down to the edge as its top.
+     A key tall at least, even on a stage too short for both. */
+  .studio.compact .stage :global(.size-rail) {
+    top: max(0.75rem, 50% - 8rem, var(--zoom-foot));
+    bottom: max(0.75rem, 50% - 8rem);
+    min-height: var(--key-h);
   }
   /* The transform window takes the zoom window's row: at 200 % text on 320px
      the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
@@ -3147,6 +3185,7 @@
     justify-content: space-between;
   }
   .tab {
+    position: relative;
     flex: 1 1 0;
     max-width: 6rem;
     /* 44 CSS px, not a rem key: five 88px keys at 200 % text are 440 on a
@@ -3192,9 +3231,23 @@
     outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
+  /* One line as wide as the tab, never broken («Цв/ет»): stretched, with no
+     width of its own, so it is measured in the tab's width and does not
+     widen it. Too wide for any tab, and every tab keeps only its icon. */
   .tab-label {
-    max-width: 100%;
-    overflow-wrap: anywhere;
+    align-self: stretch;
+    contain: inline-size;
+    overflow: hidden;
+    white-space: nowrap;
+    text-align: center;
+  }
+  /* Hidden but laid out across the same width, so the words are still
+     measured there and come back once they fit again. */
+  .tabs.bare .tab-label {
+    position: absolute;
+    left: 0.25rem;
+    right: 0.25rem;
+    visibility: hidden;
   }
   /* The one window: up from the bottom standing, in from the side lying
      down. Never the whole stage — the sheet above or beside it still draws.

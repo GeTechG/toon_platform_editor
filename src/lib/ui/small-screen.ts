@@ -144,3 +144,11 @@ export function compactLayout(
   }));
   return { rail, foot, tabs: tabs.filter((tab) => tab.items.length > 0) };
 }
+
+/**
+ * Whether every tab's word fits on one line across its tab. All or none (the
+ * owner's call): one word too wide and every tab shows only its icon.
+ */
+export function tabLabelsFit(labels: readonly { scrollWidth: number; clientWidth: number }[]): boolean {
+  return labels.every((label) => label.scrollWidth <= label.clientWidth);
+}
