@@ -209,6 +209,20 @@ export function clampPlayerFps(
 }
 
 /**
+ * The fps a field's text asks for. A field left empty (or holding letters,
+ * which Firefox lets into a number field) keeps the rate it had: `Number('')`
+ * is 0, and a cleared field used to set the slowest rate there is.
+ */
+export function fpsFromField(
+  text: string,
+  current: number,
+  range: readonly [number, number] = [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
+): number {
+  const value = text.trim() === '' ? NaN : Number(text);
+  return Number.isFinite(value) ? clampPlayerFps(value, range) : current;
+}
+
+/**
  * Active layer after removing `removed`. The layer that slides into the freed
  * position stays active; when the top layer went, the one below it does.
  */
@@ -485,4 +499,27 @@ export function isFrameMarked(doc: ToonDocument, marks: ReadonlySet<Frame>, fram
 export function lengthClock(seconds: number): string {
   const whole = seconds > 0 ? Math.max(1, Math.round(seconds)) : 0;
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+/**
+ * Whether a press at (`x`, `y`) landed on a box's scrollbar rather than in it.
+ * Chrome and Firefox send the press to the scrolling box, so a strip that
+ * collapses its selection on an empty press collapsed it on the bar too.
+ */
+export function onScrollbar(
+  box: { left: number; top: number; clientLeft: number; clientTop: number; clientWidth: number; clientHeight: number },
+  x: number,
+  y: number,
+): boolean {
+  return x - box.left - box.clientLeft >= box.clientWidth || y - box.top - box.clientTop >= box.clientHeight;
+}
+
+/**
+ * A splitter step from the width on screen — not the one asked for, which a
+ * `max-width` may be holding back — clamped to `[min, max]`, and never the
+ * wrong way: a column already narrower than `min` does not grow on ←.
+ */
+export function stepColumn(shown: number, step: number, min: number, max: number): number {
+  const next = Math.round(Math.min(max, Math.max(min, shown + step)));
+  return step < 0 ? Math.min(shown, next) : Math.max(shown, next);
 }

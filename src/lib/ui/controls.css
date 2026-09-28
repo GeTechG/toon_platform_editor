@@ -151,6 +151,18 @@
   background: var(--accent);
 }
 
+/* Safari on an iPhone zooms the page onto a focused field under 16 px and
+   leaves it zoomed. Components that size their own text (the transform
+   fields at 13 px, the picker's hex at 12) outweigh a zero-specificity
+   rule, and each fixing its own left most of them unfixed — so, as with
+   forced colors, this one line is `!important`. 1em is the text around the
+   field: at 200 % text it is already past 16 and nothing changes. */
+@media (pointer: coarse) {
+  :where(.editor) :is(input:not([type='range'], [type='checkbox'], [type='radio'], [type='color'], [type='file']), select, textarea) {
+    font-size: max(16px, 1em) !important;
+  }
+}
+
 :where(.editor) :is(input, select):disabled {
   opacity: 0.45;
   cursor: default;

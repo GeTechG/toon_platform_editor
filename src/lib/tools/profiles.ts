@@ -299,6 +299,12 @@ export class PointerStrokeController {
       console.error(t('brush.unknown_kind', { kind: String(kind) }));
       return null;
     }
+    // A cubic chain is a start point and whole segments of six: anything else
+    // saves a draft the format check refuses, and it never opens again.
+    if (stroke.tool.geometry === 'cubic' && (stroke.points.length - 2) % 6 !== 0) {
+      console.error(t('brush.broken_cubic', { count: stroke.points.length }));
+      return null;
+    }
     // The document stores whole coordinates inside int16. A brush quantizes on
     // its own way, but one that hands back whatever the pointer gave would cost
     // the whole stroke to a fraction — or, drawn out over the table at 10 %,
@@ -370,6 +376,16 @@ function fitFormat(stroke: ResolvedStroke): ResolvedStroke {
   const { points, pressure } = stroke;
   if (points.length <= MAX_STROKE_COORDS) {
     return stroke;
+  }
+  // A cubic chain keeps whole segments: its last point is an anchor that
+  // needs the two control points before it, so the tail is simply dropped.
+  if (stroke.tool.geometry === 'cubic') {
+    const keep = 1 + 3 * Math.floor((MAX_STROKE_COORDS - 2) / 6);
+    const cut: ResolvedStroke = { ...stroke, points: points.slice(0, keep * 2) };
+    if (pressure) {
+      cut.pressure = pressure.slice(0, keep);
+    }
+    return cut;
   }
   const keep = MAX_STROKE_COORDS / 2 - 1;
   const cut: ResolvedStroke = { ...stroke, points: [...points.slice(0, keep * 2), ...points.slice(-2)] };

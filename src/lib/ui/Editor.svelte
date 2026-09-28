@@ -22,13 +22,13 @@
   import './tokens.css';
   import './controls.css';
   import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
-  import { loadDocument } from '../format/validate';
+  import { FormatError, loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
   import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
-  import { extendTarget, wrapIndex } from './frame-selection';
+  import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
   import { keyOwner, latinKey, repeats, typesText } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
@@ -61,7 +61,7 @@
   import { dropPlacement } from './arrange';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
-  import { t } from '../i18n';
+  import { dateLocale, t } from '../i18n';
 
   // Optional publish hook. When a host app provides it, a Publish button appears
   // and hands the host a plain snapshot of the current document; the editor
@@ -327,6 +327,11 @@
   });
 
   let openTab = $state<TabId | null>(null);
+  // A tablet turned, or its text made smaller, reaches the full layout with a
+  // tab still «open»; turned back, the window came up by itself.
+  $effect(() => {
+    if (!compact) openTab = null;
+  });
   /** The open tab's window — none when its tab has gone (its item put away). */
   const shownTab = $derived(cut?.tabs.find((tab) => tab.id === openTab) ?? null);
   const tabKeys = $state<Partial<Record<TabId, HTMLButtonElement>>>({});
@@ -376,7 +381,7 @@
 
   /** Esc closes the window — unless a control inside took it first (a menu, a field). */
   function onTabWindowKey(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && !e.defaultPrevented) {
+    if (e.key === 'Escape' && !e.defaultPrevented && !e.isComposing) {
       e.preventDefault();
       e.stopPropagation();
       closeTab();
@@ -472,6 +477,12 @@
   function onKeydown(e: KeyboardEvent): void {
     // An update is downloading: the editor is not there to be typed at.
     if (editor.updating) {
+      return;
+    }
+    // An input method is composing: its Enter picks a character, its Esc drops
+    // the composition. Neither is the studio's — an Enter in a layer name
+    // applied the live transform, an Esc closed the tab window around the field.
+    if (e.isComposing) {
       return;
     }
     // Read by place on a non-Latin layout: «и» is B (key-owner.ts).
@@ -881,6 +892,13 @@
 
   /** Something has changed since the last write. The autosave clock clears it. */
   let dirty = $state(false);
+  /**
+   * The document the last write took. `dirty` is set by an effect, and effects
+   * run after the moment that matters on the way out: a transform applied in
+   * `onDestroy` changed the document, the flag was still the clock's clean one,
+   * and the move went with the studio unwritten.
+   */
+  let writtenDoc: ToonDocument | null = null;
 
   // Track the change signals (fps, frame count, per-frame stroke count —
   // strokes are append-only). Skipping the untouched document also avoids
@@ -928,6 +946,7 @@
     const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
     queued = false;
     dirty = false;
+    writtenDoc = doc;
     return saveDraft(draftId, doc, editor.sessionState(), track).then(({ ok, bytes }) => {
       if (ok && bytes === 0) {
         // No storage at all (blocked by the browser): the store degrades
@@ -996,6 +1015,10 @@
    * wrapper. Sound and palette stay in the draft, as they do in a `.toon`.
    */
   function saveProjectFile(): void {
+    // The file takes what the screen shows: a live move applied first.
+    if (!editor.leaveTransform()) {
+      return;
+    }
     if (!confirm(t('editor.download_project_confirm'))) {
       return;
     }
@@ -1099,15 +1122,18 @@
    * (owner, twelfth audit).
    */
   function flushOnLeave(): void {
-    if (dirty) {
+    if (dirty || (editor.touched && editor.doc !== writtenDoc)) {
       void saveNow(false, true);
     }
   }
 
+  /** The studio is gone: late answers from storage have nothing to update. */
+  let destroyed = false;
   // The site leaves the studio without a reload. The track is a media element
   // nothing unmounts — a preview running at that moment went on sounding over
   // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
   onDestroy(() => {
+    destroyed = true;
     // A selection moved and not yet applied is on the screen, not in the
     // document: leaving applies it, as a frame change does.
     editor.leaveTransform();
@@ -1119,7 +1145,12 @@
   });
 
   async function refreshDrafts(): Promise<void> {
-    drafts = draftEntries(await listDrafts());
+    const records = await listDrafts();
+    // Read after the studio was left: URLs minted now would be revoked by nobody.
+    if (destroyed) {
+      return;
+    }
+    drafts = draftEntries(records);
     for (const url of Object.values(thumbUrls)) {
       URL.revokeObjectURL(url);
     }
@@ -1180,11 +1211,19 @@
     // moment the device is short of space.
     void navigator.storage?.persist?.().catch(() => false);
     await refreshDrafts();
-    draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart;
+    // The list reads whole documents and may come late: by then a stroke may
+    // be under way or a sheet open, and a modal over either is a hand knocked.
+    draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart && !editor.touched && !sheetOpen();
   });
 
   async function openDrafts(): Promise<void> {
     leaveFullscreen();
+    // The card's copy and download take the drawing as the screen shows it.
+    editor.leaveTransform();
+    // The effect that marks the applied move runs after this.
+    if (editor.touched && editor.doc !== writtenDoc) {
+      dirty = true;
+    }
     if (dirty) {
       // The current card is copied and downloaded from what is on disk: up to
       // a clock's turn behind the canvas without this write.
@@ -1200,6 +1239,11 @@
     // the sheet opened, and loading it would put back the older copy.
     if (entry.id === draftId) {
       draftsDialog?.close();
+      return;
+    }
+    // A selection moved and not applied belongs to the drawing being left: it
+    // goes into its draft, not away with the document swap. The lock refuses.
+    if (!editor.leaveTransform()) {
       return;
     }
     if (editor.touched) {
@@ -1298,6 +1342,11 @@
    */
   async function openFile(file: File): Promise<void> {
     importError = '';
+    // As opening a draft: the live move is applied into the drawing it was
+    // made on before that drawing is written and replaced.
+    if (!editor.leaveTransform()) {
+      return;
+    }
     if (editor.touched) {
       // A browser that keeps no drafts loses the drawing outright: the question says so.
       const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
@@ -1311,9 +1360,11 @@
     const name = file.name.toLowerCase();
     let doc: ToonDocument;
     let original = '';
+    let text = '';
     try {
       if (name.endsWith('.toonop')) {
-        doc = loadDocument(JSON.parse(await file.text()));
+        text = await file.text();
+        doc = loadDocument(JSON.parse(text));
       } else if (name.endsWith('.json')) {
         const result = decodeLegacyJson(await file.text());
         if (!result.ok) {
@@ -1337,7 +1388,14 @@
       // What throws here is our own document's validator — a JSON path and
       // a schema rule, which says nothing to the person holding the file.
       console.warn('file open failed:', err);
-      importError = t('editor.file_failed', { reason: t('editor.file_not_toonop') });
+      // A project from a newer editor is not damaged: it says which version it is.
+      const newer = err instanceof FormatError
+        ? err.issues.find((issue) => issue.category === 'unsupported-version')
+        : undefined;
+      const version = newer ? (JSON.parse(text) as { schema_version?: unknown }).schema_version : undefined;
+      importError = t('editor.file_failed', {
+        reason: newer ? t('file.version_unsupported', { version: String(version) }) : t('editor.file_not_toonop'),
+      });
       return;
     }
     adoptOpenedDoc(doc, original);
@@ -1382,9 +1440,19 @@
     clearTimeout(dropNoteTimer);
     dropNoteTimer = setTimeout(() => (dropNote = false), 3000) as unknown as number;
   }
+  /**
+   * The popover API: Safari 17 and Firefox 125 on. Without it (Safari 16 is the
+   * last on an iPhone 8 or X) `:popover-open` is a selector that throws — in
+   * an effect, at mount, so the studio did not come up at all. The note is then
+   * shown by its class under the sheet rather than above it.
+   */
+  const popovers = typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
   $effect(() => {
     const el = dropNoteEl;
     if (!el) {
+      return;
+    }
+    if (!popovers) {
       return;
     }
     // Hidden and shown again on each refusal, so it lands above the sheet
@@ -1430,7 +1498,12 @@
       void openFile(file);
     } else if (isAudioFile(file)) {
       void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
-      audioOpen = true;
+      // A small screen has no plate to drop open: its sound is behind a tab.
+      if (compact && cut?.tabs.some((tab) => tab.id === 'sound')) {
+        openTab = 'sound';
+      } else {
+        audioOpen = true;
+      }
     } else {
       importError = t('editor.file_unsupported');
     }
@@ -1465,6 +1538,12 @@
 
   function openSettingsSheet(): void {
     leaveFullscreen();
+    // «Скачать черновики» there: the live move goes into the record first.
+    editor.leaveTransform();
+    // The effect that marks the applied move runs after this.
+    if (editor.touched && editor.doc !== writtenDoc) {
+      dirty = true;
+    }
     if (dirty) {
       // «Скачать черновики» there reads the records: the current one as drawn.
       void saveNow();
@@ -1482,7 +1561,7 @@
   const lastSaved = $derived(
     editor.lastSavedAt === null
       ? ''
-      : new Date(editor.lastSavedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+      : new Date(editor.lastSavedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }),
   );
 
   // Reference «Мануал» (`E:61-63`) opens the site's manual page; we have none,
@@ -1513,7 +1592,8 @@
         ['C', t('key.copy')],
         ['V', t('key.paste')],
         ['Ctrl + X', t('key.cut')],
-        ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
+        // Without a fullscreen here (an iPhone) the key and its button are not there either.
+        (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
         ['A', t('key.add_frame')],
         ['Del', t('key.delete_frame')],
         ['J / L', t('key.ends')],
@@ -1535,14 +1615,38 @@
   );
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
-  // (fadeSprite). Skipped under reduced motion.
+  // (fadeSprite). Skipped under reduced motion — where the words stand in for
+  // it on the stage. A reader hears them either way: the flash alone told
+  // nobody who could not see it, and nobody at all with motion reduced.
   let flashVisible = $state(false);
+  let clipNote = $state('');
+  let clipShown = $state(false);
+  /** The buffers as last told: a new one is a copy, the same one a paste. */
+  let clipSeen: { column: unknown; cells: unknown } = { column: null, cells: null };
   $effect(() => {
     if (editor.flashTick === 0) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    flashVisible = true;
+    const copied = untrack(
+      () =>
+        (editor.copiedColumn !== null && editor.copiedColumn !== clipSeen.column)
+        || (editor.copiedCells !== null && editor.copiedCells !== clipSeen.cells),
+    );
+    clipSeen = untrack(() => ({ column: editor.copiedColumn, cells: editor.copiedCells }));
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const word = t(copied ? 'editor.copied' : 'editor.pasted');
+    // Emptied first, so the same word twice is announced twice.
+    clipNote = '';
+    const say = setTimeout(() => {
+      clipNote = word;
+      clipShown = still;
+    }, 0);
+    const hush = setTimeout(() => (clipNote = ''), 1500);
+    if (!still) flashVisible = true;
     const timer = setTimeout(() => (flashVisible = false), 50);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(say);
+      clearTimeout(hush);
+    };
   });
 
   function onAddFrame(e: MouseEvent): void {
@@ -1559,7 +1663,8 @@
 
   function onFpsChange(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
-    editor.setFps(Number(input.value));
+    // A field left empty keeps the rate: `Number('')` was the slowest one.
+    editor.setFps(fpsFromField(input.value, editor.doc.frame_rate, editor.ux.fpsRange));
     input.value = String(editor.doc.frame_rate);
   }
 </script>
@@ -1580,11 +1685,20 @@
   onpointercancel={onDividerUp}
   ondragover={onDragOver}
   ondrop={onDrop}
+  onpagehide={() => {
+    // The page is going (Safari on iOS sends no `beforeunload` at all): a
+    // selection moved and not yet applied is applied, as leaving the studio
+    // does, and written with the rest.
+    editor.leaveTransform();
+    flushOnLeave();
+  }}
   onbeforeunload={(e) => {
     // Unsaved strokes on a sheet that has something on it: the write starts
     // now, and the browser's own dialog holds the tab while it may not have
-    // landed yet — the last thing between them and a closed tab.
-    const unsaved = editor.touched && dirty && !isEmptyDocument(editor.doc);
+    // landed yet — the last thing between them and a closed tab. A selection
+    // moved and not applied is not in the document at all: it asks too (a
+    // lasso only picked up has no step yet, and closes quietly).
+    const unsaved = (editor.touched && dirty && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
     flushOnLeave();
     if (unsaved) {
       e.preventDefault();
@@ -1613,6 +1727,7 @@
     disabled={!editor.canUndo}
     onclick={() => editor.undo()}
     data-key={editor.keyHint('Z') || undefined}
+    aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'}
     title={editor.keyHint(t('editor.undo_title'))}
     aria-label={t('editor.undo')}
   >
@@ -1623,6 +1738,7 @@
     disabled={!editor.canRedo}
     onclick={() => editor.redo()}
     data-key={editor.keyHint('Y') || undefined}
+    aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'}
     title={editor.keyHint(t('editor.redo_title'))}
     aria-label={t('editor.redo')}
   >
@@ -2058,6 +2174,9 @@
       {#if storageBlocked}
         <p class="stage-note">{t('editor.save_unavailable')}</p>
       {/if}
+      {#if clipNote}
+        <p class="stage-note" class:sr-only={!clipShown}>{clipNote}</p>
+      {/if}
     </div>
     {#if shownTab}
       <!-- The one window a small screen has open: up from the bottom standing,
@@ -2081,7 +2200,7 @@
         {/each}
       </section>
     {/if}
-    <p class="import-error drop-note" popover="manual" role="status" bind:this={dropNoteEl}>
+    <p class="import-error drop-note" class:shown={dropNote} popover="manual" role="status" bind:this={dropNoteEl}>
       {dropNote ? t('editor.drop_sheet_open') : ''}
     </p>
     {#if importError}
@@ -2215,7 +2334,7 @@
             title={t(`editor.tab.${tab.id}`)}
             bind:this={tabKeys[tab.id]}
             aria-expanded={openTab === tab.id}
-            aria-controls="tab-window"
+            aria-controls={openTab === tab.id ? 'tab-window' : undefined}
             onclick={() => onTabClick(tab.id)}
             onpointerdown={(e) => onTabDown(e, tab.id)}
             onpointermove={onTabMove}
@@ -2283,7 +2402,7 @@
                     {/if}
                   </span>
                   <span class="draft-meta">
-                    <span class="draft-date" id="draft-date-{entry.id}">{new Date(entry.updated).toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
+                    <span class="draft-date" id="draft-date-{entry.id}">{new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
                     <span class="draft-size">
                       {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
                       {t('draft.layers', { count: entry.doc.layers.length })}
@@ -2350,7 +2469,7 @@
       {editor}
       {compact}
       onClose={() => (settingsSheetOpen = false)}
-      onSaveNow={() => saveNow(true)}
+      onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
       onOpenPlugins={() => (pluginsSheetOpen = true)}
@@ -3144,6 +3263,13 @@
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
+  /* Safari on an iPhone zooms the page onto a field under 16 px and leaves
+     it zoomed: the studio stayed magnified after typing a rate. */
+  @media (pointer: coarse) {
+    .fps-inline input[type='number'] {
+      font-size: max(16px, 1em);
+    }
+  }
   /* One rem, never seen: its box changes with the root text size, which a
      text-only zoom changes without resizing the window. */
   .rem-probe {
@@ -3206,6 +3332,9 @@
      dock — one line there — goes beside it. */
   .studio.compact:not(.tall) .left {
     grid-row: 1 / -1;
+    /* It reaches the bottom of the glass, where the dock beside it already
+       pads for the home indicator: «Отправить мульт» sat under it. */
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .studio.compact:not(.tall) .dock {
     grid-column: 2;
@@ -3280,7 +3409,7 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.35rem 0.75rem;
+    gap: 0.35rem 0.5rem;
     min-width: 0;
     padding: 0.35rem 0.25rem;
     /* The home indicator sits over the bottom of the glass. */
@@ -3299,6 +3428,13 @@
     align-items: center;
     gap: 0.25rem;
     min-width: 0;
+  }
+  /* Play leads the row wider than a step, as on the desktop — but 3.4 rem of
+     and the key's sides are 89 px at 200 % text, and with «150 / 150» the
+     row was 331 px on a 320 px phone: the count went to a line of its own. */
+  .dock .mini-transport :global(.key.play) {
+    min-width: min(3.4rem, calc(var(--tap) * 1.25));
+    padding-inline: 0;
   }
   .frame-of {
     min-width: 5ch;
@@ -3333,7 +3469,10 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
-    padding: 0.15rem 0.25rem;
+    /* A hair at the sides: the icon grows with the text, and a quarter rem
+       each side made a bare tab 59 px at 200 % — the five sent the dock to a
+       second line lying down (740×360), 131 px of the 360. */
+    padding: 0.15rem 0.1rem;
     border: none;
     /* The open tab is told by a bar and by weight, not by tone alone. */
     border-top: 3px solid transparent;
@@ -3356,7 +3495,12 @@
     border-top-color: var(--accent);
     background: var(--canvas);
     color: var(--ink);
-    font-weight: 700;
+  }
+  /* Weight on the icon's line, not on the word: a bold «Таймлайн» is 4 px
+     wider than its tab at 360 px, and a change of weight resizes no box, so
+     the all-or-none check never saw it and the word lost its «н». */
+  .tab.open :global(svg) {
+    stroke-width: 2.75;
   }
   .tab.lifted {
     opacity: 0.6;
@@ -3431,6 +3575,19 @@
   .tab-window > .timeline {
     height: auto;
   }
+  /* The frame rate's slider and box are 9 rem: 381 px in a 270 px window at
+     200 % text. Here it shares a line where it fits, takes one of its own
+     where it does not, and there the slider gives way. */
+  .tab-window > .fps-inline {
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .tab-window .fps-inline input[type='range'] {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .tab-window :global(.board) {
     height: auto;
     max-height: 40dvh;
@@ -3502,7 +3659,7 @@
     z-index: auto;
     pointer-events: none;
   }
-  .drop-note:not(:popover-open) {
+  .drop-note:not(.shown) {
     display: none;
   }
   /* Mode notes along the stage's top edge, drawn like the import error: the
@@ -3593,6 +3750,9 @@
     display: flex;
     flex-direction: column;
     max-height: 85dvh;
+    /* Edge to edge — under 641 px, a small phone lying down or any phone at
+       200 % text — its close key sat under the cutout. */
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
     background: var(--canvas);
     border-top-left-radius: var(--r-md);
     border-top-right-radius: var(--r-md);
@@ -3607,6 +3767,8 @@
       transform: translate(-50%, -50%);
       /* Fixed: `100%` is the initial containing block, scrollbar excluded. */
       width: min(24rem, calc(100% - 2rem));
+      /* Centred, it is clear of any cutout. */
+      padding-inline: 0;
       border-radius: var(--r-md);
       /* Not a sheet any more: all four corners, all four sides, floating over
          the scrim. The sheet's lift points up because it rises from an edge —

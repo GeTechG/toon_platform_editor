@@ -27,7 +27,13 @@ function describe(what: unknown): string {
     try {
       return JSON.stringify(what) ?? String(what);
     } catch {
-      return String(what);
+      // A prototype-less object has no toString either: the log threw inside
+      // console.error, into whatever code was only reporting a fault.
+      try {
+        return String(what);
+      } catch {
+        return Object.prototype.toString.call(what);
+      }
     }
   }
   return String(what);

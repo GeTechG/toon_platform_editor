@@ -149,7 +149,7 @@ describe('a failed write is not silent', () => {
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);
     expect(editorUi).toContain('onclick={() => saveNow(true)}');
-    expect(editorUi).toContain('onSaveNow={() => saveNow(true)}');
+    expect(editorUi).toContain('onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}');
     expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveNow\(true\)/);
     expect(t('editor.save_failed_alert')).not.toContain('перезагруз');
   });

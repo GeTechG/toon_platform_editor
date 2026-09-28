@@ -154,7 +154,7 @@ describe('tenth audit — tools', () => {
   it('says a unit next to the percent fields and names the session keys', () => {
     expect(t('transform.scale_x')).toContain('%');
     expect(t('transform.scale_y')).toContain('%');
-    expect(t('transform.undo')).toContain('(Z)');
+    expect(t('transform.undo')).toContain('(Z');
     expect(t('transform.redo')).toContain('(Y или Ctrl+Shift+Z)');
   });
 

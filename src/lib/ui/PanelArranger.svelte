@@ -14,6 +14,8 @@
   import type { EditorState } from './editor-state.svelte';
   import { saveFile } from './save-file';
   import { arrangeBarBox, dropPlacement, rowEdge, type Box } from './arrange';
+  import { clampWindowPosition } from './draggable';
+  import { WORKSPACE_FILE_MAX, pickedWorkspace } from './workspaces';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { t } from '../i18n';
 
@@ -26,7 +28,7 @@
   function downloadWorkspace(): void {
     // Latin, so the name survives any filesystem it lands on.
     saveFile(
-      new Blob([editor.exportWorkspace(picked ? Number(picked) : undefined)], {
+      new Blob([editor.exportWorkspace(shownPick ? Number(shownPick) : undefined)], {
         type: 'application/json',
       }),
       'layout.json',
@@ -38,6 +40,11 @@
     const file = input.files?.[0];
     input.value = '';
     if (file) {
+      // A video picked by mistake was read whole and took the tab down.
+      if (file.size > WORKSPACE_FILE_MAX) {
+        notice = t('arrange.load_failed');
+        return;
+      }
       let raw: string;
       try {
         raw = await file.text();
@@ -132,7 +139,8 @@
     }
     // A mouse moving with nothing pressed let go somewhere its release never
     // came from (a menu, another window): nothing is dropped.
-    if (e.pointerType === 'mouse' && e.buttons === 0) {
+    // A pen hovers too, and loses its release the same way.
+    if (e.pointerType !== 'touch' && e.buttons === 0) {
       drag = null;
       target = null;
       return;
@@ -159,7 +167,7 @@
       return;
     }
     if (drag.moved && target) {
-      settle(target, e.clientX, e.clientY);
+      void settle(target, e.clientX, e.clientY);
     }
     drag = null;
     target = null;
@@ -236,17 +244,36 @@
   }
 
   /** One move, once, when the hand lets go. */
-  function settle(to: Target, x: number, y: number): void {
+  async function settle(to: Target, x: number, y: number): Promise<void> {
     if (!drag) {
       return;
     }
     if (to.slot === 'float') {
+      const id = drag.id;
       // A window is drawn in the editor, not in the canvas: measured from the
       // canvas it landed a column's width off the hand.
-      const root = document.querySelector('[data-float-root]')?.getBoundingClientRect();
-      editor.setFloatPos(drag.id, x - (root?.left ?? 0) - drag.dx, y - (root?.top ?? 0) - drag.dy);
-      if (!editor.panels.float.includes(drag.id)) {
-        editor.movePanelItem(drag.id, 'float');
+      const root = document.querySelector<HTMLElement>('[data-float-root]');
+      const at = root?.getBoundingClientRect();
+      editor.setFloatPos(id, x - (at?.left ?? 0) - drag.dx, y - (at?.top ?? 0) - drag.dy);
+      if (!editor.panels.float.includes(id)) {
+        editor.movePanelItem(id, 'float');
+      }
+      // Dropped half past the edge, it is drawn inside — and that is the
+      // place kept, as a drag by the title bar keeps it: the stored one was
+      // off the screen, and a saved arrangement held a place nobody saw.
+      await tick();
+      const shown = root?.querySelector<HTMLElement>(`.float[data-item="${CSS.escape(id)}"]`);
+      const pos = editor.floatPos[id];
+      if (root && shown && pos) {
+        const next = clampWindowPosition(
+          pos.x,
+          pos.y,
+          { width: shown.offsetWidth, height: shown.offsetHeight },
+          { width: root.clientWidth, height: root.clientHeight },
+        );
+        if (next.left !== pos.x || next.top !== pos.y) {
+          editor.setFloatPos(id, next.left, next.top);
+        }
       }
       return;
     }
@@ -258,7 +285,9 @@
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key !== 'Escape') {
+    // A sheet over the mode (Alt+S brings the export) takes its own Esc: this
+    // one closed the mode and, prevented, left the sheet standing.
+    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('dialog:modal')) {
       return;
     }
     e.preventDefault();
@@ -275,6 +304,8 @@
 
   /** The workspace picked in the list; '' while none is. */
   let picked = $state('');
+  /** The pick, while the panels are still laid out as it is (workspaces.ts). */
+  const shownPick = $derived(pickedWorkspace(picked, editor.workspaces, editor.panels, editor.floatPos));
 
   /**
    * On a phone the bar stood 487px over the panels it rearranges; the named
@@ -422,13 +453,13 @@
         <select
           class="workspaces"
           aria-label={t('arrange.workspace')}
-          value={picked}
+          value={shownPick}
           onchange={(e) => {
             const value = e.currentTarget.value;
             if (value) {
               // A «no» to losing the hand's arrangement: the list shows what is on.
               if (!editor.applyWorkspace(Number(value))) {
-                e.currentTarget.value = picked;
+                e.currentTarget.value = shownPick;
                 return;
               }
             }
@@ -461,11 +492,11 @@
         </button>
         <button
           class="key danger"
-          disabled={!picked}
+          disabled={!shownPick}
           onclick={() => {
-            editor.deleteWorkspace(Number(picked));
+            editor.deleteWorkspace(Number(shownPick));
             // Still there after a «no».
-            if (!editor.workspaces.some((w) => String(w.id) === picked)) {
+            if (!editor.workspaces.some((w) => String(w.id) === shownPick)) {
               picked = '';
             }
           }}

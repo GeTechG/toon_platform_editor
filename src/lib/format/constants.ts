@@ -86,6 +86,21 @@ export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
 /** Layer name length (v5); the reference's `MAX_LAYER_NAME`. */
 export const MAX_LAYER_NAME = 12;
+
+/**
+ * A layer name cut to `MAX_LAYER_NAME` without splitting a character: a slice
+ * through an emoji left half of it, a lone surrogate that JSON writes as
+ * `\ud83d` and the API's parser refuses — the mult would not publish. A lone
+ * half already in the text (a `.toon` stores UTF-16 words) becomes U+FFFD.
+ */
+export function cutLayerName(text: string): string {
+  let cut = text.slice(0, MAX_LAYER_NAME);
+  if (/[\uD800-\uDBFF]$/.test(cut)) {
+    cut = cut.slice(0, -1);
+  }
+  return cut.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (unit) => (unit.length === 2 ? unit : '\uFFFD'));
+}
+
 /** Maximum coordinate count (x,y flat) per stroke. */
 export const MAX_STROKE_COORDS = 65536;
 export const MAX_STROKE_WIDTH = 4800;

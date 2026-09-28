@@ -42,7 +42,8 @@ describe('only the main button picks an item up', () => {
 
   test('a mouse moving with no button down has lost its release, and the drag is let go', () => {
     const move = fn(arranger, 'onPointerMove');
-    expect(move).toContain("e.pointerType === 'mouse' && e.buttons === 0");
+    // A pen too, not only the mouse (audit14-windows).
+    expect(move).toContain("e.pointerType !== 'touch' && e.buttons === 0");
   });
 
   test('a window bar takes no grab from another button', () => {

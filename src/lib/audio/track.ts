@@ -89,6 +89,17 @@ export function checkAudioFile(file: { type: string; size: number; name?: string
   return null;
 }
 
+/**
+ * What a refused `play()` means for the person. Only `NotAllowedError` is the
+ * browser holding the sound back until a press; `AbortError` is a pause or a
+ * new track cutting the start short, which is no failure at all; anything else
+ * is an element that will not play this file.
+ */
+export function playRefusal(err: unknown): 'blocked' | 'unplayable' | null {
+  const name = (err as { name?: unknown } | null)?.name;
+  return name === 'NotAllowedError' ? 'blocked' : name === 'AbortError' ? null : 'unplayable';
+}
+
 /** When frame `index` is shown, in seconds from the start of the track. */
 export function timeForFrame(index: number, fps: number): number {
   return index / fps;
@@ -235,7 +246,7 @@ export function waveformBars(
  * is exactly what the reference falls back on.
  */
 export function readId3(buffer: ArrayBuffer): { artist: string; title: string } {
-  const bytes = new Uint8Array(buffer);
+  let bytes: Uint8Array = new Uint8Array(buffer);
   const none = { artist: '', title: '' };
   if (bytes.length < 10 || bytes[0] !== 0x49 || bytes[1] !== 0x44 || bytes[2] !== 0x33) {
     return none;
@@ -244,7 +255,17 @@ export function readId3(buffer: ArrayBuffer): { artist: string; title: string } 
   if (version !== 3 && version !== 4) {
     return none;
   }
-  const end = Math.min(bytes.length, 10 + synchsafe(bytes, 6));
+  let end = Math.min(bytes.length, 10 + synchsafe(bytes, 6));
+  // v2.3 unsynchronises the whole tag (an 0x00 after every 0xFF, so no
+  // player takes it for audio); the frame sizes count the bytes before that.
+  if (version === 3 && bytes[5] & 0x80) {
+    const tag = resync(bytes.subarray(10, end));
+    const whole = new Uint8Array(10 + tag.length);
+    whole.set(bytes.subarray(0, 10));
+    whole.set(tag, 10);
+    bytes = whole;
+    end = bytes.length;
+  }
   const found = { ...none };
   let at = 10;
   // An extended header sits before the frames: v2.4 counts itself in its
@@ -266,7 +287,11 @@ export function readId3(buffer: ArrayBuffer): { artist: string; title: string } 
       break;
     }
     if (id === 'TPE1' || id === 'TIT2') {
-      const text = decodeText(bytes.subarray(from, from + size));
+      // v2.4 flags it per frame, with the data length in front when it does.
+      const flags = version === 4 ? bytes[at + 9] : 0;
+      let data = bytes.subarray(from + (flags & 0x01 ? 4 : 0), from + size);
+      if (flags & 0x02) data = resync(data);
+      const text = decodeText(data);
       if (id === 'TPE1') {
         found.artist = text;
       } else {
@@ -276,6 +301,17 @@ export function readId3(buffer: ArrayBuffer): { artist: string; title: string } 
     at = from + size;
   }
   return found;
+}
+
+/** ID3 unsynchronisation undone: the 0x00 written after every 0xFF goes. */
+function resync(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    out[n++] = bytes[i];
+    if (bytes[i] === 0xff && bytes[i + 1] === 0) i++;
+  }
+  return out.subarray(0, n);
 }
 
 /** Four bytes of seven bits each — ID3's way of never spelling 0xFF. */

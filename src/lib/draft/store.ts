@@ -7,6 +7,7 @@
 
 import { parseDraft } from './restore';
 import { decodeToon } from '../format/toon-decode';
+import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
 
 const DB_NAME = 'toon-editor';
 const STORE = 'drafts';
@@ -93,9 +94,21 @@ function recordBytes(record: DraftRecord, previous: DraftRecord | undefined): nu
   return bytes + blobBytes(record);
 }
 
-/** Id for a fresh session — minted on the first edit, kept until the sheet is left. */
+/**
+ * Id for a fresh session — minted on the first edit, kept until the sheet is left.
+ * `randomUUID` exists only in a secure context: the studio opened over plain
+ * http (a phone on the dev server's LAN address) threw before its first frame.
+ * `getRandomValues` is there everywhere and makes the same version-4 id.
+ */
 export function newDraftId(): string {
-  return crypto.randomUUID();
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -562,9 +575,14 @@ export async function importDrafts(raw: string): Promise<{ loaded: number; broke
 
 const HEX = /^#[0-9a-f]{6}$/;
 const isInt = (value: unknown): boolean => Number.isInteger(value);
-const numbers = (value: unknown): boolean =>
+/**
+ * A table of brush numbers, each inside what a brush can take: a width of 0
+ * or a point spacing of a million came in from a file, went into the hand and
+ * the stored settings, and the brush drew nothing until a slider was moved.
+ */
+const numbers = (value: unknown, min: number, max: number): boolean =>
   typeof value === 'object' && value !== null
-  && Object.values(value).every((n) => typeof n === 'number' && Number.isFinite(n));
+  && Object.values(value).every((n) => typeof n === 'number' && n >= min && n <= max);
 
 /**
  * A file's `state` is the editor's own shape, or it is left behind — the draft
@@ -578,7 +596,8 @@ function isDraftState(value: unknown): value is DraftState {
   }
   const state = value as Record<string, unknown>;
   return isInt(state.frame) && isInt(state.layer) && typeof state.tool === 'string'
-    && numbers(state.widths) && numbers(state.smooth) && numbers(state.minDistance)
+    && numbers(state.widths, MIN_BRUSH_SIZE_LOGICAL, MAX_BRUSH_SIZE_LOGICAL)
+    && numbers(state.smooth, 0, 100) && numbers(state.minDistance, 0, 100)
     && HEX.test(String(state.outline)) && HEX.test(String(state.fill))
     && Array.isArray(state.palette) && state.palette.every((c) => typeof c === 'string' && HEX.test(c))
     && (state.layerColors === undefined || (Array.isArray(state.layerColors) && state.layerColors.every(isInt)));
@@ -624,9 +643,11 @@ function readSave(entry: unknown): DraftRecord | null {
     return null;
   }
   const created = typeof save.created === 'string' ? Date.parse(save.created) : NaN;
+  // `1e999` reads as Infinity: the list sorted by NaN and the card said «Invalid Date».
+  const updated = typeof save.updated === 'number' && Number.isFinite(save.updated) ? save.updated : NaN;
   const record: DraftRecord = {
     id,
-    updated: typeof save.updated === 'number' ? save.updated : Number.isFinite(created) ? created : Date.now(),
+    updated: Number.isFinite(updated) ? updated : Number.isFinite(created) ? created : Date.now(),
     doc,
   };
   if (isDraftState(save.state)) {

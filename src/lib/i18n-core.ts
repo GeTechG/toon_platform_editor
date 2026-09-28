@@ -47,5 +47,13 @@ export function translator(namespace: string) {
     i18next.t(key, { ns: namespace, ...params });
 }
 
+/**
+ * The locale a date or a number is written in: the catalogue's, so a
+ * translation brings its dates along instead of keeping Russian ones.
+ */
+export function dateLocale(): string {
+  return i18next.language || BASE_LOCALE;
+}
+
 /** The shared instance, for whoever adds a namespace or a locale to it. */
 export const i18n = i18next;

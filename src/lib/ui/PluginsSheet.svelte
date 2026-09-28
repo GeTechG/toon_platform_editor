@@ -365,7 +365,9 @@
             {:else if offer(entry) === 'local'}
               <span class="saved">{t('plugins.local')}</span>
             {:else}
-              <button class="key" disabled={busy === entry.id} onclick={() => void askInstall(entry)}>
+              <!-- One download at a time: two left `busy` to the one that ended
+                   first, and the other's key came back mid-download. -->
+              <button class="key" disabled={busy !== ''} onclick={() => void askInstall(entry)}>
                 {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
               </button>
             {/if}
@@ -439,6 +441,10 @@
   }
   .plugins li {
     display: flex;
+    /* At 200 % text on a phone the face, the words and two keys do not fit
+       one line: squeezed, «Включить» broke letter by letter inside a key a
+       finger tall. The keys take the next line whole instead. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.6rem;
     padding: 0.45rem 0.2rem;
@@ -468,8 +474,13 @@
     display: flex;
     flex-direction: column;
     gap: 0.1rem;
-    flex: 1;
+    flex: 1 1 5rem;
     min-width: 0;
+  }
+  .plugins li > .key {
+    flex: none;
+    /* The body breaks anywhere; a key's word stays whole. */
+    overflow-wrap: normal;
   }
   .name {
     font-weight: 650;

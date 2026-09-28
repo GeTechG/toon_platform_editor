@@ -484,15 +484,29 @@ function normalizeBrushes(
   const result: Record<BrushToolId, BrushRecord> = {};
   for (const tool of new Set([...BRUSH_TOOLS, ...Object.keys(stored)])) {
     const brush = record(stored[tool]);
-    const fallback = fallbacks[tool] ?? fallbacks.pencil;
     const pick = (key: keyof BrushRecord) => brush[key] ?? shared[key];
-    result[tool] = {
-      width: clampNumber(pick('width'), 1, MAX_BRUSH_SIZE_LOGICAL, fallback.width),
-      smooth: clampNumber(pick('smooth'), 1, 100, fallback.smooth),
-      minDistance: clampNumber(pick('minDistance'), 0, 30, fallback.minDistance),
-    };
+    result[tool] = brushFromStore(
+      { width: pick('width'), smooth: pick('smooth'), minDistance: pick('minDistance') },
+      fallbacks[tool] ?? fallbacks.pencil,
+    );
   }
   return result;
+}
+
+/**
+ * One brush record as it comes back from anywhere it was written down — the
+ * settings, a draft, a file: each number whole and in its own scale, and what
+ * is not a number is what the brush was before.
+ */
+export function brushFromStore(
+  stored: { width?: unknown; smooth?: unknown; minDistance?: unknown },
+  was: BrushRecord,
+): BrushRecord {
+  return {
+    width: clampNumber(stored.width, 1, MAX_BRUSH_SIZE_LOGICAL, was.width),
+    smooth: clampNumber(stored.smooth, 1, 100, was.smooth),
+    minDistance: clampNumber(stored.minDistance, 0, 30, was.minDistance),
+  };
 }
 
 /**

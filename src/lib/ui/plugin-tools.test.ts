@@ -274,7 +274,7 @@ test('what the register knows reaches the rail only through the version', () => 
   expect(refresh).toContain('normalizePanels(');
   expect(refresh).toContain('pluginsVersion');
   // A tool that is gone — removed, broken, refused — cannot stay in hand.
-  expect(refresh).toContain("selectTool('pencil')");
+  expect(refresh).toContain("selectTool('pencil'");
 });
 
 test('a broken plugin drops out of the hand by itself', () => {

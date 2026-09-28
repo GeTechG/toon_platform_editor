@@ -66,12 +66,39 @@ export class GifStream {
     this.#stride = sampleStride(totalPixels);
   }
 
-  /** Pass one: what this frame contributes to the shared palette. */
+  /** Pixels of the film already sampled past, frame after frame. */
+  #seen = 0;
+  /** Start of the current window of `stride` pixels, in the whole film. */
+  #window = 0;
+  /** The pixel picked inside that window, in the whole film. */
+  #pick = 0;
+  #seed = 0x9e3779b9;
+
+  /**
+   * Pass one: what this frame contributes to the shared palette. One pixel
+   * per window of `stride`, at a random place in it, counted across the whole
+   * film: a fixed step that restarted every frame landed on the same columns
+   * of every frame — at 640 px and 182 frames the step was the row itself,
+   * and the palette was built from the left edge alone.
+   */
   sample(frame: RgbaFrame): void {
     const px = new Uint32Array(frame.data.buffer, frame.data.byteOffset, frame.data.length / 4);
-    for (let i = 0; i < px.length; i += this.#stride) {
-      this.#sample.push(px[i]);
+    while (this.#pick < this.#seen + px.length) {
+      this.#sample.push(px[this.#pick - this.#seen]);
+      this.#window += this.#stride;
+      this.#pick = this.#window + this.#jitter();
     }
+    this.#seen += px.length;
+  }
+
+  /** A place inside a window; xorshift, so the same film gives the same GIF. */
+  #jitter(): number {
+    let x = this.#seed;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    this.#seed = x >>> 0;
+    return this.#seed % this.#stride;
   }
 
   /** Closes the sample and quantizes it. Nothing may be written before this. */

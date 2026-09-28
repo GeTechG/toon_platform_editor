@@ -119,6 +119,12 @@ export interface RasterizeOptions {
   width?: number;
   watermark?: boolean;
   transparent?: boolean;
+  /**
+   * Every frame is read back with `getImageData` (GIF). Such a canvas asks for
+   * `willReadFrequently`: without it Chrome draws on the GPU and pulls each
+   * frame back out of video memory, twice per frame of the animation.
+   */
+  readBack?: boolean;
 }
 
 /**
@@ -136,7 +142,7 @@ export class FrameRasterizer {
   readonly #watermark: boolean;
   readonly #scale: number;
 
-  constructor(doc: ToonDocument, { width, watermark, transparent }: RasterizeOptions = {}) {
+  constructor(doc: ToonDocument, { width, watermark, transparent, readBack }: RasterizeOptions = {}) {
     this.#doc = doc;
     this.size = exportSize(doc, width ?? logicalSize(doc).width);
     this.#scale = this.size.width / logicalSize(doc).width;
@@ -145,7 +151,7 @@ export class FrameRasterizer {
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.size.width;
     this.canvas.height = this.size.height;
-    const ctx = this.canvas.getContext('2d');
+    const ctx = readBack ? this.canvas.getContext('2d', { willReadFrequently: true }) : this.canvas.getContext('2d');
     if (!ctx) {
       throw new Error('canvas 2d context unavailable');
     }
@@ -188,7 +194,8 @@ export async function* rasterizeFrames(
   options: RasterizeDocumentOptions = {},
 ): AsyncGenerator<RgbaFrameBuffer> {
   const { signal, onProgress, ...rest } = options;
-  const raster = new FrameRasterizer(doc, rest);
+  // Every frame here is read back as pixels.
+  const raster = new FrameRasterizer(doc, { ...rest, readBack: true });
   const total = frameCount(doc);
   for (let index = 0; index < total; index++) {
     throwIfAborted(signal);

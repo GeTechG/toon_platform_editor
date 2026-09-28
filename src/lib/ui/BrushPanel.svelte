@@ -47,11 +47,31 @@
     };
   }
 
-  function opened(open: boolean): void {
+  /**
+   * Safari before 17 and Firefox before 125 have no `popover`: there the list
+   * is shown and hidden by hand, or it stood open in the top left corner over
+   * the canvas and a pick threw on `hidePopover`.
+   */
+  const popoverWorks = typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype;
+
+  async function opened(open: boolean): Promise<void> {
     picking = open;
     if (!open) return;
+    // Without the top layer the list is only drawn once the state is out.
+    if (!popoverWorks) await tick();
     place();
     list?.querySelector<HTMLButtonElement>('.type.active')?.focus();
+  }
+
+  function close(): void {
+    if (popoverWorks) list?.hidePopover();
+    else if (picking) opened(false);
+  }
+
+  /** Without a popover, a press anywhere else closes the list, as the browser does for one. */
+  function pressedElsewhere(e: PointerEvent): void {
+    const on = e.target as Node;
+    if (!popoverWorks && picking && !list?.contains(on) && !trigger?.contains(on)) close();
   }
 
   /**
@@ -76,6 +96,13 @@
     const keys = [...(list?.querySelectorAll<HTMLButtonElement>('.type') ?? [])];
     const from = keys.indexOf(document.activeElement as HTMLButtonElement);
     const next = ({ ArrowDown: from + 1, ArrowUp: from - 1, Home: 0, End: keys.length - 1 } as Record<string, number>)[e.key];
+    if (e.key === 'Escape' && !popoverWorks) {
+      // The browser's own light dismiss, by hand.
+      e.preventDefault();
+      close();
+      trigger?.focus();
+      return;
+    }
     if (next === undefined) return;
     e.preventDefault();
     keys[(next + keys.length) % keys.length]?.focus();
@@ -83,13 +110,22 @@
 
   /** Which heading's help is open: one at a time, until pressed again, Esc or blur. */
   let openNote = $state<string | null>(null);
+
+  // The smoothing headings leave with a brush they do not reach, their «i»
+  // with them, and no blur comes for a removed key (nor for one Safari never
+  // focused): coming back, the help stood open without a press.
+  $effect(() => {
+    if (!editor.brushSmooths && openNote !== t('brush.thickness')) openNote = null;
+  });
 </script>
 
 <!-- Thickness runs on a logarithmic track (size-scale.ts): the thin sizes
      everybody draws with get most of it. The track holds positions, so the
      reader hears the size, and a key steps a whole size, as + and − do — at
-     the thin end one step of the track would not reach the next whole size. -->
-{#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void, log = false)}
+     the thin end one step of the track would not reach the next whole size.
+     `pixels`: a linear track in logical pixels (the simplify step), which the
+     reader hears with its unit, as the thickness. -->
+{#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void, log = false, pixels = false)}
   {#if log}
     <input
       type="range"
@@ -115,11 +151,13 @@
       {max}
       {value}
       aria-label={label}
+      aria-valuetext={pixels ? t('brush.size_value', { count: value }) : undefined}
       oninput={(e) => set(e.currentTarget.valueAsNumber)}
     />
   {/if}
   <input
     type="number"
+    inputmode="numeric"
     {min}
     {max}
     {value}
@@ -185,7 +223,7 @@
 
 <!-- A phone turned, or the box scrolled, with the list open: the list follows
      its button. -->
-<svelte:window onresize={() => picking && place()} onscrollcapture={() => picking && place()} />
+<svelte:window onresize={() => picking && place()} onscrollcapture={() => picking && place()} onpointerdown={pressedElsewhere} />
 
 <div class="box brush-box" role="group" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
@@ -198,7 +236,9 @@
       class="trigger"
       bind:this={trigger}
       popovertarget={listId}
+      aria-expanded={popoverWorks ? undefined : picking}
       aria-label={t('brush.type_of', { label: current.label })}
+      onclick={() => !popoverWorks && opened(!picking)}
     >
       {@render sample(brushOfType('pencil', current.id))}
       <span class="name">{current.label}</span>
@@ -208,26 +248,34 @@
       class="types"
       id={listId}
       popover
+      class:fallback={!popoverWorks}
+      class:open={!popoverWorks && picking}
       bind:this={list}
       style:left="{at.x}px"
       style:top="{at.y}px"
+      onbeforetoggle={(e) => {
+        // `toggle` comes as a task of its own, after the list is drawn: for a
+        // frame it stood where it was left — the first time, at 0,0. Under
+        // its button it starts; `toggle` then fits it by its real size.
+        if ((e as ToggleEvent).newState === 'open') place();
+      }}
       ontoggle={(e) => opened((e as ToggleEvent).newState === 'open')}
     >
       {#each types as option (option.id)}
         <button
           class="type"
-          class:active={editor.brushType === option.id}
-          aria-pressed={editor.brushType === option.id}
+          class:active={current.id === option.id}
+          aria-pressed={current.id === option.id}
           onkeydown={walk}
           onfocusout={(e) => {
             // Tab out of the list closes it: an open list left behind covers
             // the sliders the focus has moved on to.
             const to = e.relatedTarget as Node | null;
-            if (to && !list?.contains(to)) list?.hidePopover();
+            if (to && !list?.contains(to)) close();
           }}
           onclick={() => {
             editor.setBrushType(option.id);
-            list?.hidePopover();
+            close();
           }}
         >
           <span class="name">{option.label}</span>
@@ -257,7 +305,7 @@
     {@render heading(t('brush.smooth'), t('brush.smooth_hint'))}
     {@render slider(t('brush.smooth'), 1, 100, editor.brushSmooth, (v) => editor.setBrushSmooth(v))}
     {@render heading(t('brush.simplify'), t('brush.simplify_hint'))}
-    {@render slider(t('brush.simplify_slider'), 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v))}
+    {@render slider(t('brush.simplify_slider'), 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v), false, true)}
   {/if}
 </div>
 <style>
@@ -328,6 +376,18 @@
   /* A closed popover is hidden by the browser's own `display: none`, which
      any layout declared here would quietly override. */
   .types:popover-open {
+    display: grid;
+    gap: 4px;
+  }
+  /* Where `popover` is unknown the div is an ordinary one: hidden until its
+     button opens it, and above the studio without a top layer to lift it.
+     A rule of its own — beside `:popover-open`, which such a browser does not
+     parse, it would be thrown away with it. */
+  .types.fallback {
+    display: none;
+    z-index: 50;
+  }
+  .types.fallback.open {
     display: grid;
     gap: 4px;
   }

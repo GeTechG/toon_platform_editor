@@ -6,9 +6,16 @@
   // not what it is.
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
-  import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
+  import { CELL_BOX, fitThumb, rowHeight, rowHeightCss } from './thumb-size';
   import { scrollToFrame, stripWindow } from './strip-window';
-  import { frameMenuKey, frameMenuTop, selectionSpan, type FrameMenuAction } from './frame-selection';
+  import {
+    frameMenuKey,
+    frameMenuTop,
+    onScrollbar,
+    selectionSpan,
+    stepColumn,
+    type FrameMenuAction,
+  } from './frame-selection';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
@@ -85,7 +92,9 @@
       return;
     }
     const head = strip.querySelector<HTMLElement>('.head')?.offsetHeight ?? 0;
-    const to = scrollToFrame(at, row, 0, strip.scrollTop, strip.clientHeight - head);
+    // A row grows with the text past the frame's number (`rowHeightCss`).
+    const rowPx = strip.querySelector<HTMLElement>('.cells')?.getBoundingClientRect().height || row;
+    const to = scrollToFrame(at, rowPx, 0, strip.scrollTop, strip.clientHeight - head);
     if (to !== null) {
       strip.scrollTop = to;
     }
@@ -222,6 +231,10 @@
     if (editor.playing || picking || e.pointerType === 'touch' || (e.target as HTMLElement).closest('.cell')) {
       return;
     }
+    // The strip's own scrollbar is where a block is carried to far frames.
+    if (strip && e.target === strip && onScrollbar({ ...strip.getBoundingClientRect(), clientLeft: strip.clientLeft, clientTop: strip.clientTop, clientWidth: strip.clientWidth, clientHeight: strip.clientHeight }, e.clientX, e.clientY)) {
+      return;
+    }
     editor.collapseSelection();
   }
 
@@ -277,6 +290,9 @@
   const LONG_PRESS_MS = 500;
   let longPress = 0;
   let longPressed = false;
+  // A held finger when the strip goes (the layout steps down to the phone's)
+  // would open a menu over a strip that is not there.
+  $effect(() => cancelLongPress);
 
   function startLongPress(e: PointerEvent, frame: number, layer: number): void {
     cancelLongPress();
@@ -385,7 +401,18 @@
   const thumbWidth = $derived(cell.w + 2);
   /** The frames built right now — the ones in view, plus a screen either side. */
   const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
-  const built = $derived(Array.from({ length: view.count }, (_, k) => view.first + k));
+  // Numbers, so a scroll that keeps the window's edges rebuilds no list:
+  // every scroll event made a new `view`, and every row diffed its cells.
+  const firstBuilt = $derived(view.first);
+  const countBuilt = $derived(view.count);
+  const built = $derived(Array.from({ length: countBuilt }, (_, k) => firstBuilt + k));
+  /**
+   * The wave's bars, for the track, the rate and the cell's width. Read in the
+   * markup it was a pass over the whole track on every stroke: a write
+   * replaces the document, and `frame_rate` was read through it.
+   */
+  const fps = $derived(editor.doc.frame_rate);
+  const waveBars = $derived(editor.audio.hasTrack ? editor.audio.bars(fps, barsPerFrame(thumbWidth)) : null);
   /**
    * Every frame's width plus the row padding (a gap each end). The window
    * swaps cells for a wider spacer in steps, and a layout between them saw a
@@ -412,7 +439,8 @@
   }
 
   function onColDown(e: PointerEvent): void {
-    if (!e.isPrimary) return;
+    // The main button only: a right press is a context menu, not a drag.
+    if (!e.isPrimary || e.button !== 0) return;
     colDrag = { pointerId: e.pointerId, startX: e.clientX, startWidth: colPx };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
@@ -428,13 +456,15 @@
 
   function onColKey(e: KeyboardEvent): void {
     switch (e.key) {
+      // From the width on screen: `max-width: 50%` may hold back the one asked
+      // for, and ← stood still for press after press.
       case 'ArrowLeft':
         e.preventDefault();
-        setCol((colWidth ?? colPx) - COL_STEP);
+        colWidth = stepColumn(colPx, -COL_STEP, COL_MIN, COL_MAX);
         break;
       case 'ArrowRight':
         e.preventDefault();
-        setCol((colWidth ?? colPx) + COL_STEP);
+        colWidth = stepColumn(colPx, COL_STEP, COL_MIN, COL_MAX);
         break;
     }
   }
@@ -442,9 +472,9 @@
 </script>
 
 {#snippet wave(cellWidth: number)}
-  {#if editor.audio.hasTrack}
+  {#if waveBars}
     {@const per = barsPerFrame(cellWidth)}
-    {@const bars = editor.audio.bars(editor.doc.frame_rate, per)}
+    {@const bars = waveBars}
     <!-- Decoration: the note key's panel carries the track's name, its length
          and the controls. The lane is drawn even where the track is silent, so
          an empty stretch reads as "quiet here", not as a missing waveform. -->
@@ -504,8 +534,8 @@
       aria-label={t('timeline.col_width')}
       aria-orientation="vertical"
       aria-valuenow={colPx}
-      aria-valuemin={COL_MIN}
-      aria-valuemax={COL_MAX}
+      aria-valuemin={Math.min(COL_MIN, colPx)}
+      aria-valuemax={Math.max(COL_MAX, colPx)}
       tabindex="0"
       onpointerdown={onColDown}
       onpointermove={onColMove}
@@ -545,7 +575,7 @@
         {/if}
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-        <div class="cells" style:height="{row}px">
+        <div class="cells" style:height={rowHeightCss(editor.doc)}>
           {#if view.before > 0}
             <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
           {/if}
@@ -574,10 +604,10 @@
               onpointerleave={cancelLongPress}
               oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
-              aria-label={t(
+              aria-label={`${t(
                 editor.doc.layers[layerIndex].frames[i]?.strokes.length ? 'timeline.cell' : 'timeline.cell_empty',
                 { frame: i + 1, layer: editor.layerLabel(layerIndex) },
-              )}
+              )}${editor.isCopiedCell(i, layerIndex) ? t('timeline.cell_copied') : ''}`}
             >
               <LayerThumb
                 doc={editor.doc}
@@ -704,7 +734,9 @@
     box-sizing: border-box;
     display: flex;
     gap: 2px;
-    height: 32px;
+    /* 2rem, as the layer list's «+ Слой» header beside it: at 32 px the names
+       sat 16 px below their cells with 150 % text, 32 px with 200 %. */
+    height: 2rem;
     padding: 0 2px;
     border-bottom: 1px solid var(--hairline);
     position: sticky;
@@ -719,7 +751,7 @@
     flex: none;
     text-align: center;
     font-size: min(0.74rem, calc(var(--pitch) * 0.42));
-    line-height: 32px;
+    line-height: 2rem;
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
   }

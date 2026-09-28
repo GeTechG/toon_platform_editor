@@ -32,12 +32,22 @@
     top: number;
     size: { width: number; height: number };
     bounds: { width: number; height: number };
+    /** The window has travelled: its place is written down on the release. */
+    moved: boolean;
   } | null = null;
 
-  /** The editor, which is what the window's coordinates are measured against. */
+  /**
+   * The editor, which is what the window's coordinates are measured against.
+   * Found by its mark, not as the offset parent: that is null while the
+   * editor is hidden, and a window mounted then never watched the editor.
+   */
+  function root(): HTMLElement | null {
+    return el?.closest<HTMLElement>('[data-float-root]') ?? null;
+  }
+
   function frame(): { width: number; height: number } {
-    const root = el?.offsetParent as HTMLElement | null;
-    return { width: root?.clientWidth ?? 0, height: root?.clientHeight ?? 0 };
+    const at = root();
+    return { width: at?.clientWidth ?? 0, height: at?.clientHeight ?? 0 };
   }
 
   /** The window's own size and the editor's, as last seen by the observer. */
@@ -57,8 +67,9 @@
       }
     });
     watcher.observe(el);
-    if (el.offsetParent) {
-      watcher.observe(el.offsetParent);
+    const at = root();
+    if (at) {
+      watcher.observe(at);
     }
     return () => watcher.disconnect();
   });
@@ -137,6 +148,7 @@
       top: shown.top,
       size: { width: el.offsetWidth, height: el.offsetHeight },
       bounds: frame(),
+      moved: false,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -152,7 +164,10 @@
       grab.size,
       grab.bounds,
     );
-    editor.setFloatPos(id, next.left, next.top);
+    grab.moved = true;
+    // Drawn at once, stored on the release: the whole UI config went to
+    // storage on every pointer sample.
+    editor.setFloatPos(id, next.left, next.top, false);
   }
 
   /**
@@ -161,11 +176,19 @@
    * swallowed left the window riding the bare hover.
    */
   function onUp(): void {
+    if (grab?.moved) {
+      editor.setFloatPos(id, pos.x, pos.y);
+    }
     grab = null;
   }
 
   /** Arrow keys move it too — a drag must never be the only way (WCAG 2.5.7). */
   function onKey(e: KeyboardEvent): void {
+    // With a modifier the arrow is the browser's or the reader's (Alt+← is
+    // «back»), never a step of the window.
+    if (e.ctrlKey || e.altKey || e.metaKey) {
+      return;
+    }
     const step = e.shiftKey ? 20 : 4;
     const dx = e.key === 'ArrowRight' ? step : e.key === 'ArrowLeft' ? -step : 0;
     const dy = e.key === 'ArrowDown' ? step : e.key === 'ArrowUp' ? -step : 0;
@@ -234,6 +257,9 @@
     display: flex;
     flex-direction: column;
     max-width: min(90%, 28rem);
+    /* Never taller than the editor it lies in: on a short one the body's
+       60vh ran past the bottom, out of reach. The body scrolls instead. */
+    max-height: 100%;
     border: none;
     border-radius: var(--r-md);
     /* Paper, as the zoom window: a white window on the white sheet had no
@@ -284,6 +310,7 @@
     gap: 0.4rem;
     padding: 0.5rem;
     max-height: 60vh;
+    min-height: 0;
     overflow: auto;
   }
 </style>

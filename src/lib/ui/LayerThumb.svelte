@@ -68,14 +68,20 @@
     if (stamp === painted && shape === paintedBox) {
       return;
     }
-    painted = stamp;
-    paintedBox = shape;
     const dpr = renderDensity(window.devicePixelRatio || 1);
     canvasEl.width = Math.max(1, Math.round(box.w * dpr));
     canvasEl.height = Math.max(1, Math.round(box.h * dpr));
-    const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike & {
+    const ctx = canvasEl.getContext('2d') as unknown as (Canvas2DLike & {
       clearRect(x: number, y: number, w: number, h: number): void;
-    };
+    }) | null;
+    // Safari hands out null once the page's canvas memory is spent (a long
+    // mult on an iPhone): the cell stays blank rather than the effect throwing,
+    // and it is not marked painted, so the next write tries again.
+    if (!ctx) {
+      return;
+    }
+    painted = stamp;
+    paintedBox = shape;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     renderStrokesLayer(cell, doc.tools, ctx, { scale: box.w / doc.width, dpr });

@@ -10,6 +10,7 @@ import {
   AUDIO_MAX_CREDIT,
   ENVELOPE_RATE,
   checkAudioFile,
+  playRefusal,
   publishProblem,
   readId3,
   trackEnvelope,
@@ -284,9 +285,13 @@ export class AudioTrackState {
       (err) => {
         // A refused play is the one failure the person can act on — browsers
         // block sound until the page has been interacted with. Saying so beats
-        // a console line nobody reads.
+        // a console line nobody reads. A start cut short by a stop or a new
+        // track (AbortError) is not a refusal, and a file the element will not
+        // play is not the browser's permission.
+        const refusal = playRefusal(err);
+        if (refusal === null) return;
         console.warn('audio playback failed:', err);
-        this.error = t('audio.blocked');
+        this.error = t(refusal === 'blocked' ? 'audio.blocked' : 'audio.unplayable');
       },
     );
   }

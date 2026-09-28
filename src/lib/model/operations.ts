@@ -10,7 +10,7 @@ import {
   DEFAULT_FPS,
   MAX_DOC_DIMENSION,
   MAX_FRAMES,
-  MAX_LAYER_NAME,
+  cutLayerName,
   MAX_LAYERS,
   MAX_STROKE_COORDS,
   MAX_STROKE_WIDTH,
@@ -222,7 +222,7 @@ export function removeLayer(doc: ToonDocument, index: number): void {
  */
 export function renameLayer(doc: ToonDocument, index: number, name: string): void {
   assertLayerIndex(doc, index);
-  const trimmed = name.trim().slice(0, MAX_LAYER_NAME);
+  const trimmed = cutLayerName(name.trim());
   if (trimmed) {
     doc.layers[index].name = trimmed;
   } else {
@@ -651,23 +651,49 @@ function mapStrokes(
     if (!stroke) {
       continue;
     }
-    const points = stroke.points.slice();
-    for (let i = 0; i < points.length; i += 2) {
-      const [x, y] = map(points[i], points[i + 1]);
-      points[i] = x;
-      points[i + 1] = y;
-    }
     // The width has to be rescaled before the points are quantized: a pixel
     // cell snaps onto the grid of the width it will be drawn at.
     const toolId = widthScale !== 1
       ? internTool(doc, scaleToolWidth(doc.tools[stroke.tool_id], widthScale))
       : stroke.tool_id;
-    quantizeStrokePoints(points, doc.tools[toolId]);
+    const points = placeStrokePoints(stroke.points, map, doc.tools[stroke.tool_id], doc.tools[toolId]);
     // A new stroke, not the old one rewritten: the same cell with the same
     // count is otherwise indistinguishable from before, and a cache keyed on
     // what it holds (the onion ghost) kept showing the unmoved drawing.
     target.strokes[index] = { ...stroke, points, tool_id: toolId };
   }
+}
+
+/**
+ * How far a stamped mark reaches past the point it is stamped from: the
+ * point is the corner of a mark `width` across. Nothing else has a reach.
+ */
+export function markReach(tool: ToolDescriptor | undefined): number {
+  return tool?.kind === 'stamp' ? tool.width : 0;
+}
+
+/**
+ * A stroke's points carried through `map`, landing as `to` draws them. A
+ * stamped mark is carried by its middle and laid back from its corner: moved
+ * by the corner, a mirror or a half turn put every cell one cell off the
+ * place it covered. Everything else is carried point by point.
+ */
+export function placeStrokePoints(
+  source: readonly number[],
+  map: (x: number, y: number) => [number, number],
+  from: ToolDescriptor,
+  to: ToolDescriptor,
+): number[] {
+  const lift = markReach(from) / 2;
+  const drop = markReach(to) / 2;
+  const points = source.slice();
+  for (let i = 0; i < points.length; i += 2) {
+    const [x, y] = map(points[i] + lift, points[i + 1] + lift);
+    points[i] = x - drop;
+    points[i + 1] = y - drop;
+  }
+  quantizeStrokePoints(points, to);
+  return points;
 }
 
 /**

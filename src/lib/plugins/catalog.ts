@@ -169,7 +169,10 @@ export async function readCatalog(
   const plugins: CatalogEntry[] = [];
   for (const value of Array.isArray(body.plugins) ? body.plugins : []) {
     const entry = readEntry(value, base);
-    if (entry) {
+    // One id, one plugin: the window lists them by id, and a second record
+    // under the same one took the whole window down with it. The first wins,
+    // as the register keeps the first plugin loaded under an id.
+    if (entry && !plugins.some((kept) => kept.id === entry.id)) {
       plugins.push(entry);
     }
   }

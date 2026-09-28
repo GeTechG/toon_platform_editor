@@ -22,7 +22,7 @@
   import Icon from './Icon.svelte';
   import { saveFile } from './save-file';
   import type { EditorState } from './editor-state.svelte';
-  import { t } from '../i18n';
+  import { dateLocale, t } from '../i18n';
 
   let {
     editor,
@@ -37,7 +37,8 @@
     /** A small screen: its tabs are what moves, the panels are not drawn. */
     compact?: boolean;
     onClose: () => void;
-    onSaveNow?: () => void;
+    /** Resolves `false` when the draft did not reach the disk. */
+    onSaveNow?: () => Promise<boolean>;
     /** The file dialog, the draft list and the plugins window live in the editor. */
     onOpenFile?: () => void;
     onOpenPlugins?: () => void;
@@ -53,6 +54,17 @@
   let saveDraftsEl = $state<HTMLButtonElement | undefined>();
   /** What the last import or save did, shown until the next one. */
   let report = $state('');
+  /**
+   * The palette limit under the finger. Every step of the slider rewrote the
+   * whole studio config into storage; the setting lands on release, the
+   * number beside it follows the finger all the same.
+   */
+  let limitDragged = $state<number | null>(null);
+  const limitShown = $derived(limitDragged ?? editor.settings.paletteLimit);
+  $effect(() => {
+    void editor.settings.paletteLimit;
+    limitDragged = null;
+  });
 
   $effect(() => {
     dialogEl?.showModal();
@@ -138,8 +150,17 @@
     if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
+    let text: string;
     try {
-      const { loaded, broken } = await importDrafts(await file.text());
+      text = await file.text();
+    } catch (error) {
+      // Moved or deleted between the pick and the read: not the storage's fault.
+      console.warn('drafts file unreadable:', error);
+      report = t('settings.drafts_unreadable');
+      return;
+    }
+    try {
+      const { loaded, broken } = await importDrafts(text);
       report = loaded > 0 || broken > 0
         ? t(broken > 0 ? 'settings.drafts_loaded_broken' : 'settings.drafts_loaded', { loaded, broken })
         : t('settings.no_drafts');
@@ -152,6 +173,16 @@
     const before = new Set(drafts.map((entry) => entry.id));
     drafts = draftEntries(await listDrafts());
     chosen = [...chosen, ...drafts.filter((entry) => !before.has(entry.id)).map((entry) => entry.id)];
+  }
+
+  /**
+   * The studio's «сохранено» is under this modal, inert: neither seen for the
+   * scrim nor heard. The answer goes in the sheet's own line.
+   */
+  async function saveNowHere(): Promise<void> {
+    if (!onSaveNow) return;
+    const saved = await onSaveNow();
+    report = t(saved ? 'settings.saved_now' : 'settings.save_not_done');
   }
 
   function wipePalettes(): void {
@@ -270,9 +301,10 @@
           max={PALETTE_LIMIT_MAX}
           step={PALETTE_LIMIT_STEP}
           value={editor.settings.paletteLimit}
-          oninput={(e) => editor.setSetting('paletteLimit', Number(e.currentTarget.value))}
+          oninput={(e) => (limitDragged = Number(e.currentTarget.value))}
+          onchange={(e) => editor.setSetting('paletteLimit', Number(e.currentTarget.value))}
         />
-        <output>{editor.settings.paletteLimit}</output>
+        <output>{limitShown}</output>
       </span>
     </label>
     <div class="actions">
@@ -320,7 +352,7 @@
           <li>
             <label class="toggle">
               <span class="toggle-label">
-                {new Date(entry.updated).toLocaleString('ru')}
+                {new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
                 <small>
                   {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
                 </small>
@@ -358,7 +390,7 @@
         <button class="key" onclick={() => { dialogEl?.close(); onOpenFile(); }}>{t('settings.open_toon')}</button>
       {/if}
       {#if onSaveNow}
-        <button class="key" onclick={onSaveNow}>{t('settings.save_now')}</button>
+        <button class="key" onclick={saveNowHere}>{t('settings.save_now')}</button>
       {/if}
       <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
     </div>
@@ -446,15 +478,21 @@
 </dialog>
 
 <style>
-  /* Preset chips: one row, equal shares (same control as the old sheet). */
+  /* Preset chips: one row, equal shares (same control as the old sheet) —
+     while they fit. A plugin's presets join them, and at 200 % text three
+     already did not: squeezed, «Мультатор» broke mid-word inside a chip of
+     fixed height. A chip that does not fit takes the next row whole. */
   .presets {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
   }
   .preset-chip {
-    flex: 1;
-    height: var(--key-h);
+    flex: 1 0 auto;
+    min-height: var(--key-h);
     padding: 0 0.5rem;
+    /* The body breaks anywhere; a preset's name is one word and stays whole. */
+    overflow-wrap: normal;
     border: none;
     border-radius: var(--r-sm);
     background: var(--sub);

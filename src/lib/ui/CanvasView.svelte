@@ -5,7 +5,7 @@
   import type { EditorState, Tool } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
-  import { frameCount, quantizeStrokePoints, scaleToolWidth } from '../model/operations';
+  import { frameCount, placeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
     renderRawPolyline,
@@ -29,6 +29,7 @@
     clampPan,
     fitSheet,
     fitView,
+    pickedPixel,
     renderDensity,
     reprojection,
     resizedView,
@@ -56,6 +57,7 @@
   import type { StrokeRules } from '../plugins/contract';
   import { t } from '../i18n';
   import { HOLD_PICK_MS, mayHoldPick, stillHeld } from './hold-pick';
+  import { nextHint } from './canvas-hint';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -148,6 +150,20 @@
     cancelHold();
     clearTimeout(hintTimer);
     clearTimeout(wheelZoomTimer);
+    // The pixels go with the canvas, now rather than when the collector gets
+    // to them: Safari caps canvas memory, and a studio opened and left a few
+    // times over held ten stage-sized buffers each. A frame already asked for
+    // must not build them all again on a canvas that is gone.
+    destroyed = true;
+    cancelAnimationFrame(rafId);
+    composer.dispose();
+    for (const spare of [shotCanvas, pickEl, canvasEl]) {
+      if (spare) {
+        spare.width = 0;
+        spare.height = 0;
+      }
+    }
+    navShot = null;
   });
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
@@ -233,6 +249,9 @@
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
   let rafPending = false;
+  let rafId = 0;
+  /** The canvas was unmounted: nothing is drawn any more. */
+  let destroyed = false;
 
   /**
    * Stable id per gesture object. A key built from a count collides after the
@@ -264,14 +283,29 @@
   // away then, and the sheet is not to jump for it.
   let wrapEl = $state<HTMLDivElement | undefined>();
   let covers = $state<Cover[]>([]);
+  /** A cover moved while a hand was on the sheet; measured once it lets go. */
+  let coversStale = false;
   function measureCovers(): void {
     if (!wrapEl || editor.playing) return;
+    // The first finger brings the rail, and a refit under it moved the sheet
+    // while that same finger was drawing: the line jumped. It waits.
+    if (drawingBusy() || touches.size > 0) {
+      coversStale = true;
+      return;
+    }
+    coversStale = false;
     const box = wrapEl.getBoundingClientRect();
     const next = [...(wrapEl.parentElement ?? wrapEl).querySelectorAll<HTMLElement>('[data-over-sheet]')].map((el) => {
       const r = el.getBoundingClientRect();
       return { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height) };
     });
     if (JSON.stringify(next) !== JSON.stringify(covers)) covers = next;
+  }
+  /** The hand let go: a cover that moved under it is measured now. */
+  function settleCovers(): void {
+    if (coversStale) {
+      measureCovers();
+    }
   }
   // A cover appears (the first finger), goes (display: none) or is resized
   // (text zoom); the wrap's own resize moves the corner ones.
@@ -286,8 +320,14 @@
   });
   // The sheet at 100%: the document fitted inside the wrap (whose size the
   // page layout sets, not the canvas itself), with air around it.
+  // Its size is all the fit reads of the document: every stroke replaces the
+  // document, and a fit that read the whole of it re-laid the sheet and wrote
+  // the view anew per line.
+  const docWidth = $derived(editor.doc.width);
+  const docHeight = $derived(editor.doc.height);
   const sheet = $derived(
-    fitSheet(wrapWidth || CANVAS_LOGICAL_WIDTH, wrapHeight > 0 ? wrapHeight : Infinity, editor.doc, covers),
+    fitSheet(wrapWidth || CANVAS_LOGICAL_WIDTH, wrapHeight > 0 ? wrapHeight : Infinity,
+      { width: docWidth, height: docHeight }, covers),
   );
   const sheetWidth = $derived(sheet.width);
   const sheetHeight = $derived(sheet.height);
@@ -388,7 +428,7 @@
   }
 
   function draw(): void {
-    if (!canvasEl) {
+    if (!canvasEl || destroyed) {
       return;
     }
     // toonio.ru draws into a fixed 1280×720 bitmap the browser then scales to
@@ -547,17 +587,16 @@
     }
     return {
       strokes: cell.strokes.map((stroke) => {
-        const points = stroke.points.slice();
-        for (let i = 0; i < points.length; i += 2) {
-          const [x, y] = editor.transformPoint(points[i], points[i + 1]);
-          points[i] = x;
-          points[i + 1] = y;
-        }
         // The scaled copies sit right after the real table, at the same offsets.
-        // The same quantization apply will perform, so the drag shows the
-        // real result instead of a smooth version of it that snaps on Enter.
+        // The same placing apply will perform, so the drag shows the real
+        // result instead of a smooth version of it that snaps on Enter.
         const tool_id = open.widthWithScale ? stroke.tool_id + editor.doc.tools.length : stroke.tool_id;
-        quantizeStrokePoints(points, previewTools[tool_id]);
+        const points = placeStrokePoints(
+          stroke.points,
+          (x, y) => editor.transformPoint(x, y),
+          editor.doc.tools[stroke.tool_id],
+          previewTools[tool_id],
+        );
         return { ...stroke, points, tool_id };
       }),
     };
@@ -693,9 +732,27 @@
   /** Long enough to read a sentence, not only a word (2.2.1). */
   const HINT_MS = 3000;
   function showHint(message: string): void {
-    hint = message;
+    // The same words twice are still news to the live region (canvas-hint.ts).
+    hint = nextHint(hint, message);
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => (hint = ''), HINT_MS) as unknown as number;
+  }
+
+  // The swatch by the pipette is what lay under it when it last looked: back
+  // in hand after another tool, it showed a colour taken long ago until the
+  // mouse moved. It waits for the next move instead.
+  $effect(() => {
+    void editor.tool;
+    pickPreview = null;
+  });
+
+  /**
+   * Where the loupe of a held finger stands across the screen: over the
+   * finger, but whole — by the right edge half of it was off the glass.
+   */
+  function loupeX(x: number): number {
+    const half = 40;
+    return Math.min(Math.max(x, half), Math.max(half, window.innerWidth - half));
   }
 
   // Why a tool did nothing, when the state is the one that knows (the lasso on
@@ -711,7 +768,7 @@
       return;
     }
     rafPending = true;
-    requestAnimationFrame(() => {
+    rafId = requestAnimationFrame(() => {
       rafPending = false;
       draw();
     });
@@ -800,15 +857,25 @@
   /** Colour under the pointer, or null where the canvas is not fully opaque. */
   function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null {
     const source = pickSource(editor.pickSource, e.altKey);
-    const rect = canvasEl.getBoundingClientRect();
-    const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(((e.clientX - rect.left) / rect.width) * canvasEl.width)));
-    const py = Math.min(canvasEl.height - 1, Math.max(0, Math.floor(((e.clientY - rect.top) / rect.height) * canvasEl.height)));
     // The frame as it was composed, off the composer's own buffers: no paper
     // under it, no onion over it and no line under the hand.
     const layers = composer.layers;
-    if (!layers) {
+    if (!layers || !lastDrawn) {
       return null;
     }
+    // Those buffers hold the view of the last frame drawn. Right after a zoom
+    // (the redraw waits for the next frame) and all through a pinch, the
+    // screen is already elsewhere: the pixel is read where that spot of the
+    // sheet lies in them, not at the same place on the screen.
+    const rect = canvasEl.getBoundingClientRect();
+    const [bx, by] = pickedPixel(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+      { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr: lastDrawn.dpr },
+      lastDrawn,
+    );
+    const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(bx)));
+    const py = Math.min(canvasEl.height - 1, Math.max(0, Math.floor(by)));
     // One pixel is all it reads, so one pixel is all it flattens: the layers
     // land shifted onto a 1×1 scratch. A stage-sized copy was three full blits
     // every 100 ms of the preview and megabytes held for the rest of the session.
@@ -1008,7 +1075,9 @@
     // sideways swipe left to the browser is "back" in the history, and the
     // drawing goes with it; Ctrl+wheel would zoom the whole page.
     e.preventDefault();
-    if (editor.playing) {
+    // Nor while a line is being drawn: the keys wait for it, and so does the
+    // wheel — a zoom under the pen drew a straight line across the sheet.
+    if (editor.playing || drawingBusy()) {
       return;
     }
     if (e.ctrlKey || e.metaKey) {
@@ -1070,7 +1139,7 @@
     e.preventDefault();
     // On iPad and iPhone the same pinch also arrives as pointers, which the
     // two-finger path already zooms by: only a trackpad has no touches.
-    if (editor.playing || touches.size > 0) {
+    if (editor.playing || touches.size > 0 || drawingBusy()) {
       return;
     }
     const { scale, clientX, clientY } = e as PinchEvent;
@@ -1132,6 +1201,18 @@
       }
       penFlippedFrom = null;
     }
+  }
+
+  /**
+   * Something is being laid on the sheet in document units — a line, a
+   * handle, the mega eraser's sweep, a tool's own drag, the Shift size. The
+   * view must hold still meanwhile: the same spot of the screen would become
+   * another spot of the sheet, and the line would jump straight across it.
+   * A pan is not in it: it moves the view and lays nothing down.
+   */
+  function drawingBusy(): boolean {
+    return pointer.session !== null || grab !== null || megaGesture !== null || pluginGrab !== null
+      || sizing !== null;
   }
 
   /** The pen (or mouse) is in the middle of something on the sheet. */
@@ -1424,6 +1505,8 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
+    // Once whatever this ends has let go of the sheet.
+    queueMicrotask(settleCovers);
     if (hold?.pointerId === e.pointerId) {
       cancelHold();
     }
@@ -1510,6 +1593,7 @@
   }
 
   function onPointerCancel(e: PointerEvent): void {
+    queueMicrotask(settleCovers);
     // Also the lost capture every gesture ends with: the keys come back once
     // no other pointer still holds one.
     heldPointers.delete(e.pointerId);
@@ -1644,7 +1728,7 @@
     <span
       class="loupe"
       class:below={dropper.y < 140}
-      style:transform="translate({dropper.x}px, {dropper.y}px)"
+      style:transform="translate({loupeX(dropper.x)}px, {dropper.y}px)"
       aria-hidden="true"
     >
       <span

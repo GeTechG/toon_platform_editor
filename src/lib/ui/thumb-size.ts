@@ -35,6 +35,16 @@ export function rowHeight(doc: { width: number; height: number }): number {
 }
 
 /**
+ * The row as CSS: the frame's height, and never under the row's keys, which
+ * are in rem and grow with the text — at 150 % the eye was 42 px in a 32 px
+ * row and reached into its neighbours. The layer list and the strip both
+ * take this, so a name stays level with its cells at any text size.
+ */
+export function rowHeightCss(doc: { width: number; height: number }): string {
+  return `max(${rowHeight(doc)}px, calc(1.75rem + 4px))`;
+}
+
+/**
  * What a cell thumbnail was drawn from, as one number. H, a lasso move and a
  * transform rewrite the points in place — the same cell with the same count —
  * so identity and count alone left the timeline showing the old drawing. One

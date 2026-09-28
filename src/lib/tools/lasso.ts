@@ -57,10 +57,17 @@ const ROTATE_PX = 50;
 /** Ctrl while turning snaps to this many degrees. */
 const ROTATE_SNAP = 15;
 
-/** Axis-aligned box around the chosen strokes (null indices = all); null when empty. */
-export function selectionBounds(
-  strokes: readonly SelectableStroke[],
+/**
+ * Axis-aligned box around the chosen strokes (null indices = all); null when
+ * empty. `reach` is how far a stroke's marks run past its points to the right
+ * and down — a stamped cell is laid from its corner, and the box has to hold
+ * the whole cell for the handles to sit on it and the turn to be about its
+ * middle.
+ */
+export function selectionBounds<S extends SelectableStroke>(
+  strokes: readonly S[],
   indices: readonly number[] | null = null,
+  reach: (stroke: S) => number = () => 0,
 ): Box | null {
   let minX = Infinity;
   let minY = Infinity;
@@ -71,11 +78,12 @@ export function selectionBounds(
     if (!stroke) {
       continue;
     }
+    const far = reach(stroke);
     for (let i = 0; i < stroke.points.length; i += 2) {
       minX = Math.min(minX, stroke.points[i]);
-      maxX = Math.max(maxX, stroke.points[i]);
+      maxX = Math.max(maxX, stroke.points[i] + far);
       minY = Math.min(minY, stroke.points[i + 1]);
-      maxY = Math.max(maxY, stroke.points[i + 1]);
+      maxY = Math.max(maxY, stroke.points[i + 1] + far);
     }
   }
   if (minX === Infinity) {
@@ -133,12 +141,19 @@ export function hitMode(
   const [lx, ly] = toLocal(x, y, cx, cy, session.rotate);
   const handle = HANDLE_PX / zoom;
   if (Math.abs(lx) <= hw + handle && Math.abs(ly) <= hh + handle) {
-    const u = Math.abs(ly + hh) <= handle;
-    const d = Math.abs(ly - hh) <= handle;
-    const l = Math.abs(lx + hw) <= handle;
-    const r = Math.abs(lx - hw) <= handle;
-    const vertical = u ? 'u' : d ? 'd' : '';
-    const horizontal = l ? 'l' : r ? 'r' : '';
+    // A side with no extent has nothing to scale, and a frame thinner than
+    // two handles would be all handle: there the body wins inside the frame
+    // and the handle is reached from just outside it. Without this a straight
+    // line or a dot could not be dragged at all.
+    const sidesY = box.height > 0 && !(hh < handle && Math.abs(ly) <= hh);
+    const sidesX = box.width > 0 && !(hw < handle && Math.abs(lx) <= hw);
+    const u = sidesY && Math.abs(ly + hh) <= handle;
+    const d = sidesY && Math.abs(ly - hh) <= handle;
+    const l = sidesX && Math.abs(lx + hw) <= handle;
+    const r = sidesX && Math.abs(lx - hw) <= handle;
+    // Both bands of a thin frame overlap outside it: the side the press is on.
+    const vertical = u && d ? (ly < 0 ? 'u' : 'd') : u ? 'u' : d ? 'd' : '';
+    const horizontal = l && r ? (lx < 0 ? 'l' : 'r') : l ? 'l' : r ? 'r' : '';
     return vertical || horizontal
       ? (`scale-${vertical}${horizontal}` as HitMode)
       : 'move';

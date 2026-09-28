@@ -17,7 +17,7 @@
  */
 
 import type { ToolDescriptor } from '../format/types';
-import { isContourTool } from '../render/dispatch';
+import { isContourTool, isStampTool } from '../render/dispatch';
 import { interpolatePixelLine } from './pixel';
 
 export interface ErasableStroke {
@@ -39,7 +39,9 @@ export type CutPolicy = 'line' | 'cells' | 'closed';
  * so; everything else is a polyline unless its tool declares another policy.
  */
 function defaultCut(tool: ToolDescriptor): CutPolicy {
-  return isContourTool(tool) ? 'closed' : 'line';
+  // A stamped row is a primitive of the format too: its cells are places, and
+  // cut as a line with the plugin that stamps it off, the pieces slid off the grid.
+  return isContourTool(tool) ? 'closed' : isStampTool(tool) ? 'cells' : 'line';
 }
 
 function policyOf(

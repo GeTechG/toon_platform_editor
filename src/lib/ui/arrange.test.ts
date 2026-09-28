@@ -163,7 +163,9 @@ describe('arranging happens in the editor itself', () => {
     // …and a viewport that shrinks brings it back in rather than leaving it
     // outside, where the first drag would snap it. The editor is watched, not
     // the browser window: it is what the window is measured against.
-    expect(floatWindow).toContain('watcher.observe(el.offsetParent)');
+    // Found by its mark (audit14-windows): the offset parent is null while hidden.
+    expect(floatWindow).toContain("closest<HTMLElement>('[data-float-root]')");
+    expect(floatWindow).toContain('watcher.observe(at)');
   });
 });
 

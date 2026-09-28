@@ -98,6 +98,14 @@ export interface SavedPalette {
 
 const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
+/**
+ * The most colours a saved palette keeps: the largest grid the settings allow
+ * (`PALETTE_LIMIT_MAX` in presets, not imported here so the palette maths
+ * stays free of the plugin registry). A palettes.json from anywhere with a
+ * hundred thousand colours laid as many keys into the preview.
+ */
+export const SAVED_PALETTE_MAX = 300;
+
 /** `#rgb` as `#rrggbb`, lower case: the grid is keyed by the long form. */
 const longHex = (c: string): string => (c.length === 4 ? c.replace(/[0-9a-f]/gi, (d) => d + d) : c).toLowerCase();
 
@@ -121,7 +129,10 @@ export function parseSavedPalettes(raw: string | null): SavedPalette[] {
       id,
       name: typeof name === 'string' ? name : '',
       created: typeof created === 'number' ? created : 0,
-      colours: colours.filter((c): c is string => typeof c === 'string' && HEX.test(c)).map(longHex),
+      colours: colours
+        .filter((c): c is string => typeof c === 'string' && HEX.test(c))
+        .slice(0, SAVED_PALETTE_MAX)
+        .map(longHex),
     });
   }
   return out;
@@ -167,9 +178,26 @@ export function contrastInk(hex: string): '#000' | '#fff' {
 
 const SAVED_KEY = 'toon-editor:saved-palettes';
 
+/**
+ * The saved list is keyed by id, and «По умолчанию» stands beside it as -1:
+ * a repeat, a negative or a fractional id in the storage (an older build, a
+ * hand edit) took the palette box down with `each_key_duplicate`. A usable id
+ * stays as it is; the others get fresh ones past the largest.
+ */
+export function withUniqueIds(list: readonly SavedPalette[]): SavedPalette[] {
+  const usable = (id: number) => Number.isSafeInteger(id) && id >= 0;
+  let next = list.reduce((max, p) => (usable(p.id) ? Math.max(max, p.id) : max), -1) + 1;
+  const seen = new Set<number>();
+  return list.map((p) => {
+    const id = usable(p.id) && !seen.has(p.id) ? p.id : next++;
+    seen.add(id);
+    return id === p.id ? p : { ...p, id };
+  });
+}
+
 export function loadSavedPalettes(): SavedPalette[] {
   try {
-    return parseSavedPalettes(localStorage.getItem(SAVED_KEY));
+    return withUniqueIds(parseSavedPalettes(localStorage.getItem(SAVED_KEY)));
   } catch {
     return [];
   }
@@ -228,6 +256,18 @@ export function savePalette(palette: readonly string[]): void {
  */
 export function pressesCell(type: 'mousedown' | 'click', pointer: string, detail: number): boolean {
   return type === 'mousedown' ? pointer === 'mouse' : detail === 0 || pointer !== 'mouse';
+}
+
+/**
+ * How far the grid scrolls to show a cell, by the four edges on screen; 0
+ * when it is in view. The grid's own scroll and nothing else: scrollIntoView
+ * moved every scroller above it too — the rail, the phone's tab window —
+ * each time a pipette or the picker changed the outline.
+ */
+export function gridScrollDelta(gridTop: number, gridBottom: number, cellTop: number, cellBottom: number): number {
+  if (cellTop < gridTop) return cellTop - gridTop;
+  if (cellBottom > gridBottom) return Math.min(cellBottom - gridBottom, cellTop - gridTop);
+  return 0;
 }
 
 /**

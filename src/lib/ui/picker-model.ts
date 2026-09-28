@@ -139,9 +139,14 @@ export function barPointer(model: PickerModel, p: Pointer): Pointer {
  * What Enter and Space do inside the colour window (`bundle:9942-9987`): on
  * the surface and the bar they close on what is chosen, in a field Enter
  * commits the typing first and Space types. A key presses itself — the model
- * segments, «исходный», the cross — so the window leaves it alone.
+ * segments, «исходный», the cross — so the window leaves it alone. Esc
+ * asks for the colour the window opened on back.
  */
-export function pickerKeyAction(key: string, tagName: string): 'close' | 'commit' | null {
+export function pickerKeyAction(key: string, tagName: string): 'close' | 'commit' | 'revert' | null {
+  // Esc is the window's own, wherever focus is in it: left to bubble, it
+  // reached the phone's tab window, which closed itself and the picker with
+  // it — no revert, and the dialog's `cancel` never came.
+  if (key === 'Escape') return 'revert';
   if (key !== 'Enter' && key !== ' ') return null;
   if (tagName === 'BUTTON') return null;
   if (tagName === 'INPUT') return key === 'Enter' ? 'commit' : null;

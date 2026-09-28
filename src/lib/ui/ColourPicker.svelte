@@ -103,6 +103,9 @@
   }
 
   function setModel(next: PickerModel): void {
+    // Pressed again, the chosen model would read a grey back with hue 0 and
+    // throw the hue on the bar away.
+    if (next === model) return;
     onmodel(next);
     pointer = colorToPointer(next, color);
     applied = color;
@@ -162,20 +165,36 @@
     onpick(hex);
   }
 
+  /**
+   * The pointer that is driving the field or the bar. A second finger (or a
+   * palm beside a pen) went on moving the colour too, and it jumped between
+   * the two of them on every move.
+   */
+  let active: number | null = null;
+
+  function release(e: PointerEvent): void {
+    if (e.pointerId === active) active = null;
+  }
+
   /** Pointer events cover mouse and touch alike; the capture keeps the drag alive outside. */
   function drag(e: PointerEvent, target: 'surface' | 'bar'): void {
     // The primary button only: a right click moved the colour and then opened
     // the canvas's «save image» menu over it.
     if (e.button !== 0) return;
+    if (active !== null && active !== e.pointerId) return;
     const el = e.currentTarget as HTMLCanvasElement;
     el.setPointerCapture(e.pointerId);
-    // `move` prevents the default, which would otherwise focus the canvas for us.
-    el.focus();
+    active = e.pointerId;
+    // `move` prevents the default, which would otherwise focus the canvas for
+    // us. Without scrolling: in a window taller than the screen the focus
+    // scrolled the canvas out from under the finger that had just landed.
+    el.focus({ preventScroll: true });
     move(e, target);
   }
 
   function move(e: PointerEvent, target: 'surface' | 'bar'): void {
     const el = e.currentTarget as HTMLCanvasElement;
+    if (e.pointerId !== active) return;
     if ((e.buttons & 1) === 0 && e.type === 'pointermove') return;
     e.preventDefault();
     const r = el.getBoundingClientRect();
@@ -195,19 +214,24 @@
   }
 
   /**
-   * Enter and Space close on what is chosen (`bundle:9942-9987`). Esc is the
-   * dialog's own `cancel`, and Tab is the dialog's own trap — neither is this
-   * function's business any more. The key's default goes too: focus returns
+   * Enter and Space close on what is chosen (`bundle:9942-9987`), Esc on the
+   * colour it opened with — here, and not only in the dialog's `cancel`: the
+   * phone's tab window above takes an Esc that bubbles to it for its own and
+   * closes, picker and all. `cancel` stays for the close requests that are
+   * not a key (Android's back). Tab is the dialog's own trap. The key's default goes too: focus returns
    * to the swatch on close, and the same Enter pressed it, reopening the
    * window on the new colour as if nothing had changed.
    */
   function onKeydown(e: KeyboardEvent): void {
+    // The Enter or Esc that ends an IME composition is the composition's.
+    if (e.isComposing) return;
     const action = pickerKeyAction(e.key, (e.target as HTMLElement | null)?.tagName ?? '');
     if (!action) return;
     if (action === 'commit') commitHex();
     e.stopPropagation();
     e.preventDefault();
-    requestClose();
+    if (action === 'revert') requestClose({ revert: true });
+    else requestClose();
   }
 
   /**
@@ -354,7 +378,9 @@
      the box we paint is the window and everything around it is `::backdrop`.
      That is the click-outside catcher the old `<button>` was standing in for,
      and it needs no element of its own. -->
-<svelte:window onresize={keepInside} />
+<!-- The drag ends on the window too: a canvas taken away mid-drag (the bar,
+     by a model switch) gets no lostpointercapture of its own. -->
+<svelte:window onresize={keepInside} onpointerup={release} onpointercancel={release} />
 
 <dialog
   class="picker"
@@ -398,6 +424,7 @@
       aria-valuemax={fieldReading.max}
       onpointerdown={(e) => drag(e, 'surface')}
       onpointermove={(e) => move(e, 'surface')}
+      onlostpointercapture={release}
       onkeydown={onSurfaceKey}
     ></canvas>
     <span class="dot" style:left="{marker.x * SURFACE}px" style:top="{marker.y * SURFACE}px"></span>
@@ -419,6 +446,7 @@
       aria-valuemax={barReading.max}
       onpointerdown={(e) => drag(e, 'bar')}
       onpointermove={(e) => move(e, 'bar')}
+      onlostpointercapture={release}
       onkeydown={(e) => {
         const next = nudgePointer(model, pointer, e.key, { shift: e.shiftKey, alt: e.altKey, target: 'bar' });
         if (next !== pointer) (e.preventDefault(), apply(next));

@@ -20,6 +20,23 @@ export interface Workspace {
 }
 
 const STORAGE_KEY = 'toon-editor:workspaces';
+/**
+ * The largest file «Загрузить…» reads, in bytes. A saved arrangement is a
+ * couple of kilobytes; a video picked by mistake was read whole and took the
+ * tab down with the drawing in it.
+ */
+export const WORKSPACE_FILE_MAX = 256 * 1024;
+
+/** The largest id in the list, 0 for none — a loop: `Math.max(...ids)` threw past 65 536 of them (JSC). */
+function maxId(ids: Iterable<number>): number {
+  let max = 0;
+  for (const id of ids) {
+    if (id > max) {
+      max = id;
+    }
+  }
+  return max;
+}
 /** What the live arrangement is called when it is exported unnamed. */
 export const currentName = (): string => t('workspace.current');
 
@@ -56,7 +73,7 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   const stored = data
     .map((e) => (e as { id?: unknown } | null)?.id)
     .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
-  const fresh = (): number => Math.max(0, ...taken, ...stored) + 1;
+  const fresh = (): number => Math.max(maxId(taken), maxId(stored)) + 1;
   return data.flatMap((entry): Workspace[] => {
     const row = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<string, unknown>;
     if (typeof row.name !== 'string' || row.name.trim() === '') {
@@ -66,7 +83,8 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
     taken.add(id);
     return [{
       id,
-      name: row.name,
+      // As «Сохранить» names it: «Стол » from a file was another «Стол».
+      name: row.name.trim(),
       // Read before the installed plugins are, like the live layout: a key of
       // a plugin still loading keeps its place (refreshPlugins cleans later).
       panels: normalizePanels(row.panels, true),
@@ -83,7 +101,7 @@ export function withWorkspace(
   floatPos: FloatPositions,
 ): Workspace[] {
   const at = list.findIndex((workspace) => workspace.name === name);
-  const id = at >= 0 ? list[at].id : Math.max(0, ...list.map((w) => w.id)) + 1;
+  const id = at >= 0 ? list[at].id : maxId(list.map((w) => w.id)) + 1;
   const saved: Workspace = {
     id,
     name,
@@ -96,6 +114,22 @@ export function withWorkspace(
   const next = [...list];
   next[at] = saved;
   return next;
+}
+
+/**
+ * The workspace the list shows as picked: the one picked, while the panels
+ * are still laid out as it is. Rearranged, reset or gone, the list says
+ * «— раскладка —» — it read «Стол» over another arrangement, and «Скачать»
+ * then saved the stored «Стол» instead of what was on the screen.
+ */
+export function pickedWorkspace(
+  picked: string,
+  list: readonly Workspace[],
+  panels: PanelLayout,
+  floatPos: FloatPositions,
+): string {
+  const workspace = picked ? list.find((w) => String(w.id) === picked) : undefined;
+  return workspace && samePanels(panels, workspace.panels, floatPos, workspace.floatPos) ? picked : '';
 }
 
 export function removeWorkspace(list: readonly Workspace[], id: number): Workspace[] {

@@ -147,7 +147,8 @@ describe('the studio takes its step from the sum, not from a width query', () =>
 describe('one window at a time', () => {
   it('each tab is a disclosure: aria-expanded and aria-controls', () => {
     expect(editorUi).toMatch(/aria-expanded=\{openTab === tab\.id\}/);
-    expect(editorUi).toMatch(/aria-controls="tab-window"/);
+    // On the open tab only: a shut one pointed at a window not in the page (audit14-system).
+    expect(editorUi).toContain("aria-controls={openTab === tab.id ? 'tab-window' : undefined}");
     expect(editorUi).toMatch(/id="tab-window"/);
   });
 

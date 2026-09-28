@@ -35,12 +35,17 @@
     if (!canvasEl || (cells === painted && doc === paintedDoc)) {
       return;
     }
-    painted = cells;
-    paintedDoc = doc;
     const dpr = renderDensity(window.devicePixelRatio || 1);
     canvasEl.width = Math.max(1, Math.round(box.w * dpr));
     canvasEl.height = Math.max(1, Math.round(box.h * dpr));
-    const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
+    const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike | null;
+    // Safari hands out null once the page's canvas memory is spent: a blank
+    // thumbnail, not an effect that throws.
+    if (!ctx) {
+      return;
+    }
+    painted = cells;
+    paintedDoc = doc;
     renderer.render(doc, frameIndex, ctx, { scale: box.w / doc.width, dpr });
   });
 </script>

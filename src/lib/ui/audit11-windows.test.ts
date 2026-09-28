@@ -24,8 +24,10 @@ describe('a window pushed inside by a smaller screen keeps its own place', () =>
 
   test('only a hand moving the window writes its place', () => {
     const writes = win.match(/editor\.setFloatPos\(/g) ?? [];
-    expect(writes).toHaveLength(2);
+    // The drag draws on the move and stores on the release (audit14-windows).
+    expect(writes).toHaveLength(3);
     expect(fn(win, 'onMove')).toContain('editor.setFloatPos(');
+    expect(fn(win, 'onUp')).toContain('editor.setFloatPos(');
     expect(fn(win, 'onKey')).toContain('editor.setFloatPos(');
   });
 

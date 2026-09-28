@@ -1,7 +1,15 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import type { EditorState } from './editor-state.svelte';
-  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, mergePalettes, pressesCell, type SavedPalette } from './color-palette';
+  import type { EditorState, Tool } from './editor-state.svelte';
+  import {
+    TONIO_DEFAULT_PALETTE,
+    contrastInk,
+    gridScrollDelta,
+    gridStep,
+    mergePalettes,
+    pressesCell,
+    type SavedPalette,
+  } from './color-palette';
   import Icon from './Icon.svelte';
   import ColourPicker from './ColourPicker.svelte';
   import { t } from '../i18n';
@@ -12,8 +20,8 @@
   let section = $state<'colors' | 'saved' | 'edit'>('colors');
   let removerMode = $state(false);
   let preview = $state<SavedPalette | null>(null);
-  /** Which big swatch the picker is open for, where it opened, and from what colour. */
-  let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number; origin: string } | null>(null);
+  /** Which big swatch the picker is open for, where it opened, and from what colour and tool. */
+  let picking = $state<{ target: 'outline' | 'fill'; x: number; y: number; origin: string; tool: Tool } | null>(null);
   /** The grid, for scrolling the chosen outline into view. */
   let gridEl = $state<HTMLElement | null>(null);
   /** The grid is one Tab stop: the cell focus last stood on, else the outline. */
@@ -63,6 +71,12 @@
   async function focusFoot(key: 'edit' | 'saved' | 'remover'): Promise<void> {
     await tick();
     boxEl?.querySelector<HTMLElement>(`.foot-btn[data-key="${key}"]`)?.focus();
+  }
+
+  /** A tile opens its palette, or closes the one it opened; another palette starts Tab at its first colour. */
+  function openPreview(p: SavedPalette): void {
+    if (preview?.id !== p.id) previewRove = 0;
+    preview = preview?.id === p.id ? null : p;
   }
 
   /** The preview's own ×: focus goes back to the tile that opened it, not to the page. */
@@ -149,6 +163,7 @@
       x: Math.max(6, Math.min(r.left, window.innerWidth - 212)),
       y: Math.max(6, Math.min(r.bottom + 6, window.innerHeight - 392)),
       origin: target === 'fill' ? editor.fillColor : editor.brushColor,
+      tool: editor.tool,
     };
   }
 
@@ -161,10 +176,14 @@
    */
   function closePicker(options?: { revert?: boolean }): void {
     if (!picking) return;
-    const { target, origin } = picking;
+    const { target, origin, tool } = picking;
     const current = target === 'fill' ? editor.fillColor : editor.brushColor;
+    // Esc is «as it was»: with nothing changed it touches nothing — a pick of
+    // the same colour still took the eraser away — and after a change the
+    // tool the pick swapped out comes back with the colour.
     if (options?.revert) {
-      editor.pickColor(origin, target, true);
+      if (current !== origin) editor.pickColor(origin, target, true);
+      if (editor.tool !== tool) editor.selectTool(tool);
     } else if (current !== origin && editor.ux.colorGrid && editor.settings.paletteAutoAdd) {
       editor.addColorToPalette(current);
     }
@@ -205,13 +224,61 @@
   function longPress(e: MouseEvent, press: () => void): void {
     e.preventDefault();
     if ((e as PointerEvent).pointerType === 'mouse' || !(e as PointerEvent).pointerType) return;
+    holdEnd();
+    // The grid's own timer already took this hold: one press, one fill — in
+    // remover mode a second one took the cell that slid into its place.
+    if (held) return;
+    held = true;
     press();
     pointerKind = 'mouse';
   }
 
-  /* Reference `bundle:7783`: the grid follows the chosen outline. */
+  /**
+   * Safari on iOS sends no `contextmenu` for a long press, so on an iPhone or
+   * an iPad the grid gave the fill to nobody. The grid times the hold itself;
+   * where the menu does come (Android, a pen), whichever of the two is first
+   * presses and the other finds `held`. A finger that wanders is scrolling.
+   */
+  const HOLD_MS = 500;
+  const HOLD_SLOP = 10;
+  let hold: { id: number; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** This press has already been taken as a long one. */
+  let held = false;
+
+  function holdStart(e: PointerEvent, press: (color: string) => void): void {
+    held = false;
+    holdEnd();
+    const color = (e.target as HTMLElement).closest<HTMLElement>('.cell')?.dataset.color;
+    if (e.pointerType === 'mouse' || !e.isPrimary || !color) return;
+    const timer = setTimeout(() => {
+      hold = null;
+      held = true;
+      // The release that ends the hold is not a press of its own.
+      pointerKind = 'mouse';
+      press(color);
+    }, HOLD_MS);
+    hold = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
+  }
+
+  function holdMove(e: PointerEvent): void {
+    if (hold?.id === e.pointerId && Math.hypot(e.clientX - hold.x, e.clientY - hold.y) > HOLD_SLOP) holdEnd();
+  }
+
+  function holdEnd(): void {
+    if (hold) clearTimeout(hold.timer);
+    hold = null;
+  }
+
+  $effect(() => holdEnd);
+
+  /* Reference `bundle:7783`: the grid follows the chosen outline — the grid
+     alone, not the rail or the tab window it stands in. */
   $effect(() => {
-    gridEl?.querySelector(`[data-color="${editor.brushColor}"]`)?.scrollIntoView({ block: 'nearest' });
+    const cell = gridEl?.querySelector(`[data-color="${editor.brushColor}"]`);
+    if (!gridEl || !cell) return;
+    const g = gridEl.getBoundingClientRect();
+    const c = cell.getBoundingClientRect();
+    gridEl.scrollTop += gridScrollDelta(g.top, g.bottom, c.top, c.bottom);
   });
 
   /** A color from the preview lands in the grid and on the outline / fill. */
@@ -273,7 +340,7 @@
           data-id={p.id}
           class:active={preview?.id === p.id}
           aria-expanded={preview?.id === p.id}
-          onclick={() => (preview = preview?.id === p.id ? null : p)}
+          onclick={() => openPreview(p)}
           title={t('palette.tile_title', { name: p.name || t('palette.new_name'), count: p.colours.length })}
           aria-label={t('palette.tile', { name: p.name || t('palette.new_name'), count: p.colours.length })}
         >
@@ -284,7 +351,12 @@
       {/each}
     </div>
   {:else}
-    <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label={t('palette.grid')}>
+    <div class="grid" class:remover={removerMode} bind:this={gridEl} role="group" aria-label={t('palette.grid')}
+      onpointerdown={(e) => holdStart(e, (color) => onCell(new MouseEvent('click', { button: 2 }), color))}
+      onpointermove={holdMove}
+      onpointerup={holdEnd}
+      onpointercancel={holdEnd}
+    >
       {#each editor.palette as color, i (color)}
         {@const isOutline = editor.brushColor === color}
         {@const isFill = editor.fillColor === color}
@@ -387,10 +459,16 @@
       <strong>{preview.name || t('palette.new_name')}</strong>
       <button class="close" onclick={closePreview} aria-label={t('picker.close')}><Icon name="x" size={16} /></button>
     </div>
-    <div class="grid preview-grid" role="group" aria-label={t('palette.preview_colours')}>
+    <div class="grid preview-grid" role="group" aria-label={t('palette.preview_colours')}
+      onpointerdown={(e) => holdStart(e, (color) => onPreviewCell(new MouseEvent('click', { button: 2 }), color))}
+      onpointermove={holdMove}
+      onpointerup={holdEnd}
+      onpointercancel={holdEnd}
+    >
       {#each preview.colours as c, i (i)}
         <button
           class="cell"
+          data-color={c}
           style:--swatch={c}
           style:color={contrastInk(c)}
           onpointerdown={(e) => (pointerKind = e.pointerType)}
@@ -581,6 +659,10 @@
     border-radius: 0;
     background: var(--swatch);
     cursor: pointer;
+    /* A long press is the fill: no callout or selection over it on iOS. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   .cell:focus-visible {
     outline: 3px solid currentColor;

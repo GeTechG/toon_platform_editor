@@ -66,6 +66,12 @@
     if (!span) {
       return;
     }
+    // An open transform is applied first, as Space applies it: during the
+    // preview nothing is written, and «Применить» pressed then lost it. Under
+    // the lock the preview waits, the way a frame change does.
+    if (!editor.leaveTransform()) {
+      return;
+    }
     cancelAnimationFrame(rafId);
     resumeFrame = editor.activeFrame;
     const startFrame = span.first;
@@ -120,7 +126,10 @@
   // over on the way in — so the preview can be running before the sound is
   // ready. When it lands, it joins the frames that are already playing rather
   // than staying silent until the next press.
+  // The tie switch too: a tied track that ran out stood silent, and untied
+  // mid-preview it stayed so until the next press.
   $effect(() => {
+    void editor.audio.sync;
     if (!editor.audio.hasTrack || !editor.playing) {
       return;
     }

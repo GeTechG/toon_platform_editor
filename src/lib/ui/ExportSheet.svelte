@@ -335,6 +335,12 @@
         {/if}
       {/if}
 
+      <!-- The format's own line, under the choice: a title is not seen by a
+           finger, nor read by every reader. -->
+      {#if pluginFormat?.hint}
+        <p class="note">{pluginFormat.hint}</p>
+      {/if}
+
       {#if format === 'project' && editor.audio.hasTrack}
         <p class="note">{t('export.project_no_audio')}</p>
       {/if}

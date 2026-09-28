@@ -13,6 +13,11 @@
   let { editor }: { editor: EditorState } = $props();
 
   const percent = $derived(Math.round(editor.view.zoom * 100));
+  // aria-disabled, not disabled: a key disabled under the hand that pressed
+  // it to the limit drops the focus to the page (WCAG 2.4.3). It stays in
+  // focus, says it is unavailable, and does nothing.
+  const atMin = $derived(editor.view.zoom <= ZOOM_MIN);
+  const atMax = $derived(editor.view.zoom >= ZOOM_MAX);
 </script>
 
 <div
@@ -25,8 +30,8 @@
 >
   <button
     class="step"
-    disabled={editor.view.zoom <= ZOOM_MIN}
-    onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, -1))}
+    aria-disabled={atMin}
+    onclick={() => atMin || editor.zoomBy(zoomDelta(editor.view.zoom, -1))}
     title={t('scale.out')}
     aria-label={t('scale.out')}
   ><Icon name="minus" size={16} /></button>
@@ -38,8 +43,8 @@
   >{percent}%</button>
   <button
     class="step"
-    disabled={editor.view.zoom >= ZOOM_MAX}
-    onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, 1))}
+    aria-disabled={atMax}
+    onclick={() => atMax || editor.zoomBy(zoomDelta(editor.view.zoom, 1))}
     title={t('scale.in')}
     aria-label={t('scale.in')}
   ><Icon name="plus" size={16} /></button>
@@ -96,10 +101,10 @@
     min-width: 3.4rem;
     font-variant-numeric: tabular-nums;
   }
-  button:hover:not(:disabled) {
+  button:hover:not([aria-disabled='true']) {
     background: var(--hairline-soft);
   }
-  button:disabled {
+  button[aria-disabled='true'] {
     opacity: 0.4;
     cursor: default;
   }

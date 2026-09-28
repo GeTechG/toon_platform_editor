@@ -33,7 +33,9 @@ const NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|deg|turn|rad|grad)?$
 /** One CSS function argument as its number and unit; null when it is not one. */
 function arg(text: string): { n: number; unit: string } | null {
   const m = NUMBER.exec(text);
-  return m ? { n: Number(m[1]), unit: m[2] ?? '' } : null;
+  // 1e999 is Infinity, and an infinite hue is NaN after `% 360`: it came out
+  // as «#NaNNaNNaN» and went into the brush.
+  return m && Number.isFinite(Number(m[1])) ? { n: Number(m[1]), unit: m[2] ?? '' } : null;
 }
 
 /** CSS Color 4 `hslToRgb`; `h` in degrees, `s` and `l` 0–1. */
@@ -80,6 +82,8 @@ export function parseColourInput(text: string, named?: (name: string) => string 
   }
   const modern = modernColour(s);
   if (modern) return named?.(modern) ?? null;
+  // currentcolor is a keyword, not a colour: a canvas answers it with black.
+  if (s === 'currentcolor') return null;
   return /^[a-z]+$/.test(s) ? (named?.(s) ?? null) : null;
 }
 
@@ -110,7 +114,8 @@ export function hexToRgb(hex: string): Rgb {
 }
 
 export function rgbToHex({ r, g, b }: Rgb): string {
-  const byte = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0');
+  // NaN would print as «NaN»: whatever went wrong upstream, a hex stays a hex.
+  const byte = (n: number) => clamp(Number.isNaN(n) ? 0 : Math.round(n), 0, 255).toString(16).padStart(2, '0');
   return `#${byte(r)}${byte(g)}${byte(b)}`;
 }
 

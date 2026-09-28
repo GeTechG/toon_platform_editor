@@ -150,6 +150,27 @@ export class FrameComposer {
   }
 
   /**
+   * Gives every buffer's pixels back at once. The canvas that composed with
+   * it is gone, and a backing store is freed only when the collector gets to
+   * it — Safari counts canvas memory against a cap of its own, and a studio
+   * opened and left a few times over ran into it. After this the composer
+   * starts from nothing, as a new one would.
+   */
+  dispose(): void {
+    const buffers = [this.#below, this.#active, this.#above, this.#scratch, this.#live, this.#composite,
+      ...this.#ghosts.drain()];
+    for (const buffer of buffers) {
+      buffer?.size(0, 0);
+    }
+    this.#below = this.#active = this.#above = this.#scratch = this.#live = this.#composite = undefined;
+    this.#stale = true;
+    this.#width = 0;
+    this.#height = 0;
+    this.#liveSeed = '';
+    this.#livePainted = 0;
+  }
+
+  /**
    * The three buffers of the stack as they were last composed, for a caller
    * that has to read the frame back rather than show it — the pipette takes
    * the colour of the canvas off them. Null before the first frame.

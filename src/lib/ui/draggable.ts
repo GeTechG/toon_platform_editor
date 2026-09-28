@@ -34,6 +34,16 @@ export function clampWindowPosition(
   };
 }
 
+/**
+ * What a `fixed` window is kept inside: the screen, scrollbars excluded. The
+ * body it used to be is the page's height — longer than the screen where the
+ * page under the studio scrolls, and a window went below the bottom edge.
+ */
+function screenBounds(): Size {
+  const view = document.documentElement ?? document.body;
+  return { width: view.clientWidth, height: view.clientHeight };
+}
+
 interface Grab {
   x: number;
   y: number;
@@ -50,6 +60,12 @@ interface Grab {
 
 export function draggable(node: HTMLElement): { destroy(): void } {
   let grab: Grab | null = null;
+  /**
+   * Where the hand left it. A smaller screen draws it pushed inside, and a
+   * bigger one again brings it back here: clamped in place, a phone turned
+   * there and back moved it for good.
+   */
+  let placed: { left: number; top: number } | null = null;
 
   function onPointerDown(e: PointerEvent): void {
     const handle = (e.target as HTMLElement | null)?.closest('[data-drag-handle]');
@@ -102,7 +118,7 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     node.style.top = `${grab.top}px`;
     const rect = node.getBoundingClientRect();
     grab.size = { width: rect.width, height: rect.height };
-    grab.bounds = { width: document.body.clientWidth, height: document.body.clientHeight };
+    grab.bounds = screenBounds();
     grab.handle.setPointerCapture(grab.pointerId);
     grab.moving = true;
   }
@@ -126,6 +142,7 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     );
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
+    placed = { left, top };
   }
 
   /** Only the finger that holds it lets go: another one lifting ended the drag. */
@@ -139,18 +156,24 @@ export function draggable(node: HTMLElement): { destroy(): void } {
 
   /**
    * A window dragged once stays `fixed` where it was left; turning the phone
-   * could put that place past the new screen edge, out of reach.
+   * could put that place past the new screen edge, out of reach. Drawn inside,
+   * never stored: the hand's place stays what it was.
    */
   function onResize(): void {
-    if (node.style.position !== 'fixed') {
+    if (node.style.position !== 'fixed' || !placed) {
       return;
     }
     const rect = node.getBoundingClientRect();
+    // Hidden (the transform window takes its row), it measures nothing: read
+    // as a box at 0,0, it was put in the corner.
+    if (rect.width === 0 && rect.height === 0) {
+      return;
+    }
     const { left, top } = clampWindowPosition(
-      rect.left,
-      rect.top,
+      placed.left,
+      placed.top,
       { width: rect.width, height: rect.height },
-      { width: document.body.clientWidth, height: document.body.clientHeight },
+      screenBounds(),
     );
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;

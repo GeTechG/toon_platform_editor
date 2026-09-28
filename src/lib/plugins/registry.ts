@@ -274,7 +274,10 @@ export class PluginRegistry {
     // unless the window called it off, and stopping is what was asked.
     const run: PluginExporter['run'] = async (scene, signal) => {
       try {
-        const file: Partial<PluginExport> | null = await format.run(scene, signal);
+        // A format that neither hears the signal nor answers held the sheet
+        // on «Отменить» for good, every key off, even after it was closed and
+        // opened again: the cancel is the race's, not the format's.
+        const file: Partial<PluginExport> | null = await untilAborted(format.run(scene, signal), signal);
         // What comes back is handed to the browser as a download: a thing
         // that is not a file is the format's fault, not the editor's.
         if (!(file?.blob instanceof Blob)) {
@@ -477,4 +480,20 @@ export class PluginRegistry {
   probeRules(id: string): StrokeRules | undefined {
     return this.tool(id)?.stroke?.rules?.(PROBE);
   }
+}
+
+/** `work`, or an `AbortError` the moment `signal` is aborted, whichever is first. */
+function untilAborted<T>(work: T | Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) {
+    return Promise.resolve(work);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(new DOMException(t('export.cancelled'), 'AbortError'));
+    if (signal.aborted) {
+      stop();
+      return;
+    }
+    signal.addEventListener('abort', stop, { once: true });
+    Promise.resolve(work).then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
 }

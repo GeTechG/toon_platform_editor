@@ -162,8 +162,8 @@ describe('transform tools on the canvas', () => {
     // while the width is scaled with the points.
     expect(source).toContain('scaleToolWidth(tool, scale)');
     expect(handler('stackCell')).toContain('widthWithScale');
-    // Preview and apply share one quantizer, or the strokes snap on Enter.
-    expect(handler('stackCell')).toContain('quantizeStrokePoints(');
+    // Preview and apply share one placer (and its quantizer), or the strokes snap on Enter.
+    expect(handler('stackCell')).toContain('placeStrokePoints(');
     // The stack rasterizes with that table, so the preview is what lands.
     expect(handler('draw')).toContain('tools: previewTools');
   });

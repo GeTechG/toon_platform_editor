@@ -117,7 +117,21 @@ export function frameDeadlines(count: number, fps: number): Float64Array {
  * the video ends, a long one is cut where the video does.
  */
 export function fillLooped(source: Float32Array, out: Float32Array): void {
+  layTrack(source, out, true);
+}
+
+/**
+ * The track laid under the video as the preview plays it. Untied it loops,
+ * like the preview's element (`loop = !sync`); tied it plays once and the rest
+ * is silence — a short line of dialogue is not turned into a chant (the
+ * owner's call, see the audio state's `playFrom`).
+ */
+export function layTrack(source: Float32Array, out: Float32Array, loop: boolean): void {
   if (source.length === 0) {
+    return;
+  }
+  if (!loop) {
+    out.set(source.subarray(0, out.length));
     return;
   }
   for (let i = 0; i < out.length; i++) {
@@ -262,7 +276,7 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   try {
     await output.start();
     if (sound && audio) {
-      await sound.add(await buildSoundtrack(audio, total / fps));
+      await sound.add(await buildSoundtrack(audio, total / fps, trackSeconds !== undefined));
       sound.close();
     }
     for (let index = 0; index < total; index++) {
@@ -289,10 +303,11 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
 }
 
 /**
- * The track, decoded and laid out over the whole video: looped where it is
- * shorter, cut where it is longer.
+ * The track, decoded and laid out over the whole video: cut where it is
+ * longer; where it is shorter, looped when untied and silent past its end
+ * when tied — as the preview plays it.
  */
-async function buildSoundtrack(audio: Blob, seconds: number): Promise<AudioBuffer> {
+async function buildSoundtrack(audio: Blob, seconds: number, loop: boolean): Promise<AudioBuffer> {
   const ctx = new AudioContext();
   try {
     const decoded = await ctx.decodeAudioData(await audio.arrayBuffer());
@@ -302,7 +317,7 @@ async function buildSoundtrack(audio: Blob, seconds: number): Promise<AudioBuffe
       decoded.sampleRate,
     );
     for (let channel = 0; channel < decoded.numberOfChannels; channel++) {
-      fillLooped(decoded.getChannelData(channel), out.getChannelData(channel));
+      layTrack(decoded.getChannelData(channel), out.getChannelData(channel), loop);
     }
     return out;
   } finally {
@@ -351,6 +366,10 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   if (audio) {
     audioUrl = URL.createObjectURL(audio);
     audioElement = new Audio(audioUrl);
+    // Untied, the video is the track's length or the animation's, whichever
+    // is longer, and the preview loops a short track under it; tied, a short
+    // one falls silent past its end, as it does in the preview.
+    audioElement.loop = trackSeconds !== undefined;
     audioContext = new AudioContext();
     const destination = audioContext.createMediaStreamDestination();
     audioContext.createMediaElementSource(audioElement).connect(destination);

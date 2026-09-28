@@ -38,6 +38,7 @@ import {
   replaceStrokes,
   pressureOf,
   mirrorCell,
+  markReach,
   transformStrokes,
   setFrameRate,
   setLayerHidden,
@@ -163,6 +164,7 @@ import {
   copyBrushes,
   FALLBACK_BRUSH,
   brushUsesSmoothing,
+  brushFromStore,
   defaultBrushOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
@@ -704,9 +706,11 @@ export class EditorState {
       // pipette source and the zoom window come and go with theirs.
       toolSpec(this.tool)?.deactivate?.(this.pluginHost());
       this.closePluginWindow();
+      this.tool = resolved;
+      // Only on the way in: picked again, it is already active, and a second
+      // activate with no deactivate between opened its window twice.
+      toolSpec(resolved)?.activate?.(this.pluginHost());
     }
-    this.tool = resolved;
-    toolSpec(resolved)?.activate?.(this.pluginHost());
     if (resolved === 'pipette') {
       this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
@@ -852,9 +856,15 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  setFloatPos(id: string, x: number, y: number): void {
+  /**
+   * `persist: false` while a window is being dragged: the whole UI config
+   * went to storage on every pointer sample. The release writes it once.
+   */
+  setFloatPos(id: string, x: number, y: number, persist = true): void {
     this.floatPos = { ...this.floatPos, [id]: { x: Math.round(x), y: Math.round(y) } };
-    this.persistUiConfig();
+    if (persist) {
+      this.persistUiConfig();
+    }
   }
 
   /** Put the whole arrangement back at once (a workspace, or an undone drag). */
@@ -1332,11 +1342,12 @@ export class EditorState {
     const byTool = { ...this.byTool };
     for (const id of new Set([...BRUSH_TOOLS, ...Object.keys(byTool), ...Object.keys(saved.widths ?? {})])) {
       const was = byTool[id] ?? FALLBACK_BRUSH;
-      byTool[id] = {
-        width: saved.widths?.[id] ?? was.width,
-        smooth: saved.smooth?.[id] ?? was.smooth,
-        minDistance: saved.minDistance?.[id] ?? was.minDistance,
-      };
+      // A draft file is from anywhere: its numbers are held to the scales
+      // the settings are held to, or −5 became a line of negative width.
+      byTool[id] = brushFromStore(
+        { width: saved.widths?.[id], smooth: saved.smooth?.[id], minDistance: saved.minDistance?.[id] },
+        was,
+      );
     }
     this.byTool = byTool;
     if (saved.outline) {
@@ -1353,11 +1364,14 @@ export class EditorState {
       savePalette(this.palette);
     }
     this.layerColors = normalizeLayerColors(saved.layerColors, this.doc.layers.length);
-    if (saved.tool) {
-      this.selectTool(saved.tool as Tool);
-    }
     this.selectFrame(saved.frame ?? 0);
     this.selectLayer(saved.layer ?? 0);
+    // The frame first, then the tool: the lasso takes the frame it is picked
+    // on, and a session is not something a reopened draft brings back — with
+    // the lock on, it also kept the studio from going to the saved frame.
+    if (saved.tool && saved.tool !== 'lasso') {
+      this.selectTool(saved.tool as Tool);
+    }
     this.persistUiConfig();
   }
 
@@ -1515,7 +1529,9 @@ export class EditorState {
 
   /** Ctrl+X: the selection goes to the clipboard and its cells are emptied, one undo step. */
   cutSelection(): void {
-    if (this.playing || !this.leaveTransform()) {
+    // A hidden layer is not edited (owner, twelfth audit): paste refuses it,
+    // and the cut emptied it.
+    if (this.playing || !this.mayEdit(this.selection.layers) || !this.leaveTransform()) {
       return;
     }
     this.copySelection();
@@ -1926,9 +1942,10 @@ export class EditorState {
       return false;
     }
     const layers = this.visibleSelectedLayers;
+    const tools = this.doc.tools;
     const box = selectionBounds(layers.flatMap(
       (layer) => this.doc.layers[layer].frames[this.activeFrame]?.strokes ?? [],
-    ));
+    ), null, (stroke) => markReach(tools[stroke.tool_id]));
     if (this.playing || !box) {
       this.transform = null;
       if (!this.playing) {
@@ -2048,7 +2065,9 @@ export class EditorState {
   /** Enter / "apply": writes the open transform as one undo step and closes it. */
   commitTransform(): void {
     const open = this.transform;
-    if (!open) {
+    // Nothing is written while the preview plays: closed now, the session
+    // would be lost with nothing applied.
+    if (!open || this.playing) {
       return;
     }
     this.transform = null;
@@ -2116,8 +2135,10 @@ export class EditorState {
     // A plugin that throws from its own window's button would otherwise leave
     // this gesture open: the next edit joined a stale one, on a frame since
     // left, and never became a step of undo.
+    const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    // Put back whole if a write is refused: no half-written step.
+    const before = cells.slice();
     try {
-      const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
       const next = editCells(cells, fn, this.doc.tools);
       gesture.snapshots.forEach(({ layer, frame }, i) => {
         // A fresh cell object, not a rewrite in place: that identity change is
@@ -2126,6 +2147,16 @@ export class EditorState {
       });
       gesture.wrote = true;
       this.touched = true;
+    } catch (err) {
+      // A full frame is the document's word: thrown into the plugin, its guard switched it off.
+      this.#write((doc) => {
+        gesture.snapshots.forEach(({ layer, frame }, i) => {
+          doc.layers[layer].frames[frame] = before[i];
+        });
+      });
+      if (!this.refuseAtLimit(err)) {
+        throw err;
+      }
     } finally {
       if (standalone) {
         this.endPluginGesture();
@@ -2207,8 +2238,15 @@ export class EditorState {
       saveWorkspaces(this.workspaces);
     }
     this.pluginsVersion++;
+    // The way back from a help tool must not lead to a tool that is gone.
+    if (!plugins.tool(this.previousDrawingTool)) {
+      this.previousDrawingTool = 'pencil';
+    }
     if (!plugins.tool(this.tool)) {
-      this.selectTool('pencil');
+      // Its window goes with it; and the pencil comes back even with its key
+      // taken off the panel — the hand has to hold something that exists.
+      this.closePluginWindow();
+      this.selectTool('pencil', 'outline', [...this.availableTools, 'pencil']);
     }
   }
 

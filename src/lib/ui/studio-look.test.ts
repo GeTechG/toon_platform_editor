@@ -131,7 +131,8 @@ describe('a draft row gives its words the room', () => {
   // The row is a phone-width sheet: three 44px keys with gaps between them left
   // the date two lines and the size line three.
   it('writes the date to the minute, on one line', () => {
-    expect(editorUi).toContain("toLocaleString('ru', { dateStyle: 'short', timeStyle: 'short' })");
+    // In the catalogue's locale, not a hard-coded 'ru' (audit14-system).
+    expect(editorUi).toContain("toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })");
     // One line because the keys make way — the date's own box is its content
     // and the row wraps them under it — not `nowrap`: at 200 % text the date
     // alone is wider than a 320px sheet, and a nowrap pushed the sheet out.

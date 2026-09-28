@@ -67,7 +67,9 @@ describe('a drag measures once, then only writes', () => {
       dragSource.indexOf('function onPointerMove'),
     );
     expect(begin).toContain('getBoundingClientRect');
-    expect(begin).toContain('clientWidth');
+    // The screen's bounds, read through `screenBounds` (audit14-windows).
+    expect(begin).toContain('screenBounds()');
+    expect(dragSource).toMatch(/function screenBounds[^]*?clientWidth/);
   });
 });
 

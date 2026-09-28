@@ -57,7 +57,7 @@ describe('the sound plate over the canvas has an edge in forced colors', () => {
 
 describe('layer rows', () => {
   it('a double click inside the open name field selects a word, it does not reset the text', () => {
-    expect(rows).toContain('if (renaming?.layer === layerIndex)');
+    expect(rows).toContain('if (renaming?.layer === layerIndex && renaming.ref === editor.doc.layers[layerIndex])');
   });
 
   it('a truncated name can be read in full on hover', () => {

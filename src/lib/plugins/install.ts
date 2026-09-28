@@ -23,6 +23,22 @@ export interface InstallPorts {
   timeout?: number;
   /** Turns a bundle into a module; its own port so a test needs no browser. */
   evaluate: (code: string) => Promise<Record<string, unknown>>;
+  /** How long a module gets to come up, in ms; `EVALUATE_TIMEOUT_MS` unless a test says otherwise. */
+  evaluateTimeout?: number;
+}
+
+/**
+ * How long a bundle's module gets to come up. A module that awaits something
+ * at its top level that never comes held every plugin after it and, during
+ * an update, the studio behind a lock nobody can close. Ten seconds is ages
+ * for code already in hand; the import itself cannot be called off, only no
+ * longer waited for.
+ */
+export const EVALUATE_TIMEOUT_MS = 10_000;
+
+/** `ports.evaluate`, with the deadline. */
+function run(code: string, ports: InstallPorts): Promise<Record<string, unknown>> {
+  return withDeadline(ports.evaluateTimeout ?? EVALUATE_TIMEOUT_MS, undefined, () => ports.evaluate(code));
 }
 
 /**
@@ -117,7 +133,7 @@ async function evaluated(
   ports: InstallPorts,
 ): Promise<{ code: string; manifest: Partial<Plugin> & Record<string, unknown> } | string> {
   try {
-    return { code, manifest: manifestOf(await ports.evaluate(code)) };
+    return { code, manifest: manifestOf(await run(code, ports)) };
   } catch (error) {
     console.warn('plugin bundle failed:', error);
     return t('plugins.not_a_bundle');
@@ -158,7 +174,7 @@ async function install(
   }
   if (was) {
     try {
-      accept(manifestOf(await ports.evaluate(was.code)), registry);
+      accept(manifestOf(await run(was.code, ports)), registry);
     } catch (error) {
       registry.fail(id, reason(error));
     }
@@ -250,7 +266,7 @@ export async function loadInstalled(
       continue;
     }
     try {
-      const refused = accept(manifestOf(await ports.evaluate(plugin.code)), registry);
+      const refused = accept(manifestOf(await run(plugin.code, ports)), registry);
       if (refused) {
         registry.fail(plugin.id, refused);
       }
@@ -305,7 +321,7 @@ export async function updateInstalled(
       registry.fail(plugin.id, t('plugin.update_failed', { reason: refused }));
       // The working version goes back in: a refused update is not a removal.
       try {
-        accept(manifestOf(await ports.evaluate(plugin.code)), registry);
+        accept(manifestOf(await run(plugin.code, ports)), registry);
       } catch (error) {
         registry.fail(plugin.id, reason(error));
       }

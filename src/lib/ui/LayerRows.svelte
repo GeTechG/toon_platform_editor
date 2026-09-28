@@ -9,8 +9,9 @@
   import { onDestroy, tick } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
+  import type { Layer } from '../format/types';
   import { dragTargetIndex, layerGridStep } from './frame-selection';
-  import { rowHeight } from './thumb-size';
+  import { rowHeight, rowHeightCss } from './thumb-size';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
@@ -57,8 +58,12 @@
   }
 
   // --- Renaming -------------------------------------------------------------
-  /** Layer being renamed, and the text in its field. */
-  let renaming = $state<{ layer: number; text: string } | null>(null);
+  /**
+   * Layer being renamed — by number and by the layer itself — and the text in
+   * its field. A file dropped mid-rename replaces the document: the number
+   * alone opened the field in the new drawing's row and named its layer.
+   */
+  let renaming = $state<{ layer: number; ref: Layer; text: string } | null>(null);
 
   /**
    * A double click on the row opens its name — but the row is also where the
@@ -71,7 +76,7 @@
     }
     // A double click inside the open field selects a word; reopening it threw
     // the typing away for the stored name.
-    if (renaming?.layer === layerIndex) {
+    if (renaming?.layer === layerIndex && renaming.ref === editor.doc.layers[layerIndex]) {
       return;
     }
     // The state refuses a rename while the preview runs; a field opened then
@@ -79,14 +84,16 @@
     if (editor.playing) {
       return;
     }
-    renaming = { layer: layerIndex, text: editor.layerLabel(layerIndex) };
+    renaming = { layer: layerIndex, ref: editor.doc.layers[layerIndex], text: editor.layerLabel(layerIndex) };
   }
 
   function commitRename(): void {
     if (!renaming) {
       return;
     }
-    editor.renameActiveLayer(renaming.layer, renaming.text);
+    if (editor.doc.layers[renaming.layer] === renaming.ref) {
+      editor.renameActiveLayer(renaming.layer, renaming.text);
+    }
     renaming = null;
   }
 
@@ -134,7 +141,12 @@
     if (to < 0 || to >= editor.doc.layers.length) {
       return;
     }
+    const layer = editor.doc.layers[layerIndex];
     editor.moveLayerTo(layerIndex, to);
+    // A move the state refused (a locked transform) has no position to say.
+    if (editor.doc.layers[to] !== layer) {
+      return;
+    }
     announce(to);
     focusCell(to);
   }
@@ -220,6 +232,11 @@
     startRow: number;
     /** Last pointer position, so auto-scroll can re-evaluate without a new event. */
     lastY: number;
+    /**
+     * A row's height on screen: the keys in it grow with the text, so the
+     * row can be taller than the frame's number (`rowHeightCss`).
+     */
+    rowPx: number;
     currentLayer: number;
     fromLayer: number;
   };
@@ -233,6 +250,11 @@
       return;
     }
     editor.selectLayer(layerIndex); // grabbing a layer selects it
+    // A refused pick (a transform under the lock) refuses the move as well:
+    // the row followed the pointer and a reader heard of a move never made.
+    if (editor.activeLayer !== layerIndex) {
+      return;
+    }
     const row = editor.doc.layers.length - 1 - layerIndex;
     drag = {
       pointerId: e.pointerId,
@@ -240,6 +262,7 @@
       startScroll: listEl?.scrollTop ?? 0,
       startRow: row,
       lastY: e.clientY,
+      rowPx: listEl?.querySelector('.row')?.getBoundingClientRect().height || ROW_HEIGHT,
       currentLayer: layerIndex,
       fromLayer: layerIndex,
     };
@@ -265,12 +288,16 @@
     }
     const scrolled = (listEl?.scrollTop ?? 0) - drag.startScroll;
     const count = editor.doc.layers.length;
-    const targetRow = dragTargetIndex(drag.startRow, drag.lastY - drag.startY + scrolled, ROW_HEIGHT, count);
+    const targetRow = dragTargetIndex(drag.startRow, drag.lastY - drag.startY + scrolled, drag.rowPx, count);
     const targetLayer = count - 1 - targetRow;
     if (targetLayer !== drag.currentLayer) {
       // Reorder for real on each index change: the canvas rebuilds once per
       // step, not once per pointermove.
+      const moved = editor.doc.layers[drag.currentLayer];
       editor.moveLayerTo(drag.currentLayer, targetLayer);
+      if (editor.doc.layers[targetLayer] !== moved) {
+        return; // refused: the layer is still where it was
+      }
       drag.currentLayer = targetLayer;
     }
   }
@@ -293,7 +320,7 @@
     }
     autoscrollDirection = direction;
     autoscroll = setInterval(() => {
-      listEl.scrollBy({ top: (direction * ROW_HEIGHT) / 2 });
+      listEl.scrollBy({ top: (direction * (drag?.rowPx ?? ROW_HEIGHT)) / 2 });
       // The pointer may not move again, so the target is re-evaluated here.
       updateTarget();
     }, 80) as unknown as number;
@@ -382,7 +409,7 @@
       <!-- svelte-ignore a11y_interactive_supports_focus -->
       <div
         class="row"
-        style:height="{ROW_HEIGHT}px"
+        style:height={rowHeightCss(editor.doc)}
         class:active={layerIndex === editor.activeLayer}
         class:dragging={drag?.currentLayer === layerIndex}
         role="row"
@@ -426,7 +453,7 @@
         </span>
 
         <span class="cell" role="gridcell">
-        {#if renaming?.layer === layerIndex}
+        {#if renaming?.ref === editor.doc.layers[layerIndex]}
           <!-- svelte-ignore a11y_autofocus -->
           <input
             class="name rename"
@@ -576,6 +603,13 @@
     font: inherit;
     font-size: 0.85rem;
   }
+  /* Safari on an iPhone zooms the page onto a field under 16 px and does not
+     zoom back: the studio stayed magnified after a rename. */
+  @media (pointer: coarse) {
+    .rename {
+      font-size: max(16px, 0.85rem);
+    }
+  }
   /* Six tags, in the theme rather than in the document; a click walks them.
      A 4px stripe would be a 4px tap target: the button is 14px wide with the
      stripe painted in its middle, so the pointer and the finger both hit it. */
@@ -621,10 +655,12 @@
     user-select: none;
     color: var(--ink-2);
   }
+  /* The strip's frame numbers are 2rem too: the rows under both start level. */
   .head {
     display: flex;
     align-items: center;
     flex: none;
+    box-sizing: border-box;
     height: 2rem;
     padding: 0 0.3rem;
     border-bottom: 1px solid var(--hairline);

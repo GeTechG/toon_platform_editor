@@ -38,6 +38,17 @@ export class BufferRing<T> {
     return { buffer, fresh: true };
   }
 
+  /**
+   * Every buffer the ring made, handed back for the caller to release, and
+   * the ring empty again: the canvas that owned it is going away.
+   */
+  drain(): T[] {
+    const buffers = [...this.#slots.values()];
+    this.#slots.clear();
+    this.#keys.length = 0;
+    return buffers;
+  }
+
   /** A buffer nothing is holding: a new one until the ring is full, then the oldest slot. */
   #free(): T {
     if (this.#slots.size < this.size) {

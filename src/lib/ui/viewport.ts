@@ -358,6 +358,21 @@ export interface DrawnView {
 }
 
 /**
+ * The pixel of a picture drawn under `drawn` that lies under the workspace
+ * point (x, y), CSS px, of the view on screen `now` — the inverse of
+ * `reprojection`. The pipette reads the composed layers, and those are the
+ * view's of the last frame drawn: right after a zoom, or all through a
+ * pinch, the screen is already elsewhere.
+ */
+export function pickedPixel(x: number, y: number, now: DrawnView, drawn: DrawnView): [number, number] {
+  const k = drawn.zoom / now.zoom;
+  return [
+    drawn.dpr * (drawn.panX + (x - now.panX) * k),
+    drawn.dpr * (drawn.panY + (y - now.panY) * k),
+  ];
+}
+
+/**
  * Where a picture drawn under `from` lands under `to`: the uniform scale and
  * offset, in `to`'s device pixels, that put every point of it back where the
  * new view would draw it. Pan and pinch show the last composed frame through

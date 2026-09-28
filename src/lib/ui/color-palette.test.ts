@@ -314,7 +314,7 @@ describe('the colour picker follows the reference window', () => {
     expect(picker).toMatch(/oncancel=\{[^]{0,200}requestClose\(\{ revert: true \}\)/);
     expect(picker).toContain('onclose={() => onclose(intent)}');
     // Which key closes is `pickerKeyAction`'s (canvas-tools-audit.test.ts).
-    expect(picker).toMatch(/pickerKeyAction\([^]{0,200}requestClose\(\)/);
+    expect(picker).toMatch(/pickerKeyAction\([^]{0,300}requestClose\(\)/);
   });
 
   it('opens under the swatch, clamped to the viewport', () => {
@@ -353,7 +353,8 @@ describe('the palette box follows the reference palette', () => {
   });
 
   it('scrolls the grid to the cell of the chosen outline', () => {
-    expect(paletteBox).toContain("scrollIntoView({ block: 'nearest'");
+    // The grid's own scroll, not every scroller above it (audit14-colour).
+    expect(paletteBox).toContain('gridEl.scrollTop += gridScrollDelta(');
   });
 
   it('gives the foot pipette a right button that picks into the fill', () => {

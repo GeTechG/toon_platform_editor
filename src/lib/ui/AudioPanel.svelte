@@ -292,6 +292,13 @@
      line underneath it. It used to drop the ring and keep the tint — a quarter
      of the promised indicator, winning on specificity rather than on a
      decision. */
+  /* Safari on an iPhone zooms the page onto a field under 16 px and does not
+     zoom back out when the plate closes. */
+  @media (pointer: coarse) {
+    .field input {
+      font-size: max(16px, 0.88rem);
+    }
+  }
   .field input:focus-visible {
     border-color: var(--accent);
   }

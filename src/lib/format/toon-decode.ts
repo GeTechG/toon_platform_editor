@@ -13,7 +13,7 @@ import {
   MAX_FRAMES,
   MAX_LAYERS,
   MAX_TOTAL_POINTS,
-  MAX_LAYER_NAME,
+  cutLayerName,
   SCHEMA_VERSION,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
@@ -153,7 +153,7 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
   for (let l = 0; l < layerCount; l++) {
     const hidden = reader.next() === 0;
     // An unnamed layer is named by its position, so the field stays absent.
-    const name = version >= 2 ? reader.string().slice(0, MAX_LAYER_NAME) : '';
+    const name = version >= 2 ? cutLayerName(reader.string()) : '';
     const frames: Layer['frames'] = [];
     for (let f = 0; f < frameCount; f++) {
       if (version >= 4 && reader.next() === 1) {
@@ -299,7 +299,10 @@ function readColor(reader: Reader): string {
  * the whole file: it is far off-canvas either way.
  */
 function scale(value: number): number {
-  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, value * FIXED_POINT_SCALE));
+  // Rounded: the binary stream is whole numbers already, but the `.json` save
+  // kept the mouse's fractions (10.33), and a coordinate or a width that is
+  // not an integer failed the schema — the file was refused as «too big».
+  return Math.min(STROKE_COORD_MAX, Math.max(STROKE_COORD_MIN, Math.round(value * FIXED_POINT_SCALE)));
 }
 
 /**
