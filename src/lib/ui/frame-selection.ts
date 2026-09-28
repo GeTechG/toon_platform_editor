@@ -426,6 +426,28 @@ export function frameMenuKey(
   return { aria: `Control+${MENU_LETTERS[action]}`, label: `Ctrl+${MENU_LETTERS[action]}` };
 }
 
+/**
+ * Where the frame menu's top goes. It hangs from `y` (the press, or a key-opened
+ * cell's bottom) when it fits below, and otherwise ends at `above` (the press,
+ * or that cell's top): the strip sits at the bottom, and a menu pushed up just
+ * far enough to fit lay over the cell it was about to act on. A finger keeps
+ * `gap` from the fingertip and prefers above, where the lift cannot click an
+ * item. With room on neither side it stays on screen, 4 px from the edges.
+ */
+export function frameMenuTop(
+  at: { y: number; above: number },
+  height: number,
+  viewHeight: number,
+  gap = 0,
+): number {
+  const up = at.above - height - gap;
+  const down = at.y + gap;
+  const top = gap > 0
+    ? up >= 4 ? up : down
+    : down + height + 4 <= viewHeight ? down : up >= 4 ? up : down;
+  return Math.max(4, Math.min(top, viewHeight - height - 4));
+}
+
 /** The block as a reader says it: first and last frame (from 1) and how many layers. */
 export function selectionSpan(selection: CellSelection): { from: number; to: number; layers: number } {
   return {

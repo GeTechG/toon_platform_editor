@@ -130,6 +130,14 @@ export class FrameComposer {
   #serial = 0;
   #liveSeed = '';
   #livePainted = 0;
+  /**
+   * Whether the layers below and above the active one hold a line at all. A
+   * drawing of one layer is the common case, and two blits of transparent
+   * stage-sized buffers per frame of a stroke were half of what a weak phone
+   * spent compositing it.
+   */
+  #belowInk = false;
+  #aboveInk = false;
 
   constructor(make: BufferFactory = domBuffer) {
     this.#make = make;
@@ -172,21 +180,21 @@ export class FrameComposer {
       composite.size(width, height);
       composite.clear();
       const cctx = composite.ctx as ComposeTarget;
-      blitLayer(this.#below!.image, cctx);
+      if (this.#belowInk) blitLayer(this.#below!.image, cctx);
       this.#drawGhosts(cctx, scene, width, height);
       blitLayer(active.image, cctx);
       this.#paintLiveTail(cctx, scene);
-      blitLayer(this.#above!.image, cctx);
+      if (this.#aboveInk) blitLayer(this.#above!.image, cctx);
       target.globalAlpha = alpha;
       blitLayer(composite.image, target);
       target.globalAlpha = 1;
       return;
     }
-    blitLayer(this.#below!.image, target);
+    if (this.#belowInk) blitLayer(this.#below!.image, target);
     this.#drawGhosts(target, scene, width, height);
     blitLayer(active.image, target);
     this.#paintLiveTail(target, scene);
-    blitLayer(this.#above!.image, target);
+    if (this.#aboveInk) blitLayer(this.#above!.image, target);
   }
 
   /** Rasterizes the frame into the three buffers of the stack. */
@@ -206,6 +214,9 @@ export class FrameComposer {
     this.#above ??= this.#make();
     this.#paint(this.#below, below, scene, width, height);
     this.#paint(this.#above, above, scene, width, height);
+    const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.strokes.length > 0);
+    this.#belowInk = inked(below);
+    this.#aboveInk = inked(above);
     const cell = this.#cell(scene, scene.activeLayer);
     const visible = cell && !layers[scene.activeLayer]?.hidden ? [cell] : [];
     this.#paint(this.#active, visible, scene, width, height);
@@ -362,7 +373,11 @@ export class FrameComposer {
       const cell = layer?.frames[frame];
       if (cell && !layer.hidden && cell.strokes.length > 0) {
         cells.push(cell);
-        keys.push(`${index}:${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}`);
+        // The first and the last stroke too: undo one line and draw another,
+        // and the cell and its count are what they were. A transform writes
+        // fresh strokes (operations.ts `mapStrokes`), so it shows here as well.
+        keys.push(`${index}:${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}`
+          + `:${nodeId(cell.strokes[0])}:${nodeId(cell.strokes[cell.strokes.length - 1])}`);
       }
     }
     if (cells.length === 0) {

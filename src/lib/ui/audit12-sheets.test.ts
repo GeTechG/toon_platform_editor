@@ -7,6 +7,7 @@ import { putInstalled, removeInstalled, listInstalled, type InstalledPlugin } fr
 import { loadInstalled, updateInstalled } from '../plugins/install';
 import { PluginRegistry } from '../plugins/registry';
 import { PLUGIN_API, type PluginScene } from '../plugins/contract';
+import { OFFICIAL_CATALOG } from '../plugins/catalog';
 import { saveDraft } from '../draft/store';
 import { decodeToon } from '../format/toon-decode';
 import { validateDocument } from '../format/validate';
@@ -198,7 +199,7 @@ describe('обновление плагина из каталога', () => {
 
     const updated = await quiet(() =>
       updateInstalled(
-        [{ id: 'halftone', name: 'h', version: '2.0.0', description: '', icon: '', url: 'https://x/h.js' }],
+        [{ id: 'halftone', name: 'h', version: '2.0.0', description: '', icon: '', url: `${OFFICIAL_CATALOG}h.js` }],
         registry,
         ports,
       ),

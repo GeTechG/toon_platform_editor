@@ -29,7 +29,7 @@
   import { fitThumb } from './thumb-size';
   import { zoomDelta } from './viewport';
   import { extendTarget, wrapIndex } from './frame-selection';
-  import { keyOwner, latinKey, repeats } from './key-owner';
+  import { keyOwner, latinKey, repeats, typesText } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -179,13 +179,22 @@
   /**
    * The root text size over the 16px the floor's numbers were measured at. The
    * keys and the strip head are in rem, so at 200 % text a floor in fixed px
-   * left the layer row under the panel's edge. Read again when the window
-   * resizes — a browser zoom is a resize too.
+   * left the layer row under the panel's edge. Watched on a one-rem probe,
+   * not read on a window resize: a text-only zoom resizes no window, and the
+   * step then kept 100 %'s sum — a tablet at 200 % had a canvas 42 px wide.
    */
-  const textScale = $derived.by(() => {
-    void viewportWidth;
-    return parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+  const readFont = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  let rootFont = $state(readFont());
+  let remProbe = $state<HTMLElement>();
+  const readRootFont = () => (rootFont = readFont());
+  $effect(() => {
+    if (!remProbe) return;
+    readRootFont();
+    const watch = new ResizeObserver(readRootFont);
+    watch.observe(remProbe);
+    return () => watch.disconnect();
   });
+  const textScale = $derived(rootFont / 16);
   /**
    * What wrapped key rows take beyond one key each. Between a phone and a wide
    * desktop the transport does not fit one line and wraps; the floor has to
@@ -475,6 +484,11 @@
     if (key === 'Escape' && openTab && shownTab && !modalOpen && !editor.transform && !e.defaultPrevented) {
       e.preventDefault();
       closeTab();
+      return;
+    }
+    // A text field keeps its Alt chords: Option+E is the accent key on a Mac,
+    // AltGr+E, S and L type ę, ś and ł in Polish (key-owner.ts).
+    if (e.altKey && typesText(e.target instanceof HTMLElement ? e.target : null)) {
       return;
     }
     // Alt+E is the reference's mega-eraser; every other modifier is the
@@ -896,11 +910,13 @@
    * After a failure the clock stays off, but a save asked for by hand tries
    * again: the user may have freed the room in the drafts list since.
    */
-  function saveNow(byHand = false): Promise<boolean> {
+  function saveNow(byHand = false, leaving = false): Promise<boolean> {
     if (!editor.touched) {
       return Promise.resolve(true);
     }
-    if (saveFailed && !byHand) {
+    // Leaving is the last chance, failure or not: the list may have been
+    // cleared since, and nobody is left to press Ctrl+S.
+    if (saveFailed && !byHand && !leaving) {
       return Promise.resolve(false);
     }
     // The document is a value the editor holds whole, so it goes to storage as
@@ -925,10 +941,18 @@
         editor.lastSavedAt = Date.now();
         savedBytes = bytes;
         saveFailed = false;
+        // Storage that was away for a moment (an upgrade in another tab) is back.
+        storageBlocked = false;
         writeScreenshot(doc);
         return true;
       }
-      saveFailedNow();
+      if (leaving) {
+        // No alert on the way out: the status says it, the tab still asks.
+        saveFailed = true;
+        dirty = true;
+      } else {
+        saveFailedNow();
+      }
       return false;
     });
   }
@@ -1076,7 +1100,7 @@
    */
   function flushOnLeave(): void {
     if (dirty) {
-      void saveNow();
+      void saveNow(false, true);
     }
   }
 
@@ -1084,6 +1108,9 @@
   // nothing unmounts — a preview running at that moment went on sounding over
   // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
   onDestroy(() => {
+    // A selection moved and not yet applied is on the screen, not in the
+    // document: leaving applies it, as a frame change does.
+    editor.leaveTransform();
     flushOnLeave();
     editor.audio.clear();
     for (const url of Object.values(thumbUrls)) {
@@ -1158,6 +1185,11 @@
 
   async function openDrafts(): Promise<void> {
     leaveFullscreen();
+    if (dirty) {
+      // The current card is copied and downloaded from what is on disk: up to
+      // a clock's turn behind the canvas without this write.
+      await saveNow();
+    }
     await refreshDrafts();
     draftsOpen = true;
   }
@@ -1384,6 +1416,10 @@
 
   function openSettingsSheet(): void {
     leaveFullscreen();
+    if (dirty) {
+      // «Скачать черновики» there reads the records: the current one as drawn.
+      void saveNow();
+    }
     settingsSheetOpen = true;
   }
 
@@ -1469,6 +1505,8 @@
   }
 
   const lastFrame = $derived(editor.doc.layers[0].frames.length - 1);
+  /** The mini transport's count: the frame on screen, played or picked. */
+  const frameShown = $derived({ n: (editor.playing ? editor.playbackFrame : editor.activeFrame) + 1, total: lastFrame + 1 });
 
   function onFpsChange(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
@@ -1757,7 +1795,9 @@
       bind:this={exportButton}
       {editor}
       onOpen={() => {
+        editor.leaveTransform();
         saveNow();
+        // The live selection goes where the screen shows it, then to the draft.
         leaveFullscreen();
       }}
     />
@@ -1810,7 +1850,11 @@
            not a zone fenced off in the markup. -->
       <button
         class="key primary publish"
-        onclick={() =>
+        onclick={() => {
+          // A live transform is on the screen and not yet in the document: the
+          // mult went out with the selection where it was lifted. The lock
+          // refuses and says so, as it does for a frame change.
+          if (!editor.leaveTransform()) return;
           onPublish?.(
             $state.snapshot(editor.doc),
             editor.audio.blob
@@ -1821,7 +1865,8 @@
                   sync: editor.audio.sync,
                 }
               : null,
-          )}
+          );
+        }}
         title={t('editor.publish')}
         aria-label={t('editor.publish')}
       >
@@ -1877,6 +1922,7 @@
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
 >
+  <span class="rem-probe" aria-hidden="true" bind:this={remProbe}></span>
   {#if cut}
     <!-- A small screen: the desktop's left column down the left edge, one
          key wide on a phone, with «Отправить мульт» at its foot; everything
@@ -2088,7 +2134,8 @@
          the tabs. A tab is a disclosure — pressed again it closes. -->
     <div class="dock">
       <div class="mini-transport" role="group" aria-label={t('editor.transport')}>
-        <span class="frame-of">{t('editor.frame_of', { n: (editor.playing ? editor.playbackFrame : editor.activeFrame) + 1, total: lastFrame + 1 })}</span>
+        <!-- «1 / 3» for the eyes; a reader said «один косая черта три». -->
+        <span class="frame-of"><span aria-hidden="true">{t('editor.frame_of', frameShown)}</span><span class="sr-only">{t('editor.frame_of_said', frameShown)}</span></span>
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2486,13 +2533,21 @@
   .studio.compact .stage {
     --zoom-inset: clamp(0.5rem, 2.2vw, 1.25rem);
     /* The zoom window's foot: its inset, a key and its 2px frame, a gap. */
-    --zoom-foot: calc(var(--zoom-inset) + var(--key-h) + 4px + 0.5rem);
+    --zoom-foot: calc(var(--zoom-inset) + var(--tap) + 4px + 0.5rem);
   }
+  /* Its keys on the tap floor and the window no wider than the stage: at
+     200 % text on 360 px it was 293 px on a 240 px stage, and «−» lay
+     clipped under the tool column. */
   .studio.compact .scale-window {
+    --key-h: var(--tap);
     top: var(--zoom-inset);
     right: var(--zoom-inset);
     bottom: auto;
     left: auto;
+    max-width: calc(100% - 2 * var(--zoom-inset));
+  }
+  .studio.compact .scale-window :global(.value) {
+    min-width: 0;
   }
   /* The thickness rail starts below the zoom window's row: at 200 % text on
      390×844 the window (293 px of a 270 px stage) lay over the rail's top.
@@ -2678,6 +2733,9 @@
   /* Whatever takes the whole row — the strip, the palette box — still does. */
   .editor.arranging .arr.wide {
     place-self: stretch;
+    /* «Сохранено» before the first save is empty: its handle was a 4px
+       sliver no hand could take. */
+    min-width: var(--key-h);
   }
   .editor.arranging .arr-body {
     display: contents;
@@ -3028,6 +3086,17 @@
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
+  /* One rem, never seen: its box changes with the root text size, which a
+     text-only zoom changes without resizing the window. */
+  .rem-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1rem;
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
   .sr-only {
     position: absolute;
     width: 1px;
@@ -3044,6 +3113,11 @@
      `.phone` the one with a one-key column, `.tall` a screen standing up.
      The right column, the bottom bar and the floating windows are not drawn
      there — what they hold is behind the tabs, one window at a time. */
+  /* Its own full screen hides the site's header: on a phone standing up the
+     cutout sat over the first key and the zoom window. Zero elsewhere. */
+  .editor.studio:fullscreen {
+    padding-top: env(safe-area-inset-top);
+  }
   .editor.studio.compact {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
@@ -3156,9 +3230,12 @@
     background: var(--paper);
     border-top: 1px solid var(--hairline);
   }
-  /* At 200 % text on 390px three 88px keys and the count just fit; any
-     narrower and the group wraps rather than widening the page. */
+  /* The keys sit on the tap floor, as the tabs do: three 88 px keys at 200 %
+     text broke the group in two on 360 px, and lying down on 740×360 the
+     tabs went to a second line — the dock took 167 px, the sheet had 160.
+     Any narrower and the group still wraps rather than widening the page. */
   .mini-transport {
+    --key-h: var(--tap);
     display: flex;
     flex-wrap: wrap;
     align-items: center;

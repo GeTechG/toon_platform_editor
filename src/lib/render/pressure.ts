@@ -32,42 +32,36 @@ export function flattenPressured(
   pressure: readonly number[],
   geometry: StrokeGeometry,
 ): number[] {
-  type Command = (t: number) => [number, number];
-  const commands: Command[] = [];
-  let start: [number, number] = [points[0], points[1]];
+  // A pen's line under the hand is flattened whole every frame, so the
+  // commands are kept as numbers — kind, start, controls, end — rather than a
+  // closure per command and a pair per sample for the collector.
+  const LINE = 0;
+  const QUAD = 1;
+  const CUBIC = 2;
+  const commands: number[] = [];
+  let startX = points[0];
+  let startY = points[1];
   let px = points[0];
   let py = points[1];
   emitGeometry(points, geometry, false, {
     moveTo(x, y) {
-      start = [x, y];
+      startX = x;
+      startY = y;
       px = x;
       py = y;
     },
     lineTo(x, y) {
-      const [ax, ay] = [px, py];
-      commands.push((t) => [ax + (x - ax) * t, ay + (y - ay) * t]);
+      commands.push(LINE, px, py, 0, 0, 0, 0, x, y);
       px = x;
       py = y;
     },
     quadraticCurveTo(cx, cy, x, y) {
-      const [ax, ay] = [px, py];
-      commands.push((t) => {
-        const u = 1 - t;
-        return [u * u * ax + 2 * u * t * cx + t * t * x, u * u * ay + 2 * u * t * cy + t * t * y];
-      });
+      commands.push(QUAD, px, py, cx, cy, 0, 0, x, y);
       px = x;
       py = y;
     },
     bezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
-      const [ax, ay] = [px, py];
-      commands.push((t) => {
-        const u = 1 - t;
-        const a = u * u * u;
-        const b = 3 * u * u * t;
-        const c = 3 * u * t * t;
-        const d = t * t * t;
-        return [a * ax + b * c1x + c * c2x + d * x, a * ay + b * c1y + c * c2y + d * y];
-      });
+      commands.push(CUBIC, px, py, c1x, c1y, c2x, c2y, x, y);
       px = x;
       py = y;
     },
@@ -78,16 +72,42 @@ export function flattenPressured(
     const next = Math.min(last, i + 1);
     return pressure[i] + (pressure[next] - pressure[i]) * (s - i);
   };
-  const out = [start[0], start[1], pressure[0]];
-  const count = commands.length;
-  commands.forEach((command, k) => {
-    const steps = geometry === 'line' ? 1 : CURVE_STEPS;
+  const out = [startX, startY, pressure[0]];
+  const count = commands.length / 9;
+  const steps = geometry === 'line' ? 1 : CURVE_STEPS;
+  for (let k = 0; k < count; k++) {
+    const o = k * 9;
+    const kind = commands[o];
+    const ax = commands[o + 1];
+    const ay = commands[o + 2];
+    const c1x = commands[o + 3];
+    const c1y = commands[o + 4];
+    const c2x = commands[o + 5];
+    const c2y = commands[o + 6];
+    const x = commands[o + 7];
+    const y = commands[o + 8];
     for (let step = 1; step <= steps; step++) {
       const t = step / steps;
-      const [x, y] = command(t);
-      out.push(x, y, at(((k + t) / count) * last));
+      const u = 1 - t;
+      let sx: number;
+      let sy: number;
+      if (kind === LINE) {
+        sx = ax + (x - ax) * t;
+        sy = ay + (y - ay) * t;
+      } else if (kind === QUAD) {
+        sx = u * u * ax + 2 * u * t * c1x + t * t * x;
+        sy = u * u * ay + 2 * u * t * c1y + t * t * y;
+      } else {
+        const a = u * u * u;
+        const b = 3 * u * u * t;
+        const c = 3 * u * t * t;
+        const d = t * t * t;
+        sx = a * ax + b * c1x + c * c2x + d * x;
+        sy = a * ay + b * c1y + c * c2y + d * y;
+      }
+      out.push(sx, sy, at(((k + t) / count) * last));
     }
-  });
+  }
   return out;
 }
 
@@ -107,29 +127,35 @@ export function emitPressuredOutline(flat: readonly number[], width: number, sin
     sink.arc(flat[i], flat[i + 1], r, 0, Math.PI * 2);
   }
   for (let i = 3; i < flat.length; i += 3) {
-    const [ax, ay, bx, by] = [flat[i - 3], flat[i - 2], flat[i], flat[i + 1]];
+    const ax = flat[i - 3];
+    const ay = flat[i - 2];
+    const bx = flat[i];
+    const by = flat[i + 1];
     const length = Math.hypot(bx - ax, by - ay);
     if (length === 0) continue;
     const nx = -(by - ay) / length;
     const ny = (bx - ax) / length;
     const ra = radius(i - 3);
     const rb = radius(i);
-    const quad = [
-      ax + nx * ra, ay + ny * ra,
-      bx + nx * rb, by + ny * rb,
-      bx - nx * rb, by - ny * rb,
-      ax - nx * ra, ay - ny * ra,
-    ];
+    // The quad's corners, in scalars: this runs per segment per frame.
+    const x0 = ax + nx * ra, y0 = ay + ny * ra;
+    const x1 = bx + nx * rb, y1 = by + ny * rb;
+    const x2 = bx - nx * rb, y2 = by - ny * rb;
+    const x3 = ax - nx * ra, y3 = ay - ny * ra;
     // A canvas arc drawn clockwise has a positive shoelace area; a quad wound
     // the other way would cancel it under the nonzero rule.
-    let area = 0;
-    for (let j = 0; j < 8; j += 2) {
-      const k = (j + 2) % 8;
-      area += quad[j] * quad[k + 1] - quad[k] * quad[j + 1];
+    const area = (x0 * y1 - x1 * y0) + (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y0 - x0 * y3);
+    if (area > 0) {
+      sink.moveTo(x0, y0);
+      sink.lineTo(x1, y1);
+      sink.lineTo(x2, y2);
+      sink.lineTo(x3, y3);
+    } else {
+      sink.moveTo(x3, y3);
+      sink.lineTo(x2, y2);
+      sink.lineTo(x1, y1);
+      sink.lineTo(x0, y0);
     }
-    const order = area > 0 ? [0, 2, 4, 6] : [6, 4, 2, 0];
-    sink.moveTo(quad[order[0]], quad[order[0] + 1]);
-    for (let j = 1; j < 4; j++) sink.lineTo(quad[order[j]], quad[order[j] + 1]);
   }
 }
 

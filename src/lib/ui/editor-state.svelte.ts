@@ -104,7 +104,7 @@ import { isHelpTool, plugins } from '../plugins';
 import type { PluginBrush } from '../plugins/contract';
 import { toonopRules } from '../tools/brush';
 import type { StrokeRules } from '../tools/profiles';
-import { compareVersions, readCatalog, type CatalogEntry } from '../plugins/catalog';
+import { compareVersions, readCatalog, reviewed, type CatalogEntry } from '../plugins/catalog';
 import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from '../plugins/install';
 import { listInstalled, removeInstalled } from '../plugins/store';
 import { brushOfType, type BrushType } from '../plugins/brush-types';
@@ -576,7 +576,14 @@ export class EditorState {
     // An emptied number field reads NaN, and Math.round/min/max pass it on:
     // the record would be saved as `null`. Such a value changes nothing.
     if (Object.values(patch).some((v) => typeof v === 'number' && !Number.isFinite(v))) return;
-    this.byTool = { ...this.byTool, [brushToolOf(this.tool)]: { ...this.brush, ...patch } };
+    // The rail and the slider report every move, and most land on the size
+    // already set: rewriting the record then re-ran everything that reads it
+    // and wrote the whole config to storage, dozens of times a second.
+    if (Object.entries(patch).every(([key, v]) => this.brush[key as keyof BrushRecord] === v)) return;
+    const tool = brushToolOf(this.tool);
+    // Over the stored record, not the one capped for reading: a width grown
+    // under a wider preset stays for the way back when the smoothing moves.
+    this.byTool = { ...this.byTool, [tool]: { ...(this.byTool[tool] ?? this.brush), ...patch } };
     this.persistUiConfig();
   }
 
@@ -855,8 +862,19 @@ export class EditorState {
     this.persistUiConfig();
   }
 
-  /** Saves the arrangement under a name, replacing one of the same name. */
-  saveWorkspace(name: string): void {
+  /**
+   * Saves the arrangement under a name, replacing one of the same name — asked
+   * first when that one is laid out otherwise. False on a «no».
+   */
+  saveWorkspace(name: string): boolean {
+    const same = this.workspaces.find((w) => w.name === name.trim());
+    if (
+      same
+      && !samePanels(same.panels, this.panels)
+      && !this.confirmed(t('arrange.overwrite_confirm', { name: same.name }))
+    ) {
+      return false;
+    }
     this.workspaces = withWorkspace(
       this.workspaces,
       name.trim(),
@@ -864,6 +882,7 @@ export class EditorState {
       $state.snapshot(this.floatPos),
     );
     saveWorkspaces(this.workspaces);
+    return true;
   }
 
   /** False when the panels made by hand were kept (the question got a «no»). */
@@ -1713,14 +1732,21 @@ export class EditorState {
       return;
     }
     const { stroke } = this.undone[this.undone.length - 1];
-    this.undone = this.undone.slice(0, -1);
     // The tool is still interned, so this resolves to the same tool_id.
     const tool = this.doc.tools[stroke.tool_id];
-    this.#write((doc) => addStroke(doc, this.activeLayer, this.activeFrame, {
-      points: stroke.points,
-      tool,
-      ...pressureOf(stroke),
-    }));
+    // Lines drawn elsewhere since may have filled the document: then the
+    // stroke stays on the stack rather than being taken off it and lost.
+    try {
+      this.#write((doc) => addStroke(doc, this.activeLayer, this.activeFrame, {
+        points: stroke.points,
+        tool,
+        ...pressureOf(stroke),
+      }));
+    } catch (err) {
+      console.warn('redo rejected:', err);
+      return;
+    }
+    this.undone = this.undone.slice(0, -1);
     this.touched = true;
   }
 
@@ -1775,7 +1801,16 @@ export class EditorState {
       return;
     }
     const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
-    this.#write((doc) => replaceStrokes(doc, this.activeLayer, this.activeFrame, after));
+    // Every cut adds its end points, and a frame at the format's point or
+    // stroke limit refuses the result: the cell stays as it was, the way a
+    // refused stroke is dropped, instead of throwing out of the release and
+    // leaving the sweep to follow the hover.
+    try {
+      this.#write((doc) => replaceStrokes(doc, this.activeLayer, this.activeFrame, after));
+    } catch (err) {
+      console.warn('erase rejected:', err);
+      return;
+    }
     this.pushEdit(snapshots);
   }
 
@@ -2079,7 +2114,7 @@ export class EditorState {
   private async hasUpdates(catalog: readonly CatalogEntry[]): Promise<boolean> {
     const installed = await listInstalled();
     return installed.some((plugin) => plugin.source === 'catalog'
-      && catalog.some((entry) => entry.id === plugin.id && compareVersions(entry.version, plugin.version) > 0));
+      && catalog.some((entry) => entry.id === plugin.id && reviewed(entry) && compareVersions(entry.version, plugin.version) > 0));
   }
 
   /**

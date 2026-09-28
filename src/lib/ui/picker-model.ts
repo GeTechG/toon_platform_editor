@@ -5,7 +5,7 @@
  * testable.
  */
 
-import { hexToRgb, hsvToRgb, rgbToHex, rgbToHsv, wheelToHsv, type Hsv } from './color-model';
+import { hexToRgb, hsvToRgb, rgbToHex, rgbToHsvExact, wheelToHsvExact, type Hsv, type Rgb } from './color-model';
 
 export type PickerModel = 'hsv' | 'rgb' | 'wheel';
 
@@ -58,15 +58,21 @@ function onWheel(p: Pointer): Pointer {
   return r <= 0.5 ? p : { ...p, x: 0.5 + (dx / r) * 0.5, y: 0.5 + (dy / r) * 0.5 };
 }
 
-export function pointerToColor(model: PickerModel, { x, y, bar }: Pointer): string {
+/** The colour under the pointer as whole channels — what the canvases paint, with no hex string per pixel. */
+export function pointerToRgb(model: PickerModel, { x, y, bar }: Pointer): Rgb {
   if (model === 'rgb') {
-    return rgbToHex({ r: bar * 255, g: (1 - y) * 255, b: x * 255 });
+    const byte = (n: number) => Math.min(255, Math.max(0, Math.round(n * 255)));
+    return { r: byte(bar), g: byte(1 - y), b: byte(x) };
   }
   if (model === 'wheel') {
-    const { h, s } = wheelToHsv(x * 2 - 1, y * 2 - 1);
-    return rgbToHex(hsvToRgb({ h, s, v: bar * 100 }));
+    const { h, s } = wheelToHsvExact(x * 2 - 1, y * 2 - 1);
+    return hsvToRgb({ h, s, v: bar * 100 });
   }
-  return rgbToHex(hsvToRgb({ h: bar * 360, s: x * 100, v: (1 - y) * 100 }));
+  return hsvToRgb({ h: bar * 360, s: x * 100, v: (1 - y) * 100 });
+}
+
+export function pointerToColor(model: PickerModel, p: Pointer): string {
+  return rgbToHex(pointerToRgb(model, p));
 }
 
 export function colorToPointer(model: PickerModel, hex: string): Pointer {
@@ -74,7 +80,7 @@ export function colorToPointer(model: PickerModel, hex: string): Pointer {
   if (model === 'rgb') {
     return { x: rgb.b / 255, y: 1 - rgb.g / 255, bar: rgb.r / 255 };
   }
-  const hsv: Hsv = rgbToHsv(rgb);
+  const hsv: Hsv = rgbToHsvExact(rgb);
   if (model === 'wheel') {
     const a = (hsv.h * Math.PI) / 180;
     const r = hsv.s / 100;

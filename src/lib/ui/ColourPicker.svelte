@@ -7,6 +7,7 @@
     nudgePointer,
     pickerKeyAction,
     pointerToColor,
+    pointerToRgb,
     rgbChannelAt,
     surfaceToPointer,
     type PickerModel,
@@ -212,6 +213,9 @@
     const el = e.currentTarget as HTMLElement;
     // The capture would retarget the pointerup and eat the close button's click.
     if ((e.target as HTMLElement).closest('button')) return;
+    // The primary button only, as on the canvases: a right press dragged the
+    // window under its own context menu, and the menu ate the pointerup.
+    if (e.button !== 0) return;
     el.setPointerCapture(e.pointerId);
     const start = { x: e.clientX - offset.x, y: e.clientY - offset.y };
     // Held inside the screen like the studio's other windows: dragged off it,
@@ -228,17 +232,21 @@
     };
     // A drag the browser cancels (a pan, a palm) ends too: left listening, the
     // next touch on the header stacked a second follower on the first.
+    // And a capture taken away without either (the element lost it) ends it as well.
     const stop = () => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', stop);
       el.removeEventListener('pointercancel', stop);
+      el.removeEventListener('lostpointercapture', stop);
     };
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', stop);
     el.addEventListener('pointercancel', stop);
+    el.addEventListener('lostpointercapture', stop);
   }
 
-  /** Per-pixel fill: 176² calls is nothing next to one canvas draw, and every model draws the same way. */
+  /** Per-pixel fill: 176² calls is nothing next to one canvas draw, and every model draws the same way.
+      Channels straight from the pointer: a hex string written and parsed back per pixel cost five times the maths. */
   function paint(canvas: HTMLCanvasElement | null, kind: 'surface' | 'bar', m: PickerModel, p: Pointer): void {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -247,7 +255,7 @@
     // The rgb surface is three channel columns, not two axes: each one ramps
     // its own channel over the other two as they stand (`bundle:10046-10064`).
     const columns = m === 'rgb' && kind === 'surface';
-    const base = columns ? hexToRgb(pointerToColor(m, p)) : null;
+    const base = columns ? pointerToRgb(m, p) : null;
     const colWidth = width / 3;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -270,7 +278,7 @@
           kind === 'bar'
             ? { x: p.x, y: p.y, bar: x / (width - 1) }
             : { x: x / (width - 1), y: y / (height - 1), bar: p.bar };
-        const { r, g, b } = hexToRgb(pointerToColor(m, at));
+        const { r, g, b } = pointerToRgb(m, at);
         img.data[i] = r;
         img.data[i + 1] = g;
         img.data[i + 2] = b;
@@ -681,10 +689,13 @@
   .old:hover {
     opacity: 1;
   }
+  /* Outside the canvas, on the window's own white: laid over the drawing, the
+     red ring vanished on the red end of the hue strip and the red side of the
+     field. The stage's 14px gutter and the 10px gaps have room for it. */
   .surface:focus-visible,
   .bar:focus-visible {
     outline: 3px solid var(--accent);
-    outline-offset: -3px;
+    outline-offset: 2px;
   }
   .models button:focus-visible,
   .close:focus-visible,

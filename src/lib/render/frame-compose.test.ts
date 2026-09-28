@@ -85,14 +85,14 @@ describe('the composer stacks a frame', () => {
   });
 
   it('puts the ghosts between the layers below and the active one', () => {
-    const built = doc(2);
+    const built = doc(3);
     addFrame(built, 0);
-    addStroke(built, 0, 1, line(500));
+    for (let l = 0; l < 3; l++) addStroke(built, l, 1, line(500 + l));
     const { instance } = composer();
     const target = new Recorder('target');
     instance.compose(target.ctx, 100, 50, {
-      doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
-      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
+      doc: built, frame: 1, activeLayer: 1, viewport, tools: built.tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [1] },
     });
     // The ghost lands over the layers below and under the active one, so it
     // never covers the line being drawn.

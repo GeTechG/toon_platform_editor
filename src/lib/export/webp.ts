@@ -68,23 +68,27 @@ function anmf(frame: WebpStill, durationMs: number): Uint8Array {
     ...u24le(durationMs),
     0, // flags: no blending tricks, no dispose
   ];
-  return chunk('ANMF', [...header, ...imageChunks(frame.data)]);
+  return chunk('ANMF', concat([new Uint8Array(header), imageChunks(frame.data)]));
 }
 
-/** Copy out a still's image sub-chunks (VP8/VP8L/ALPH), header + payload + pad. */
-function imageChunks(still: Uint8Array): number[] {
-  const out: number[] = [];
+/**
+ * Copy out a still's image sub-chunks (VP8/VP8L/ALPH), header + payload + pad.
+ * With `set`, not spread: `push(...bytes)` passes every byte as an argument,
+ * and a still past a hundred-odd kilobytes overflowed the stack in Chrome.
+ */
+function imageChunks(still: Uint8Array): Uint8Array {
+  const out: Uint8Array[] = [];
   let at = 12; // skip RIFF header + 'WEBP'
   while (at + 8 <= still.length) {
     const tag = String.fromCharCode(...still.subarray(at, at + 4));
-    const size = still[at + 4] | (still[at + 5] << 8) | (still[at + 6] << 16) | (still[at + 7] << 24);
+    const size = (still[at + 4] | (still[at + 5] << 8) | (still[at + 6] << 16) | (still[at + 7] << 24)) >>> 0;
     const end = at + 8 + size + (size % 2); // include RIFF even-padding
     if (FRAME_CHUNKS.has(tag)) {
-      out.push(...still.subarray(at, Math.min(end, still.length)));
+      out.push(still.subarray(at, Math.min(end, still.length)));
     }
     at = end;
   }
-  return out;
+  return concat(out);
 }
 
 /** Frame count for a preview: at most `maxFrames`, and at most `maxSeconds` worth. */
@@ -112,9 +116,12 @@ export function downscaleSize(
 // --- byte helpers ---
 
 /** A RIFF chunk: FourCC + uint32-LE size + payload, even-padded. */
-function chunk(fourcc: string, payload: number[]): Uint8Array {
-  const padded = payload.length % 2 === 1 ? [...payload, 0] : payload;
-  return new Uint8Array([...ascii(fourcc), ...u32le(payload.length), ...padded]);
+function chunk(fourcc: string, payload: number[] | Uint8Array): Uint8Array {
+  const out = new Uint8Array(8 + payload.length + (payload.length % 2));
+  out.set(ascii(fourcc), 0);
+  out.set(u32le(payload.length), 4);
+  out.set(payload, 8);
+  return out;
 }
 
 const ascii = (s: string): number[] => [...s].map((c) => c.charCodeAt(0));

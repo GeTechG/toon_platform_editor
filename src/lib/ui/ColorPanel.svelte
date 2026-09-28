@@ -6,7 +6,7 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { gridStep } from './color-palette';
+  import { contrastInk, gridStep } from './color-palette';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
@@ -86,6 +86,7 @@
           class:active={editor.brushColor === color && editor.tool !== 'eraser'}
           aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
           style:--swatch={color}
+          style:color={contrastInk(color)}
           onclick={() => editor.pickColor(color, 'outline', true)}
           tabindex={i === stop ? 0 : -1}
           onfocus={() => (rove = i)}
@@ -157,13 +158,17 @@
     box-shadow: 0 0 0 1px var(--edge);
     cursor: pointer;
   }
+  /* Both rings sit inside the cell: the strip scrolls sideways, and
+     `overflow-x: auto` clips the other axis too — a ring outside lost its top
+     and bottom. The chosen one is a white border over an accent band; focus
+     is the cell's own contrast ink, as in the palette box. */
   .cell.active {
     border-color: var(--canvas);
-    box-shadow: 0 0 0 2px var(--accent);
+    box-shadow: 0 0 0 1px var(--edge), inset 0 0 0 2px var(--accent);
   }
   .cell:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 2px;
+    outline: 3px solid currentColor;
+    outline-offset: -3px;
   }
   /* Native picker as a round brand swatch showing the live color. */
   .color {

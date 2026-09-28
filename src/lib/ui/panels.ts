@@ -450,8 +450,13 @@ export function panelItemVisible(layout: PanelLayout, id: string): boolean {
   return !layout.hidden.includes(id);
 }
 
-/** The same arrangement: every panel in the same order; the shelf is a heap, its order is nobody's work. */
+/**
+ * The same arrangement: every panel in the same order. The shelf is a heap,
+ * and the order of the windows is only which one was pressed last (their
+ * stacking): neither is anybody's work.
+ */
 export function samePanels(a: PanelLayout, b: PanelLayout): boolean {
-  const key = (p: PanelLayout) => JSON.stringify([p.left, p.right, p.rows, p.float, [...p.hidden].sort()]);
+  const key = (p: PanelLayout) =>
+    JSON.stringify([p.left, p.right, p.rows, [...p.float].sort(), [...p.hidden].sort()]);
   return key(a) === key(b);
 }

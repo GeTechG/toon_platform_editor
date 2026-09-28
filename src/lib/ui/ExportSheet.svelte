@@ -136,10 +136,13 @@
     // straight to disk instead of into memory whole. The picker has to open
     // inside the click, so it comes before anything else is awaited; closed,
     // it means «не надо».
+    // The plan is the one on the button that was pressed: another may land
+    // while the picker is up, for a width or a track since changed.
+    const videoPlan = format === 'video' ? plan : null;
     let file: Awaited<ReturnType<typeof pickSaveFile>> = null;
-    if (format === 'video' && plan && !plan.realtime) {
+    if (videoPlan && !videoPlan.realtime) {
       try {
-        file = await pickSaveFile(`toonop.${plan.extension}`, `video/${plan.extension}`);
+        file = await pickSaveFile(`toonop.${videoPlan.extension}`, `video/${videoPlan.extension}`);
       } catch {
         return;
       }
@@ -179,17 +182,17 @@
       } else if (format === 'gif') {
         const bytes = await exportGif(editor.doc, options);
         deliver(new Blob([bytes], { type: 'image/gif' }), 'toonop.gif');
-      } else if (plan) {
+      } else if (videoPlan) {
         const sink = file ? await file.createWritable().catch(() => Promise.reject(new FileWriteError())) : undefined;
         const blob = await exportVideo(editor.doc, {
           ...options,
-          plan,
+          plan: videoPlan,
           audio: editor.audio.blob,
           trackSeconds,
           sink,
         });
         if (blob) {
-          deliver(blob, `toonop.${plan.extension}`);
+          deliver(blob, `toonop.${videoPlan.extension}`);
         }
         file = null;
       }

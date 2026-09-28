@@ -74,7 +74,7 @@ describe('Ctrl+X cuts the timeline selection', () => {
 describe('leaving writes the draft whatever the autosave setting', () => {
   it('the flush no longer looks at the interval', () => {
     const flush = fn('flushOnLeave');
-    expect(flush).toContain('saveNow()');
+    expect(flush).toMatch(/saveNow\((?:false, true)?\)/);
     expect(flush).not.toContain('autosaveMs');
   });
 

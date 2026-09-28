@@ -39,7 +39,7 @@ export interface Catalog {
 }
 
 export interface CatalogPorts {
-  fetch: (url: string) => Promise<{ json(): Promise<unknown> }>;
+  fetch: (url: string) => Promise<{ ok?: boolean; status?: number; json(): Promise<unknown> }>;
   /** What a relative address is relative to — the page the editor is on. */
   base?: string;
 }
@@ -77,13 +77,21 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
   if (!record || !text(record.id) || !text(record.entry)) {
     return null;
   }
+  // One record with an address that is no address costs itself: thrown, it
+  // took the whole catalog and left the tab on «Читаю каталог…» for good.
+  let url: string;
+  try {
+    url = new URL(text(record.entry), base).href;
+  } catch {
+    return null;
+  }
   return {
     id: text(record.id),
     name: localized(record.name, text(record.id)) || text(record.id),
     version: text(record.version) || '0.0.0',
     description: localized(record.description, text(record.id)),
     icon: text(record.icon),
-    url: new URL(text(record.entry), base).href,
+    url,
   };
 }
 
@@ -102,7 +110,12 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
   }
   let index: unknown;
   try {
-    index = await (await ports.fetch(new URL('index.json', base).href)).json();
+    const response = await ports.fetch(new URL('index.json', base).href);
+    // A 404 is a page, not a catalog: parsed, it said «Unexpected token '<'».
+    if (response.ok === false) {
+      return { plugins: [], error: t('plugin.catalog_missing', { status: response.status ?? '' }) };
+    }
+    index = await response.json();
   } catch (error) {
     return { plugins: [], error: t('plugin.catalog_unreadable', { reason: reason(error) }) };
   }

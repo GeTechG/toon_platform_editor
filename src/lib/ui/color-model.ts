@@ -48,8 +48,9 @@ function hslToRgb(h: number, s: number, l: number): Rgb {
 
 /**
  * What the colour window's field accepts, typed or pasted: `#rgb`, `#rrggbb`,
- * bare `rrggbb`, `rgb()`/`rgba()` and `hsl()`/`hsla()` in the comma or the
- * space syntax (the alpha is read and dropped), and a CSS colour name, which
+ * bare `rrggbb`, `#rrggbbaa`, `rgb()`/`rgba()`
+ * and `hsl()`/`hsla()` in the comma or the space syntax (every alpha is read
+ * and dropped), and a CSS colour name, which
  * only the browser can resolve — so it comes in as `named`. Anything unfinished
  * or unknown is null: the field paints only what it has read for certain,
  * unlike the reference, which dropped the non-hex and painted `rgb(255,0,0)`
@@ -58,6 +59,10 @@ function hslToRgb(h: number, s: number, l: number): Rgb {
 export function parseColourInput(text: string, named?: (name: string) => string | null): string | null {
   const s = text.trim().toLowerCase();
   if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(s) || /^[0-9a-f]{6}$/.test(s)) return parseHex(s);
+  // #rrggbbaa (a browser's devtools copy it so): the alpha goes, as rgba()'s
+  // does. Not #rgba: four digits are #rrggbb half typed and must paint nothing.
+  const alpha = /^#?([0-9a-f]{6})[0-9a-f]{2}$/.exec(s)?.[1];
+  if (alpha) return parseHex(alpha);
   const fn = /^(rgba?|hsla?)\(([^()]*)\)$/.exec(s);
   if (fn) {
     const args = fn[2].trim().split(/\s*[,/]\s*|\s+/).map(arg);
@@ -86,7 +91,11 @@ export function rgbToHex({ r, g, b }: Rgb): string {
   return `#${byte(r)}${byte(g)}${byte(b)}`;
 }
 
-export function rgbToHsv({ r, g, b }: Rgb): Hsv {
+/**
+ * HSV without the rounding: what the picker's pointer holds. Rounded to whole
+ * degrees and percent, 86% of colours came back one step off through it.
+ */
+export function rgbToHsvExact({ r, g, b }: Rgb): Hsv {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const d = max - min;
@@ -96,7 +105,12 @@ export function rgbToHsv({ r, g, b }: Rgb): Hsv {
     else if (max === g) h = 60 * ((b - r) / d + 2);
     else h = 60 * ((r - g) / d + 4);
   }
-  return { h: Math.round(h) % 360, s: Math.round(max === 0 ? 0 : (d / max) * 100), v: Math.round((max / 255) * 100) };
+  return { h, s: max === 0 ? 0 : (d / max) * 100, v: (max / 255) * 100 };
+}
+
+export function rgbToHsv(rgb: Rgb): Hsv {
+  const { h, s, v } = rgbToHsvExact(rgb);
+  return { h: Math.round(h) % 360, s: Math.round(s), v: Math.round(v) };
 }
 
 export function hsvToRgb({ h, s, v }: Hsv): Rgb {
@@ -115,9 +129,14 @@ export function hsvToRgb({ h, s, v }: Hsv): Rgb {
 /**
  * The wheel model: `dx`/`dy` are offsets from the centre in fractions of the
  * radius (canvas y grows downward), the angle gives the hue and the distance
- * the saturation, clamped at the rim.
+ * the saturation, clamped at the rim. Unrounded: this is what the colour is
+ * made from; `wheelToHsv` is the reading for people.
  */
+export function wheelToHsvExact(dx: number, dy: number): { h: number; s: number } {
+  return { h: (((Math.atan2(dy, dx) * 180) / Math.PI) + 360) % 360, s: clamp(Math.hypot(dx, dy), 0, 1) * 100 };
+}
+
 export function wheelToHsv(dx: number, dy: number): { h: number; s: number } {
-  const h = Math.round(((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360);
-  return { h: h % 360, s: Math.round(clamp(Math.hypot(dx, dy), 0, 1) * 100) };
+  const { h, s } = wheelToHsvExact(dx, dy);
+  return { h: Math.round(h) % 360, s: Math.round(s) };
 }

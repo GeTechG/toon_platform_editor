@@ -148,7 +148,16 @@ function connection(): Promise<IDBDatabase> {
   const db = openDb().then((opened) => {
     opened.onversionchange = () => {
       opened.close();
-      shared = null;
+      if (shared?.db === db) {
+        shared = null;
+      }
+    };
+    // The browser closed it under the page (site data cleared, the disk gone):
+    // the next write opens a new one instead of failing on this one for ever.
+    opened.onclose = () => {
+      if (shared?.db === db) {
+        shared = null;
+      }
     };
     return opened;
   });
@@ -162,6 +171,36 @@ function connection(): Promise<IDBDatabase> {
 }
 
 /**
+ * A transaction on the page's connection. Safari drops the connection of a tab
+ * left in the background («Connection to Indexed Database server lost») and
+ * says nothing until `transaction()` throws; the connection kept for the page
+ * then failed every autosave until a reload. It is given up and opened once
+ * more. Null: no storage at all (`connection` refused) — a quiet degradation.
+ */
+async function transaction(mode: IDBTransactionMode): Promise<IDBTransaction | null> {
+  for (let attempt = 0; ; attempt++) {
+    const pending = connection();
+    let db: IDBDatabase;
+    try {
+      db = await pending;
+    } catch (err) {
+      console.warn('draft storage unavailable:', err);
+      return null;
+    }
+    try {
+      return db.transaction(STORE, mode);
+    } catch (err) {
+      if (shared?.db === pending) {
+        shared = null;
+      }
+      if (attempt > 0) {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
  * Every saved draft, newest first.
  *
  * ponytail: reads whole documents to build the list — the preview is drawn
@@ -170,9 +209,15 @@ function connection(): Promise<IDBDatabase> {
  */
 export async function listDrafts(): Promise<DraftRecord[]> {
   try {
-    const db = await connection();
+    // After the writes already asked for: a list read around them showed the
+    // record from before the save that was just made.
+    await writes;
+    const tx = await transaction('readonly');
+    if (!tx) {
+      return [];
+    }
     const all = await new Promise<DraftRecord[]>((resolve, reject) => {
-      const req = db.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+      const req = tx.objectStore(STORE).getAll();
       req.onsuccess = () => resolve(req.result as DraftRecord[]);
       req.onerror = () => reject(req.error);
     });
@@ -216,16 +261,12 @@ async function updateDraft(
   /** What the record turned out to weigh — the write already knows. */
   wrote?: (bytes: number) => void,
 ): Promise<boolean> {
-  let db: IDBDatabase;
   try {
-    db = await connection();
-  } catch (err) {
-    console.warn(`${what} failed:`, err);
-    return true;
-  }
-  try {
+    const tx = await transaction('readwrite');
+    if (!tx) {
+      return true;
+    }
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
       const store = tx.objectStore(STORE);
       const read = store.get(id);
       read.onsuccess = () => {
@@ -358,9 +399,11 @@ export async function deleteDraft(id: string): Promise<void> {
 
 async function removeDraft(id: string): Promise<void> {
   try {
-    const db = await connection();
+    const tx = await transaction('readwrite');
+    if (!tx) {
+      return;
+    }
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).delete(id);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);

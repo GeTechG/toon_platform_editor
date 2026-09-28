@@ -53,7 +53,8 @@ export function draggable(node: HTMLElement): { destroy(): void } {
 
   function onPointerDown(e: PointerEvent): void {
     const handle = (e.target as HTMLElement | null)?.closest('[data-drag-handle]');
-    if (e.button !== 0 || !handle || !node.contains(handle)) {
+    // A second finger on the handle took the window from the first.
+    if (grab || e.button !== 0 || !handle || !node.contains(handle)) {
       return;
     }
     const rect = node.getBoundingClientRect();
@@ -127,7 +128,11 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     node.style.top = `${top}px`;
   }
 
-  function release(): void {
+  /** Only the finger that holds it lets go: another one lifting ended the drag. */
+  function release(e?: PointerEvent): void {
+    if (e && grab && e.pointerId !== grab.pointerId) {
+      return;
+    }
     grab = null;
     watch(false);
   }

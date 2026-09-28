@@ -144,7 +144,7 @@ describe('a failed write is not silent', () => {
   // key, Ctrl+S and the sheet all returned early, and the alert sent the user
   // to reload — the one step that loses a drawing nothing has kept.
   it('a save asked for by hand tries again, and one that lands clears the failure', () => {
-    expect(editorUi).toMatch(/function saveNow\(byHand = false\)[^]*?saveFailed && !byHand/);
+    expect(editorUi).toMatch(/function saveNow\(byHand = false(?:, leaving = false)?\)[^]*?saveFailed && !byHand/);
     expect(editorUi).toMatch(/if \(ok\) \{[^}]*saveFailed = false/);
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);

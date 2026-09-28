@@ -87,7 +87,9 @@
   );
 
   function onPointerDown(e: PointerEvent): void {
-    if (!e.isPrimary || drag) {
+    // Only the main button picks up: a right press opened the context menu,
+    // which swallowed the release, and the item then rode the bare hover.
+    if (!e.isPrimary || e.button !== 0 || drag) {
       return;
     }
     const handle = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-item]');
@@ -113,6 +115,13 @@
 
   function onPointerMove(e: PointerEvent): void {
     if (!drag || e.pointerId !== drag.pointerId) {
+      return;
+    }
+    // A mouse moving with nothing pressed let go somewhere its release never
+    // came from (a menu, another window): nothing is dropped.
+    if (e.pointerType === 'mouse' && e.buttons === 0) {
+      drag = null;
+      target = null;
       return;
     }
     drag.x = e.clientX;
@@ -323,7 +332,10 @@
     if (!name) {
       return;
     }
-    editor.saveWorkspace(name);
+    // A «no» to saving over it: the name stays, to be changed.
+    if (!editor.saveWorkspace(name)) {
+      return;
+    }
     picked = String(editor.workspaces.find((w) => w.name === name)?.id ?? '');
     newName = '';
   }

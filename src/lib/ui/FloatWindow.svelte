@@ -122,7 +122,7 @@
   function onDown(e: PointerEvent): void {
     // A press on the close key is a press on the key, not a grab of the bar:
     // swallowing it here is what stopped the × from ever firing.
-    if (!e.isPrimary || editor.arranging || (e.target as HTMLElement | null)?.closest('button')) {
+    if (!e.isPrimary || e.button !== 0 || editor.arranging || (e.target as HTMLElement | null)?.closest('button')) {
       return;
     }
     if (!el) {
@@ -155,10 +155,13 @@
     editor.setFloatPos(id, next.left, next.top);
   }
 
-  function onUp(e: PointerEvent): void {
-    if (grab?.pointerId === e.pointerId) {
-      grab = null;
-    }
+  /**
+   * The capture is gone — released, cancelled, or taken by the browser — and
+   * the grab goes with it. On `pointerup` alone, a release the context menu
+   * swallowed left the window riding the bare hover.
+   */
+  function onUp(): void {
+    grab = null;
   }
 
   /** Arrow keys move it too — a drag must never be the only way (WCAG 2.5.7). */
@@ -203,8 +206,7 @@
     aria-label={t('window.drag', { label })}
     onpointerdown={onDown}
     onpointermove={onMove}
-    onpointerup={onUp}
-    onpointercancel={onUp}
+    onlostpointercapture={onUp}
     onkeydown={onKey}
   >
     <span class="float-name">{label}</span>

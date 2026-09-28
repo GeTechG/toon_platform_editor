@@ -10,14 +10,14 @@
  * Nothing here throws into the editor: every failure comes back as a reason.
  */
 
-import { compareVersions, type CatalogEntry } from './catalog';
+import { compareVersions, reviewed, type CatalogEntry } from './catalog';
 import { pluginNamespace, pluginText, type Plugin } from './contract';
 import type { PluginRegistry } from './registry';
 import { listInstalled, putInstalled, type InstalledPlugin } from './store';
 import { t } from '../i18n';
 
 export interface InstallPorts {
-  fetch: (url: string) => Promise<{ text(): Promise<string> }>;
+  fetch: (url: string) => Promise<{ ok?: boolean; status?: number; text(): Promise<string> }>;
   /** Turns a bundle into a module; its own port so a test needs no browser. */
   evaluate: (code: string) => Promise<Record<string, unknown>>;
 }
@@ -78,7 +78,12 @@ export async function download(
   // The browser's own words are English and about the machine: they go to
   // the console, and the report says what happened in ours.
   try {
-    return { code: await (await ports.fetch(url)).text() };
+    const response = await ports.fetch(url);
+    // A 404 page is text too: run as a bundle, it came back «это не плагин».
+    if (response.ok === false) {
+      throw new Error(`HTTP ${response.status ?? ''} ${url}`);
+    }
+    return { code: await response.text() };
   } catch (error) {
     console.warn('plugin download failed:', error);
     return t('plugins.not_downloaded');
@@ -263,7 +268,10 @@ export async function updateInstalled(
     if (plugin.source !== 'catalog') {
       continue;
     }
-    const entry = catalog.find((record) => record.id === plugin.id);
+    // Only what went through our pull request comes in unasked. A catalog at
+    // another address is somebody's code: it warns before an install, and an
+    // update from it is the same install — «Обновить» in its tab, which asks.
+    const entry = catalog.find((record) => record.id === plugin.id && reviewed(record));
     if (!entry || compareVersions(entry.version, plugin.version) <= 0) {
       continue;
     }

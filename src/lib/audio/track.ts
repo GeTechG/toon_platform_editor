@@ -211,7 +211,10 @@ export function waveformBars(
   }
   let loudest = 0;
   for (let i = 0; i < bars.length; i++) {
-    bars[i] = counts[i] ? bars[i] / counts[i] : 0;
+    // Finer bars than levels (the envelope keeps 200 a second, a 48 px cell
+    // at 12 fps asks for 288): a bar that holds no level takes the one it
+    // starts in, or a steady tone draws as a comb.
+    bars[i] = counts[i] ? bars[i] / counts[i] : Math.abs(samples[Math.floor(i * perBar)] ?? 0);
     if (bars[i] > loudest) {
       loudest = bars[i];
     }

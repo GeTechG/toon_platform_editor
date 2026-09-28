@@ -65,7 +65,7 @@ describe('a video streamed into a file', () => {
 
   it('asks for the file first, inside the click, and only for the WebCodecs path', () => {
     const download = exportSheet.match(/async function download\(\)[^]*?\n  }\n/)![0];
-    expect(download).toMatch(/!plan\.realtime/);
+    expect(download).toMatch(/!videoPlan\.realtime/);
     // The picker comes before the first await that is not the picker itself.
     expect(download.indexOf('pickSaveFile(')).toBeGreaterThan(-1);
     expect(download.indexOf('pickSaveFile(')).toBeLessThan(download.indexOf('busy = format'));

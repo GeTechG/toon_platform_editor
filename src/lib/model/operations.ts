@@ -639,7 +639,7 @@ function mapStrokes(
     if (!stroke) {
       continue;
     }
-    const points = stroke.points;
+    const points = stroke.points.slice();
     for (let i = 0; i < points.length; i += 2) {
       const [x, y] = map(points[i], points[i + 1]);
       points[i] = x;
@@ -647,10 +647,14 @@ function mapStrokes(
     }
     // The width has to be rescaled before the points are quantized: a pixel
     // cell snaps onto the grid of the width it will be drawn at.
-    if (widthScale !== 1) {
-      stroke.tool_id = internTool(doc, scaleToolWidth(doc.tools[stroke.tool_id], widthScale));
-    }
-    quantizeStrokePoints(points, doc.tools[stroke.tool_id]);
+    const toolId = widthScale !== 1
+      ? internTool(doc, scaleToolWidth(doc.tools[stroke.tool_id], widthScale))
+      : stroke.tool_id;
+    quantizeStrokePoints(points, doc.tools[toolId]);
+    // A new stroke, not the old one rewritten: the same cell with the same
+    // count is otherwise indistinguishable from before, and a cache keyed on
+    // what it holds (the onion ghost) kept showing the unmoved drawing.
+    target.strokes[index] = { ...stroke, points, tool_id: toolId };
   }
 }
 

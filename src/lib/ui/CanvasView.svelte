@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { toolSpec } from './panels';
   import { PENCIL } from '../plugins';
   import type { EditorState, Tool } from './editor-state.svelte';
@@ -141,6 +141,13 @@
       hold = null;
     }
   }
+  // A finger still on the glass when the studio goes away must not wake a
+  // pipette, a hint or a zoom end on a canvas that is gone.
+  onDestroy(() => {
+    cancelHold();
+    clearTimeout(hintTimer);
+    clearTimeout(wheelZoomTimer);
+  });
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
   /** Active touch points, for two-finger pan and pinch. */
@@ -1015,6 +1022,59 @@
       dropNavShot();
     }
   }
+
+  /**
+   * Safari's trackpad pinch is not a Ctrl+wheel stream but WebKit's gesture
+   * events; left alone they zoom the whole page, panels and all. They zoom
+   * the sheet the way Ctrl+wheel does, from the zoom the pinch began at.
+   */
+  type PinchEvent = Event & { scale: number; clientX?: number; clientY?: number };
+  let gestureZoom = 1;
+
+  function onGestureStart(e: Event): void {
+    e.preventDefault();
+    gestureZoom = editor.view.zoom;
+  }
+
+  function onGestureChange(e: Event): void {
+    e.preventDefault();
+    // On iPad and iPhone the same pinch also arrives as pointers, which the
+    // two-finger path already zooms by: only a trackpad has no touches.
+    if (editor.playing || touches.size > 0) {
+      return;
+    }
+    const { scale, clientX, clientY } = e as PinchEvent;
+    if (!Number.isFinite(scale) || scale <= 0) {
+      return;
+    }
+    const rect = canvasRect();
+    takeNavShot();
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
+    zoomTo(
+      gestureZoom * scale,
+      Number.isFinite(clientX) ? clientX! : rect.left + rect.width / 2,
+      Number.isFinite(clientY) ? clientY! : rect.top + rect.height / 2,
+    );
+    editor.flashScaleMenu();
+  }
+
+  function onGestureEnd(e: Event): void {
+    e.preventDefault();
+    endWheelZoom();
+  }
+
+  $effect(() => {
+    const el = canvasEl;
+    el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('gesturechange', onGestureChange);
+    el.addEventListener('gestureend', onGestureEnd);
+    return () => {
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+      el.removeEventListener('gestureend', onGestureEnd);
+    };
+  });
 
   /** The tool the pen's eraser end took over from, given back when it flips. */
   let penFlippedFrom: Tool | null = null;

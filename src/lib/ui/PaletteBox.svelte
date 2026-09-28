@@ -313,7 +313,7 @@
                       ? ` — ${t('palette.is_fill')}`
                       : '',
               })}
-          aria-pressed={isOutline || isFill}
+          aria-pressed={removerMode ? undefined : isOutline || isFill}
         >
           {#if removerMode}
             <Icon name="x" size={14} />
@@ -537,8 +537,17 @@
     transform: translate(-50%, -50%);
     cursor: pointer;
   }
-  .add:focus-visible,
-  .swap:focus-visible,
+  /* «Add» sits on its swatch and swap on the seam of two: an accent ring there
+     was red on a red swatch. «Add» takes the swatch's contrast ink, like the
+     face; swap rings inside its own grey disc, clear of both swatches. */
+  .add:focus-visible {
+    outline: 3px solid currentColor;
+    outline-offset: 0;
+  }
+  .swap:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
   .close:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
@@ -608,8 +617,10 @@
   .tile.active {
     outline: 2px solid var(--accent);
   }
+  /* Off the tile, so focus walking the list does not look like another open one. */
   .tile:focus-visible {
     outline: 3px solid var(--accent);
+    outline-offset: 2px;
   }
   .add-tile {
     display: flex;

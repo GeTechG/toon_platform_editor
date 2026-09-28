@@ -62,6 +62,7 @@ describe('the thickness rail keeps clear of the zoom window', () => {
 
   it('the zoom window sits at the same inset the rail counts from', () => {
     expect(rule('.studio.compact .scale-window')).toContain('top: var(--zoom-inset)');
-    expect(editorUi).toMatch(/--zoom-foot: calc\(var\(--zoom-inset\) \+ var\(--key-h\) \+ 4px/);
+    // Its keys sit on the tap floor since audit13-system.
+    expect(editorUi).toMatch(/--zoom-foot: calc\(var\(--zoom-inset\) \+ var\(--tap\) \+ 4px/);
   });
 });

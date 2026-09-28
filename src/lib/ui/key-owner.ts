@@ -67,6 +67,14 @@ function kindOf(target: KeyTarget): { field: boolean; pressed: boolean; slider: 
   };
 }
 
+/**
+ * A field text is typed into. Its Alt chords are its own: Option+E is the
+ * accent dead key on a Mac, AltGr+E, S and L are ę, ś and ł in Polish.
+ */
+export function typesText(target: KeyTarget | null): boolean {
+  return target !== null && kindOf(target).field;
+}
+
 export function keyOwner(e: KeyPress): 'editor' | 'control' {
   if (e.defaultPrevented || e.modalOpen) {
     return 'control';
@@ -106,14 +114,22 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
  * «save page». A letter outside Latin is read by where it sits instead; a
  * layout that types Latin (AZERTY, Dvorak) keeps its own letters.
  */
-export function latinKey(e: { key: string; code: string }): string {
+export function latinKey(e: { key: string; code: string; shiftKey?: boolean }): string {
+  // Caps Lock changes the letter's case and nothing else: the case the table
+  // reads is Shift's. With it on, Ctrl+Z came as «Z» and redid, A added a
+  // layer and H flipped the frame upside down.
+  const shift = e.shiftKey;
+  if (shift !== undefined && /^[a-zA-Z]$/.test(e.key)) {
+    return shift ? e.key.toUpperCase() : e.key.toLowerCase();
+  }
   // A dead key types nothing yet — macOS makes Option+E one, US-International
   // the backquote — so it is read by place too, as a lower-case letter.
   const dead = e.key === 'Dead';
   if (!dead && (e.key.length !== 1 || /[\x00-\x7f]/.test(e.key))) {
     return e.key;
   }
-  const upper = !dead && e.key !== e.key.toLowerCase();
+  const letterCase = !dead && e.key !== e.key.toLowerCase();
+  const upper = shift !== undefined && !dead && e.key.toLowerCase() !== e.key.toUpperCase() ? shift : letterCase;
   const letter = /^Key([A-Z])$/.exec(e.code)?.[1];
   if (letter) {
     return upper ? letter : letter.toLowerCase();

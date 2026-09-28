@@ -46,14 +46,15 @@ function policyOf(
   tools: readonly ToolDescriptor[] | undefined,
   cutOf: ((tool: ToolDescriptor) => CutPolicy | undefined) | undefined,
   stroke: ErasableStroke,
-): { policy: CutPolicy; width: number } {
+): { policy: CutPolicy; width: number; cubic: boolean } {
   const tool = tools?.[stroke.tool_id];
   if (!tool) {
-    return { policy: 'line', width: 0 };
+    return { policy: 'line', width: 0, cubic: false };
   }
   return {
     policy: cutOf?.(tool) ?? defaultCut(tool),
     width: 'width' in tool ? tool.width : 0,
+    cubic: tool.geometry === 'cubic',
   };
 }
 
@@ -79,8 +80,14 @@ function drawnCells(points: readonly number[], width: number): number[] {
   for (let i = 0; i < points.length; i += 2) {
     if (i >= 2) {
       const between = interpolatePixelLine(points[i - 2], points[i - 1], points[i], points[i + 1], width);
+      // The walk starts from the smaller end, so a row drawn leftwards or
+      // upwards comes back reversed. Kept that way, a run after the cut would
+      // hold its cells out of order, and the renderer's own walk between
+      // them would fill the gap straight back in.
+      const backwards = between[0] !== points[i - 2] || between[1] !== points[i - 1];
       for (let j = 0; j < between.length; j += 2) {
-        add(between[j], between[j + 1]);
+        const k = backwards ? between.length - 2 - j : j;
+        add(between[k], between[k + 1]);
       }
     }
     add(points[i], points[i + 1]);
@@ -96,8 +103,7 @@ function drawnCells(points: readonly number[], width: number): number[] {
  */
 function eraseCells(
   stroke: ErasableStroke,
-  gesture: readonly number[],
-  radius: number,
+  sweep: Sweep,
   width: number,
 ): ErasableStroke[] {
   const pieces: ErasableStroke[] = [];
@@ -105,12 +111,12 @@ function eraseCells(
   const half = width / 2;
   // A miss gives the stroke back as it was stored, not with every in-between
   // cell written out: that would be a rewrite, and an undo step, of nothing.
-  if (!points.some((v, i) => i % 2 === 0 && inside(v + half, points[i + 1] + half, gesture, radius))) {
+  if (!points.some((v, i) => i % 2 === 0 && inside(v + half, points[i + 1] + half, sweep))) {
     return [stroke];
   }
   let run: number[] = [];
   for (let i = 0; i < points.length; i += 2) {
-    if (inside(points[i] + half, points[i + 1] + half, gesture, radius)) {
+    if (inside(points[i] + half, points[i + 1] + half, sweep)) {
       if (run.length >= 2) {
         pieces.push({ points: run, tool_id: stroke.tool_id });
       }
@@ -142,19 +148,18 @@ function eraseCells(
  */
 function eraseClosed(
   stroke: ErasableStroke,
-  gesture: readonly number[],
-  radius: number,
+  sweep: Sweep,
 ): ErasableStroke[] {
   const { points } = stroke;
   const ring = { points: [...points, points[0], points[1]], tool_id: stroke.tool_id };
-  const pieces = eraseStroke(ring, gesture, radius);
+  const pieces = eraseStroke(ring, sweep);
   // Nothing was cut: give back the shape as it was, without the point the ring
   // borrowed from its own start.
   if (pieces.length === 1 && pieces[0].points.every((value, i) => value === ring.points[i])
     && pieces[0].points.length === ring.points.length) {
     return [{ points: points.slice(), tool_id: stroke.tool_id }];
   }
-  const startSurvived = !inside(points[0], points[1], gesture, radius);
+  const startSurvived = !inside(points[0], points[1], sweep);
   if (startSurvived && pieces.length > 1) {
     // The tail ends where the head begins — on the repeated first point, which
     // the head already carries.
@@ -180,14 +185,96 @@ function segmentDistanceSq(
   return dx * dx + dy * dy;
 }
 
-/** Whether a point lies inside the capsule swept along the gesture. */
-function inside(x: number, y: number, gesture: readonly number[], radius: number): boolean {
-  const radiusSq = radius * radius;
+/**
+ * The gesture as the capsule tests it: its segments `[ax, ay, bx, by, …]` (a
+ * gesture of one point is one segment of no length) and the box they sweep,
+ * grown by the radius.
+ */
+interface Sweep {
+  readonly segments: readonly number[];
+  readonly radius: number;
+  readonly minX: number;
+  readonly minY: number;
+  readonly maxX: number;
+  readonly maxY: number;
+}
+
+function sweepOf(gesture: readonly number[], radius: number): Sweep {
+  const segments: number[] = [];
   if (gesture.length === 2) {
-    return segmentDistanceSq(x, y, gesture[0], gesture[1], gesture[0], gesture[1]) <= radiusSq;
+    segments.push(gesture[0], gesture[1], gesture[0], gesture[1]);
   }
   for (let i = 2; i < gesture.length; i += 2) {
-    if (segmentDistanceSq(x, y, gesture[i - 2], gesture[i - 1], gesture[i], gesture[i + 1]) <= radiusSq) {
+    segments.push(gesture[i - 2], gesture[i - 1], gesture[i], gesture[i + 1]);
+  }
+  return withBox(segments, radius);
+}
+
+function withBox(segments: number[], radius: number): Sweep {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < segments.length; i += 2) {
+    minX = Math.min(minX, segments[i]);
+    maxX = Math.max(maxX, segments[i]);
+    minY = Math.min(minY, segments[i + 1]);
+    maxY = Math.max(maxY, segments[i + 1]);
+  }
+  return { segments, radius, minX: minX - radius, minY: minY - radius, maxX: maxX + radius, maxY: maxY + radius };
+}
+
+/**
+ * The part of the sweep that can reach a stroke lying in `points`' box grown
+ * by `pad` — none of it, most of the time. Every sample of a stroke used to be
+ * tested against every segment of the gesture, and a long sweep over a full
+ * frame froze the release for seconds; a stroke the capsule never came near
+ * costs one pass over its points now, and one that it did meets only the
+ * segments around it. A cubic chain's control points hold its curve, so their
+ * box is the curve's box too.
+ */
+function sweepNear(sweep: Sweep, points: readonly number[], pad: number): Sweep | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    minX = Math.min(minX, points[i]);
+    maxX = Math.max(maxX, points[i]);
+    minY = Math.min(minY, points[i + 1]);
+    maxY = Math.max(maxY, points[i + 1]);
+  }
+  minX -= pad;
+  minY -= pad;
+  maxX += pad;
+  maxY += pad;
+  if (maxX < sweep.minX || minX > sweep.maxX || maxY < sweep.minY || minY > sweep.maxY) {
+    return null;
+  }
+  const { segments, radius } = sweep;
+  const near: number[] = [];
+  for (let i = 0; i < segments.length; i += 4) {
+    const ax = segments[i];
+    const ay = segments[i + 1];
+    const bx = segments[i + 2];
+    const by = segments[i + 3];
+    if (Math.max(ax, bx) + radius >= minX && Math.min(ax, bx) - radius <= maxX
+      && Math.max(ay, by) + radius >= minY && Math.min(ay, by) - radius <= maxY) {
+      near.push(ax, ay, bx, by);
+    }
+  }
+  return near.length > 0 ? withBox(near, radius) : null;
+}
+
+/** Whether a point lies inside the capsule swept along the gesture. */
+function inside(x: number, y: number, sweep: Sweep): boolean {
+  if (x < sweep.minX || x > sweep.maxX || y < sweep.minY || y > sweep.maxY) {
+    return false;
+  }
+  const { segments, radius } = sweep;
+  const radiusSq = radius * radius;
+  for (let i = 0; i < segments.length; i += 4) {
+    if (segmentDistanceSq(x, y, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]) <= radiusSq) {
       return true;
     }
   }
@@ -205,12 +292,12 @@ function inside(x: number, y: number, gesture: readonly number[], radius: number
 function crossing(
   x0: number, y0: number, x1: number, y1: number,
   lo: number, hi: number,
-  gesture: readonly number[], radius: number,
+  sweep: Sweep,
 ): [number, number, number] {
-  const insideLo = inside(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo, gesture, radius);
+  const insideLo = inside(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo, sweep);
   for (let step = 0; step < 20; step++) {
     const mid = (lo + hi) / 2;
-    if (inside(x0 + (x1 - x0) * mid, y0 + (y1 - y0) * mid, gesture, radius) === insideLo) {
+    if (inside(x0 + (x1 - x0) * mid, y0 + (y1 - y0) * mid, sweep) === insideLo) {
       lo = mid;
     } else {
       hi = mid;
@@ -225,7 +312,8 @@ function crossing(
  * sampled at half the radius before each crossing is refined, so a capsule
  * the stroke only dips into is still found.
  */
-function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius: number): ErasableStroke[] {
+function eraseStroke(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
+  const { radius } = sweep;
   const { points } = stroke;
   // Pressure is cut with the points: every kept point takes its own, and a
   // cut point the value between its segment's ends.
@@ -243,7 +331,7 @@ function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius:
     currentPressure = [];
   };
 
-  let previousInside = inside(points[0], points[1], gesture, radius);
+  let previousInside = inside(points[0], points[1], sweep);
   if (!previousInside) {
     current.push(points[0], points[1]);
     if (pressure) currentPressure.push(pressure[0]);
@@ -257,9 +345,9 @@ function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius:
     const steps = Math.max(1, Math.ceil((length / Math.max(radius, 1)) * 2));
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
-      const nowInside = inside(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, gesture, radius);
+      const nowInside = inside(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, sweep);
       if (nowInside !== previousInside) {
-        const [cx, cy, at] = crossing(x0, y0, x1, y1, (s - 1) / steps, t, gesture, radius);
+        const [cx, cy, at] = crossing(x0, y0, x1, y1, (s - 1) / steps, t, sweep);
         current.push(cx, cy);
         if (pressure) {
           const a = pressure[i / 2 - 1];
@@ -274,6 +362,137 @@ function eraseStroke(stroke: ErasableStroke, gesture: readonly number[], radius:
     if (!previousInside) {
       current.push(x1, y1);
       if (pressure) currentPressure.push(pressure[i / 2]);
+    }
+  }
+  flush();
+  return pieces;
+}
+
+/** A stroke the capsule never reached, as a cut that missed it hands it back. */
+function untouched(stroke: ErasableStroke, policy: CutPolicy): ErasableStroke {
+  const pressure = policy !== 'closed' && stroke.pressure?.length === stroke.points.length / 2
+    ? stroke.pressure
+    : undefined;
+  return pressure
+    ? { points: stroke.points.slice(), tool_id: stroke.tool_id, pressure: pressure.slice() }
+    : { points: stroke.points.slice(), tool_id: stroke.tool_id };
+}
+
+/** Point of the cubic `p` (8 numbers) at `t`. */
+function bezierAt(p: readonly number[], t: number): [number, number] {
+  const u = 1 - t;
+  const a = u * u * u;
+  const b = 3 * u * u * t;
+  const c = 3 * u * t * t;
+  const d = t * t * t;
+  return [a * p[0] + b * p[2] + c * p[4] + d * p[6], a * p[1] + b * p[3] + c * p[5] + d * p[7]];
+}
+
+/** Derivative of the cubic `p` at `t`. */
+function bezierSlope(p: readonly number[], t: number): [number, number] {
+  const u = 1 - t;
+  const a = 3 * u * u;
+  const b = 6 * u * t;
+  const c = 3 * t * t;
+  return [
+    a * (p[2] - p[0]) + b * (p[4] - p[2]) + c * (p[6] - p[4]),
+    a * (p[3] - p[1]) + b * (p[5] - p[3]) + c * (p[7] - p[5]),
+  ];
+}
+
+/**
+ * A cubic chain cut along its curve. Its stored list is a start point and
+ * whole segments of six — two control points and an anchor — and the control
+ * points stand off the line, so cut as a polyline it was missed where it runs,
+ * cut where it does not, and left pieces the format refuses. Here each segment
+ * is sampled on the curve, the crossings are found by bisection on `t`, and a
+ * surviving stretch is written back as the exact sub-curve between them: every
+ * piece is again a start point and whole segments, and a segment the capsule
+ * missed keeps its own numbers.
+ */
+function eraseCubic(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
+  const { points } = stroke;
+  if ((points.length - 2) % 6 !== 0) {
+    return eraseStroke(stroke, sweep);
+  }
+  const pressure = stroke.pressure?.length === points.length / 2 ? stroke.pressure : undefined;
+  const pieces: ErasableStroke[] = [];
+  let current: number[] = [];
+  let currentPressure: number[] = [];
+  const flush = (): void => {
+    if (current.length >= 2) {
+      pieces.push(pressure
+        ? { points: current, tool_id: stroke.tool_id, pressure: currentPressure }
+        : { points: current, tool_id: stroke.tool_id });
+    }
+    current = [];
+    currentPressure = [];
+  };
+
+  let previousInside = inside(points[0], points[1], sweep);
+  if (!previousInside) {
+    current.push(points[0], points[1]);
+    if (pressure) currentPressure.push(pressure[0]);
+  }
+  for (let k = 0; k + 8 <= points.length; k += 6) {
+    const segment = points.slice(k, k + 8);
+    const q = pressure?.slice(k / 2, k / 2 + 4);
+    const qAt = (t: number): number => Math.round(q![0] + (q![3] - q![0]) * t);
+    const at = (t: number): boolean => {
+      const [x, y] = bezierAt(segment, t);
+      return inside(x, y, sweep);
+    };
+    // The run that is still open in this segment began at `from`.
+    let from = 0;
+    const keep = (to: number): void => {
+      if (from === 0 && to === 1) {
+        current.push(...segment.slice(2));
+        if (q) currentPressure.push(q[1], q[2], q[3]);
+        return;
+      }
+      const [x0, y0] = bezierAt(segment, from);
+      const [x3, y3] = bezierAt(segment, to);
+      const [s0x, s0y] = bezierSlope(segment, from);
+      const [s3x, s3y] = bezierSlope(segment, to);
+      const third = (to - from) / 3;
+      current.push(
+        Math.round(x0 + s0x * third), Math.round(y0 + s0y * third),
+        Math.round(x3 - s3x * third), Math.round(y3 - s3y * third),
+        Math.round(x3), Math.round(y3),
+      );
+      if (q) currentPressure.push(qAt(from + third), qAt(to - third), qAt(to));
+    };
+    const reach = Math.hypot(segment[2] - segment[0], segment[3] - segment[1])
+      + Math.hypot(segment[4] - segment[2], segment[5] - segment[3])
+      + Math.hypot(segment[6] - segment[4], segment[7] - segment[5]);
+    const steps = Math.max(1, Math.ceil((reach / Math.max(sweep.radius, 1)) * 2));
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const nowInside = at(t);
+      if (nowInside === previousInside) {
+        continue;
+      }
+      let lo = (s - 1) / steps;
+      let hi = t;
+      for (let step = 0; step < 20; step++) {
+        const mid = (lo + hi) / 2;
+        if (at(mid) === previousInside) lo = mid;
+        else hi = mid;
+      }
+      const cut = (lo + hi) / 2;
+      if (!previousInside) {
+        keep(cut);
+        flush();
+      } else {
+        const [x, y] = bezierAt(segment, cut);
+        current.push(Math.round(x), Math.round(y));
+        if (q) currentPressure.push(qAt(cut));
+        from = cut;
+      }
+      previousInside = nowInside;
+    }
+    if (!previousInside) {
+      keep(1);
     }
   }
   flush();
@@ -297,21 +516,29 @@ export function eraseStrokes(
   if (gesture.length < 2 || radius <= 0) {
     return strokes.map((stroke) => ({ ...stroke, points: stroke.points.slice() }));
   }
+  const whole = sweepOf(gesture, radius);
   const result: ErasableStroke[] = [];
   for (const stroke of strokes) {
     if (stroke.points.length < 2) {
       continue;
     }
-    const { policy, width } = policyOf(tools, cutOf, stroke);
+    const { policy, width, cubic } = policyOf(tools, cutOf, stroke);
+    // A cell is stamped from its corner and tested at its centre: its box
+    // reaches a whole width past the stored corner.
+    const sweep = sweepNear(whole, stroke.points, policy === 'cells' ? width : 0);
+    if (!sweep) {
+      result.push(policy === 'cells' ? stroke : untouched(stroke, policy));
+      continue;
+    }
     if (policy === 'closed') {
-      result.push(...eraseClosed(stroke, gesture, radius));
+      result.push(...eraseClosed(stroke, sweep));
       continue;
     }
     if (policy === 'cells') {
-      result.push(...eraseCells(stroke, gesture, radius, width));
+      result.push(...eraseCells(stroke, sweep, width));
       continue;
     }
-    result.push(...eraseStroke(stroke, gesture, radius));
+    result.push(...(cubic ? eraseCubic(stroke, sweep) : eraseStroke(stroke, sweep)));
   }
   return result;
 }

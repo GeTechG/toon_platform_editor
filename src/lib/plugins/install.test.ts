@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import type { CatalogEntry } from './catalog';
+import { OFFICIAL_CATALOG, type CatalogEntry } from './catalog';
 import { PLUGIN_API } from './contract';
 import { forPerson, installFromCatalog, installFromFile, loadInstalled, updateInstalled } from './install';
 import { PluginRegistry } from './registry';
@@ -257,17 +257,20 @@ describe('loadInstalled', () => {
 });
 
 describe('updateInstalled', () => {
+  // Only our catalog updates unasked: a record elsewhere is not reviewed.
+  const ours = (id: string, version: string): CatalogEntry => ({ ...entry(id, version), url: `${OFFICIAL_CATALOG}${id}/plugin.js` });
+
   test('takes the newer version, replaces the code and re-registers the tool', async () => {
     setIndexedDB(fakeIndexedDB(new Map(), 1));
     await putInstalled(installed('halftone', '1.0.0'));
     const registry = new PluginRegistry();
     const port = ports({
       'old:halftone': manifest('halftone'),
-      'code:https://plugins.example/halftone/plugin.js': manifest('halftone'),
+      [`code:${OFFICIAL_CATALOG}halftone/plugin.js`]: manifest('halftone'),
     });
     await loadInstalled(registry, port);
 
-    const updated = await updateInstalled([entry('halftone', '1.1.0')], registry, port);
+    const updated = await updateInstalled([ours('halftone', '1.1.0')], registry, port);
 
     expect(updated).toEqual(['halftone']);
     expect((await listInstalled())[0]).toMatchObject({ version: '1.1.0' });
@@ -305,7 +308,7 @@ describe('updateInstalled', () => {
     const registry = new PluginRegistry();
     await loadInstalled(registry, ports({ 'old:halftone': manifest('halftone') }));
 
-    const updated = await updateInstalled([entry('halftone', '1.1.0')], registry, {
+    const updated = await updateInstalled([ours('halftone', '1.1.0')], registry, {
       fetch: async () => {
         throw new Error('сеть отвалилась');
       },

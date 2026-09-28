@@ -8,7 +8,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight } from './thumb-size';
   import { scrollToFrame, stripWindow } from './strip-window';
-  import { frameMenuKey, selectionSpan, type FrameMenuAction } from './frame-selection';
+  import { frameMenuKey, frameMenuTop, selectionSpan, type FrameMenuAction } from './frame-selection';
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
@@ -257,9 +257,17 @@
       return;
     }
     const cell = e.currentTarget as HTMLElement;
-    // The menu key and Shift+F10 fire with no pointer: open under the cell.
+    // The menu key and Shift+F10 fire with no pointer: open by the cell. Chrome
+    // gives them the cell's middle for coordinates, a «mouse» pointer type and
+    // button -1; only a real press is the right button.
     const box = cell.getBoundingClientRect();
-    showMenu(cell, frame, layer, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : { x: box.left, y: box.bottom });
+    const keyed = e.button !== 2 || (!e.clientX && !e.clientY);
+    showMenu(
+      cell,
+      frame,
+      layer,
+      keyed ? { x: box.left, y: box.bottom, above: box.top } : { x: e.clientX, y: e.clientY, above: e.clientY },
+    );
   }
 
   // --- The frame menu under a finger ----------------------------------------
@@ -273,7 +281,7 @@
   function startLongPress(e: PointerEvent, frame: number, layer: number): void {
     cancelLongPress();
     const cell = e.currentTarget as HTMLElement;
-    const at = { x: e.clientX, y: e.clientY };
+    const at = { x: e.clientX, y: e.clientY, above: e.clientY };
     longPress = window.setTimeout(() => {
       longPress = 0;
       if (menu || editor.playing) return;
@@ -290,7 +298,13 @@
   /** How far a finger-opened menu keeps from the fingertip, in px. */
   const FINGER_GAP = 16;
 
-  function showMenu(cell: HTMLElement, frame: number, layer: number, at: { x: number; y: number }, finger = false): void {
+  function showMenu(
+    cell: HTMLElement,
+    frame: number,
+    layer: number,
+    at: { x: number; y: number; above: number },
+    finger = false,
+  ): void {
     if (editor.playing) {
       return;
     }
@@ -298,16 +312,15 @@
     if (!isSelected(frame, layer)) {
       editor.selectCell(frame, layer);
     }
-    menu = { ...at, cell };
+    menu = { x: at.x, y: at.y, cell };
     void tick().then(() => {
       if (!menu || !menuEl) return;
       // The strip sits at the bottom: a menu that would run off the screen opens up/left instead.
       menu.x = Math.max(4, Math.min(menu.x, innerWidth - menuEl.offsetWidth - 4));
-      // Under a finger it opens above the fingertip (below, if there is no
-      // room): opened under it, the lift clicked the item it landed on.
-      const h = menuEl.offsetHeight;
-      const y = !finger ? menu.y : menu.y - h - FINGER_GAP >= 4 ? menu.y - h - FINGER_GAP : menu.y + FINGER_GAP;
-      menu.y = Math.max(4, Math.min(y, innerHeight - h - 4));
+      // Above the press rather than over the cell it acts on. Under a finger
+      // it opens above the fingertip (below, if there is no room): opened
+      // under it, the lift clicked the item it landed on.
+      menu.y = frameMenuTop(at, menuEl.offsetHeight, innerHeight, finger ? FINGER_GAP : 0);
       menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
     });
   }
@@ -740,7 +753,9 @@
     -webkit-touch-callout: none;
     user-select: none;
   }
-  .cell.dim {
+  /* The drawing fades, not the button: faded whole, the active ring and the
+     focus ring on a hidden layer were red at 35 % — 1.6:1 on white. */
+  .cell.dim > :global(canvas) {
     opacity: 0.35;
   }
   /* Active is a solid ring, the selection a dashed one, the copied block a

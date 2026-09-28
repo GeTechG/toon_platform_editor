@@ -80,7 +80,9 @@ function encodeStill(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
-        if (!blob) {
+        // A browser that cannot encode WebP (Safari) hands back a PNG rather
+        // than nothing: its bytes stitched in as frames made a broken preview.
+        if (!blob || blob.type !== 'image/webp') {
           reject(new Error('webp encoding unsupported'));
           return;
         }
