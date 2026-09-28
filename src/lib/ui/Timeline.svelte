@@ -783,6 +783,7 @@
     cursor: pointer;
     /* A held finger opens the frame menu, not the system callout or a loupe. */
     -webkit-touch-callout: none;
+    -webkit-user-select: none;
     user-select: none;
   }
   /* The drawing fades, not the button: faded whole, the active ring and the
@@ -973,33 +974,31 @@
   }
 
   /* Phone: a shorter timeline and no room for a wide layer column. */
-  :global(:where(.studio.phone)) {
-    /* No narrower than the phone row (LayerRows): 108 px of furniture, the
-       name's 3rem floor and the border. At 7.5rem the handle and the bin
-       were scrolled out of the column. */
-    .layer-col {
-      /* Never narrower than its row's keys (LayerRows): eye, handle and bin
-         at 1rem + 8px, the tag's 16, four gaps, the padding and the border.
-         Under half the strip before, at 200 % text the bin was scrolled out. */
-      min-width: calc(3rem + 63px);
-      width: 10rem;
-    }
-    .body {
-      container: strip / inline-size;
-    }
-    /* The phone panel grows to its contents, so here the chip is a row of
-       its own, a finger's keys and the hint in full. */
-    .pick-bar.picking {
-      --key-h: 2.75rem;
-      position: static;
-      max-width: none;
-      margin-bottom: 6px;
-      padding: 0 0 0 12px;
-      box-shadow: none;
-    }
-    .pick-hint {
-      white-space: normal;
-    }
+  /* No narrower than the phone row (LayerRows): 108 px of furniture, the
+     name's 3rem floor and the border. At 7.5rem the handle and the bin
+     were scrolled out of the column. */
+  :global(:where(.studio.phone)) .layer-col {
+    /* Never narrower than its row's keys (LayerRows): eye, handle and bin
+       at 1rem + 8px, the tag's 16, four gaps, the padding and the border.
+       Under half the strip before, at 200 % text the bin was scrolled out. */
+    min-width: calc(3rem + 63px);
+    width: 10rem;
+  }
+  :global(:where(.studio.phone)) .body {
+    container: strip / inline-size;
+  }
+  /* The phone panel grows to its contents, so here the chip is a row of
+     its own, a finger's keys and the hint in full. */
+  :global(:where(.studio.phone)) .pick-bar.picking {
+    --key-h: 2.75rem;
+    position: static;
+    max-width: none;
+    margin-bottom: 6px;
+    padding: 0 0 0 12px;
+    box-shadow: none;
+  }
+  :global(:where(.studio.phone)) .pick-hint {
+    white-space: normal;
   }
   /* The keys would take more than half the strip: the handle folds away
      (LayerRows), and the column holds the three keys left. */

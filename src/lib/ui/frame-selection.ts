@@ -433,7 +433,7 @@ export function frameMenuKey(
   letterKeys: boolean,
   quickPalette: boolean,
 ): { aria: string; label: string } | null {
-  if (action === 'delete') return { aria: 'Delete', label: 'Del' };
+  if (action === 'delete') return { aria: 'Delete Backspace', label: 'Del' };
   if (action === 'merge' && quickPalette) return null;
   if (letterKeys) return { aria: MENU_LETTERS[action], label: MENU_LETTERS[action] };
   if (action === 'add') return { aria: 'F7', label: 'F7' };

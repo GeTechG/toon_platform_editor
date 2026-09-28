@@ -191,6 +191,12 @@
   }
 
   async function remove(plugin: InstalledPlugin): Promise<void> {
+    // Asked first, the way «Удалить все» palettes is. One put in from a file
+    // has no catalog to come back from: only the same file brings it back.
+    const question = plugin.source === 'local' ? 'plugins.remove_local_confirm' : 'plugins.remove_confirm';
+    if (!confirm(t(question, { name: plugin.name }))) {
+      return;
+    }
     const kept = await editor.removePlugin(plugin.id);
     report = t(kept ? 'plugins.removed_report' : 'plugins.remove_not_kept', { name: plugin.name });
     await refresh();

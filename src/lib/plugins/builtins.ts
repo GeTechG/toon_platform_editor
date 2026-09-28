@@ -110,7 +110,7 @@ export const BUILTIN_PLUGIN: Plugin = {
 export const RESERVED_KEYS: readonly string[] = [
   'a', 'c', 'h', 'j', 'k', 'l', 'm', 'o', 's', 'v', 'w', 'x', 'y', 'z',
   '+', '-', '=', '_', '`',
-  'Enter', 'Escape', 'Delete', 'F7', ' ',
+  'Enter', 'Escape', 'Delete', 'Backspace', 'F7', ' ',
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Ctrl+S', 'Ctrl+X', 'Alt+S', 'Alt+L',
 ];

@@ -10,7 +10,7 @@
  * `Canvas2DFrameRenderer` to be worker-portable first.
  */
 
-import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
+import { BACKGROUND_COLOR, EXPORT_WIDTHS, FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
@@ -38,8 +38,40 @@ export interface ExportSize {
  * rounded to an even number, which H.264 requires.
  */
 export function exportSize(doc: ToonDocument, width: number): ExportSize {
+  const fitted = Math.min(width, widestExport(doc));
+  return { width: fitted, height: heightFor(doc, fitted) };
+}
+
+/**
+ * Safari refuses a canvas over 4096×4096 pixels of area — it draws nothing
+ * and says nothing. A frame is never asked for bigger than that, whatever
+ * the proportion a file or the API brought.
+ */
+export const CANVAS_MAX_AREA = 4096 * 4096;
+
+function heightFor(doc: ToonDocument, width: number): number {
   const scaled = (width * doc.height) / doc.width;
-  return { width, height: Math.max(2, Math.round(scaled / 2) * 2) };
+  return Math.max(2, Math.round(scaled / 2) * 2);
+}
+
+/** The widest export whose frame still fits `CANVAS_MAX_AREA`. */
+function widestExport(doc: ToonDocument): number {
+  let width = Math.max(1, Math.floor(Math.sqrt((CANVAS_MAX_AREA * doc.width) / doc.height)));
+  while (width > 1 && width * heightFor(doc, width) > CANVAS_MAX_AREA) {
+    width--;
+  }
+  return width;
+}
+
+/**
+ * The widths the export sheet offers for this document: the reference row
+ * without those over the canvas limit. With none left — a needle of a
+ * drawing — the largest width that fits stands in for the row.
+ */
+export function exportWidths(doc: ToonDocument): number[] {
+  const widest = widestExport(doc);
+  const fit = EXPORT_WIDTHS.filter((width) => width <= widest);
+  return fit.length > 0 ? fit : [widest];
 }
 
 /** Logical canvas size of the document, in px. */

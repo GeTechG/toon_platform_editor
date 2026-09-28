@@ -15,7 +15,7 @@
   import { saveFile } from './save-file';
   import { arrangeBarBox, dropPlacement, rowEdge, type Box } from './arrange';
   import { clampWindowPosition } from './draggable';
-  import { WORKSPACE_FILE_MAX, pickedWorkspace } from './workspaces';
+  import { MAX_WORKSPACE_NAME, WORKSPACE_FILE_MAX, pickedWorkspace, workspaceName } from './workspaces';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { t } from '../i18n';
 
@@ -372,7 +372,8 @@
   let newName = $state('');
 
   function saveAs(): void {
-    const name = newName.trim();
+    // Stored as the state stores it, so the list finds it after the save.
+    const name = workspaceName(newName);
     if (!name) {
       return;
     }
@@ -474,6 +475,7 @@
         <input
           class="ws-name"
           type="text"
+          maxlength={MAX_WORKSPACE_NAME}
           placeholder={t('arrange.name_placeholder')}
           aria-label={t('arrange.name_label')}
           bind:value={newName}
@@ -633,6 +635,7 @@
     font-size: 0.82rem;
     cursor: grab;
     touch-action: none;
+    -webkit-user-select: none;
     user-select: none;
   }
   .arrange-keys {

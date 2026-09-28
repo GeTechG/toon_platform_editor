@@ -129,9 +129,9 @@ describe('the brush boxes and the rest trim by the studio’s step', () => {
   }
 
   it('the phone step trims the boxes; the zoom row shows where the zoom window hides', () => {
-    expect(brushPanel).toContain(':global(:where(.studio.phone)) {');
-    expect(brushSizes).toContain(':global(:where(.studio.phone)) {');
-    expect(transformMenu).toContain(':global(:where(.studio.compact)) {');
+    expect(brushPanel).toContain(':global(:where(.studio.phone)) .');
+    expect(brushSizes).toContain(':global(:where(.studio.phone)) .');
+    expect(transformMenu).toContain(':global(:where(.studio.compact)) .row.zoom {');
     expect(transformMenu).toContain(".closest('.studio.compact')");
   });
 });
@@ -139,8 +139,8 @@ describe('the brush boxes and the rest trim by the studio’s step', () => {
 describe('a phone’s layer row fits its column', () => {
   // 360×740: the row asked 155 px of a 137 px column at 100 % text, 251 of 95
   // at 200 %, and the bin went off into a sideways scroll.
-  const phoneRows = layerRows.slice(layerRows.indexOf(':global(:where(.studio.phone)) {'));
-  const phoneStrip = timeline.slice(timeline.indexOf(':global(:where(.studio.phone)) {'));
+  const phoneRows = layerRows.slice(layerRows.indexOf(':global(:where(.studio.phone)) '));
+  const phoneStrip = timeline.slice(timeline.indexOf(':global(:where(.studio.phone)) '));
 
   it('the name gives way before the keys do', () => {
     expect(phoneRows).toMatch(/\.name \{[^}]*min-width: 0/);

@@ -115,7 +115,8 @@ describe('what the record holds and what comes back', () => {
     expect(editorUi).toContain('saveDraft(draftId, doc, editor.sessionState(), track)');
     // The document is a value the editor holds whole: it goes to storage as it
     // is, with no snapshot taken and no second pass to size it.
-    expect(editorUi).toContain('const doc = editor.doc;');
+    // Or the copy with a live transform applied (owner-fourteenth-shell).
+    expect(editorUi).toContain('const doc = shown ?? editor.doc;');
     expect(editorUi).not.toContain('JSON.stringify(doc).length');
     expect(state).toContain('sessionState(): DraftState');
     expect(state).toContain('restoreState(');
@@ -144,7 +145,7 @@ describe('a failed write is not silent', () => {
   // key, Ctrl+S and the sheet all returned early, and the alert sent the user
   // to reload — the one step that loses a drawing nothing has kept.
   it('a save asked for by hand tries again, and one that lands clears the failure', () => {
-    expect(editorUi).toMatch(/function saveNow\(byHand = false(?:, leaving = false)?\)[^]*?saveFailed && !byHand/);
+    expect(editorUi).toMatch(/function saveNow\(byHand = false(?:, leaving = false(?:, shown\?: ToonDocument)?)?\)[^]*?saveFailed && !byHand/);
     expect(editorUi).toMatch(/if \(ok\) \{[^}]*saveFailed = false/);
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);

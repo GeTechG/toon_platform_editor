@@ -27,9 +27,9 @@
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
   import { fitThumb } from './thumb-size';
-  import { zoomDelta } from './viewport';
+  import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
-  import { keyOwner, latinKey, repeats, typesText } from './key-owner';
+  import { keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -517,7 +517,9 @@
     // on purpose: a drawing must not go by accident (owner, twelfth audit).
     if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
       e.preventDefault();
-      if (!e.repeat) {
+      // What the screen shows is what is saved: a live move is applied first,
+      // as a publish and an export do; under the lock it refuses with a hint.
+      if (!e.repeat && editor.leaveTransform()) {
         saveNow(true);
       }
       return;
@@ -563,6 +565,7 @@
       defaultPrevented: e.defaultPrevented,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
+      shiftKey: e.shiftKey,
       modalOpen,
       letterKeys: editor.settings.letterKeys,
     });
@@ -573,6 +576,15 @@
     // a held Space, K or H flipped its toggle with every auto-repeat.
     if (e.repeat && !repeats(key)) {
       e.preventDefault();
+      return;
+    }
+    // Ctrl+Shift+arrow slides a magnified sheet by a tenth of the table,
+    // whatever the tool, a live transform included: it moves the view, not
+    // the drawing (owner, after the fourteenth audit; key-owner.ts says why
+    // not Shift+arrows).
+    if (panSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey })) {
+      e.preventDefault();
+      editor.view = keyPan(editor.view, editor.stage, key);
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do
@@ -795,7 +807,9 @@
       case 'A':
         editor.addLayerAtActive(e.ctrlKey || e.metaKey);
         break;
+      // Backspace is Delete's other name — the Mac's «delete» key sends it.
       case 'Delete':
+      case 'Backspace':
         // The state asks «Удалить «Слой N»?» itself; a second question here
         // made Shift+Delete ask twice.
         if (e.shiftKey) {
@@ -928,7 +942,7 @@
    * After a failure the clock stays off, but a save asked for by hand tries
    * again: the user may have freed the room in the drafts list since.
    */
-  function saveNow(byHand = false, leaving = false): Promise<boolean> {
+  function saveNow(byHand = false, leaving = false, shown?: ToonDocument): Promise<boolean> {
     if (!editor.touched) {
       return Promise.resolve(true);
     }
@@ -940,7 +954,8 @@
     // The document is a value the editor holds whole, so it goes to storage as
     // it is: no snapshot to take, and no second pass over every stroke of the
     // drawing to size what the write is about to size anyway.
-    const doc = editor.doc;
+    // `shown` is the drawing with a live transform applied (flushOnHide).
+    const doc = shown ?? editor.doc;
     // Lands only on a record that has no track yet — see `saveDraft`.
     const { blob, name, author, sync } = editor.audio;
     const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
@@ -1125,6 +1140,20 @@
     if (dirty || (editor.touched && editor.doc !== writtenDoc)) {
       void saveNow(false, true);
     }
+  }
+
+  /**
+   * The tab went to the background: the draft is written as the screen shows
+   * it, a selection moved and not yet applied included — but the selection
+   * stays live in the hand, so a copy with the move applied is what is written.
+   */
+  function flushOnHide(): void {
+    const shown = editor.docWithTransform();
+    if (shown !== editor.doc) {
+      void saveNow(false, true, shown);
+      return;
+    }
+    flushOnLeave();
   }
 
   /** The studio is gone: late answers from storage have nothing to update. */
@@ -1447,6 +1476,19 @@
    * shown by its class under the sheet rather than above it.
    */
   const popovers = typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
+  /**
+   * An arrange handle whose key the profile does not draw is marked
+   * `data-empty` and hidden. Not `:has()`: Firefox 115 has none, and the rule
+   * with it went whole, leaving empty handles standing on the panels.
+   */
+  function markEmpty(body: HTMLElement): { destroy(): void } {
+    const handle = body.parentElement;
+    const mark = () => handle?.toggleAttribute('data-empty', body.childElementCount === 0);
+    mark();
+    const watch = new MutationObserver(mark);
+    watch.observe(body, { childList: true });
+    return { destroy: () => watch.disconnect() };
+  }
   $effect(() => {
     const el = dropNoteEl;
     if (!el) {
@@ -1595,11 +1637,12 @@
         // Without a fullscreen here (an iPhone) the key and its button are not there either.
         (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
         ['A', t('key.add_frame')],
-        ['Del', t('key.delete_frame')],
+        ['Del / Backspace', t('key.delete_frame')],
         ['J / L', t('key.ends')],
         ['← / →', t('key.steps')],
         ['↑ / ↓', t('key.layers')],
         ['Shift + ←→↑↓', t('key.extend')],
+        ['Ctrl + Shift + ←→↑↓', t('key.pan_sheet')],
         ['K', t('key.onion')],
         ['X', t('key.swap')],
         ['Space', t('key.preview')],
@@ -1673,7 +1716,7 @@
      unsaved drawing, so the window takes the drop and opens it instead. -->
 <svelte:document
   onfullscreenchange={() => (isFullscreen = document.fullscreenElement !== null)}
-  onvisibilitychange={() => document.visibilityState === 'hidden' && flushOnLeave()}
+  onvisibilitychange={() => document.visibilityState === 'hidden' && flushOnHide()}
 />
 
 <svelte:window
@@ -1897,6 +1940,7 @@
       disabled={editor.playing || !editor.canRemoveFrame}
       onclick={() => editor.removeActiveFrame()}
       data-key="Del"
+      aria-keyshortcuts="Delete Backspace"
       title={t('editor.delete_frame_title')}
       aria-label={t('editor.delete_frame')}
     >
@@ -1956,16 +2000,17 @@
       {/if}
     </div>
   {:else if id === 'export'}
-    <ExportSheet
-      bind:this={exportButton}
-      {editor}
-      onOpen={() => {
-        editor.leaveTransform();
-        saveNow();
-        // The live selection goes where the screen shows it, then to the draft.
-        leaveFullscreen();
-      }}
-    />
+    <!-- Only the key: the sheet itself stands outside the panels, so Alt+S
+         opens it with the key taken off the layout or shut in «Ещё». -->
+    <button
+      class="key"
+      onclick={() => exportButton?.start()}
+      data-key="Alt+S"
+      title={t('export.title')}
+      aria-label={t('export.sheet')}
+    >
+      <Icon name="download" />
+    </button>
   {:else if id === 'saved'}
     <!-- One region, there before its first word: a live region inserted
          together with its text is often not announced at all. A failed save
@@ -2063,7 +2108,7 @@
       >
         <!-- Inert: Tab walked into these keys and Enter pressed them while
              every pointer on them was stopped. No box of its own. -->
-        <div class="arr-body" inert>{@render panelItem(id)}</div>
+        <div class="arr-body" inert use:markEmpty>{@render panelItem(id)}</div>
       </div>
     {:else}
       {@render panelItem(id)}
@@ -2117,7 +2162,7 @@
     </aside>
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
-  <div class="stage" data-slot="float">
+  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session}>
     <CanvasView {editor} />
     {@render stageNote?.()}
     <!-- The reference's two floating tool windows: the transform fields while
@@ -2278,6 +2323,7 @@
             role="group"
             aria-label={t('editor.row_n', { n: i + 1 })}
             data-slot="row:{i}"
+            class:strip-row={row.includes('timeline')}
             bind:contentRect={rowBoxes[i]}
           >
             {@render slot(row)}
@@ -2479,6 +2525,18 @@
   {#if pluginsSheetOpen}
     <PluginsSheet {editor} onClose={() => (pluginsSheetOpen = false)} />
   {/if}
+
+  <!-- Always here, whatever the panels hold: Alt+S is the export's own key. -->
+  <ExportSheet
+    bind:this={exportButton}
+    {editor}
+    onOpen={() => {
+      editor.leaveTransform();
+      saveNow();
+      // The live selection goes where the screen shows it, then to the draft.
+      leaveFullscreen();
+    }}
+  />
 
   <!-- The lock: an update is coming down, and nothing else is to be touched
        while it does. Esc does not call it off — there is nothing to call off. -->
@@ -2733,7 +2791,7 @@
   }
   /* The transform window takes the zoom window's row: at 200 % text on 320px
      the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
-  .studio.compact .stage:has(> .tool-windows :global(.transform-menu)) > .scale-window {
+  .studio.compact .stage.transforming > .scale-window {
     display: none;
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
@@ -2853,15 +2911,15 @@
   }
   /* The strip is the row that takes the height the divider hands out — the
      row it is in, not a fixed one: it can be moved. */
-  .studio .row:has(.timeline) {
+  .studio .row.strip-row {
     flex: 1;
     min-height: 0;
     /* The strip is a tall grid, so the keys beside it sit at its top rather
        than floating in the middle of it — the strip itself stretches. */
     align-items: flex-start;
   }
-  .studio .row:has(.timeline) > .timeline,
-  .studio .row:has(.timeline) > .arr:has(.timeline) {
+  .studio .row.strip-row > .timeline,
+  .studio .row.strip-row > .arr[data-item='timeline'] {
     align-self: stretch;
     min-height: 0;
   }
@@ -2931,7 +2989,7 @@
   }
   /* A key the profile does not draw leaves an empty handle behind; there is
      nothing to grab, so there is nothing to show. */
-  .editor.arranging .arr:not(:has(.arr-body > *)) {
+  .editor.arranging .arr:global([data-empty]) {
     display: none;
   }
   /* The bar sizes to its contents while things are being moved into it. */

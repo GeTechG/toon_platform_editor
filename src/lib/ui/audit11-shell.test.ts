@@ -40,7 +40,8 @@ describe('a held key', () => {
   it('with Ctrl or Alt does its thing once: one save, one log file', () => {
     // A held Alt+L downloaded a log file per auto-repeat.
     const handler = fn('onKeydown');
-    expect(handler).toMatch(/if \(!e\.repeat\) \{\s*saveNow\(true\);/);
+    // Ctrl+S applies a live transform first (owner-fourteenth-shell).
+    expect(handler).toMatch(/if \(!e\.repeat && editor\.leaveTransform\(\)\) \{\s*saveNow\(true\);/);
     expect(handler).toMatch(/if \(!e\.repeat\) \{\s*downloadErrorLog\(\);/);
   });
 });

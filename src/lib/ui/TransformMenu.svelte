@@ -124,6 +124,7 @@
     cursor: move;
     font-weight: 600;
     touch-action: none;
+    -webkit-user-select: none;
     user-select: none;
   }
   .transform-menu {
@@ -194,10 +195,8 @@
     display: none;
   }
   /* Where the zoom window gives up its row (Editor.svelte, the compact step). */
-  :global(:where(.studio.compact)) {
-    .row.zoom {
-      display: flex;
-    }
+  :global(:where(.studio.compact)) .row.zoom {
+    display: flex;
   }
   /* The whole label is the target, a key tall: the box alone is 13 px. */
   .check {

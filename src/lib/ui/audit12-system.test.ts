@@ -20,7 +20,9 @@ describe('leaving the studio keeps the strokes', () => {
   });
 
   it('a phone that sends the tab away writes it too — beforeunload never comes there', () => {
-    expect(editorUi).toMatch(/onvisibilitychange=\{\(\) => document\.visibilityState === 'hidden' && flushOnLeave\(\)\}/);
+    // Through flushOnHide, which writes a live move applied and falls back to
+    // flushOnLeave (owner-fourteenth-shell).
+    expect(editorUi).toMatch(/onvisibilitychange=\{\(\) => document\.visibilityState === 'hidden' && flushOnHide\(\)\}/);
   });
 
   it('the flush writes only a changed drawing — «никогда» included (owner-twelfth-shell)', () => {

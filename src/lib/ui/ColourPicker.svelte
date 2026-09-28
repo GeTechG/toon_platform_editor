@@ -5,6 +5,7 @@
     barPointer,
     colorToPointer,
     nudgePointer,
+    pickerFirstFocus,
     pickerKeyAction,
     pointerToColor,
     pointerToRgb,
@@ -54,6 +55,9 @@
   let surface = $state<HTMLCanvasElement | null>(null);
   let bar = $state<HTMLCanvasElement | null>(null);
   let box = $state<HTMLDialogElement | null>(null);
+  let textField = $state<HTMLInputElement | null>(null);
+  /** Ties the colour field to the note that says what it reads. */
+  const formatsId = `picker-formats-${Math.random().toString(36).slice(2)}`;
   /**
    * Why the close goes through the element instead of straight to the parent:
    * `close()` is what hands focus back to the swatch that opened the window,
@@ -78,6 +82,12 @@
     if (box && !box.open) {
       box.showModal();
       keepInside();
+      // `showModal()` puts focus on the first thing it can, «Закрыть», and a
+      // reflex Enter shut the window it had just opened. The colour field
+      // instead — on a phone the slider field: a text field focused there
+      // would raise the on-screen keyboard over the window by itself.
+      const first = pickerFirstFocus(matchMedia('(pointer: coarse)').matches);
+      (first === 'text' ? textField : surface)?.focus({ preventScroll: true });
     }
   });
 
@@ -214,6 +224,18 @@
   }
 
   /**
+   * The Enter still held from opening the window: its repeat is taken from
+   * the key under it (the close key, the field), and nothing closes.
+   */
+  function heldEnter(e: KeyboardEvent): boolean {
+    const tag = (e.target as HTMLElement | null)?.tagName ?? '';
+    if (pickerKeyAction(e.key, tag, e.repeat) !== 'swallow') return false;
+    e.stopPropagation();
+    e.preventDefault();
+    return true;
+  }
+
+  /**
    * Enter and Space close on what is chosen (`bundle:9942-9987`), Esc on the
    * colour it opened with — here, and not only in the dialog's `cancel`: the
    * phone's tab window above takes an Esc that bubbles to it for its own and
@@ -225,6 +247,7 @@
   function onKeydown(e: KeyboardEvent): void {
     // The Enter or Esc that ends an IME composition is the composition's.
     if (e.isComposing) return;
+    if (heldEnter(e)) return;
     const action = pickerKeyAction(e.key, (e.target as HTMLElement | null)?.tagName ?? '');
     if (!action) return;
     if (action === 'commit') commitHex();
@@ -480,9 +503,13 @@
         </label>
       {/each}
     {/if}
+    <!-- «Цвет», not «HEX»: the field reads rgb(), hsl(), oklch(), hwb(), lab()
+         and names too, and a reader is told so. -->
     <label class="hex">
-      <span>HEX</span>
+      <span>{t('picker.text')}</span>
       <input
+        bind:this={textField}
+        aria-describedby={formatsId}
         type="text"
         spellcheck="false"
         autocapitalize="off"
@@ -492,6 +519,7 @@
         onchange={commitHex}
       />
     </label>
+    <span class="sr-only" id={formatsId}>{t('picker.text_formats')}</span>
   </div>
 
   <div class="preview">
@@ -673,6 +701,14 @@
   }
   .hex {
     grid-column: 1 / -1;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .fields input {
     width: 100%;

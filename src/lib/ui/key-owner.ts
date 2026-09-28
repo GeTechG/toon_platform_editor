@@ -20,6 +20,8 @@ export interface KeyPress {
   defaultPrevented: boolean;
   ctrlKey: boolean;
   metaKey: boolean;
+  /** Shift held: Ctrl+Shift+arrows move a magnified sheet (panSheetKey). */
+  shiftKey?: boolean;
   /** A modal sheet is up: the page behind it is inert, its hotkeys too. */
   modalOpen: boolean;
   /** The «single-letter keys» setting (WCAG 2.1.4). */
@@ -42,6 +44,21 @@ const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home
  * never reached the address bar. Ctrl+S is the editor's own, before this.
  */
 const CHORDS = new Set(['z', 'Z', 'y', 'Y', 'c', 'C', 'v', 'V', 'x', 'X', 'm', 'M', 'a', 'A', 'F7']);
+
+/** The four arrows alone — Home, End and the page keys pan nothing. */
+const PAN_ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
+
+/**
+ * Ctrl+Shift+arrow (Cmd+Shift on a Mac): the sheet moved from the keyboard
+ * (owner, after the fourteenth audit). Not Shift+arrows — those extend the
+ * strip's selection and push a transform ten units; not Alt — Alt+← is the
+ * browser's «back»; not Ctrl alone — Ctrl+← on a Mac switches desktops.
+ * Outside a text field nothing in a browser holds Ctrl+Shift+arrow; inside
+ * one it still selects by words (the field check below).
+ */
+export function panSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey?: boolean }): boolean {
+  return (e.ctrlKey || e.metaKey) && e.shiftKey === true && PAN_ARROWS.has(e.key);
+}
 
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);
@@ -80,7 +97,7 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
     return 'control';
   }
   const chord = e.ctrlKey || e.metaKey;
-  if (chord && !CHORDS.has(e.key)) {
+  if (chord && !CHORDS.has(e.key) && !panSheetKey(e)) {
     return 'control';
   }
   if (!e.letterKeys && !chord && e.key.length === 1 && e.key !== ' ') {
@@ -152,7 +169,7 @@ const HELD = new Set([
   '+', '=', '-', '_',
   'z', 'Z', 'y', 'Y',
   'q', 'Q', 'w', 'W',
-  'a', 'A', 'F7', 'Delete',
+  'a', 'A', 'F7', 'Delete', 'Backspace',
 ]);
 
 export function repeats(key: string): boolean {

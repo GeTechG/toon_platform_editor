@@ -594,8 +594,9 @@ describe('frameMenuKey', () => {
   });
 
   it('Delete is not a letter: the setting leaves it alone', () => {
-    expect(frameMenuKey('delete', false, false)).toEqual({ aria: 'Delete', label: 'Del' });
-    expect(frameMenuKey('delete', true, false)).toEqual({ aria: 'Delete', label: 'Del' });
+    // Backspace is its other name (owner-fourteenth-shell).
+    expect(frameMenuKey('delete', false, false)).toEqual({ aria: 'Delete Backspace', label: 'Del' });
+    expect(frameMenuKey('delete', true, false)).toEqual({ aria: 'Delete Backspace', label: 'Del' });
   });
 
   it('merge has no key where M opens the palette (Multator)', () => {

@@ -19,6 +19,23 @@ export function toolSpec(tool: string): RegisteredTool | undefined {
   return plugins.tool(tool);
 }
 
+/**
+ * The second key a built-in tool answers to, as the reference binds it: the
+ * hand is D or O, the lasso Q or S (Editor.svelte's key table). A plugin's
+ * tool has the one key its manifest names.
+ */
+const SECOND_KEY: Readonly<Record<string, string>> = { drag: 'O', lasso: 'S' };
+
+/** Every key that picks the tool up, the registered one first; none for a tool without. */
+export function toolKeyList(tool: string): string[] {
+  const spec = toolSpec(tool);
+  if (!spec?.key) {
+    return [];
+  }
+  const second = spec.builtin ? SECOND_KEY[tool] : undefined;
+  return second ? [spec.key, second] : [spec.key];
+}
+
 /** Every tool the editor has now, in the order it was registered. */
 export function toolOrder(): string[] {
   return onPanel().map((tool) => tool.id);

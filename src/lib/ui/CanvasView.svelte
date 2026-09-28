@@ -58,6 +58,7 @@
   import { t } from '../i18n';
   import { HOLD_PICK_MS, mayHoldPick, stillHeld } from './hold-pick';
   import { nextHint } from './canvas-hint';
+  import { createSideButtonGuard } from './side-buttons';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -1221,7 +1222,20 @@
       || (panning !== null && !touches.has(panning.pointerId));
   }
 
+  /** The side buttons draw here, but their release must not page the browser back (side-buttons.ts). */
+  const sideButtons = createSideButtonGuard();
+  // A side button pressed on the sheet is let go wherever the hand is by then:
+  // the window hears it first, before the browser turns it into «back».
+  $effect(() => {
+    const kinds = ['pointerup', 'mouseup', 'auxclick'] as const;
+    for (const kind of kinds) window.addEventListener(kind, sideButtons.release, { capture: true });
+    return () => {
+      for (const kind of kinds) window.removeEventListener(kind, sideButtons.release, { capture: true });
+    };
+  });
+
   function onPointerDown(e: PointerEvent): void {
+    sideButtons.press(e.button);
     followPenEnd(e);
     // The first finger on the sheet brings the thickness rail.
     if (e.pointerType === 'touch') {

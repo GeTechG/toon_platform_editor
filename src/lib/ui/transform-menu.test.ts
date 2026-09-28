@@ -183,7 +183,7 @@ describe('tenth audit — tools', () => {
   });
 
   it('gives the phone transform window the zoom window\'s row', () => {
-    expect(editorUi).toContain('.stage:has(> .tool-windows :global(.transform-menu)) > .scale-window');
+    expect(editorUi).toContain('.stage.transforming > .scale-window');
   });
 });
 
@@ -198,6 +198,6 @@ describe('owner after the tenth audit: zoom inside the transform window on a pho
 
   it('shows them only where the zoom window gives up its row', () => {
     expect(menu).toMatch(/\.zoom \{[^}]*display: none/);
-    expect(menu).toMatch(/:global\(:where\(\.studio\.compact\)\) \{\s*\.row\.zoom \{[^}]*display: flex/);
+    expect(menu).toMatch(/:global\(:where\(\.studio\.compact\)\) \.row\.zoom \{[^}]*display: flex/);
   });
 });

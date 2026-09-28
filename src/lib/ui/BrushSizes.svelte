@@ -103,12 +103,10 @@
      stays when a size between the dots picks none.
      The studio's phone step (small-screen.ts), not a width query: a phone
      lying down is wider than 40rem and just as short. */
-  :global(:where(.studio.phone)) {
-    .sizes {
-      gap: 0.15rem;
-    }
-    .size.picked {
-      display: none;
-    }
+  :global(:where(.studio.phone)) .sizes {
+    gap: 0.15rem;
+  }
+  :global(:where(.studio.phone)) .size.picked {
+    display: none;
   }
 </style>

@@ -7,6 +7,7 @@
 
 import { normalizePanels, samePanels, type PanelLayout } from './panels';
 import { t } from '../i18n';
+import { cutText } from '../format/constants';
 
 export interface FloatPositions {
   [id: string]: { x: number; y: number };
@@ -20,6 +21,13 @@ export interface Workspace {
 }
 
 const STORAGE_KEY = 'toon-editor:workspaces';
+/** The longest name an arrangement keeps (owner, 14th audit): the field, a file, storage. */
+export const MAX_WORKSPACE_NAME = 40;
+
+/** A name as stored: trimmed, cut to the limit without splitting a character, trimmed again. */
+export function workspaceName(raw: string): string {
+  return cutText(raw.trim(), MAX_WORKSPACE_NAME).trim();
+}
 /**
  * The largest file «Загрузить…» reads, in bytes. A saved arrangement is a
  * couple of kilobytes; a video picked by mistake was read whole and took the
@@ -76,15 +84,17 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   const fresh = (): number => Math.max(maxId(taken), maxId(stored)) + 1;
   return data.flatMap((entry): Workspace[] => {
     const row = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<string, unknown>;
-    if (typeof row.name !== 'string' || row.name.trim() === '') {
+    const name = typeof row.name === 'string' ? workspaceName(row.name) : '';
+    if (name === '') {
       return [];
     }
     const id = typeof row.id === 'number' && Number.isFinite(row.id) && !taken.has(row.id) ? row.id : fresh();
     taken.add(id);
     return [{
       id,
-      // As «Сохранить» names it: «Стол » from a file was another «Стол».
-      name: row.name.trim(),
+      // As «Сохранить» names it: «Стол » from a file was another «Стол»; a
+      // name past the limit is cut, and a clash that makes is asked about.
+      name,
       // Read before the installed plugins are, like the live layout: a key of
       // a plugin still loading keeps its place (refreshPlugins cleans later).
       panels: normalizePanels(row.panels, true),

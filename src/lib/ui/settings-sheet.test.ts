@@ -234,7 +234,7 @@ describe('the remaining reference keys', () => {
 
 describe('key hints on the buttons', () => {
   it('every tool carries its key', () => {
-    expect(tools).toContain('data-key={editor.keyHint(spec.key) || undefined}');
+    expect(tools).toContain("data-key={keys.join(' / ') || undefined}");
     for (const key of ['B', 'E', 'P', 'F', 'Q', 'D']) {
       expect(panels).toContain(`key: '${key}'`);
     }

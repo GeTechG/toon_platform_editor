@@ -8,6 +8,7 @@
  */
 
 import { clampCoord } from '../model/geom';
+import { quantizeStrokePoints } from '../model/operations';
 import { MAX_STROKE_COORDS } from '../format/constants';
 import type { Stroke, ToolDescriptor } from '../format/types';
 import { PRESSURE_MAX } from '../render/pressure';
@@ -52,6 +53,13 @@ function written(was: Stroke, got: PluginStroke | undefined, tools: readonly Too
     return { ...was, points: [...was.points] };
   }
   const points = (raw as unknown[]).map((value) => clampCoord(Number(value)));
+  // A pixel stroke's points are grid cells: moved by a plugin (the distort's
+  // kick), they go back onto the grid, as a transform puts them — or the mega
+  // eraser and a stroke drawn over them miss the cells they show.
+  const tool = tools[was.tool_id];
+  if (tool) {
+    quantizeStrokePoints(points, tool);
+  }
   const stroke: Stroke = { points, tool_id: was.tool_id };
   const pressure: unknown = got?.pressure;
   if (Array.isArray(pressure) && pressure.length === count / 2) {

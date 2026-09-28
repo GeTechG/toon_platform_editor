@@ -229,7 +229,7 @@
       picked in the brush box.)
     -->
     <label class="toggle">
-      <span class="toggle-label">
+      <span class="toggle-label stacked">
         {t('settings.mouse_mode')}
         <small>{t('settings.mouse_mode_hint')}</small>
       </span>
@@ -241,7 +241,7 @@
       />
     </label>
     <label class="toggle">
-      <span class="toggle-label">
+      <span class="toggle-label stacked">
         {t('settings.pen_pressure')}
         <small>{t('settings.pen_pressure_hint')}</small>
       </span>
@@ -351,7 +351,7 @@
         {#each drafts as entry (entry.id)}
           <li>
             <label class="toggle">
-              <span class="toggle-label">
+              <span class="toggle-label stacked">
                 {new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
                 <small>
                   {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
@@ -524,7 +524,8 @@
     max-height: 13rem;
     overflow-y: auto;
   }
-  .toggle .toggle-label:has(small) {
+  /* A class, not `:has(small)`: Firefox 115 has no `:has()`. */
+  .toggle .toggle-label.stacked {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.1rem;

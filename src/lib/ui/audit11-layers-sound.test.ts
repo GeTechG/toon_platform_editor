@@ -78,7 +78,7 @@ describe('layer rows', () => {
   });
 
   it('on a phone the tag keeps 5 px to each neighbour, the room its 24 px circle needs (2.5.8)', () => {
-    expect(rows).toMatch(/:global\(:where\(\.studio\.phone\)\) \{[\s\S]*\.tag \{\s*margin-inline: 1px;/);
+    expect(rows).toMatch(/:global\(:where\(\.studio\.phone\)\) \.tag \{\s*margin-inline: 1px;/);
   });
 
   it('the colour key quotes the layer name like its neighbours', () => {

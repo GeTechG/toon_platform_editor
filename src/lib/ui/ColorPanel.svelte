@@ -180,9 +180,19 @@
     box-shadow: 0 0 0 1px var(--edge), inset 0 0 0 2px var(--canvas);
     cursor: pointer;
   }
-  .color:has(:focus-visible) {
-    outline: 3px solid var(--accent);
-    outline-offset: 2px;
+  @supports selector(:has(*)) {
+    .color:has(:focus-visible) {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
+  }
+  /* Firefox 115 has no `:has()`: there the ring follows any focus in it, a
+     click too — a ring too many rather than none for the keyboard. */
+  @supports not selector(:has(*)) {
+    .color:focus-within {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
   }
   .color input {
     width: 100%;

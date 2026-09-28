@@ -304,6 +304,35 @@ export function clampPan(view: Viewport2D, stage: Stage): Viewport2D {
   };
 }
 
+/** A key press moves the sheet this share of the table — ten presses cross it. */
+export const KEY_PAN_SHARE = 0.1;
+
+/**
+ * Ctrl+Shift+arrow: the magnified sheet slid by a tenth of the table, within
+ * the same bounds as a pan by the mouse (`clampPan`). The arrow says where to
+ * look, so the sheet goes the other way. A sheet at its fit or smaller lies
+ * whole on the table — there is nothing to bring into view, and the view
+ * stays as it is (the same object).
+ */
+export function keyPan(view: Viewport2D, stage: Stage, key: string): Viewport2D {
+  if (view.zoom <= 1) {
+    return view;
+  }
+  const dx = key === 'ArrowLeft' ? 1 : key === 'ArrowRight' ? -1 : 0;
+  const dy = key === 'ArrowUp' ? 1 : key === 'ArrowDown' ? -1 : 0;
+  if (dx === 0 && dy === 0) {
+    return view;
+  }
+  return clampPan(
+    {
+      zoom: view.zoom,
+      panX: view.panX + dx * Math.round(stage.width * KEY_PAN_SHARE),
+      panY: view.panY + dy * Math.round(stage.height * KEY_PAN_SHARE),
+    },
+    stage,
+  );
+}
+
 function panAxis(pan: number, workspace: number, sheet: number): number {
   // The sheet lies loose on the table at every zoom — a small one is pushed
   // around as freely as a magnified one; only losing it is forbidden.

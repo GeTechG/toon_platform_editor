@@ -15,7 +15,7 @@
   import { frameCount } from '../model/operations';
   import { exportGif } from '../export/export-gif';
   import { exportPng } from '../export/png';
-  import { WATERMARK_TEXT, exportSize, throwIfAborted, type ExportStage } from '../export/rasterize';
+  import { WATERMARK_TEXT, exportSize, exportWidths, throwIfAborted, type ExportStage } from '../export/rasterize';
   import { FileWriteError, exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
   import { pickSaveFile, saveFile as save } from './save-file';
@@ -46,6 +46,17 @@
   let planned = $state(false);
 
   const singleFrame = $derived(frameCount(editor.doc) === 1);
+
+  // A frame over Safari's canvas area is not on offer: a drawing of an
+  // extreme proportion (from a file or the API) loses the widths it cannot
+  // be drawn at, and a width left chosen on one of them steps down.
+  const offeredWidths = $derived(exportWidths(editor.doc));
+  const widthsCut = $derived(!EXPORT_WIDTHS.every((w) => offeredWidths.includes(w)));
+  $effect(() => {
+    if (!offeredWidths.includes(width)) {
+      width = offeredWidths[offeredWidths.length - 1];
+    }
+  });
 
   /** The formats plugins bring; a plugin that broke takes its button with it. */
   const pluginFormats = $derived.by(() => {
@@ -252,16 +263,8 @@
   }
 </script>
 
-<button
-  class="key"
-  onclick={openSheet}
-  data-key="Alt+S"
-  title={t('export.title')}
-  aria-label={t('export.sheet')}
->
-  <Icon name="download" />
-</button>
-
+<!-- No button of its own: the studio mounts the sheet once, outside the
+     panels, and its «Экспорт» key and Alt+S both call `start()`. -->
 {#if open}
   <dialog
     bind:this={dialogEl}
@@ -314,14 +317,22 @@
 
       {#if format !== 'project' && !format.startsWith('plugin:')}
         <h3 class="sheet-hint">{t('export.resolution')}</h3>
-        <div class="choices" role="group" aria-label={t('export.resolution')}>
-          {#each EXPORT_WIDTHS as w (w)}
+        <div
+          class="choices"
+          role="group"
+          aria-label={t('export.resolution')}
+          aria-describedby={widthsCut ? 'export-widths-cut' : undefined}
+        >
+          {#each offeredWidths as w (w)}
             {@const s = exportSize(editor.doc, w)}
             <button class="key" class:active={width === w} aria-pressed={width === w} disabled={busy !== ''} onclick={() => (width = w)}>
               {s.width}×{s.height}
             </button>
           {/each}
         </div>
+        {#if widthsCut}
+          <p class="note" id="export-widths-cut">{t('export.widths_cut')}</p>
+        {/if}
 
         <label class="toggle">
           <span class="toggle-label">{t('export.watermark', { text: WATERMARK_TEXT })}</span>

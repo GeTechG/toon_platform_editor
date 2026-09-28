@@ -142,13 +142,31 @@ export function barPointer(model: PickerModel, p: Pointer): Pointer {
  * segments, «исходный», the cross — so the window leaves it alone. Esc
  * asks for the colour the window opened on back.
  */
-export function pickerKeyAction(key: string, tagName: string): 'close' | 'commit' | 'revert' | null {
+export function pickerKeyAction(
+  key: string,
+  tagName: string,
+  repeat = false,
+): 'close' | 'commit' | 'revert' | 'swallow' | null {
   // Esc is the window's own, wherever focus is in it: left to bubble, it
   // reached the phone's tab window, which closed itself and the picker with
   // it — no revert, and the dialog's `cancel` never came.
   if (key === 'Escape') return 'revert';
+  // The Enter still held from opening the window runs on into it: its
+  // repeats close nothing, on a key or in the field.
+  if (key === 'Enter' && repeat) return 'swallow';
   if (key !== 'Enter' && key !== ' ') return null;
   if (tagName === 'BUTTON') return null;
   if (tagName === 'INPUT') return key === 'Enter' ? 'commit' : null;
   return 'close';
+}
+
+/**
+ * Where focus lands as the colour window opens (owner, after the fourteenth
+ * audit): not on «Закрыть», which `showModal()` picks and a reflex Enter
+ * presses. The text field with a mouse and keys; under a finger the slider
+ * field, because a text field focused there raises the on-screen keyboard
+ * over the window by itself.
+ */
+export function pickerFirstFocus(coarse: boolean): 'text' | 'field' {
+  return coarse ? 'field' : 'text';
 }

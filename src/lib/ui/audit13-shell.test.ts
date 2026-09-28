@@ -138,8 +138,9 @@ describe('what is on the screen is what leaves', () => {
   });
 
   it('so does an export', () => {
-    const at = editorUi.indexOf("{:else if id === 'export'}");
-    const block = editorUi.slice(at, editorUi.indexOf("{:else if id === 'saved'}", at));
+    // The sheet stands outside the panels since owner-fourteenth-shell.
+    const at = editorUi.search(/\n\s*<ExportSheet\b/);
+    const block = editorUi.slice(at, editorUi.indexOf('/>', at));
     expect(block).toMatch(/onOpen=\{\(\) => \{[^}]*editor\.leaveTransform\(\)[^}]*saveNow\(\)/);
   });
 

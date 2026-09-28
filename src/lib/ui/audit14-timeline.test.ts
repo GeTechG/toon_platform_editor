@@ -162,7 +162,7 @@ describe('четырнадцатый аудит: отказ перенести �
   });
 
   it('шаг перетаскивания считается сделанным, только если слой переехал', () => {
-    expect(fn(rows, 'updateTarget')).toMatch(/editor\.moveLayerTo\(drag\.currentLayer, targetLayer\);\n\s*if \(editor\.doc\.layers\[targetLayer\] !== moved\)/);
+    expect(fn(rows, 'updateTarget')).toMatch(/editor\.moveLayerTo\(drag\.currentLayer, targetLayer[^;]*\);\n\s*if \(editor\.doc\.layers\[targetLayer\] !== moved\)/);
   });
 
   it('Alt+↑/↓ объявляет позицию, только если слой переехал', () => {

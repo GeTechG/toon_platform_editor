@@ -94,7 +94,12 @@ export const MAX_LAYER_NAME = 12;
  * half already in the text (a `.toon` stores UTF-16 words) becomes U+FFFD.
  */
 export function cutLayerName(text: string): string {
-  let cut = text.slice(0, MAX_LAYER_NAME);
+  return cutText(text, MAX_LAYER_NAME);
+}
+
+/** Any name cut to `max` UTF-16 units by the same rule (a workspace's too). */
+export function cutText(text: string, max: number): string {
+  let cut = text.slice(0, max);
   if (/[\uD800-\uDBFF]$/.test(cut)) {
     cut = cut.slice(0, -1);
   }

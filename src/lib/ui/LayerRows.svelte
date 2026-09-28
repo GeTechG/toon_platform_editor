@@ -136,6 +136,21 @@
     announcement = t('layer.moved', { n: rowNumber(layerIndex), total: editor.doc.layers.length });
   }
 
+  // Undo and redo of a move say where the layer went, like the move itself
+  // (owner, 14th audit); one made before this panel mounted is not repeated.
+  let heard: { layer: number } | null | undefined;
+  $effect(() => {
+    const moved = editor.layerMoved;
+    if (heard === undefined) {
+      heard = moved;
+      return;
+    }
+    if (moved && moved !== heard) {
+      heard = moved;
+      announce(moved.layer);
+    }
+  });
+
   function moveBy(layerIndex: number, delta: 1 | -1): void {
     const to = layerIndex + delta;
     if (to < 0 || to >= editor.doc.layers.length) {
@@ -196,7 +211,7 @@
       return;
     }
     // The bin's key; the state asks «Удалить «Слой N»?» before it takes the layer.
-    if (e.key === 'Delete') {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       removeLayer(layerIndex);
       return;
@@ -294,7 +309,7 @@
       // Reorder for real on each index change: the canvas rebuilds once per
       // step, not once per pointermove.
       const moved = editor.doc.layers[drag.currentLayer];
-      editor.moveLayerTo(drag.currentLayer, targetLayer);
+      editor.moveLayerTo(drag.currentLayer, targetLayer, drag.currentLayer !== drag.fromLayer);
       if (editor.doc.layers[targetLayer] !== moved) {
         return; // refused: the layer is still where it was
       }
@@ -351,7 +366,7 @@
     }
     stopAutoscroll();
     // Back to where the gesture started — the document is restored, not patched.
-    editor.moveLayerTo(drag.currentLayer, drag.fromLayer);
+    editor.moveLayerTo(drag.currentLayer, drag.fromLayer, true);
     drag = null;
   }
 
@@ -492,7 +507,7 @@
           class="kill"
           data-col="3"
           tabindex={stop(layerIndex, 3)}
-          aria-keyshortcuts="Delete"
+          aria-keyshortcuts="Delete Backspace"
           disabled={!canRemove}
           aria-disabled={editor.playing || undefined}
           aria-label={t('layer.remove', { name: editor.layerLabel(layerIndex) })}
@@ -652,6 +667,7 @@
     align-self: stretch;
     touch-action: none;
     cursor: grab;
+    -webkit-user-select: none;
     user-select: none;
     color: var(--ink-2);
   }
@@ -706,35 +722,33 @@
   /* Phone: the column is 10rem, and the row's desktop furniture (137 px)
      plus the name's floor asked for 178 — the handle and the bin sat past
      the edge. Every key here keeps the 24 px floor (WCAG 2.5.8). */
-  :global(:where(.studio.phone)) {
-    .row {
-      gap: 4px;
-      padding: 0 3px;
-    }
-    /* The 16px glyph (in rem) and 8px: the 24 px floor at 100 % text, and at
-       200 % 40 rather than 48 — the column has the least room here. */
-    .eye,
-    .handle,
-    .kill {
-      width: calc(1rem + 8px);
-    }
-    .eye,
-    .kill {
-      height: calc(1rem + 8px);
-    }
-    /* The tag's 24 px press circle reaches 5 px past its 14 px key: with the
-       4 px gap it ran over the eye and the name. A pixel each side, and the
-       row still fits the column. */
-    .tag {
-      margin-inline: 1px;
-    }
-    /* The keys first, the name after them (the owner, after the thirteenth
-       audit): at 360 px the row asked 155 of a 137 px column and the bin went
-       off into a sideways scroll. The column never goes under the keys
-       (Timeline.svelte); the name takes what is left, down to nothing. */
-    .name {
-      min-width: 0;
-    }
+  :global(:where(.studio.phone)) .row {
+    gap: 4px;
+    padding: 0 3px;
+  }
+  /* The 16px glyph (in rem) and 8px: the 24 px floor at 100 % text, and at
+     200 % 40 rather than 48 — the column has the least room here. */
+  :global(:where(.studio.phone)) .eye,
+  :global(:where(.studio.phone)) .handle,
+  :global(:where(.studio.phone)) .kill {
+    width: calc(1rem + 8px);
+  }
+  :global(:where(.studio.phone)) .eye,
+  :global(:where(.studio.phone)) .kill {
+    height: calc(1rem + 8px);
+  }
+  /* The tag's 24 px press circle reaches 5 px past its 14 px key: with the
+     4 px gap it ran over the eye and the name. A pixel each side, and the
+     row still fits the column. */
+  :global(:where(.studio.phone)) .tag {
+    margin-inline: 1px;
+  }
+  /* The keys first, the name after them (the owner, after the thirteenth
+     audit): at 360 px the row asked 155 of a 137 px column and the bin went
+     off into a sideways scroll. The column never goes under the keys
+     (Timeline.svelte); the name takes what is left, down to nothing. */
+  :global(:where(.studio.phone)) .name {
+    min-width: 0;
   }
   /* Where the keys would take more than half the strip (200 % text on a
      phone standing up), the drag handle folds away: the bin and the eye stay

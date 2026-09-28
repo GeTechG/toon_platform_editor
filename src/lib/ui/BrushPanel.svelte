@@ -575,14 +575,12 @@
      The trigger already shows the sample and its label names the type.
      The studio's phone step (small-screen.ts), not a width query: a phone
      lying down is wider than 40rem and just as short. */
-  :global(:where(.studio.phone)) {
-    .brush-box {
-      gap: 6px;
-      padding: 6px 10px;
-    }
-    .type-title,
-    .live {
-      display: none;
-    }
+  :global(:where(.studio.phone)) .brush-box {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+  :global(:where(.studio.phone)) .type-title,
+  :global(:where(.studio.phone)) .live {
+    display: none;
   }
 </style>

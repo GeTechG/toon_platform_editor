@@ -57,7 +57,7 @@ describe('the keys that hold a glyph grow with it', () => {
   });
 
   it('the phone layer row keeps its 24 px floor in rem too', () => {
-    const phone = layerRows.slice(layerRows.indexOf(':global(:where(.studio.phone)) {'));
+    const phone = layerRows.slice(layerRows.indexOf(':global(:where(.studio.phone)) '));
     expect(phone.slice(0, phone.indexOf('.tag {'))).not.toMatch(/(width|height): 24px/);
   });
 

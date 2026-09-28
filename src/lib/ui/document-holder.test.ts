@@ -29,6 +29,8 @@ const READ_ONLY = new Set([
   'onionLayers',
   'onionHistoryLayers',
   'takeStructure',
+  // A copy with the live transform applied; the document is not touched.
+  'bakeTransform',
   'structureIntact',
   'seal',
   'copiedMarks',

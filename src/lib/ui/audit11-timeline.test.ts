@@ -6,7 +6,7 @@ import { t } from '../i18n';
 const timeline = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
 const style = timeline.slice(timeline.indexOf('<style'));
-const phone = style.slice(style.lastIndexOf(':global(:where(.studio.phone)) {'));
+const phone = style.slice(style.indexOf(':global(:where(.studio.phone)) '));
 
 function fn(name: string): string {
   return timeline.match(new RegExp(`function ${name}[\\s\\S]*?\\n  }`))?.[0] ?? '';

@@ -97,7 +97,7 @@ describe('with single-letter keys off', () => {
   });
 
   it('a tool key drops its letter from the title and the hover label', () => {
-    expect(toolKey).toContain('data-key={editor.keyHint(spec.key) || undefined}');
+    expect(toolKey).toContain("data-key={keys.join(' / ') || undefined}");
     expect(toolKey).toContain('title={editor.keyHint(spec.title)}');
   });
 

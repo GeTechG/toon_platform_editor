@@ -251,7 +251,7 @@ describe('the handle frames the item it grabs', () => {
 describe('a host can put a note on the stage', () => {
   it('the editor takes a stageNote snippet and renders it inside the stage', () => {
     expect(editorUi).toContain('stageNote?: Snippet');
-    const stage = editorUi.slice(editorUi.indexOf('<div class="stage" data-slot="float">'));
+    const stage = editorUi.slice(editorUi.indexOf('<div class="stage" data-slot="float"'));
     expect(stage.slice(0, 400)).toContain('{@render stageNote?.()}');
   });
 });

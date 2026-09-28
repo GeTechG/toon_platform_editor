@@ -98,6 +98,7 @@ import {
   sessionMatrix,
   sessionWidthScale,
 } from '../tools/lasso';
+import { bakeTransform } from '../tools/bake-transform';
 import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
@@ -139,6 +140,7 @@ import {
   removeWorkspace,
   saveWorkspaces,
   withWorkspace,
+  workspaceName,
   type Workspace,
 } from './workspaces';
 import {
@@ -221,6 +223,10 @@ interface StructureEdit {
   layerColors: number[];
   activeFrame: number;
   activeLayer: number;
+  /** A layer move: where the layer stood and where it went (the reader is told). */
+  moved?: { from: number; to: number };
+  /** What redo puts back after undo — a move only splices, so its shape is enough. */
+  redo?: StructureEdit;
 }
 
 export class EditorState {
@@ -368,6 +374,10 @@ export class EditorState {
   edits = $state.raw<(CellSnapshot[] | StructureEdit)[]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
   undone = $state.raw<{ cell: Frame; stroke: Stroke }[]>([]);
+  /** A layer move undo took back, with the shape undo left — redo offers it while that stands. */
+  redoStructure = $state.raw<{ edit: StructureEdit; back: StructureSnapshot } | null>(null);
+  /** A move undo or redo made: where the layer is now, for the panel to say (a fresh object each time). */
+  layerMoved = $state.raw<{ layer: number } | null>(null);
   /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
   copiedColumn = $state.raw<ResolvedColumn | null>(null);
   /** Timeline cells the user has selected; a plain click leaves one. */
@@ -879,7 +889,9 @@ export class EditorState {
    * first when that one is laid out otherwise. False on a «no».
    */
   saveWorkspace(name: string): boolean {
-    const same = this.workspaces.find((w) => w.name === name.trim());
+    // Cut as a file's names are (owner, 14th audit): a clash that makes is asked about.
+    const stored = workspaceName(name);
+    const same = this.workspaces.find((w) => w.name === stored);
     if (
       same
       && !samePanels(same.panels, this.panels, same.floatPos, this.floatPos)
@@ -889,7 +901,7 @@ export class EditorState {
     }
     this.workspaces = withWorkspace(
       this.workspaces,
-      name.trim(),
+      stored,
       $state.snapshot(this.panels),
       $state.snapshot(this.floatPos),
     );
@@ -1144,16 +1156,35 @@ export class EditorState {
    * operations this is allowed during playback: it changes no frame index,
    * only what the composite shows — and a drag cancelled after playback
    * started must be able to put the layer back.
+   *
+   * One undo step (owner, 14th audit), structure like a delete: allowed on a
+   * hidden layer. `merge` folds it into the move on top of the history — the
+   * steps of one drag are one step, and a drag cancelled back to where it
+   * began leaves none.
    */
-  moveLayerTo(from: number, to: number): void {
+  moveLayerTo(from: number, to: number, merge = false): void {
     if (from === to || to < 0 || to >= this.doc.layers.length || !this.leaveTransform()) {
       return;
     }
+    const top = this.edits[this.edits.length - 1];
+    const folded = merge && top && !Array.isArray(top) && top.moved && structureIntact(this.doc, top.snap)
+      ? top
+      : undefined;
+    const before = folded ?? this.takeStructure();
     this.#write((doc) => moveLayer(doc, from, to));
     this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1));
     this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
     this.collapseSelection();
-    this.touched = true;
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      if (folded.snap.layers.every((layer, i) => layer === this.doc.layers[i])) {
+        this.touched = true;
+        return;
+      }
+    }
+    before.moved = { from: folded?.moved?.from ?? from, to };
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
   }
 
   /** The swatch a row paints itself with; a layer added before this existed cycles. */
@@ -1652,6 +1683,7 @@ export class EditorState {
     }
     this.edits = [...this.edits, snapshots].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
+    this.redoStructure = null;
     this.touched = true;
   }
 
@@ -1670,6 +1702,7 @@ export class EditorState {
     edit.snap.seal(this.doc);
     this.edits = [...this.edits, edit].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
+    this.redoStructure = null;
     this.touched = true;
   }
 
@@ -1727,7 +1760,14 @@ export class EditorState {
       return this.canRedoTransform;
     }
     const last = this.undone[this.undone.length - 1];
-    return !this.playing && last !== undefined && last.cell === this.activeCell;
+    return !this.playing
+      && (this.redoableStructure !== undefined || (last !== undefined && last.cell === this.activeCell));
+  }
+
+  /** The move redo would put back: while the document is still what undo left. */
+  get redoableStructure(): { edit: StructureEdit; back: StructureSnapshot } | undefined {
+    const entry = this.redoStructure;
+    return entry && structureIntact(this.doc, entry.back) ? entry : undefined;
   }
 
   /** Undo: drops the last stroke of the active layer's cell and keeps it for redo. */
@@ -1740,16 +1780,26 @@ export class EditorState {
       return;
     }
     // ponytail: a block edit or a delete is undoable but not redoable —
-    // restoring it retires the redo stack. Give it a redo entry if anyone asks.
+    // restoring it retires the redo stack. A layer move has its redo (owner,
+    // 14th audit); give the others one if anyone asks.
     const structure = this.restorableStructure;
     if (structure) {
       this.edits = this.edits.slice(0, -1);
       this.#write((doc) => restoreStructure(doc, structure.snap));
-      this.layerColors = structure.layerColors;
+      this.layerColors = structure.layerColors.slice();
       this.activeFrame = structure.activeFrame;
       this.activeLayer = structure.activeLayer;
       this.collapseSelection();
       this.undone = [];
+      this.redoStructure = null;
+      if (structure.redo) {
+        const back = takeStructure(this.doc);
+        back.seal(this.doc);
+        this.redoStructure = { edit: structure, back };
+      }
+      if (structure.moved) {
+        this.layerMoved = { layer: structure.moved.from };
+      }
       this.touched = true;
       return;
     }
@@ -1777,6 +1827,8 @@ export class EditorState {
     // Unbounded, like the reference's own buffer: a stroke off the stack is
     // still the one the document held a moment ago, not a second copy of it.
     this.undone = [...this.undone, { cell, stroke }];
+    // The newest undone is this stroke: redo must not jump to a move behind it.
+    this.redoStructure = null;
     this.touched = true;
   }
 
@@ -1784,6 +1836,25 @@ export class EditorState {
   redo(): void {
     if (this.transform) {
       this.redoTransform();
+      return;
+    }
+    // A move is structure: a hidden active layer does not refuse it.
+    const again = !this.playing ? this.redoableStructure : undefined;
+    if (again) {
+      const { edit } = again;
+      const after = edit.redo!;
+      this.redoStructure = null;
+      this.#write((doc) => restoreStructure(doc, after.snap));
+      this.layerColors = after.layerColors.slice();
+      this.activeFrame = after.activeFrame;
+      this.activeLayer = after.activeLayer;
+      this.collapseSelection();
+      edit.snap.seal(this.doc);
+      this.edits = [...this.edits, edit].slice(-EDIT_HISTORY_LIMIT);
+      if (edit.moved) {
+        this.layerMoved = { layer: edit.moved.to };
+      }
+      this.touched = true;
       return;
     }
     if (!this.canRedo || !this.mayEdit()) {
@@ -2060,6 +2131,19 @@ export class EditorState {
   transformPoint(x: number, y: number): [number, number] {
     const open = this.transform;
     return open ? applyMatrix(sessionMatrix(open.session, open.box), x, y) : [x, y];
+  }
+
+  /**
+   * The drawing with the open transform applied, the transform left open —
+   * what the draft takes when the tab goes to the background. Nothing is
+   * applied where commitTransform would apply nothing.
+   */
+  docWithTransform(): ToonDocument {
+    const open = this.transform;
+    if (!open || this.playing || !this.mayEdit(open.layers)) {
+      return this.doc;
+    }
+    return bakeTransform(this.doc, this.activeFrame, open);
   }
 
   /** Enter / "apply": writes the open transform as one undo step and closes it. */
