@@ -38,9 +38,22 @@
     const file = input.files?.[0];
     input.value = '';
     if (file) {
+      let raw: string;
+      try {
+        raw = await file.text();
+      } catch {
+        // A file the browser could not read (moved, locked) is said, not thrown.
+        notice = t('arrange.load_unreadable');
+        return;
+      }
       // A wrong file used to change nothing and say nothing.
-      const loaded = editor.importWorkspaces(await file.text());
-      notice = loaded ? t('arrange.loaded', { n: loaded }) : t('arrange.load_failed');
+      const { loaded, kept } = editor.importWorkspaces(raw);
+      // A «no» to replacing may leave nothing to load: that is not a wrong file.
+      notice = loaded
+        ? t('arrange.loaded', { n: loaded })
+        : kept
+          ? t('arrange.load_kept')
+          : t('arrange.load_failed');
     }
   }
 

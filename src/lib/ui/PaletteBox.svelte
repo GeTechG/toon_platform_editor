@@ -500,8 +500,10 @@
     left: 4px;
     bottom: 4px;
     display: flex;
-    width: 24px;
-    height: 24px;
+    /* The 16px glyph (in rem, it grows with the text) and 8px round it: 24 at
+       100 %, 40 at 200 % — still clear of the mark in the other corner. */
+    width: calc(1rem + 8px);
+    height: calc(1rem + 8px);
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -526,8 +528,10 @@
     place-items: center;
     top: 50%;
     left: 50%;
-    width: 28px;
-    height: 28px;
+    /* The glyph and a 6px ring of disc: 28 at 100 %, 44 at 200 % — at a fixed
+       28 the 32px arrows of 200 % text spilled out of their disc. */
+    width: calc(1rem + 12px);
+    height: calc(1rem + 12px);
     padding: 0;
     border: none;
     border-radius: 50%;

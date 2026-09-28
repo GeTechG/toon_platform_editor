@@ -32,8 +32,9 @@ describe('an arrangement made by hand', () => {
 
   it('«Сбросить» asks first, and only when the panels are not the preset\'s already', () => {
     const guard = method('mayReplacePanels');
-    expect(guard).toContain('samePanels(this.panels, next)');
-    expect(guard).toContain('samePanels(this.panels, presetPanels(this.preset))');
+    // The windows' places come along since the 13th audit (owner-thirteenth-arrange).
+    expect(guard).toMatch(/samePanels\(this\.panels, next[,)]/);
+    expect(guard).toMatch(/samePanels\(this\.panels, presetPanels\(this\.preset\)[,)]/);
     // The question honours Alt+Enter like every other.
     expect(guard).toContain("this.confirmed(t('arrange.replace_confirm'");
     expect(method('resetPanels')).toMatch(/if \(!this\.mayReplacePanels\(next\)\)\s*\{?\s*return/);

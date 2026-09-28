@@ -283,20 +283,21 @@
       <h3 class="sheet-hint">{t('export.format')}</h3>
       <div class="choices" role="group" aria-label={t('export.format')}>
         {#if singleFrame}
-          <button class="key" class:active={format === 'png'} aria-pressed={format === 'png'} onclick={() => (format = 'png')}>PNG</button>
+          <button class="key" class:active={format === 'png'} aria-pressed={format === 'png'} disabled={busy !== ''} onclick={() => (format = 'png')}>PNG</button>
         {/if}
-        <button class="key" class:active={format === 'gif'} aria-pressed={format === 'gif'} onclick={() => (format = 'gif')}>GIF</button>
+        <button class="key" class:active={format === 'gif'} aria-pressed={format === 'gif'} disabled={busy !== ''} onclick={() => (format = 'gif')}>GIF</button>
         <button
           class="key"
           class:active={format === 'video'}
           aria-pressed={format === 'video'}
-          disabled={planned && !plan}
+          disabled={busy !== '' || (planned && !plan)}
           onclick={() => (format = 'video')}
         >{plan?.label ?? t('export.video')}</button>
         <button
           class="key"
           class:active={format === 'project'}
           aria-pressed={format === 'project'}
+          disabled={busy !== ''}
           onclick={() => (format = 'project')}
         >{t('export.project')}</button>
         {#each pluginFormats as entry (entry.id)}
@@ -305,6 +306,7 @@
             class:active={format === `plugin:${entry.id}`}
             aria-pressed={format === `plugin:${entry.id}`}
             title={entry.hint}
+            disabled={busy !== ''}
             onclick={() => (format = `plugin:${entry.id}`)}
           >{entry.label}</button>
         {/each}
@@ -315,7 +317,7 @@
         <div class="choices" role="group" aria-label={t('export.resolution')}>
           {#each EXPORT_WIDTHS as w (w)}
             {@const s = exportSize(editor.doc, w)}
-            <button class="key" class:active={width === w} aria-pressed={width === w} onclick={() => (width = w)}>
+            <button class="key" class:active={width === w} aria-pressed={width === w} disabled={busy !== ''} onclick={() => (width = w)}>
               {s.width}×{s.height}
             </button>
           {/each}
@@ -323,12 +325,12 @@
 
         <label class="toggle">
           <span class="toggle-label">{t('export.watermark', { text: WATERMARK_TEXT })}</span>
-          <input type="checkbox" role="switch" bind:checked={watermark} />
+          <input type="checkbox" role="switch" disabled={busy !== ''} bind:checked={watermark} />
         </label>
         {#if format === 'png'}
           <label class="toggle">
             <span class="toggle-label">{t('export.transparent')}</span>
-            <input type="checkbox" role="switch" bind:checked={transparent} />
+            <input type="checkbox" role="switch" disabled={busy !== ''} bind:checked={transparent} />
           </label>
         {/if}
       {/if}

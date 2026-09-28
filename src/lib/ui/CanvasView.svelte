@@ -39,6 +39,7 @@
     zoomDelta,
     wheelNotch,
     ctrlWheelZoom,
+    type Cover,
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
@@ -256,10 +257,37 @@
   }
 
 
+  // What stands over the stage for good (`data-over-sheet`: the thickness
+  // rail, the zoom window), in the wrap's px. The sheet at 100 % is fitted
+  // clear of it (the owner, after the thirteenth audit: the rail lay over
+  // 45 px of the page on a phone). Not while the film plays: the rail goes
+  // away then, and the sheet is not to jump for it.
+  let wrapEl = $state<HTMLDivElement | undefined>();
+  let covers = $state<Cover[]>([]);
+  function measureCovers(): void {
+    if (!wrapEl || editor.playing) return;
+    const box = wrapEl.getBoundingClientRect();
+    const next = [...(wrapEl.parentElement ?? wrapEl).querySelectorAll<HTMLElement>('[data-over-sheet]')].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height) };
+    });
+    if (JSON.stringify(next) !== JSON.stringify(covers)) covers = next;
+  }
+  // A cover appears (the first finger), goes (display: none) or is resized
+  // (text zoom); the wrap's own resize moves the corner ones.
+  $effect(() => {
+    void editor.playing;
+    void touchSeen;
+    if (!wrapEl || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => measureCovers());
+    observer.observe(wrapEl);
+    for (const el of (wrapEl.parentElement ?? wrapEl).querySelectorAll('[data-over-sheet]')) observer.observe(el);
+    return () => observer.disconnect();
+  });
   // The sheet at 100%: the document fitted inside the wrap (whose size the
   // page layout sets, not the canvas itself), with air around it.
   const sheet = $derived(
-    fitSheet(wrapWidth || CANVAS_LOGICAL_WIDTH, wrapHeight > 0 ? wrapHeight : Infinity, editor.doc),
+    fitSheet(wrapWidth || CANVAS_LOGICAL_WIDTH, wrapHeight > 0 ? wrapHeight : Infinity, editor.doc, covers),
   );
   const sheetWidth = $derived(sheet.width);
   const sheetHeight = $derived(sheet.height);
@@ -273,6 +301,8 @@
     height: Math.max(1, wrapHeight || sheetHeight),
     sheetWidth,
     sheetHeight,
+    sheetX: sheet.x,
+    sheetY: sheet.y,
   });
   // The canvas is the product. Without a role and a name it lands in the
   // accessibility tree as an anonymous box, so it says what it is and which
@@ -1542,7 +1572,7 @@
   }
 </script>
 
-<div class="wrap" bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
+<div class="wrap" bind:this={wrapEl} bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
   <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
        surface that renders a picture, and without it the drawing is an
        anonymous box in the accessibility tree. -->
@@ -1648,6 +1678,7 @@
          not in a column, so it stays whatever the panels around it do. -->
     <div
       class="size-rail"
+      data-over-sheet
       class:touched={touchSeen}
       role="slider"
       tabindex="0"
@@ -1796,8 +1827,10 @@
      for a mouse; a coarse pointer or the first finger brings it. */
   .size-rail {
     position: absolute;
-    /* Clear of the side column's fold tab on the stage's edge. */
-    left: max(1.25rem, env(safe-area-inset-left));
+    /* Clear of the side column's fold tab on the stage's edge. The safe
+       area is the editor's (its inline padding): counted here as well, the
+       rail stood twice as far in behind a notch. */
+    left: 1.25rem;
     /* Up to 16rem in the middle of the stage; a short landscape stage keeps
        its foot clear of the zoom bar in the corner below (4.5rem). */
     top: max(0.75rem, 50% - 8rem);

@@ -5,7 +5,7 @@
  * they outlive any one preset.
  */
 
-import { normalizePanels, type PanelLayout } from './panels';
+import { normalizePanels, samePanels, type PanelLayout } from './panels';
 import { t } from '../i18n';
 
 export interface FloatPositions {
@@ -67,7 +67,9 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
     return [{
       id,
       name: row.name,
-      panels: normalizePanels(row.panels),
+      // Read before the installed plugins are, like the live layout: a key of
+      // a plugin still loading keeps its place (refreshPlugins cleans later).
+      panels: normalizePanels(row.panels, true),
       floatPos: cleanFloatPos(row.floatPos),
     }];
   });
@@ -127,12 +129,30 @@ export function exportWorkspace(
   return JSON.stringify(withWorkspace([], name, panels, floatPos), null, 2);
 }
 
-/** Reads such a file, merging by name; anything unreadable loads nothing. */
+/**
+ * The names such a file would replace with another arrangement: the same name
+ * here, laid out otherwise or with its windows elsewhere. Asked about first,
+ * as «Сохранить» asks (owner, 13th audit).
+ */
+export function workspaceConflicts(list: readonly Workspace[], raw: string): string[] {
+  return parseWorkspaces(raw).flatMap((workspace) => {
+    const same = list.find((w) => w.name === workspace.name);
+    return same && !samePanels(same.panels, workspace.panels, same.floatPos, workspace.floatPos)
+      ? [workspace.name]
+      : [];
+  });
+}
+
+/**
+ * Reads such a file, merging by name; anything unreadable loads nothing. The
+ * names in `keep` stay as they are here (the question got a «no»).
+ */
 export function importWorkspaces(
   list: readonly Workspace[],
   raw: string,
+  keep: ReadonlySet<string> = new Set(),
 ): { workspaces: Workspace[]; loaded: number } {
-  const loaded = parseWorkspaces(raw);
+  const loaded = parseWorkspaces(raw).filter((workspace) => !keep.has(workspace.name));
   let workspaces = [...list];
   for (const workspace of loaded) {
     workspaces = withWorkspace(workspaces, workspace.name, workspace.panels, workspace.floatPos);

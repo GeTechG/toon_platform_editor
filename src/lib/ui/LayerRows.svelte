@@ -359,7 +359,7 @@
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
     title={canAdd ? editor.keyHint(t('layer.add_title')) : t('layer.full', { max: MAX_LAYERS })}
   >
-    <Icon name="plus" size={16} /> {t('layer.add')}
+    <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>
 </div>
 
@@ -493,16 +493,36 @@
   .row {
     display: flex;
     align-items: center;
-    /* In px, like the eye, the tag and the bin they space: in rem the gaps
-       doubled with 200 % text and pushed the bin out of the column. */
+    /* In px, though the eye, the handle and the bin are in rem (their glyphs
+       grow with the text): rem gaps doubled with 200 % text as well and
+       pushed the bin out of the column. */
     gap: 6px;
     box-sizing: border-box;
     min-height: 32px;
     padding: 0 5px 0 8px;
+    position: relative;
     cursor: pointer;
   }
+  /* The active row, in the tool keys' language — a light red fill and red
+     ink — plus what is not colour: a bar at the left edge (the accent, 3.5:1
+     on the fill) and a heavier name. The fill stays 12 %: every layer tag
+     keeps its 3:1 on it. No ring round the row: plates part by tone here. */
   .row.active {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .row.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+    background: var(--accent);
+  }
+  .row.active .name {
+    font-weight: 700;
+    color: var(--accent-ink);
   }
   .row.dragging {
     opacity: 0.7;
@@ -520,8 +540,8 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 28px;
-    height: 28px;
+    width: 1.75rem;
+    height: 1.75rem;
     border: 0;
     border-radius: var(--r-sm, 7px);
     background: transparent;
@@ -594,7 +614,7 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 30px;
+    width: 1.875rem;
     align-self: stretch;
     touch-action: none;
     cursor: grab;
@@ -605,7 +625,7 @@
     display: flex;
     align-items: center;
     flex: none;
-    height: 32px;
+    height: 2rem;
     padding: 0 0.3rem;
     border-bottom: 1px solid var(--hairline);
   }
@@ -613,7 +633,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    height: 26px;
+    height: 1.625rem;
     padding: 0 0.4rem;
     border: 0;
     border-radius: var(--r-sm, 7px);
@@ -633,8 +653,8 @@
   .kill {
     display: grid;
     place-items: center;
-    width: 26px;
-    height: 26px;
+    width: 1.625rem;
+    height: 1.625rem;
     flex: none;
     border: 0;
     border-radius: var(--r-sm, 7px);
@@ -650,25 +670,58 @@
   /* Phone: the column is 10rem, and the row's desktop furniture (137 px)
      plus the name's floor asked for 178 — the handle and the bin sat past
      the edge. Every key here keeps the 24 px floor (WCAG 2.5.8). */
-  @media (max-width: 40rem) {
+  :global(:where(.studio.phone)) {
     .row {
       gap: 4px;
       padding: 0 3px;
     }
+    /* The 16px glyph (in rem) and 8px: the 24 px floor at 100 % text, and at
+       200 % 40 rather than 48 — the column has the least room here. */
     .eye,
     .handle,
     .kill {
-      width: 24px;
+      width: calc(1rem + 8px);
     }
     .eye,
     .kill {
-      height: 24px;
+      height: calc(1rem + 8px);
     }
     /* The tag's 24 px press circle reaches 5 px past its 14 px key: with the
        4 px gap it ran over the eye and the name. A pixel each side, and the
        row still fits the column. */
     .tag {
       margin-inline: 1px;
+    }
+    /* The keys first, the name after them (the owner, after the thirteenth
+       audit): at 360 px the row asked 155 of a 137 px column and the bin went
+       off into a sideways scroll. The column never goes under the keys
+       (Timeline.svelte); the name takes what is left, down to nothing. */
+    .name {
+      min-width: 0;
+    }
+  }
+  /* Where the keys would take more than half the strip (200 % text on a
+     phone standing up), the drag handle folds away: the bin and the eye stay
+     in reach, and the frames keep a cell. Alt+↑/↓ still moves a layer. */
+  @container strip (width < calc(6rem + 126px)) {
+    .handle {
+      display: none;
+    }
+    /* «+ Слой» ran past the column over the frames' numbers: the plus stays,
+       the word stays the key's name for a reader. */
+    .add-word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+  @media (forced-colors: active) {
+    .row.active::before {
+      forced-color-adjust: none;
+      background: Highlight;
     }
   }
   .sr-only {

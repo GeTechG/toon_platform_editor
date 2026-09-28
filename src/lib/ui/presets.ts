@@ -398,7 +398,10 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   // A config written before panels existed carried visibility in flags
   // instead: start from the arrangement and put away what was turned off.
   const storedPanels = (data as Record<string, unknown>).panels;
-  let panels = storedPanels === undefined ? presetPanels(preset) : normalizePanels(storedPanels);
+  let panels = storedPanels === undefined
+    ? presetPanels(preset)
+    // Read before the installed plugins are: their keys wait for them.
+    : normalizePanels(storedPanels, true);
   if (storedPanels === undefined && typeof features === 'object' && features !== null) {
     for (const [key, id] of Object.entries(FEATURE_ITEM)) {
       if ((features as Record<string, unknown>)[key] === false) {

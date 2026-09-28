@@ -113,7 +113,16 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    const { loaded, stored } = editor.importSavedPalettes(await file.text());
+    let text: string;
+    try {
+      text = await file.text();
+    } catch (error) {
+      // Moved or deleted between the pick and the read.
+      console.warn('palettes file unreadable:', error);
+      report = t('settings.palettes_unreadable');
+      return;
+    }
+    const { loaded, stored } = editor.importSavedPalettes(text);
     report = loaded === 0
       ? t('settings.no_palettes')
       : stored

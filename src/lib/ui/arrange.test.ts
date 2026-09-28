@@ -263,7 +263,7 @@ describe('eighth audit: the arrange bar', () => {
   });
 
   test('a loaded file says what it brought, and a wrong one says so', () => {
-    expect(arranger).toContain('const loaded = editor.importWorkspaces(');
+    expect(arranger).toContain('const { loaded, kept } = editor.importWorkspaces(');
     expect(arranger).toContain("t('arrange.load_failed')");
     expect(arranger).toContain("t('arrange.loaded'");
     expect(arranger).toContain('aria-live="polite"');

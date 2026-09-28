@@ -308,19 +308,33 @@ export function panelItem(id: string): PanelItem | undefined {
 }
 
 /**
+ * A tool key whose tool is not in the register (yet). Read from storage before
+ * the installed plugins are in, it is a key waiting for its plugin, not one
+ * whose plugin is gone.
+ */
+function waitingTool(id: string): boolean {
+  return id.startsWith('tool:') && !plugins.tool(id.slice(5));
+}
+
+/**
  * A stored layout, cleaned: unknown ids and repeats dropped, and any item the
  * stored layout never mentioned put back where its layout default has it — so
  * a button added in a later version is not invisible to everyone who has
  * already arranged their panels once.
+ *
+ * `waiting`: the layout is read before the installed plugins are (a reload),
+ * so the key of a tool the register does not know yet keeps its place — a
+ * reload is not the plugin coming back (owner, 13th audit). The next clean
+ * without it, once the plugins are in, drops what is really gone.
  */
-export function normalizePanels(value: unknown): PanelLayout {
+export function normalizePanels(value: unknown, waiting = false): PanelLayout {
   const stored = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const next = emptyLayout();
   const seen = new Set<string>();
   const take = (list: unknown): string[] => {
     const out: string[] = [];
     for (const id of Array.isArray(list) ? list : []) {
-      if (typeof id === 'string' && panelItem(id) && !seen.has(id)) {
+      if (typeof id === 'string' && (panelItem(id) || (waiting && waitingTool(id))) && !seen.has(id)) {
         seen.add(id);
         out.push(id);
       }
@@ -450,13 +464,36 @@ export function panelItemVisible(layout: PanelLayout, id: string): boolean {
   return !layout.hidden.includes(id);
 }
 
+/** Where a window with no place stored is drawn (FloatWindow). */
+export const FLOAT_HOME: Readonly<{ x: number; y: number }> = { x: 24, y: 24 };
+
+/** Places closer than this, in px, are the same place: rounding, not a move. */
+const FLOAT_JITTER = 2;
+
 /**
- * The same arrangement: every panel in the same order. The shelf is a heap,
- * and the order of the windows is only which one was pressed last (their
- * stacking): neither is anybody's work.
+ * The same arrangement: every panel in the same order, and — when their
+ * places are given — every window where it was (owner, 13th audit). The
+ * shelf is a heap, and the order of the windows is only which one was
+ * pressed last (their stacking): neither is anybody's work. The places are
+ * the stored ones, not the ones a small screen draws them at.
  */
-export function samePanels(a: PanelLayout, b: PanelLayout): boolean {
+export function samePanels(
+  a: PanelLayout,
+  b: PanelLayout,
+  aPos?: Readonly<Record<string, { x: number; y: number }>>,
+  bPos?: Readonly<Record<string, { x: number; y: number }>>,
+): boolean {
   const key = (p: PanelLayout) =>
     JSON.stringify([p.left, p.right, p.rows, [...p.float].sort(), [...p.hidden].sort()]);
-  return key(a) === key(b);
+  if (key(a) !== key(b)) {
+    return false;
+  }
+  if (!aPos || !bPos) {
+    return true;
+  }
+  return a.float.every((id) => {
+    const p = aPos[id] ?? FLOAT_HOME;
+    const q = bPos[id] ?? FLOAT_HOME;
+    return Math.abs(p.x - q.x) < FLOAT_JITTER && Math.abs(p.y - q.y) < FLOAT_JITTER;
+  });
 }

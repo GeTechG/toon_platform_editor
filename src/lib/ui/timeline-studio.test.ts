@@ -328,8 +328,9 @@ describe('the bottom panel folds like the sides', () => {
     // over the 14px arrow: the tab is border-box and drops the border on the
     // side it leans against, so 14 would leave the arrow 13 and the panel
     // would paint over the pixel that sticks out.
-    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*height: 15px/s);
-    expect(editorUi).toMatch(/\.fold \{[^}]*width: 15px/s);
+    // The arrow is in rem since the thirteenth audit, so the lip is too: 15px at 100 %.
+    expect(editorUi).toMatch(/\.fold\.lying \{[^}]*height: calc\(0\.875rem \+ 1px\)/s);
+    expect(editorUi).toMatch(/\.fold \{[^}]*width: calc\(0\.875rem \+ 1px\)/s);
     // Centred on its seam: at a corner it reads as a chip stuck to the
     // column above it rather than as the bar's own handle.
     expect(editorUi).toMatch(/\.fold\.lying \{[^}]*left: 50%/s);
@@ -339,7 +340,7 @@ describe('the bottom panel folds like the sides', () => {
     // thing that is meant to stick out. How much room that takes is arithmetic
     // — tab, ring, offset and the lift under the cursor — and `system-craft`
     // does the sum; here it is enough that a margin is cut at all.
-    expect(editorUi).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin: \d+px/s);
+    expect(editorUi).toMatch(/\.studio \.panel \{[^}]*overflow-clip-margin: [\d.]+rem/s);
     expect(editorUi).toContain("chevron-down");
     expect(editorUi).toContain("chevron-up");
   });

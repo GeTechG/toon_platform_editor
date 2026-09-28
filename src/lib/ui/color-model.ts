@@ -78,7 +78,30 @@ export function parseColourInput(text: string, named?: (name: string) => string 
     if (turn === undefined || [b, c].some((x) => x.unit !== '' && x.unit !== '%')) return null;
     return rgbToHex(hslToRgb((((a.n * turn) % 360) + 360) % 360, clamp(b.n, 0, 100) / 100, clamp(c.n, 0, 100) / 100));
   }
+  const modern = modernColour(s);
+  if (modern) return named?.(modern) ?? null;
   return /^[a-z]+$/.test(s) ? (named?.(s) ?? null) : null;
+}
+
+const COLOR_SPACES = new Set(['srgb', 'srgb-linear', 'display-p3', 'a98-rgb', 'prophoto-rgb', 'rec2020', 'xyz', 'xyz-d50', 'xyz-d65']);
+const COMPONENT = /^(none|[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?(%|deg|rad|grad|turn)?)$/;
+
+/**
+ * oklch(), oklab(), lab(), lch(), hwb() and color() are the browser's to
+ * convert (gamut mapping and all), like the names; here the text is only
+ * checked for shape and stripped of its alpha, as #rrggbbaa's is. Returns
+ * the opaque colour to hand over, or null for anything else.
+ */
+function modernColour(s: string): string | null {
+  const fn = /^(oklch|oklab|lab|lch|hwb|color)\(([^()]*)\)$/.exec(s);
+  if (!fn) return null;
+  const [body, alpha, ...more] = fn[2].split('/').map((part) => part.trim());
+  if (more.length || alpha === '' || (alpha !== undefined && !COMPONENT.test(alpha))) return null;
+  const parts = body.split(/\s+/);
+  const space = fn[1] === 'color' ? parts.shift() : undefined;
+  if (space !== undefined && !COLOR_SPACES.has(space)) return null;
+  if (parts.length !== 3 || !parts.every((p) => COMPONENT.test(p))) return null;
+  return `${fn[1]}(${space ? `${space} ` : ''}${parts.join(' ')})`;
 }
 
 export function hexToRgb(hex: string): Rgb {

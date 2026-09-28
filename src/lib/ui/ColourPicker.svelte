@@ -116,16 +116,27 @@
    * A CSS colour name is the browser's to know: a canvas takes it as its
    * fill and says it back as hex. It ignores what it cannot read, so the
    * name is tried over two sentinels — both kept means no colour.
+   * oklch(), lab(), color() and the rest come back as themselves, not as hex:
+   * those are painted into one sRGB pixel and read off it, the canvas mapping
+   * a colour past sRGB to the nearest it holds. The model hands them opaque.
    */
   function namedColour(name: string): string | null {
-    const ctx = document.createElement('canvas').getContext('2d');
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
     const [a, b] = ['#000000', '#ffffff'].map((sentinel) => {
       ctx.fillStyle = sentinel;
       ctx.fillStyle = name;
       return String(ctx.fillStyle);
     });
-    return a === b && /^#[0-9a-f]{6}$/.test(a) ? a : null;
+    if (a !== b) return null;
+    if (/^#[0-9a-f]{6}$/.test(a)) return a;
+    // A name that is not hex is «transparent»: no colour to paint with.
+    if (!name.includes('(')) return null;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, bl] = ctx.getImageData(0, 0, 1, 1).data;
+    return rgbToHex({ r, g, b: bl });
   }
 
   /** Enter or blur: what parses is kept and shown as hex, anything else gives the field the colour back. */

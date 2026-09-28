@@ -144,7 +144,7 @@
   <!-- Named by its title: the «i» inside would lend the heading its whole
        label, and a reader walking headings heard the title twice. -->
   <h2 class="field" aria-label={title}>
-    {title}
+    <span class="field-title">{title}</span>
     <button
       class="info"
       type="button"
@@ -383,8 +383,26 @@
     width: 100%;
     aspect-ratio: 4 / 1;
   }
+  /* The title and its «i» on one line, the key never past the box's edge:
+     at 200 % text «Сглаживание» alone was wider than a phone's box, and the
+     «i» and the word went off into a sideways scroll. The word gives way —
+     hyphenated where the browser knows Russian, broken where it does not. */
   .field {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .field-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+  }
+  /* Beside a title its width stays near the product's 44 px floor: a whole
+     2.75rem (88 px at 200 % text) left the word a third of the box. */
+  .field .info {
+    flex: none;
+    width: max(44px, 1.75rem);
   }
   .note {
     position: absolute;
@@ -494,8 +512,10 @@
   }
   /* A phone gives the box some 170px: with the heading and the big sample
      above it, the thickness — the most-turned setting — was under the fold.
-     The trigger already shows the sample and its label names the type. */
-  @media (max-width: 40rem) {
+     The trigger already shows the sample and its label names the type.
+     The studio's phone step (small-screen.ts), not a width query: a phone
+     lying down is wider than 40rem and just as short. */
+  :global(:where(.studio.phone)) {
     .brush-box {
       gap: 6px;
       padding: 6px 10px;

@@ -111,11 +111,12 @@ describe('a field being typed into', () => {
 
 describe('on a phone', () => {
   it('keeps the numbers folded, so the window does not take the stage from the selection', () => {
-    // Under 40rem the tool windows sit under the canvas, in the same column:
+    // On a small screen the tool windows sit under the canvas, in the same column:
     // the full window was ~430 px and squeezed the canvas to nothing, handles
     // and all — the one thing a finger transforms with.
     expect(menu).toContain('<details class="numbers"');
-    expect(menu).toContain("matchMedia('(max-width: 40rem)')");
+    // The studio's step decides (owner-thirteenth-layout), not a width query.
+    expect(menu).toContain("details.open = !details.closest('.studio.compact')");
     expect(t('transform.numbers')).not.toBe('transform.numbers');
   });
 
@@ -197,6 +198,6 @@ describe('owner after the tenth audit: zoom inside the transform window on a pho
 
   it('shows them only where the zoom window gives up its row', () => {
     expect(menu).toMatch(/\.zoom \{[^}]*display: none/);
-    expect(menu).toMatch(/@media \(max-width: 40rem\) \{\s*\.row\.zoom \{[^}]*display: flex/);
+    expect(menu).toMatch(/:global\(:where\(\.studio\.compact\)\) \{\s*\.row\.zoom \{[^}]*display: flex/);
   });
 });

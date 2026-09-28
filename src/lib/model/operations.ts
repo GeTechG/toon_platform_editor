@@ -23,6 +23,18 @@ import {
 import type { Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
 
 /**
+ * A write the format has no room for: the frame's stroke limit or the
+ * document's point limit. Still a RangeError; the name of the limit lets the
+ * studio say which one it hit instead of only warning in the console.
+ */
+export class FormatLimitError extends RangeError {
+  constructor(readonly limit: 'strokes' | 'points', message: string) {
+    super(message);
+    this.name = 'FormatLimitError';
+  }
+}
+
+/**
  * A stroke as a brush hands it over before it is interned: the attributes are
  * still inline, because the brush has no idea which descriptor the document
  * already holds. `addStroke` interns them and the shape stops existing.
@@ -249,7 +261,7 @@ export function replaceStrokes(
   assertLayerIndex(doc, layerIndex);
   assertFrameIndex(doc, frameIndex);
   if (strokes.length > MAX_STROKES_PER_FRAME) {
-    throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+    throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
   for (const stroke of strokes) {
     if (!doc.tools[stroke.tool_id]) {
@@ -260,7 +272,7 @@ export function replaceStrokes(
   const outgoing = pointCount(doc.layers[layerIndex].frames[frameIndex].strokes);
   const incoming = pointCount(strokes as Stroke[]);
   if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
   doc.layers[layerIndex].frames[frameIndex] = {
     strokes: strokes.map((stroke) => ({
@@ -297,12 +309,12 @@ export function replaceColumn(doc: ToonDocument, index: number, column: Resolved
     if (l < width) {
       incoming += pointCount(column[l].strokes);
       if (column[l].strokes.length > MAX_STROKES_PER_FRAME) {
-        throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+        throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }
     }
   }
   if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
   for (let l = 0; l < doc.layers.length; l++) {
     doc.layers[l].frames[index] = l < width ? resolvedFrameToV2(doc, column[l]) : emptyFrame();
@@ -359,10 +371,10 @@ export function addStroke(
   const target = cell(doc, layerIndex, frameIndex);
   assertStrokePoints(stroke.points);
   if (target.strokes.length >= MAX_STROKES_PER_FRAME) {
-    throw new RangeError(`frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+    throw new FormatLimitError('strokes', `frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
   if (totalPoints(doc) + stroke.points.length / 2 > MAX_TOTAL_POINTS) {
-    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
   const resolved = 'tool' in stroke ? stroke : resolveLegacyStroke(stroke);
   assertTool(resolved.tool);
@@ -598,7 +610,7 @@ function writeCells(
       const frame = target.frames[f];
       const next = resolvedFrameToV2(doc, combine(before[t][f], source[f % source.length]));
       if (next.strokes.length > MAX_STROKES_PER_FRAME) {
-        throw new RangeError(`frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
+        throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }
       outgoing += pointCount(doc.layers[layer].frames[frame].strokes);
       incoming += pointCount(next.strokes);
@@ -606,7 +618,7 @@ function writeCells(
     }
   }
   if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new RangeError(`document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
+    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
   }
   for (const { layer, frame, strokes } of written) {
     doc.layers[layer].frames[frame] = { strokes };

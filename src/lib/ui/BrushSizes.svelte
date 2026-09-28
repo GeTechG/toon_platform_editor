@@ -100,8 +100,10 @@
     white-space: nowrap;
   }
   /* Phone: the readout only repeats what the picked dot already says — and
-     stays when a size between the dots picks none. */
-  @media (max-width: 40rem) {
+     stays when a size between the dots picks none.
+     The studio's phone step (small-screen.ts), not a width query: a phone
+     lying down is wider than 40rem and just as short. */
+  :global(:where(.studio.phone)) {
     .sizes {
       gap: 0.15rem;
     }

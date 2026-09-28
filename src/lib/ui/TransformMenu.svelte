@@ -37,12 +37,15 @@
   }
 
   /**
-   * On a phone the window sits under the canvas, in the same column, and the
-   * whole of it took the stage from the selection it transforms. There the
-   * fingers do the work and the numbers wait folded; the width at opening
-   * decides, the reader's toggle after that.
+   * On a small screen the window sits under the canvas, in the same column,
+   * and the whole of it took the stage from the selection it transforms.
+   * There the fingers do the work and the numbers wait folded; the studio's
+   * step at opening decides (small-screen.ts, not a width query — a phone
+   * lying down is wider than one), the reader's toggle after that.
    */
-  const numbersOpen = !matchMedia('(max-width: 40rem)').matches;
+  function foldOnSmallScreen(details: HTMLDetailsElement): void {
+    details.open = !details.closest('.studio.compact');
+  }
 
   /** Scales are typed as percentages, the way the reference window shows them. */
   function percent(value: number): number {
@@ -69,7 +72,7 @@
     <!-- Label and field are siblings in the grid rather than a wrapping
          <label display:contents>, which older browsers drop out of the
          accessibility tree along with the association it carries. -->
-    <details class="numbers" open={numbersOpen}>
+    <details class="numbers" {@attach foldOnSmallScreen}>
     <summary>{t('transform.numbers')}<Icon name="chevron-down" size={16} /></summary>
     <div class="fields" onchange={() => (typing = null)} onfocusout={() => (typing = null)}>
       <label for="tf-dx">X</label>
@@ -190,7 +193,8 @@
   .zoom {
     display: none;
   }
-  @media (max-width: 40rem) {
+  /* Where the zoom window gives up its row (Editor.svelte, the compact step). */
+  :global(:where(.studio.compact)) {
     .row.zoom {
       display: flex;
     }

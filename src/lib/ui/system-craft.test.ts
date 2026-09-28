@@ -404,12 +404,17 @@ describe('a box squeezed below its content gives it a way out', () => {
 // its ring one pixel outside the margin that was cut for it.
 describe('the clip margin covers what leans on the seam', () => {
   it('leaves room for the tab, its ring and its lift', () => {
-    const margin = Number(editorUi.match(/overflow-clip-margin:\s*(\d+)px/)?.[1]);
-    const tab = Number(editorUi.match(/\.fold\.lying \{[^}]*height:\s*(\d+)px/s)?.[1]);
+    // Both in rem since the thirteenth audit (the arrow grows with the text):
+    // the sum is checked at 100 % and at 200 % text.
+    const margin = (rootPx: number) => Number(editorUi.match(/overflow-clip-margin:\s*([\d.]+)rem;/)?.[1]) * rootPx;
+    const tab = (rootPx: number) => {
+      const [, rem, px] = editorUi.match(/\.fold\.lying \{[^}]*height:\s*calc\(([\d.]+)rem \+ (\d+)px\)/s) ?? [];
+      return Number(rem) * rootPx + Number(px);
+    };
     const ring = Number(editorUi.match(/:focus-visible \{\s*outline:\s*(\d+)px/)?.[1]);
     const offset = Number(editorUi.match(/outline-offset:\s*(\d+)px/)?.[1]);
     const lift = Number(editorUi.match(/\.fold\.lying:hover \{[^}]*translate\(-50%,\s*-(\d+)px\)/s)?.[1]);
-    expect(margin).toBeGreaterThanOrEqual(tab + ring + offset + lift);
+    for (const rootPx of [16, 32]) expect(margin(rootPx)).toBeGreaterThanOrEqual(tab(rootPx) + ring + offset + lift);
   });
 });
 

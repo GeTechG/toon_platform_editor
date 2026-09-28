@@ -36,6 +36,20 @@ export interface Stage {
   /** The sheet at zoom 1: the document fitted inside the workspace. */
   sheetWidth: number;
   sheetHeight: number;
+  /**
+   * Where the fit laid the sheet at 100 %, when something stands over the
+   * stage (`fitSheet`'s covers); the middle of the workspace without it.
+   */
+  sheetX?: number;
+  sheetY?: number;
+}
+
+/** What stands over the stage for good — the thickness rail, the zoom window — in workspace px. */
+export interface Cover {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export const IDENTITY_VIEW: Viewport2D = { zoom: 1, panX: 0, panY: 0 };
@@ -106,28 +120,98 @@ export function ctrlWheelZoom(zoom: number, deltaY: number, deltaMode: number): 
 }
 
 /**
+ * A cover counts as standing on every edge it is this close to, past the
+ * nearest one: a window in a corner can give up its row or its column.
+ */
+const COVER_EDGE_SLACK = 16;
+
+type Cut = 'left' | 'right' | 'top' | 'bottom' | null;
+
+/**
  * The sheet at 100%: the document fitted inside the workspace with air around
  * it, so the whole page — edges, shadow and all — is on screen from the start.
  * An unmeasured height (Infinity) fits by width alone.
+ *
+ * `covers` stand over the stage for good (the thickness rail, the zoom
+ * window), and the page is fitted clear of them, as Procreate Dreams fits it
+ * beside its sidebar: each cover takes its strip off an edge it stands on —
+ * or nothing, when the sheet does not reach it — and the biggest sheet wins,
+ * then the one nearest the middle. Only the fit: zoom and pan stay free.
  */
 export function fitSheet(
   width: number,
   height: number,
   doc: { width: number; height: number },
-): { width: number; height: number } {
-  const room = Math.max(1, width - 2 * FIT_PADDING);
-  const tall = Math.max(1, height - 2 * FIT_PADDING);
-  const scale = Math.min(room / doc.width, tall / doc.height);
-  return { width: doc.width * scale, height: doc.height * scale };
+  covers: readonly Cover[] = [],
+): { width: number; height: number; x: number; y: number } {
+  const on = covers.filter(
+    (c) => c.width > 0 && c.height > 0 && c.x < width && c.x + c.width > 0 && c.y < height && c.y + c.height > 0,
+  );
+  const cuts = on.map((c): Cut[] => {
+    const gaps: [Cut, number][] = [
+      ['left', c.x],
+      ['right', width - c.x - c.width],
+      ['top', c.y],
+      ['bottom', height - c.y - c.height],
+    ];
+    const near = Math.min(...gaps.map(([, gap]) => gap));
+    return [null, ...gaps.filter(([, gap]) => gap <= near + COVER_EDGE_SLACK).map(([cut]) => cut)];
+  });
+  let best: { width: number; height: number; x: number; y: number } | null = null;
+  let bestOff = Infinity;
+  const pick = (index: number, box: { l: number; t: number; r: number; b: number }, free: Cover[]): void => {
+    if (index < on.length) {
+      const c = on[index];
+      for (const cut of cuts[index]) {
+        pick(
+          index + 1,
+          {
+            l: cut === 'left' ? Math.max(box.l, c.x + c.width) : box.l,
+            r: cut === 'right' ? Math.min(box.r, c.x) : box.r,
+            t: cut === 'top' ? Math.max(box.t, c.y + c.height) : box.t,
+            b: cut === 'bottom' ? Math.min(box.b, c.y) : box.b,
+          },
+          cut === null ? [...free, c] : free,
+        );
+      }
+      return;
+    }
+    const room = box.r - box.l - 2 * FIT_PADDING;
+    const tall = box.b - box.t - 2 * FIT_PADDING;
+    if (on.length > 0 && (room <= 0 || tall <= 0)) return;
+    const scale = Math.min(Math.max(1, room) / doc.width, Math.max(1, tall) / doc.height);
+    const w = doc.width * scale;
+    const h = doc.height * scale;
+    // In the middle of the workspace, moved no further than into its box.
+    const x = Math.min(box.r - FIT_PADDING - w, Math.max(box.l + FIT_PADDING, (width - w) / 2));
+    const y = Number.isFinite(height)
+      ? Math.min(box.b - FIT_PADDING - h, Math.max(box.t + FIT_PADDING, (height - h) / 2))
+      : 0;
+    const place = { width: w, height: h, x, y };
+    if (free.some((c) => c.x < x + w && x < c.x + c.width && c.y < y + h && y < c.y + c.height)) return;
+    const off = Math.abs(x + w / 2 - width / 2) + (Number.isFinite(height) ? Math.abs(y + h / 2 - height / 2) : 0);
+    if (!best || w > best.width + 1e-9 || (w > best.width - 1e-9 && off < bestOff - 1e-9)) {
+      best = place;
+      bestOff = off;
+    }
+  };
+  pick(0, { l: 0, t: 0, r: width, b: height }, []);
+  // Covers that leave no room at all are not fitted around: the sheet is the product.
+  return best ?? fitSheet(width, height, doc);
 }
 
-/** 100% with the sheet centred on the workspace. */
-export function fitView(stage: Stage): Viewport2D {
+/** Where the sheet at 100% lies: the fit's place, or the middle of the workspace. */
+function fittedAt(stage: Stage): { x: number; y: number } {
   return {
-    zoom: 1,
-    panX: (stage.width - stage.sheetWidth) / 2,
-    panY: (stage.height - stage.sheetHeight) / 2,
+    x: stage.sheetX ?? (stage.width - stage.sheetWidth) / 2,
+    y: stage.sheetY ?? (stage.height - stage.sheetHeight) / 2,
   };
+}
+
+/** 100%, with the sheet where the fit laid it (centred, when nothing covers the stage). */
+export function fitView(stage: Stage): Viewport2D {
+  const at = fittedAt(stage);
+  return { zoom: 1, panX: at.x, panY: at.y };
 }
 
 /**
@@ -190,16 +274,25 @@ export function zoomCentredOn(
  * edge. The point of the sheet in the middle of the screen stays there.
  */
 export function resizedView(view: Viewport2D, from: Stage, to: Stage): Viewport2D {
-  const u = (from.width / 2 - view.panX) / (from.sheetWidth * view.zoom);
-  const v = (from.height / 2 - view.panY) / (from.sheetHeight * view.zoom);
+  // The middle is the fitted sheet's: with a cover over the stage, the middle
+  // of what is left of it — so a sheet nobody moved stays fitted.
+  const a = anchorOf(from);
+  const b = anchorOf(to);
+  const u = (a.x - view.panX) / (from.sheetWidth * view.zoom);
+  const v = (a.y - view.panY) / (from.sheetHeight * view.zoom);
   return clampPan(
     {
       zoom: view.zoom,
-      panX: to.width / 2 - u * to.sheetWidth * view.zoom,
-      panY: to.height / 2 - v * to.sheetHeight * view.zoom,
+      panX: b.x - u * to.sheetWidth * view.zoom,
+      panY: b.y - v * to.sheetHeight * view.zoom,
     },
     to,
   );
+}
+
+function anchorOf(stage: Stage): { x: number; y: number } {
+  const at = fittedAt(stage);
+  return { x: at.x + stage.sheetWidth / 2, y: at.y + stage.sheetHeight / 2 };
 }
 
 /** Keeps the sheet on the table: it slides freely, an edge always in reach. */

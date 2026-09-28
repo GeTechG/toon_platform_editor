@@ -45,6 +45,9 @@
   let busy = $state('');
   /** What the last install or removal did, shown until the next one. */
   let report = $state('');
+  /** Aborted when the sheet goes: a download does not outlive the window it is for. */
+  const leaving = new AbortController();
+  $effect(() => () => leaving.abort());
 
   $effect(() => {
     dialogEl?.showModal();
@@ -71,7 +74,12 @@
    */
   async function askInstall(entry: CatalogEntry): Promise<void> {
     busy = entry.id;
-    const got = await download(entry.url);
+    const got = await download(entry.url, undefined, leaving.signal);
+    // The sheet closed under the download: the request is off, and there is
+    // no window left to report into.
+    if (leaving.signal.aborted) {
+      return;
+    }
     busy = '';
     if (typeof got === 'string') {
       // `download` has put the browser's own words in the console already.
@@ -118,10 +126,13 @@
     // An answer for an address that has since changed is not written over the
     // newer one's.
     let current = true;
+    // Leaving the sheet, or a newer address, calls this read off: it does not
+    // hang on in the background after nobody waits for it.
+    const reading = new AbortController();
     catalogLoading = true;
     void (async () => {
-      const read = await readCatalog(address);
-      if (!current) {
+      const read = await readCatalog(address, undefined, reading.signal);
+      if (!current || read.aborted) {
         return;
       }
       // A record under the delivery's id is not on offer: the delivery
@@ -133,6 +144,7 @@
     })();
     return () => {
       current = false;
+      reading.abort();
     };
   });
 
@@ -197,7 +209,17 @@
     if (!file) {
       return;
     }
-    const code = await file.text();
+    let code: string;
+    try {
+      code = await file.text();
+    } catch (error) {
+      // Moved, deleted or taken back by the system between the pick and the
+      // read: said here, not an unhandled rejection.
+      console.warn('plugin file unreadable:', error);
+      const failed = t('plugins.file_unreadable');
+      report = t('plugins.failed_report', { name: file.name, reason: forPerson(failed) });
+      return;
+    }
     // A file went through nobody's review: it always says so first.
     pending = { name: file.name, run: () => installFile(file.name, code) };
   }
@@ -431,8 +453,9 @@
      the close key wears that class too, and its cross grew to the whole key. */
   .face {
     display: inline-flex;
-    width: 48px;
-    height: 48px;
+    /* In rem: the face is an icon too, and grows with the text like the rest. */
+    width: 3rem;
+    height: 3rem;
     justify-content: center;
     flex: none;
   }

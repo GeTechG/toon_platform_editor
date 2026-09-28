@@ -142,6 +142,8 @@
 </script>
 
 <script lang="ts">
+  import { iconLength } from './icon-size';
+
   /**
    * A name from the vocabulary, or the markup itself — a plugin cannot write
    * into this file, so it brings its own path. The leading `<` tells them
@@ -149,11 +151,14 @@
    */
   let { name, size = 20 }: { name: IconName | string; size?: number } = $props();
   const markup = $derived(name.trimStart().startsWith('<') ? name : null);
+  // Pixels at 100 % text, drawn in rem: at 200 % the glyph is as big as its key
+  // says it should be. Attributes, not a style, so a sheet can still stretch it.
+  const length = $derived(iconLength(size));
 </script>
 
 <svg
-  width={size}
-  height={size}
+  width={length}
+  height={length}
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"

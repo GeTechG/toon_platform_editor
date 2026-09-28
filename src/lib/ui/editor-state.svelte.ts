@@ -133,6 +133,7 @@ import {
   currentName,
   exportWorkspace,
   importWorkspaces,
+  workspaceConflicts,
   loadWorkspaces,
   removeWorkspace,
   saveWorkspaces,
@@ -182,6 +183,7 @@ import {
   type BrushRecord,
 } from './presets';
 import { t } from '../i18n';
+import { formatLimitHint } from './format-limit';
 
 /**
  * A tool is whatever the register has (plugins/registry.ts), so this is an id
@@ -870,7 +872,7 @@ export class EditorState {
     const same = this.workspaces.find((w) => w.name === name.trim());
     if (
       same
-      && !samePanels(same.panels, this.panels)
+      && !samePanels(same.panels, this.panels, same.floatPos, this.floatPos)
       && !this.confirmed(t('arrange.overwrite_confirm', { name: same.name }))
     ) {
       return false;
@@ -891,7 +893,12 @@ export class EditorState {
     if (!workspace) {
       return false;
     }
-    if (!this.mayReplacePanels(workspace.panels, this.preset, t('arrange.workspace_confirm', { name: workspace.name }))) {
+    if (!this.mayReplacePanels(
+      workspace.panels,
+      this.preset,
+      t('arrange.workspace_confirm', { name: workspace.name }),
+      workspace.floatPos,
+    )) {
       return false;
     }
     // A stored workspace is a runes proxy here, which structuredClone refuses:
@@ -913,12 +920,23 @@ export class EditorState {
     );
   }
 
-  /** Reads such a file; returns how many arrangements landed, for the sheet. */
-  importWorkspaces(raw: string): number {
-    const { workspaces, loaded } = importWorkspaces(this.workspaces, raw);
+  /**
+   * Reads such a file; returns how many arrangements landed, and how many kept
+   * their own here — a workspace of the same name laid out otherwise is asked
+   * about first, as «Сохранить» asks (owner, 13th audit).
+   */
+  importWorkspaces(raw: string): { loaded: number; kept: number } {
+    const clash = workspaceConflicts(this.workspaces, raw);
+    const replace = clash.length === 0 || this.confirmed(
+      clash.length === 1
+        ? t('arrange.import_overwrite_confirm', { name: clash[0] })
+        : t('arrange.import_overwrite_many_confirm', { names: clash.map((name) => `«${name}»`).join(', ') }),
+    );
+    const keep = new Set(replace ? [] : clash);
+    const { workspaces, loaded } = importWorkspaces(this.workspaces, raw, keep);
     this.workspaces = workspaces;
     saveWorkspaces(this.workspaces);
-    return loaded;
+    return { loaded, kept: keep.size };
   }
 
   deleteWorkspace(id: number): void {
@@ -1000,6 +1018,19 @@ export class EditorState {
     }
     this.canvasHint = { text: t('canvas.hidden_layer') };
     return false;
+  }
+
+  /**
+   * A write the format had no room for (the frame's strokes, the mult's
+   * points): the refusal is said in the canvas's live line, like a hidden
+   * layer's. True when it was such a limit.
+   */
+  private refuseAtLimit(err: unknown): boolean {
+    const text = formatLimitHint(err);
+    if (text) {
+      this.canvasHint = { text };
+    }
+    return text !== null;
   }
 
   selectLayer(index: number): void {
@@ -1157,11 +1188,18 @@ export class EditorState {
    * arrangement made by hand — one that is neither `next` already nor the
    * current preset's own.
    */
-  private mayReplacePanels(next: PanelLayout, id = this.preset, question?: string): boolean {
-    return samePanels(this.panels, next)
-      || samePanels(this.panels, presetPanels(this.preset))
+  private mayReplacePanels(
+    next: PanelLayout,
+    id = this.preset,
+    question?: string,
+    nextPos: Record<string, { x: number; y: number }> = {},
+  ): boolean {
+    // The windows' places count (owner, 13th audit): the stored ones, and a
+    // preset places none of its own.
+    return samePanels(this.panels, next, this.floatPos, nextPos)
+      || samePanels(this.panels, presetPanels(this.preset), this.floatPos, {})
       // Saved under a name, it is not lost: the list brings it back.
-      || this.workspaces.some((w) => samePanels(this.panels, w.panels))
+      || this.workspaces.some((w) => samePanels(this.panels, w.panels, this.floatPos, w.floatPos))
       || (question !== undefined
         ? this.confirmed(question)
         : this.confirmed(t('arrange.replace_confirm', { name: presets().find((p) => p.id === id)?.label ?? id })));
@@ -1461,8 +1499,10 @@ export class EditorState {
       this.touched = true;
       this.flashTick++;
     } catch (err) {
-      // At the document point limit — drop the paste instead of throwing.
-      console.warn('paste rejected:', err);
+      // At the document point limit — drop the paste and say so on the canvas.
+      if (!this.refuseAtLimit(err)) {
+        console.warn('paste rejected:', err);
+      }
     }
   }
 
@@ -1535,8 +1575,10 @@ export class EditorState {
     try {
       this.#write((doc) => write(doc, target, buffer));
     } catch (err) {
-      // At the document point limit — drop the write instead of throwing.
-      console.warn('timeline paste rejected:', err);
+      // At the document point limit — drop the write and say so on the canvas.
+      if (!this.refuseAtLimit(err)) {
+        console.warn('timeline paste rejected:', err);
+      }
       return;
     }
     this.pushEdit(snapshots);
@@ -1744,6 +1786,7 @@ export class EditorState {
       }));
     } catch (err) {
       console.warn('redo rejected:', err);
+      this.refuseAtLimit(err);
       return;
     }
     this.undone = this.undone.slice(0, -1);
@@ -1759,7 +1802,17 @@ export class EditorState {
     if (!this.mayEdit([layerIndex])) {
       return;
     }
-    this.#write((doc) => addStroke(doc, layerIndex, this.activeFrame, stroke));
+    // A frame or a mult at the format's limit drops the stroke, says so on
+    // the canvas and keeps the redo stack; anything else is the caller's.
+    try {
+      this.#write((doc) => addStroke(doc, layerIndex, this.activeFrame, stroke));
+    } catch (err) {
+      if (!this.refuseAtLimit(err)) {
+        throw err;
+      }
+      console.warn('stroke rejected:', err);
+      return;
+    }
     if (!this.ux.redoSurvivesStroke) {
       this.undone = [];
     }
@@ -1809,6 +1862,7 @@ export class EditorState {
       this.#write((doc) => replaceStrokes(doc, this.activeLayer, this.activeFrame, after));
     } catch (err) {
       console.warn('erase rejected:', err);
+      this.refuseAtLimit(err);
       return;
     }
     this.pushEdit(snapshots);
@@ -2129,9 +2183,29 @@ export class EditorState {
     // way it was left.
     if (this.presetPending && presetExists(this.preset)) {
       this.presetPending = false;
+      // The arrangement and the brush are the ones that were left, not the
+      // preset's start: a reload is not a pick of the preset.
+      const kept = this.panels;
+      const keptBrush = this.defaultBrush;
+      const keptType = this.brushType;
       this.applyPreset(this.preset, false);
+      this.panels = kept;
+      this.defaultBrush = keptBrush;
+      this.brushType = keptType;
+      this.persistUiConfig();
     }
+    // Keys read while their plugin was still loading kept their place; now
+    // the register is what it is, and a key without a tool goes — from the
+    // saved arrangements as well, so the list does not keep ghosts.
     this.panels = normalizePanels(this.panels);
+    const workspaces = this.workspaces.map((w) => {
+      const plain = $state.snapshot(w);
+      return { ...plain, panels: normalizePanels(plain.panels) };
+    });
+    if (JSON.stringify(workspaces) !== JSON.stringify($state.snapshot(this.workspaces))) {
+      this.workspaces = workspaces;
+      saveWorkspaces(this.workspaces);
+    }
     this.pluginsVersion++;
     if (!plugins.tool(this.tool)) {
       this.selectTool('pencil');

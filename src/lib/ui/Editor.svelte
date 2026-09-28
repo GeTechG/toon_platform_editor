@@ -1365,6 +1365,51 @@
    * A file dropped anywhere on the window (`bundle:7341-7407`): a drawing
    * opens, a sound is attached, anything else is named rather than ignored.
    */
+  /**
+   * A modal sheet is up — settings, drafts, export, plugins, a question, any
+   * `showModal()`. None of them has a drop zone of its own, so a file dropped
+   * then would change the drawing under the sheet: it is refused instead.
+   */
+  function sheetOpen(): boolean {
+    return document.querySelector('dialog:modal') !== null;
+  }
+  /** The refusal, as a note above the sheet (the top layer), for a moment. */
+  let dropNote = $state(false);
+  let dropNoteEl = $state<HTMLElement | undefined>();
+  let dropNoteTimer = 0;
+  function refuseDrop(): void {
+    dropNote = true;
+    clearTimeout(dropNoteTimer);
+    dropNoteTimer = setTimeout(() => (dropNote = false), 3000) as unknown as number;
+  }
+  $effect(() => {
+    const el = dropNoteEl;
+    if (!el) {
+      return;
+    }
+    // Hidden and shown again on each refusal, so it lands above the sheet
+    // that is on top now, not the one that was when it first opened.
+    if (el.matches(':popover-open')) {
+      el.hidePopover();
+    }
+    if (dropNote) {
+      el.showPopover();
+    }
+  });
+  function onDragOver(e: DragEvent): void {
+    if (!e.dataTransfer?.types.includes('Files')) {
+      return;
+    }
+    // Always taken by the page, or the browser opens the file itself.
+    e.preventDefault();
+    if (sheetOpen()) {
+      e.dataTransfer.dropEffect = 'none';
+      if (!dropNote) {
+        refuseDrop();
+      }
+    }
+  }
+
   function onDrop(e: DragEvent): void {
     const file = e.dataTransfer?.files?.[0];
     if (!file) {
@@ -1373,6 +1418,10 @@
     e.preventDefault();
     // The update lock: the keys are off, and a drop is no different.
     if (editor.updating) {
+      return;
+    }
+    if (sheetOpen()) {
+      refuseDrop();
       return;
     }
     if (/\.(toonops|toonio)$/i.test(file.name)) {
@@ -1529,7 +1578,7 @@
   onpointermove={onDividerMove}
   onpointerup={onDividerUp}
   onpointercancel={onDividerUp}
-  ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
+  ondragover={onDragOver}
   ondrop={onDrop}
   onbeforeunload={(e) => {
     // Unsaved strokes on a sheet that has something on it: the write starts
@@ -1997,7 +2046,7 @@
     <!-- The only zoom control there is, so it is always on the canvas: in the
          far corner, faded back until the hand is up, the wheel turns, or it is
          hovered or focused. -->
-    <div class="scale-window">
+    <div class="scale-window" data-over-sheet>
       <ScaleMenu {editor} />
     </div>
     {#if flashVisible}
@@ -2032,6 +2081,9 @@
         {/each}
       </section>
     {/if}
+    <p class="import-error drop-note" popover="manual" role="status" bind:this={dropNoteEl}>
+      {dropNote ? t('editor.drop_sheet_open') : ''}
+    </p>
     {#if importError}
       <p class="import-error" role="alert">
         {importError}
@@ -2597,10 +2649,14 @@
        straddles the seam on purpose survives it: the drag band 8px above the
        edge and the fold tab 15px above it, plus that tab's focus ring (3px
        at 2px offset) and the 1px the tab lifts under the cursor. The margin is
-       uniform, so it is the tallest of them: 15 + 3 + 2 + 1. */
+       uniform, so it is the tallest of them: the tab (its 14px arrow in rem
+       and a pixel) + 3 + 2 + 1 — 21 at 100 % text, 35 at 200 %. In rem, not
+       px, or the grown tab is cut at 200 %; and a bare length, because
+       Chromium drops the whole declaration when it is a calc(): 1.3125rem is
+       the 21 exactly at 100 % and 42 — past the 35 — at 200 %. */
     max-height: 75dvh;
     overflow: clip;
-    overflow-clip-margin: 21px;
+    overflow-clip-margin: 1.3125rem;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair
@@ -2631,7 +2687,7 @@
     left: 50%;
     transform: translateX(-50%);
     width: var(--key-h);
-    height: 15px;
+    height: calc(0.875rem + 1px);
     border-bottom: none;
     border-radius: var(--r-sm) var(--r-sm) 0 0;
     box-shadow: none;
@@ -2981,10 +3037,12 @@
     top: 1rem;
     display: grid;
     place-items: center;
-    /* 15, not 14: the tab is border-box and drops the border on the side it
-       leans against, so a 14px lip leaves the 14px arrow 13px to sit in and
-       the panel paints over the pixel that sticks out. */
-    width: 15px;
+    /* The arrow and a pixel, not the arrow: the tab is border-box and drops
+       the border on the side it leans against, so a lip the arrow's width
+       leaves it a pixel short and the panel paints over what sticks out. The
+       arrow is 14px in rem (it grows with the text), so the lip is too —
+       15px at 100 %, 29px at 200 %, where a 15px lip hid half of it. */
+    width: calc(0.875rem + 1px);
     height: var(--key-h);
     padding: 0;
     border: none;
@@ -3435,6 +3493,17 @@
     background: var(--canvas);
     color: var(--ink);
     font-size: 0.85rem;
+  }
+  /* The drop refused over a sheet: the import error's look, in the top layer
+     above the sheet, so it takes the browser's popover box off first. */
+  .drop-note {
+    position: fixed;
+    inset: auto 0 1rem;
+    z-index: auto;
+    pointer-events: none;
+  }
+  .drop-note:not(:popover-open) {
+    display: none;
   }
   /* Mode notes along the stage's top edge, drawn like the import error: the
      weight of the line, not a colour. The box lets the pointer through to the

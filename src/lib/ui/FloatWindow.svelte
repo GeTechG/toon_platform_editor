@@ -11,7 +11,7 @@
   import { tick, type Snippet } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { clampWindowPosition } from './draggable';
-  import { panelItem, slotOf } from './panels';
+  import { FLOAT_HOME, panelItem, slotOf } from './panels';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
 
@@ -63,7 +63,7 @@
     return () => watcher.disconnect();
   });
 
-  const pos = $derived(editor.floatPos[id] ?? { x: 24, y: 24 });
+  const pos = $derived(editor.floatPos[id] ?? FLOAT_HOME);
 
   /**
    * Where the window is drawn: its place, brought inside the editor — a drop

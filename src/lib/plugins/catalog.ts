@@ -8,6 +8,22 @@
 
 import { PLUGIN_API, pluginNamespace, pluginText } from './contract';
 import { t } from '../i18n';
+import { seconds, timedOut, withDeadline } from './deadline';
+
+/**
+ * How long the catalog gets to answer. `index.json` is a few kilobytes on a
+ * CDN that answers in well under a second; fifteen covers a cold cache on a
+ * slow phone, and past it the person is better off with «Повторить» than with
+ * «Читаю каталог…» for good.
+ */
+export const CATALOG_TIMEOUT_MS = 15_000;
+
+/**
+ * How long a bundle gets. A bundle is a few hundred kilobytes at most: on a
+ * slow 3G line (~50 KB/s) that is several seconds, and thirty leave room for
+ * that and for a slow start.
+ */
+export const BUNDLE_TIMEOUT_MS = 30_000;
 
 /**
  * A plugin offered by the catalog; `url` is its bundle, already resolved.
@@ -36,15 +52,19 @@ export interface Catalog {
   readonly plugins: CatalogEntry[];
   /** Why there is nothing to show, when there is nothing to show. */
   readonly error?: string;
+  /** The caller called the read off: there is nothing to show and nobody to show it to. */
+  readonly aborted?: true;
 }
 
 export interface CatalogPorts {
-  fetch: (url: string) => Promise<{ ok?: boolean; status?: number; json(): Promise<unknown> }>;
+  fetch: (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok?: boolean; status?: number; json(): Promise<unknown> }>;
   /** What a relative address is relative to — the page the editor is on. */
   base?: string;
+  /** How long the read gets, in ms; `CATALOG_TIMEOUT_MS` unless a test says otherwise. */
+  timeout?: number;
 }
 
-const DEFAULT_PORTS: CatalogPorts = { fetch: (url) => globalThis.fetch(url) };
+const DEFAULT_PORTS: CatalogPorts = { fetch: (url, init) => globalThis.fetch(url, init) };
 
 function reason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -95,7 +115,15 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
   };
 }
 
-export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT_PORTS): Promise<Catalog> {
+/**
+ * Reads the catalog at an address. `signal` calls it off — the sheet it was
+ * for has closed — and the answer is then `aborted`, with no error to show.
+ */
+export async function readCatalog(
+  address: string,
+  ports: CatalogPorts = DEFAULT_PORTS,
+  signal?: AbortSignal,
+): Promise<Catalog> {
   const address_ = address.trim();
   if (!address_) {
     return { plugins: [], error: t('plugin.catalog_no_url') };
@@ -109,14 +137,29 @@ export async function readCatalog(address: string, ports: CatalogPorts = DEFAULT
     return { plugins: [], error: t('plugin.catalog_bad_url', { address: address_ }) };
   }
   let index: unknown;
+  const timeout = ports.timeout ?? CATALOG_TIMEOUT_MS;
   try {
-    const response = await ports.fetch(new URL('index.json', base).href);
-    // A 404 is a page, not a catalog: parsed, it said «Unexpected token '<'».
+    const response = await withDeadline(timeout, signal, async (deadline) => {
+      const answer = await ports.fetch(new URL('index.json', base).href, { signal: deadline });
+      // A 404 is a page, not a catalog: parsed, it said «Unexpected token '<'».
+      if (answer.ok === false) {
+        return answer;
+      }
+      index = await answer.json();
+      return answer;
+    });
     if (response.ok === false) {
       return { plugins: [], error: t('plugin.catalog_missing', { status: response.status ?? '' }) };
     }
-    index = await response.json();
   } catch (error) {
+    if (signal?.aborted) {
+      return { plugins: [], aborted: true };
+    }
+    // The browser's own words for a deadline are about the machine; this one
+    // is ours, and says what to do.
+    if (timedOut(error)) {
+      return { plugins: [], error: t('plugin.catalog_timeout', { count: seconds(timeout) }) };
+    }
     return { plugins: [], error: t('plugin.catalog_unreadable', { reason: reason(error) }) };
   }
   const body = typeof index === 'object' && index !== null ? index as Record<string, unknown> : {};

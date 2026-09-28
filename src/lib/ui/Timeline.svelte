@@ -941,12 +941,19 @@
   }
 
   /* Phone: a shorter timeline and no room for a wide layer column. */
-  @media (max-width: 40rem) {
+  :global(:where(.studio.phone)) {
     /* No narrower than the phone row (LayerRows): 108 px of furniture, the
        name's 3rem floor and the border. At 7.5rem the handle and the bin
        were scrolled out of the column. */
     .layer-col {
+      /* Never narrower than its row's keys (LayerRows): eye, handle and bin
+         at 1rem + 8px, the tag's 16, four gaps, the padding and the border.
+         Under half the strip before, at 200 % text the bin was scrolled out. */
+      min-width: calc(3rem + 63px);
       width: 10rem;
+    }
+    .body {
+      container: strip / inline-size;
     }
     /* The phone panel grows to its contents, so here the chip is a row of
        its own, a finger's keys and the hint in full. */
@@ -960,6 +967,13 @@
     }
     .pick-hint {
       white-space: normal;
+    }
+  }
+  /* The keys would take more than half the strip: the handle folds away
+     (LayerRows), and the column holds the three keys left. */
+  @container strip (width < calc(6rem + 126px)) {
+    .layer-col {
+      min-width: calc(2rem + 51px);
     }
   }
 </style>

@@ -10,14 +10,17 @@
  * Nothing here throws into the editor: every failure comes back as a reason.
  */
 
-import { compareVersions, reviewed, type CatalogEntry } from './catalog';
+import { BUNDLE_TIMEOUT_MS, compareVersions, reviewed, type CatalogEntry } from './catalog';
+import { seconds, timedOut, withDeadline } from './deadline';
 import { pluginNamespace, pluginText, type Plugin } from './contract';
 import type { PluginRegistry } from './registry';
 import { listInstalled, putInstalled, type InstalledPlugin } from './store';
 import { t } from '../i18n';
 
 export interface InstallPorts {
-  fetch: (url: string) => Promise<{ ok?: boolean; status?: number; text(): Promise<string> }>;
+  fetch: (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok?: boolean; status?: number; text(): Promise<string> }>;
+  /** How long a bundle gets, in ms; `BUNDLE_TIMEOUT_MS` unless a test says otherwise. */
+  timeout?: number;
   /** Turns a bundle into a module; its own port so a test needs no browser. */
   evaluate: (code: string) => Promise<Record<string, unknown>>;
 }
@@ -36,7 +39,7 @@ async function evaluate(code: string): Promise<Record<string, unknown>> {
 }
 
 const DEFAULT_PORTS: InstallPorts = {
-  fetch: (url) => globalThis.fetch(url),
+  fetch: (url, init) => globalThis.fetch(url, init),
   evaluate,
 };
 
@@ -49,8 +52,10 @@ const DEFAULT_PORTS: InstallPorts = {
 export function forPerson(failure: string): string {
   const shape = (key: string) =>
     new RegExp(`^${t(key, { api: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '.*')}$`);
-  const actionable = ['plugins.not_downloaded', 'plugins.not_a_bundle', 'plugin.foreign_api', 'plugins.not_kept'];
-  return actionable.some((key) => shape(key).test(failure)) ? failure : t('plugins.faulty');
+  const actionable = ['plugins.not_downloaded', 'plugins.not_a_bundle', 'plugin.foreign_api', 'plugins.not_kept', 'plugins.file_unreadable'];
+  // Counted words have a form per number; the sheet's deadline is the one it says.
+  const late = t('plugins.download_timeout', { count: seconds(BUNDLE_TIMEOUT_MS) });
+  return failure === late || actionable.some((key) => shape(key).test(failure)) ? failure : t('plugins.faulty');
 }
 
 function reason(error: unknown): string {
@@ -73,20 +78,28 @@ function manifestOf(module: Record<string, unknown>): Partial<Plugin> & Record<s
  */
 export async function download(
   url: string,
-  ports: Pick<InstallPorts, 'fetch'> = DEFAULT_PORTS,
+  ports: Pick<InstallPorts, 'fetch' | 'timeout'> = DEFAULT_PORTS,
+  signal?: AbortSignal,
 ): Promise<{ code: string } | string> {
   // The browser's own words are English and about the machine: they go to
   // the console, and the report says what happened in ours.
+  const timeout = ports.timeout ?? BUNDLE_TIMEOUT_MS;
   try {
-    const response = await ports.fetch(url);
-    // A 404 page is text too: run as a bundle, it came back «это не плагин».
-    if (response.ok === false) {
-      throw new Error(`HTTP ${response.status ?? ''} ${url}`);
-    }
-    return { code: await response.text() };
+    return await withDeadline(timeout, signal, async (deadline) => {
+      const response = await ports.fetch(url, { signal: deadline });
+      // A 404 page is text too: run as a bundle, it came back «это не плагин».
+      if (response.ok === false) {
+        throw new Error(`HTTP ${response.status ?? ''} ${url}`);
+      }
+      return { code: await response.text() };
+    });
   } catch (error) {
+    if (signal?.aborted) {
+      // Called off by the caller: nobody is waiting for a reason.
+      return t('plugins.not_downloaded');
+    }
     console.warn('plugin download failed:', error);
-    return t('plugins.not_downloaded');
+    return timedOut(error) ? t('plugins.download_timeout', { count: seconds(timeout) }) : t('plugins.not_downloaded');
   }
 }
 

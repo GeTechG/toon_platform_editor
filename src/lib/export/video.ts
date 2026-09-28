@@ -364,10 +364,19 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
       chunks.push(e.data);
     }
   };
+  // A recorder that fails mid-way ends the recording there: the loop checks
+  // for it every frame, instead of painting the rest of the animation out in
+  // real time into a recorder that is gone and rejecting unheard meanwhile.
+  let broke: Error | null = null;
   const recorded = new Promise<Blob>((resolve, reject) => {
     recorder.onstop = () => resolve(new Blob(chunks, { type: format.mimeType }));
-    recorder.onerror = () => reject(new Error(t('export.recording_failed')));
+    recorder.onerror = (event) => {
+      console.warn('video recorder failed:', (event as { error?: unknown } | undefined)?.error ?? event);
+      broke = new Error(t('export.recording_failed'));
+      reject(broke);
+    };
   });
+  recorded.catch(() => {});
 
   const frames = frameCount(doc);
   const total = exportFrameCount(frames, fps, trackSeconds);
@@ -381,6 +390,9 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
     const started = performance.now();
     for (let index = 0; index < total; index++) {
       throwIfAborted(signal);
+      if (broke) {
+        throw broke;
+      }
       await sleep(started + deadlines[index] - performance.now());
       renderer.render(doc, index % frames, ctx as unknown as Canvas2DLike, viewport);
       if (watermark) {

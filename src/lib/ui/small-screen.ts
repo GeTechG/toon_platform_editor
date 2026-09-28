@@ -2,7 +2,8 @@
  * Small screens: which layout step the studio takes, and what the tabs hold.
  *
  * The step is a sum, not a media query: how much the canvas would keep if the
- * columns and the bottom bar stayed, against `min(360px, 45vw)` × `38dvh`. A
+ * columns and the bottom bar stayed, against `min(360px, 45vw)` ×
+ * `max(320px, 38dvh)`. A
  * width query saw neither the columns (in rem, twice as wide at 200 % text)
  * nor the height, and a portrait tablet never counted as small at all.
  * Pure, so `bun test` runs it; Editor.svelte measures and draws.
@@ -21,9 +22,18 @@ export interface Room {
 export const HYSTERESIS = 32;
 /** The tablet's canvas beside its column: a phone's column would eat the phone. */
 const TABLET_MIN_W = 360;
+/**
+ * The least canvas height the columns and the bar may leave, px. A phone
+ * lying down (740×360, 844×390) kept 209–239 px of it beside the desktop's
+ * columns — a 351×209 canvas and fold tabs 15 px wide — where the compact step
+ * gives it the whole screen, some 300 px tall (the owner, after the
+ * thirteenth audit). A share of the height alone never saw that: 38 % of a
+ * short screen is short too. A laptop keeps twice this.
+ */
+export const FULL_MIN_H = 320;
 
-function fits(room: Room, minW: number, view: Room, slack: number): boolean {
-  return room.w >= minW + slack && room.h >= 0.38 * view.h + slack;
+function fits(room: Room, minW: number, minH: number, view: Room, slack: number): boolean {
+  return room.w >= minW + slack && room.h >= Math.max(minH, 0.38 * view.h) + slack;
 }
 
 /**
@@ -35,12 +45,12 @@ function fits(room: Room, minW: number, view: Room, slack: number): boolean {
 export function pickStep(current: LayoutStep, rooms: { full: Room; tablet: Room }, view: Room): LayoutStep {
   const rank = { full: 0, tablet: 1, phone: 2 };
   const slack = (step: LayoutStep) => (rank[step] < rank[current] ? HYSTERESIS : 0);
-  if (fits(rooms.full, Math.min(360, 0.45 * view.w), view, slack('full'))) {
+  if (fits(rooms.full, Math.min(360, 0.45 * view.w), FULL_MIN_H, view, slack('full'))) {
     return 'full';
   }
   // The in-between step is the portrait tablet's (the owner's call): lying
   // down, a column of tools costs the width a one-key strip leaves alone.
-  if (view.h >= view.w && fits(rooms.tablet, TABLET_MIN_W, view, slack('tablet'))) {
+  if (view.h >= view.w && fits(rooms.tablet, TABLET_MIN_W, 0, view, slack('tablet'))) {
     return 'tablet';
   }
   return 'phone';
