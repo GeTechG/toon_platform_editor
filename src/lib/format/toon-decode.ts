@@ -307,6 +307,15 @@ function scale(value: number): number {
 }
 
 /**
+ * Our own document in JSON: Safari saves `toonop.toonop` as
+ * `toonop.toonop.json` (the file's type is JSON), and the `.json` door took it
+ * for a Tonio save — «нет кадров». The old save never names a schema version.
+ */
+export function isToonopJson(text: string): boolean {
+  return /"schema_version"\s*:/.test(text);
+}
+
+/**
  * Tonio's pre-binary `.json` save (toon.js:1240-1283): either the full
  * `{Data: {FPS}, Frames}` object or a bare array of frames. One visible
  * layer of pencil lines — the format knew nothing else.

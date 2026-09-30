@@ -10,12 +10,19 @@
    * Deliberate — drawing needs a pointer anyway, so a keyboard path to the
    * panels lets nobody in who was not already in.
    */
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { saveFile } from './save-file';
   import { arrangeBarBox, dropPlacement, rowEdge, type Box } from './arrange';
   import { clampWindowPosition } from './draggable';
-  import { MAX_WORKSPACE_NAME, WORKSPACE_FILE_MAX, pickedWorkspace, workspaceName } from './workspaces';
+  import {
+    MAX_WORKSPACE_NAME,
+    WORKSPACE_FILE_MAX,
+    WORKSPACES_KEY,
+    loadWorkspaces,
+    pickedWorkspace,
+    workspaceName,
+  } from './workspaces';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { composing } from './key-owner';
   import { t } from '../i18n';
@@ -370,6 +377,21 @@
     };
   });
 
+  /**
+   * The list as stored: another tab may have saved or deleted one since this
+   * tab read it — it showed nothing of that, and picked the stale entry.
+   */
+  function freshWorkspaces(): void {
+    editor.workspaces = loadWorkspaces(editor.workspaces);
+  }
+  $effect(() => untrack(freshWorkspaces));
+  function onStorage(e: StorageEvent): void {
+    // A null key is the other tab clearing the storage.
+    if (e.key === WORKSPACES_KEY || e.key === null) {
+      freshWorkspaces();
+    }
+  }
+
   /** Name being typed for the next save. */
   let newName = $state('');
 
@@ -394,6 +416,7 @@
   onpointerup={onPointerUp}
   onpointercancel={onPointerCancel}
   onkeydown={onKeydown}
+  onstorage={onStorage}
 />
 
 {#if drag?.moved}

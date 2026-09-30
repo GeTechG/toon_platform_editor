@@ -197,6 +197,11 @@
       startLongPress(e, frame, layer);
       return;
     }
+    // iPadOS sends no contextmenu for a held Pencil either: the hold opens
+    // the menu, and the pen still drags a block like the mouse.
+    if (e.pointerType === 'pen' && e.isPrimary && e.button === 0) {
+      startLongPress(e, frame, layer);
+    }
     // The right button is the frame menu's: it must not collapse the block,
     // and while picking a press is a tap that spans it.
     if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -453,6 +458,12 @@
 
   function onColMove(e: PointerEvent): void {
     if (!colDrag || e.pointerId !== colDrag.pointerId) return;
+    // A release outside the window sends no pointerup: hovering the band
+    // after it went on resizing the column with no button held.
+    if (!(e.buttons & 1)) {
+      colDrag = null;
+      return;
+    }
     setCol(colDrag.startWidth + e.clientX - colDrag.startX);
   }
 

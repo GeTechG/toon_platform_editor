@@ -91,7 +91,9 @@
     if (!renaming) {
       return;
     }
-    if (editor.doc.layers[renaming.layer] === renaming.ref) {
+    // Unchanged, an unnamed layer's «Слой 2» is its place, not a name: kept,
+    // it stopped following the row when the layer moved.
+    if (editor.doc.layers[renaming.layer] === renaming.ref && renaming.text !== editor.layerLabel(renaming.layer)) {
       editor.renameActiveLayer(renaming.layer, renaming.text);
     }
     renaming = null;
@@ -292,6 +294,12 @@
     if (!drag || e.pointerId !== drag.pointerId) {
       return;
     }
+    // A release outside the window (Alt+Tab mid-drag) sends no pointerup:
+    // every move after it carried the layer on with no button held.
+    if (!(e.buttons & 1)) {
+      endDrag(e);
+      return;
+    }
     drag.lastY = e.clientY;
     edgeScroll(e.clientY);
     updateTarget();
@@ -401,8 +409,7 @@
 <div class="head">
   <button
     class="add-layer"
-    disabled={!canAdd}
-    aria-disabled={editor.playing || undefined}
+    aria-disabled={!canAdd || editor.playing || undefined}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
     title={canAdd ? editor.keyHint(t('layer.add_title')) : t('layer.full', { max: MAX_LAYERS })}
   >
@@ -701,8 +708,8 @@
     cursor: pointer;
   }
   /* aria-disabled rather than disabled while the preview runs (as the
-     strip's cells): a key that loses `disabled` under the focus drops it. */
-  .add-layer:disabled,
+     strip's cells): a key that loses `disabled` under the focus drops it.
+     So at the twentieth layer too: Enter added it and the key went out. */
   .add-layer[aria-disabled='true'] {
     opacity: 0.4;
     cursor: default;

@@ -14,7 +14,8 @@ describe('a colour input says which colour it is', () => {
   it('the label around it carries only a title, which names nothing (WCAG 4.1.2)', () => {
     const inputs = [...colorPanel.matchAll(/<input\s+type="color"[^]*?\/>/g)].map((m) => m[0]);
     expect(inputs.length).toBe(2);
-    expect(inputs[0]).toContain("aria-label={editor.keyHint(t('color.stroke_title'))}");
+    // strokeTitle: keyHint(t('color.stroke_title')), or t('color.stroke') where M merges (audit 16).
+    expect(inputs[0]).toContain('aria-label={strokeTitle}');
     expect(inputs[1]).toContain("aria-label={t('color.fill_title')}");
   });
 });

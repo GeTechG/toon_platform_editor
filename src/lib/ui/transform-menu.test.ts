@@ -32,8 +32,8 @@ describe('TransformMenu', () => {
   it('steps back and forth inside the session', () => {
     expect(menu).toContain('editor.undoTransform()');
     expect(menu).toContain('editor.redoTransform()');
-    expect(menu).toContain('disabled={!editor.canUndoTransform}');
-    expect(menu).toContain('disabled={!editor.canRedoTransform}');
+    expect(menu).toContain('aria-disabled={!editor.canUndoTransform}');
+    expect(menu).toContain('aria-disabled={!editor.canRedoTransform}');
   });
 
   it('names every control for a reader, and takes Escape as cancel (WCAG 2.1.2)', () => {

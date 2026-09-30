@@ -21,7 +21,7 @@
   import Icon, { type IconName } from './Icon.svelte';
   import './tokens.css';
   import './controls.css';
-  import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
+  import { decodeLegacyJson, decodeToon, isToonopJson } from '../format/toon-decode';
   import { FormatError, loadDocument } from '../format/validate';
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
@@ -30,6 +30,7 @@
   import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
   import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { focusHeir } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -57,7 +58,7 @@
   } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
-  import { compactLayout, moveTab, phoneTools, pickStep, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
+  import { compactLayout, moveTab, phoneTools, pickStep, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
@@ -355,6 +356,9 @@
   const shownTab = $derived(cut?.tabs.find((tab) => tab.id === openTab) ?? null);
   const tabKeys = $state<Partial<Record<TabId, HTMLButtonElement>>>({});
   let tabWindow = $state<HTMLElement | undefined>();
+  /** The tab window's and the tool windows' heights: standing, the tool windows sit above the tab window. */
+  let tabWindowHeight = $state(0);
+  let toolWindowsHeight = $state(0);
   let tabBar = $state<HTMLElement | undefined>();
   /**
    * Only icons, when a tab's word does not fit on one line. Measured, not a
@@ -379,6 +383,26 @@
   const TAB_ICONS: Record<TabId, IconName> = { color: 'palette', brush: 'edit', timeline: 'timeline', sound: 'note', more: 'more' };
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
+
+  /**
+   * A key that switches itself off as it is pressed — «Сохранить» once saved,
+   * ⏮ on the first frame, «Отменить» on the last step — took the focus with
+   * it: Chrome drops it on <body>, and a reader lost the place. It goes to the
+   * next key that still works, as Tab would. The sheets give focus back by
+   * themselves, so a key in a <dialog> is left to them.
+   */
+  async function passFocusOnDisable(e: MouseEvent): Promise<void> {
+    const key = e.target instanceof Element ? e.target.closest('button') : null;
+    if (!key || key.closest('dialog')) return;
+    // A task, not a tick: the capture runs before the key's own handler, and
+    // the page's microtasks run between the two.
+    await new Promise((done) => setTimeout(done));
+    if (!key.disabled || document.activeElement !== key) return;
+    const all = [...editorEl.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')];
+    const usable = (el: HTMLElement) =>
+      el.matches(FOCUSABLE) && el.getAttribute('tabindex') !== '-1' && !el.closest('[inert]') && el.getClientRects().length > 0;
+    focusHeir(all, key, usable)?.focus();
+  }
 
   /** Opens a tab's window (closing whichever was open) or, pressed again, closes it. */
   async function toggleTab(id: TabId): Promise<void> {
@@ -496,8 +520,12 @@
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
   function onKeydown(e: KeyboardEvent): void {
-    // An update is downloading: the editor is not there to be typed at.
+    // An update is downloading: the editor is not there to be typed at. Its
+    // Ctrl+S is still not the browser's «save page».
     if (editor.updating) {
+      if ((e.ctrlKey || e.metaKey) && latinKey(e).toLowerCase() === 's') {
+        e.preventDefault();
+      }
       return;
     }
     // An input method is composing: its Enter picks a character, its Esc drops
@@ -1426,11 +1454,14 @@
     let original = '';
     let text = '';
     try {
-      if (name.endsWith('.toonop')) {
+      if (name.endsWith('.toonop') || name.endsWith('.json')) {
         text = await file.text();
+      }
+      // Safari saves `toonop.toonop` as `toonop.toonop.json`: ours by what is in it.
+      if (name.endsWith('.toonop') || (name.endsWith('.json') && isToonopJson(text))) {
         doc = loadDocument(JSON.parse(text));
       } else if (name.endsWith('.json')) {
-        const result = decodeLegacyJson(await file.text());
+        const result = decodeLegacyJson(text);
         if (!result.ok) {
           importError = t('editor.file_failed', { reason: result.error });
           return;
@@ -1575,7 +1606,8 @@
       refuseDrop();
       return;
     }
-    if (/\.(toonops|toonio)$/i.test(file.name)) {
+    // `.json` on the end is Safari's, which names a download by its type.
+    if (/\.(toonops|toonio)(\.json)?$/i.test(file.name)) {
       void openDraftsFile(file);
     } else if (/\.(toonop|toon|json)$/i.test(file.name)) {
       void openFile(file);
@@ -1595,6 +1627,12 @@
    * A drafts bundle dropped on the window: the same load as «Загрузить
    * черновики…» in the settings, then the list, where they now are.
    */
+  /** The note goes with its key; the focus would fall to <body> with them. */
+  function dismissImportError(): void {
+    importError = '';
+    document.querySelector<HTMLElement>(`[data-tool="${CSS.escape(editor.tool)}"]`)?.focus();
+  }
+
   async function openDraftsFile(file: File): Promise<void> {
     importError = '';
     if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
@@ -1675,6 +1713,8 @@
         ['Shift + Enter', t('key.pick_fill')],
         has('drag') && ['D / O', t('tool.hand.label')],
         has('lasso') && ['Q / S', t('tool.transform.label')],
+        has('lasso') && ['Q / W', t('key.transform_turn')],
+        has('lasso') && ['Enter / Esc', t('key.transform_apply')],
         has('distort') && ['~', t('tool.jitter.label')],
         ['H / Shift + H', t('key.mirror')],
         ['+ / −', t('key.brush_size')],
@@ -1699,9 +1739,14 @@
         ['Ctrl + S', t('key.save')],
         ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
         ['Alt + L', t('key.error_log')],
-      ] as ([string, string] | false)[]
+        // A plugin's tool answers to its manifest's key (the default branch
+        // of the handler): on the panel, it is in the sheet too.
+        ...plugins
+          .tools()
+          .map((tool) => !tool.builtin && tool.key && has(tool.id) && ([tool.key.toUpperCase(), tool.label] as [string, string])),
+      ] as ([string, string] | false | '')[]
     )
-      .filter((row): row is [string, string] => row !== false)
+      .filter((row): row is [string, string] => Array.isArray(row))
       // With single-letter keys off their letters are not offered at all.
       .map(([keys, what]): [string, string] => [editor.keyHint(keys), what])
       .filter(([keys]) => keys !== ''),
@@ -1941,7 +1986,8 @@
     <div class="transport-keys" role="group" aria-label={t('editor.transport')}>
         <button
           class="key icon ends"
-          disabled={editor.playing || editor.activeFrame === 0}
+          disabled={editor.playing}
+          aria-disabled={editor.activeFrame === 0 || undefined}
           onclick={() => editor.selectFrame(0)}
           title={t('editor.first_frame')}
           aria-label={t('editor.first_frame')}
@@ -1963,7 +2009,8 @@
         ><Icon name="frame-next" /></button>
         <button
           class="key icon ends"
-          disabled={editor.playing || editor.activeFrame >= lastFrame}
+          disabled={editor.playing}
+          aria-disabled={editor.activeFrame >= lastFrame || undefined}
           onclick={() => editor.selectFrame(lastFrame)}
           title={t('editor.last_frame')}
           aria-label={t('editor.last_frame')}
@@ -1983,7 +2030,8 @@
   {:else if id === 'delete-frame'}
     <button
       class="key"
-      disabled={editor.playing || !editor.canRemoveFrame}
+      disabled={editor.playing}
+      aria-disabled={!editor.canRemoveFrame || undefined}
       onclick={() => editor.removeActiveFrame()}
       data-key="Del"
       aria-keyshortcuts="Delete Backspace"
@@ -2014,7 +2062,7 @@
         max={editor.ux.fpsRange[1]}
         value={editor.doc.frame_rate}
         oninput={onFpsChange}
-        disabled={editor.playing}
+        aria-disabled={editor.playing || undefined}
       />
       <input
         type="number"
@@ -2022,7 +2070,7 @@
         max={editor.ux.fpsRange[1]}
         value={editor.doc.frame_rate}
         onchange={onFpsChange}
-        disabled={editor.playing}
+        aria-disabled={editor.playing || undefined}
         aria-label={t('editor.fps')}
       />
     </label>
@@ -2051,8 +2099,8 @@
     <button
       class="key"
       onclick={() => exportButton?.start()}
-      data-key="Alt+S"
-      title={t('export.title')}
+      data-key={hasProjectFile ? undefined : 'Alt+S'}
+      title={hasProjectFile ? t('export.sheet') : t('export.title')}
       aria-label={t('export.sheet')}
     >
       <Icon name="download" />
@@ -2176,8 +2224,10 @@
   class:compact={compact}
   class:phone={step === 'phone'}
   class:tall
+  class:low={sheetScrollsWhole(viewportHeight, rootFont)}
   data-float-root
   bind:this={editorEl}
+  onclickcapture={passFocusOnDisable}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
 >
@@ -2211,14 +2261,16 @@
     </aside>
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
-  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}>
+  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
+    style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}
+    style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
     <CanvasView {editor} />
     {@render stageNote?.()}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
     {#if editor.transform || pipetteUp || editor.pluginWindow}
-      <div class="tool-windows">
+      <div class="tool-windows" bind:offsetHeight={toolWindowsHeight}>
         {#if editor.pluginWindow}
           <!-- A window a tool brought with it: the editor draws the frame and
                the title, the tool fills the body with whatever it likes. -->
@@ -2283,6 +2335,7 @@
         tabindex="-1"
         aria-label={t(`editor.tab.${shownTab.id}`)}
         bind:this={tabWindow}
+        bind:offsetHeight={tabWindowHeight}
         onkeydown={onTabWindowKey}
       >
         {#each shownTab.items as id (id)}
@@ -2300,7 +2353,7 @@
     {#if importError}
       <p class="import-error" role="alert">
         {importError}
-        <button class="key" onclick={() => (importError = '')} aria-label={t('editor.close_message')}>
+        <button class="key" onclick={dismissImportError} aria-label={t('editor.close_message')}>
           <Icon name="x" size={16} />
         </button>
       </p>
@@ -2844,7 +2897,20 @@
      the zoom row down, so the whole scale stays under the thumb. */
   .studio.compact .stage.low-window :global(.size-rail) {
     top: max(0.75rem, var(--zoom-foot));
-    bottom: calc(55% + 0.75rem);
+    /* …and above a tool window standing on the tab window (audit 16). */
+    bottom: calc(max(55%, var(--tab-window-h, 0px) + var(--tool-windows-h, 0px)) + 0.75rem);
+  }
+  /* A tool window (the pipette's source, the transform fields, a plugin's)
+     sat in the stage's bottom row, under the tab window: out of reach, its
+     keys still in the Tab order (WCAG 2.4.11). Standing, it rises onto the
+     tab window, measured; lying down it ends where the side window begins. */
+  .studio.compact .stage.low-window > .tool-windows {
+    position: absolute;
+    inset: auto 0 var(--tab-window-h) 0;
+    max-height: calc(100% - var(--tab-window-h) - var(--zoom-foot) - 1rem);
+  }
+  .studio.compact .stage.side-window > .tool-windows {
+    margin-right: calc(min(55%, 24rem) + 0.5rem);
   }
   /* The transform window takes the zoom window's row: at 200 % text on 320px
      the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
@@ -3389,6 +3455,12 @@
        grid, not the 24 the standard settles for. */
     height: var(--key-h, 2.75rem);
 }
+  /* Kept focusable while the preview runs: Space on the slider started it,
+     and a `disabled` slider dropped the focus to <body>. */
+  .fps-inline input[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: default;
+  }
   .fps-inline input[type='number'] {
     width: 3.2rem;
     height: var(--key-h);
@@ -3921,6 +3993,16 @@
       box-shadow: var(--shadow-plate);
     }
   }
+  /* A low screen (sheetScrollsWhole): the head and the foot pinned took all
+     but a slit of the sheet, so the sheet scrolls as one and they go with it. */
+  .editor.low :global(.sheet) {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .editor.low :global(.sheet-body) {
+    flex: none;
+    overflow-y: visible;
+  }
   .editor :global(.sheet-head) {
     display: flex;
     align-items: center;
@@ -4176,6 +4258,13 @@
     outline-offset: 2px;
   }
   .editor :global(.key:disabled) {
+    opacity: 0.4;
+    cursor: default;
+  }
+  /* A key its own press switches off (⏮ on the first frame, «Удалить кадр»
+     on Toonio's last) is aria-disabled, not disabled: `disabled` under the
+     focus dropped it to <body>. It looks the same. */
+  .editor :global(.key[aria-disabled='true']) {
     opacity: 0.4;
     cursor: default;
   }

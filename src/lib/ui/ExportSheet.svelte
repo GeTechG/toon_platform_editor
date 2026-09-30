@@ -173,9 +173,13 @@
     const options = { width, watermark, signal, onProgress: track };
     // PNG takes no signal, and a plugin's format may ignore the one it gets:
     // a file built after «Отменить» is not handed over all the same.
+    // Said when it is out: a video streamed to disk has no download of the
+    // browser's to show, and the sheet went back to idle without a word.
+    let saved = false;
     const deliver = (blob: Blob, name: string) => {
       throwIfAborted(signal);
       save(blob, name);
+      saved = true;
     };
     try {
       if (format === 'project') {
@@ -205,6 +209,7 @@
         if (blob) {
           deliver(blob, `toonop.${videoPlan.extension}`);
         }
+        saved = true;
         file = null;
       }
     } catch (err) {
@@ -221,7 +226,7 @@
       }
     } finally {
       busy = '';
-      stage = '';
+      stage = saved ? t('export.saved') : '';
       cancelling = null;
       await tick();
       if (open && !dialogEl?.contains(document.activeElement)) {
@@ -241,6 +246,7 @@
     format = singleFrame ? 'png' : 'gif';
     // Last time's «Экспорт отменён» is not news on a new visit.
     error = '';
+    stage = '';
     open = true;
   }
 
@@ -394,6 +400,8 @@
         <p class="note" aria-hidden="true">{stage} {progress}%</p>
         <progress max="100" value={progress} aria-label={stage}></progress>
         <button bind:this={cancelEl} class="key wide" onclick={cancel}>{t('export.cancel')}</button>
+      {:else if stage}
+        <p class="note" aria-hidden="true">{stage}</p>
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>

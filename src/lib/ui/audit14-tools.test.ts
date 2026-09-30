@@ -181,11 +181,14 @@ describe('the tool in hand does not outlive its plugin', () => {
 
   it('a tool picked again is not activated a second time', () => {
     // activate ran on every press of the key; deactivate only on a change.
-    const select = method('selectTool');
-    const change = select.indexOf('if (resolved !== this.tool)');
-    expect(change).toBeGreaterThan(-1);
-    expect(select.indexOf('activate?.(this.pluginHost())', select.indexOf('deactivate'))).toBeGreaterThan(change);
-    expect(select).toMatch(/if \(resolved !== this\.tool\) \{[^}]*deactivate[^}]*closePluginWindow\(\);[^}]*activate\?\.\(/);
+    // The switch moved into hold(), shared with the pipette's way back
+    // (sixteenth audit); the same tool again returns before either call.
+    expect(method('selectTool')).toContain('this.hold(resolved)');
+    const hold = method('hold');
+    const same = hold.indexOf('if (tool === this.tool) {');
+    expect(same).toBeGreaterThan(-1);
+    expect(hold.indexOf('deactivate?.(')).toBeGreaterThan(same);
+    expect(hold).toMatch(/deactivate[^]*closePluginWindow\(\);[^]*activate\?\.\(/);
   });
 });
 

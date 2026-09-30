@@ -234,12 +234,14 @@ export function scaledBy(
   const [px, py] = toLocal(pos.x, pos.y, cx, cy, base.rotate);
   let scaleX = base.scaleX;
   let scaleY = base.scaleY;
-  // A selection with no extent on an axis cannot be scaled along it.
+  // A selection with no extent on an axis cannot be scaled along it. A
+  // mirrored axis grows the other way: its handle stays where it was, and
+  // outward travel added to a negative scale shrank the selection.
   if (signX && box.width > 0) {
-    scaleX = base.scaleX + ((px - sx) * 2 * signX) / box.width;
+    scaleX = base.scaleX + (Math.sign(base.scaleX) * (px - sx) * 2 * signX) / box.width;
   }
   if (signY && box.height > 0) {
-    scaleY = base.scaleY + ((py - sy) * 2 * signY) / box.height;
+    scaleY = base.scaleY + (Math.sign(base.scaleY) * (py - sy) * 2 * signY) / box.height;
   }
   if (shift && signX && signY && base.scaleX !== 0) {
     scaleY = scaleX * (base.scaleY / base.scaleX);

@@ -152,6 +152,18 @@
     player = null;
   });
 
+  // The sound refused mid-preview (the browser's autoplay rule, a file the
+  // element will not play) wrote why into the «Звук» plate, which is shut
+  // while one watches the frames: the preview went on mute with nothing said.
+  // The canvas's live line says it. A new complaint only — the one left from
+  // the last press is not news on the next.
+  $effect(() => {
+    const error = editor.audio.error;
+    if (error && untrack(() => editor.playing)) {
+      editor.canvasHint = { text: error };
+    }
+  });
+
   // Going mid-preview (the transport moved to another panel, the studio left)
   // ends the preview: only the clock used to go, and the track sounded on
   // under frozen frames with the flag still up.
@@ -166,7 +178,7 @@
 <button
   class="key play"
   class:playing={editor.playing}
-  disabled={!canPlay}
+  aria-disabled={!canPlay || undefined}
   onclick={() => toggle()}
   data-key="Space"
   title={editor.playing ? t('play.title_stop') : t('play.title_play')}

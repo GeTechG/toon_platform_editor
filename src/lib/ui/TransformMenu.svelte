@@ -144,15 +144,15 @@
     <div class="row">
       <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label={editor.keyHint(t('transform.flip_h'))} title={editor.keyHint(t('transform.flip_h'))}><Icon name="flip-h" /></button>
       <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label={editor.keyHint(t('transform.flip_v'))} title={editor.keyHint(t('transform.flip_v'))}><Icon name="flip-v" /></button>
-      <button class="key icon" onclick={() => editor.undoTransform()} disabled={!editor.canUndoTransform} aria-label={editor.keyHint(t('transform.undo'))} title={editor.keyHint(t('transform.undo'))}><Icon name="undo" /></button>
-      <button class="key icon" onclick={() => editor.redoTransform()} disabled={!editor.canRedoTransform} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
+      <button class="key icon step" onclick={() => editor.undoTransform()} aria-disabled={!editor.canUndoTransform} aria-label={editor.keyHint(t('transform.undo'))} title={editor.keyHint(t('transform.undo'))}><Icon name="undo" /></button>
+      <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
     </div>
 
     <!-- On a phone the zoom window gives this one its row; its keys come along. -->
     <div class="row zoom" role="group" aria-label={t('scale.group')}>
-      <button class="key icon" disabled={editor.view.zoom <= ZOOM_MIN} onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, -1))} aria-label={t('scale.out')} title={t('scale.out')}><Icon name="minus" /></button>
+      <button class="key icon" aria-disabled={editor.view.zoom <= ZOOM_MIN} onclick={() => editor.view.zoom <= ZOOM_MIN || editor.zoomBy(zoomDelta(editor.view.zoom, -1))} aria-label={t('scale.out')} title={t('scale.out')}><Icon name="minus" /></button>
       <button class="key" onclick={() => editor.resetView()} aria-label={t('scale.value', { percent: Math.round(editor.view.zoom * 100) })} title={t('scale.reset')}>{Math.round(editor.view.zoom * 100)}%</button>
-      <button class="key icon" disabled={editor.view.zoom >= ZOOM_MAX} onclick={() => editor.zoomBy(zoomDelta(editor.view.zoom, 1))} aria-label={t('scale.in')} title={t('scale.in')}><Icon name="plus" /></button>
+      <button class="key icon" aria-disabled={editor.view.zoom >= ZOOM_MAX} onclick={() => editor.view.zoom >= ZOOM_MAX || editor.zoomBy(zoomDelta(editor.view.zoom, 1))} aria-label={t('scale.in')} title={t('scale.in')}><Icon name="plus" /></button>
     </div>
 
     <label class="check">
@@ -250,6 +250,18 @@
   /* Where the zoom window gives up its row (Editor.svelte, the compact step). */
   :global(:where(.studio.compact)) .row.zoom {
     display: flex;
+  }
+  /* At the limit a key stays in focus and says so (as in ScaleMenu): a
+     disabled one under the finger that pressed it dropped the focus to body. */
+  .zoom .key[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: default;
+  }
+  /* The same for the session's step keys: at the first or the last step
+     they keep the focus (a step with none left does nothing by itself). */
+  .row .step[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: default;
   }
   /* The whole label is the target, a key tall: the box alone is 13 px. */
   .check {

@@ -299,6 +299,12 @@ export class PointerStrokeController {
       console.error(t('brush.unknown_kind', { kind: String(kind) }));
       return null;
     }
+    // A rule that hands back no list of points threw on `.map` below, out of
+    // the canvas's pointerup and out of the brush box's sample.
+    if (!Array.isArray(stroke.points)) {
+      console.error(t('brush.no_points'));
+      return null;
+    }
     // A cubic chain is a start point and whole segments of six: anything else
     // saves a draft the format check refuses, and it never opens again.
     if (stroke.tool.geometry === 'cubic' && (stroke.points.length - 2) % 6 !== 0) {

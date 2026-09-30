@@ -35,7 +35,7 @@ describe('timeline selection state', () => {
 describe('copy, paste and merge of a selection', () => {
   it('copy deep-copies every selected cell into the buffer', () => {
     expect(state).toContain('copiedCells = $state.raw<CellBuffer | null>(null)');
-    expect(member(state, 'copySelection')).toContain('copyCells(this.doc, this.selection)');
+    expect(member(state, 'copySelection')).toContain('copyCells(this.docWithTransform(), this.selection)');
   });
 
   it('paste replaces the target cells and merge adds to them', () => {

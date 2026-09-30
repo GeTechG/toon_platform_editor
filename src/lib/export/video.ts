@@ -21,6 +21,7 @@ import {
   stampWatermark,
   nextTask,
   throwIfAborted,
+  untilAborted,
   type ExportStage,
   type RasterizeOptions,
 } from './rasterize';
@@ -233,7 +234,14 @@ export interface VideoExportOptions extends RasterizeOptions {
  * `AbortError` if cancelled and with a `FileWriteError` if the file refused.
  */
 export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
-  return options.plan.realtime ? recordVideo(doc, options) : encodeVideo(doc, options);
+  // An encoder or a track decode that never answers (a stalled hardware
+  // encoder, Safari's `decodeAudioData` on some files) held the sheet on
+  // «Отменить» for good: the checks between frames were never reached. The
+  // cancel is the race's; the work left behind stops at its next check.
+  return untilAborted(
+    options.plan.realtime ? recordVideo(doc, options) : encodeVideo(doc, options),
+    options.signal,
+  );
 }
 
 /** WebCodecs: frames are encoded as fast as the machine manages. */

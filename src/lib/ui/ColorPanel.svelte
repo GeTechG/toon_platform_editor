@@ -34,6 +34,7 @@
   const quickPalette = $derived(editor.paletteExpanded || !editor.ux.quickPalette ? null : quickColours(editor.ux.quickPalette));
   /** Either eraser: a pick hands the pencil back, so no colour is the one in hand. */
   const erasing = $derived(editor.tool === 'eraser' || editor.tool === 'mega-eraser');
+  const strokeTitle = $derived(editor.ux.quickPalette ? editor.keyHint(t('color.stroke_title')) : t('color.stroke'));
 </script>
 
 {#if quickPalette}
@@ -51,10 +52,11 @@
     {/each}
   </div>
 {:else if editor.paletteExpanded}
-  <label class="color" title={editor.keyHint(t('color.stroke_title'))} style:--swatch={editor.brushColor}>
+  <!-- M hides the palette only where there is a quick pair; elsewhere M merges. -->
+  <label class="color" title={strokeTitle} style:--swatch={editor.brushColor}>
     <input
       type="color"
-      aria-label={editor.keyHint(t('color.stroke_title'))}
+      aria-label={strokeTitle}
       value={editor.brushColor}
       oninput={(e) => editor.pickColor(e.currentTarget.value, 'outline', true)}
     />

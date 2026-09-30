@@ -114,6 +114,14 @@ export function playableAccept(canPlayType: (type: string) => string): string {
 }
 
 /**
+ * Which of the three formats the site publishes this browser plays — what the
+ * plate names. Safari 16 plays no ogg, and «mp3, ogg или wav» offered it.
+ */
+export function playableFormats(canPlayType: (type: string) => string): string[] {
+  return ['mp3', 'ogg', 'wav'].filter((ext) => canPlayType(EXTENSION_TYPES[ext]) !== '');
+}
+
+/**
  * Lets a press unlock the element without sounding it: iOS allows `play()`
  * only inside a gesture, and a press on a frame past a tied track's end had
  * none to spare — the next lap came round silent. Paused at once, so nothing

@@ -162,3 +162,13 @@ export function compactLayout(
 export function tabLabelsFit(labels: readonly { scrollWidth: number; clientWidth: number }[]): boolean {
   return labels.every((label) => label.scrollWidth <= label.clientWidth);
 }
+
+/**
+ * Whether a sheet scrolls as one instead of pinning its head and foot. The
+ * two take some 8.4 rem; a sheet is at most 85 % of the height, so under
+ * 20 rem of height the pinned chrome would outgrow the body it frames — at
+ * 200 % text on a phone lying down the body was a 35 px slit.
+ */
+export function sheetScrollsWhole(viewHeight: number, rootFont: number): boolean {
+  return viewHeight > 0 && viewHeight < 20 * rootFont;
+}

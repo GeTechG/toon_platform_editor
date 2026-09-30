@@ -8,6 +8,7 @@
   import Icon from './Icon.svelte';
   import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, playableAccept } from '../audio/track';
   import { t } from '../i18n';
+  import { playableWords } from '../audio/state.svelte';
   import { lengthClock } from './frame-selection';
 
   let {
@@ -29,6 +30,8 @@
   const uid = $props.id();
   /** Only what this browser plays is offered (owner, fifteenth audit); the load checks again. */
   const accept = typeof Audio === 'undefined' ? 'audio/*' : playableAccept((type) => new Audio().canPlayType(type));
+  /** The same honesty in words: Safari 16 plays no ogg, and the plate offered it. */
+  const formats = playableWords();
 
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
@@ -196,7 +199,7 @@
     {:else}
       <p class="hint">{t('audio.pitch')}</p>
       <button class="key wide" onclick={() => picker?.click()}>{t('audio.pick')}</button>
-      <p class="hint">{t('audio.formats')}</p>
+      <p class="hint">{formats}</p>
     {/if}
 
     <p class="sr-only" role="status">

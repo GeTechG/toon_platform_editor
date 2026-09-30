@@ -8,6 +8,7 @@
  */
 
 import { LINE_PRIMITIVES } from '../render/dispatch';
+import { untilAborted } from '../export/rasterize';
 import {
   PLUGIN_API,
   pluginNamespace,
@@ -31,6 +32,11 @@ import { i18n, t } from '../i18n';
  * ships now is what it means now.
  */
 function addLocales(id: string, locales: unknown): void {
+  // Replaced, not merged: `addResourceBundle` merges, and a key the new
+  // version dropped went on answering with the old version's words.
+  for (const locale of Object.keys(i18n.store?.data ?? {})) {
+    i18n.removeResourceBundle(locale, pluginNamespace(id));
+  }
   if (typeof locales !== 'object' || locales === null) {
     return;
   }
@@ -357,7 +363,15 @@ export class PluginRegistry {
               ...stroke,
               // A pencil of the brush in hand: whatever the tool meant to lay
               // down, this much the format knows and the renderer draws.
-              descriptor: wrap(stroke.descriptor, (brush) => ({
+              // No object back is a break as well: the session read `.width`
+              // off `undefined` in the canvas's pointerdown and the brush box.
+              descriptor: wrap((brush) => {
+                const made = stroke.descriptor(brush);
+                if (typeof made !== 'object' || made === null) {
+                  throw new TypeError(t('plugin.tool_no_descriptor', { id: tool.label }));
+                }
+                return made;
+              }, (brush) => ({
                 kind: 'pencil',
                 geometry: 'smooth',
                 width: brush.width,
@@ -510,20 +524,4 @@ export class PluginRegistry {
   probeRules(id: string): StrokeRules | undefined {
     return this.tool(id)?.stroke?.rules?.(PROBE);
   }
-}
-
-/** `work`, or an `AbortError` the moment `signal` is aborted, whichever is first. */
-function untilAborted<T>(work: T | Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (!signal) {
-    return Promise.resolve(work);
-  }
-  return new Promise<T>((resolve, reject) => {
-    const stop = () => reject(new DOMException(t('export.cancelled'), 'AbortError'));
-    if (signal.aborted) {
-      stop();
-      return;
-    }
-    signal.addEventListener('abort', stop, { once: true });
-    Promise.resolve(work).then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
-  });
 }

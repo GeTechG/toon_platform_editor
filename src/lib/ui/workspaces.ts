@@ -20,7 +20,7 @@ export interface Workspace {
   floatPos: FloatPositions;
 }
 
-const STORAGE_KEY = 'toon-editor:workspaces';
+export const WORKSPACES_KEY = 'toon-editor:workspaces';
 /** The longest name an arrangement keeps (owner, 14th audit): the field, a file, storage. */
 export const MAX_WORKSPACE_NAME = 40;
 
@@ -156,7 +156,7 @@ export function removeWorkspace(list: readonly Workspace[], id: number): Workspa
  */
 export function loadWorkspaces(fallback: Workspace[] = []): Workspace[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(WORKSPACES_KEY);
     return raw === null ? fallback : parseWorkspaces(raw);
   } catch {
     return fallback;
@@ -166,7 +166,7 @@ export function loadWorkspaces(fallback: Workspace[] = []): Workspace[] {
 /** Persists them. Best-effort — never throws. */
 export function saveWorkspaces(list: readonly Workspace[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(list));
   } catch {
     // private mode / blocked storage — degrade to no-op.
   }

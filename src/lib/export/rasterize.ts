@@ -274,3 +274,19 @@ export function throwIfAborted(signal: AbortSignal | undefined): void {
     throw new DOMException(t('export.cancelled'), 'AbortError');
   }
 }
+
+/** `work`, or an `AbortError` the moment `signal` is aborted, whichever is first. */
+export function untilAborted<T>(work: T | Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  if (!signal) {
+    return Promise.resolve(work);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(new DOMException(t('export.cancelled'), 'AbortError'));
+    if (signal.aborted) {
+      stop();
+      return;
+    }
+    signal.addEventListener('abort', stop, { once: true });
+    Promise.resolve(work).then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+}

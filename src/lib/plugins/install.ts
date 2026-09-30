@@ -275,11 +275,10 @@ export async function loadInstalled(
   // The register lives as long as the page; the studio is mounted again each
   // time the site comes back to it. A plugin already in did not need its code
   // run again — that only filled the failures with «такой id уже загружен».
-  const carried = new Set(
-    [...registry.tools(), ...registry.presets(), ...registry.brushTypes(), ...registry.exporters()].map((entry) => entry.plugin),
-  );
+  // Held, not working: one switched off by its own error is still in, and the
+  // lists of working records left it out — its code ran a second time.
   for (const plugin of await listInstalled()) {
-    if (carried.has(plugin.id)) {
+    if (registry.holds(plugin.id)) {
       continue;
     }
     try {

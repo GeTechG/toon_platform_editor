@@ -716,20 +716,19 @@ export class EditorState {
     if (isHelpTool(resolved) && !isHelpTool(this.tool)) {
       this.previousDrawingTool = this.tool;
     }
-    if (resolved !== this.tool) {
-      // A tool that brought its own window takes it away with it, the way the
-      // pipette source and the zoom window come and go with theirs.
-      toolSpec(this.tool)?.deactivate?.(this.pluginHost());
-      this.closePluginWindow();
-      this.tool = resolved;
-      // Only on the way in: picked again, it is already active, and a second
-      // activate with no deactivate between opened its window twice.
-      toolSpec(resolved)?.activate?.(this.pluginHost());
-    }
+    this.hold(resolved);
     if (resolved === 'pipette') {
       this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
     }
+  }
+
+  /** Leaves a help tool for whatever was drawing before it (reference `ResetHelpTool`). */
+  resetHelpTool(): void {
+    const back = toolAfterHelp(this.previousDrawingTool);
+    // The colour the help tool brought back decides between pencil and
+    // eraser under Multator, the same rule a pick from the grid follows.
+    this.hold(back === 'pencil' ? toolAfterColorChange(this.brushColor, this.ux) ?? back : back);
   }
 
   /**
@@ -744,18 +743,35 @@ export class EditorState {
     if (!this.settings.chromePicker || !eyeDropper) {
       return;
     }
+    // The target is the one armed now, and a colour taken hands the tool
+    // back (reference Picker.Selected → ResetPicker → ResetHelpTool): left on
+    // the pipette, the next press on the sheet took a colour again.
+    const target = this.pipetteTarget;
     new eyeDropper().open().then(
-      (result) => this.pickColor(result.sRGBHex, this.pipetteTarget),
+      (result) => {
+        this.pickColor(result.sRGBHex, target);
+        if (this.tool === 'pipette') this.resetHelpTool();
+      },
       () => {},
     );
   }
 
-  /** Leaves a help tool for whatever was drawing before it (reference `ResetHelpTool`). */
-  resetHelpTool(): void {
-    const back = toolAfterHelp(this.previousDrawingTool);
-    // The colour the help tool brought back decides between pencil and
-    // eraser under Multator, the same rule a pick from the grid follows.
-    this.tool = back === 'pencil' ? toolAfterColorChange(this.brushColor, this.ux) ?? back : back;
+  /**
+   * The one way a tool changes hands. A tool that brought its own window
+   * takes it away with it, the way the pipette source and the zoom window
+   * come and go with theirs; the pipette's way back comes through here too,
+   * or a plugin tool returned without its activate and its window.
+   */
+  private hold(tool: Tool): void {
+    if (tool === this.tool) {
+      return;
+    }
+    toolSpec(this.tool)?.deactivate?.(this.pluginHost());
+    this.closePluginWindow();
+    this.tool = tool;
+    // Only on the way in: picked again, it is already active, and a second
+    // activate with no deactivate between opened its window twice.
+    toolSpec(tool)?.activate?.(this.pluginHost());
   }
 
   /**
@@ -765,11 +781,14 @@ export class EditorState {
    */
   swapColors(): void {
     const outline = this.brushColor;
-    this.brushColor = this.fillColor;
+    const fill = this.fillColor;
     this.fillColor = outline;
     if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
       this.tool = 'pencil';
     }
+    // Through the pick's own rule: under Multator a white that became the
+    // outline arms the eraser, as it does from the grid and the pipette.
+    this.setBrushColor(fill);
   }
 
   /** Keeps a color in the saved grid (reference AddColourToPalette). */
@@ -1537,13 +1556,21 @@ export class EditorState {
   }
 
   setFps(value: number): void {
+    // The preview's clock took the old rate and a tied track the new one; the
+    // field stays focusable while it runs, so the refusal is here.
+    if (this.playing) {
+      return;
+    }
     this.#write((doc) => setFrameRate(doc, clampPlayerFps(value, this.ux.fpsRange)));
     this.touched = true;
   }
 
-  /** Copies every selected cell to the timeline clipboard (deep copy). */
+  /**
+   * Copies every selected cell to the timeline clipboard (deep copy) — as the
+   * screen shows it: a live move is in the copy and stays live.
+   */
   copySelection(): void {
-    this.copiedCells = copyCells(this.doc, this.selection);
+    this.copiedCells = copyCells(this.docWithTransform(), this.selection);
     this.copiedMarks = copiedMarks(this.doc, this.selection);
     this.flashTick++;
   }
@@ -2320,11 +2347,11 @@ export class EditorState {
     // the register is what it is, and a key without a tool goes — from the
     // saved arrangements as well, so the list does not keep ghosts.
     this.panels = normalizePanels(this.panels);
-    const workspaces = this.workspaces.map((w) => {
-      const plain = $state.snapshot(w);
-      return { ...plain, panels: normalizePanels(plain.panels) };
-    });
-    if (JSON.stringify(workspaces) !== JSON.stringify($state.snapshot(this.workspaces))) {
+    // From storage, as every change to the list: the one in memory may be
+    // older than another tab's, and writing it back erased that tab's saves.
+    const stored = $state.snapshot(loadWorkspaces(this.workspaces));
+    const workspaces = stored.map((w) => ({ ...w, panels: normalizePanels(w.panels) }));
+    if (JSON.stringify(workspaces) !== JSON.stringify(stored)) {
       this.workspaces = workspaces;
       saveWorkspaces(this.workspaces);
     }

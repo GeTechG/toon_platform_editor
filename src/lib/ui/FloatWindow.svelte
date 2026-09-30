@@ -256,6 +256,10 @@
     z-index: var(--z-float);
     display: flex;
     flex-direction: column;
+    /* Its own width, not the room left of the editor's edge: an auto width
+       shrank to that room, a place past the edge (a phone turned) drew the
+       keys as a column, and the clamp, measuring the squeezed box, left it. */
+    width: max-content;
     max-width: min(90%, 28rem);
     /* Never taller than the editor it lies in: on a short one the body's
        60vh ran past the bottom, out of reach. The body scrolls instead. */
@@ -273,6 +277,9 @@
     outline: 2px dashed var(--accent);
     outline-offset: -2px;
     cursor: grab;
+    /* The bar and the body are inert, so a finger lands on the window: the
+       browser took the swipe as a pan and cancelled the pick-up. */
+    touch-action: none;
   }
   .float-bar {
     display: flex;

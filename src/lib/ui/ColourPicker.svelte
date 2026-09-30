@@ -104,12 +104,21 @@
 
   const rgb = $derived(hexToRgb(color));
 
+  /**
+   * The one way a colour leaves the window, and only a changed one: the same
+   * colour «picked» again — Enter in an untouched field, «исходный» on the
+   * original, the same number in a channel — took the eraser out of the hand.
+   */
+  function pick(hex: string): void {
+    if (hex !== color) onpick(hex);
+  }
+
   function apply(next: Pointer): void {
     pointer = next;
     const hex = pointerToColor(model, next);
     hexText = hex;
     applied = hex;
-    onpick(hex);
+    pick(hex);
   }
 
   function setModel(next: PickerModel): void {
@@ -122,7 +131,7 @@
   }
 
   function setChannel(key: 'r' | 'g' | 'b', value: number): void {
-    onpick(rgbToHex({ ...rgb, [key]: value }));
+    pick(rgbToHex({ ...rgb, [key]: value }));
   }
 
   /**
@@ -156,7 +165,7 @@
   function commitHex(): void {
     const hex = parseColourInput(hexText, namedColour);
     if (hex) {
-      onpick(hex);
+      pick(hex);
       hexText = hex;
     } else hexText = color;
   }
@@ -172,7 +181,7 @@
     if (!hex) return;
     applied = hex;
     pointer = colorToPointer(model, hex);
-    onpick(hex);
+    pick(hex);
   }
 
   /**
@@ -528,7 +537,7 @@
       class="swatch old"
       style:background={origin}
       style:color={contrastInk(origin)}
-      onclick={() => onpick(origin)}
+      onclick={() => pick(origin)}
       title={t('picker.origin_title', { color: origin })}
     >{t('picker.origin')}</button>
   </div>

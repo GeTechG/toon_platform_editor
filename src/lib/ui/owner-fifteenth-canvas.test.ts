@@ -69,7 +69,8 @@ describe('рейка толщины над окном вкладки стоящ�
   it('низ рейки поднимается над окном (до 55% сцены), и вся шкала достижима', () => {
     const rule = editorView.match(/\.stage\.low-window :global\(\.size-rail\) \{[^}]*\}/);
     expect(rule).not.toBeNull();
-    expect(rule![0]).toMatch(/bottom: calc\(55% \+ [\d.]+rem\)/);
+    // Или выше, если на окне стоит окно инструмента (audit16-system).
+    expect(rule![0]).toMatch(/bottom: calc\((max\()?55%[^;]*\+ [\d.]+rem\)/);
     // Окно не выше 55% сцены — иначе рейка снова уйдёт под него.
     expect(editorView).toMatch(/\.tab-window \{[^}]*max-height: 55%;/);
   });

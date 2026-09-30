@@ -11,6 +11,7 @@ import {
   ENVELOPE_RATE,
   checkAudioFile,
   playRefusal,
+  playableFormats,
   playableHere,
   publishProblem,
   readId3,
@@ -20,7 +21,22 @@ import {
   unlockElement,
   waveformBars,
 } from './track';
-import { t } from '../i18n';
+import { dateLocale, t } from '../i18n';
+
+/**
+ * The formats this browser plays, in words («mp3 или wav» in Safari 16, which
+ * plays no ogg); the full list where the browser cannot be asked.
+ */
+export function playableWords(
+  canPlayType: ((type: string) => string) | null = typeof Audio === 'undefined'
+    ? null
+    : (type) => new Audio().canPlayType(type),
+): string {
+  const playable = canPlayType ? playableFormats(canPlayType) : [];
+  return playable.length
+    ? new Intl.ListFormat(dateLocale(), { type: 'disjunction' }).format(playable)
+    : t('audio.formats');
+}
 
 /**
  * Rate the file is decoded at for its envelope. `decodeAudioData` resamples to
@@ -147,7 +163,7 @@ export class AudioTrackState {
       console.warn('audio decode failed:', err);
       if (ticket === this.#ticket) {
         this.loading = false;
-        this.error = t('audio.undecodable');
+        this.error = t('audio.undecodable', { formats: playableWords() });
         if (keep) this.#adoptUnread(file, name, author);
       }
       return false;

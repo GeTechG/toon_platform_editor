@@ -127,6 +127,8 @@
     if (railHeld?.pointerId === e.pointerId) railHeld = null;
   }
   function onRailKey(e: KeyboardEvent): void {
+    // Alt+← is «back», Ctrl+Shift+arrows pan the sheet: neither is a size.
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     const next = sizeByKey(e.key, editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax, editor.ux);
     if (next === null) return;
     e.preventDefault();
@@ -374,8 +376,11 @@
       : editor.tool === 'drag'
         ? (panning ? 'grabbing' : 'grab')
         : editor.transform
-          ? CURSOR_BY_MODE[hoverMode]
-          : '',
+          ? CURSOR_BY_MODE[hoverMode] || (editor.tool === 'lasso' ? 'default' : '')
+          // The lasso lays no line: a press takes the frame, so no brush ring.
+          : editor.tool === 'lasso'
+            ? 'default'
+            : '',
   );
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
@@ -872,14 +877,19 @@
    * alone. Alt takes the layer for this click without changing the setting.
    * A transparent pixel is the background.
    */
-  /** Colour under the pointer, or null where the canvas is not fully opaque. */
-  function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null {
+  /**
+   * Colour under the pointer, null where the canvas is not fully opaque, and
+   * undefined when there is nothing to read — no frame composed yet (right
+   * after a lost context) or no context for the scratch (Safari out of canvas
+   * memory). Emptiness arms the eraser; not being able to look must not.
+   */
+  function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null | undefined {
     const source = pickSource(editor.pickSource, e.altKey);
     // The frame as it was composed, off the composer's own buffers: no paper
     // under it, no onion over it and no line under the hand.
     const layers = composer.layers;
     if (!layers || !lastDrawn) {
-      return null;
+      return undefined;
     }
     // Those buffers hold the view of the last frame drawn. Right after a zoom
     // (the redraw waits for the next frame) and all through a pinch, the
@@ -900,7 +910,10 @@
     pickEl = buffer(pickEl, 1, 1);
     // Made for reading: the preview reads a pixel back every 100 ms, and a
     // GPU-backed scratch paid a full readback for each.
-    const pctx = pickEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx;
+    const pctx = pickEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx | null;
+    if (!pctx) {
+      return undefined;
+    }
     pctx.setTransform(1, 0, 0, 1, 0, 0);
     pctx.clearRect(0, 0, 1, 1);
     if (source === 'canvas') {
@@ -928,6 +941,9 @@
    */
   function takeColour(e: { clientX: number; clientY: number; altKey: boolean }, toFill: boolean): string | null {
     const picked = pickColor(e);
+    if (picked === undefined) {
+      return null;
+    }
     if (picked === null) {
       editor.selectTool('eraser');
       return null;
@@ -973,7 +989,7 @@
       return;
     }
     const off = offSheet(e);
-    dropper = { ...dropper, x: e.clientX, y: e.clientY, off, color: off ? null : pickColor(e) };
+    dropper = { ...dropper, x: e.clientX, y: e.clientY, off, color: off ? null : pickColor(e) ?? null };
   }
 
   /** The finger lifted: the colour under it goes to the outline, as the pipette takes it. */
@@ -987,6 +1003,9 @@
     // Unlike the pipette tool, an empty spot hands no eraser: a finger held a
     // little too long must not change what is in the hand.
     const picked = pickColor(at);
+    if (picked === undefined) {
+      return;
+    }
     if (picked === null) {
       showHint(t('canvas.hold_empty'));
       return;
@@ -1045,14 +1064,36 @@
    * drag is released, not rolled back: what it wrote so far is its business.
    */
   function dropOwnGesture(): void {
+    // A handle is the session's, not the tool's: the step its drag filed goes
+    // back — the first finger of a pinch lands on the selection more often
+    // than not, and the zoom left the drawing shifted by its travel.
+    if (grab?.moved) {
+      editor.undoTransform();
+    }
     grab = null;
     megaGesture = null;
-    if (pluginGrab) {
-      pluginGrab.spec.release?.(editor.pluginHost());
-      editor.endPluginGesture();
-      pluginGrab = null;
-    }
+    releasePluginGrab();
     gesturePointerId = -1;
+  }
+
+  /**
+   * Lets go of a tool's own drag. The tool is a plugin's code: a release that
+   * throws must still leave the canvas free and the gesture one step of undo —
+   * held, it kept the wheel and the pinch dead, and every hover of the mouse
+   * came back here to throw again.
+   */
+  function releasePluginGrab(): void {
+    const held = pluginGrab;
+    pluginGrab = null;
+    gesturePointerId = -1;
+    if (!held) {
+      return;
+    }
+    try {
+      held.spec.release?.(editor.pluginHost());
+    } finally {
+      editor.endPluginGesture();
+    }
   }
 
   function pinchFrom(points: Map<number, { x: number; y: number }>) {
@@ -1376,7 +1417,14 @@
         return;
       }
       const [x, y] = toDocUnits(e);
-      spec.press(editor.pluginHost(), { x, y });
+      // A press that throws closes the gesture it opened: left open, the
+      // next one joined it and its writes never became a step of undo.
+      try {
+        spec.press(editor.pluginHost(), { x, y });
+      } catch (err) {
+        editor.endPluginGesture();
+        throw err;
+      }
       // Pinned: a hotkey mid-drag changes the tool in hand, not this gesture.
       pluginGrab = { pointerId: e.pointerId, spec };
       canvasEl.setPointerCapture(e.pointerId);
@@ -1505,7 +1553,7 @@
       const now = performance.now();
       if (now - lastPickPreview >= PIPETTE_THROTTLE_MS) {
         lastPickPreview = now;
-        pickPreview = pickColor(e);
+        pickPreview = pickColor(e) ?? null;
       }
     }
     if (!pointer.session || !e.isPrimary) {
@@ -1593,10 +1641,7 @@
       return;
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
-      pluginGrab.spec.release?.(editor.pluginHost());
-      editor.endPluginGesture();
-      pluginGrab = null;
-      gesturePointerId = -1;
+      releasePluginGrab();
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
@@ -1652,8 +1697,10 @@
     try {
       editor.commitStroke(index, stroke);
     } catch (err) {
-      // Document is at a format limit — drop the stroke instead of crashing the input handler.
-      console.warn('stroke rejected:', err);
+      // The limits are the state's to refuse (commitStroke); what reaches here
+      // is a fault. The input handler survives it, and the error log hears of
+      // it — the console alone kept it from the report a user sends.
+      reportError(err);
     }
   }
 
@@ -2071,6 +2118,8 @@
     border: 1px solid var(--ink);
     box-shadow: 0 0 0 1px var(--canvas);
     pointer-events: none;
+    /* The colour is the drawing's: forced colors painted it the system Canvas. */
+    forced-color-adjust: none;
   }
   /* The held finger's loupe: a flat disc, the new colour over the current. */
   .loupe {

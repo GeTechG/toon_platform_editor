@@ -88,7 +88,7 @@ describe('the pipette source is a tool window, not a panel key', () => {
     expect(editorUi).toContain('{#if pipetteUp}');
     expect(editorUi).not.toContain('disabled={!pipetteUp}');
     expect(editorUi).not.toContain("id === 'pick-source'");
-    const windows = editorUi.match(/<div class="tool-windows">[^]*?pipetteUp[^]*?<\/div>\s*\{\/if\}/)?.[0] ?? '';
+    const windows = editorUi.match(/<div class="tool-windows"[^>]*>[^]*?pipetteUp[^]*?<\/div>\s*\{\/if\}/)?.[0] ?? '';
     expect(windows).toContain('editor.setPickSource');
   });
 });
@@ -108,6 +108,6 @@ describe('the transport plays the range (Toonio parity)', () => {
 
   it('the button is dead when there is nothing to play', () => {
     expect(play).toContain('canPlay');
-    expect(play).toContain('disabled={!canPlay}');
+    expect(play).toContain('aria-disabled={!canPlay');
   });
 });

@@ -71,8 +71,11 @@ function thinBySmooth(points: readonly number[], smooth: number): number[] {
 
 /**
  * Stage two: drop a point the hand barely moved from. The threshold is written
- * in the canvas's own pixels, so on a document of another size it is divided by
- * the canvas scale, the way the width is.
+ * in screen pixels, so it is divided by the zoom. It is measured from the last
+ * point kept, not from the sample before: a pen reports 240 times a second, a
+ * slow hand moves under a pixel between two of them, and every middle point of
+ * a slow arc fell — it landed as its chord. (The Tonio parity brush keeps the
+ * reference's neighbour rule.)
  */
 function thinByDistance(
   points: readonly number[],
@@ -84,7 +87,7 @@ function thinByDistance(
   const threshold =
     (clampInteger(minDistance, 0, 30) * FIXED_POINT_SCALE) / positive(zoom);
   for (let i = 2; i < points.length - 2; i += 2) {
-    const distance = Math.hypot(points[i - 2] - points[i], points[i - 1] - points[i + 1]);
+    const distance = Math.hypot(result[result.length - 2] - points[i], result[result.length - 1] - points[i + 1]);
     if (distance > threshold) result.push(points[i], points[i + 1]);
   }
   const x = points[points.length - 2];

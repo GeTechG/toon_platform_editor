@@ -117,6 +117,13 @@
   /** Which heading's help is open: one at a time, until pressed again, Esc or blur. */
   let openNote = $state<string | null>(null);
 
+  // A tool with no types takes the list away while it may be open (F from
+  // inside it), and a removed popover sends no `toggle`: the caret stood
+  // pointing up, and without `popover` the list came back open by itself.
+  $effect(() => {
+    if (!hasBrushTypes(editor.tool)) picking = false;
+  });
+
   // The smoothing headings leave with a brush they do not reach, their «i»
   // with them, and no blur comes for a removed key (nor for one Safari never
   // focused): coming back, the help stood open without a press.

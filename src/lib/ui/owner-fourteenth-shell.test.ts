@@ -175,7 +175,8 @@ describe('Alt+S открывает экспорт и без ключа на па
   it('ключ — только кнопка, что открывает этот лист; вкладка «Ещё» не открывается', () => {
     const key = snippet('export');
     expect(key).toMatch(/onclick=\{\(\) => exportButton\?\.start\(\)\}/);
-    expect(key).toMatch(/data-key="Alt\+S"/);
+    // Под Toonio Alt+S скачивает проект — там ключ его не обещает (audit16-shell).
+    expect(key).toMatch(/data-key=\{hasProjectFile \? undefined : 'Alt\+S'\}/);
     const alt = onKeydownBlock(/e\.altKey && \(key === 's' \|\| key === 'S'\)\) \{/);
     expect(alt).not.toMatch(/openTab|showTab/);
   });

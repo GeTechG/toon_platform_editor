@@ -179,7 +179,9 @@ test("a tool's own window comes up with it and goes with it", () => {
 });
 
 test('leaving a tool tells it so, and taking one up tells it too', () => {
-  const select = state.slice(state.indexOf('selectTool('), state.indexOf('resetHelpTool'));
+  // Every change of hands goes through one switch (sixteenth audit).
+  const at = state.indexOf('private hold(');
+  const select = state.slice(at, state.indexOf('\n  }\n', at));
   expect(select).toContain('deactivate?.(');
   expect(select).toContain('activate?.(');
 });

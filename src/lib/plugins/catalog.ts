@@ -132,7 +132,13 @@ export async function readCatalog(
   // while an author works on one, so it is resolved against the page.
   let base: string;
   try {
-    base = new URL(address_, ports.base ?? globalThis.location?.href).href;
+    const url = new URL(address_, ports.base ?? globalThis.location?.href);
+    // A folder typed without its slash: `index.json` and every entry of it
+    // were read one folder up — «нет каталога», or somebody else's files.
+    if (!url.pathname.endsWith('/') && !url.pathname.endsWith('/index.json')) {
+      url.pathname += '/';
+    }
+    base = url.href;
   } catch {
     return { plugins: [], error: t('plugin.catalog_bad_url', { address: address_ }) };
   }

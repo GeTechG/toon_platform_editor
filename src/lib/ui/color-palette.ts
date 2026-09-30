@@ -129,10 +129,10 @@ export function parseSavedPalettes(raw: string | null): SavedPalette[] {
       id,
       name: typeof name === 'string' ? name : '',
       created: typeof created === 'number' ? created : 0,
-      colours: colours
-        .filter((c): c is string => typeof c === 'string' && HEX.test(c))
-        .slice(0, SAVED_PALETTE_MAX)
-        .map(longHex),
+      // Once each: #fff and #FFFFFF are one colour, shown twice in the preview.
+      colours: uniqueColours(
+        colours.filter((c): c is string => typeof c === 'string' && HEX.test(c)).map(longHex),
+      ).slice(0, SAVED_PALETTE_MAX),
     });
   }
   return out;

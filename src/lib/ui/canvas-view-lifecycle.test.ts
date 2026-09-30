@@ -128,7 +128,8 @@ describe('transform tools on the canvas', () => {
     expect(handler('onPointerDown')).toContain('editor.beginPluginGesture(');
     expect(handler('onPointerDown')).toContain('spec.press(');
     expect(handler('onPointerMove')).toContain('.move?.(');
-    expect(handler('onPointerUp')).toContain('editor.endPluginGesture()');
+    expect(handler('onPointerUp')).toContain('releasePluginGrab()');
+    expect(handler('releasePluginGrab')).toContain('editor.endPluginGesture()');
   });
 
   it('a live transform takes the drag before the pencil does', () => {

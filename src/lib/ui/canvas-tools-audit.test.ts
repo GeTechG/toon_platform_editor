@@ -156,7 +156,7 @@ describe('a second finger during a gesture of the canvas’s own', () => {
     const start = canvas.match(/function startNavigation[^]*?\n  }\n/)?.[0] ?? '';
     expect(start).toContain('dropOwnGesture()');
     const drop = canvas.match(/function dropOwnGesture[^]*?\n  }\n/)?.[0] ?? '';
-    for (const part of ['megaGesture = null', 'grab = null', 'editor.endPluginGesture()', 'gesturePointerId = -1']) {
+    for (const part of ['megaGesture = null', 'grab = null', 'releasePluginGrab()', 'gesturePointerId = -1']) {
       expect(drop).toContain(part);
     }
   });
