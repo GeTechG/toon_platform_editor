@@ -33,7 +33,7 @@ describe('a drafts bundle dropped on the window', () => {
     expect(drop.indexOf('openDraftsFile')).toBeLessThan(drop.indexOf('file_unsupported'));
     const load = fn('openDraftsFile');
     expect(load).toContain("t('settings.drafts_confirm'");
-    expect(load).toContain('importDrafts(await file.text())');
+    expect(load).toMatch(/text = await file\.text\(\)[^]*importDrafts\(text\)/);
     expect(load).toContain('openDrafts()');
     expect(load).toContain("t('settings.drafts_load_failed')");
   });

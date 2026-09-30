@@ -68,10 +68,16 @@
     else if (picking) opened(false);
   }
 
-  /** Without a popover, a press anywhere else closes the list, as the browser does for one. */
+  /**
+   * Without a popover, a press anywhere else closes the list, as the browser
+   * does for one. It closes an open help too: Safari never focuses a tapped
+   * key, so no blur came, and the words lay over the slider below until the
+   * «i» was pressed again.
+   */
   function pressedElsewhere(e: PointerEvent): void {
     const on = e.target as Node;
     if (!popoverWorks && picking && !list?.contains(on) && !trigger?.contains(on)) close();
+    if (openNote !== null && !(on as Element).closest?.('.info')) openNote = null;
   }
 
   /**
@@ -385,7 +391,7 @@
      parse, it would be thrown away with it. */
   .types.fallback {
     display: none;
-    z-index: 50;
+    z-index: var(--z-menu);
   }
   .types.fallback.open {
     display: grid;
@@ -456,6 +462,7 @@
   .field-title {
     min-width: 0;
     overflow-wrap: anywhere;
+    -webkit-hyphens: auto;
     hyphens: auto;
   }
   /* Beside a title its width stays near the product's 44 px floor: a whole

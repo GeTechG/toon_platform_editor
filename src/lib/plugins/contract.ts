@@ -176,7 +176,10 @@ export interface PluginPrimitive {
 export interface PluginTool {
   readonly label: PluginText;
   readonly title: PluginText;
-  /** The shortcut it asks for; dropped when something already holds it. */
+  /**
+   * The shortcut it asks for: one printable Latin character. Dropped when
+   * something already holds it, or when it is anything else (Tab, F5, a chord).
+   */
   readonly key: string;
   /** SVG markup, drawn at the size of the editor's own icons. */
   readonly icon: string;

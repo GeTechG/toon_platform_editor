@@ -6,7 +6,7 @@
    */
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { contrastInk, gridStep } from './color-palette';
+  import { contrastInk, gridStep, quickColours } from './color-palette';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
@@ -29,7 +29,11 @@
     (cells[next] as HTMLElement).focus();
   }
 
-  const quickPalette = $derived(editor.paletteExpanded ? null : editor.ux.quickPalette);
+  /* A preset's pair is a plugin's to write: in upper case it never read as
+     picked, «red» went into the brush, a repeat took the keyed row down. */
+  const quickPalette = $derived(editor.paletteExpanded || !editor.ux.quickPalette ? null : quickColours(editor.ux.quickPalette));
+  /** Either eraser: a pick hands the pencil back, so no colour is the one in hand. */
+  const erasing = $derived(editor.tool === 'eraser' || editor.tool === 'mega-eraser');
 </script>
 
 {#if quickPalette}
@@ -37,8 +41,8 @@
     {#each quickPalette as color (color)}
       <button
         class="swatch"
-        class:active={editor.brushColor === color && editor.tool !== 'eraser'}
-        aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
+        class:active={editor.brushColor === color && !erasing}
+        aria-pressed={editor.brushColor === color && !erasing}
         style:--swatch={color}
         onclick={() => editor.setBrushColor(color)}
         title={editor.keyHint(t('color.quick_title', { color }))}
@@ -83,8 +87,8 @@
       {#each editor.palette as color, i (color)}
         <button
           class="cell"
-          class:active={editor.brushColor === color && editor.tool !== 'eraser'}
-          aria-pressed={editor.brushColor === color && editor.tool !== 'eraser'}
+          class:active={editor.brushColor === color && !erasing}
+          aria-pressed={editor.brushColor === color && !erasing}
           style:--swatch={color}
           style:color={contrastInk(color)}
           onclick={() => editor.pickColor(color, 'outline', true)}

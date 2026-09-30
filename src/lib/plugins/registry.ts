@@ -161,6 +161,12 @@ export class PluginRegistry {
     if (!tools && !presets && !types && !exporters) {
       return this.refuse(manifest.id, t('plugin.brings_nothing'));
     }
+    // One plugin per id: a second one under it — a file named after the
+    // editor's own tools — piled its records into theirs. Whoever replaces a
+    // plugin takes the old one out first (see `install.ts`).
+    if (this.holds(manifest.id)) {
+      return this.refuse(manifest.id, t('plugin.id_taken', { id: manifest.id }));
+    }
     const plugin = manifest.id;
     // Its words first: every record below may be nothing but keys into them.
     addLocales(plugin, manifest.locales);
@@ -168,7 +174,8 @@ export class PluginRegistry {
     // seven tools must not lose six because one asked for a taken id. A
     // manifest of which nothing at all passed is a refused install, though,
     // so the first reason comes back to whoever was installing it.
-    if (opts.bundled) {
+    // The editor's own tools cannot be taken off any more than the delivery.
+    if (opts.bundled || opts.builtin) {
       this.delivered.add(manifest.id);
     }
     const was = this.failures.length;
@@ -212,6 +219,13 @@ export class PluginRegistry {
     // A taken key costs the key, not the tool: the drawing still works, and the
     // one that already had it keeps doing what it did.
     let key = tool.key;
+    // A plugin's key is one printable Latin character: the table reads every
+    // layout as Latin (latinKey), a chord never reaches it, and a named key —
+    // Tab, F5, PageDown — is the page's. Given Tab, the canvas kept the focus.
+    if (key && !builtin && !/^[\x21-\x7e]$/.test(key.trim())) {
+      this.fail(plugin, t('plugin.key_refused', { key }));
+      key = '';
+    }
     if (key && this.keys.has(keyId(key))) {
       this.fail(plugin, t('plugin.key_taken', { key }));
       key = '';
@@ -403,6 +417,22 @@ export class PluginRegistry {
   /** Writes down something that did not load, for the settings list and the log. */
   fail(id: string, reason: string): void {
     this.failures.push({ id, reason });
+  }
+
+  /** Whether anything of this plugin is in the register, working or switched off. */
+  holds(plugin: string): boolean {
+    return [this.byId, this.presetById, this.typeById, this.exporterById].some((map) =>
+      [...map.values()].some((entry) => entry.plugin === plugin),
+    );
+  }
+
+  /**
+   * Why an installed plugin is not in the register — refused at the start, a
+   * bundle for another editor — or undefined when it is in. The list showed
+   * such a plugin as working, its tools simply nowhere.
+   */
+  loadFailure(plugin: string): string | undefined {
+    return this.holds(plugin) ? undefined : [...this.failures].reverse().find((failure) => failure.id === plugin)?.reason;
   }
 
   /** Whether a plugin came in the editor's delivery, and so cannot be taken off. */

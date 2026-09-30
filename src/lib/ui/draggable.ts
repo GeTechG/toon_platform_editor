@@ -15,6 +15,8 @@
 
 /** CSS pixels of travel that turn a press into a drag. */
 const DRAG_THRESHOLD = 4;
+/** A finger is never that still: a tap on «+» that trembled 5px was a drag, and the key lost it. */
+const TOUCH_DRAG_THRESHOLD = 10;
 
 export interface Size {
   width: number;
@@ -128,7 +130,8 @@ export function draggable(node: HTMLElement): { destroy(): void } {
       return;
     }
     if (!grab.moving) {
-      if (Math.hypot(e.clientX - grab.x, e.clientY - grab.y) < DRAG_THRESHOLD) {
+      const threshold = e.pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD : DRAG_THRESHOLD;
+      if (Math.hypot(e.clientX - grab.x, e.clientY - grab.y) < threshold) {
         return;
       }
       beginDrag();

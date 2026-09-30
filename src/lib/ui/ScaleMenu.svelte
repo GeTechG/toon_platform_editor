@@ -108,4 +108,11 @@
     opacity: 0.4;
     cursor: default;
   }
+  /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
+     invalid when computed and the tint went to nothing. The nearest token. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .scale-menu {
+      background: var(--paper);
+    }
+  }
 </style>

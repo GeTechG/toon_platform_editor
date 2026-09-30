@@ -158,6 +158,17 @@
     return plugins.brokenReason(id);
   }
 
+  /**
+   * Installed and not in the register — refused at the start, written for
+   * another editor — and why, in the person's words. Such a row looked like
+   * a working plugin whose tools were simply nowhere.
+   */
+  function notLoaded(plugin: InstalledPlugin): string | undefined {
+    void editor.pluginsVersion;
+    const reason = plugin.source === 'bundled' ? undefined : plugins.loadFailure(plugin.id);
+    return reason && forPerson(reason);
+  }
+
   function installedOf(id: string): InstalledPlugin | undefined {
     return installed.find((plugin) => plugin.id === id);
   }
@@ -319,7 +330,7 @@
       {#if listed.length > 0}
         <ul class="plugins">
           {#each listed as plugin (plugin.id)}
-            <li class:off={broken(plugin.id)}>
+            <li class:off={broken(plugin.id) || notLoaded(plugin)}>
               <span class="face" aria-hidden="true">
                 {#if plugin.icon}<Icon name={plugin.icon} />{/if}
               </span>
@@ -331,6 +342,8 @@
                     : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
                   {#if broken(plugin.id)}
                     {t('plugins.broken')}
+                  {:else if notLoaded(plugin)}
+                    {t('plugins.not_loaded', { reason: notLoaded(plugin) })}
                   {/if}
                 </small>
               </span>

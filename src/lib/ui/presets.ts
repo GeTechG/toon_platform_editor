@@ -87,7 +87,23 @@ export const FALLBACK_BRUSH: BrushRecord = { width: 4, smooth: 3, minDistance: 3
 
 /** What a brush of this canvas starts at, as the brush itself says. */
 export function defaultBrushOf(brush: string): BrushRecord {
-  return { ...FALLBACK_BRUSH, ...plugins.probeRules(brush)?.defaults };
+  // Through the same frame as a stored record: a plugin's defaults arrive
+  // unchecked, and −3 or «толсто» went into the brush as they were.
+  const defaults: unknown = plugins.probeRules(brush)?.defaults;
+  return brushFromStore(typeof defaults === 'object' && defaults !== null ? defaults : {}, FALLBACK_BRUSH);
+}
+
+/**
+ * The widths a brush may take: its own range under the preset's ceiling,
+ * whole, inside the format and never inside out. A plugin's range arrives
+ * unchecked — NaN left the setter mute, min over max turned the track over.
+ */
+export function widthRange(
+  range: { readonly min?: unknown; readonly max?: unknown } | undefined,
+  ceiling: number,
+): { min: number; max: number } {
+  const max = clampNumber(range?.max, 1, ceiling, ceiling);
+  return { min: clampNumber(range?.min, 1, max, 1), max };
 }
 
 /** The same record for each brush a fresh config writes down. */

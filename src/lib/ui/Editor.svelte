@@ -29,7 +29,7 @@
   import { fitThumb } from './thumb-size';
   import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
-  import { keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -236,7 +236,9 @@
         sign: number;
         axis: 'x' | 'y';
         side: SideId | 'panel' | null;
-        apply: (px: number) => void;
+        apply: (px: number, persist?: boolean) => void;
+        /** The size drawn by the last move, stored on the release. */
+        px?: number;
       }
     | null
   >(null);
@@ -246,24 +248,40 @@
     axis: 'x' | 'y',
     sign: number,
     size: number,
-    apply: (px: number) => void,
+    apply: (px: number, persist?: boolean) => void,
     side: SideId | 'panel' | null = null,
   ): void {
-    if (!e.isPrimary) return;
+    // Only the main button: a right press opened the context menu, which
+    // swallowed the release, and the column followed the bare hover.
+    if (!e.isPrimary || e.button !== 0) return;
     resize = { pointerId: e.pointerId, from: axis === 'y' ? e.clientY : e.clientX, size, sign, axis, side, apply };
   }
 
   function onDividerMove(e: PointerEvent): void {
     if (!resize || e.pointerId !== resize.pointerId) return;
+    // A mouse or pen moving with nothing pressed let go where its release never came.
+    if (e.pointerType !== 'touch' && e.buttons === 0) {
+      onDividerUp(e);
+      return;
+    }
     const now = resize.axis === 'y' ? e.clientY : e.clientX;
-    resize.apply(resize.size + (now - resize.from) * resize.sign);
+    // Drawn at once, stored on the release: the whole UI config went to
+    // storage on every pointer sample.
+    resize.px = resize.size + (now - resize.from) * resize.sign;
+    resize.apply(resize.px, false);
   }
 
   function onDividerUp(e: PointerEvent): void {
-    if (resize && e.pointerId === resize.pointerId) resize = null;
+    if (!resize || e.pointerId !== resize.pointerId) return;
+    // What the last move drew — a cancel carries no place of its own; a tap
+    // on the edge moved nothing and writes nothing.
+    if (resize.px !== undefined) resize.apply(resize.px);
+    resize = null;
   }
 
   function onDividerKey(e: KeyboardEvent): void {
+    // With a modifier the arrow is the browser's (Alt+↑) or the sheet's pan.
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault();
@@ -381,7 +399,7 @@
 
   /** Esc closes the window — unless a control inside took it first (a menu, a field). */
   function onTabWindowKey(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && !e.defaultPrevented && !e.isComposing) {
+    if (e.key === 'Escape' && !e.defaultPrevented && !composing(e)) {
       e.preventDefault();
       e.stopPropagation();
       closeTab();
@@ -449,10 +467,12 @@
     atLeft(id) === collapsed ? 'chevron-right' : 'chevron-left';
 
   function onSideDown(e: PointerEvent, id: SideId): void {
-    startResize(e, 'x', atLeft(id) ? 1 : -1, sideWidth(id), (px) => editor.setSideWidth(id, px), id);
+    startResize(e, 'x', atLeft(id) ? 1 : -1, sideWidth(id), (px, persist) => editor.setSideWidth(id, px, persist), id);
   }
 
   function onSideKey(e: KeyboardEvent, id: SideId): void {
+    // Alt+← is «back», Ctrl+Shift+arrows pan the sheet: neither is a resize.
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
     const step = e.key === 'ArrowRight' ? SIDE_STEP : e.key === 'ArrowLeft' ? -SIDE_STEP : 0;
     if (!step) return;
     e.preventDefault();
@@ -482,7 +502,7 @@
     // An input method is composing: its Enter picks a character, its Esc drops
     // the composition. Neither is the studio's — an Enter in a layer name
     // applied the live transform, an Esc closed the tab window around the field.
-    if (e.isComposing) {
+    if (composing(e)) {
       return;
     }
     // Read by place on a non-Latin layout: «и» is B (key-owner.ts).
@@ -936,6 +956,12 @@
   let queued = false;
   /** Size of the record as last written — what the indicator reports. */
   let savedBytes = $state(0);
+  /**
+   * Draft writes started and not yet landed. `dirty` is cleared as a write
+   * starts, and a tab closed in between went without a question — the
+   * browser drops a transaction still open when the page goes.
+   */
+  let writing = 0;
 
   /**
    * Writes the draft right now — the autosave clock, Ctrl+S and the sheet.
@@ -962,7 +988,8 @@
     queued = false;
     dirty = false;
     writtenDoc = doc;
-    return saveDraft(draftId, doc, editor.sessionState(), track).then(({ ok, bytes }) => {
+    writing++;
+    return saveDraft(draftId, doc, editor.sessionState(), track).finally(() => writing--).then(({ ok, bytes }) => {
       if (ok && bytes === 0) {
         // No storage at all (blocked by the browser): the store degrades
         // quietly, but «сохранено» would be a lie, and a clean `dirty` would
@@ -1205,8 +1232,15 @@
    * import with its screenshot, its track and the hand it was saved with.
    */
   async function downloadDraft(entry: DraftEntry): Promise<void> {
-    const text = await exportDrafts([entry.id]);
-    saveFile(new Blob([text], { type: 'application/json' }), 'draft.toonops');
+    try {
+      const text = await exportDrafts([entry.id]);
+      saveFile(new Blob([text], { type: 'application/json' }), 'draft.toonops');
+    } catch (err) {
+      // A stored blob that will not read (Safari loses them), or a string
+      // past the engine's length: the key did nothing and nobody heard why.
+      console.warn('draft download failed:', err);
+      alert(t('settings.drafts_save_failed'));
+    }
   }
 
   async function removeAllDrafts(): Promise<void> {
@@ -1417,6 +1451,12 @@
       // What throws here is our own document's validator — a JSON path and
       // a schema rule, which says nothing to the person holding the file.
       console.warn('file open failed:', err);
+      // Moved, deleted or still in the cloud: the file is not damaged, it is
+      // not there to read (`NotReadableError`, `NotFoundError`).
+      if (err instanceof DOMException) {
+        importError = t('editor.file_failed', { reason: t('editor.file_unreadable') });
+        return;
+      }
       // A project from a newer editor is not damaged: it says which version it is.
       const newer = err instanceof FormatError
         ? err.issues.find((issue) => issue.category === 'unsupported-version')
@@ -1559,8 +1599,17 @@
     if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
       return;
     }
+    let text: string;
     try {
-      const { loaded, broken } = await importDrafts(await file.text());
+      text = await file.text();
+    } catch (err) {
+      // Moved or deleted since the drop, as in the settings: not the storage's fault.
+      console.warn('drafts file unreadable:', err);
+      importError = t('settings.drafts_unreadable');
+      return;
+    }
+    try {
+      const { loaded, broken } = await importDrafts(text);
       if (broken > 0 || loaded === 0) {
         importError = loaded > 0 || broken > 0
           ? t(broken > 0 ? 'settings.drafts_loaded_broken' : 'settings.drafts_loaded', { loaded, broken })
@@ -1741,7 +1790,7 @@
     // landed yet — the last thing between them and a closed tab. A selection
     // moved and not applied is not in the document at all: it asks too (a
     // lasso only picked up has no step yet, and closes quietly).
-    const unsaved = (editor.touched && dirty && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
+    const unsaved = (editor.touched && (dirty || writing > 0) && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
     flushOnLeave();
     if (unsaved) {
       e.preventDefault();
@@ -2120,8 +2169,11 @@
 {/snippet}
 
 
+<!-- The words are the catalogue's, whatever language the page around them is
+     in: a reader speaks them, and a hyphen breaks them, in that language. -->
 <div
   class="editor studio"
+  lang={dateLocale()}
   class:alt={editor.settings.altLayout}
   class:arranging={editor.arranging}
   class:compact={compact}
@@ -2162,7 +2214,7 @@
     </aside>
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
-  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session}>
+  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall}>
     <CanvasView {editor} />
     {@render stageNote?.()}
     <!-- The reference's two floating tool windows: the transform fields while
@@ -2306,7 +2358,7 @@
         aria-valuemax={Math.max(panelFloor, Math.round((viewportHeight || 800) * 0.75))}
         tabindex="0"
         onpointerdown={(e) =>
-          startResize(e, 'y', -1, panelHeight, (px) => editor.setPanelHeight(px), 'panel')}
+          startResize(e, 'y', -1, panelHeight, (px, persist) => editor.setPanelHeight(px, persist), 'panel')}
         onkeydown={onDividerKey}
         title={t('editor.bottom_height_title')}
       ></div>
@@ -2792,6 +2844,12 @@
   /* The transform window takes the zoom window's row: at 200 % text on 320px
      the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
   .studio.compact .stage.transforming > .scale-window {
+    display: none;
+  }
+  /* Lying down the tab window comes in from the right over the whole height,
+     and the zoom window's corner is under it: hidden there but still in the
+     Tab order (WCAG 2.4.11). It goes, as for the transform window. */
+  .studio.compact .stage.side-window > .scale-window {
     display: none;
   }
   /* Copy/paste flash — the reference's 0xCCCCCC @ 0.9 fadeSprite. The value is
@@ -3429,6 +3487,7 @@
   /* The keys say that they scroll, with a fade at their end; over paper,
      when nothing overflows, it is invisible. */
   .studio.compact .rail-keys {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
     mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
     scroll-padding-block: 1.25rem;
   }
@@ -3545,9 +3604,12 @@
     /* A finger on a tab is either a press or a drag to a new place. */
     touch-action: none;
   }
-  .tab:hover {
-    background: var(--sub);
-    color: var(--ink);
+  /* A touch «hover» sticks after a tap: a tab closed again kept the tone. */
+  @media (hover: hover) {
+    .tab:hover {
+      background: var(--sub);
+      color: var(--ink);
+    }
   }
   .tab.open {
     border-top-color: var(--accent);
@@ -3579,11 +3641,13 @@
     text-align: center;
   }
   /* Hidden but laid out across the same width, so the words are still
-     measured there and come back once they fit again. */
+     measured there and come back once they fit again — in by the tab's own
+     sides: a quarter rem here against its hair measured them 0.3 rem short,
+     and the icons stayed alone after the words fit. */
   .tabs.bare .tab-label {
     position: absolute;
-    left: 0.25rem;
-    right: 0.25rem;
+    left: 0.1rem;
+    right: 0.1rem;
     visibility: hidden;
   }
   /* The one window: up from the bottom standing, in from the side lying
@@ -3849,6 +3913,7 @@
     overflow-wrap: anywhere;
     /* …and where it must break a word, at a syllable with a hyphen, not
        «Настрой / ки». */
+    -webkit-hyphens: auto;
     hyphens: auto;
     margin: 0;
     font-size: 1rem;
@@ -3876,21 +3941,25 @@
     text-transform: uppercase;
     color: var(--ink-2);
   }
+  /* The key column is as wide as its widest chip, up to half the sheet; a
+     fixed 4.6rem broke «Del / Backspace» and «Ctrl+Shift+Z» mid-word. The
+     row wrapper steps aside (display: contents), so dt and dd sit in the
+     list's own columns; subgrid would need Chrome 117. */
   .keylist {
     margin: 0;
     display: grid;
-    gap: 0.1rem;
+    grid-template-columns: fit-content(50%) 1fr;
+    column-gap: 0.75rem;
+    row-gap: 0.1rem;
   }
   .keyrow {
-    display: grid;
-    grid-template-columns: 4.6rem 1fr; /* fits the widest chip, «← / →» */
-    align-items: baseline;
-    gap: 0.75rem;
-    padding: 0.32rem 0;
+    display: contents;
   }
   .keyrow dt,
   .keyrow dd {
     margin: 0;
+    padding: 0.32rem 0;
+    align-self: baseline;
   }
   .keylist kbd {
     display: inline-block;
@@ -4068,8 +4137,12 @@
   .editor :global(.key.icon) {
     padding: 0;
   }
-  .editor :global(.key:hover:not(:disabled)) {
-    background: var(--sub);
+  /* Only where a pointer hovers: a touch «hover» sticks after a tap, and a
+     key switched off (the onion skin) kept the tone as if still pressed. */
+  @media (hover: hover) {
+    .editor :global(.key:hover:not(:disabled)) {
+      background: var(--sub);
+    }
   }
   .editor :global(.key:active:not(:disabled)) {
     transform: scale(0.96);
@@ -4087,8 +4160,10 @@
     background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
     color: var(--accent-ink);
   }
-  .editor :global(.key.active:hover:not(:disabled)) {
-    background: color-mix(in srgb, var(--accent) 22%, var(--canvas));
+  @media (hover: hover) {
+    .editor :global(.key.active:hover:not(:disabled)) {
+      background: color-mix(in srgb, var(--accent) 22%, var(--canvas));
+    }
   }
   /* Primary key: the one positive "ship" action — the red fill, white icon
      (4.76:1), a step darker under the cursor like the site's red button. */
@@ -4102,8 +4177,10 @@
   .editor :global(.sheet .key:not(.primary):not(.active)) {
     background: var(--sub);
   }
-  .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
-    background: color-mix(in oklab, var(--sub), var(--text) 8%);
+  @media (hover: hover) {
+    .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
+      background: color-mix(in oklab, var(--sub), var(--text) 8%);
+    }
   }
   /* An icon is form enough: the ghost fill is for word keys, and three ghost
      circles shoulder to shoulder in a draft row stood rim to rim. At rest the
@@ -4123,8 +4200,10 @@
   .editor :global(.key.primary.icon) {
     padding: 0;
   }
-  .editor :global(.key.primary:hover:not(:disabled)) {
-    background: var(--accent-ink);
+  @media (hover: hover) {
+    .editor :global(.key.primary:hover:not(:disabled)) {
+      background: var(--accent-ink);
+    }
   }
 
   /* Reduced motion keeps the pressed tone, not the squeeze. */
@@ -4134,6 +4213,25 @@
     }
     .editor :global(.key:active:not(:disabled)) {
       transform: none;
+    }
+  }
+  /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
+     invalid when computed and the tint went to nothing. The nearest token. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .panel.collapsed .fold,
+    .side-edge.folded .fold {
+      background: var(--canvas);
+    }
+    .editor :global(.key.active) {
+      background: var(--accent-wash);
+    }
+    @media (hover: hover) {
+      .editor :global(.key.active:hover:not(:disabled)) {
+        background: var(--accent-wash);
+      }
+      .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
+        background: var(--sub);
+      }
     }
   }
 </style>

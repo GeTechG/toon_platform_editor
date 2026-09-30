@@ -229,12 +229,26 @@ export function loadPalette(): string[] {
       // addPaletteColor, so loading must not cut a grid saved under it.
       // Deduplicated on the way in: a grid written by an older build may hold
       // repeats, and the editor must open rather than crash on the keyed grid.
-      return uniqueColours(raw);
+      return paletteFromStore(raw);
     }
   } catch {
     // blocked or corrupted storage — fall through to the defaults.
   }
   return TONIO_DEFAULT_PALETTE.slice();
+}
+
+/**
+ * A grid read back from storage or a draft: deduplicated (the grid is keyed by
+ * colour) and no bigger than the largest grid the settings allow — a draft file
+ * is from anywhere, and a hundred thousand colours froze the box.
+ */
+export function paletteFromStore(colours: readonly string[]): string[] {
+  return uniqueColours(colours).slice(0, SAVED_PALETTE_MAX);
+}
+
+/** A preset's quick pair as the grid holds colours: long lower-case hex, once each; anything else is dropped. */
+export function quickColours(colours: readonly string[]): string[] {
+  return uniqueColours(colours.filter((c) => HEX.test(c)).map(longHex));
 }
 
 /** Persists the palette. Best-effort — never throws. */
@@ -255,6 +269,10 @@ export function savePalette(palette: readonly string[]): void {
  * (detail 0) always presses.
  */
 export function pressesCell(type: 'mousedown' | 'click', pointer: string, detail: number): boolean {
+  if (type === 'click' && detail === 0) return true;
+  // `held`: the release after a long press, whose compat mousedown and click
+  // (Safari on iOS sends both) are not a press of their own.
+  if (pointer === 'held') return false;
   return type === 'mousedown' ? pointer === 'mouse' : detail === 0 || pointer !== 'mouse';
 }
 

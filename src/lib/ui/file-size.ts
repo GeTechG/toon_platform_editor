@@ -3,7 +3,7 @@
  * indicator and by every card in the list — two spellings of the same
  * number is how they end up disagreeing.
  */
-import { t } from '../i18n';
+import { dateLocale, t } from '../i18n';
 
 /** Past this a record is worth a warning: the reference's `warning` mark. */
 export const DRAFT_WARN_BYTES = 30 * 1024 * 1024;
@@ -20,8 +20,11 @@ export function formatFileSize(bytes: number): string {
     value /= 1024;
     unit++;
   }
-  // A tenth of a unit is as fine as this number ever needs to be.
-  return `${value.toFixed(value < 10 && unit > 0 ? 1 : 0).replace('.', ',').replace(/,0$/, '')} ${t(UNITS[unit])}`;
+  // A tenth of a unit is as fine as this number ever needs to be; the decimal
+  // mark is the catalogue's, as the dates' are.
+  const digits = value < 10 && unit > 0 ? 1 : 0;
+  const number = new Intl.NumberFormat(dateLocale(), { maximumFractionDigits: digits, useGrouping: false }).format(value);
+  return `${number} ${t(UNITS[unit])}`;
 }
 
 /** Class for the indicator and the cards: '', 'warning' or 'too_big'. */

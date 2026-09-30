@@ -11,7 +11,9 @@
 </script>
 
 <div class="sizes" role="group" aria-label={t('brush.sizes_group')}>
-  {#each BRUSH_SIZES_LOGICAL as size (size)}
+  <!-- Only the sizes the brush in hand reaches: under a brush that stops at
+       20, the 21 and the 43 both gave 20 and neither lit up. -->
+  {#each BRUSH_SIZES_LOGICAL.filter((size) => size >= editor.brushRange.min && size <= editor.brushSizeMax) as size (size)}
     <button
       class="size-btn"
       class:active={editor.brushSizeLogical === size}

@@ -139,6 +139,12 @@
     save: 'M4 4h12l4 4v12H4zM8 4v5h7V4M8 20v-7h8v7',
   };
 
+  // A name the vocabulary lacks — a plugin tool's `icon: "star"`, a word and
+  // not markup — drew an empty key. A plain rounded square says «a tool with
+  // no picture of its own» instead of nothing. Own keys only: «toString»
+  // is on every object.
+  const FALLBACK = 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z';
+
 </script>
 
 <script lang="ts">
@@ -171,6 +177,6 @@
     <!-- eslint-disable-next-line svelte/no-at-html-tags -- reviewed plugin source, see editor-plugins -->
     {@html markup}
   {:else}
-    <path d={PATHS[name as IconName]} />
+    <path d={Object.hasOwn(PATHS, name) ? PATHS[name as IconName] : FALLBACK} />
   {/if}
 </svg>

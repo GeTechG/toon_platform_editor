@@ -32,6 +32,7 @@
     aria-pressed={editor.tool === tool}
     onclick={() => editor.selectTool(tool)}
     data-key={keys.join(' / ') || undefined}
+    data-tool={tool}
     aria-keyshortcuts={keys.join(' ') || undefined}
     title={editor.keyHint(spec.title)}
     aria-label={spec.label}

@@ -14,6 +14,6 @@ function member(source: string, name: string): string {
 
 describe('a width is held to the ceiling of the preset in hand', () => {
   it('the brush record read by the sliders and the stroke is capped', () => {
-    expect(member(state, 'get brush')).toContain('this.ux.brushSizeMax');
+    expect(member(state, 'get brush')).toContain('brushCeiling(this.ux)');
   });
 });

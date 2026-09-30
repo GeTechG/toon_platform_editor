@@ -643,11 +643,13 @@ function readSave(entry: unknown): DraftRecord | null {
     return null;
   }
   const created = typeof save.created === 'string' ? Date.parse(save.created) : NaN;
-  // `1e999` reads as Infinity: the list sorted by NaN and the card said «Invalid Date».
-  const updated = typeof save.updated === 'number' && Number.isFinite(save.updated) ? save.updated : NaN;
+  // `1e999` reads as Infinity, `1e20` is past the calendar's end: the list
+  // sorted by NaN or kept the card first for ever, and it said «Invalid Date».
+  const updated = typeof save.updated === 'number' ? new Date(save.updated).getTime() : NaN;
   const record: DraftRecord = {
     id,
-    updated: Number.isFinite(updated) ? updated : Number.isFinite(created) ? created : Date.now(),
+    // Nothing was saved in the future: a card from the year 9999 is now.
+    updated: Math.min(Date.now(), Number.isFinite(updated) ? updated : Number.isFinite(created) ? created : Date.now()),
     doc,
   };
   if (isDraftState(save.state)) {

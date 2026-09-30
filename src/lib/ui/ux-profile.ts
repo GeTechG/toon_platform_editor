@@ -9,7 +9,7 @@
  */
 
 import type { UxProfile } from '../plugins/contract';
-import { DEFAULT_FPS, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import { DEFAULT_FPS, MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
 
 export type { UxProfile };
 
@@ -70,6 +70,18 @@ const LADDER: readonly (readonly [number, number])[] = [
   [10, 1], [50, 5], [100, 10], [200, 25], [300, 50], [Infinity, 100],
 ];
 
+/**
+ * The preset's thickness ceiling, whole and inside the format. A plugin's
+ * profile arrives unchecked: NaN left the thickness setter mute, 0 drew lines
+ * of no width at all.
+ */
+export function brushCeiling(ux: UxProfile): number {
+  const max = ux.brushSizeMax;
+  return typeof max === 'number' && Number.isFinite(max)
+    ? Math.min(MAX_BRUSH_SIZE_LOGICAL, Math.max(MIN_BRUSH_SIZE_LOGICAL, Math.round(max)))
+    : TOONOP_MAX_BRUSH_SIZE_LOGICAL;
+}
+
 /** Brush size after a +/- nudge (dir = ±1) under the profile's stepping rule. */
 export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number {
   let step = 1;
@@ -78,7 +90,7 @@ export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number
     // 10 − is 9 and 50 − is 45; an odd size lands on the next rung.
     const rung = LADDER.find(([below]) => (dir > 0 ? size : size - 1) < below)![1];
     const next = dir > 0 ? Math.floor(size / rung) * rung + rung : Math.ceil(size / rung) * rung - rung;
-    return Math.min(ux.brushSizeMax, Math.max(MIN_BRUSH_SIZE_LOGICAL, next));
+    return Math.min(brushCeiling(ux), Math.max(MIN_BRUSH_SIZE_LOGICAL, next));
   }
   if (ux.adaptiveBrushStep) {
     // The reference's ladder (1 below 10, 5 below 50, 10 above) measured on
@@ -87,7 +99,7 @@ export function nudgeBrushSize(size: number, dir: 1 | -1, ux: UxProfile): number
     step = size < 20 ? 2 : size < 100 ? 10 : 20;
   }
   const next = size + dir * step;
-  return Math.min(ux.brushSizeMax, Math.max(MIN_BRUSH_SIZE_LOGICAL, next));
+  return Math.min(brushCeiling(ux), Math.max(MIN_BRUSH_SIZE_LOGICAL, next));
 }
 
 /**

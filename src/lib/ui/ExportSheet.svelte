@@ -364,7 +364,10 @@
             {t('export.webm_note', { audio: editor.audio.hasTrack ? t('export.mp4_with_audio') : '' })}
           </p>
         {/if}
-        {#if editor.audio.hasTrack}
+        {#if editor.audio.hasTrack && editor.audio.duration === 0}
+          <!-- A draft's track this browser cannot decode: kept, but not heard. -->
+          <p class="note">{t('export.audio_unreadable', { name: editor.audio.name })}</p>
+        {:else if editor.audio.hasTrack}
           <p class="note">
             {t('export.audio_note', { name: editor.audio.name })}
             {#if editor.audio.sync}

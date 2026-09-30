@@ -13,6 +13,7 @@
   import { t } from '../i18n';
   import { scaleFromField } from '../tools/lasso';
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
+  import { FIXED_POINT_SCALE } from '../format/constants';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -51,6 +52,57 @@
   function percent(value: number): number {
     return Math.round(value * 1000) / 10;
   }
+
+  /**
+   * An emptied field wrote nothing and stayed empty while the selection kept
+   * its number: left, it shows that number again. The field is the one whose
+   * id matches, so the value is read from the same place the markup reads it.
+   */
+  function restore(e: Event): void {
+    typing = null;
+    const input = e.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'number' || Number.isFinite(input.valueAsNumber) || !session) {
+      return;
+    }
+    const shown: Record<string, number> = {
+      'tf-dx': Math.round(session.dx / FIXED_POINT_SCALE),
+      'tf-dy': Math.round(session.dy / FIXED_POINT_SCALE),
+      'tf-rotate': Math.round(session.rotate),
+      'tf-scale-x': percent(session.scaleX),
+      'tf-scale-y': percent(session.scaleY),
+    };
+    if (input.id in shown) {
+      input.value = String(shown[input.id]);
+    }
+  }
+
+  /**
+   * Apply, cancel or Esc pressed inside the window unmounts the control that
+   * had the focus, and it fell to <body>: the next Tab began at the top of
+   * the page. It goes to the key of the tool in hand instead — the lasso,
+   * which is where the selection was opened from.
+   */
+  function keepFocus(node: HTMLElement): () => void {
+    let inside = false;
+    const enter = () => (inside = true);
+    // Only a move to somewhere else counts: a removal leaves the node detached.
+    const leave = (e: FocusEvent) => {
+      if (node.isConnected && !node.contains(e.relatedTarget as Node | null)) inside = false;
+    };
+    node.addEventListener('focusin', enter);
+    node.addEventListener('focusout', leave);
+    return () => {
+      node.removeEventListener('focusin', enter);
+      node.removeEventListener('focusout', leave);
+      if (!inside) return;
+      queueMicrotask(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) {
+          document.querySelector<HTMLElement>(`[data-tool="${CSS.escape(editor.tool)}"]`)?.focus();
+        }
+      });
+    };
+  }
 </script>
 
 {#if session}
@@ -60,6 +112,7 @@
     role="group"
     aria-label={t('transform.title')}
     use:draggable
+    {@attach keepFocus}
     onkeydown={(e) => {
       // Escape inside the fields still cancels (WCAG 2.1.2: no keyboard trap).
       if (e.key === 'Escape') {
@@ -74,11 +127,11 @@
          accessibility tree along with the association it carries. -->
     <details class="numbers" {@attach foldOnSmallScreen}>
     <summary>{t('transform.numbers')}<Icon name="chevron-down" size={16} /></summary>
-    <div class="fields" onchange={() => (typing = null)} onfocusout={() => (typing = null)}>
+    <div class="fields" onchange={restore} onfocusout={() => (typing = null)}>
       <label for="tf-dx">X</label>
-      <input id="tf-dx" type="number" step="1" value={Math.round(session.dx)} oninput={(e) => set('dx', e.currentTarget.valueAsNumber)} />
+      <input id="tf-dx" type="number" step="1" value={Math.round(session.dx / FIXED_POINT_SCALE)} oninput={(e) => set('dx', e.currentTarget.valueAsNumber * FIXED_POINT_SCALE)} />
       <label for="tf-dy">Y</label>
-      <input id="tf-dy" type="number" step="1" value={Math.round(session.dy)} oninput={(e) => set('dy', e.currentTarget.valueAsNumber)} />
+      <input id="tf-dy" type="number" step="1" value={Math.round(session.dy / FIXED_POINT_SCALE)} oninput={(e) => set('dy', e.currentTarget.valueAsNumber * FIXED_POINT_SCALE)} />
       <label for="tf-rotate">{t('transform.rotate')}</label>
       <input id="tf-rotate" type="number" step="1" value={Math.round(session.rotate)} oninput={(e) => set('rotate', e.currentTarget.valueAsNumber)} />
       <label for="tf-scale-x">{t('transform.scale_x')}</label>

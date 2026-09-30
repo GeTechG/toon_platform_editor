@@ -262,8 +262,12 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
     quality: new Quality({ bitrate: VIDEO_BITRATE }),
   });
   output.addVideoTrack(video, { frameRate: fps });
+  // Read before the file promises a sound track: a draft's track that does not
+  // decode here took the whole video down with it, «не собралось» and nothing.
+  const track =
+    target.audioCodec && audio ? await readSoundtrack(audio, total / fps, trackSeconds !== undefined) : null;
   const sound =
-    target.audioCodec && audio
+    target.audioCodec && track
       ? new AudioBufferSource({
           codec: target.audioCodec,
           quality: new Quality({ bitrate: AUDIO_BITRATE }),
@@ -275,8 +279,8 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
 
   try {
     await output.start();
-    if (sound && audio) {
-      await sound.add(await buildSoundtrack(audio, total / fps, trackSeconds !== undefined));
+    if (sound && track) {
+      await sound.add(track);
       sound.close();
     }
     for (let index = 0; index < total; index++) {
@@ -322,6 +326,24 @@ async function buildSoundtrack(audio: Blob, seconds: number, loop: boolean): Pro
     return out;
   } finally {
     void ctx.close();
+  }
+}
+
+/**
+ * The soundtrack, or `null` when it does not decode here: the video goes out
+ * silent, as the real-time path's element does, and the sheet says so first.
+ */
+export async function readSoundtrack(
+  audio: Blob,
+  seconds: number,
+  loop: boolean,
+  build: (audio: Blob, seconds: number, loop: boolean) => Promise<AudioBuffer> = buildSoundtrack,
+): Promise<AudioBuffer | null> {
+  try {
+    return await build(audio, seconds, loop);
+  } catch (err) {
+    console.warn('soundtrack unreadable, the video goes silent:', err);
+    return null;
   }
 }
 

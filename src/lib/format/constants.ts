@@ -103,7 +103,12 @@ export function cutText(text: string, max: number): string {
   if (/[\uD800-\uDBFF]$/.test(cut)) {
     cut = cut.slice(0, -1);
   }
-  return cut.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (unit) => (unit.length === 2 ? unit : '\uFFFD'));
+  return wellFormed(cut);
+}
+
+/** Every lone surrogate half as U+FFFD (`toWellFormed`, which Safari 16 lacks). */
+export function wellFormed(text: string): string {
+  return text.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g, (unit) => (unit.length === 2 ? unit : '\uFFFD'));
 }
 
 /** Maximum coordinate count (x,y flat) per stroke. */

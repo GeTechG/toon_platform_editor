@@ -49,15 +49,36 @@ export function exportSize(doc: ToonDocument, width: number): ExportSize {
  */
 export const CANVAS_MAX_AREA = 4096 * 4096;
 
+/**
+ * Chrome and Firefox refuse a canvas longer than this on either side, whatever
+ * its area: a drawing of 8×4096 px fitted the area at 181×92672 and came out
+ * blank. A proportion past it even at the narrowest frame (1 px wide and over
+ * 32767 tall) stays unsatisfiable — ponytail: no frame narrower than 1 px.
+ */
+export const CANVAS_MAX_SIDE = 32767;
+
 function heightFor(doc: ToonDocument, width: number): number {
   const scaled = (width * doc.height) / doc.width;
   return Math.max(2, Math.round(scaled / 2) * 2);
 }
 
-/** The widest export whose frame still fits `CANVAS_MAX_AREA`. */
+/**
+ * The widest export whose frame still fits `CANVAS_MAX_AREA` and
+ * `CANVAS_MAX_SIDE`, and even: H.264 takes no frame of an odd width.
+ */
 function widestExport(doc: ToonDocument): number {
-  let width = Math.max(1, Math.floor(Math.sqrt((CANVAS_MAX_AREA * doc.width) / doc.height)));
-  while (width > 1 && width * heightFor(doc, width) > CANVAS_MAX_AREA) {
+  const byArea = Math.sqrt((CANVAS_MAX_AREA * doc.width) / doc.height);
+  const bySide = (CANVAS_MAX_SIDE * doc.width) / doc.height;
+  let width = Math.max(1, Math.floor(Math.min(byArea, bySide, CANVAS_MAX_SIDE)));
+  width -= width > 2 ? width % 2 : 0;
+  const fits = (w: number) => {
+    const height = heightFor(doc, w);
+    return w * height <= CANVAS_MAX_AREA && height <= CANVAS_MAX_SIDE;
+  };
+  while (width > 2 && !fits(width)) {
+    width -= 2;
+  }
+  while (width > 1 && !fits(width)) {
     width--;
   }
   return width;

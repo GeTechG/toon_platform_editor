@@ -14,7 +14,6 @@ import {
   MAX_LAYERS,
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
-  MIN_BRUSH_SIZE_LOGICAL,
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
@@ -87,6 +86,7 @@ import {
   type SavedPalette,
 } from './color-palette';
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
+import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
@@ -125,6 +125,7 @@ export interface TransformState {
   future: TransformSession[];
 }
 import {
+  brushCeiling,
   nudgeBrushSize,
   resolveToolSelection,
   toolAfterColorChange,
@@ -137,7 +138,6 @@ import {
   importWorkspaces,
   workspaceConflicts,
   loadWorkspaces,
-  removeWorkspace,
   saveWorkspaces,
   withWorkspace,
   workspaceName,
@@ -167,6 +167,7 @@ import {
   FALLBACK_BRUSH,
   brushUsesSmoothing,
   brushFromStore,
+  widthRange,
   defaultBrushOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
@@ -204,6 +205,14 @@ export type Tool = string;
 const TRANSFORM_HISTORY_LIMIT = 100;
 /** Block edits kept for undo; each holds a copy of the cells it wrote. */
 const EDIT_HISTORY_LIMIT = 100;
+
+/** Whether two stroke lists hold the same marks: tools, points and pressure. */
+function sameStrokes(a: readonly Stroke[], b: readonly Stroke[]): boolean {
+  const same = (x: readonly number[] | undefined, y: readonly number[] | undefined) =>
+    (x?.length ?? 0) === (y?.length ?? 0) && (x ?? []).every((v, i) => v === y![i]);
+  return a.length === b.length && a.every((stroke, i) => stroke.tool_id === b[i].tool_id
+    && same(stroke.points, b[i].points) && same(stroke.pressure, b[i].pressure));
+}
 
 /** One cell of a block edit, as it was before the edit ran. */
 interface CellSnapshot {
@@ -562,7 +571,7 @@ export class EditorState {
 
   /** What a width may be on the canvas in hand — the brush says, else the profile. */
   get brushRange(): { min: number; max: number } {
-    return this.widthRules?.range ?? { min: MIN_BRUSH_SIZE_LOGICAL, max: this.ux.brushSizeMax };
+    return widthRange(this.widthRules?.range, brushCeiling(this.ux));
   }
 
   /**
@@ -576,7 +585,7 @@ export class EditorState {
     // A width grown under a wider preset (Multator's 640) is read at this
     // preset's ceiling (Toonop's 500): the field, the track and the stroke
     // agree, and the record keeps the number for the way back.
-    const max = this.ux.brushSizeMax;
+    const max = brushCeiling(this.ux);
     return brush.width > max ? { ...brush, width: max } : brush;
   }
 
@@ -628,7 +637,8 @@ export class EditorState {
    * 500 because a Tonio preset is open around it.
    */
   get brushSizeMax(): number {
-    return Math.min(this.ux.brushSizeMax, this.brushRange.max);
+    // Already under the preset's ceiling (widthRange).
+    return this.brushRange.max;
   }
 
   set brushSizeLogical(value: number) {
@@ -788,7 +798,10 @@ export class EditorState {
    * `paletteAutoAdd` default.
    */
   pickColor(color: string, target: 'outline' | 'fill', fromGrid = false): void {
-    const hex = color.toLowerCase();
+    // The browser's eyedropper answers for itself: whatever is not a colour
+    // stays out of the brush, where every stroke after it failed the schema.
+    const hex = parseColourInput(color);
+    if (!hex) return;
     if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
       this.tool = 'pencil';
     }
@@ -822,9 +835,10 @@ export class EditorState {
     return merged;
   }
 
-  saveCurrentPalette(name: string): void {
+  /** False when the storage refused: the palette lives until the tab closes, and the box says so. */
+  saveCurrentPalette(name: string): boolean {
     this.savedPalettes = withSavedPalette(this.savedPalettes, name, this.palette);
-    saveSavedPalettes(this.savedPalettes);
+    return saveSavedPalettes(this.savedPalettes);
   }
 
   /** The reference's `palettes.json`. */
@@ -891,6 +905,8 @@ export class EditorState {
   saveWorkspace(name: string): boolean {
     // Cut as a file's names are (owner, 14th audit): a clash that makes is asked about.
     const stored = workspaceName(name);
+    // Another tab's saves are kept: this list may be older than the stored one.
+    this.workspaces = loadWorkspaces(this.workspaces);
     const same = this.workspaces.find((w) => w.name === stored);
     if (
       same
@@ -948,6 +964,7 @@ export class EditorState {
    * about first, as «Сохранить» asks (owner, 13th audit).
    */
   importWorkspaces(raw: string): { loaded: number; kept: number } {
+    this.workspaces = loadWorkspaces(this.workspaces);
     const clash = workspaceConflicts(this.workspaces, raw);
     const replace = clash.length === 0 || this.confirmed(
       clash.length === 1
@@ -966,7 +983,9 @@ export class EditorState {
     if (!this.confirmed(t('arrange.delete_confirm', { name }))) {
       return;
     }
-    this.workspaces = removeWorkspace(this.workspaces, id);
+    // By name, from the stored list: another tab's saves stay, and an id read
+    // here may be another workspace there.
+    this.workspaces = loadWorkspaces(this.workspaces).filter((w) => w.name !== name);
     saveWorkspaces(this.workspaces);
   }
 
@@ -1388,11 +1407,10 @@ export class EditorState {
       this.fillColor = saved.fill;
     }
     if (Array.isArray(saved.palette) && saved.palette.length > 0) {
-      // A record written by an older build may hold repeats; the grid is keyed
-      // by colour, so they have to go before it is rendered.
-      this.palette = uniqueColours(saved.palette);
-      this.paletteCursor = 0;
-      savePalette(this.palette);
+      // A record written by an older build may hold repeats, one from a
+      // drafts file any number of colours: repeats out, the grid's limit kept,
+      // as a palette file is loaded.
+      this.replacePalette(saved.palette);
     }
     this.layerColors = normalizeLayerColors(saved.layerColors, this.doc.layers.length);
     this.selectFrame(saved.frame ?? 0);
@@ -1633,14 +1651,19 @@ export class EditorState {
     this.flashTick++;
   }
 
-  setPanelHeight(px: number): void {
+  /** `persist: false` while the divider is dragged; the release writes it once. */
+  setPanelHeight(px: number, persist = true): void {
     this.panelHeight = Math.min(PANEL_HEIGHT_MAX, Math.max(PANEL_HEIGHT_MIN, Math.round(px)));
-    this.persistUiConfig();
+    if (persist) {
+      this.persistUiConfig();
+    }
   }
 
-  setSideWidth(side: SideId, px: number): void {
+  setSideWidth(side: SideId, px: number, persist = true): void {
     this.sides[side].width = Math.min(SIDE_WIDTH_MAX, Math.max(SIDE_WIDTH_MIN[side], Math.round(px)));
-    this.persistUiConfig();
+    if (persist) {
+      this.persistUiConfig();
+    }
   }
 
   togglePanel(): void {
@@ -1677,6 +1700,19 @@ export class EditorState {
    * write — that pair is what tells undo the cells are untouched since.
    */
   private pushEdit(snapshots: CellSnapshot[]): void {
+    // An edit that left every cell as it was — Ctrl+X on empty cells, M a
+    // second time — is not a step: filed, it undid nothing and threw the redo
+    // stack away. The cells it rewrote get their own objects back, so the
+    // step below still finds them intact.
+    if (snapshots.every((snapshot) =>
+      sameStrokes(snapshot.strokes, this.doc.layers[snapshot.layer].frames[snapshot.frame].strokes))) {
+      this.#write((doc) => {
+        for (const snapshot of snapshots) {
+          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.cell;
+        }
+      });
+      return;
+    }
     for (const snapshot of snapshots) {
       snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
       snapshot.after = snapshot.cell.strokes.length;
@@ -2265,14 +2301,13 @@ export class EditorState {
       console.warn(catalog.error);
       return;
     }
-    // Lock only around the download itself: a check that finds nothing new
-    // must be invisible.
+    // A check that finds nothing new must be invisible.
     if (!(await this.hasUpdates(catalog.plugins))) {
       return;
     }
-    this.updating = true;
+    // Locked only for the swap: the downloads run with the studio open.
     try {
-      await updateInstalled(catalog.plugins, plugins);
+      await updateInstalled(catalog.plugins, plugins, undefined, () => (this.updating = true));
     } finally {
       this.updating = false;
       this.refreshPlugins();

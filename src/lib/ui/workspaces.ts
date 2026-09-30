@@ -56,7 +56,9 @@ function cleanFloatPos(value: unknown): FloatPositions {
   for (const [id, pos] of Object.entries(value as Record<string, unknown>)) {
     const { x, y } = (typeof pos === 'object' && pos !== null ? pos : {}) as Record<string, unknown>;
     if (typeof x === 'number' && Number.isFinite(x) && typeof y === 'number' && Number.isFinite(y)) {
-      out[id] = { x: Math.round(x), y: Math.round(y) };
+      // Never past the top-left edge, as the UI config reads it (presets.ts):
+      // read otherwise, the reload moved the window and the arrangement «changed».
+      out[id] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
     }
   }
   return out;
@@ -146,12 +148,18 @@ export function removeWorkspace(list: readonly Workspace[], id: number): Workspa
   return list.filter((workspace) => workspace.id !== id);
 }
 
-/** Loads the saved workspaces, or none on any failure. */
-export function loadWorkspaces(): Workspace[] {
+/**
+ * Loads the saved workspaces. Another tab may have saved or deleted one since
+ * this list was read, so every change starts here. Storage that cannot be
+ * read, or holds nothing, gives `fallback` back: the list in memory may be
+ * the only copy there is (a write that failed).
+ */
+export function loadWorkspaces(fallback: Workspace[] = []): Workspace[] {
   try {
-    return parseWorkspaces(localStorage.getItem(STORAGE_KEY));
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw === null ? fallback : parseWorkspaces(raw);
   } catch {
-    return [];
+    return fallback;
   }
 }
 

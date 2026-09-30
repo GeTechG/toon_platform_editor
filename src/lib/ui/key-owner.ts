@@ -60,6 +60,15 @@ export function panSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean
   return (e.ctrlKey || e.metaKey) && e.shiftKey === true && PAN_ARROWS.has(e.key);
 }
 
+/**
+ * An input method is composing: its Enter picks a character, its Esc drops
+ * the composition. Safari sends the Enter that commits it with `isComposing`
+ * already false — keyCode 229 is the one mark it keeps.
+ */
+export function composing(e: { isComposing: boolean; keyCode: number }): boolean {
+  return e.isComposing || e.keyCode === 229;
+}
+
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);
 

@@ -95,7 +95,8 @@
 
   function savePalette(): void {
     const name = prompt(t('palette.save_prompt'), t('palette.new_name'))?.trim();
-    if (name) editor.saveCurrentPalette(name);
+    // Storage full or blocked: said now, not found out after a reload.
+    if (name && !editor.saveCurrentPalette(name)) alert(t('palette.not_stored'));
   }
 
   function usePalette(p: SavedPalette): void {
@@ -230,7 +231,7 @@
     if (held) return;
     held = true;
     press();
-    pointerKind = 'mouse';
+    pointerKind = 'held';
   }
 
   /**
@@ -245,16 +246,19 @@
   /** This press has already been taken as a long one. */
   let held = false;
 
-  function holdStart(e: PointerEvent, press: (color: string) => void): void {
+  function holdStart(
+    e: PointerEvent,
+    press: (color: string) => void,
+    color = (e.target as HTMLElement).closest<HTMLElement>('.cell')?.dataset.color,
+  ): void {
     held = false;
     holdEnd();
-    const color = (e.target as HTMLElement).closest<HTMLElement>('.cell')?.dataset.color;
     if (e.pointerType === 'mouse' || !e.isPrimary || !color) return;
     const timer = setTimeout(() => {
       hold = null;
       held = true;
       // The release that ends the hold is not a press of its own.
-      pointerKind = 'mouse';
+      pointerKind = 'held';
       press(color);
     }, HOLD_MS);
     hold = { id: e.pointerId, x: e.clientX, y: e.clientY, timer };
@@ -270,6 +274,11 @@
   }
 
   $effect(() => holdEnd);
+
+  /** The pipette key's right button is a long press too: on an iPhone, the only way to pipette into the fill. */
+  function pipetteHold(e: PointerEvent): void {
+    holdStart(e, () => editor.selectTool('pipette', 'fill'), 'fill');
+  }
 
   /* Reference `bundle:7783`: the grid follows the chosen outline — the grid
      alone, not the rail or the tab window it stands in. */
@@ -439,8 +448,22 @@
         class="foot-btn"
         class:active={editor.tool === 'pipette'}
         aria-pressed={editor.tool === 'pipette'}
-        onclick={() => editor.selectTool('pipette')}
-        oncontextmenu={(e) => (e.preventDefault(), editor.selectTool('pipette', 'fill'))}
+        onpointerdown={pipetteHold}
+        onpointermove={holdMove}
+        onpointerup={holdEnd}
+        onpointercancel={holdEnd}
+        onclick={(e) => {
+          // The release that ended a long press is not a second press; a key always is.
+          if (held && e.detail !== 0) return;
+          editor.selectTool('pipette');
+        }}
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          // Android sends the menu as well as the timer running out: one fill.
+          holdEnd();
+          if (!held) editor.selectTool('pipette', 'fill');
+          held = true;
+        }}
         onkeydown={(e) => {
           // The keys' right button, as on a palette cell.
           if (e.key === 'Enter' && e.shiftKey) (e.preventDefault(), editor.selectTool('pipette', 'fill'));
@@ -735,6 +758,8 @@
     background: var(--canvas);
     color: var(--ink-2);
     cursor: pointer;
+    /* The pipette's long press is the fill: no callout over it on iOS. */
+    -webkit-touch-callout: none;
   }
   .foot-btn + .foot-btn {
     border-left: 1px solid var(--hairline);
@@ -745,6 +770,12 @@
   .foot-btn.active {
     background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
     color: var(--accent-ink);
+  }
+  /* Safari 16.0 and 16.1 have no color-mix(): the pressed key kept white. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .foot-btn.active {
+      background: var(--sub);
+    }
   }
   /* Full ink against the footer's secondary text: the key that throws work
      away reads heavier than the keys that keep it. Red is the drawing

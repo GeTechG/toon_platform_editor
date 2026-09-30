@@ -100,6 +100,11 @@
   function onRenameKeydown(e: KeyboardEvent): void {
     // The editor's own hotkeys must not fire while a name is being typed.
     e.stopPropagation();
+    // Enter and Esc inside an IME composition pick or drop the candidate:
+    // they closed the field with half a word in it.
+    if (e.isComposing || e.keyCode === 229) {
+      return;
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       const layer = renaming?.layer ?? editor.activeLayer;
@@ -783,5 +788,12 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+  /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
+     invalid when computed and the tint went to nothing. The nearest token. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .row.active {
+      background: var(--accent-tint);
+    }
   }
 </style>

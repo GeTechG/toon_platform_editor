@@ -424,7 +424,13 @@
     shotCanvas ??= document.createElement('canvas');
     shotCanvas.width = canvasEl.width;
     shotCanvas.height = canvasEl.height;
-    shotCanvas.getContext('2d')?.drawImage(canvasEl, 0, 0);
+    // No context (Safari out of canvas memory): no shot. A blank one showed
+    // an empty sheet for the whole gesture; without one the frame is composed.
+    const shotCtx = shotCanvas.getContext('2d');
+    if (!shotCtx) {
+      return;
+    }
+    shotCtx.drawImage(canvasEl, 0, 0);
     navShot = { canvas: shotCanvas, view: lastDrawn };
   }
 
@@ -452,7 +458,12 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    const ctx = canvasEl.getContext('2d') as unknown as ViewCtx;
+    // Safari hands out no context once canvas memory runs out: nothing is
+    // drawn, rather than a TypeError every animation frame.
+    const ctx = canvasEl.getContext('2d') as unknown as ViewCtx | null;
+    if (!ctx) {
+      return;
+    }
     const viewport = {
       scale: (sheetWidth / editor.doc.width) * editor.view.zoom,
       dpr,
@@ -485,41 +496,46 @@
     ctx.beginPath();
     ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
     ctx.clip();
+    // Whatever throws below (a buffer Safari refused, a broken stroke), the
+    // clip goes with it: left saved, every later frame was cut to the old
+    // sheet's rectangle, and the save stack grew by one per frame.
+    try {
+      const drawn: DrawnView = { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr };
+      // While the hand pans or pinches, the picture is the one it grabbed, moved:
+      // nothing in it changes until it lets go, and rebuilding every layer and
+      // ghost per animation frame was what the gesture stuttered on.
+      const shot = navShot && navigating() && !editor.playing ? navShot : null;
+      if (shot) {
+        const to = reprojection(shot.view, drawn);
+        ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
+        ctx.drawImage(shot.canvas, 0, 0);
+      } else {
+        lastDrawn = drawn;
+        composer.compose(ctx, pxWidth, pxHeight, {
+          doc: editor.doc,
+          frame,
+          activeLayer: editor.activeLayer,
+          viewport,
+          tools: previewTools,
+          cellAt: stackCell,
+          ghosts: editor.showOnionSkin
+            ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+            : undefined,
+          live: liveLine(viewport),
+          // The profile's active alpha (Multator: 0.8, its containerSprite)
+          // applies to the whole current frame.
+          alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
+        });
 
-    const drawn: DrawnView = { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr };
-    // While the hand pans or pinches, the picture is the one it grabbed, moved:
-    // nothing in it changes until it lets go, and rebuilding every layer and
-    // ghost per animation frame was what the gesture stuttered on.
-    const shot = navShot && navigating() && !editor.playing ? navShot : null;
-    if (shot) {
-      const to = reprojection(shot.view, drawn);
-      ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
-      ctx.drawImage(shot.canvas, 0, 0);
-    } else {
-      lastDrawn = drawn;
-      composer.compose(ctx, pxWidth, pxHeight, {
-        doc: editor.doc,
-        frame,
-        activeLayer: editor.activeLayer,
-        viewport,
-        tools: previewTools,
-        cellAt: stackCell,
-        ghosts: editor.showOnionSkin
-          ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
-          : undefined,
-        live: liveLine(viewport),
-        // The profile's active alpha (Multator: 0.8, its containerSprite)
-        // applies to the whole current frame.
-        alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
-      });
-
-      // The grid is a drawing aid, not part of the picture: the preview shows
-      // the frames as they will be exported.
-      if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
-        drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+        // The grid is a drawing aid, not part of the picture: the preview shows
+        // the frames as they will be exported.
+        if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
+          drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+        }
       }
+    } finally {
+      ctx.restore();
     }
-    ctx.restore();
     // A hairline edge, so the paper reads as a sheet even over a white table.
     // The value is `--hairline` (14% ink), written out because a 2D context
     // takes a string and not a custom property.
@@ -1164,8 +1180,11 @@
     endWheelZoom();
   }
 
+  // On the whole stage, the thickness rail over it included: a pinch there
+  // zoomed the page, panels and all.
   $effect(() => {
-    const el = canvasEl;
+    const el = wrapEl;
+    if (!el) return;
     el.addEventListener('gesturestart', onGestureStart);
     el.addEventListener('gesturechange', onGestureChange);
     el.addEventListener('gestureend', onGestureEnd);
@@ -1174,6 +1193,25 @@
       el.removeEventListener('gesturechange', onGestureChange);
       el.removeEventListener('gestureend', onGestureEnd);
     };
+  });
+
+  /**
+   * The GPU reset or the tab was backgrounded on a phone: the browser gave
+   * the canvas back blank, and every buffer behind it with it. The composer
+   * still took them for drawn — the sheet stayed empty until something
+   * changed, and the ghosts until their frame did. They all start afresh.
+   */
+  function onContextRestored(): void {
+    composer.dispose();
+    navShot = null;
+    lastDrawn = null;
+    scheduleDraw();
+  }
+
+  $effect(() => {
+    const el = canvasEl;
+    el.addEventListener('contextrestored', onContextRestored);
+    return () => el.removeEventListener('contextrestored', onContextRestored);
   });
 
   /** The tool the pen's eraser end took over from, given back when it flips. */
@@ -1670,7 +1708,15 @@
   }
 </script>
 
-<div class="wrap" bind:this={wrapEl} bind:clientWidth={wrapWidth} bind:clientHeight={wrapHeight}>
+<!-- The wheel on the whole stage: over the thickness rail, Ctrl+wheel zoomed
+     the page instead of the sheet. -->
+<div
+  class="wrap"
+  bind:this={wrapEl}
+  bind:clientWidth={wrapWidth}
+  bind:clientHeight={wrapHeight}
+  onwheel={onWheel}
+>
   <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
        surface that renders a picture, and without it the drawing is an
        anonymous box in the accessibility tree. -->
@@ -1685,7 +1731,6 @@
     style:height="{stage.height}px"
     onpointerdown={onPointerDown}
     onpointermove={onPointerMove}
-    onwheel={onWheel}
     oncontextmenu={(e) => e.preventDefault()}
     onpointerup={onPointerUp}
     onpointercancel={onPointerCancel}
@@ -1827,6 +1872,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* A finger held still is the pipette (hold-pick.ts): iOS took the same
+       hold for a text selection and its callout. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   canvas {
     display: block;

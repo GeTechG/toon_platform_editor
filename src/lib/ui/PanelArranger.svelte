@@ -17,6 +17,7 @@
   import { clampWindowPosition } from './draggable';
   import { MAX_WORKSPACE_NAME, WORKSPACE_FILE_MAX, pickedWorkspace, workspaceName } from './workspaces';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
+  import { composing } from './key-owner';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
@@ -287,7 +288,8 @@
   function onKeydown(e: KeyboardEvent): void {
     // A sheet over the mode (Alt+S brings the export) takes its own Esc: this
     // one closed the mode and, prevented, left the sheet standing.
-    if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('dialog:modal')) {
+    // An input method's Esc drops its composition, not the mode.
+    if (e.key !== 'Escape' || e.defaultPrevented || composing(e) || document.querySelector('dialog:modal')) {
       return;
     }
     e.preventDefault();
@@ -436,7 +438,7 @@
   </p>
 
   <!-- The shelf: everything put away, and a place to drop things onto. -->
-  <div class="tray" data-slot="hidden" aria-label={slotLabel('hidden')}>
+  <div class="tray" role="group" data-slot="hidden" aria-label={slotLabel('hidden')}>
     <span class="tray-name">{slotLabel('hidden')}</span>
     {#each hidden as item (item.id)}
       <span class="chip" data-item={item.id}>{item.label}</span>
@@ -480,6 +482,9 @@
           aria-label={t('arrange.name_label')}
           bind:value={newName}
           onkeydown={(e) => {
+            // An input method's Enter picks a character and its Esc drops the
+            // composition: neither saves a half-typed name nor empties it.
+            if (composing(e)) return;
             if (e.key === 'Enter') saveAs();
             // Esc here empties the name; only an Esc outside the field closes the mode.
             if (e.key === 'Escape') {
@@ -710,6 +715,13 @@
   @media (forced-colors: active) {
     .arrange-bar {
       outline: 1px solid CanvasText;
+    }
+  }
+  /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
+     invalid when computed and the tint went to nothing. The nearest token. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .drop-panel {
+      background: var(--accent-tint);
     }
   }
 </style>

@@ -11,6 +11,7 @@
 
 import type { Box, Matrix } from '../model/geom';
 import { transformMatrix } from '../model/geom';
+import { FIXED_POINT_SCALE } from '../format/constants';
 
 export interface SelectableStroke {
   points: readonly number[];
@@ -42,9 +43,14 @@ export type HitMode =
   | 'scale-dr'
   | 'none';
 
-/** Reference nudge steps: arrows 1 (shift 10), Q/W 1° (shift 15°), +/- 1% (shift 5%). */
-const MOVE_STEP = 1;
-const MOVE_STEP_SHIFT = 10;
+/**
+ * Reference nudge steps: arrows 1 px (shift 10), Q/W 1° (shift 15°), +/- 1%
+ * (shift 5%). A pixel of the sheet, the one the brush is measured in — the
+ * session counts document units, an eighth of it, and a step of one unit
+ * moved nothing anyone could see.
+ */
+const MOVE_STEP = FIXED_POINT_SCALE;
+const MOVE_STEP_SHIFT = 10 * FIXED_POINT_SCALE;
 const ROTATE_STEP = 1;
 const ROTATE_STEP_SHIFT = 15;
 const SCALE_STEP = 0.01;

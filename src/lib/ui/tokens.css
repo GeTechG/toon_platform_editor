@@ -45,6 +45,12 @@
   /* The onion-skin is a drawing aid, and its frame numbers in the timeline
      header are named in its blue — text weight, 6.01:1 on the paper. */
   --onion-ink: var(--electric-dark);
+  /* The accent's washes written out, for the browsers without color-mix()
+     (Safari 16.0 and 16.1), where a mix with a var() in it computes to
+     nothing: 14 % over canvas under a picked key, 10 % over whatever is
+     under a selection. Modern browsers still mix from the tokens above. */
+  --accent-wash: #fae2df;
+  --accent-tint: #d8331c1a;
   /* The edge feather: a plate's own colour blurred one pixel out —
      `box-shadow: var(--feather) <own colour>`. */
   --feather: 0 0 1px 0.25px;

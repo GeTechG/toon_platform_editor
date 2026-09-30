@@ -207,10 +207,10 @@ describe('набор через IME (японский, китайский, ко�
     // Enter в имени слоя применял живую трансформацию, Esc закрывал окно вкладки
     // вместе с полем, в котором ещё шёл набор.
     const keys = fn('onKeydown');
-    const guard = keys.indexOf('if (e.isComposing) {');
+    const guard = keys.indexOf('if (composing(e)) {');
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(keys.indexOf("key === 'Escape'"));
-    expect(fn('onTabWindowKey')).toMatch(/!e\.isComposing/);
+    expect(fn('onTabWindowKey')).toMatch(/!composing\(e\)/);
   });
 });
 

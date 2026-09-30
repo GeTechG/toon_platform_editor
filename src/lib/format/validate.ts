@@ -11,7 +11,7 @@
  */
 
 import validateSchema from './schema/toon-v7.validate.js';
-import { SCHEMA_VERSION, MAX_TOTAL_POINTS } from './constants';
+import { SCHEMA_VERSION, MAX_TOTAL_POINTS, wellFormed } from './constants';
 import type { ToolDescriptor, ToonDocument } from './types';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
@@ -79,7 +79,15 @@ export function loadDocument(data: unknown): ToonDocument {
   if (!result.ok) {
     throw new FormatError(result.issues);
   }
-  return structuredClone(data) as ToonDocument;
+  const doc = structuredClone(data) as ToonDocument;
+  // A name cut through an emoji by an older build (in its drafts, in its
+  // .toonop) opened fine and never published: the API refuses a lone half.
+  for (const layer of doc.layers) {
+    if (layer.name !== undefined) {
+      layer.name = wellFormed(layer.name);
+    }
+  }
+  return doc;
 }
 
 function failure(category: ValidationCategory, path: string, message: string): ValidationResult {

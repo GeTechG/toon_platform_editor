@@ -163,9 +163,10 @@ async function install(
   ports: InstallPorts,
 ): Promise<string | null> {
   const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id);
-  if (was) {
-    registry.remove(id);
-  }
+  // What the register holds, not what the disk does: a plugin that storage
+  // refused runs until the page is left, and a second install of it came back
+  // «такой id уже загружен». The editor's own stay (`remove` refuses them).
+  registry.remove(id);
   const failed = accept(manifest, registry);
   if (!failed) {
     // In the register but not on disk: it works until the page is left, and
@@ -285,8 +286,15 @@ export async function updateInstalled(
   catalog: readonly CatalogEntry[],
   registry: PluginRegistry,
   ports: InstallPorts = DEFAULT_PORTS,
+  /**
+   * Called once, before the first plugin is swapped: the studio locks here.
+   * Downloads come first, unlocked — thirty seconds a bundle on a slow line
+   * held the studio shut with nothing to call off.
+   */
+  onSwap?: () => void,
 ): Promise<string[]> {
   const updated: string[] = [];
+  const ready: { plugin: InstalledPlugin; entry: CatalogEntry; got: { code: string; manifest: Partial<Plugin> & Record<string, unknown> } }[] = [];
   for (const plugin of await listInstalled()) {
     // The delivery changes with the editor, not past it.
     if (registry.isBundled(plugin.id)) {
@@ -313,6 +321,12 @@ export async function updateInstalled(
       registry.fail(plugin.id, t('plugin.update_wrong_bundle'));
       continue;
     }
+    ready.push({ plugin, entry, got });
+  }
+  if (ready.length > 0) {
+    onSwap?.();
+  }
+  for (const { plugin, entry, got } of ready) {
     // The old one has to go first: the register refuses a second plugin under
     // an id it already holds.
     registry.remove(plugin.id);

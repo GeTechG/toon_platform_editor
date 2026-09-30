@@ -70,7 +70,7 @@ describe('видео: привязанный трек не повторяетс�
 
   it('WebCodecs кладёт трек с повтором только без привязки', async () => {
     const video = await source('../export/video.ts');
-    expect(video).toContain('buildSoundtrack(audio, total / fps, trackSeconds !== undefined)');
+    expect(video).toContain('Soundtrack(audio, total / fps, trackSeconds !== undefined)');
   });
 
   it('запись в реальном времени повторяет непривязанный трек, привязанный — нет', async () => {

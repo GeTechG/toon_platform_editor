@@ -81,10 +81,10 @@ describe('sessionWidthScale', () => {
 });
 
 describe('nudged', () => {
-  test('an arrow moves by one document unit, with shift by ten', () => {
-    expect(nudged(EMPTY_TRANSFORM, 'move', 1, false).dx).toBe(1);
-    expect(nudged(EMPTY_TRANSFORM, 'move', 1, true).dx).toBe(10);
-    expect(nudged(EMPTY_TRANSFORM, 'move', -1, false, 'y').dy).toBe(-1);
+  test('an arrow moves by one pixel (eight document units), with shift by ten', () => {
+    expect(nudged(EMPTY_TRANSFORM, 'move', 1, false).dx).toBe(8);
+    expect(nudged(EMPTY_TRANSFORM, 'move', 1, true).dx).toBe(80);
+    expect(nudged(EMPTY_TRANSFORM, 'move', -1, false, 'y').dy).toBe(-8);
   });
 
   test('Q and W turn the selection, with shift turning further', () => {

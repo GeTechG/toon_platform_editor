@@ -212,6 +212,12 @@
     if (!dragging || e.pointerType === 'touch') {
       return;
     }
+    // A release outside the window (Alt+Tab mid-drag) sends no pointerup:
+    // hovering after it stretched the block with no button held.
+    if (!(e.buttons & 1)) {
+      dragging = false;
+      return;
+    }
     editor.selectCell(frame, layer, 'range');
     (e.currentTarget as HTMLElement).scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
@@ -478,7 +484,7 @@
     <!-- Decoration: the note key's panel carries the track's name, its length
          and the controls. The lane is drawn even where the track is silent, so
          an empty stretch reads as "quiet here", not as a missing waveform. -->
-    <div class="wave" aria-hidden="true">
+    <div class="wave" aria-hidden="true" style:min-width={`${stripExtent}px`}>
       {#if view.before > 0}
         <span class="gap" style:width="{view.before}px"></span>
       {/if}
@@ -887,7 +893,11 @@
     z-index: var(--z-menu);
     display: flex;
     flex-direction: column;
-    min-width: 13rem;
+    /* 13rem at 200 % text is 416 px, past a 320 px phone's edge; min-width
+       beats max-width, so the cap sits in it too. Fixed, so 100 % is the
+       window without its scrollbar. */
+    min-width: min(13rem, calc(100% - 8px));
+    max-width: calc(100% - 8px);
     /* Six 44 px items outgrow a 200 px window (1280×800 at 400 %): the last
        two sat under the edge. The menu scrolls inside the screen instead. */
     max-height: calc(100dvh - 8px);
@@ -938,7 +948,10 @@
      "this much sound happens on this frame" without a second ruler. The lane
      itself is drawn, not just the bars: a quiet passage has to look like
      quiet, not like a track that failed to load. */
+  /* As long as the row of frames (`stripExtent`): a block is only as wide as
+     the strip's window, and the lane ended a screen in. */
   .wave {
+    box-sizing: border-box;
     display: flex;
     gap: 2px;
     height: 20px;
@@ -1005,6 +1018,16 @@
   @container strip (width < calc(6rem + 126px)) {
     .layer-col {
       min-width: calc(2rem + 51px);
+    }
+  }
+  /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
+     invalid when computed and the tint went to nothing. The nearest token. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    .cell.selected {
+      background: var(--accent-tint);
+    }
+    .wave {
+      background: var(--accent-tint);
     }
   }
 </style>

@@ -10,7 +10,7 @@
   import { frameCount } from '../model/operations';
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
-  import { frameForTime, trackShouldRestart } from '../audio/track';
+  import { frameForTime, playRefusal, trackShouldRestart, trackTimeFor } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
   // named import of the JSON leaves the rest out of the bundle.
@@ -148,16 +148,24 @@
       // its own; untied it loops freely underneath.
       sound.loop = !audioSync;
       // Untied, the track just plays under the picture, from its own start.
-      sound.currentTime = audioSync
-        ? (untrack(() => current) % frameCount(view)) / view.frame_rate
+      // Tied past its end, it is quiet until the animation comes round (the
+      // lap below): set there, `play()` rewound the ended track to 0, and the
+      // frames, read off its clock, jumped back to the first.
+      const at = audioSync
+        ? trackTimeFor(untrack(() => current) % frameCount(view), view.frame_rate, sound.duration)
         : sound.currentTime;
-      void sound.play().catch(() => {
-        // Every browser refuses to start sound the visitor did not ask for.
-        // Playing the picture silently would look like a mute animation and
-        // leave no way to discover the sound, so the whole thing stops here
-        // and the play key comes back — one press then starts both together.
-        playing = false;
-      });
+      if (at !== null) {
+        sound.currentTime = at;
+        void sound.play().catch((err) => {
+          // Every browser refuses to start sound the visitor did not ask for.
+          // Playing the picture silently would look like a mute animation and
+          // leave no way to discover the sound, so the whole thing stops here
+          // and the play key comes back — one press then starts both together.
+          // A file the browser will not play (ogg on Safari 16) is no refusal
+          // of a press: the picture plays on without it.
+          if (playRefusal(err) === 'blocked') playing = false;
+        });
+      }
     }
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);

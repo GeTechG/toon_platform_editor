@@ -32,7 +32,7 @@ describe('the manual says what each key does in this studio', () => {
 
 describe('owner after the tenth audit: the pipette into the fill from the keys', () => {
   it('Shift+Enter on the pipette key arms it for the fill, as the right button does', () => {
-    const at = box.indexOf("onclick={() => editor.selectTool('pipette')}");
+    const at = box.indexOf('onpointerdown={pipetteHold}');
     const key = box.slice(at, box.indexOf('</button>', at));
     expect(key).toMatch(/e\.key === 'Enter' && e\.shiftKey[^]*editor\.selectTool\('pipette', 'fill'\)/);
   });
