@@ -55,5 +55,13 @@ export function dateLocale(): string {
   return i18next.language || BASE_LOCALE;
 }
 
+/**
+ * A share as the catalogue's locale writes a percent: «100 %» in Russian,
+ * «100%» in English. `share` is a fraction (1 is 100 %), rounded to a whole.
+ */
+export function formatPercent(share: number): string {
+  return new Intl.NumberFormat(dateLocale(), { style: 'percent', maximumFractionDigits: 0 }).format(share);
+}
+
 /** The shared instance, for whoever adds a namespace or a locale to it. */
 export const i18n = i18next;

@@ -17,7 +17,7 @@
   import { contrastInk } from './color-palette';
   import { clampWindowPosition } from './draggable';
   import Icon from './Icon.svelte';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
 
   let {
     color,
@@ -394,15 +394,15 @@
     }
     if (model === 'wheel') {
       const { h, s } = wheelToHsv(pointer.x * 2 - 1, pointer.y * 2 - 1);
-      return { now: s, max: 100, text: t('picker.field_wheel', { color, h, s }) };
+      return { now: s, max: 100, text: t('picker.field_wheel', { color, h, s: formatPercent(s / 100) }) };
     }
     const s = Math.round(pointer.x * 100);
-    return { now: s, max: 100, text: t('picker.field_hsv', { color, s, v: Math.round((1 - pointer.y) * 100) }) };
+    return { now: s, max: 100, text: t('picker.field_hsv', { color, s: formatPercent(s / 100), v: formatPercent(1 - pointer.y) }) };
   });
   const barReading = $derived(
     model === 'hsv'
       ? { label: t('picker.hue'), now: Math.round(pointer.bar * 360), max: 360, text: `${Math.round(pointer.bar * 360)}°` }
-      : { label: t('picker.value'), now: Math.round(pointer.bar * 100), max: 100, text: `${Math.round(pointer.bar * 100)}%` },
+      : { label: t('picker.value'), now: Math.round(pointer.bar * 100), max: 100, text: formatPercent(pointer.bar) },
   );
 </script>
 

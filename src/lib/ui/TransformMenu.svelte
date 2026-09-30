@@ -10,7 +10,7 @@
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
   import { draggable } from './draggable';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
   import { scaleFromField } from '../tools/lasso';
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
   import { FIXED_POINT_SCALE } from '../format/constants';
@@ -151,7 +151,7 @@
     <!-- On a phone the zoom window gives this one its row; its keys come along. -->
     <div class="row zoom" role="group" aria-label={t('scale.group')}>
       <button class="key icon" aria-disabled={editor.view.zoom <= ZOOM_MIN} onclick={() => editor.view.zoom <= ZOOM_MIN || editor.zoomBy(zoomDelta(editor.view.zoom, -1))} aria-label={t('scale.out')} title={t('scale.out')}><Icon name="minus" /></button>
-      <button class="key" onclick={() => editor.resetView()} aria-label={t('scale.value', { percent: Math.round(editor.view.zoom * 100) })} title={t('scale.reset')}>{Math.round(editor.view.zoom * 100)}%</button>
+      <button class="key" onclick={() => editor.resetView()} aria-label={t('scale.value', { percent: formatPercent(editor.view.zoom) })} title={t('scale.reset')}>{formatPercent(editor.view.zoom)}</button>
       <button class="key icon" aria-disabled={editor.view.zoom >= ZOOM_MAX} onclick={() => editor.view.zoom >= ZOOM_MAX || editor.zoomBy(zoomDelta(editor.view.zoom, 1))} aria-label={t('scale.in')} title={t('scale.in')}><Icon name="plus" /></button>
     </div>
 

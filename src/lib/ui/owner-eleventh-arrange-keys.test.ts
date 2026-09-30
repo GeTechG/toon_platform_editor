@@ -98,7 +98,8 @@ describe('with single-letter keys off', () => {
 
   it('a tool key drops its letter from the title and the hover label', () => {
     expect(toolKey).toContain("data-key={keys.join(' / ') || undefined}");
-    expect(toolKey).toContain('title={editor.keyHint(spec.title)}');
+    // The pipette's title depends on the eyedropper (owner, sixteenth audit).
+    expect(toolKey).toContain('title={editor.keyHint(title)}');
   });
 
   it('the shell\'s letter keys drop their hover labels and titles', () => {

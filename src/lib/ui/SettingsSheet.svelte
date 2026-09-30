@@ -118,7 +118,8 @@
   }
 
   function download(name: string, text: string): void {
-    saveFile(new Blob([text], { type: 'application/json' }), name);
+    // Drafts are not JSON to the browser: Safari names a JSON download `drafts.toonops.json`.
+    saveFile(new Blob([text], { type: name.endsWith('.json') ? 'application/json' : 'application/octet-stream' }), name);
   }
 
   async function onPaletteFile(e: Event): Promise<void> {

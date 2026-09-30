@@ -188,6 +188,6 @@ describe('Alt+S открывает экспорт и без ключа на па
   it('открытие по-прежнему применяет сдвиг и пишет черновик', () => {
     const at = editorUi.search(/\n\s*<ExportSheet\b/);
     const sheet = editorUi.slice(at, editorUi.indexOf('/>', at));
-    expect(sheet).toMatch(/onOpen=\{\(\) => \{[^}]*editor\.leaveTransform\(\)[^}]*saveNow\(\)/);
+    expect(sheet).toMatch(/onOpen=\{\(\) => \{[^}]*editor\.commitTransform\(\)[^}]*saveNow\(\)/);
   });
 });

@@ -21,7 +21,7 @@
   import { pickSaveFile, saveFile as save } from './save-file';
   import { plugins } from '../plugins';
   import { makeScene } from '../plugins/scene';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
 
   let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
 
@@ -186,7 +186,7 @@
         // The project, not a picture of it: the document exactly as the draft
         // and the API hold it, the same file Alt+S writes in the Toonio preset.
         deliver(
-          new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }),
+          new Blob([JSON.stringify(editor.doc)], { type: 'application/octet-stream' }),
           'toonop.toonop',
         );
       } else if (pluginFormat) {
@@ -397,7 +397,7 @@
            asks for when it wants it instead of hearing it every tick. -->
       <p class="sr-only" role="status">{stage}</p>
       {#if busy}
-        <p class="note" aria-hidden="true">{stage} {progress}%</p>
+        <p class="note" aria-hidden="true">{stage} {formatPercent(progress / 100)}</p>
         <progress max="100" value={progress} aria-label={stage}></progress>
         <button bind:this={cancelEl} class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {:else if stage}

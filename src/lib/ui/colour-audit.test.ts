@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { t } from '../i18n';
+import { formatPercent, t } from '../i18n';
 
 const read = (name: string) => Bun.file(new URL(name, import.meta.url)).text();
 const picker = await read('./ColourPicker.svelte');
@@ -14,7 +14,8 @@ describe('the colour window speaks its model', () => {
 
   it('the field and the bar read out in the model’s own terms', () => {
     // «поле 40 на 60» and a bare «Полоса 50» meant nothing to a listener.
-    expect(t('picker.field_hsv', { color: '#ff0000', s: 100, v: 100 })).toBe('#ff0000: насыщенность 100%, яркость 100%');
+    // The percents come written by the locale (owner-sixteenth-system).
+    expect(t('picker.field_hsv', { color: '#ff0000', s: formatPercent(1), v: formatPercent(1) })).toBe('#ff0000: насыщенность 100 %, яркость 100 %');
     expect(t('picker.field_rgb', { color: '#ff0000', channel: t('picker.channel_r'), value: 255 })).toBe(
       '#ff0000: красный 255 из 255',
     );

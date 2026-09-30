@@ -1093,7 +1093,8 @@
     if (!confirm(t('editor.download_project_confirm'))) {
       return;
     }
-    saveFile(new Blob([JSON.stringify(editor.doc)], { type: 'application/json' }), 'toonop.toonop');
+    // Not JSON to the browser: Safari names a JSON download `toonop.toonop.json`.
+    saveFile(new Blob([JSON.stringify(editor.doc)], { type: 'application/octet-stream' }), 'toonop.toonop');
   }
 
   // The track rides the draft but not the document: it is written on its own
@@ -1263,7 +1264,7 @@
   async function downloadDraft(entry: DraftEntry): Promise<void> {
     try {
       const text = await exportDrafts([entry.id]);
-      saveFile(new Blob([text], { type: 'application/json' }), 'draft.toonops');
+      saveFile(new Blob([text], { type: 'application/octet-stream' }), 'draft.toonops');
     } catch (err) {
       // A stored blob that will not read (Safari loses them), or a string
       // past the engine's length: the key did nothing and nobody heard why.
@@ -1718,11 +1719,11 @@
         has('distort') && ['~', t('tool.jitter.label')],
         ['H / Shift + H', t('key.mirror')],
         ['+ / −', t('key.brush_size')],
-        ['M', quickPalette ? t('key.palette') : t('key.merge')],
-        ['Z', t('key.undo')],
+        ['M, Ctrl + M', quickPalette ? t('key.palette') : t('key.merge')],
+        ['Z, Ctrl + Z', t('key.undo')],
         ['Y, Ctrl+Shift+Z', t('key.redo')],
-        ['C', t('key.copy')],
-        ['V', t('key.paste')],
+        ['C, Ctrl + C', t('key.copy')],
+        ['V, Ctrl + V', t('key.paste')],
         ['Ctrl + X', t('key.cut')],
         // Without a fullscreen here (an iPhone) the key and its button are not there either.
         (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
@@ -2633,7 +2634,7 @@
     bind:this={exportButton}
     {editor}
     onOpen={() => {
-      editor.leaveTransform();
+      editor.commitTransform(); // under the lock too (owner, 16th audit)
       saveNow();
       // The live selection goes where the screen shows it, then to the draft.
       leaveFullscreen();
@@ -2887,6 +2888,9 @@
      is empty here, so the rail's foot comes down to the edge as its top.
      A key tall at least, even on a stage too short for both. */
   .studio.compact .stage :global(.size-rail) {
+    /* No fold tab to clear here: half a rem off the column (owner, after
+       the sixteenth audit). */
+    left: 0.5rem;
     top: max(0.75rem, 50% - 8rem, var(--zoom-foot));
     bottom: max(0.75rem, 50% - 8rem);
     min-height: var(--key-h);

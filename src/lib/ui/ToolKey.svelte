@@ -6,6 +6,7 @@
   import type { EditorState } from './editor-state.svelte';
   import { toolKeyList, toolSpec } from './panels';
   import Icon from './Icon.svelte';
+  import { t } from '../i18n';
 
   let { editor, tool }: { editor: EditorState; tool: string } = $props();
 
@@ -23,6 +24,14 @@
       || (!editor.ux.pipetteOffRail
         && (!editor.ux.pipetteNeedsPalette || editor.paletteExpanded)),
   );
+  // A second press opens the browser's own eyedropper — only where there is
+  // one and the setting lets it (owner, sixteenth audit): Safari and Firefox
+  // have none, and the title promised it there.
+  const title = $derived(
+    tool === 'pipette' && 'EyeDropper' in globalThis && editor.settings.chromePicker
+      ? t('tool.pipette.title_screen')
+      : spec?.title ?? '',
+  );
 </script>
 
 {#if offered && spec}
@@ -34,7 +43,7 @@
     data-key={keys.join(' / ') || undefined}
     data-tool={tool}
     aria-keyshortcuts={keys.join(' ') || undefined}
-    title={editor.keyHint(spec.title)}
+    title={editor.keyHint(title)}
     aria-label={spec.label}
   >
     <Icon name={spec.icon} />

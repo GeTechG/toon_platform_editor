@@ -1234,18 +1234,41 @@
     endWheelZoom();
   }
 
-  // On the whole stage, the thickness rail over it included: a pinch there
-  // zoomed the page, panels and all.
+  /**
+   * The stage the canvas lies in, with the windows that float over it — the
+   * zoom window, the transform window, the notes. A pinch or Ctrl+wheel over
+   * one of them zoomed the page, panels and all (owner, after the sixteenth
+   * audit: it zooms the sheet).
+   */
+  function stageEl(): HTMLElement | undefined {
+    return wrapEl?.parentElement ?? wrapEl;
+  }
+
+  /**
+   * Ctrl+wheel over a window on the stage zooms the sheet. A plain wheel there
+   * is the window's own scroll, and over the canvas the wrap hears it already.
+   */
+  function onStageWheel(e: WheelEvent): void {
+    if (!(e.ctrlKey || e.metaKey) || !wrapEl || wrapEl.contains(e.target as Node)) {
+      return;
+    }
+    onWheel(e);
+  }
+
+  // On the whole stage, the thickness rail and the floating windows over it
+  // included: a pinch there zoomed the page, panels and all.
   $effect(() => {
-    const el = wrapEl;
+    const el = stageEl();
     if (!el) return;
     el.addEventListener('gesturestart', onGestureStart);
     el.addEventListener('gesturechange', onGestureChange);
     el.addEventListener('gestureend', onGestureEnd);
+    el.addEventListener('wheel', onStageWheel, { passive: false });
     return () => {
       el.removeEventListener('gesturestart', onGestureStart);
       el.removeEventListener('gesturechange', onGestureChange);
       el.removeEventListener('gestureend', onGestureEnd);
+      el.removeEventListener('wheel', onStageWheel);
     };
   });
 
@@ -1807,6 +1830,9 @@
     onpointerleave={() => {
       cursorVisible = false;
       pickPreview = null;
+      // Off the canvas the zoom keys zoom around the middle of the view, not
+      // the edge the cursor left by (owner, after the sixteenth audit).
+      editor.lastScalePivot = null;
     }}
     class:custom-cursor={editor.tool !== 'pipette' && !overlayCursor}
     style:cursor={overlayCursor || null}
@@ -2044,7 +2070,9 @@
     top: max(0.75rem, 50% - 8rem);
     bottom: max(4.5rem, 50% - 8rem);
     display: none;
-    width: var(--key-h, 2.75rem);
+    /* A finger wide, not a key: grown with the text it took 88 px of a
+       240 px phone stage at 200 % (owner, after the sixteenth audit). */
+    width: var(--tap, 44px);
     box-sizing: border-box;
     border: 1px solid var(--edge);
     border-radius: var(--r-pill);
@@ -2069,8 +2097,8 @@
   .rail-track {
     position: absolute;
     left: 50%;
-    top: 0.875rem;
-    bottom: 0.875rem;
+    top: 14px;
+    bottom: 14px;
     width: 6px;
     transform: translateX(-50%);
     border-radius: var(--r-pill);
@@ -2079,8 +2107,8 @@
   .rail-knob {
     position: absolute;
     left: 50%;
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 20px;
+    height: 20px;
     box-sizing: border-box;
     transform: translate(-50%, 50%);
     border: 3px solid var(--canvas);

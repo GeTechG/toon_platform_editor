@@ -18,7 +18,7 @@ describe('the manual says what each key does in this studio', () => {
   });
 
   it('M reads as the palette or the merge, as the preset decides', () => {
-    expect(table).toMatch(/\['M', quickPalette \? t\('key\.palette'\) : t\('key\.merge'\)\]/);
+    expect(table).toMatch(/\['M, Ctrl \+ M', quickPalette \? t\('key\.palette'\) : t\('key\.merge'\)\]/);
   });
 
   it('lists the tool keys the handler holds, only where the tool is', () => {

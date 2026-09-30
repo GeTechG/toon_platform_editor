@@ -644,10 +644,28 @@ export function loadUiConfig(): UiConfig | null {
   }
 }
 
-/** Persists the UI config. Best-effort — never throws. */
-export function saveUiConfig(config: UiConfig): void {
+/**
+ * Persists the UI config. Best-effort — never throws.
+ *
+ * `ownLayout` false: the arrangement here has not changed since this tab
+ * last saw it, so the stored one stays — another tab may have rearranged
+ * since, and a brush change here wrote the stale copy over it. The last tab
+ * that actually rearranged wins (owner, 16th audit).
+ */
+export function saveUiConfig(config: UiConfig, ownLayout = true): void {
+  let out = config;
+  if (!ownLayout) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Record<string, unknown> | null;
+      if (stored && typeof stored === 'object' && stored.panels !== undefined) {
+        out = { ...config, panels: stored.panels as PanelLayout, floatPos: (stored.floatPos ?? {}) as UiConfig['floatPos'] };
+      }
+    } catch {
+      // Nothing readable there: this tab's arrangement is the one to keep.
+    }
+  }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
   } catch {
     // private mode / blocked storage — degrade to no-op.
   }

@@ -89,7 +89,8 @@ describe('the rail on the canvas', () => {
   });
 
   it('is a finger wide and turns high contrast', () => {
-    expect(canvas).toMatch(/\.size-rail \{[^}]*width: var\(--key-h, 2\.75rem\)/);
+    // A finger, not a key: it no longer grows with the text (owner-sixteenth-system).
+    expect(canvas).toMatch(/\.size-rail \{[^}]*width: var\(--tap, 44px\)/);
     expect(canvas).toMatch(/@media \(forced-colors: active\)\s*\{[^]*\.size-rail/);
   });
 

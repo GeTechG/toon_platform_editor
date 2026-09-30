@@ -501,6 +501,7 @@ export class EditorState {
       this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
+    this.layoutSeen = this.layoutKey();
     this.workspaces = loadWorkspaces();
     // A plugin that threw is off already; what is left is to drop it from the
     // hand and the rail, which the register knows nothing about. Out of the
@@ -671,6 +672,7 @@ export class EditorState {
       this.panels = presetPanels(id);
     }
     this.ensureActiveLayerVisible();
+    this.keepToolOnPanel();
     this.defaultBrush = presetDefaultBrush(id);
     // Multator opens with its own line in hand; the other presets with the
     // everyday brush. A type picked afterwards stays until the next preset.
@@ -891,6 +893,7 @@ export class EditorState {
   movePanelItem(id: string, slot: PanelSlot, index?: number): void {
     this.panels = movePanelItem(this.panels, id, slot, index);
     this.ensureActiveLayerVisible();
+    this.keepToolOnPanel();
     this.persistUiConfig();
   }
 
@@ -909,6 +912,7 @@ export class EditorState {
   setPanels(panels: PanelLayout): void {
     this.panels = panels;
     this.ensureActiveLayerVisible();
+    this.keepToolOnPanel();
     this.persistUiConfig();
   }
 
@@ -1022,6 +1026,7 @@ export class EditorState {
       ? hidePanelItem(this.panels, id)
       : showPanelItem(this.panels, id, presetPanels(this.preset));
     this.ensureActiveLayerVisible();
+    this.keepToolOnPanel();
     this.persistUiConfig();
   }
 
@@ -1052,6 +1057,17 @@ export class EditorState {
     if (layer?.hidden) {
       this.#write((doc) => setLayerHidden(doc, this.activeLayer, false));
       this.touched = true;
+    }
+  }
+
+  /**
+   * The key of the tool in hand left the panels — a preset without it, the
+   * shelf: the pencil comes back, as when the tool's plugin is removed
+   * (owner, sixteenth audit). The pencil itself stays, key or no key.
+   */
+  private keepToolOnPanel(): void {
+    if (this.tool !== 'pencil' && !this.availableTools.includes(this.tool)) {
+      this.selectTool('pencil', 'outline', [...this.availableTools, 'pencil']);
     }
   }
 
@@ -2470,15 +2486,32 @@ export class EditorState {
     }
   }
 
+  /**
+   * Only the windows that are actually floating: a drag that passed over the
+   * canvas must not leave a position behind for ever.
+   */
+  private floatingPos(): Record<string, { x: number; y: number }> {
+    return Object.fromEntries(
+      this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
+    ) as Record<string, { x: number; y: number }>;
+  }
+
+  /** The arrangement as this tab last read or wrote it (owner, 16th audit). */
+  private layoutSeen = '';
+  private layoutKey(): string {
+    return JSON.stringify([$state.snapshot(this.panels), this.floatingPos()]);
+  }
+
   private persistUiConfig(): void {
+    // Unchanged here, the stored arrangement stays: another tab may have
+    // rearranged since, and the last tab that rearranged wins.
+    const key = this.layoutKey();
+    const own = key !== this.layoutSeen;
+    this.layoutSeen = key;
     saveUiConfig({
       preset: this.preset,
       panels: $state.snapshot(this.panels),
-      // Only the windows that are actually floating: a drag that passed over
-      // the canvas must not leave a position behind for ever.
-      floatPos: Object.fromEntries(
-        this.panels.float.map((id) => [id, this.floatPos[id]]).filter(([, pos]) => pos),
-      ) as Record<string, { x: number; y: number }>,
+      floatPos: this.floatingPos(),
       drawing: {
         defaultBrush: this.defaultBrush,
         byTool: copyBrushes(this.byTool),
@@ -2489,6 +2522,6 @@ export class EditorState {
         panelCollapsed: this.panelCollapsed,
       },
       settings: this.settings,
-    });
+    }, own);
   }
 }

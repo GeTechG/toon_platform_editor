@@ -8,11 +8,11 @@
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
   import { draggable } from './draggable';
   import Icon from './Icon.svelte';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
-  const percent = $derived(Math.round(editor.view.zoom * 100));
+  const percent = $derived(formatPercent(editor.view.zoom));
   // aria-disabled, not disabled: a key disabled under the hand that pressed
   // it to the limit drops the focus to the page (WCAG 2.4.3). It stays in
   // focus, says it is unavailable, and does nothing.
@@ -40,7 +40,7 @@
     onclick={() => editor.resetView()}
     title={t('scale.reset')}
     aria-label={t('scale.value', { percent })}
-  >{percent}%</button>
+  >{percent}</button>
   <button
     class="step"
     aria-disabled={atMax}

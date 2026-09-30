@@ -112,7 +112,8 @@ describe('колесо и щипок над рейкой толщины', () => 
   it('ловятся всей сценой, а не только canvas: Ctrl+колесо и щипок трекпада над рейкой масштабировали страницу', () => {
     expect(source).toMatch(/<div\s+class="wrap"[^>]*onwheel=\{onWheel\}/);
     expect(source).not.toMatch(/<canvas[^>]*onwheel=/);
-    const effect = source.match(/\$effect\(\(\) => \{\n\s*const el = (\w+);[^]*?gesturestart/);
-    expect(effect?.[1]).toBe('wrapEl');
+    // The stage around the wrap since the owner's answers after the sixteenth audit.
+    expect(source).toMatch(/\$effect\(\(\) => \{\n\s*const el = stageEl\(\);[^]*?gesturestart/);
+    expect(source).toContain('return wrapEl?.parentElement ?? wrapEl;');
   });
 });

@@ -6,7 +6,7 @@
   // A row shows the layer's stored name, or its position when it has none,
   // so moving an unnamed layer renumbers its row. The colour tag is a display
   // aid — six of them, picked per layer, never written to the document.
-  import { onDestroy, tick } from 'svelte';
+  import { flushSync, onDestroy, tick } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import type { EditorState } from './editor-state.svelte';
   import type { Layer } from '../format/types';
@@ -85,6 +85,46 @@
       return;
     }
     renaming = { layer: layerIndex, ref: editor.doc.layers[layerIndex], text: editor.layerLabel(layerIndex) };
+  }
+
+  // --- Renaming under a finger ------------------------------------------------
+  // iOS takes a double tap for a zoom, not a dblclick, and F2 needs a keyboard:
+  // a finger or a pen held on the row opens its name (owner, after the
+  // sixteenth audit). The field opens on the lift, inside the gesture: a focus
+  // from a timer gets no keyboard on iOS.
+  const HOLD_MS = 500;
+  let rowHold = 0;
+  let held: number | null = null;
+
+  function onRowDown(e: PointerEvent, layerIndex: number): void {
+    cancelRowHold();
+    // A mouse has the double click; the row's own keys are presses of their own.
+    if (e.pointerType === 'mouse' || !e.isPrimary || (e.target as HTMLElement).closest('button:not(.name), .handle')) {
+      return;
+    }
+    rowHold = window.setTimeout(() => {
+      rowHold = 0;
+      held = layerIndex;
+    }, HOLD_MS);
+  }
+
+  function onRowUp(e: PointerEvent, layerIndex: number): void {
+    const due = held === layerIndex;
+    cancelRowHold();
+    if (!due) {
+      return;
+    }
+    e.preventDefault();
+    editor.selectLayer(layerIndex);
+    startRename(null, layerIndex);
+    flushSync();
+    listEl?.querySelector<HTMLElement>('.rename')?.focus();
+  }
+
+  function cancelRowHold(): void {
+    clearTimeout(rowHold);
+    rowHold = 0;
+    held = null;
   }
 
   function commitRename(): void {
@@ -393,6 +433,7 @@
   // A drag interrupted by the panel closing would leave its timer running
   // against a detached list.
   onDestroy(stopAutoscroll);
+  onDestroy(cancelRowHold);
 </script>
 
 <!-- The gesture belongs to the window once it starts: reordering moves the
@@ -443,6 +484,10 @@
         data-layer={layerIndex}
         onclick={() => editor.selectLayer(layerIndex)}
         ondblclick={(e) => startRename(e, layerIndex)}
+        onpointerdown={(e) => onRowDown(e, layerIndex)}
+        onpointerup={(e) => onRowUp(e, layerIndex)}
+        onpointercancel={cancelRowHold}
+        onpointerleave={cancelRowHold}
       >
         <span class="cell" role="gridcell">
         <button
@@ -556,6 +601,8 @@
     padding: 0 5px 0 8px;
     position: relative;
     cursor: pointer;
+    /* A held finger renames the layer, not the system callout. */
+    -webkit-touch-callout: none;
   }
   /* The active row, in the tool keys' language — a light red fill and red
      ink — plus what is not colour: a bar at the left edge (the accent, 3.5:1

@@ -15,7 +15,7 @@ describe('Alt+S saves the project as a file', () => {
     expect(editorUi).toContain('function saveProjectFile()');
     expect(editorUi).toContain("t('editor.download_project_confirm')");
     expect(t('editor.download_project_confirm')).toBe('Скачать проект в формате .toonop?');
-    expect(editorUi).toContain("type: 'application/json'");
+    expect(editorUi).toContain("type: 'application/octet-stream'");
     expect(editorUi).toContain("'toonop.toonop'");
     expect(editorUi).toContain('JSON.stringify(editor.doc)');
   });

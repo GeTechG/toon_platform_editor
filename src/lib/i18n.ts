@@ -18,4 +18,4 @@ i18n.addResourceBundle(BASE_LOCALE, 'editor', ru);
 /** The editor's own words. */
 export const t = translator('editor');
 
-export { BASE_LOCALE, dateLocale, i18n, translator } from './i18n-core';
+export { BASE_LOCALE, dateLocale, formatPercent, i18n, translator } from './i18n-core';

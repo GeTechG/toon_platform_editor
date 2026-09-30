@@ -141,7 +141,7 @@ describe('what is on the screen is what leaves', () => {
     // The sheet stands outside the panels since owner-fourteenth-shell.
     const at = editorUi.search(/\n\s*<ExportSheet\b/);
     const block = editorUi.slice(at, editorUi.indexOf('/>', at));
-    expect(block).toMatch(/onOpen=\{\(\) => \{[^}]*editor\.leaveTransform\(\)[^}]*saveNow\(\)/);
+    expect(block).toMatch(/onOpen=\{\(\) => \{[^}]*editor\.commitTransform\(\)[^}]*saveNow\(\)/);
   });
 
   it('and leaving the studio keeps the move in the draft', () => {

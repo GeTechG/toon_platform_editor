@@ -99,6 +99,13 @@
     Math.max(0, 4 - (editor.panels.float.length - 1 - editor.panels.float.indexOf(id))),
   );
 
+  /**
+   * While arranging, over the plate: a window at the sheet's top edge lay
+   * under it and could not be picked up (owner, 16th audit). Still under
+   * the ghost and the drop line.
+   */
+  const rung = $derived(editor.arranging ? 'var(--z-arrange) + 1' : 'var(--z-float)');
+
   /** The window in use comes to the front: pressed anywhere, or Tab reaching into it. */
   function raise(): void {
     const floats = editor.panels.float;
@@ -213,7 +220,7 @@
   class="float"
   class:handle={editor.arranging}
   data-item={id}
-  style="left: {shown.left}px; top: {shown.top}px; z-index: calc(var(--z-float) + {depth})"
+  style="left: {shown.left}px; top: {shown.top}px; z-index: calc({rung} + {depth})"
   onpointerdowncapture={raise}
   onfocusin={raise}
 >
@@ -252,7 +259,7 @@
   .float {
     position: absolute;
     /* Over the panels as well as the canvas, under the sheets and the
-       arrange bar. */
+       arrange bar — over the bar while arranging (inline rung). */
     z-index: var(--z-float);
     display: flex;
     flex-direction: column;
