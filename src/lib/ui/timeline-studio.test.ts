@@ -418,8 +418,9 @@ const stripSource = await Bun.file(new URL('./Timeline.svelte', import.meta.url)
 describe('the strip is one stop on the Tab path', () => {
   const strip = stripSource;
 
-  it('only the active cell is in the tab order', () => {
-    expect(strip).toMatch(/tabindex=\{i === editor\.displayedFrame && layerIndex === editor\.activeLayer \? 0 : -1\}/);
+  it('one cell of the active layer is in the tab order', () => {
+    // The active frame, or the first in view when the scroll unbuilt it (owner-seventeenth-timeline).
+    expect(strip).toMatch(/tabindex=\{i === tabFrame && layerIndex === editor\.activeLayer \? 0 : -1\}/);
   });
 
   it('focus follows the active cell, so its name is announced', () => {

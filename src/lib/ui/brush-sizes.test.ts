@@ -15,7 +15,9 @@ describe('the thickness readout of the row of dots', () => {
     expect(style).not.toMatch(/\.size\s*\{\s*display:\s*none/);
   });
 
-  it('speaks a size changed by the keys', () => {
-    expect(sizes).toMatch(/<span\s+class="size"[^>]*role="status"/);
+  // Owner, after the seventeenth audit: the number is spoken by the slider
+  // alone (aria-valuetext), the readout is no live region of its own.
+  it('leaves the size to the slider to speak', () => {
+    expect(sizes).not.toMatch(/<span\s+class="size"[^>]*role="status"/);
   });
 });

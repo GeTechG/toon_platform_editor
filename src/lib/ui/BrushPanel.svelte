@@ -191,7 +191,7 @@
     {min}
     {max}
     {value}
-    aria-label={label}
+    aria-label={t('brush.number_of', { label })}
     onchange={(e) => {
       // An emptied field is NaN, and the brush saved it as `width: null`.
       const v = e.currentTarget.valueAsNumber;

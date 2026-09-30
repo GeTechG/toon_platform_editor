@@ -85,8 +85,8 @@ describe('copy', () => {
 
 describe('a draft row', () => {
   it('ties its copy, download and delete keys to the draft they act on', () => {
-    expect(editorUi).toMatch(/<span class="draft-date" id="draft-date-\{entry\.id\}"/);
-    expect(editorUi.match(/aria-describedby="draft-date-\{entry\.id\}"/g)?.length).toBe(3);
+    expect(editorUi).toMatch(/<span class="draft-date" id="draft-date-\{index\}"/);
+    expect(editorUi.match(/aria-describedby="draft-date-\{index\}"/g)?.length).toBe(3);
   });
 
   it('a copy made or a draft deleted is heard, not only seen', () => {

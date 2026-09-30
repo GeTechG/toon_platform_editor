@@ -173,7 +173,9 @@
    * it opened on back; any other way out keeps what is chosen, and that colour
    * joins the grid under the reference's `paletteAutoAdd` — if the window
    * changed it. Opened and closed as it was, it adds nothing: at the limit
-   * each such glance overwrote the next cell of the ring.
+   * each such glance overwrote the next cell of the ring. The tool is handed
+   * back, not picked afresh: a pipette picked again opened the browser
+   * eyedropper once more and aimed it at the outline.
    */
   function closePicker(options?: { revert?: boolean }): void {
     if (!picking) return;
@@ -184,7 +186,7 @@
     // tool the pick swapped out comes back with the colour.
     if (options?.revert) {
       if (current !== origin) editor.pickColor(origin, target, true);
-      if (editor.tool !== tool) editor.selectTool(tool);
+      if (editor.tool !== tool) editor.restoreTool(tool);
     } else if (current !== origin && editor.ux.colorGrid && editor.settings.paletteAutoAdd) {
       editor.addColorToPalette(current);
     }
@@ -676,7 +678,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 32px;
+    height: 2rem;
     padding: 0;
     border: none;
     border-radius: 0;
@@ -686,6 +688,17 @@
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+  }
+  /* The dense grid is for the mouse (DESIGN §5). Under a finger — the colour
+     tab of a phone above all — the cells take the studio's key, and the grid
+     fewer to a row: 32px at 100 % text was a finger's width short. */
+  @media (pointer: coarse) {
+    .grid {
+      grid-template-columns: repeat(auto-fill, minmax(var(--key-h, 2.75rem), 1fr));
+    }
+    .cell {
+      height: var(--key-h, 2.75rem);
+    }
   }
   .cell:focus-visible {
     outline: 3px solid currentColor;

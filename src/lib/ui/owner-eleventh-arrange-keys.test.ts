@@ -103,13 +103,16 @@ describe('with single-letter keys off', () => {
   });
 
   it('the shell\'s letter keys drop their hover labels and titles', () => {
+    // A, C, V and M name their chord instead, as the frame menu does
+    // (owner, seventeenth audit: owner-seventeenth-shell.test.ts).
     for (const key of ['Z', 'Y', 'A', 'K', 'C', 'V', 'M']) {
       expect(editorUi).not.toContain(`data-key="${key}"`);
-      // Merge names no key under Multator (audit17-shell): the hint sits after that test.
-      expect(editorUi).toContain(key === 'M' ? "editor.keyHint('M') || undefined}" : `data-key={editor.keyHint('${key}') || undefined}`);
+    }
+    for (const key of ['Z', 'Y', 'K']) {
+      expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
     }
     expect(editorUi).not.toMatch(/data-key=\{hasFeather \? undefined : 'F'\}/);
-    for (const key of ['add_frame_title', 'undo_title', 'redo_title', 'fullscreen_title', 'copy_title', 'paste_title', 'merge_title']) {
+    for (const key of ['undo_title', 'redo_title', 'fullscreen_title']) {
       expect(editorUi).toContain(`editor.keyHint(t('editor.${key}'))`);
     }
   });

@@ -31,7 +31,6 @@
     class="size"
     class:picked={(BRUSH_SIZES_LOGICAL as readonly number[]).includes(editor.brushSizeLogical)}
     title={t('brush.size_hint')}
-    role="status"
   ><span aria-hidden="true">{editor.brushSizeLogical}px</span><span class="sr-only">{t('brush.size_value', { count: editor.brushSizeLogical })}</span></span>
 </div>
 

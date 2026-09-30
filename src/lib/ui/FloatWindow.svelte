@@ -93,10 +93,10 @@
    * Stacking order is the order of `panels.float`, drawn as a z-index: the
    * nodes stay put, so raising one keeps the focus and the pointer capture in
    * it. Five rungs between the windows and the sheets; any deeper window
-   * shares the lowest.
+   * shares the lowest. The tool windows, raised, take the top one.
    */
   const depth = $derived(
-    Math.max(0, 4 - (editor.panels.float.length - 1 - editor.panels.float.indexOf(id))),
+    Math.max(0, (editor.toolsOnTop ? 3 : 4) - (editor.panels.float.length - 1 - editor.panels.float.indexOf(id))),
   );
 
   /**
@@ -108,6 +108,7 @@
 
   /** The window in use comes to the front: pressed anywhere, or Tab reaching into it. */
   function raise(): void {
+    editor.toolsOnTop = false;
     const floats = editor.panels.float;
     if (!editor.arranging && floats[floats.length - 1] !== id) {
       editor.movePanelItem(id, 'float');

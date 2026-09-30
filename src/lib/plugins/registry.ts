@@ -376,9 +376,11 @@ export class PluginRegistry {
               // down, this much the format knows and the renderer draws.
               // No object back is a break as well: the session read `.width`
               // off `undefined` in the canvas's pointerdown and the brush box.
+              // So is one without a width: every line descriptor has one, and
+              // the sample was drawn NaN thick.
               descriptor: wrap((brush) => {
                 const made = stroke.descriptor(brush);
-                if (typeof made !== 'object' || made === null) {
+                if (typeof made !== 'object' || made === null || !Number.isFinite(made.width)) {
                   throw new TypeError(t('plugin.tool_no_descriptor', { id: tool.label }));
                 }
                 return made;

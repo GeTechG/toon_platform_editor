@@ -44,8 +44,9 @@ describe('сохранение рукой при живой трансформа
 describe('кнопка «Объединить» под Мультатором', () => {
   it('не обещает M: там M и Ctrl+M открывают палитру', () => {
     const merge = item('merge');
-    expect(merge).toMatch(/data-key=\{quickPalette \? undefined :/);
-    expect(merge).toMatch(/quickPalette \? withoutLetterKeys\(t\('editor\.merge_title'\)\)/);
+    // Through frameMenuKey, as the frame menu (owner-seventeenth-shell).
+    expect(merge).toContain("data-key={menuKey('merge')?.label}");
+    expect(merge).toContain("title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette)}");
     expect(withoutLetterKeys(ru.editor.merge_title)).not.toMatch(/\(M\)/);
   });
 });

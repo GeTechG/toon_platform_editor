@@ -465,6 +465,8 @@ export class EditorState {
    * drag handle rather than a control. Session state — a mode, not a setting.
    */
   arranging = $state(false);
+  /** The tool windows and the zoom window were pressed last, over the floating ones (session). */
+  toolsOnTop = $state(false);
   /** The saved preset is not in the register yet; its plugin may still arrive. */
   private presetPending = false;
   /** Where each floating item sits, in stage coordinates (persisted). */
@@ -533,6 +535,9 @@ export class EditorState {
    * the width record and what a preset offers all stay with it.
    */
   get brushTool(): Tool {
+    // The twin lives in the register, which is no state: a twin that broke
+    // or left is heard through `pluginsVersion`, or the sample kept it.
+    void this.pluginsVersion;
     return brushOfType(this.tool, this.brushType);
   }
 
@@ -560,6 +565,7 @@ export class EditorState {
 
   /** The rules the gesture actually runs under: those of the brush that draws. */
   get brushRules(): StrokeRules {
+    void this.pluginsVersion;
     return plugins.tool(this.brushTool)?.stroke?.rules?.(this.pluginBrush)
       ?? plugins.tool(this.defaultBrush)?.stroke?.rules?.(this.pluginBrush)
       // Nothing registered at all: the editor still draws with its own brush.
@@ -823,14 +829,15 @@ export class EditorState {
    * button) — reference PickColour / OnPickColour. An eraser gives way to the
    * pencil; other tools keep drawing. A pick from outside the grid (pipette,
    * browser eyedropper) is also kept in the grid, the reference's
-   * `paletteAutoAdd` default.
+   * `paletteAutoAdd` default. `keepTool`: the colour only, whatever is in the
+   * hand (a finger held on the sheet — owner, after the seventeenth audit).
    */
-  pickColor(color: string, target: 'outline' | 'fill', fromGrid = false): void {
+  pickColor(color: string, target: 'outline' | 'fill', fromGrid = false, keepTool = false): void {
     // The browser's eyedropper answers for itself: whatever is not a colour
     // stays out of the brush, where every stroke after it failed the schema.
     const hex = parseColourInput(color);
     if (!hex) return;
-    if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
+    if (!keepTool && (this.tool === 'eraser' || this.tool === 'mega-eraser')) {
       this.hold('pencil');
     }
     if (target === 'fill') {

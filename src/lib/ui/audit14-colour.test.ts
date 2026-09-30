@@ -49,7 +49,7 @@ describe('четырнадцатый аудит: цвет', () => {
     expect(palette).toMatch(/picking = \{[\s\S]*?tool: editor\.tool/);
     const close = fn(palette, 'closePicker');
     expect(close).toMatch(/revert[\s\S]*current !== origin[\s\S]*pickColor\(origin/);
-    expect(close).toMatch(/editor\.tool !== tool[\s\S]*selectTool\(tool\)/);
+    expect(close).toMatch(/editor\.tool !== tool[\s\S]*restoreTool\(tool\)/);
   });
 
   it('повторное нажатие на выбранную модель не сбрасывает оттенок серого', () => {

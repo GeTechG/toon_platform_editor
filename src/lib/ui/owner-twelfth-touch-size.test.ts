@@ -84,8 +84,10 @@ describe('the rail on the canvas', () => {
     expect(canvas).toMatch(/\.size-rail \{[^}]*display: none/);
   });
 
-  it('is hidden while the film plays: there is nothing to draw', () => {
-    expect(canvas).toContain('{#if !editor.playing}');
+  // Owner, after the seventeenth audit: it stays through the preview, as the
+  // fps slider does (owner-seventeenth-canvas.test.ts).
+  it('stays while the film plays, aria-disabled', () => {
+    expect(canvas).toContain('aria-disabled={editor.playing || undefined}');
   });
 
   it('is a finger wide and turns high contrast', () => {

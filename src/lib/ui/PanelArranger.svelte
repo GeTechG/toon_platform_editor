@@ -446,6 +446,8 @@
   tabindex="-1"
   style={place}
 >
+  <!-- «Переносим» comes with the ghost, past the threshold: a press that
+       never moved is a click, and was announced as a drag. -->
   <p class="arrange-hint" aria-live="polite">
     {#if notice}
       {notice}
@@ -453,7 +455,7 @@
       {t('arrange.refused', { label: dragLabel })}
     {:else if newRow}
       {t('arrange.new_row', { label: dragLabel })}
-    {:else if drag}
+    {:else if drag?.moved}
       {t('arrange.dragging', { label: dragLabel })}
     {:else}
       {t('arrange.idle')}

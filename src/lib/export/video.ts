@@ -184,19 +184,47 @@ export class FileWriteError extends Error {
  * it — half a video under the name the person picked. Here a close before
  * `finish()` aborts instead, and the file keeps nothing of the export.
  */
-export function guardSink(sink: WritableStream<FileChunk>) {
+export function guardSink(sink: WritableStream<FileChunk>, signal?: AbortSignal, discard?: () => Promise<void>) {
   const writer = sink.getWriter();
   let whole = false;
+  let closed = false;
   let failed: unknown = null;
+  let dropped: Promise<void> | null = null;
   const stream = new WritableStream<FileChunk>({
     write: (chunk) =>
       writer.write(chunk).catch((error) => {
         failed ??= error;
         throw error;
       }),
-    close: () => (whole ? writer.close() : writer.abort()),
+    close: () =>
+      whole
+        ? writer.close().then(() => {
+            closed = true;
+          })
+        : writer.abort(),
     abort: (reason) => writer.abort(reason),
   });
+  // An encoder that never answers never reaches the export's own catch, and
+  // the file stayed open and empty under the name picked: the cancel lets go
+  // of it here. A video already closed whole is the person's, not deleted.
+  signal?.addEventListener(
+    'abort',
+    () => {
+      if (!closed) {
+        void drop();
+      }
+    },
+    { once: true },
+  );
+  /** Throws the unfinished file away — the lock first, then the file — once. */
+  function drop(): Promise<void> {
+    dropped ??= writer
+      .abort()
+      .catch(() => {})
+      .then(() => discard?.())
+      .catch(() => {});
+    return dropped;
+  }
   return {
     stream,
     finish: () => {
@@ -204,7 +232,7 @@ export function guardSink(sink: WritableStream<FileChunk>) {
     },
     failed: () => failed,
     /** Throws the unfinished file away, whether or not mediabunny got to its close. */
-    drop: () => writer.abort().catch(() => {}),
+    drop,
   };
 }
 
@@ -265,7 +293,7 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   const frames = frameCount(doc);
   const total = exportFrameCount(frames, fps, trackSeconds);
   const rasterizer = new FrameRasterizer(doc, raster);
-  const file = sink ? guardSink(sink) : null;
+  const file = sink ? guardSink(sink, signal, discard) : null;
   const buffer = new BufferTarget();
   const output = new Output({
     format: target.extension === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat(),
@@ -313,7 +341,6 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   } catch (err) {
     await output.cancel().catch(() => {});
     await file?.drop();
-    await discard?.().catch(() => {});
     if (file?.failed()) {
       console.warn('video file write failed:', file.failed());
       throw new FileWriteError();

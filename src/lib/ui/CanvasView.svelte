@@ -114,7 +114,8 @@
     editor.brushSizeLogical = sizeAtRail(e.clientY, r.top, r.height, editor.brushRange.min, editor.brushSizeMax);
   }
   function onRailDown(e: PointerEvent): void {
-    if (!e.isPrimary || e.button !== 0) return;
+    // Through the preview the rail stays, like the fps slider, and does nothing.
+    if (editor.playing || !e.isPrimary || e.button !== 0) return;
     // The palm by the pen, as on the sheet: a left hand drawing by the edge
     // rests on the rail, and the size jumped under it.
     if (e.pointerType === 'touch' && editor.penSeen && penBusy()) return;
@@ -131,15 +132,15 @@
   }
   function onRailKey(e: KeyboardEvent): void {
     // Alt+← is «back», Ctrl+Shift+arrows pan the sheet: neither is a size.
-    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (editor.playing || e.ctrlKey || e.altKey || e.metaKey) return;
     const next = sizeByKey(e.key, editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax, editor.ux);
     if (next === null) return;
     e.preventDefault();
     editor.brushSizeLogical = next;
     holdRail(-1);
   }
-  // The rail goes while the film plays, and its pointerup and keyup with it:
-  // a finger or a key on it then left the ring in the middle of the stage.
+  // A finger or a key on the rail when the film starts lets go: the ring
+  // must not stay in the middle of the stage through the preview.
   $effect(() => {
     if (editor.playing) railHeld = null;
   });
@@ -187,7 +188,7 @@
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
   /** The cell the sweep began on, pinned like the line's. */
-  let megaAt: { layer: Layer | undefined; frame: number } = { layer: undefined, frame: 0 };
+  let megaAt: { layer: Layer | undefined; cell: Frame | undefined } = { layer: undefined, cell: undefined };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
   /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
@@ -253,10 +254,11 @@
    */
   let strokeLayer: Layer | undefined;
   /**
-   * And the frame: a finger tapping another frame on the strip while the pen
-   * drew landed the line there, on a frame it was never drawn over.
+   * And the cell, the object too: a finger tapping another frame on the strip
+   * while the pen drew landed the line there, and a frame put in front of it
+   * shifted an index onto the neighbour.
    */
-  let strokeFrame = 0;
+  let strokeCell: Frame | undefined;
 
   /**
    * The frame itself: the layers around the active one, the ghosts of the
@@ -298,8 +300,8 @@
   // What stands over the stage for good (`data-over-sheet`: the thickness
   // rail, the zoom window), in the wrap's px. The sheet at 100 % is fitted
   // clear of it (the owner, after the thirteenth audit: the rail lay over
-  // 45 px of the page on a phone). Not while the film plays: the rail goes
-  // away then, and the sheet is not to jump for it.
+  // 45 px of the page on a phone). Not while the film plays: the sheet is
+  // not to jump then.
   let wrapEl = $state<HTMLDivElement | undefined>();
   let covers = $state<Cover[]>([]);
   /** A cover moved while a hand was on the sheet; measured once it lets go. */
@@ -691,7 +693,9 @@
    * while the strokes are only rewritten on release.
    */
   function liveLine(viewport: Viewport): LiveLine | null {
-    if (megaGesture && megaGesture.length >= 2) {
+    // The trail is drawn over the cell the release cuts, not another frame
+    // a finger made active meanwhile.
+    if (megaGesture && megaGesture.length >= 2 && megaAt.cell === editor.activeCell) {
       const gesture = megaGesture;
       return {
         id: nodeId(gesture),
@@ -708,7 +712,7 @@
       };
     }
     const session = pointer.session;
-    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || strokeFrame !== editor.activeFrame) {
+    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || strokeCell !== editor.activeCell) {
       return null;
     }
     const erase = session.descriptor.kind === 'eraser';
@@ -917,8 +921,11 @@
       { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr: lastDrawn.dpr },
       lastDrawn,
     );
-    const px = Math.min(canvasEl.width - 1, Math.max(0, Math.floor(bx)));
-    const py = Math.min(canvasEl.height - 1, Math.max(0, Math.floor(by)));
+    // Inside the buffers read, not the canvas: a stage resized in the middle
+    // of a gesture has a canvas of the new size over layers of the old.
+    const read = layers.active as HTMLCanvasElement;
+    const px = Math.min(read.width - 1, Math.max(0, Math.floor(bx)));
+    const py = Math.min(read.height - 1, Math.max(0, Math.floor(by)));
     // One pixel is all it reads, so one pixel is all it flattens: the layers
     // land shifted onto a 1×1 scratch. A stage-sized copy was three full blits
     // every 100 ms of the preview and megabytes held for the rest of the session.
@@ -1025,7 +1032,7 @@
       showHint(t('canvas.hold_empty'));
       return;
     }
-    editor.pickColor(picked, 'outline');
+    editor.pickColor(picked, 'outline', false, true);
     showHint(t('canvas.hold_picked', { color: picked }));
   }
 
@@ -1490,7 +1497,7 @@
       }
       const [x, y] = toDocUnits(e);
       megaGesture = [Math.round(x), Math.round(y)];
-      megaAt = { layer: editor.doc.layers[editor.activeLayer], frame: editor.activeFrame };
+      megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: editor.activeCell };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
       scheduleDraw();
@@ -1501,7 +1508,7 @@
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
-    strokeFrame = editor.activeFrame;
+    strokeCell = editor.activeCell;
     // The eraser end (5) is the eraser itself, not a second button's colour.
     strokeButton = e.button === 5 ? 0 : e.button;
     canvasEl.setPointerCapture(e.pointerId);
@@ -1685,7 +1692,9 @@
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
-      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1, megaAt.frame);
+      const layer = megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1;
+      const frame = megaAt.cell ? editor.doc.layers[layer]?.frames.indexOf(megaAt.cell) ?? -1 : -1;
+      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, layer, frame);
       megaGesture = null;
       gesturePointerId = -1;
       composer.invalidate();
@@ -1733,11 +1742,12 @@
     // The pinned layer may have been removed mid-gesture; then it has no index
     // any more and the stroke has nowhere to land.
     const index = strokeLayer ? editor.doc.layers.indexOf(strokeLayer) : -1;
-    // ponytail: the frame is pinned by index — a frame put in front of it
-    // mid-line shifts it; pin the cell object if that ever bites.
-    if (index < 0 || !editor.doc.layers[index].frames[strokeFrame]) return;
+    // The cell is found again the same way: a frame put in front of it
+    // mid-line moved its index, not the cell.
+    const frame = strokeCell ? editor.doc.layers[index]?.frames.indexOf(strokeCell) ?? -1 : -1;
+    if (index < 0 || frame < 0) return;
     try {
-      editor.commitStroke(index, stroke, strokeFrame);
+      editor.commitStroke(index, stroke, frame);
     } catch (err) {
       // The limits are the state's to refuse (commitStroke); what reaches here
       // is a fault. The input handler survives it, and the error log hears of
@@ -1853,8 +1863,9 @@
       // the edge the cursor left by (owner, after the sixteenth audit).
       editor.lastScalePivot = null;
     }}
-    class:custom-cursor={editor.tool !== 'pipette' && !overlayCursor}
-    style:cursor={overlayCursor || null}
+    class:custom-cursor={!editor.playing && editor.tool !== 'pipette' && !overlayCursor}
+    class:playing={editor.playing}
+    style:cursor={(!editor.playing && overlayCursor) || null}
   ></canvas>
   <!-- Selection chrome. Purely visual: every gesture is read off the canvas
        itself, so pointer capture, touch and the keyboard path stay intact. -->
@@ -1878,7 +1889,7 @@
   <!-- Always in the tree: a live region mounted with its words is not
        announced by most screen readers; one that is there already is. -->
   <p class="hint" class:shown={hint} role="status" aria-live="polite">{hint}</p>
-  {#if cursorVisible && editor.tool === 'pipette' && pickPreview}
+  {#if cursorVisible && !editor.playing && editor.tool === 'pipette' && pickPreview}
     <span
       class="pick-preview"
       style:transform="translate({cursorX}px, {cursorY}px)"
@@ -1921,39 +1932,40 @@
       aria-hidden="true"
     >{t('brush.size_title', { size: ring.size })}</span>
   {/if}
-  {#if !editor.playing}
-    <!-- The thickness for a finger (Procreate Dreams' sidebar): on the stage,
-         not in a column, so it stays whatever the panels around it do. -->
-    <div
-      class="size-rail"
-      data-over-sheet
-      class:touched={touchSeen}
-      role="slider"
-      tabindex="0"
-      aria-orientation="vertical"
-      aria-label={t('brush.sizes_group')}
-      aria-valuemin={editor.brushRange.min}
-      aria-valuemax={editor.brushSizeMax}
-      aria-valuenow={editor.brushSizeLogical}
-      aria-valuetext={t('brush.size_value', { count: editor.brushSizeLogical })}
-      onpointerdown={onRailDown}
-      onpointermove={onRailMove}
-      onpointerup={onRailUp}
-      onpointercancel={onRailUp}
-      onlostpointercapture={onRailUp}
-      onkeydown={onRailKey}
-      onkeyup={() => { if (railHeld?.pointerId === -1) railHeld = null; }}
-      onblur={() => (railHeld = null)}
-    >
-      <span class="rail-track" bind:this={railTrack}>
-        <span
-          class="rail-knob"
-          style:bottom="{(positionOfSize(editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax) / SIZE_TRACK) * 100}%"
-        ></span>
-      </span>
-    </div>
-  {/if}
-  {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
+  <!-- The thickness for a finger (Procreate Dreams' sidebar): on the stage,
+       not in a column, so it stays whatever the panels around it do. Through
+       the preview it stays as the fps slider does, aria-disabled: gone, it
+       dropped the focus on it to <body> (owner, after the seventeenth audit). -->
+  <div
+    class="size-rail"
+    data-over-sheet
+    class:touched={touchSeen}
+    role="slider"
+    tabindex="0"
+    aria-orientation="vertical"
+    aria-label={t('brush.sizes_group')}
+    aria-valuemin={editor.brushRange.min}
+    aria-valuemax={editor.brushSizeMax}
+    aria-valuenow={editor.brushSizeLogical}
+    aria-valuetext={t('brush.size_value', { count: editor.brushSizeLogical })}
+    aria-disabled={editor.playing || undefined}
+    onpointerdown={onRailDown}
+    onpointermove={onRailMove}
+    onpointerup={onRailUp}
+    onpointercancel={onRailUp}
+    onlostpointercapture={onRailUp}
+    onkeydown={onRailKey}
+    onkeyup={() => { if (railHeld?.pointerId === -1) railHeld = null; }}
+    onblur={() => (railHeld = null)}
+  >
+    <span class="rail-track" bind:this={railTrack}>
+      <span
+        class="rail-knob"
+        style:bottom="{(positionOfSize(editor.brushSizeLogical, editor.brushRange.min, editor.brushSizeMax) / SIZE_TRACK) * 100}%"
+      ></span>
+    </span>
+  </div>
+  {#if cursorVisible && !editor.playing && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser' || editor.tool === 'mega-eraser'}
@@ -1994,6 +2006,11 @@
   }
   canvas.custom-cursor {
     cursor: none;
+  }
+  /* Through the preview a press does nothing: no ring, no swatch, no cross
+     promising otherwise — the system's own arrow. */
+  canvas.playing {
+    cursor: default;
   }
   .overlay {
     position: absolute;
@@ -2110,6 +2127,11 @@
   .size-rail:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
+  }
+  /* The preview: kept, and in the Tab order, as the fps slider is. */
+  .size-rail[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: default;
   }
   /* The track and knob of the editor's range (controls.css), stood upright;
      the track is inset by half a knob so the ends are reachable. */

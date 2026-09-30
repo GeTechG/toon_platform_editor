@@ -29,6 +29,7 @@
     editor,
     onClose,
     onSaveNow,
+    onDownloadErrors,
     onOpenFile,
     onOpenDrafts,
     onOpenPlugins,
@@ -40,6 +41,8 @@
     onClose: () => void;
     /** Resolves `false` when the draft did not reach the disk. */
     onSaveNow?: () => Promise<boolean>;
+    /** Alt+L's file, the session's errors (owner, 17th audit). */
+    onDownloadErrors?: () => void;
     /** The file dialog, the draft list and the plugins window live in the editor. */
     onOpenFile?: () => void;
     onOpenPlugins?: () => void;
@@ -393,6 +396,9 @@
       {/if}
       {#if onSaveNow}
         <button class="key" onclick={saveNowHere}>{t('settings.save_now')}</button>
+      {/if}
+      {#if onDownloadErrors}
+        <button class="key" onclick={onDownloadErrors}>{t('settings.download_errors')}</button>
       {/if}
       <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
     </div>

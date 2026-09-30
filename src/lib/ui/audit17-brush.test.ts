@@ -80,7 +80,9 @@ describe('кисть плагина не кладёт в кадр то, что �
     expect(commitOf(() => ({ points: [0, 0, 80, 0, 160, 0], tool }))?.points).toEqual([0, 0, 80, 0, 160, 0]);
   });
 
-  it('descriptor без толщины — штрих не ложится, жест не падает', () => {
+  // Owner, after the seventeenth audit: a descriptor without a width breaks
+  // the plugin, and the line is laid with the canvas's own width.
+  it('descriptor без толщины — плагин отключён, линия ложится толщиной холста', () => {
     const error = spyOn(console, 'error').mockImplementation(() => {});
     const tool = brushWith({ descriptor: ({ color }: { color: string }) => ({ kind: 'pencil', geometry: 'smooth', color }) });
     const stroke = plugins.tool(tool)!.stroke!;
@@ -88,7 +90,9 @@ describe('кисть плагина не кладёт в кадр то, что �
     const pointer = new PointerStrokeController(() => ({ descriptor: stroke.descriptor(brush), rules: { capture: (_l, b) => [...b] }, zoom: 1 }));
     pointer.pointerDown({ pointerId: 1, isPrimary: true, x: 0, y: 0 });
     pointer.pointerUp({ pointerId: 1, isPrimary: true, x: 80, y: 0 });
-    expect(pointer.takeCommitted()).toBeNull();
+    expect(pointer.takeCommitted()?.tool).toMatchObject({ kind: 'pencil', width: 8 });
+    expect(plugins.brokenReason(PLUGIN)).toBeDefined();
+    plugins.enable(PLUGIN);
     error.mockRestore();
   });
 });

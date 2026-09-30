@@ -157,6 +157,15 @@ export function compactLayout(
 }
 
 /**
+ * Whether a small screen draws the column: something in it, or «Отправить
+ * мульт» at its foot where the host publishes. The step asks the same, so the
+ * tablet's room is the room the column really leaves.
+ */
+export function railDrawn(cut: CompactLayout, publishes: boolean): boolean {
+  return cut.rail.length > 0 || (publishes && cut.foot.length > 0);
+}
+
+/**
  * Whether every tab's word fits on one line across its tab. All or none (the
  * owner's call): one word too wide and every tab shows only its icon.
  */

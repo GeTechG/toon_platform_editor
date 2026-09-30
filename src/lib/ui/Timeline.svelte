@@ -7,7 +7,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight, rowHeightCss } from './thumb-size';
-  import { scrollToFrame, stripTail, stripWindow } from './strip-window';
+  import { scrollToFrame, stripTabStop, stripTail, stripWindow } from './strip-window';
   import {
     frameMenuKey,
     frameMenuTop,
@@ -34,6 +34,13 @@
     if (from === strip) {
       // The window of frames the strip builds follows the scroll.
       stripScroll = strip.scrollLeft;
+    }
+    // The menu opens by its cell and stays where it opened: a wheel or the
+    // names carrying the rows away leaves it over some other cell. Its own
+    // scroll — the active frame brought into view as it opened — is where
+    // it was placed, and keeps it.
+    if (menu?.scroll && strip && (strip.scrollLeft !== menu.scroll.left || strip.scrollTop !== menu.scroll.top)) {
+      closeMenu(true, true);
     }
     const list = body?.querySelector<HTMLElement>('[data-layer-list]');
     if (!from || !list || !strip) {
@@ -276,7 +283,13 @@
   // --- The frame menu -------------------------------------------------------
   // What the key row used to carry — delete, copy, paste, merge — lives on a
   // right press on the cell itself. The keys (A, Del, C, V, M) stay as they were.
-  let menu = $state<{ x: number; y: number; cell: HTMLElement } | null>(null);
+  let menu = $state<{
+    x: number;
+    y: number;
+    cell: HTMLElement;
+    /** Where the strip stood when the menu was placed. */
+    scroll: { left: number; top: number } | null;
+  } | null>(null);
   let menuEl = $state<HTMLDivElement | undefined>();
 
   function openMenu(e: MouseEvent, frame: number, layer: number): void {
@@ -344,7 +357,7 @@
     if (!isSelected(frame, layer)) {
       editor.selectCell(frame, layer);
     }
-    menu = { x: at.x, y: at.y, cell };
+    menu = { x: at.x, y: at.y, cell, scroll: null };
     void tick().then(() => {
       if (!menu || !menuEl) return;
       // The strip sits at the bottom: a menu that would run off the screen opens up/left instead.
@@ -354,11 +367,16 @@
       // under it, the lift clicked the item it landed on.
       menu.y = frameMenuTop(at, menuEl.offsetHeight, innerHeight, finger ? FINGER_GAP : 0);
       menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+      if (strip) menu.scroll = { left: strip.scrollLeft, top: strip.scrollTop };
     });
   }
 
-  function closeMenu(refocus = false): void {
-    if (refocus) menu?.cell.focus();
+  /** `stay` leaves the strip where a scroll or a resize put it. */
+  function closeMenu(refocus = false, stay = false): void {
+    // The window of built frames may have taken the menu's cell away: the
+    // strip's Tab stop takes focus instead of <body>.
+    const cell = menu?.cell.isConnected ? menu.cell : strip?.querySelector<HTMLElement>('.cell[tabindex="0"]');
+    if (refocus && menu) cell?.focus({ preventScroll: stay });
     menu = null;
   }
 
@@ -422,6 +440,8 @@
   const firstBuilt = $derived(view.first);
   const countBuilt = $derived(view.count);
   const built = $derived(Array.from({ length: countBuilt }, (_, k) => firstBuilt + k));
+  /** The frame of the strip's one Tab stop: the active cell, or the first in view when the scroll unbuilt it. */
+  const tabFrame = $derived(stripTabStop(editor.displayedFrame, frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
   /**
    * The wave's bars, for the track, the rate and the cell's width. Read in the
    * markup it was a pass over the whole track on every stroke: a write
@@ -523,7 +543,7 @@
 
 <!-- The release may land anywhere — outside the grid, outside the window —
      so the drag always ends on the window rather than on a cell. -->
-<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} onpointerdown={onWindowDown} onblur={() => closeMenu()} />
+<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} onpointerdown={onWindowDown} onblur={() => closeMenu()} onresize={() => closeMenu(true, true)} />
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
@@ -613,7 +633,7 @@
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
               data-frame={i}
-              tabindex={i === editor.displayedFrame && layerIndex === editor.activeLayer ? 0 : -1}
+              tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
               aria-disabled={editor.playing}
               aria-current={i === editor.displayedFrame && layerIndex === editor.activeLayer
                 ? 'true'

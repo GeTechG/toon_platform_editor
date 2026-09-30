@@ -27,8 +27,9 @@ describe('a gesture lands on the cell it was begun on', () => {
     // A finger tapping another frame on the strip while the pen drew moved
     // the active frame: the line landed there, on a frame it was never drawn
     // over, and the one under the pen stayed empty.
-    expect(canvasFn('onPointerDown')).toContain('strokeFrame = editor.activeFrame');
-    expect(canvasFn('commitPendingStroke')).toContain('editor.commitStroke(index, stroke, strokeFrame)');
+    // Pinned as the cell object since (owner-seventeenth-tools.test.ts).
+    expect(canvasFn('onPointerDown')).toContain('strokeCell = editor.activeCell');
+    expect(canvasFn('commitPendingStroke')).toContain('editor.commitStroke(index, stroke, frame)');
     const commit = method('commitStroke');
     expect(commit).toMatch(/commitStroke\(layerIndex: number, stroke: ResolvedStroke, frame = this\.activeFrame\)/);
     expect(commit).toContain('addStroke(doc, layerIndex, frame, stroke)');
@@ -36,12 +37,12 @@ describe('a gesture lands on the cell it was begun on', () => {
   });
 
   it('the line under the hand is not drawn over another frame', () => {
-    expect(canvasFn('liveLine')).toContain('strokeFrame !== editor.activeFrame');
+    expect(canvasFn('liveLine')).toContain('strokeCell !== editor.activeCell');
   });
 
   it('the mega eraser cuts the cell its sweep began on', () => {
-    expect(canvasFn('onPointerDown')).toMatch(/megaAt = \{ layer: editor\.doc\.layers\[editor\.activeLayer\], frame: editor\.activeFrame \}/);
-    expect(canvasFn('onPointerUp')).toContain('editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1, megaAt.frame)');
+    expect(canvasFn('onPointerDown')).toContain('megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: editor.activeCell }');
+    expect(canvasFn('onPointerUp')).toContain('editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, layer, frame)');
     const erase = method('applyMegaEraser');
     expect(erase).toMatch(/applyMegaEraser\(gesture: readonly number\[\], radius: number, layer = this\.activeLayer, frame = this\.activeFrame\)/);
     expect(erase).not.toContain('this.activeCell');

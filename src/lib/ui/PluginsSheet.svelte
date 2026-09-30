@@ -275,7 +275,7 @@
   }
 
   /** What the catalog's button does with a record, given what is installed. */
-  function offer(entry: CatalogEntry): 'install' | 'update' | 'installed' | 'local' {
+  function offer(entry: CatalogEntry): 'install' | 'update' | 'reinstall' | 'installed' | 'local' {
     const mine = installedOf(entry.id);
     if (!mine) {
       return 'install';
@@ -283,7 +283,11 @@
     if (mine.source === 'local') {
       return 'local';
     }
-    return compareVersions(entry.version, mine.version) > 0 ? 'update' : 'installed';
+    if (compareVersions(entry.version, mine.version) > 0) {
+      return 'update';
+    }
+    // Installed and not loaded: «установлен» with no key left it broken for good.
+    return notLoaded(mine) ? 'reinstall' : 'installed';
   }
 </script>
 
@@ -398,7 +402,7 @@
               <!-- One download at a time: two left `busy` to the one that ended
                    first, and the other's key came back mid-download. -->
               <button class="key" disabled={busy !== ''} onclick={() => void askInstall(entry)}>
-                {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : t('plugins.install')}
+                {busy === entry.id ? t('plugins.downloading') : offer(entry) === 'update' ? t('plugins.update') : offer(entry) === 'reinstall' ? t('plugins.reinstall') : t('plugins.install')}
               </button>
             {/if}
           </li>

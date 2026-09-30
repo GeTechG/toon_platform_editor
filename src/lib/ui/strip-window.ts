@@ -55,6 +55,29 @@ export function stripWindow(
 }
 
 /**
+ * The frame whose cell is the strip's Tab stop. The stop is the active cell
+ * (roving tabindex), but the scrollbar can carry the window away from it: the
+ * active cell is not built, and the strip had no stop left. Then the stop is
+ * the first frame fully in view, on the same layer.
+ */
+export function stripTabStop(
+  active: number,
+  total: number,
+  cellWidth: number,
+  gap: number,
+  scrollLeft: number,
+  viewWidth: number,
+): number {
+  const win = stripWindow(total, cellWidth, gap, scrollLeft, viewWidth);
+  // Before the first layout the window is the whole strip: out of it is only
+  // a strip with no frames.
+  if (total <= 0 || (active >= win.first && active < win.first + win.count)) {
+    return active;
+  }
+  return Math.min(total - 1, Math.max(0, Math.ceil(scrollLeft / (cellWidth + gap))));
+}
+
+/**
  * Where the strip has to scroll for `frame` to be in view, or null when it
  * already is. The frame's place is arithmetic: its node may not be built, so
  * there is nothing to ask `scrollIntoView`. `pad` is the row's own padding:

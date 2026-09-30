@@ -203,7 +203,8 @@ function keysLeft(list: string): string {
 /**
  * A hint with the bare keys taken out, for when single-letter keys are off:
  * «Карандаш (B)» is «Карандаш», «Шаг вперёд (Y или Ctrl+Shift+Z)» keeps the
- * chord. Nothing is swapped for a Ctrl hint — the owner's call. Text without
+ * chord. Nothing is swapped for a Ctrl hint here; the frame keys do that in
+ * frameKeyTitle (owner, 17th audit). Text without
  * brackets is read as a key list, the way data-key and the manual spell it.
  */
 export function withoutLetterKeys(text: string): string {

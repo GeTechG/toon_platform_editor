@@ -142,10 +142,10 @@
     </details>
 
     <div class="row">
-      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-label={editor.keyHint(t('transform.flip_h'))} title={editor.keyHint(t('transform.flip_h'))}><Icon name="flip-h" /></button>
-      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-label={editor.keyHint(t('transform.flip_v'))} title={editor.keyHint(t('transform.flip_v'))}><Icon name="flip-v" /></button>
-      <button class="key icon step" onclick={() => editor.undoTransform()} aria-disabled={!editor.canUndoTransform} aria-label={editor.keyHint(t('transform.undo'))} title={editor.keyHint(t('transform.undo'))}><Icon name="undo" /></button>
-      <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-keyshortcuts={editor.settings.letterKeys ? 'H' : undefined} aria-label={editor.keyHint(t('transform.flip_h'))} title={editor.keyHint(t('transform.flip_h'))}><Icon name="flip-h" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-keyshortcuts={editor.settings.letterKeys ? 'Shift+H' : undefined} aria-label={editor.keyHint(t('transform.flip_v'))} title={editor.keyHint(t('transform.flip_v'))}><Icon name="flip-v" /></button>
+      <button class="key icon step" onclick={() => editor.undoTransform()} aria-disabled={!editor.canUndoTransform} aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'} aria-label={editor.keyHint(t('transform.undo'))} title={editor.keyHint(t('transform.undo'))}><Icon name="undo" /></button>
+      <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
     </div>
 
     <!-- On a phone the zoom window gives this one its row; its keys come along. -->

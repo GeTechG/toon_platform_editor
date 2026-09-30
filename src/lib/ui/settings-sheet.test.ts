@@ -241,11 +241,14 @@ describe('key hints on the buttons', () => {
   });
 
   it('the transport keys are on the transport', () => {
-    for (const key of ['Z', 'Y', 'K', 'A', 'C', 'V']) {
+    for (const key of ['Z', 'Y', 'K']) {
       expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
     }
-    // Under Multator M is the palette's, so merge names no key there (audit17-shell).
-    expect(editorUi).toContain("data-key={quickPalette ? undefined : editor.keyHint('M') || undefined}");
+    // The frame keys say what the frame menu says; under Multator merge names
+    // none (owner-seventeenth-shell).
+    for (const action of ['add', 'copy', 'paste', 'merge']) {
+      expect(editorUi).toContain(`data-key={menuKey('${action}')?.label}`);
+    }
     expect(play).toContain('data-key="Space"');
   });
 

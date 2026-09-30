@@ -28,9 +28,9 @@
   import { saveFile } from './save-file';
   import { fitThumb } from './thumb-size';
   import { keyPan, zoomDelta } from './viewport';
-  import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
-  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText, withoutLetterKeys } from './key-owner';
-  import { focusHeir } from './focus-heir';
+  import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
+  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
@@ -58,7 +58,7 @@
   } from './presets';
   import { panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
-  import { compactLayout, moveTab, phoneTools, pickStep, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
+  import { compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
@@ -160,6 +160,8 @@
   const hasMegaEraser = $derived(editor.availableTools.includes('mega-eraser'));
   const hasFeather = $derived(editor.availableTools.includes('feather'));
   const quickPalette = $derived(editor.ux.quickPalette !== null);
+  /** A shell key's hover label, as the frame menu names it (owner, 17th audit). */
+  const menuKey = (action: FrameMenuAction) => frameMenuKey(action, editor.settings.letterKeys, quickPalette);
   /** The pipette's source pair is on the panel always, live only under the pipette. */
   const pipetteUp = $derived(editor.tool === 'pipette');
   /** Toonio keeps a project file behind Alt+S; the others export instead. */
@@ -326,7 +328,10 @@
     const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelHeight;
     const full = { w: boxW - columnPx('left', 8.4) - columnPx('right', 15.9), h: boxH - bar };
     // The tablet's column is never folded; its dock is one line lying down, two standing.
-    const column = editor.panels.left.length ? (editor.sides.left.width ?? 8.4 * rem) : 0;
+    // It is drawn when anything reaches it — tools from the right column too.
+    const column = railDrawn(compactLayout(editor.panels, 'tablet', editor.settings.tabOrder), !!onPublish)
+      ? (editor.sides.left.width ?? 8.4 * rem)
+      : 0;
     const tablet = { w: boxW - column, h: boxH - (boxW < boxH ? 2 : 1) * 3.5 * rem };
     const view = { w: viewportWidth || boxW, h: viewportHeight || boxH };
     step = pickStep(untrack(() => step), { full, tablet }, view);
@@ -385,6 +390,34 @@
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
   /**
+   * The tool windows and the zoom window share the floating windows' stack:
+   * pressed, they come over them, on the top rung (FloatWindow steps down).
+   */
+  const raiseTools = (): void => {
+    editor.toolsOnTop = true;
+  };
+
+  /** A key the focus can go to: shown, not inert, in the Tab order. */
+  const usableKey = (el: HTMLElement) =>
+    el.matches(FOCUSABLE) && el.getAttribute('tabindex') !== '-1' && !el.closest('[inert]') && el.getClientRects().length > 0;
+
+  // The tab window goes with the small screen (a tablet turned, the text made
+  // smaller), and the focus in it fell to <body>. It goes to the same control
+  // in the desktop's columns, else to the first key there is. Before the DOM
+  // changes, while the window and its focus are still there.
+  $effect.pre(() => {
+    if (compact) return;
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !untrack(() => tabWindow)?.contains(active)) return;
+    const twin = twinSelector(active);
+    void tick().then(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      const found = [...editorEl.querySelectorAll<HTMLElement>(twin ?? FOCUSABLE)].find(usableKey);
+      (found ?? [...editorEl.querySelectorAll<HTMLElement>(FOCUSABLE)].find(usableKey))?.focus();
+    });
+  });
+
+  /**
    * A key that switches itself off as it is pressed — «Сохранить» once saved,
    * ⏮ on the first frame, «Отменить» on the last step — took the focus with
    * it: Chrome drops it on <body>, and a reader lost the place. It goes to the
@@ -399,9 +432,7 @@
     await new Promise((done) => setTimeout(done));
     if (!key.disabled || document.activeElement !== key) return;
     const all = [...editorEl.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')];
-    const usable = (el: HTMLElement) =>
-      el.matches(FOCUSABLE) && el.getAttribute('tabindex') !== '-1' && !el.closest('[inert]') && el.getClientRects().length > 0;
-    focusHeir(all, key, usable)?.focus();
+    focusHeir(all, key, usableKey)?.focus();
   }
 
   /** Opens a tab's window (closing whichever was open) or, pressed again, closes it. */
@@ -2051,9 +2082,9 @@
       class="key"
       disabled={editor.playing}
       onclick={onAddFrame}
-      data-key={editor.keyHint('A') || undefined}
+      data-key={menuKey('add')?.label}
       aria-keyshortcuts={editor.settings.letterKeys ? 'A F7' : 'F7'}
-      title={editor.keyHint(t('editor.add_frame_title'))}
+      title={frameKeyTitle(t('editor.add_frame_title'), 'add', editor.settings.letterKeys, quickPalette)}
       aria-label={t('editor.add_frame')}
     >
       <Icon name="plus" />
@@ -2157,9 +2188,9 @@
       class="key icon"
       disabled={editor.playing}
       onclick={() => editor.copySelection()}
-      data-key={editor.keyHint('C') || undefined}
+      data-key={menuKey('copy')?.label}
       aria-keyshortcuts={editor.settings.letterKeys ? 'C Control+C' : 'Control+C'}
-      title={editor.keyHint(t('editor.copy_title'))}
+      title={frameKeyTitle(t('editor.copy_title'), 'copy', editor.settings.letterKeys, quickPalette)}
       aria-label={t('editor.copy')}
     ><Icon name="copy" /></button>
   {:else if id === 'paste'}
@@ -2167,9 +2198,9 @@
       class="key icon"
       disabled={!editor.canPasteCells}
       onclick={() => editor.pasteSelection()}
-      data-key={editor.keyHint('V') || undefined}
+      data-key={menuKey('paste')?.label}
       aria-keyshortcuts={editor.settings.letterKeys ? 'V Control+V' : 'Control+V'}
-      title={editor.keyHint(t('editor.paste_title'))}
+      title={frameKeyTitle(t('editor.paste_title'), 'paste', editor.settings.letterKeys, quickPalette)}
       aria-label={t('editor.paste')}
     ><Icon name="paste" /></button>
   {:else if id === 'settings'}
@@ -2217,9 +2248,9 @@
       class="key icon"
       disabled={!editor.canPasteCells}
       onclick={() => editor.mergeSelection()}
-      data-key={quickPalette ? undefined : editor.keyHint('M') || undefined}
+      data-key={menuKey('merge')?.label}
       aria-keyshortcuts={quickPalette ? undefined : editor.settings.letterKeys ? 'M Control+M' : 'Control+M'}
-      title={quickPalette ? withoutLetterKeys(t('editor.merge_title')) : editor.keyHint(t('editor.merge_title'))}
+      title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette)}
       aria-label={t('editor.merge')}
     ><Icon name="merge" /></button>
   {/if}
@@ -2272,7 +2303,7 @@
     <!-- A small screen: the desktop's left column down the left edge, one
          key wide on a phone, with «Отправить мульт» at its foot; everything
          else is behind the tabs. -->
-    {#if cut.rail.length > 0 || (onPublish && cut.foot.length > 0)}
+    {#if railDrawn(cut, !!onPublish)}
       <aside class="left" aria-label={t('editor.tools_side')} style={step === 'tablet' ? sideStyle('left') : undefined}>
         <div class="rail-keys">
           {@render slot(cut.rail)}
@@ -2306,7 +2337,9 @@
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
     {#if editor.transform || pipetteUp || editor.pluginWindow}
-      <div class="tool-windows" bind:offsetHeight={toolWindowsHeight}>
+      <!-- Raised by the press or the focus, as a floating window is. -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="tool-windows" bind:offsetHeight={toolWindowsHeight} style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
         {#if editor.pluginWindow}
           <!-- A window a tool brought with it: the editor draws the frame and
                the title, the tool fills the body with whatever it likes. -->
@@ -2344,7 +2377,8 @@
     <!-- The only zoom control there is, so it is always on the canvas: in the
          far corner, faded back until the hand is up, the wheel turns, or it is
          hovered or focused. -->
-    <div class="scale-window" data-over-sheet>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="scale-window" data-over-sheet style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
       <ScaleMenu {editor} />
     </div>
     {#if flashVisible}
@@ -2572,7 +2606,9 @@
         </div>
         {#if drafts.length > 0}
           <ul class="drafts">
-            {#each drafts as entry (entry.id)}
+            {#each drafts as entry, index (entry.id)}
+              <!-- The DOM id is by place, not the draft's id: one from another
+                   file (.toonio's url) may carry a space and cut the tie. -->
               <li class="draft">
                 <button class="draft-open" onclick={() => openDraft(entry)}>
                   <span class="draft-thumb">
@@ -2586,7 +2622,7 @@
                     {/if}
                   </span>
                   <span class="draft-meta">
-                    <span class="draft-date" id="draft-date-{entry.id}">{new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
+                    <span class="draft-date" id="draft-date-{index}">{new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
                     <span class="draft-size">
                       {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
                       {t('draft.layers', { count: entry.doc.layers.length })}
@@ -2610,7 +2646,7 @@
                   onclick={() => copyDraft(entry)}
                   title={t('editor.draft_copy_title')}
                   aria-label={t('editor.draft_copy')}
-                  aria-describedby="draft-date-{entry.id}"
+                  aria-describedby="draft-date-{index}"
                 >
                   <Icon name="copy" />
                 </button>
@@ -2619,7 +2655,7 @@
                   onclick={() => downloadDraft(entry)}
                   title={t('editor.draft_download_title')}
                   aria-label={t('editor.draft_download')}
-                  aria-describedby="draft-date-{entry.id}"
+                  aria-describedby="draft-date-{index}"
                 >
                   <Icon name="download" />
                 </button>
@@ -2628,7 +2664,7 @@
                   onclick={() => removeDraft(entry)}
                   title={t('editor.draft_delete_title')}
                   aria-label={t('editor.draft_delete')}
-                  aria-describedby="draft-date-{entry.id}"
+                  aria-describedby="draft-date-{index}"
                 >
                   <Icon name="trash" />
                 </button>
@@ -2654,6 +2690,7 @@
       {compact}
       onClose={() => (settingsSheetOpen = false)}
       onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}
+      onDownloadErrors={downloadErrorLog}
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
       onOpenPlugins={() => (pluginsSheetOpen = true)}
@@ -2857,6 +2894,23 @@
     z-index: var(--z-tool);
     /* One row of keys — it takes the width it needs, not a panel's. */
     width: max-content;
+  }
+  /* The canvas's hint, in the middle of the stage's foot, lay over the zoom
+     window in its corner on a narrow stage (audit 17). On the desk it keeps
+     to the gap between that window and its mirror (its inset, two keys, the
+     readout, a gap)… */
+  .studio:not(.compact) .stage {
+    container: stage / inline-size;
+  }
+  .studio:not(.compact) .stage :global(.hint) {
+    max-width: calc(100% - 2 * (clamp(0.5rem, 2.2vw, 1.25rem) + 2 * var(--key-h, 2.75rem) + 3.4rem + 1rem));
+  }
+  /* …and where that gap is too narrow for a sentence, rises above its row. */
+  @container stage (width < 44rem) {
+    .studio:not(.compact) .stage :global(.hint) {
+      max-width: calc(100% - 24px);
+      bottom: calc(clamp(0.5rem, 2.2vw, 1.25rem) + var(--key-h, 2.75rem) + 4px + 0.5rem);
+    }
   }
   /* Quiet at rest is the window's own business now (ScaleMenu.svelte): it is
      the fill that steps back, not the window, so the readout and the edge keep

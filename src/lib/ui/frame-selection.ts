@@ -10,6 +10,7 @@ import {
   PLAYER_FPS_MIN,
 } from '../format/constants';
 import type { Frame, ToonDocument } from '../format/types';
+import { withoutLetterKeys } from './key-owner';
 
 /**
  * Active frame after removing removedIndex. 'next' (default): the right
@@ -438,6 +439,21 @@ export function frameMenuKey(
   if (letterKeys) return { aria: MENU_LETTERS[action], label: MENU_LETTERS[action] };
   if (action === 'add') return { aria: 'F7', label: 'F7' };
   return { aria: `Control+${MENU_LETTERS[action]}`, label: `Ctrl+${MENU_LETTERS[action]}` };
+}
+
+/**
+ * A shell button's hint with its letter swapped for what frameMenuKey names:
+ * the button and the frame menu say the same (owner, 17th audit). No key at
+ * all (merge under Multator) drops the letter.
+ */
+export function frameKeyTitle(
+  text: string,
+  action: Exclude<FrameMenuAction, 'delete'>,
+  letterKeys: boolean,
+  quickPalette: boolean,
+): string {
+  const key = frameMenuKey(action, letterKeys, quickPalette);
+  return key ? text.replace(`(${MENU_LETTERS[action]}`, `(${key.label}`) : withoutLetterKeys(text);
 }
 
 /**

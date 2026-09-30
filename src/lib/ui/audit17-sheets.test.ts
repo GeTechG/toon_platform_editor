@@ -108,8 +108,10 @@ describe('видео прямо на диск: «Отменить»', () => {
   it('выбранный файл удаляется, когда экспорт его отпустил, а не пока держит открытым', async () => {
     const video = await source('../export/video.ts');
     const sheet = await source('./ExportSheet.svelte');
-    // The writer is aborted (the lock goes) before the file is deleted.
-    expect(video).toMatch(/await file\?\.drop\(\);\s*await discard\?\.\(\)/);
+    // The writer is aborted (the lock goes) before the file is deleted: the
+    // guard's drop does both, in that order (owner-seventeenth-sheets).
+    expect(video).toMatch(/guardSink\(sink, signal, discard\)/);
+    expect(video).toMatch(/await file\?\.drop\(\);/);
     expect(sheet).toMatch(/discard: file\?\.remove\?\.bind\(file\)/);
   });
 });
