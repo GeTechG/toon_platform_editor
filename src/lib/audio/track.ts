@@ -78,6 +78,52 @@ export function isAudioFile(file: { type: string; name?: string }): boolean {
   return file.type.startsWith('audio/') || AUDIO_EXTENSIONS.test(file.name ?? '');
 }
 
+/**
+ * The type each extension stands for when asked of `canPlayType`. The owner's
+ * call after the fifteenth audit: the studio takes only sound this browser
+ * plays — an ogg on Safari 16 decoded for its wave, then played nothing and
+ * went out of an export silent.
+ */
+const EXTENSION_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg; codecs=opus',
+  wav: 'audio/wav',
+  flac: 'audio/flac',
+  m4a: 'audio/mp4',
+  aac: 'audio/aac',
+  weba: 'audio/webm',
+};
+
+/**
+ * Whether this browser's `<audio>` says it may play the file. A type it does
+ * not recognise (`audio/x-m4a`, Firefox's `video/ogg`) gets a second chance by
+ * the extension; a «maybe» counts, and the decoder is still asked after.
+ */
+export function playableHere(file: { type: string; name?: string }, canPlayType: (type: string) => string): boolean {
+  const ext = /\.([^.]+)$/.exec(file.name ?? '')?.[1].toLowerCase() ?? '';
+  const types = [file.type.startsWith('audio/') ? file.type : '', EXTENSION_TYPES[ext] ?? ''];
+  return types.some((type) => type !== '' && canPlayType(type) !== '');
+}
+
+/** The picker's `accept`: the extensions this browser plays, `audio/*` if it names none. */
+export function playableAccept(canPlayType: (type: string) => string): string {
+  const exts = Object.keys(EXTENSION_TYPES).filter((ext) => canPlayType(EXTENSION_TYPES[ext]) !== '');
+  return exts.length ? exts.map((ext) => `.${ext}`).join(',') : 'audio/*';
+}
+
+/**
+ * Lets a press unlock the element without sounding it: iOS allows `play()`
+ * only inside a gesture, and a press on a frame past a tied track's end had
+ * none to spare — the next lap came round silent. Paused at once, so nothing
+ * is heard; the `AbortError` that pause earns is expected.
+ */
+export function unlockElement(element: { play(): Promise<unknown>; pause(): unknown }): void {
+  void element.play().catch(() => {});
+  element.pause();
+}
+
 /** Complaint about a picked file, or null if it may be loaded. */
 export function checkAudioFile(file: { type: string; size: number; name?: string }): string | null {
   if (!isAudioFile(file)) {

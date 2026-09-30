@@ -302,8 +302,8 @@ describe('the wheel zoom', () => {
     expect(handler('onWheel')).toContain('zoomCentredOn(');
   });
 
-  it('stays out of the way while the preview runs', () => {
-    expect(handler('onWheel')).toContain('editor.playing');
+  it('works while the preview runs too (owner, after the fifteenth audit)', () => {
+    expect(handler('onWheel')).not.toContain('editor.playing');
   });
 
   it('remembers where the cursor was, so the buttons and keys zoom there', () => {
@@ -449,7 +449,8 @@ describe('the canvas after the tenth audit', () => {
     // Ctrl+wheel zoomed the whole page and a sideways swipe went back in the
     // history — with the drawing — while the preview ran.
     const wheel = handler('onWheel');
-    expect(wheel.indexOf('e.preventDefault()')).toBeLessThan(wheel.indexOf('editor.playing'));
+    expect(wheel.indexOf('e.preventDefault()')).toBeLessThan(wheel.indexOf('drawingBusy()'));
+    expect(wheel).not.toContain('editor.playing');
   });
 
   it('ends a pen stroke whose release it never heard, the way it does for a mouse', () => {

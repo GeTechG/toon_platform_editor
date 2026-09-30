@@ -186,8 +186,10 @@
     border-color: transparent;
     color: var(--canvas);
   }
-  .play.playing:hover {
-    background: var(--accent);
-    border-color: transparent;
+  @media (hover: hover) {
+    .play.playing:hover {
+      background: var(--accent);
+      border-color: transparent;
+    }
   }
 </style>

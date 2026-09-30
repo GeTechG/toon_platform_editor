@@ -120,8 +120,7 @@ describe('a file dropped over an open sheet', () => {
 });
 
 describe('owner thirteenth, the coordinator: pastes at the limit say so too', () => {
-  it('a frame paste and a timeline paste refused at the limit use the canvas line', () => {
-    expect(member(state, 'pasteFrame')).toContain('this.refuseAtLimit(err)');
+  it('a timeline paste refused at the limit uses the canvas line', () => {
     const timeline = state.slice(state.indexOf('timeline paste rejected') - 300, state.indexOf('timeline paste rejected') + 100);
     expect(timeline).toContain('this.refuseAtLimit(err)');
   });

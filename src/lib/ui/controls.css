@@ -200,13 +200,17 @@
   inherits: false;
   initial-value: 0;
 }
-:where(.editor) :hover {
-  --hovered: 1;
+@media (hover: hover) {
+  :where(.editor) :hover {
+    --hovered: 1;
+  }
+  :where(.editor) :hover::-webkit-scrollbar-thumb {
+    background-color: var(--edge);
+  }
+  :where(.editor) ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-2);
+  }
 }
-:where(.editor) :hover::-webkit-scrollbar-thumb {
-  background-color: var(--edge);
-}
-:where(.editor) ::-webkit-scrollbar-thumb:hover,
 :where(.editor) ::-webkit-scrollbar-thumb:active {
   background-color: var(--text-2);
 }
@@ -216,8 +220,10 @@
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
   }
-  :where(.editor) :hover {
-    scrollbar-color: var(--edge) transparent;
+  @media (hover: hover) {
+    :where(.editor) :hover {
+      scrollbar-color: var(--edge) transparent;
+    }
   }
 }
 

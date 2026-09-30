@@ -124,8 +124,10 @@
     cursor: pointer;
     transition: border-color 0.15s ease, transform 0.13s ease;
   }
-  .swatch:hover {
-    transform: translateY(-1px);
+  @media (hover: hover) {
+    .swatch:hover {
+      transform: translateY(-1px);
+    }
   }
   .swatch.active {
     border-color: var(--canvas);
@@ -212,8 +214,10 @@
     .swatch {
       transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .swatch:hover {
-      transform: none;
+    @media (hover: hover) {
+      .swatch:hover {
+        transform: none;
+      }
     }
   }
 </style>

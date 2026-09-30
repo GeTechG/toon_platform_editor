@@ -105,11 +105,12 @@ describe('v2 resolved document operations', () => {
       points: [10, 20],
       tool: { kind: 'eraser', geometry: 'smooth', width: 64 },
     });
-    const copied = operations.cloneColumn(source, 0);
+    const one = { frames: [0], layers: [0] };
+    const copied = operations.copyCells(source, one);
 
     const target = doc();
     target.tools.push({ kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
-    operations.replaceColumn(target, 0, copied);
+    operations.replaceCells(target, one, copied);
 
     expect(target.layers[0].frames[0].strokes).toEqual([{ points: [10, 20], tool_id: 1 }]);
     expect(target.tools[1]).toEqual({ kind: 'eraser', geometry: 'smooth', width: 64 });

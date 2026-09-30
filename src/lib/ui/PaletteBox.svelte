@@ -694,10 +694,16 @@
   .grid.remover .cell {
     cursor: not-allowed;
   }
-  .grid.remover .cell :global(svg) {
-    opacity: 0;
+  /* Hidden only where a pointer hovers: on a touch screen the mark stays on
+     every cell, or remove mode would say nothing about what a tap takes. */
+  @media (hover: hover) {
+    .grid.remover .cell :global(svg) {
+      opacity: 0;
+    }
+    .grid.remover .cell:hover :global(svg) {
+      opacity: 1;
+    }
   }
-  .grid.remover .cell:hover :global(svg),
   .grid.remover .cell:focus-visible :global(svg) {
     opacity: 1;
   }
@@ -764,8 +770,10 @@
   .foot-btn + .foot-btn {
     border-left: 1px solid var(--hairline);
   }
-  .foot-btn:hover {
-    background: var(--sub);
+  @media (hover: hover) {
+    .foot-btn:hover {
+      background: var(--sub);
+    }
   }
   .foot-btn.active {
     background: color-mix(in srgb, var(--accent) 14%, var(--canvas));

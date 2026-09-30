@@ -23,7 +23,6 @@ describe('an open transform is left before anything rewrites the frames under it
     'addFrameAfterActive',
     'addFrameBeforeActive',
     'removeActiveFrame',
-    'pasteFrame',
     'applyCopiedCells',
     'addLayerAtActive',
     'removeActiveLayer',

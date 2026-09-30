@@ -47,7 +47,7 @@ describe('one door for every file the editor opens', () => {
   });
 
   it('offers all three in the dialog', () => {
-    expect(editorUi).toContain('accept=".toonop,.toon,.json"');
+    expect(editorUi).toContain("accept={pickerAccept('.toonop,.toon,.json')}");
   });
 
   it('writes the draft before it replaces the drawing, and says why it could not open one', () => {

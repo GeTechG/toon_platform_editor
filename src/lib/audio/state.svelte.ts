@@ -11,11 +11,13 @@ import {
   ENVELOPE_RATE,
   checkAudioFile,
   playRefusal,
+  playableHere,
   publishProblem,
   readId3,
   trackEnvelope,
   trackCredits,
   trackTimeFor,
+  unlockElement,
   waveformBars,
 } from './track';
 import { t } from '../i18n';
@@ -120,7 +122,11 @@ export class AudioTrackState {
     keep = false,
   ): Promise<boolean> {
     const ticket = ++this.#ticket;
-    const complaint = checkAudioFile(file);
+    // A fresh pick must be sound this browser plays; a draft's own track is
+    // kept whatever it is (the export goes out silent with a warning then).
+    const complaint =
+      checkAudioFile(file) ??
+      (!keep && !playableHere(file, (type) => new Audio().canPlayType(type)) ? t('audio.unsupported') : null);
     if (complaint) {
       this.loading = false;
       this.error = complaint;
@@ -269,8 +275,9 @@ export class AudioTrackState {
     }
     const at = this.sync ? trackTimeFor(frame, fps, this.duration) : 0;
     if (at === null) {
-      // Past the end of a tied track: quiet until the animation comes round.
-      this.stop();
+      // Past the end of a tied track: quiet until the animation comes round —
+      // but this press is the gesture iOS wants for the lap that sounds.
+      unlockElement(this.#element);
       return;
     }
     // Tied, the loop belongs to the animation, not to the track: the element

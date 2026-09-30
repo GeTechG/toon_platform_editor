@@ -64,9 +64,6 @@ export interface ResolvedFrame {
   strokes: ResolvedStroke[];
 }
 
-/** One frame across every layer, bottom-up — what copy/paste moves around. */
-export type ResolvedColumn = ResolvedFrame[];
-
 /** Returns the stable index of an immutable, structurally equal v2 tool descriptor. */
 export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): number {
   const existing = doc.tools.findIndex((tool) => toolEquals(tool, descriptor));
@@ -292,35 +289,6 @@ export function pressureOf(stroke: { points: readonly number[]; pressure?: reado
   return pressure && pressure.length === stroke.points.length / 2 ? { pressure: pressure.slice() } : {};
 }
 
-/**
- * Overwrites the frame at `index` in every layer with a deep copy of the
- * column — the frame paste. Cell `i` of the buffer goes to layer `i`; layers
- * the buffer has no cell for are cleared, surplus cells are ignored (the
- * source document may have had a different number of layers). Limits are
- * checked before any mutation, so an oversized paste changes nothing.
- */
-export function replaceColumn(doc: ToonDocument, index: number, column: ResolvedColumn): void {
-  assertFrameIndex(doc, index);
-  const width = Math.min(doc.layers.length, column.length);
-  let outgoing = 0;
-  let incoming = 0;
-  for (let l = 0; l < doc.layers.length; l++) {
-    outgoing += pointCount(doc.layers[l].frames[index].strokes);
-    if (l < width) {
-      incoming += pointCount(column[l].strokes);
-      if (column[l].strokes.length > MAX_STROKES_PER_FRAME) {
-        throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
-      }
-    }
-  }
-  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
-  }
-  for (let l = 0; l < doc.layers.length; l++) {
-    doc.layers[l].frames[index] = l < width ? resolvedFrameToV2(doc, column[l]) : emptyFrame();
-  }
-}
-
 function pointCount(strokes: { points: number[] }[]): number {
   return strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
 }
@@ -335,12 +303,6 @@ export function removeLastStroke(
   frameIndex: number,
 ): boolean {
   return cell(doc, layerIndex, frameIndex).strokes.pop() !== undefined;
-}
-
-/** Deep-copies the cell of every layer at `frameIndex`, bottom-up. */
-export function cloneColumn(doc: ToonDocument, frameIndex: number): ResolvedColumn {
-  assertFrameIndex(doc, frameIndex);
-  return doc.layers.map((layer) => cloneFrame(doc, layer.frames[frameIndex]));
 }
 
 /** Deep-copies a frame and its strokes' point arrays. */

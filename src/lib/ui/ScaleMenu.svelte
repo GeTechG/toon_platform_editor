@@ -72,9 +72,13 @@
     touch-action: none;
   }
   .scale-menu.up,
-  .scale-menu:hover,
   .scale-menu:focus-within {
     background: var(--paper);
+  }
+  @media (hover: hover) {
+    .scale-menu:hover {
+      background: var(--paper);
+    }
   }
   button {
     /* The floor, not a number that fits the window. DESIGN §5 keeps 44 for
@@ -101,8 +105,10 @@
     min-width: 3.4rem;
     font-variant-numeric: tabular-nums;
   }
-  button:hover:not([aria-disabled='true']) {
-    background: var(--hairline-soft);
+  @media (hover: hover) {
+    button:hover:not([aria-disabled='true']) {
+      background: var(--hairline-soft);
+    }
   }
   button[aria-disabled='true'] {
     opacity: 0.4;

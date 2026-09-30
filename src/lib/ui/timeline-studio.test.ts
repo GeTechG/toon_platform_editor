@@ -237,9 +237,8 @@ describe('side panel dividers', () => {
     // keeps it lit after the pointer has left the 9px band.
     expect(editorUi).toContain('class="side-edge');
     expect(editorUi).toMatch(/\.side-edge \{[^}]*background: transparent/s);
-    expect(editorUi).toMatch(
-      /\.side-resizer:hover,\s*\.side-edge\.dragging \.side-resizer \{[^}]*var\(--accent\)/s,
-    );
+    expect(editorUi).toMatch(/\.side-edge\.dragging \.side-resizer \{[^}]*var\(--accent\)/s);
+    expect(editorUi).toMatch(/@media \(hover: hover\) \{\s*\.side-resizer:hover \{[^}]*var\(--accent\)/s);
     expect(editorUi).toContain('class:dragging={');
   });
 
@@ -346,9 +345,8 @@ describe('the bottom panel folds like the sides', () => {
   });
 
   it('the seam shows itself only under the cursor, like the side ones', () => {
-    expect(editorUi).toMatch(
-      /\.resizer:hover,\s*\.panel\.dragging \.resizer \{[^}]*var\(--accent\)/s,
-    );
+    expect(editorUi).toMatch(/\.panel\.dragging \.resizer \{[^}]*var\(--accent\)/s);
+    expect(editorUi).toMatch(/@media \(hover: hover\) \{\s*\.resizer:hover \{[^}]*var\(--accent\)/s);
     expect(editorUi).not.toMatch(/\.resizer \{[^}]*3rem 2px no-repeat/s);
   });
 

@@ -22,7 +22,6 @@ import {
   pasteNeedsConfirm,
   renameLayer,
   addStroke,
-  cloneColumn,
   copyCells,
   createDocument,
   frameCount,
@@ -33,7 +32,6 @@ import {
   removeLastStroke,
   removeLayer,
   replaceCells,
-  replaceColumn,
   replaceStrokes,
   pressureOf,
   mirrorCell,
@@ -43,7 +41,6 @@ import {
   setLayerHidden,
   type CellBuffer,
   type CellRange,
-  type ResolvedColumn,
   type ResolvedStroke,
 } from '../model/operations';
 import {
@@ -107,7 +104,7 @@ import type { PluginBrush } from '../plugins/contract';
 import { toonopRules } from '../tools/brush';
 import type { StrokeRules } from '../tools/profiles';
 import { compareVersions, readCatalog, reviewed, type CatalogEntry } from '../plugins/catalog';
-import { installFromCatalog, installFromFile, loadInstalled, updateInstalled } from '../plugins/install';
+import { installFromCatalog, installFromFile, loadInstalled, sessionPlugins, updateInstalled } from '../plugins/install';
 import { listInstalled, removeInstalled } from '../plugins/store';
 import { brushOfType, type BrushType } from '../plugins/brush-types';
 import type { PluginHost, PluginStroke } from '../plugins/contract';
@@ -387,8 +384,6 @@ export class EditorState {
   redoStructure = $state.raw<{ edit: StructureEdit; back: StructureSnapshot } | null>(null);
   /** A move undo or redo made: where the layer is now, for the panel to say (a fresh object each time). */
   layerMoved = $state.raw<{ layer: number } | null>(null);
-  /** Clipboard for frame copy/paste: every layer's cell, deep-copied on copy. */
-  copiedColumn = $state.raw<ResolvedColumn | null>(null);
   /** Timeline cells the user has selected; a plain click leaves one. */
   selection = $state<CellSelection>({ frames: [0], layers: [0] });
   /** Clipboard for the timeline block copy/paste, deep-copied on copy. */
@@ -1546,29 +1541,6 @@ export class EditorState {
     this.touched = true;
   }
 
-  /** Copies the active frame across every layer to the clipboard (deep copy). */
-  copyActiveFrame(): void {
-    this.copiedColumn = cloneColumn(this.doc, this.activeFrame);
-    this.flashTick++;
-  }
-
-  /** Pastes the clipboard column onto the active frame, replacing every layer's cell. */
-  pasteFrame(): void {
-    if (this.playing || !this.copiedColumn || !this.mayEdit() || !this.leaveTransform()) {
-      return;
-    }
-    try {
-      this.#write((doc) => replaceColumn(doc, this.activeFrame, this.copiedColumn!));
-      this.touched = true;
-      this.flashTick++;
-    } catch (err) {
-      // At the document point limit — drop the paste and say so on the canvas.
-      if (!this.refuseAtLimit(err)) {
-        console.warn('paste rejected:', err);
-      }
-    }
-  }
-
   /** Copies every selected cell to the timeline clipboard (deep copy). */
   copySelection(): void {
     this.copiedCells = copyCells(this.doc, this.selection);
@@ -2388,9 +2360,11 @@ export class EditorState {
 
   /** Takes a plugin off: out of storage, off the panel, and out of the hand. */
   async removePlugin(id: string): Promise<boolean> {
+    // Storage never had it: out of the register is out for good.
+    const session = sessionPlugins(plugins).some((plugin) => plugin.id === id);
     plugins.remove(id);
     // `false`: storage refused, and the plugin is back after a reload.
-    const kept = await removeInstalled(id);
+    const kept = (await removeInstalled(id)) || session;
     this.refreshPlugins();
     return kept;
   }

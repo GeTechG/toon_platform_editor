@@ -23,7 +23,6 @@ const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url
 const READ_ONLY = new Set([
   'frameCount',
   'isEmptyDocument',
-  'cloneColumn',
   'copyCells',
   'pasteNeedsConfirm',
   'onionLayers',
@@ -56,7 +55,7 @@ describe('the document is a value', () => {
     // by identity. A `$state` array proxies what is put into it, so a cell
     // parked in the history would stop being equal to the cell in the
     // document — redo would never be offered again.
-    for (const held of ['edits', 'undone', 'copiedCells', 'copiedColumn']) {
+    for (const held of ['edits', 'undone', 'copiedCells']) {
       expect(state).toContain(`${held} = $state.raw`);
     }
   });

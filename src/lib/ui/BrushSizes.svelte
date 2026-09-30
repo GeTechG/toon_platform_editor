@@ -58,8 +58,10 @@
       background 0.15s ease,
       border-color 0.15s ease;
   }
-  .size-btn:hover {
-    background: var(--sub);
+  @media (hover: hover) {
+    .size-btn:hover {
+      background: var(--sub);
+    }
   }
   /* Five black dots differing only in diameter are not a selection state —
      the picked one inverts to a filled red key with a white dot. */

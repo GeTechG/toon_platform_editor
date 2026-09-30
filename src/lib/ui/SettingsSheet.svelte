@@ -21,6 +21,7 @@
   } from './presets';
   import Icon from './Icon.svelte';
   import { saveFile } from './save-file';
+  import { pickerAccept } from './file-accept';
   import type { EditorState } from './editor-state.svelte';
   import { dateLocale, t } from '../i18n';
 
@@ -206,7 +207,7 @@
   bind:this={draftFile}
   type="file"
   hidden
-  accept=".toonops,.toonio,application/json,.json"
+  accept={pickerAccept('.toonops,.toonio,application/json,.json')}
   aria-label={t('settings.draft_file')}
   onchange={onDraftFile}
 />
@@ -501,8 +502,10 @@
     font-weight: 650;
     cursor: pointer;
   }
-  .preset-chip:hover {
-    background: color-mix(in oklab, var(--sub), var(--text) 8%);
+  @media (hover: hover) {
+    .preset-chip:hover {
+      background: color-mix(in oklab, var(--sub), var(--text) 8%);
+    }
   }
   /* The picked preset is tinted like a picked key: a solid red chip was a
      second red key beside «Готово» (the Signal Rule). */
@@ -612,8 +615,10 @@
   /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is
      invalid when computed and the tint went to nothing. The nearest token. */
   @supports not (color: color-mix(in srgb, red, red)) {
-    .preset-chip:hover {
-      background: var(--sub);
+    @media (hover: hover) {
+      .preset-chip:hover {
+        background: var(--sub);
+      }
     }
     .preset-chip.active {
       background: var(--accent-wash);

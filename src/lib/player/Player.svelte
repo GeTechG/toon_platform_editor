@@ -10,7 +10,7 @@
   import { frameCount } from '../model/operations';
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
-  import { frameForTime, playRefusal, trackShouldRestart, trackTimeFor } from '../audio/track';
+  import { frameForTime, playRefusal, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
   // named import of the JSON leaves the rest out of the bundle.
@@ -165,6 +165,10 @@
           // of a press: the picture plays on without it.
           if (playRefusal(err) === 'blocked') playing = false;
         });
+      } else {
+        // Quiet for now, but iOS lets the element sound only after a play()
+        // inside a press — without it the lap below came round silent.
+        unlockElement(sound);
       }
     }
     let raf = requestAnimationFrame(function tick(now: number) {
@@ -297,8 +301,10 @@
       transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
       background-color 0.13s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .play-key:hover {
-    background: var(--accent-ink);
+  @media (hover: hover) {
+    .play-key:hover {
+      background: var(--accent-ink);
+    }
   }
   .play-key:active {
     transform: translateX(-50%) scale(0.96);

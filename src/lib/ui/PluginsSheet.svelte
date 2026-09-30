@@ -15,7 +15,7 @@
     reviewed,
     type CatalogEntry,
   } from '../plugins/catalog';
-  import { download, forPerson } from '../plugins/install';
+  import { download, forPerson, sessionPlugins } from '../plugins/install';
   import { listInstalled, type InstalledPlugin } from '../plugins/store';
   import Icon from './Icon.svelte';
   import type { EditorState } from './editor-state.svelte';
@@ -36,6 +36,8 @@
   let catalogTab = $state<HTMLButtonElement | undefined>();
   let tab = $state<'mine' | 'catalog'>('mine');
   let installed = $state<InstalledPlugin[]>([]);
+  /** Ids in the list that storage refused: they run until a reload. */
+  let onlyNow = $state<string[]>([]);
   let catalog = $state<CatalogEntry[]>([]);
   /** Why the catalog has nothing to show, when it has nothing to show. */
   let catalogError = $state('');
@@ -96,7 +98,11 @@
   }
 
   async function refresh(): Promise<void> {
-    installed = await listInstalled();
+    const stored = await listInstalled();
+    // Refused by storage, it still runs — and has to be seen to be taken off.
+    const session = sessionPlugins(plugins).filter((plugin) => !stored.some((kept) => kept.id === plugin.id));
+    onlyNow = session.map((plugin) => plugin.id);
+    installed = [...stored, ...session];
   }
 
   /**
@@ -340,6 +346,9 @@
                   {plugin.source === 'bundled'
                     ? t('plugins.source_bundled')
                     : plugin.source === 'local' ? t('plugins.source_local') : t('plugins.source_catalog')}
+                  {#if onlyNow.includes(plugin.id)}
+                    {t('plugins.session')}
+                  {/if}
                   {#if broken(plugin.id)}
                     {t('plugins.broken')}
                   {:else if notLoaded(plugin)}

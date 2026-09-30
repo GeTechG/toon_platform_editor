@@ -595,9 +595,11 @@
     color: var(--ink-2);
     cursor: pointer;
   }
-  .close:hover {
-    background: var(--sub);
-    color: var(--ink);
+  @media (hover: hover) {
+    .close:hover {
+      background: var(--sub);
+      color: var(--ink);
+    }
   }
   /* Segmented control: one pill, three equal shares. */
   .models {
@@ -624,8 +626,10 @@
     letter-spacing: 0.04em;
     cursor: pointer;
   }
-  .models button:hover {
-    color: var(--ink);
+  @media (hover: hover) {
+    .models button:hover {
+      color: var(--ink);
+    }
   }
   .models button.active {
     background: var(--canvas);
@@ -761,8 +765,10 @@
   .old {
     cursor: pointer;
   }
-  .old:hover {
-    opacity: 1;
+  @media (hover: hover) {
+    .old:hover {
+      opacity: 1;
+    }
   }
   /* Outside the canvas, on the window's own white: laid over the drawing, the
      red ring vanished on the red end of the hue strip and the red side of the

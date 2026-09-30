@@ -44,7 +44,7 @@ describe('an ogg the system calls video is still a sound', () => {
   });
 
   it('the picker offers those files and the drop takes them', () => {
-    expect(panel).toMatch(/accept="audio\/\*,\.ogg/);
+    expect(panel).toMatch(/accept=\{accept\}/);
     expect(editorUi).toContain('isAudioFile(file)');
   });
 });

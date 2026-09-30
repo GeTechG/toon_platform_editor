@@ -411,8 +411,10 @@
     text-align: left;
     cursor: pointer;
   }
-  .type:hover {
-    background: var(--paper);
+  @media (hover: hover) {
+    .type:hover {
+      background: var(--paper);
+    }
   }
   .type.active {
     border-color: var(--accent);
@@ -511,9 +513,13 @@
     color: var(--ink-2);
     cursor: pointer;
   }
-  .info:hover,
   .info:focus-visible {
     color: var(--accent-ink);
+  }
+  @media (hover: hover) {
+    .info:hover {
+      color: var(--accent-ink);
+    }
   }
   .info:focus-visible {
     outline: 3px solid var(--accent);

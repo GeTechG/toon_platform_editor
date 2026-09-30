@@ -5,7 +5,6 @@ import {
   addFrame,
   addLayer,
   addStroke,
-  cloneColumn,
   copyCells,
   createDocument,
   mergeCells,
@@ -19,7 +18,6 @@ import {
   removeLayer,
   renameLayer,
   replaceCells,
-  replaceColumn,
   setFrameRate,
   setLayerHidden,
   replaceStrokes,
@@ -96,77 +94,6 @@ describe('addFrame / removeFrame', () => {
     const doc = createDocument();
     expect(() => addFrame(doc, 1)).toThrow(RangeError);
     expect(() => removeFrame(doc, -1)).toThrow(RangeError);
-  });
-});
-
-describe('cloneColumn / replaceColumn (frame copy-paste across layers)', () => {
-  function twoLayerDoc() {
-    const doc = createDocument();
-    addLayer(doc, 1);
-    addFrame(doc, 0);
-    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#112233' });
-    addStroke(doc, 1, 0, { points: [5, 6], width: 8, color: '#ff0000' });
-    return doc;
-  }
-
-  it('cloneColumn copies the cell of every layer at that frame', () => {
-    const doc = twoLayerDoc();
-    const column = cloneColumn(doc, 0);
-    expect(column).toHaveLength(2);
-    expect(column[0].strokes[0].points).toEqual([1, 2, 3, 4]);
-    expect(column[1].strokes[0].tool).toEqual({
-      kind: 'pencil', geometry: 'smooth', width: 8, color: '#ff0000',
-    });
-  });
-
-  it('replaceColumn overwrites every layer with an independent deep copy', () => {
-    const doc = twoLayerDoc();
-    const column = cloneColumn(doc, 0);
-    replaceColumn(doc, 1, column);
-    expect(doc.layers[0].frames[1].strokes[0].points).toEqual([1, 2, 3, 4]);
-    expect(doc.layers[1].frames[1].strokes[0].points).toEqual([5, 6]);
-    column[0].strokes[0].points[0] = 999;
-    doc.layers[0].frames[0].strokes[0].points[1] = 999;
-    expect(doc.layers[0].frames[1].strokes[0].points).toEqual([1, 2, 3, 4]);
-    expect(validateDocument(doc).ok).toBe(true);
-  });
-
-  it('replaces rather than appends, and gives each cell a fresh identity', () => {
-    const doc = twoLayerDoc();
-    addStroke(doc, 0, 1, { points: [7, 8], width: 8, color: '#00ff00' });
-    const before = doc.layers[0].frames[1];
-    replaceColumn(doc, 1, cloneColumn(doc, 0));
-    expect(doc.layers[0].frames[1]).not.toBe(before);
-    expect(doc.layers[0].frames[1].strokes).toHaveLength(1);
-  });
-
-  it('clears layers the buffer has no cell for and ignores surplus cells', () => {
-    const doc = twoLayerDoc();
-    addStroke(doc, 1, 1, { points: [9, 10], width: 8, color: '#000000' });
-    replaceColumn(doc, 1, cloneColumn(doc, 0).slice(0, 1)); // buffer from a one-layer document
-    expect(doc.layers[0].frames[1].strokes).toHaveLength(1);
-    expect(doc.layers[1].frames[1].strokes).toHaveLength(0);
-
-    const wide = [...cloneColumn(doc, 0), { strokes: [] }, { strokes: [] }];
-    expect(() => replaceColumn(doc, 1, wide)).not.toThrow();
-    expect(doc.layers).toHaveLength(2);
-  });
-
-  it('rejects an out-of-range index', () => {
-    const doc = twoLayerDoc();
-    expect(() => replaceColumn(doc, 5, cloneColumn(doc, 0))).toThrow(RangeError);
-  });
-
-  it('rejects a paste over the point limit without touching any layer', () => {
-    const doc = createDocument();
-    const big = Array.from({ length: 65536 }, (_, i) => i % 2); // 32768 points
-    for (let f = 0; doc.layers[0].frames.length * 32768 <= 1_000_000; f++) {
-      addStroke(doc, 0, f, { points: big, width: 8, color: '#000000' });
-      addFrame(doc, f);
-    }
-    const last = doc.layers[0].frames.length - 1;
-    expect(() => replaceColumn(doc, last, cloneColumn(doc, 0))).toThrow(RangeError);
-    expect(doc.layers[0].frames[last].strokes).toHaveLength(0);
   });
 });
 
@@ -347,7 +274,7 @@ describe('schema limits', () => {
 
   it('addStroke rejects strokes over the width and coordinate-count limits', () => {
     const doc = createDocument();
-    expect(() => addStroke(doc, 0, 0, { points: [1, 2], width: 4801, color: '#000000' })).toThrow(
+    expect(() => addStroke(doc, 0, 0, { points: [1, 2], width: 5121, color: '#000000' })).toThrow(
       RangeError,
     );
     const tooMany = Array.from({ length: 65538 }, (_, i) => i % 2);
@@ -355,7 +282,7 @@ describe('schema limits', () => {
       RangeError,
     );
     const atLimit = Array.from({ length: 65536 }, (_, i) => i % 2);
-    addStroke(doc, 0, 0, { points: atLimit, width: 4800, color: '#000000' });
+    addStroke(doc, 0, 0, { points: atLimit, width: 5120, color: '#000000' });
     expect(validateDocument(doc).ok).toBe(true);
   });
 
@@ -745,7 +672,7 @@ describe('transformStrokes', () => {
   it('clamps a scaled width to the format range instead of writing an invalid tool', () => {
     const doc = withStrokes(5);
     transformStrokes(doc, 0, 0, null, transformMatrix({}, 50, 50), 1e6);
-    expect(doc.tools[cell(doc).strokes[0].tool_id]).toMatchObject({ width: 4800 });
+    expect(doc.tools[cell(doc).strokes[0].tool_id]).toMatchObject({ width: 5120 });
     transformStrokes(doc, 0, 0, null, transformMatrix({}, 50, 50), 1e-6);
     expect(doc.tools[cell(doc).strokes[0].tool_id]).toMatchObject({ width: 1 });
   });
@@ -894,10 +821,11 @@ describe('isEmptyDocument', () => {
 describe('pen pressure travels with the points', () => {
   const pencil = { kind: 'pencil', geometry: 'line', width: 10, color: '#000000' } as const;
 
-  it('keeps it through a column copy and paste', () => {
+  it('keeps it through a cell copy and paste', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [0, 0, 10, 0], tool: pencil, pressure: [10, 90] });
-    replaceColumn(doc, 0, cloneColumn(doc, 0));
+    const one = { frames: [0], layers: [0] };
+    replaceCells(doc, one, copyCells(doc, one));
     expect(doc.layers[0].frames[0].strokes[0].pressure).toEqual([10, 90]);
   });
 

@@ -40,6 +40,7 @@
     zoomDelta,
     wheelNotch,
     ctrlWheelZoom,
+    trackpadScroll,
     type Cover,
     type Stage,
   } from './viewport';
@@ -1080,21 +1081,24 @@
 
   /** Wheel travel gathered toward the next notch (`wheelNotch`). */
   let wheelRest = 0;
+  /** When the last trackpad scroll came (`e.timeStamp`), for `trackpadScroll`'s streak. */
+  let trackpadAt = -Infinity;
 
   /**
    * Wheel zooms in the reference's 0.5 steps and recentres the view on the
    * cursor (`NormalizeCoords`). Ctrl+wheel — a Mac trackpad pinch among
-   * them — zooms the sheet smoothly under the cursor, not the page. The
-   * preview owns the canvas while it plays.
+   * them — zooms the sheet smoothly under the cursor, not the page. Two
+   * fingers on a trackpad move the sheet (owner, after the fifteenth audit).
+   * All of it works while the preview plays too.
    */
   function onWheel(e: WheelEvent): void {
-    // Taken even when it zooms nothing — while the preview plays too: a
-    // sideways swipe left to the browser is "back" in the history, and the
-    // drawing goes with it; Ctrl+wheel would zoom the whole page.
+    // Taken even when it zooms nothing: a sideways swipe left to the browser
+    // is "back" in the history, and the drawing goes with it; Ctrl+wheel
+    // would zoom the whole page.
     e.preventDefault();
     // Nor while a line is being drawn: the keys wait for it, and so does the
     // wheel — a zoom under the pen drew a straight line across the sheet.
-    if (editor.playing || drawingBusy()) {
+    if (drawingBusy()) {
       return;
     }
     if (e.ctrlKey || e.metaKey) {
@@ -1105,6 +1109,15 @@
       wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
       zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
       editor.flashScaleMenu();
+      return;
+    }
+    if (trackpadScroll(e, e.timeStamp - trackpadAt < WHEEL_ZOOM_IDLE_MS)) {
+      trackpadAt = e.timeStamp;
+      // A stream like the pinch's: the grabbed picture slides, composed once it stops.
+      takeNavShot();
+      clearTimeout(wheelZoomTimer);
+      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
+      panBy(-e.deltaX, -e.deltaY);
       return;
     }
     const { notch, rest } = wheelNotch(wheelRest, e.deltaY, e.deltaMode);
@@ -1156,7 +1169,7 @@
     e.preventDefault();
     // On iPad and iPhone the same pinch also arrives as pointers, which the
     // two-finger path already zooms by: only a trackpad has no touches.
-    if (editor.playing || touches.size > 0 || drawingBusy()) {
+    if (touches.size > 0 || drawingBusy()) {
       return;
     }
     const { scale, clientX, clientY } = e as PinchEvent;

@@ -149,6 +149,17 @@ function accept(manifest: unknown, registry: PluginRegistry): string | null {
   return registry.register(manifest);
 }
 
+/** Installed plugins storage refused: they live as long as the page does. */
+const session = new Map<string, InstalledPlugin>();
+
+/**
+ * What runs until a reload without a record on disk, for «Мои»: without it
+ * such a plugin was nowhere in the list, and only a reload took it off.
+ */
+export function sessionPlugins(registry: PluginRegistry): InstalledPlugin[] {
+  return [...session.values()].filter((plugin) => registry.holds(plugin.id));
+}
+
 /**
  * Puts a manifest in and its record on disk as one step. A plugin already
  * running under the id comes out first — the register refuses a second copy,
@@ -171,7 +182,12 @@ async function install(
   if (!failed) {
     // In the register but not on disk: it works until the page is left, and
     // «установлен» would promise it back after a reload.
-    return (await putInstalled(record)) ? null : t('plugins.not_kept');
+    if (await putInstalled(record)) {
+      session.delete(id);
+      return null;
+    }
+    session.set(id, record);
+    return t('plugins.not_kept');
   }
   if (was) {
     try {

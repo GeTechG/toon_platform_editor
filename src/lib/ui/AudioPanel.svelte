@@ -6,7 +6,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES } from '../audio/track';
+  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, playableAccept } from '../audio/track';
   import { t } from '../i18n';
   import { lengthClock } from './frame-selection';
 
@@ -27,6 +27,8 @@
 
   /** The switch's name and its hint are two things: ids to point at each. */
   const uid = $props.id();
+  /** Only what this browser plays is offered (owner, fifteenth audit); the load checks again. */
+  const accept = typeof Audio === 'undefined' ? 'audio/*' : playableAccept((type) => new Audio().canPlayType(type));
 
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
@@ -137,7 +139,7 @@
   <div class="body">
     <input
       type="file"
-      accept="audio/*,.ogg,.oga,.opus"
+      accept={accept}
       bind:this={picker}
       onchange={pickTrack}
       hidden

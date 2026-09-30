@@ -113,7 +113,11 @@ export function wellFormed(text: string): string {
 
 /** Maximum coordinate count (x,y flat) per stroke. */
 export const MAX_STROKE_COORDS = 65536;
-export const MAX_STROKE_WIDTH = 4800;
+/**
+ * The widest stored line: the widest brush any preset may declare, so the
+ * whole of every scale draws what it says (Multator's 640 is 640 px).
+ */
+export const MAX_STROKE_WIDTH = MAX_BRUSH_SIZE_LOGICAL * FIXED_POINT_SCALE;
 
 /**
  * Export resolutions, by width (the reference's row, `export_help.js:61`).

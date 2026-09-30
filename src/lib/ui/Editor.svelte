@@ -59,6 +59,7 @@
   import type { SideId } from './presets';
   import { compactLayout, moveTab, phoneTools, pickStep, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
+  import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
   import { dateLocale, t } from '../i18n';
@@ -1713,16 +1714,12 @@
   let flashVisible = $state(false);
   let clipNote = $state('');
   let clipShown = $state(false);
-  /** The buffers as last told: a new one is a copy, the same one a paste. */
-  let clipSeen: { column: unknown; cells: unknown } = { column: null, cells: null };
+  /** The buffer as last told: a new one is a copy, the same one a paste. */
+  let clipSeen: unknown = null;
   $effect(() => {
     if (editor.flashTick === 0) return;
-    const copied = untrack(
-      () =>
-        (editor.copiedColumn !== null && editor.copiedColumn !== clipSeen.column)
-        || (editor.copiedCells !== null && editor.copiedCells !== clipSeen.cells),
-    );
-    clipSeen = untrack(() => ({ column: editor.copiedColumn, cells: editor.copiedCells }));
+    const copied = untrack(() => editor.copiedCells !== null && editor.copiedCells !== clipSeen);
+    clipSeen = untrack(() => editor.copiedCells);
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const word = t(copied ? 'editor.copied' : 'editor.pasted');
     // Emptied first, so the same word twice is announced twice.
@@ -1802,7 +1799,7 @@
   bind:this={fileInput}
   type="file"
   hidden
-  accept=".toonop,.toon,.json"
+  accept={pickerAccept('.toonop,.toon,.json')}
   aria-label={t('editor.open_project')}
   onchange={(e) => {
     const file = e.currentTarget.files?.[0];
@@ -2214,7 +2211,7 @@
     </aside>
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
-  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall}>
+  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}>
     <CanvasView {editor} />
     {@render stageNote?.()}
     <!-- The reference's two floating tool windows: the transform fields while
@@ -2841,6 +2838,14 @@
     bottom: max(0.75rem, 50% - 8rem);
     min-height: var(--key-h);
   }
+  /* Standing, the tab window comes up over as much as 55 % of the stage and
+     lay over the rail's foot: the thinnest sizes were out of reach (owner,
+     after the fifteenth audit). The rail keeps to the stage above it, from
+     the zoom row down, so the whole scale stays under the thumb. */
+  .studio.compact .stage.low-window :global(.size-rail) {
+    top: max(0.75rem, var(--zoom-foot));
+    bottom: calc(55% + 0.75rem);
+  }
   /* The transform window takes the zoom window's row: at 200 % text on 320px
      the two left it a 14px strip. Fingers zoom by pinch meanwhile. */
   .studio.compact .stage.transforming > .scale-window {
@@ -2906,9 +2911,13 @@
     touch-action: none;
   }
   /* Same seam language as the columns: drawn only while it is in use. */
-  .resizer:hover,
   .panel.dragging .resizer {
     background: linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat;
+  }
+  @media (hover: hover) {
+    .resizer:hover {
+      background: linear-gradient(var(--accent), var(--accent)) center / 100% 2px no-repeat;
+    }
   }
   .resizer:focus-visible {
     outline: none;
@@ -2927,8 +2936,10 @@
     border-radius: var(--r-sm) var(--r-sm) 0 0;
     box-shadow: none;
   }
-  .fold.lying:hover {
-    transform: translate(-50%, -1px);
+  @media (hover: hover) {
+    .fold.lying:hover {
+      transform: translate(-50%, -1px);
+    }
   }
   .fold.lying:active {
     transform: translateX(-50%);
@@ -2942,11 +2953,15 @@
   .side-edge.folded .fold {
     background: color-mix(in srgb, var(--canvas) 55%, transparent);
   }
-  .panel.collapsed .fold:hover,
   .panel.collapsed .fold:focus-visible,
-  .side-edge.folded .fold:hover,
   .side-edge.folded .fold:focus-visible {
     background: var(--sub);
+  }
+  @media (hover: hover) {
+    .panel.collapsed .fold:hover,
+    .side-edge.folded .fold:hover {
+      background: var(--sub);
+    }
   }
   .toolbar {
     display: flex;
@@ -3212,8 +3227,10 @@
   .side-edge > * {
     pointer-events: auto;
   }
-  .side-edge:hover {
-    background: var(--hairline);
+  @media (hover: hover) {
+    .side-edge:hover {
+      background: var(--hairline);
+    }
   }
   .side-edge.edge-left {
     grid-column: 1;
@@ -3250,9 +3267,13 @@
     height: 100%;
     transform: translate(-50%, -50%);
   }
-  .side-resizer:hover,
   .side-edge.dragging .side-resizer {
     background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
+  }
+  @media (hover: hover) {
+    .side-resizer:hover {
+      background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
+    }
   }
   /* Focus lands on the seam itself, so it is the seam that has to show it —
      an outline on a 1px box is a hairline halo nobody can see. */
@@ -3299,9 +3320,11 @@
     border-right: none;
     border-radius: var(--r-sm) 0 0 var(--r-sm);
   }
-  .fold:hover {
-    background: var(--sub);
-    color: var(--text);
+  @media (hover: hover) {
+    .fold:hover {
+      background: var(--sub);
+      color: var(--text);
+    }
   }
   .fold:focus-visible {
     outline: 3px solid var(--accent);
@@ -3989,8 +4012,10 @@
     border-radius: var(--r-sm);
     cursor: pointer;
   }
-  .editor :global(.toggle:hover) {
-    background: var(--sub);
+  @media (hover: hover) {
+    .editor :global(.toggle:hover) {
+      background: var(--sub);
+    }
   }
   .editor :global(.toggle + .toggle) {
     border-top: 1px solid var(--hairline-soft);
@@ -4043,8 +4068,10 @@
     color: inherit;
     cursor: pointer;
   }
-  .draft-open:hover {
-    background: var(--sub);
+  @media (hover: hover) {
+    .draft-open:hover {
+      background: var(--sub);
+    }
   }
   .draft-thumb {
     display: flex;
@@ -4107,22 +4134,19 @@
   /* Reference `.control p`: hovering a key with a shortcut swaps its icon for
      the key itself. Drawn over the icon, so no button reflows on hover; the
      same letter is in the title and the aria-label for everyone else. */
-  .editor :global(.key[data-key]:hover:not(:disabled))::after {
-    content: attr(data-key);
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    border-radius: inherit;
-    background: inherit;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-  @media (hover: none) {
-    /* A touch "hover" sticks after a tap — the letter would cover the icon. */
+  /* A touch "hover" sticks after a tap — the letter would cover the icon. */
+  @media (hover: hover) {
     .editor :global(.key[data-key]:hover:not(:disabled))::after {
-      content: none;
+      content: attr(data-key);
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      border-radius: inherit;
+      background: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
     }
   }
   .editor :global(.saved:empty) {
@@ -4194,8 +4218,10 @@
     background-clip: content-box;
   }
   /* The hover above writes the `background` shorthand, which resets the clip. */
-  .editor :global(.sheet .draft .key.icon:hover:not(:disabled)) {
-    background-clip: content-box;
+  @media (hover: hover) {
+    .editor :global(.sheet .draft .key.icon:hover:not(:disabled)) {
+      background-clip: content-box;
+    }
   }
   .editor :global(.key.primary.icon) {
     padding: 0;

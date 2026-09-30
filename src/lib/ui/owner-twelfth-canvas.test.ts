@@ -45,7 +45,6 @@ describe('nothing edits a hidden layer', () => {
     'applyTransform',
     'beginPluginGesture',
     'applyCopiedCells',
-    'pasteFrame',
     'redo',
   ]) {
     it(`${name} asks the guard`, () => {

@@ -702,30 +702,28 @@
     max-width: 50%;
     width: 12.5rem;
     min-height: 0;
-    border-right: 1px solid var(--hairline);
   }
-  /* A 7px band straddling that border, so the grab target is not the hairline. */
+  /* The splitter's own 24 px between the names and the grid (WCAG 2.2 2.5.8).
+     Drawn 7 px wide with an invisible 24 px band over its neighbours, it
+     reached ~6 px into frame 1 and ~3 px into the layer's bin — whole rows and
+     cells are presses of their own — and a press at a cell's edge resized the
+     column (owner, fifteenth audit). Now no press on either side is its. */
   .col-resizer {
     position: relative;
     flex: none;
-    width: 7px;
-    margin: 0 -3px 0 -4px;
-    z-index: 1;
+    width: 24px;
     cursor: ew-resize;
     touch-action: none;
   }
-  /* A splitter is a hairline by nature — drawn wider it becomes a bar between
-     the names and the grid. So the drawn width stays 7px and the band a finger
-     can catch is 24: it reaches over the list and the grid, neither of which is
-     a target of its own, so nothing else loses its press to it. */
+  /* The hairline the column used to draw sits in the band's middle. */
   .col-resizer::after {
     content: '';
     position: absolute;
     left: 50%;
     top: 0;
     bottom: 0;
-    width: 24px;
-    transform: translateX(-50%);
+    width: 1px;
+    background: var(--hairline);
   }
   .col-resizer:focus-visible {
     outline: 2px solid var(--accent);
@@ -929,9 +927,13 @@
     font-size: 0.75rem;
     color: var(--ink-2);
   }
-  .frame-menu button:hover:not(:disabled),
   .frame-menu button:focus-visible {
     background: var(--hairline-soft);
+  }
+  @media (hover: hover) {
+    .frame-menu button:hover:not(:disabled) {
+      background: var(--hairline-soft);
+    }
   }
   /* The tint alone is 1.1:1 — the arrows need the studio's ring, laid inside
      the item so the menu's own edge does not clip it. */

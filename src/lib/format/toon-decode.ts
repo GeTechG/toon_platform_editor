@@ -12,6 +12,7 @@ import {
   FIXED_POINT_SCALE,
   MAX_FRAMES,
   MAX_LAYERS,
+  MAX_STROKE_WIDTH,
   MAX_TOTAL_POINTS,
   cutLayerName,
   SCHEMA_VERSION,
@@ -257,7 +258,7 @@ function readLegacyTool(reader: Reader): ToolDescriptor {
 }
 
 function toolDescriptor(type: number, width: number, color: string, fill: string): ToolDescriptor {
-  const clamped = Math.min(4800, Math.max(1, width));
+  const clamped = Math.min(MAX_STROKE_WIDTH, Math.max(1, width));
   switch (type) {
     case PENCIL:
       return { kind: 'pencil', geometry: 'smooth', width: clamped, color };

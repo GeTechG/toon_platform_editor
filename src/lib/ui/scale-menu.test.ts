@@ -43,7 +43,8 @@ describe('ScaleMenu', () => {
 
   it('comes back to full when hovered, focused, or the hand is up', () => {
     expect(menu).toContain('class:up={editor.scaleMenuVisible}');
-    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:hover,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--paper\)/);
+    expect(menu).toMatch(/\.scale-menu\.up,\n\s*\.scale-menu:focus-within \{\n\s*background: var\(--paper\)/);
+    expect(menu).toMatch(/@media \(hover: hover\) \{\n\s*\.scale-menu:hover \{\n\s*background: var\(--paper\)/);
   });
 
   it('opens with the hand, the tool it belongs to', () => {

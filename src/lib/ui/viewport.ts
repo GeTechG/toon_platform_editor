@@ -107,6 +107,28 @@ export function wheelNotch(rest: number, deltaY: number, deltaMode: number): { n
 }
 
 /**
+ * The smallest pixel step a mouse notch comes in (Chrome 100, 120 and
+ * up; Firefox 3 lines). A trackpad scrolls a few px at a time.
+ * ponytail: a heuristic — a Mac mouse with fine steps pans; the calibration knob.
+ */
+export const WHEEL_MOUSE_PX = 50;
+
+/**
+ * Two fingers on a trackpad, not a mouse wheel (owner, after the fifteenth
+ * audit: a trackpad scroll moves the sheet, as in Procreate and Photoshop).
+ * Lines and pages are a wheel; a sideways part or small pixel steps are a
+ * trackpad; `streak` — a trackpad scroll a moment ago — keeps the big deltas
+ * of a fling's tail in the same pan.
+ */
+export function trackpadScroll(
+  e: { deltaX: number; deltaY: number; deltaMode: number },
+  streak: boolean,
+): boolean {
+  if (e.deltaMode !== 0) return false;
+  return streak || e.deltaX !== 0 || Math.abs(e.deltaY) < WHEEL_MOUSE_PX;
+}
+
+/**
  * Ctrl+wheel zoom per px of travel. A Mac trackpad pinch arrives as Ctrl+wheel
  * a few px at a time and wants a smooth zoom, not notches; a mouse notch
  * (100 px) comes out as ×1.65. The calibration knob.
