@@ -173,7 +173,10 @@ async function install(
   registry: PluginRegistry,
   ports: InstallPorts,
 ): Promise<string | null> {
-  const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id);
+  // One that storage refused is only in `session`: a refused new build of it
+  // left nothing to put back, and the working plugin was gone until the file
+  // was picked again.
+  const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id) ?? session.get(id);
   // What the register holds, not what the disk does: a plugin that storage
   // refused runs until the page is left, and a second install of it came back
   // «такой id уже загружен». The editor's own stay (`remove` refuses them).

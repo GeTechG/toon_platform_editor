@@ -734,9 +734,14 @@
     /* «— рабочее пространство —» itself needs ~15rem; 14 cut its last word. */
     max-width: 16rem;
   }
-  /* Its paper becomes the canvas under it in forced colours: no edge left. */
+  /* Its paper becomes the canvas under it in forced colours: no edge left.
+     The chips and the ghost lose their fill too, and stood as bare words. */
   @media (forced-colors: active) {
     .arrange-bar {
+      outline: 1px solid CanvasText;
+    }
+    .chip,
+    .ghost {
       outline: 1px solid CanvasText;
     }
   }

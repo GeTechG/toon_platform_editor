@@ -29,7 +29,9 @@ describe('deleting the draft that is on the canvas', () => {
 describe('a drafts bundle dropped on the window', () => {
   it('loads like «Загрузить черновики…» instead of «формат не поддерживается»', () => {
     const drop = fn('onDrop');
-    expect(drop).toMatch(/\\\.\(toonops\|toonio\)\(\\\.json\)\?\$\/i\.test\(file\.name\)[^]*?openDraftsFile\(file\)/);
+    // One pattern for the drop and the «Открыть» picker (audit 17).
+    expect(editorUi).toContain('const DRAFTS_FILE = /\\.(toonops|toonio)(\\.json)?$/i;');
+    expect(drop).toMatch(/DRAFTS_FILE\.test\(file\.name\)[^]*?openDraftsFile\(file\)/);
     expect(drop.indexOf('openDraftsFile')).toBeLessThan(drop.indexOf('file_unsupported'));
     const load = fn('openDraftsFile');
     expect(load).toContain("t('settings.drafts_confirm'");

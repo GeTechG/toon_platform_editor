@@ -205,6 +205,7 @@
           audio: editor.audio.blob,
           trackSeconds,
           sink,
+          discard: file?.remove?.bind(file),
         });
         if (blob) {
           deliver(blob, `toonop.${videoPlan.extension}`);

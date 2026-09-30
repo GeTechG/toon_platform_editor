@@ -1,7 +1,8 @@
 /**
- * Everything the page logs as an error, so Alt+L has something to hand over.
- * One log per page, installed once: an editor that watched the window itself
- * was kept alive by its listeners long after the site navigated away from it.
+ * Everything the page logs as an error or a warning, so Alt+L has something
+ * to hand over. One log per page, installed once: an editor that watched the
+ * window itself was kept alive by its listeners long after the site navigated
+ * away from it.
  */
 
 interface ErrorSource {
@@ -10,6 +11,12 @@ interface ErrorSource {
 
 interface ErrorConsole {
   error: (...args: unknown[]) => void;
+  /**
+   * The studio reports most of its failures here — an export that did not
+   * build, a draft write the quota refused, a file that did not open — and
+   * the log without them had nothing to hand over for exactly those.
+   */
+  warn?: (...args: unknown[]) => void;
 }
 
 const LIMIT = 200;
@@ -69,11 +76,15 @@ export function createErrorLog() {
         note(error ?? message);
       });
       target.addEventListener('unhandledrejection', (e) => note((e as PromiseRejectionEvent).reason));
-      const wasError = con.error.bind(con);
-      con.error = (...args: unknown[]) => {
-        note(args.map(describe).join(' '));
-        wasError(...args);
-      };
+      for (const level of ['error', 'warn'] as const) {
+        const was = con[level]?.bind(con);
+        if (was) {
+          con[level] = (...args: unknown[]) => {
+            note(args.map(describe).join(' '));
+            was(...args);
+          };
+        }
+      }
     },
   };
 }

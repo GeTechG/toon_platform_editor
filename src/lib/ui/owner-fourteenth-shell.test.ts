@@ -45,7 +45,8 @@ function drawn() {
 const box = { x: 10, y: 20, width: 20, height: 20 };
 
 describe('Ctrl+S при живой трансформации', () => {
-  const ctrlS = onKeydownBlock(/\(e\.ctrlKey \|\| e\.metaKey\) && \(key === 's' \|\| key === 'S'\)\) \{/);
+  // The key and Ctrl+S share one save by hand (audit17-shell).
+  const ctrlS = editorUi.match(/function saveByHand\([^]*?\n  }\n/)![0];
 
   it('сначала применяет сдвиг, потом пишет: черновик получал рисунок без него', () => {
     const leave = ctrlS.indexOf('editor.leaveTransform()');
@@ -54,7 +55,7 @@ describe('Ctrl+S при живой трансформации', () => {
   });
 
   it('под замком трансформации не пишет: leaveTransform сам говорит «выделение заперто»', () => {
-    expect(ctrlS).toMatch(/if \(!e\.repeat && editor\.leaveTransform\(\)\) \{\s*saveNow\(true\);/);
+    expect(ctrlS).toMatch(/if \(editor\.leaveTransform\(\)\) \{\s*void saveNow\(true\);/);
     expect(state).toMatch(/if \(this\.transformLock\) \{\s*this\.canvasHint = \{ text: t\('canvas\.transform_locked'\) \};\s*return false;/);
   });
 });

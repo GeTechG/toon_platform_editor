@@ -10,6 +10,7 @@
 import { LINE_PRIMITIVES } from '../render/dispatch';
 import { untilAborted } from '../export/rasterize';
 import {
+  NORMAL_BRUSH_TYPE,
   PLUGIN_API,
   pluginNamespace,
   pluginText,
@@ -22,7 +23,7 @@ import {
   type PluginTool,
   type StrokeRules,
 } from './contract';
-import { i18n, t } from '../i18n';
+import { BASE_LOCALE, i18n, t } from '../i18n';
 
 /**
  * Hands a plugin's own catalogue to i18next, under a namespace of its own.
@@ -40,10 +41,17 @@ function addLocales(id: string, locales: unknown): void {
   if (typeof locales !== 'object' || locales === null) {
     return;
   }
-  for (const [locale, resources] of Object.entries(locales as Record<string, unknown>)) {
-    if (typeof resources === 'object' && resources !== null) {
-      i18n.addResourceBundle(locale, pluginNamespace(id), resources, true, true);
-    }
+  const bundles = Object.entries(locales as Record<string, unknown>).filter(
+    ([, resources]) => typeof resources === 'object' && resources !== null,
+  );
+  for (const [locale, resources] of bundles) {
+    i18n.addResourceBundle(locale, pluginNamespace(id), resources as object, true, true);
+  }
+  // A catalogue without the editor's own language — an author who wrote only
+  // English — answered nothing in it: every tool was refused «без label» and
+  // its window showed raw keys. It answers in the language it has instead.
+  if (bundles.length > 0 && !bundles.some(([locale]) => locale === BASE_LOCALE)) {
+    i18n.addResourceBundle(BASE_LOCALE, pluginNamespace(id), bundles[0][1] as object, true, true);
   }
 }
 
@@ -269,7 +277,10 @@ export class PluginRegistry {
       this.fail(plugin, t('plugin.brush_type_incomplete', { id }));
       return false;
     }
-    if (this.typeById.has(id)) {
+    // «Обычная» is the editor's own and is not in the register: a plugin's
+    // `normal` stood beside it in the list under the same key, and the list
+    // threw.
+    if (this.typeById.has(id) || id === NORMAL_BRUSH_TYPE) {
       this.fail(plugin, t('plugin.brush_type_taken', { id }));
       return false;
     }

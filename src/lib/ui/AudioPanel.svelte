@@ -175,9 +175,13 @@
           bind:checked={editor.audio.sync} />
       </label>
 
-      <p class="lengths">
-        {t('audio.film')} <b>{lengthClock(filmSeconds)}</b>, {t('audio.track')} <b>{lengthClock(editor.audio.duration)}</b>
-      </p>
+      <!-- A track this browser could not read has no length to say: «0:00»
+           read as an empty file. The error beside it says what happened. -->
+      {#if editor.audio.duration > 0}
+        <p class="lengths">
+          {t('audio.film')} <b>{lengthClock(filmSeconds)}</b>, {t('audio.track')} <b>{lengthClock(editor.audio.duration)}</b>
+        </p>
+      {/if}
       {#if trackOutruns}
         <p class="hint">{t('audio.outruns')}</p>
       {/if}
@@ -258,8 +262,11 @@
       border-radius: var(--r-md) var(--r-md) 0 0;
     }
   }
+  /* Wraps: in a small screen's window at 200 % text the heading and the ×
+     were wider than the plate, and the × stood past the screen's edge. */
   header {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 0.4rem 0.4rem 0.75rem;
@@ -359,6 +366,7 @@
   }
   .row {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.35rem;
   }
   /* Grow, not `flex: 1`: a zero basis cost the key its height in the empty

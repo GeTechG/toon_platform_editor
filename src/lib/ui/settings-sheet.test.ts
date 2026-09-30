@@ -142,7 +142,7 @@ describe('the settings live in the persisted UI config', () => {
   });
 
   it('swapping the two colours leaves an eraser for the pencil, as a pick does', () => {
-    expect(methodBody(state, 'swapColors')).toMatch(/'eraser' \|\| this\.tool === 'mega-eraser'[^]*?this\.tool = 'pencil'/);
+    expect(methodBody(state, 'swapColors')).toMatch(/'eraser' \|\| this\.tool === 'mega-eraser'[^]*?this\.hold\('pencil'\)/);
   });
 
   it('a manual save records when it happened, for the panel to show', () => {
@@ -241,9 +241,11 @@ describe('key hints on the buttons', () => {
   });
 
   it('the transport keys are on the transport', () => {
-    for (const key of ['Z', 'Y', 'K', 'A', 'C', 'V', 'M']) {
+    for (const key of ['Z', 'Y', 'K', 'A', 'C', 'V']) {
       expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
     }
+    // Under Multator M is the palette's, so merge names no key there (audit17-shell).
+    expect(editorUi).toContain("data-key={quickPalette ? undefined : editor.keyHint('M') || undefined}");
     expect(play).toContain('data-key="Space"');
   });
 

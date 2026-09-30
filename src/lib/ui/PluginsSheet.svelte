@@ -67,7 +67,9 @@
     const run = go ? pending?.run : undefined;
     pending = null;
     warnEl?.close();
-    void run?.();
+    // The warning hands the focus back to what held it before: after a
+    // download that was the page, the key having gone disabled under it.
+    void (run ? run() : keepFocus());
   }
 
   /**

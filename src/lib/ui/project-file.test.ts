@@ -149,9 +149,9 @@ describe('a failed write is not silent', () => {
     expect(editorUi).toMatch(/if \(ok\) \{[^}]*saveFailed = false/);
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);
-    expect(editorUi).toContain('onclick={() => saveNow(true)}');
+    expect(editorUi).toContain('onclick={saveByHand}');
     expect(editorUi).toContain('onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}');
-    expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveNow\(true\)/);
+    expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveByHand\(\)/);
     expect(t('editor.save_failed_alert')).not.toContain('перезагруз');
   });
 });
@@ -175,8 +175,8 @@ describe('persistent storage', () => {
   });
 
   it('the Toonio rail has a save key, dimmed while there is nothing to save', () => {
-    expect(editorUi).toContain('onclick={() => saveNow(true)}');
-    expect(editorUi).toContain('disabled={!dirty}');
+    expect(editorUi).toContain('onclick={saveByHand}');
+    expect(editorUi).toContain('disabled={!dirty && !editor.canUndoTransform}');
     expect(editorUi).toContain('dirty');
   });
 });

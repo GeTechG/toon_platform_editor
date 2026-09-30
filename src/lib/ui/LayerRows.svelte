@@ -236,6 +236,11 @@
   function onGridKey(e: KeyboardEvent): void {
     const target = e.target as HTMLElement;
     const row = target.closest<HTMLElement>('[data-layer]');
+    // A layer in the hand is carried by its number: Alt+↑ or Delete now moved
+    // or took a row from under it, and the drag went on with someone else's.
+    if (drag) {
+      return;
+    }
     if (!row || target.dataset.col === undefined) {
       return;
     }
@@ -328,6 +333,9 @@
       currentLayer: layerIndex,
       fromLayer: layerIndex,
     };
+    // The studio's keys wait too, as they do for a stroke: Ctrl+Z or
+    // Shift+Delete mid-drag changed the stack the drag counts in.
+    editor.gestureHeld = true;
   }
 
   function onHandleMove(e: PointerEvent): void {
@@ -410,6 +418,7 @@
       announce(drag.currentLayer);
     }
     drag = null;
+    editor.gestureHeld = false;
   }
 
   /** `e` is absent for the Escape path, which cancels whatever drag is running. */
@@ -421,6 +430,7 @@
     // Back to where the gesture started — the document is restored, not patched.
     editor.moveLayerTo(drag.currentLayer, drag.fromLayer, true);
     drag = null;
+    editor.gestureHeld = false;
   }
 
   function onPanelKeydown(e: KeyboardEvent): void {
@@ -434,6 +444,11 @@
   // against a detached list.
   onDestroy(stopAutoscroll);
   onDestroy(cancelRowHold);
+  // Gone mid-drag (the layout stepped down): the keys must not wait for a
+  // release this list will never hear.
+  onDestroy(() => {
+    if (drag) editor.gestureHeld = false;
+  });
 </script>
 
 <!-- The gesture belongs to the window once it starts: reordering moves the

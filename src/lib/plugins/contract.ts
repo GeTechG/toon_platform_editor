@@ -32,6 +32,12 @@ export type { StrokeRules };
 export const PLUGIN_API = 1;
 
 /**
+ * The editor's own brush type, «Обычная»: no twins, the tool in hand. It is
+ * never a register record, so no plugin may bring a type under this id.
+ */
+export const NORMAL_BRUSH_TYPE = 'normal';
+
+/**
  * Text a manifest shows a person: one string, or one per locale.
  *
  * A plugin is a bundle of its own, compiled apart from the editor, so it
@@ -126,6 +132,10 @@ export interface PluginHost {
  * their own: a brush that uses neither simply says so (`smoothing`).
  */
 export interface PluginBrush {
+  /**
+   * Logical pixels, as the sliders hold it, when `rules()` reads the record;
+   * document units — the width the stroke is stored with — in `descriptor()`.
+   */
   readonly width: number;
   readonly color: string;
   readonly fill: string;

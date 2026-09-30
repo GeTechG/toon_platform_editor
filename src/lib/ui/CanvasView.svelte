@@ -115,6 +115,9 @@
   }
   function onRailDown(e: PointerEvent): void {
     if (!e.isPrimary || e.button !== 0) return;
+    // The palm by the pen, as on the sheet: a left hand drawing by the edge
+    // rests on the rail, and the size jumped under it.
+    if (e.pointerType === 'touch' && editor.penSeen && penBusy()) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     holdRail(e.pointerId);
     // A tap jumps there (Procreate), a drag follows.
@@ -135,6 +138,11 @@
     editor.brushSizeLogical = next;
     holdRail(-1);
   }
+  // The rail goes while the film plays, and its pointerup and keyup with it:
+  // a finger or a key on it then left the ring in the middle of the stage.
+  $effect(() => {
+    if (editor.playing) railHeld = null;
+  });
   /** A finger held still, waiting to become the pipette (hold-pick.ts). */
   let hold: { pointerId: number; x: number; y: number; timer: number } | null = null;
   /**
@@ -178,6 +186,8 @@
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
+  /** The cell the sweep began on, pinned like the line's. */
+  let megaAt: { layer: Layer | undefined; frame: number } = { layer: undefined, frame: 0 };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
   /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
@@ -242,6 +252,11 @@
    * the gesture would make an index point at a different layer.
    */
   let strokeLayer: Layer | undefined;
+  /**
+   * And the frame: a finger tapping another frame on the strip while the pen
+   * drew landed the line there, on a frame it was never drawn over.
+   */
+  let strokeFrame = 0;
 
   /**
    * The frame itself: the layers around the active one, the ghosts of the
@@ -693,7 +708,7 @@
       };
     }
     const session = pointer.session;
-    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer]) {
+    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || strokeFrame !== editor.activeFrame) {
       return null;
     }
     const erase = session.descriptor.kind === 'eraser';
@@ -1313,7 +1328,7 @@
     } else if (!eraserEnd && penFlippedFrom !== null) {
       // Only if the eraser is still in hand: a tool picked since wins.
       if (editor.tool === 'eraser') {
-        editor.selectTool(penFlippedFrom);
+        editor.restoreTool(penFlippedFrom);
       }
       penFlippedFrom = null;
     }
@@ -1475,6 +1490,7 @@
       }
       const [x, y] = toDocUnits(e);
       megaGesture = [Math.round(x), Math.round(y)];
+      megaAt = { layer: editor.doc.layers[editor.activeLayer], frame: editor.activeFrame };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
       scheduleDraw();
@@ -1485,6 +1501,7 @@
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
+    strokeFrame = editor.activeFrame;
     // The eraser end (5) is the eraser itself, not a second button's colour.
     strokeButton = e.button === 5 ? 0 : e.button;
     canvasEl.setPointerCapture(e.pointerId);
@@ -1668,7 +1685,7 @@
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
-      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2);
+      editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1, megaAt.frame);
       megaGesture = null;
       gesturePointerId = -1;
       composer.invalidate();
@@ -1716,9 +1733,11 @@
     // The pinned layer may have been removed mid-gesture; then it has no index
     // any more and the stroke has nowhere to land.
     const index = strokeLayer ? editor.doc.layers.indexOf(strokeLayer) : -1;
-    if (index < 0) return;
+    // ponytail: the frame is pinned by index — a frame put in front of it
+    // mid-line shifts it; pin the cell object if that ever bites.
+    if (index < 0 || !editor.doc.layers[index].frames[strokeFrame]) return;
     try {
-      editor.commitStroke(index, stroke);
+      editor.commitStroke(index, stroke, strokeFrame);
     } catch (err) {
       // The limits are the state's to refuse (commitStroke); what reaches here
       // is a fault. The input handler survives it, and the error log hears of
@@ -1937,7 +1956,7 @@
   {#if cursorVisible && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
     <span
       class="brush-cursor"
-      class:eraser={editor.tool === 'eraser'}
+      class:eraser={editor.tool === 'eraser' || editor.tool === 'mega-eraser'}
       class:cross={cursorParts.cross}
       class:ringless={!cursorParts.ring}
       class:square={toolSpec(editor.brushTool)?.stroke?.grid}

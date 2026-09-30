@@ -77,9 +77,12 @@ export function brushPreview(
     smooth: tuning.smooth,
     minDistance: tuning.minDistance,
   };
-  const rules = stroke.rules?.(hand)
-    ?? plugins.tool(brush)?.stroke?.rules?.(hand)
-    ?? toonopRules(hand);
+  // The rules read the record as the canvas hands it (`pluginBrush`): the
+  // width the sliders hold, not the document units the descriptor takes.
+  const record: PluginBrush = { ...hand, width: widthLogical };
+  const rules = stroke.rules?.(record)
+    ?? plugins.tool(brush)?.stroke?.rules?.(record)
+    ?? toonopRules(record);
   const descriptor = stroke.descriptor(hand);
   const pointer = new PointerStrokeController(() => ({
     descriptor,

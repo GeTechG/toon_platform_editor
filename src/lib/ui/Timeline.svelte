@@ -7,7 +7,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, fitThumb, rowHeight, rowHeightCss } from './thumb-size';
-  import { scrollToFrame, stripWindow } from './strip-window';
+  import { scrollToFrame, stripTail, stripWindow } from './strip-window';
   import {
     frameMenuKey,
     frameMenuTop,
@@ -39,6 +39,11 @@
     if (!from || !list || !strip) {
       return;
     }
+    // The names get the room the strip has under its last row (`stripTail`),
+    // or at its end they stopped short of their cells.
+    const last = [...strip.querySelectorAll<HTMLElement>('.cells')].pop();
+    const rowsEnd = last ? last.getBoundingClientRect().bottom - strip.getBoundingClientRect().top - strip.clientTop + strip.scrollTop : 0;
+    list.style.paddingBottom = `${stripTail(strip, rowsEnd)}px`;
     const to = from === list ? strip : from === strip ? list : null;
     if (to && Math.abs(to.scrollTop - from.scrollTop) > 1) {
       to.scrollTop = from.scrollTop;
@@ -423,7 +428,9 @@
    * replaces the document, and `frame_rate` was read through it.
    */
   const fps = $derived(editor.doc.frame_rate);
-  const waveBars = $derived(editor.audio.hasTrack ? editor.audio.bars(fps, barsPerFrame(thumbWidth)) : null);
+  // A track this browser could not read has no length and no levels: a flat
+  // lane would say «quiet here» about sound nobody has heard.
+  const waveBars = $derived(editor.audio.hasTrack && editor.audio.duration > 0 ? editor.audio.bars(fps, barsPerFrame(thumbWidth)) : null);
   /**
    * Every frame's width plus the row padding (a gap each end). The window
    * swaps cells for a wider spacer in steps, and a layout between them saw a
@@ -845,6 +852,11 @@
     /* Told from the numbers under it by its shadow alone. */
     .pick-bar.picking {
       outline: 1px solid CanvasText;
+    }
+    /* The splitter's line is a background, which this mode paints as Canvas. */
+    .col-resizer::after {
+      background: CanvasText;
+      forced-color-adjust: none;
     }
   }
   /* --- Picking bar ------------------------------------------------------- */

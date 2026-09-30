@@ -35,7 +35,7 @@ describe('the pointer lifecycle the canvas drives', () => {
     const up = handler('onPointerUp');
     expect(up).toContain('pointer.pointerUp(toPointerSample(e, true))');
     expect(up).toContain('commitPendingStroke()');
-    expect(handler('commitPendingStroke')).toContain('editor.commitStroke(index, stroke)');
+    expect(handler('commitPendingStroke')).toContain('editor.commitStroke(index, stroke, strokeFrame)');
   });
 
   it('cancel drains profile-specific committed geometry', () => {

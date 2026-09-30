@@ -41,7 +41,7 @@ describe('a held key', () => {
     // A held Alt+L downloaded a log file per auto-repeat.
     const handler = fn('onKeydown');
     // Ctrl+S applies a live transform first (owner-fourteenth-shell).
-    expect(handler).toMatch(/if \(!e\.repeat && editor\.leaveTransform\(\)\) \{\s*saveNow\(true\);/);
+    expect(handler).toMatch(/if \(!e\.repeat\) \{\s*saveByHand\(\);/);
     expect(handler).toMatch(/if \(!e\.repeat\) \{\s*downloadErrorLog\(\);/);
   });
 });
@@ -52,7 +52,7 @@ describe('Alt+E and Alt+S under an open sheet', () => {
     // the mega-eraser warning over both — three modals deep.
     const handler = fn('onKeydown');
     expect(handler).toMatch(/const modalOpen = document\.querySelector\('dialog:modal'\) !== null;/);
-    expect(handler).toMatch(/if \(!e\.repeat && !modalOpen\) \{\s*editor\.selectTool\('mega-eraser'\);/);
+    expect(handler).toMatch(/if \(!e\.repeat && !modalOpen && !editor\.gestureHeld\) \{\s*editor\.selectTool\('mega-eraser'\);/);
     expect(handler).toMatch(/if \(e\.repeat \|\| modalOpen\) \{\s*return;\s*\}\s*\/\/ Reference Alt\+S/);
   });
 });

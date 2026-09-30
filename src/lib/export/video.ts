@@ -215,6 +215,13 @@ export interface VideoExportOptions extends RasterizeOptions {
    * it instead of holding the whole video in memory, and resolves with `null`.
    */
   sink?: WritableStream<FileChunk>;
+  /**
+   * Deletes the picked file once the export has let go of it. The sheet's own
+   * delete runs the moment «Отменить» is pressed, while this still holds the
+   * file open — refused for the lock, it left an empty video under the name
+   * the person picked.
+   */
+  discard?: () => Promise<void>;
   /** The soundtrack, muxed into the video; omitted for a silent export. */
   audio?: Blob | null;
   onProgress?: (done: number, total: number, stage: ExportStage) => void;
@@ -246,7 +253,7 @@ export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Pro
 
 /** WebCodecs: frames are encoded as fast as the machine manages. */
 async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
-  const { plan, audio, onProgress, signal, trackSeconds, sink, ...raster } = options;
+  const { plan, audio, onProgress, signal, trackSeconds, sink, discard, ...raster } = options;
   const target = plan.target;
   if (!target) {
     throw new Error(t('export.no_codec'));
@@ -306,6 +313,7 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   } catch (err) {
     await output.cancel().catch(() => {});
     await file?.drop();
+    await discard?.().catch(() => {});
     if (file?.failed()) {
       console.warn('video file write failed:', file.failed());
       throw new FileWriteError();

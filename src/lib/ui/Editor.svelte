@@ -29,7 +29,7 @@
   import { fitThumb } from './thumb-size';
   import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, wrapIndex } from './frame-selection';
-  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText, withoutLetterKeys } from './key-owner';
   import { focusHeir } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -555,7 +555,8 @@
     // browser's or the OS's.
     if (e.altKey && (key === 'e' || key === 'E') && hasMegaEraser) {
       e.preventDefault();
-      if (!e.repeat && !modalOpen) {
+      // A held stroke or handle keeps its tool, as under the letter keys below.
+      if (!e.repeat && !modalOpen && !editor.gestureHeld) {
         editor.selectTool('mega-eraser');
       }
       return;
@@ -566,10 +567,8 @@
     // on purpose: a drawing must not go by accident (owner, twelfth audit).
     if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
       e.preventDefault();
-      // What the screen shows is what is saved: a live move is applied first,
-      // as a publish and an export do; under the lock it refuses with a hint.
-      if (!e.repeat && editor.leaveTransform()) {
-        saveNow(true);
+      if (!e.repeat) {
+        saveByHand();
       }
       return;
     }
@@ -973,8 +972,13 @@
     // The document is one value and every write replaces it, so this is the
     // whole subscription. It used to be a walk over every cell of every
     // layer — frames × layers reads on each stroke.
-    void editor.doc;
-    dirty = true;
+    // The document the last write took is not a change: a save by hand
+    // applies a live move and writes it before this effect runs, and the
+    // flag it cleared came back on — Save lit, the tab asking over a record
+    // already on disk.
+    if (editor.doc !== writtenDoc) {
+      dirty = true;
+    }
   });
 
   /** A write into working storage failed: stop trying and say so, once. */
@@ -1055,6 +1059,18 @@
     saveFailed = true;
     dirty = true;
     alert(t('editor.save_failed_alert'));
+  }
+
+  /**
+   * Ctrl+S and the «Сохранить» key: what the screen shows is what is saved, a
+   * live move applied first, as a publish and an export do; under the lock it
+   * refuses with a hint. The key skipped the move and wrote the drawing
+   * without it.
+   */
+  function saveByHand(): void {
+    if (editor.leaveTransform()) {
+      void saveNow(true);
+    }
   }
 
   /** Called by the transport when a preview stops: the deferred write lands now. */
@@ -1521,6 +1537,9 @@
     editor.lastSavedAt = null;
   }
 
+  /** A drafts bundle: ours, toonio.ru's, and either with Safari's `.json` on the end. */
+  const DRAFTS_FILE = /\.(toonops|toonio)(\.json)?$/i;
+
   /**
    * A file dropped anywhere on the window (`bundle:7341-7407`): a drawing
    * opens, a sound is attached, anything else is named rather than ignored.
@@ -1608,11 +1627,13 @@
       return;
     }
     // `.json` on the end is Safari's, which names a download by its type.
-    if (/\.(toonops|toonio)(\.json)?$/i.test(file.name)) {
+    if (DRAFTS_FILE.test(file.name)) {
       void openDraftsFile(file);
     } else if (/\.(toonop|toon|json)$/i.test(file.name)) {
       void openFile(file);
     } else if (isAudioFile(file)) {
+      // A refusal still up from the last drop is not about this file.
+      importError = '';
       void editor.audio.load(file, file.name.replace(/\.[^.]+$/, ''), editor.audio.author);
       // A small screen has no plate to drop open: its sound is behind a tab.
       if (compact && cut?.tabs.some((tab) => tab.id === 'sound')) {
@@ -1713,6 +1734,8 @@
         ['P', t('key.pipette')],
         ['Shift + Enter', t('key.pick_fill')],
         has('drag') && ['D / O', t('tool.hand.label')],
+        // The hand's own keys, before size and steps: the only keyboard zoom.
+        has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
         has('lasso') && ['Q / S', t('tool.transform.label')],
         has('lasso') && ['Q / W', t('key.transform_turn')],
         has('lasso') && ['Enter / Esc', t('key.transform_apply')],
@@ -1850,7 +1873,11 @@
   onchange={(e) => {
     const file = e.currentTarget.files?.[0];
     e.currentTarget.value = '';
-    if (file) {
+    // The same door as a drop: a drafts file picked here (Safari names it
+    // `.toonops.json`, iOS offers every file) came back «нет кадров».
+    if (file && DRAFTS_FILE.test(file.name)) {
+      void openDraftsFile(file);
+    } else if (file) {
       void openFile(file);
     }
   }}
@@ -1935,9 +1962,10 @@
          next turn of the autosave clock. Nothing to write, nothing to press. -->
     <button
       class="key icon"
-      onclick={() => saveNow(true)}
-      disabled={!dirty}
+      onclick={saveByHand}
+      disabled={!dirty && !editor.canUndoTransform}
       data-key="Ctrl+S"
+      aria-keyshortcuts="Control+S"
       title={t('editor.save_title')}
       aria-label={t('editor.save')}
     >
@@ -1949,7 +1977,7 @@
     </div>
   {:else if id === 'manual'}
     <!-- Reference «Мануал» (`E:61-63`): the keys, with no key of its own. -->
-    <button class="key icon" onclick={() => (manualOpen = true)} title={t('editor.manual')} aria-label={t('editor.manual')}>
+    <button class="key icon" aria-haspopup="dialog" onclick={() => (manualOpen = true)} title={t('editor.manual')} aria-label={t('editor.manual')}>
       <Icon name="help" />
     </button>
   {:else if id === 'fullscreen'}
@@ -1960,6 +1988,7 @@
         aria-pressed={isFullscreen}
         onclick={toggleFullscreen}
         data-key={hasFeather ? undefined : editor.keyHint('F') || undefined}
+        aria-keyshortcuts={hasFeather || !editor.settings.letterKeys ? undefined : 'F'}
         title={hasFeather ? t('editor.fullscreen') : editor.keyHint(t('editor.fullscreen_title'))}
         aria-label={t('editor.fullscreen')}
       >
@@ -1967,7 +1996,7 @@
       </button>
     {/if}
   {:else if id === 'drafts'}
-    <button class="key icon" onclick={openDrafts} title={t('editor.drafts_key')} aria-label={t('editor.drafts_key')}>
+    <button class="key icon" aria-haspopup="dialog" onclick={openDrafts} title={t('editor.drafts_key')} aria-label={t('editor.drafts_key')}>
       <Icon name="drafts" />
     </button>
   {:else if id === 'palette'}
@@ -2023,6 +2052,7 @@
       disabled={editor.playing}
       onclick={onAddFrame}
       data-key={editor.keyHint('A') || undefined}
+      aria-keyshortcuts={editor.settings.letterKeys ? 'A F7' : 'F7'}
       title={editor.keyHint(t('editor.add_frame_title'))}
       aria-label={t('editor.add_frame')}
     >
@@ -2048,6 +2078,7 @@
       aria-pressed={editor.onionSkin}
       onclick={() => editor.toggleOnionSkin()}
       data-key={editor.keyHint('K') || undefined}
+      aria-keyshortcuts={editor.settings.letterKeys ? 'K' : undefined}
       title={editor.keyHint(editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off'))}
       aria-label={t('editor.onion')}
     >
@@ -2101,6 +2132,7 @@
       class="key"
       onclick={() => exportButton?.start()}
       data-key={hasProjectFile ? undefined : 'Alt+S'}
+      aria-keyshortcuts={hasProjectFile ? undefined : 'Alt+S'}
       title={hasProjectFile ? t('export.sheet') : t('export.title')}
       aria-label={t('export.sheet')}
     >
@@ -2126,6 +2158,7 @@
       disabled={editor.playing}
       onclick={() => editor.copySelection()}
       data-key={editor.keyHint('C') || undefined}
+      aria-keyshortcuts={editor.settings.letterKeys ? 'C Control+C' : 'Control+C'}
       title={editor.keyHint(t('editor.copy_title'))}
       aria-label={t('editor.copy')}
     ><Icon name="copy" /></button>
@@ -2135,6 +2168,7 @@
       disabled={!editor.canPasteCells}
       onclick={() => editor.pasteSelection()}
       data-key={editor.keyHint('V') || undefined}
+      aria-keyshortcuts={editor.settings.letterKeys ? 'V Control+V' : 'Control+V'}
       title={editor.keyHint(t('editor.paste_title'))}
       aria-label={t('editor.paste')}
     ><Icon name="paste" /></button>
@@ -2183,8 +2217,9 @@
       class="key icon"
       disabled={!editor.canPasteCells}
       onclick={() => editor.mergeSelection()}
-      data-key={editor.keyHint('M') || undefined}
-      title={editor.keyHint(t('editor.merge_title'))}
+      data-key={quickPalette ? undefined : editor.keyHint('M') || undefined}
+      aria-keyshortcuts={quickPalette ? undefined : editor.settings.letterKeys ? 'M Control+M' : 'Control+M'}
+      title={quickPalette ? withoutLetterKeys(t('editor.merge_title')) : editor.keyHint(t('editor.merge_title'))}
       aria-label={t('editor.merge')}
     ><Icon name="merge" /></button>
   {/if}
@@ -2903,6 +2938,17 @@
     top: max(0.75rem, var(--zoom-foot));
     /* …and above a tool window standing on the tab window (audit 16). */
     bottom: calc(max(55%, var(--tab-window-h, 0px) + var(--tool-windows-h, 0px)) + 0.75rem);
+  }
+  /* The canvas's hint («the layer is hidden — press its eye») stood at the
+     stage's foot, under the tab window: the layers one, with that very eye,
+     most of all (audit 17). Standing, it goes above the windows there… */
+  .studio.compact .stage.low-window :global(.hint) {
+    bottom: calc(var(--tab-window-h, 0px) + var(--tool-windows-h, 0px) + 0.75rem);
+  }
+  /* …lying down, into the middle of what the side window leaves. */
+  .studio.compact .stage.side-window :global(.hint) {
+    left: calc((100% - min(55%, 24rem)) / 2);
+    max-width: calc(100% - min(55%, 24rem) - 24px);
   }
   /* A tool window (the pipette's source, the transform fields, a plugin's)
      sat in the stage's bottom row, under the tab window: out of reach, its
@@ -3804,6 +3850,10 @@
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    /* Where its 6 rem do not fit beside the box, the slider takes a line of
+       its own: at 200 % text on 320 px it gave way to 11 px under its 40 px
+       knob. */
+    flex-wrap: wrap;
   }
   .tab-window .fps-inline input[type='range'] {
     flex: 1 1 auto;

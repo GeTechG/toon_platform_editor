@@ -151,6 +151,7 @@ import {
   showPanelItem,
   samePanels,
   slotOf,
+  slotRow,
   type PanelLayout,
   type PanelSlot,
 } from './panels';
@@ -678,6 +679,7 @@ export class EditorState {
     // everyday brush. A type picked afterwards stays until the next preset.
     this.brushType = presetBrushType(id);
     this.paletteExpanded = this.ux.quickPalette === null;
+    this.keepColourRules();
     if (this.touched) {
       // A narrower profile range must not leave the document out of bounds.
       const fps = clampPlayerFps(this.doc.frame_rate, this.ux.fpsRange);
@@ -723,6 +725,16 @@ export class EditorState {
       this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
     }
+  }
+
+  /**
+   * A pen turned back over: the tip's tool comes back as it was, not picked
+   * afresh — a pick from the eraser made the eraser the pipette's way back
+   * and opened the screen eyedropper again.
+   */
+  restoreTool(tool: Tool): void {
+    const back = resolveToolSelection(tool, this.brushColor, this.ux, this.paletteExpanded, this.availableTools);
+    if (back) this.hold(back);
   }
 
   /** Leaves a help tool for whatever was drawing before it (reference `ResetHelpTool`). */
@@ -786,7 +798,7 @@ export class EditorState {
     const fill = this.fillColor;
     this.fillColor = outline;
     if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
-      this.tool = 'pencil';
+      this.hold('pencil');
     }
     // Through the pick's own rule: under Multator a white that became the
     // outline arms the eraser, as it does from the grid and the pipette.
@@ -819,7 +831,7 @@ export class EditorState {
     const hex = parseColourInput(color);
     if (!hex) return;
     if (this.tool === 'eraser' || this.tool === 'mega-eraser') {
-      this.tool = 'pencil';
+      this.hold('pencil');
     }
     if (target === 'fill') {
       this.fillColor = hex;
@@ -884,14 +896,18 @@ export class EditorState {
   setBrushColor(color: string): void {
     this.brushColor = color.toLowerCase();
     const tool = toolAfterColorChange(this.brushColor, this.ux);
-    if (tool) {
-      this.tool = tool;
+    // Through the switch every tool change takes: a plugin tool written over
+    // kept its window and never heard its deactivate, and a live transform
+    // went on under the pencil.
+    if (tool && tool !== this.tool && this.leaveTransform()) {
+      this.hold(tool);
     }
   }
 
   /** Put an item in a panel, at `index` or at its end. */
   movePanelItem(id: string, slot: PanelSlot, index?: number): void {
     this.panels = movePanelItem(this.panels, id, slot, index);
+    this.unfoldAt(id);
     this.ensureActiveLayerVisible();
     this.keepToolOnPanel();
     this.persistUiConfig();
@@ -1010,14 +1026,21 @@ export class EditorState {
   /** Back into the panel this layout keeps it in. */
   showPanelItem(id: string): void {
     this.panels = showPanelItem(this.panels, id, presetPanels(this.preset));
-    // A folded panel draws none of its items: the window would just vanish.
+    this.unfoldAt(id);
+    this.persistUiConfig();
+  }
+
+  /**
+   * A folded panel draws none of its items: a window put back, or an item
+   * dropped on a folded column while arranging, would just vanish.
+   */
+  private unfoldAt(id: string): void {
     const at = slotOf(this.panels, id);
     if (at?.slot === 'left' || at?.slot === 'right') {
       this.sides[at.slot].collapsed = false;
-    } else if (at) {
+    } else if (at && slotRow(at.slot)) {
       this.panelCollapsed = false;
     }
-    this.persistUiConfig();
   }
 
   /** Hidden ↔ back where this layout puts it. */
@@ -1932,18 +1955,19 @@ export class EditorState {
   }
 
   /**
-   * Appends a finished stroke to the active frame. The one place strokes
+   * Appends a finished stroke to the frame it was begun on (the active one
+   * unless the caller pinned it). The one place strokes
    * enter the document, so it is also the one place a fresh stroke retires
    * the redo stack.
    */
-  commitStroke(layerIndex: number, stroke: ResolvedStroke): void {
+  commitStroke(layerIndex: number, stroke: ResolvedStroke, frame = this.activeFrame): void {
     if (!this.mayEdit([layerIndex])) {
       return;
     }
     // A frame or a mult at the format's limit drops the stroke, says so on
     // the canvas and keeps the redo stack; anything else is the caller's.
     try {
-      this.#write((doc) => addStroke(doc, layerIndex, this.activeFrame, stroke));
+      this.#write((doc) => addStroke(doc, layerIndex, frame, stroke));
     } catch (err) {
       if (!this.refuseAtLimit(err)) {
         throw err;
@@ -1956,7 +1980,7 @@ export class EditorState {
     }
     // The reference drops the "copied" mark off a cell as soon as it is drawn
     // into (`bundle:8143-8151`); the rest of the block keeps it.
-    const drawn = this.doc.layers[layerIndex]?.frames[this.activeFrame];
+    const drawn = this.doc.layers[layerIndex]?.frames[frame];
     if (drawn && this.copiedMarks.has(drawn)) {
       this.copiedMarks = new Set([...this.copiedMarks].filter((cell) => cell !== drawn));
     }
@@ -1974,13 +1998,14 @@ export class EditorState {
   }
 
   /**
-   * Mega eraser: cuts the active cell's strokes with the gesture capsule.
+   * Mega eraser: cuts the strokes of the cell the sweep began on (the active
+   * one unless the caller pinned it) with the gesture capsule.
    * Records the previous contents for undo and does nothing when the gesture
    * missed everything.
    */
-  applyMegaEraser(gesture: readonly number[], radius: number): void {
-    const cell = this.activeCell;
-    if (this.playing || !cell || !this.mayEdit()) {
+  applyMegaEraser(gesture: readonly number[], radius: number, layer = this.activeLayer, frame = this.activeFrame): void {
+    const cell = this.doc.layers[layer]?.frames[frame];
+    if (this.playing || !cell || !this.mayEdit([layer])) {
       return;
     }
     const before = cell.strokes;
@@ -1991,13 +2016,13 @@ export class EditorState {
     if (!strokesChanged(before, after)) {
       return;
     }
-    const snapshots = this.snapshotCells({ frames: [this.activeFrame], layers: [this.activeLayer] });
+    const snapshots = this.snapshotCells({ frames: [frame], layers: [layer] });
     // Every cut adds its end points, and a frame at the format's point or
     // stroke limit refuses the result: the cell stays as it was, the way a
     // refused stroke is dropped, instead of throwing out of the release and
     // leaving the sweep to follow the hover.
     try {
-      this.#write((doc) => replaceStrokes(doc, this.activeLayer, this.activeFrame, after));
+      this.#write((doc) => replaceStrokes(doc, layer, frame, after));
     } catch (err) {
       console.warn('erase rejected:', err);
       this.refuseAtLimit(err);
@@ -2480,9 +2505,18 @@ export class EditorState {
   /** M hotkey / `enablePalette` in the reference: expand or collapse the full color picker. */
   togglePalette(): void {
     this.paletteExpanded = !this.paletteExpanded;
-    // Collapsing the palette takes the pipette away with it (reference hides btnPicker).
-    if (this.tool === 'pipette' && this.ux.pipetteNeedsPalette && !this.paletteExpanded) {
-      this.tool = 'pencil';
+    this.keepColourRules();
+  }
+
+  /**
+   * The preset's colour rules over what is in hand. Collapsing the palette
+   * takes the pipette away with it (reference hides btnPicker) — for the tool
+   * the colour asks for: a white outline under Multator is the eraser, never
+   * a white pencil. A preset switched in brings the same rules.
+   */
+  private keepColourRules(): void {
+    if (this.tool === 'pencil' || (this.tool === 'pipette' && this.ux.pipetteNeedsPalette && !this.paletteExpanded)) {
+      this.hold(toolAfterColorChange(this.brushColor, this.ux) ?? 'pencil');
     }
   }
 
@@ -2499,7 +2533,13 @@ export class EditorState {
   /** The arrangement as this tab last read or wrote it (owner, 16th audit). */
   private layoutSeen = '';
   private layoutKey(): string {
-    return JSON.stringify([$state.snapshot(this.panels), this.floatingPos()]);
+    // Which window is in front is only the last one pressed (samePanels): a
+    // raise is not a rearrangement, and must not overwrite another tab's.
+    const panels = $state.snapshot(this.panels);
+    return JSON.stringify([
+      { ...panels, float: [...panels.float].sort() },
+      Object.entries(this.floatingPos()).sort(),
+    ]);
   }
 
   private persistUiConfig(): void {

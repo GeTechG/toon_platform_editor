@@ -133,7 +133,8 @@ export function compactLayout(
 ): CompactLayout {
   const placed = allPlaced({ ...layout, hidden: [] });
   const fits = (id: string) => step === 'tablet' || id === 'history' || !panelItem(id)?.wide;
-  const own = layout.left.filter((id) => id !== 'publish' && fits(id));
+  // The transport is the mini transport's, wherever the desktop put it.
+  const own = layout.left.filter((id) => id !== 'publish' && id !== 'transport' && fits(id));
   const column = [...own, ...placed.filter((id) => !own.includes(id) && (toolOfItem(id) !== null || id === 'history'))];
   // A phone keeps the essentials; the rest goes to «⋯», and the tool in hand
   // shows in the column as well while it is in hand.

@@ -476,6 +476,14 @@ async function toBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
+/** The blob's base64, or undefined when the browser can no longer read it. */
+function readable(read: Promise<string>): Promise<string | undefined> {
+  return read.catch((err) => {
+    console.warn('draft blob unreadable, left out of the file:', err);
+    return undefined;
+  });
+}
+
 /** Plain base64 (ours) or a data URL (toonio.ru's `BLOB2B64`), whose own type wins. */
 function base64Bytes(text: string, type: string): { bytes: Uint8Array<ArrayBuffer>; type: string } {
   const url = /^data:([^;,]*)[^,]*,/.exec(text);
@@ -515,11 +523,16 @@ export async function exportDrafts(
       data: JSON.stringify(draft.doc),
       ...(draft.state ? { state: draft.state } : {}),
     };
-    if (draft.screenshot) {
-      save.screenshot = await toBase64(draft.screenshot);
+    // A stored blob that no longer reads (Safari loses them) cost the whole
+    // file: every drawing's backup failed for one card's picture or one
+    // track that is gone on this device anyway. The drawing goes without it.
+    const screenshot = draft.screenshot && (await readable(toBase64(draft.screenshot)));
+    if (screenshot) {
+      save.screenshot = screenshot;
     }
-    if (draft.audio) {
-      save.audio = await toBase64(draft.audio.blob);
+    const audio = draft.audio && (await readable(toBase64(draft.audio.blob)));
+    if (draft.audio && audio) {
+      save.audio = audio;
       save.audioType = draft.audio.blob.type;
       save.audioName = draft.audio.name;
       save.audioAuthor = draft.audio.author;

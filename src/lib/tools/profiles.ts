@@ -19,7 +19,9 @@ import { clampCoord } from '../model/geom';
 import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import { pressureAlong, pressureWidth } from '../render/pressure';
-import type { ResolvedStroke } from '../model/operations';
+import { copyTool, pressureOf, type ResolvedStroke } from '../model/operations';
+import { SCHEMA_VERSION } from '../format/constants';
+import { validateDocument } from '../format/validate';
 import { t } from '../i18n';
 
 export interface PointerSample {
@@ -315,7 +317,17 @@ export class PointerStrokeController {
     // its own way, but one that hands back whatever the pointer gave would cost
     // the whole stroke to a fraction — or, drawn out over the table at 10 %,
     // to a point past the format's range.
-    return fitFormat({ ...stroke, points: stroke.points.map((v) => clampCoord(Math.round(v))) });
+    const fitted = fitFormat({ ...stroke, points: stroke.points.map((v) => clampCoord(Math.round(v))) });
+    // The frame's own check is looser than the format's: a feather filled with
+    // «white», a stamp's shape past its cell, a pressure of 150 all went in, the
+    // draft was saved with them, and the draft never opened again. The stroke
+    // is held to the schema itself, as a document of its own.
+    const issue = formatIssue(fitted);
+    if (issue) {
+      console.error(t('brush.bad_stroke', { reason: issue }));
+      return null;
+    }
+    return fitted;
   }
 
   pointerCancel(event: PointerSample): boolean {
@@ -399,6 +411,27 @@ function fitFormat(stroke: ResolvedStroke): ResolvedStroke {
     cut.pressure = [...pressure.slice(0, keep), pressure[pressure.length - 1]];
   }
   return cut;
+}
+
+/** Why the format would refuse a document holding this one stroke, if it would. */
+function formatIssue(stroke: ResolvedStroke): string | undefined {
+  // The copy is what the frame keeps (extra fields fall away); a stamp with no
+  // shape threw in it, out of the canvas's pointerup.
+  let tool;
+  try {
+    tool = copyTool(stroke.tool);
+  } catch (error) {
+    return String(error);
+  }
+  const { issues } = validateDocument({
+    schema_version: SCHEMA_VERSION,
+    width: 1,
+    height: 1,
+    frame_rate: 1,
+    tools: [tool],
+    layers: [{ hidden: false, frames: [{ strokes: [{ points: stroke.points, tool_id: 0, ...pressureOf(stroke) }] }] }],
+  });
+  return issues[0] && `${issues[0].path}: ${issues[0].message}`;
 }
 
 function positive(value: number): number {

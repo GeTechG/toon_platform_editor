@@ -9,12 +9,12 @@
 
 import { plugins } from './index';
 import { t } from '../i18n';
-import type { PluginBrushType } from './contract';
+import { NORMAL_BRUSH_TYPE, type PluginBrushType } from './contract';
+
+export { NORMAL_BRUSH_TYPE };
 
 /** The id of a brush type; `normal` is the editor's own. */
 export type BrushType = string;
-
-export const NORMAL_BRUSH_TYPE = 'normal';
 
 /**
  * The twin a type names for this tool, if the register holds it. A twin whose

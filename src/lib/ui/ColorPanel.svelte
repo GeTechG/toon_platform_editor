@@ -45,20 +45,23 @@
         class:active={editor.brushColor === color && !erasing}
         aria-pressed={editor.brushColor === color && !erasing}
         style:--swatch={color}
-        onclick={() => editor.setBrushColor(color)}
+        onclick={() => editor.pickColor(color, 'outline', true)}
         title={editor.keyHint(t('color.quick_title', { color }))}
         aria-label={t('color.swatch', { color })}
       ></button>
     {/each}
   </div>
 {:else if editor.paletteExpanded}
-  <!-- M hides the palette only where there is a quick pair; elsewhere M merges. -->
+  <!-- M hides the palette only where there is a quick pair; elsewhere M merges.
+       The system window paints live and, closed on a colour, keeps it in the
+       grid as the colour window does (the «добавлять выбранный цвет» setting). -->
   <label class="color" title={strokeTitle} style:--swatch={editor.brushColor}>
     <input
       type="color"
       aria-label={strokeTitle}
       value={editor.brushColor}
       oninput={(e) => editor.pickColor(e.currentTarget.value, 'outline', true)}
+      onchange={(e) => editor.pickColor(e.currentTarget.value, 'outline')}
     />
   </label>
   <!-- Every preset draws with this one under the right button (CanvasView)
@@ -70,6 +73,7 @@
       aria-label={t('color.fill_title')}
       value={editor.fillColor}
       oninput={(e) => editor.pickColor(e.currentTarget.value, 'fill', true)}
+      onchange={(e) => editor.pickColor(e.currentTarget.value, 'fill')}
     />
   </label>
   <button

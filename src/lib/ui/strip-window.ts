@@ -83,3 +83,21 @@ export function scrollToFrame(
   }
   return null;
 }
+
+/**
+ * How much further the strip scrolls down than its rows reach: the wave's
+ * lane under the last row, and the strip's own scrollbar, which the names
+ * beside it do not have. The names scroll in step with the strip, and with
+ * less to scroll they stopped short: at the strip's end the bottom names sat
+ * off their cells by this much. `rowsEnd` is where the last row ends, in the
+ * strip's content.
+ */
+export function stripTail(
+  box: { scrollHeight: number; clientHeight: number; offsetHeight: number },
+  rowsEnd: number,
+): number {
+  if (box.scrollHeight <= box.clientHeight) {
+    return 0;
+  }
+  return Math.max(0, box.scrollHeight - rowsEnd) + box.offsetHeight - box.clientHeight;
+}

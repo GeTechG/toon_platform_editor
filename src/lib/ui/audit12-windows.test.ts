@@ -50,9 +50,11 @@ describe('a window closed goes back where the preset keeps it', () => {
 // the page.
 describe('a window closed into a folded panel unfolds it', () => {
   test('the side or the bar it lands in opens', () => {
-    const show = method('showPanelItem');
-    expect(show).toContain('this.sides[at.slot].collapsed = false');
-    expect(show).toContain('this.panelCollapsed = false');
+    // The unfolding is shared with a drop while arranging (audit17-windows).
+    expect(method('showPanelItem')).toContain('this.unfoldAt(id)');
+    const unfold = method('private unfoldAt');
+    expect(unfold).toContain('this.sides[at.slot].collapsed = false');
+    expect(unfold).toContain('this.panelCollapsed = false');
   });
 });
 

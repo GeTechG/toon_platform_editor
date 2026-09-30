@@ -19,7 +19,17 @@
    * register holds for the tool in hand. What each is called and what it
    * draws comes from its own record, never from a table here.
    */
-  const types = $derived(brushTypesFor(editor.tool));
+  // The register is no state of its own: a plugin that came, went or broke
+  // is heard through `pluginsVersion`, or the list kept the old types until
+  // the tool was changed.
+  const types = $derived.by(() => {
+    void editor.pluginsVersion;
+    return brushTypesFor(editor.tool);
+  });
+  const offered = $derived.by(() => {
+    void editor.pluginsVersion;
+    return hasBrushTypes(editor.tool);
+  });
 
   /**
    * The list is a popover: the box is a narrow column with its own scroll, so
@@ -65,7 +75,13 @@
 
   function close(): void {
     if (popoverWorks) list?.hidePopover();
-    else if (picking) opened(false);
+    else if (picking) {
+      // A popover hands the focus back to its button by itself; the hidden
+      // list by hand left it nowhere, and Tab started over from the top.
+      const inside = list?.contains(document.activeElement);
+      opened(false);
+      if (inside) trigger?.focus();
+    }
   }
 
   /**
@@ -122,6 +138,7 @@
   // pointing up, and without `popover` the list came back open by itself.
   $effect(() => {
     if (!hasBrushTypes(editor.tool)) picking = false;
+    void editor.pluginsVersion;
   });
 
   // The smoothing headings leave with a brush they do not reach, their «i»
@@ -241,7 +258,7 @@
 <div class="box brush-box" role="group" aria-label={t('brush.box')}>
   <!-- Only where there is something to switch to: the feather and the pixel
        have no other form, so the list would offer a choice of one. -->
-  {#if hasBrushTypes(editor.tool)}
+  {#if offered}
     <h2 class="type-title">{t('brush.type')}</h2>
     <!-- A list that drops down, not a row of keys: three names never fit the
          box's width, and each one is worth a sample of what it draws. -->
@@ -253,7 +270,7 @@
       aria-label={t('brush.type_of', { label: current.label })}
       onclick={() => !popoverWorks && opened(!picking)}
     >
-      {@render sample(brushOfType('pencil', current.id))}
+      {@render sample(brushOfType(editor.tool, current.id))}
       <span class="name">{current.label}</span>
       <span class="caret"><Icon name={picking ? 'chevron-up' : 'chevron-down'} /></span>
     </button>
@@ -293,7 +310,7 @@
         >
           <span class="name">{option.label}</span>
           <span class="hint">{option.hint}</span>
-          {@render sample(brushOfType('pencil', option.id))}
+          {@render sample(brushOfType(editor.tool, option.id))}
         </button>
       {/each}
     </div>

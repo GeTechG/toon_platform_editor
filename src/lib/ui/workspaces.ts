@@ -80,6 +80,9 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   }
   // A repeated id broke the bar's keyed list; a missing or taken one gets the next free.
   const taken = new Set<number>();
+  // One name is one arrangement: a repeat in a file was counted as loaded
+  // and asked about twice, though the second replaced the first.
+  const names = new Set<string>();
   const stored = data
     .map((e) => (e as { id?: unknown } | null)?.id)
     .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
@@ -87,9 +90,10 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   return data.flatMap((entry): Workspace[] => {
     const row = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<string, unknown>;
     const name = typeof row.name === 'string' ? workspaceName(row.name) : '';
-    if (name === '') {
+    if (name === '' || names.has(name)) {
       return [];
     }
+    names.add(name);
     const id = typeof row.id === 'number' && Number.isFinite(row.id) && !taken.has(row.id) ? row.id : fresh();
     taken.add(id);
     return [{
