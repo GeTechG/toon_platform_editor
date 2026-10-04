@@ -146,7 +146,7 @@ describe('what is on the screen is what leaves', () => {
 
   it('and leaving the studio keeps the move in the draft', () => {
     const destroy = editorUi.match(/onDestroy\(\(\) => \{[^]*?\n  \}\);/)?.[0] ?? '';
-    expect(destroy).toMatch(/editor\.leaveTransform\(\);[^]*flushOnLeave\(\)/);
+    expect(destroy).toMatch(/editor\.leaveTransform\(\);[^]*flushOnHide\(\)/); // через flushOnHide (audit20-shell)
   });
 });
 

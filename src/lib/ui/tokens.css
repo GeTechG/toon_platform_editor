@@ -65,7 +65,7 @@
      key under a ghost button — where WCAG 2.2 AA 1.4.11 asks 3:1 against both
      the control's own fill and the surface under it. The hairline gives 1.36:1
      there, so a white field on a white plate has no visible edge at all. 48%
-     ink measures 3.45:1 on canvas and 3.32:1 on paper: one ramp, one hue, two
+     ink measures 3.42:1 on canvas and 3.31:1 on paper: one ramp, one hue, two
      honest jobs. */
   --hairline: #0b0c1024; /* 14% ink — dividers, structure without shadow */
   --edge: #0b0c107a; /* 48% ink — the boundary of an interactive control */

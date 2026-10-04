@@ -40,7 +40,8 @@ describe('нажатие на заголовок окна — ещё не пер
 // ручка была полоской 105×4 px: ни мышью, ни пальцем не взять обратно.
 describe('пустой широкий предмет в колонке можно взять', () => {
   test('ручка широкого предмета не ниже клавиши', () => {
-    expect(shell).toMatch(/\.editor\.arranging \.arr\.wide \{[^}]*min-height: var\(--key-h\);/);
+    // Распоркой, а не min-height: тот отменял автоматический минимум (audit20-system).
+    expect(shell).toMatch(/\.editor\.arranging \.arr\.wide::before \{[^}]*height: var\(--key-h\);/);
   });
 });
 

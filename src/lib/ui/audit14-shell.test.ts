@@ -156,7 +156,7 @@ describe('уход из студии с живой трансформацией'
   });
 
   it('уход страницы (pagehide — Safari на iOS не шлёт beforeunload) применяет сдвиг и пишет', () => {
-    expect(editorUi).toMatch(/onpagehide=\{[^}]*editor\.leaveTransform\(\);\s*flushOnLeave\(\)/);
+    expect(editorUi).toMatch(/onpagehide=\{[^}]*editor\.leaveTransform\(\);\s*flushOnHide\(\)/); // через flushOnHide (audit20-shell)
   });
 });
 

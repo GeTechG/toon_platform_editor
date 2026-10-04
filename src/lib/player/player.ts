@@ -91,6 +91,15 @@ export class LoopPlayer {
     this.#onFrame(this.#current, reach >= this.#loopLength);
   }
 
+  /**
+   * The clock starts over at the next tick: after a hidden tab, where no tick
+   * came, the frames go on from the one they stood on instead of leaping the
+   * whole absence — a tied track put on that frame then lagged until the lap.
+   */
+  rest(): void {
+    this.#last = null;
+  }
+
   /** Stops playback; returns the frame playback started from. */
   stop(): number {
     return this.#startFrame;

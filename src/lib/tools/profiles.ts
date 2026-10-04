@@ -216,8 +216,17 @@ export function previewStrokePressure(
   session: StrokeSession,
   points: readonly number[],
 ): number[] | undefined {
-  if (!feelsPressure(session) || points.length < 2 || !landsPressured(session)) return undefined;
+  if (points.length < 2 || !drawsPressure(session)) return undefined;
   return pressureAlong(points, session.pressureSamples);
+}
+
+/**
+ * Whether the line under the hand changes width along it: the pen measured
+ * its pressure and the brush lands with it. A brush that lands without (the
+ * old pen's contour) draws under a pen the line it draws under a mouse.
+ */
+export function drawsPressure(session: StrokeSession): boolean {
+  return feelsPressure(session) && landsPressured(session);
 }
 
 /** Only a line with a width takes the pen's pressure — a stamp's marks and a contour's baked ring do not. */

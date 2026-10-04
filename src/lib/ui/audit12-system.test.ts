@@ -16,7 +16,7 @@ describe('leaving the studio keeps the strokes', () => {
   it('a site link that unmounts the studio writes what the clock has not yet', () => {
     const destroy = editorUi.match(/onDestroy\(\(\) => \{[^]*?\n  \}\);/)?.[0] ?? '';
     // Before the track is cleared: the write takes the track with it.
-    expect(destroy).toMatch(/flushOnLeave\(\);[^]*editor\.audio\.clear\(\)/);
+    expect(destroy).toMatch(/flushOnHide\(\);[^]*editor\.audio\.clear\(\)/); // through flushOnHide (audit20-shell)
   });
 
   it('a phone that sends the tab away writes it too — beforeunload never comes there', () => {

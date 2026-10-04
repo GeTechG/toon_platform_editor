@@ -44,6 +44,8 @@
   let cancelling = $state<AbortController | null>(null);
   let plan = $state<VideoPlan | null>(null);
   let planned = $state(false);
+  /** The save picker is up or on its way: `busy` is not set until it answers. */
+  let picking = false;
 
   const singleFrame = $derived(frameCount(editor.doc) === 1);
 
@@ -140,7 +142,10 @@
   }
 
   async function download(): Promise<void> {
-    if (busy) {
+    // A second press while the picker comes up (a double click, a held Enter):
+    // the browser refuses a second picker, which read as «no picker here» —
+    // and that press built the video in memory beside the first one.
+    if (busy || picking) {
       return;
     }
     // Where the browser can write a file itself, a WebCodecs video goes
@@ -152,10 +157,13 @@
     const videoPlan = format === 'video' ? plan : null;
     let file: Awaited<ReturnType<typeof pickSaveFile>> = null;
     if (videoPlan && !videoPlan.realtime) {
+      picking = true;
       try {
         file = await pickSaveFile(`toonop.${videoPlan.extension}`, `video/${videoPlan.extension}`);
       } catch {
         return;
+      } finally {
+        picking = false;
       }
     }
     // TODO(toonio-file-parity): force a draft save before the export, as the
@@ -392,7 +400,7 @@
         {/if}
       {/if}
 
-      <button bind:this={downloadEl} class="key wide primary download" disabled={busy !== '' || (format === 'video' && (!plan || !planned))} onclick={download}>
+      <button bind:this={downloadEl} class="key wide primary download" disabled={busy !== '' || editor.audio.loading || (format === 'video' && (!plan || !planned))} onclick={download}>
         {t('export.download')}
       </button>
 

@@ -178,6 +178,8 @@
     margin: 0;
     cursor: move;
     font-weight: 600;
+    /* One long word: on the same phone it was cut at «Трансформ». */
+    overflow-wrap: anywhere;
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
@@ -191,6 +193,8 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     font-size: 0.8125rem;
+    /* For the fields, which stack where the window is narrow. */
+    container: transform / inline-size;
   }
   /* A row of the window's own height, like its keys: it is pressed too. */
   summary {
@@ -222,6 +226,17 @@
   .fields label {
     white-space: nowrap;
   }
+  /* A phone at 200 % text gives the window 168 px and «Масштаб X, %» alone
+     is 174: the field beside it was a 14 px sliver past the window's edge.
+     There the label goes over its field, and may wrap. */
+  @container transform (width < 10rem) {
+    .fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .fields label {
+      white-space: normal;
+    }
+  }
   input[type='number'] {
     width: 100%;
     min-width: 0;
@@ -245,6 +260,22 @@
        DESIGN §5 asks 44 of everything outside the montage grid, and a floating
        transform window is outside it. A standard is a floor under a floor. */
     min-height: var(--key-h, 2.75rem);
+  }
+  /* Four 88 px keys at 200 % text do not fit a phone's 168 px window:
+     unwrapped, the window scrolled sideways. (The desktop's 13rem squeezes
+     its four into one row, as before.) */
+  @container transform (width < 10rem) {
+    .row {
+      flex-wrap: wrap;
+    }
+    /* «Применить» is 99 px there and the key's own padding left it 85. */
+    .row .key {
+      padding-inline: 0.3rem;
+    }
+    /* «трансформации» in the label is wider than the line beside the box. */
+    .check {
+      overflow-wrap: anywhere;
+    }
   }
   .zoom {
     display: none;

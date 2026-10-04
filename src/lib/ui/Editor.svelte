@@ -319,14 +319,18 @@
   let step = $state<LayoutStep>('full');
   /** One rem now: the columns are in rem, twice as wide at 200 % text. */
   const rem = $derived(16 * textScale);
-  /** Whether the column has an item the profile draws: one of undrawn ones stood as an empty strip. */
-  function sideDraws(id: SideId): boolean {
+  /** Whether the profile draws any of these items where they lie. */
+  function draws(ids: readonly string[]): boolean {
     void editor.pluginsVersion;
-    return columnDraws(editor.panels[id], {
+    return columnDraws(ids, {
       pipette: editor.pipetteOffered,
       publish: !!onPublish,
       fullscreen: document.fullscreenEnabled,
     });
+  }
+  /** Whether the column has an item the profile draws: one of undrawn ones stood as an empty strip. */
+  function sideDraws(id: SideId): boolean {
+    return draws(editor.panels[id]);
   }
   /** A column as the full layout would draw it: its dragged width, its rem default, or its strip. */
   function columnPx(id: SideId, remWidth: number): number {
@@ -360,6 +364,8 @@
   // is for the columns it no longer draws.
   $effect(() => {
     if (compact && editor.arranging) editor.arranging = false;
+    // Its key is a handle there, and the arranger's plate lay over its ×.
+    if (editor.arranging) audioOpen = false;
   });
 
   let openTab = $state<TabId | null>(null);
@@ -1201,7 +1207,10 @@
     storedBlob = blob;
     storedCredits = `${name}\u0000${author}\u0000${sync}`;
     void setDraftAudio(
-      draftId,
+      // Not heard: a draft opened (its id) while its own track was still
+      // being read re-ran this with the last draft's track in hand, and that
+      // one went into the opened record.
+      untrack(() => draftId),
       blob ? { blob, name, author, sync, bytes: blob.size } : null,
     ).then((ok) => {
       if (!ok && blob) {
@@ -1312,9 +1321,10 @@
   onDestroy(() => {
     destroyed = true;
     // A selection moved and not yet applied is on the screen, not in the
-    // document: leaving applies it, as a frame change does.
+    // document: leaving applies it, as a frame change does. Under the lock
+    // it stays live, and the draft takes it as a hidden tab's does.
     editor.leaveTransform();
-    flushOnLeave();
+    flushOnHide();
     editor.audio.clear();
     for (const url of Object.values(thumbUrls)) {
       URL.revokeObjectURL(url);
@@ -1538,6 +1548,10 @@
         return;
       }
       if (!(await saveNow(true))) {
+        return;
+      }
+      // That write is what learnt the browser keeps nothing: the question asked was about a drawing replaced, not lost.
+      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !confirm(t('editor.file_open_lost_confirm', { name: file.name }))) {
         return;
       }
     }
@@ -1923,9 +1937,10 @@
   onpagehide={() => {
     // The page is going (Safari on iOS sends no `beforeunload` at all): a
     // selection moved and not yet applied is applied, as leaving the studio
-    // does, and written with the rest.
+    // does, and written with the rest. The lock keeps it live: written
+    // without it, the record a hidden tab had made with the move lost it.
     editor.leaveTransform();
-    flushOnLeave();
+    flushOnHide();
   }}
   onbeforeunload={(e) => {
     // Unsaved strokes on a sheet that has something on it: the write starts
@@ -2269,6 +2284,7 @@
            not a zone fenced off in the markup. -->
       <button
         class="key primary publish"
+        disabled={editor.audio.loading}
         onclick={() => {
           // A live transform is on the screen and not yet in the document: the
           // mult went out with the selection where it was lifted. The lock
@@ -2498,6 +2514,8 @@
   <div
     class="panel"
     class:collapsed={panelFolded}
+    data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, editor.panels.rows.length - 1)}` : undefined}
+    data-folded={panelFolded && editor.arranging ? '' : undefined}
     class:dragging={resize?.side === 'panel'}
     style={!panelFolded && !editor.arranging ? `height: ${panelHeight}px` : undefined}
   >
@@ -2566,9 +2584,13 @@
        the focus and the pointer in it. -->
   {#if !compact}
     {#each [...editor.panels.float].sort() as id (id)}
-      <FloatWindow {editor} {id}>
-        {@render panelItem(id)}
-      </FloatWindow>
+      <!-- As a column: a window whose item the profile does not draw (the
+           pipette's key once the palette is folded) stood as an empty frame. -->
+      {#if draws([id])}
+        <FloatWindow {editor} {id}>
+          {@render panelItem(id)}
+        </FloatWindow>
+      {/if}
     {/each}
   {/if}
 
@@ -3272,7 +3294,16 @@
        sliver no hand could take — across in a row, and down in a column,
        where it is stretched to the column's width. */
     min-width: var(--key-h);
-    min-height: var(--key-h);
+  }
+  /* The floor down is a strut, not a `min-height`: a written one replaces the
+     automatic minimum, and a column's grid then shrank the brush handle's row
+     to what the column had left, with the box hanging out over the palette. */
+  .editor.arranging .arr.wide::before {
+    content: '';
+    flex: none;
+    height: var(--key-h);
+    /* Takes back the handle's gap, so the contents stay on the frame. */
+    margin-inline-end: -0.3rem;
   }
   .editor.arranging .arr-body {
     display: contents;
@@ -3299,6 +3330,10 @@
   /* The bar sizes to its contents while things are being moved into it. */
   .editor.arranging .panel {
     max-height: 60dvh;
+  }
+  /* Folded, it still takes a drop (owner, 19th audit): a strip to aim at. */
+  .editor.arranging .panel.collapsed {
+    height: var(--key-h);
   }
   .editor.arranging .slot-empty {
     padding: 0 0.4rem;
@@ -3957,6 +3992,13 @@
   .tab-window > .timeline {
     height: auto;
   }
+  /* «сохранено локально 12:34 · 144 КБ» on one line is 458 px at 200 % text:
+     the «⋯» window scrolled sideways once the first draft was written.
+     (`.studio` outweighs the public `.saved` below, which is `nowrap`.) */
+  .studio .tab-window > :global(.saved) {
+    min-width: 0;
+    white-space: normal;
+  }
   /* The frame rate's slider and box are 9 rem: 381 px in a 270 px window at
      200 % text. Here it shares a line where it fits, takes one of its own
      where it does not, and there the slider gives way. */
@@ -4345,6 +4387,9 @@
   }
   .draft-thumb {
     display: flex;
+    /* The still is what a draft is known by: at 200 % text on a phone the
+       words beside it squeezed it to 16 px. */
+    flex: none;
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     background: var(--canvas);
@@ -4354,6 +4399,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .draft-date {
     font-size: 0.95rem;

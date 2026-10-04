@@ -82,7 +82,7 @@ describe('the three refusals share the canvas live line', () => {
 
   it('the canvas says the hint in its polite live region', () => {
     expect(canvas).toMatch(/<p class="hint"[^>]*role="status"[^>]*aria-live="polite"/);
-    expect(canvas).toContain('showHint(editor.canvasHint.text)');
+    expect(canvas).toContain('showHint(said.text)');
   });
 });
 

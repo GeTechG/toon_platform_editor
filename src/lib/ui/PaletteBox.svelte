@@ -7,6 +7,7 @@
     gridScrollDelta,
     gridStep,
     mergePalettes,
+    overLimit,
     pressesCell,
     type SavedPalette,
   } from './color-palette';
@@ -100,7 +101,11 @@
   }
 
   function usePalette(p: SavedPalette): void {
-    if (!confirm(t('palette.replace_confirm'))) return;
+    // Over the grid's limit only the last ones stay: said in the question
+    // (owner, 19th audit), as «Объединить» already does.
+    const limit = editor.settings.paletteLimit;
+    const skipped = overLimit(p.colours, limit);
+    if (!confirm(skipped > 0 ? t('palette.replace_over_confirm', { skipped, limit }) : t('palette.replace_confirm'))) return;
     editor.replacePalette(p.colours);
     preview = null;
     section = 'colors';
@@ -598,9 +603,8 @@
   /* «Add to palette», bottom-left, only while the color is not in the grid.
      Drawn at the glyph's size and pressed at a finger's: a 44px circle painted
      here would cover a third of the colour block. The two press boxes below
-     take their room from the swatch faces, which are 85x70 each and least
-     useful exactly where these sit — and they are 72px apart, so neither
-     reaches the other. */
+     take their room from the swatch faces, which are least useful exactly
+     where these sit — «+» in the two far corners, swap on the seam. */
   .add {
     position: absolute;
     left: 4px;
@@ -630,6 +634,29 @@
     width: var(--tap, 44px);
     height: var(--tap, 44px);
     transform: translate(-50%, -50%);
+  }
+  /* «+» is pressed in the corner of its swatch, not round its glyph: centred,
+     the box hung 6 px over the grid's first row and past the box's edge. */
+  .add::after {
+    top: auto;
+    left: -4px;
+    bottom: -4px;
+    transform: none;
+  }
+  /* The fill swatch mirrors the outline's — marks at the seam, «+» at the far
+     corners. 4 px from the seam, the fill's «+» lay under the swap key's press
+     box: its centre swapped the two colours instead of keeping the fill. */
+  .big + .big .add {
+    left: auto;
+    right: 4px;
+  }
+  .big + .big .add::after {
+    left: auto;
+    right: -4px;
+  }
+  .big + .big .mark {
+    right: auto;
+    left: 4px;
   }
   .swap {
     position: absolute;

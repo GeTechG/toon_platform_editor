@@ -358,7 +358,9 @@
   }
   .brush-box {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    /* The number keeps a finger's width: on a phone 320 wide at 200 % text a
+       third of the box was 42px. The track gives way instead. */
+    grid-template-columns: minmax(0, 2fr) minmax(44px, 1fr);
     gap: 10px;
     align-items: center;
     padding: 10px;

@@ -85,7 +85,7 @@ import {
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
-import { restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
+import { recell, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
@@ -1166,7 +1166,9 @@ export class EditorState {
   selectLayer(index: number): void {
     if (index >= 0 && index < this.doc.layers.length && this.leaveTransform()) {
       if (!keepsSelection(this.selection, { frame: this.activeFrame, layer: index })) {
-        this.selection = { frames: [this.activeFrame], layers: [index] };
+        // The block being played stays: collapsed by a press on a row, the
+        // next preview ran the whole mult instead of the range picked.
+        this.selection = { frames: this.playing ? this.selection.frames : [this.activeFrame], layers: [index] };
       }
       this.activeLayer = index;
     }
@@ -1553,7 +1555,8 @@ export class EditorState {
    * left would still be what V pastes into, so every frame and layer operation ends here.
    */
   collapseSelection(): void {
-    this.selection = { frames: [this.activeFrame], layers: [this.activeLayer] };
+    // A layer moved while the preview runs keeps the block being played.
+    this.selection = { frames: this.playing ? this.selection.frames : [this.activeFrame], layers: [this.activeLayer] };
   }
 
   addFrameAfterActive(): void {
@@ -1926,8 +1929,22 @@ export class EditorState {
             older.cell = restored;
           }
         }
+        // And so does a delete or a layer move: unmatched, a frame deleted
+        // before a sweep never came back once the sweep was undone.
+        for (const step of this.edits) {
+          if (Array.isArray(step)) {
+            continue;
+          }
+          recell(step.snap, snapshot.cell, restored, restored.strokes.length - snapshot.after);
+          recell(step.snap, snapshot.was, restored);
+          if (step.redo) {
+            recell(step.redo.snap, snapshot.cell, restored, restored.strokes.length - snapshot.after);
+            recell(step.redo.snap, snapshot.was, restored);
+          }
+        }
       }
       this.undone = [];
+      this.redoStructure = null;
       this.touched = true;
       return;
     }

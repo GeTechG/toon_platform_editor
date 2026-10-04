@@ -69,18 +69,44 @@ export function restorableBlock<S extends EditedCell>(
   edits: readonly (readonly S[] | object)[],
   active: Frame | undefined,
 ): S[] | undefined {
+  // Cells the steps passed over left: a transform or a mirror rewrites a cell
+  // in place — same object, same count — so a paste over two frames looked
+  // untouched under a transform made since on the other one, and went back
+  // past it.
+  const newer = new Set<Frame>();
   for (let i = edits.length - 1; i >= 0; i--) {
     const step = edits[i];
-    if (!Array.isArray(step) || !step.some((s: S) => s.cell === active)) {
+    if (!Array.isArray(step)) {
+      continue;
+    }
+    if (!step.some((s: S) => s.cell === active)) {
+      step.forEach((s: S) => newer.add(s.cell));
       continue;
     }
     const intact = step.every((s: S) => {
       const cell = doc.layers[s.layer]?.frames[s.frame];
-      return cell === s.cell && cell.strokes.length === s.after;
+      return cell === s.cell && cell.strokes.length === s.after && !newer.has(cell);
     });
     return intact ? step : undefined;
   }
   return undefined;
+}
+
+/**
+ * A block edit undone puts a new cell object where `from` stood. The deletes
+ * in the history know their cells by the object: left pointing at the old
+ * one, a frame deleted before a sweep of the eraser never came back once the
+ * sweep was undone. `grew` is how many strokes the undo gave the cell back.
+ */
+export function recell(snap: StructureSnapshot, from: Frame, to: Frame, grew = 0): void {
+  const swap = (rows: Frame[][], counts?: number[][]) => rows.forEach((row, l) => row.forEach((cell, f) => {
+    if (cell === from) {
+      row[f] = to;
+      if (counts) counts[l][f] += grew;
+    }
+  }));
+  swap(snap.frames);
+  if (snap.after) swap(snap.after.frames, snap.after.counts);
 }
 
 export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): void {

@@ -213,6 +213,11 @@
     if (slot === 'float') {
       return { slot, index: 0, line: null, panel };
     }
+    // A folded bar draws no rows to aim between: the item goes to the end of
+    // its last one, and the bar unfolds (owner, 19th audit).
+    if (panelEl.dataset.folded !== undefined) {
+      return { slot, index: Number.MAX_SAFE_INTEGER, line: null, panel };
+    }
     // Past the top or bottom edge of a row: a row of its own, made on the
     // drop. No standing gaps between the rows — they would puff the panel up
     // every time anything is moved.

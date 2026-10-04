@@ -170,6 +170,8 @@
     if (document.hidden) {
       editor.audio.stop();
     } else {
+      // The frames wait too: the first tick back would leap the absence.
+      player.rest();
       editor.audio.resume(editor.playbackFrame, editor.doc.frame_rate);
     }
   }

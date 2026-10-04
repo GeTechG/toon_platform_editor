@@ -53,7 +53,7 @@
     swapStrokeColours,
     previewStrokeSession,
     previewStrokePressure,
-    feelsPressure,
+    drawsPressure,
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
@@ -750,8 +750,9 @@
     const erase = session.descriptor.kind === 'eraser';
     const color = erase ? BACKGROUND_COLOR : session.descriptor.color;
     const geometry = session.rules.previewGeometry ?? session.descriptor.geometry;
-    // A pen's line changes width along it and is redrawn whole, like a feather.
-    const grows = !feelsPressure(session) && session.descriptor.kind === 'pencil'
+    // A pen's line changes width along it and is redrawn whole, like a feather —
+    // where the brush takes the pressure; one that does not grows as under a mouse.
+    const grows = !drawsPressure(session) && session.descriptor.kind === 'pencil'
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
       return {
@@ -831,10 +832,12 @@
 
   // Why a tool did nothing, when the state is the one that knows (the lasso on
   // an empty frame, a locked transform) — said in the same live line.
+  // `showHint` reads the hint it writes: heard here, the effect ran on its own
+  // write, and the timer that cleared the hint sent it round without end —
+  // the studio answered nothing until a reload.
   $effect(() => {
-    if (editor.canvasHint) {
-      showHint(editor.canvasHint.text);
-    }
+    const said = editor.canvasHint;
+    if (said) untrack(() => showHint(said.text));
   });
 
   function scheduleDraw(): void {
@@ -871,8 +874,10 @@
   // under the other hand, the film ending mid-pan — and the old frame stayed
   // on the sheet until the hand let go. The shot goes, and `draw` takes
   // another off the frame it composes. Not the view: the gesture is what
-  // changes it.
+  // changes it. The table is: resized under the hand, it refits the sheet, and
+  // the shot lay on it at the old fit.
   $effect(() => {
+    void stage;
     void editor.doc;
     void editor.displayedFrame;
     void editor.activeLayer;
@@ -2334,11 +2339,19 @@
        otherwise given half the stage and wraps a sentence word by word. */
     width: max-content;
     max-width: calc(100% - 24px);
+    /* «трансформировать» at 200 % text is wider than a phone's whole pill:
+       it hung out of both sides, cut by the stage. */
+    overflow-wrap: anywhere;
+    /* Over the thickness rail, which stands lower than a tall pill's top and
+       is drawn after it; the finger still goes through. */
+    z-index: 1;
     box-sizing: border-box;
     text-align: center;
     margin: 0;
     padding: 6px 12px;
-    border-radius: var(--r-pill);
+    /* A pill on one line; on six, a full pill's corners cut the first and
+       the last line's ends. */
+    border-radius: var(--r-xl);
     background: var(--ink);
     color: var(--canvas);
     font-size: 0.8125rem;

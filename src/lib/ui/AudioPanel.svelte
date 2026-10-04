@@ -316,11 +316,19 @@
   }
   .toggle {
     display: flex;
+    /* On a 104 px plate (a phone at 200 % text) the words and the switch do
+       not fit one line: the switch stood past the screen's edge. */
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.5rem;
     font-size: 0.86rem;
     color: var(--ink);
+  }
+  .toggle > span {
+    flex: 1 1 8rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .toggle small {
     display: block;

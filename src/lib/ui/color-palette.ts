@@ -21,6 +21,11 @@ export const PALETTE_LIMIT = 50;
  * removing one of the pair would remove both. Every way colours enter the grid
  * goes through here.
  */
+/** How many of these colours a grid of `limit` cells would leave out. */
+export function overLimit(colours: readonly string[], limit: number): number {
+  return Math.max(0, uniqueColours(colours).length - limit);
+}
+
 export function uniqueColours(colours: readonly string[]): string[] {
   return [...new Set(colours.map((colour) => colour.toLowerCase()))];
 }

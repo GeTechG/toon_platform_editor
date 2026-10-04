@@ -500,8 +500,9 @@ export function itemDrawn(
 /**
  * Whether a column has anything to draw. Some items draw nothing where they
  * lie — the pipette's key under a preset that keeps it elsewhere, «Отправить»
- * off the site, a removed plugin's tool — and a column holding only those
- * stood as an empty strip taking the canvas's room.
+ * off the site — and a column holding only those stood as an empty strip
+ * taking the canvas's room. A plugin's key not yet registered still counts:
+ * it is on its way, and the canvas would jump at every reload.
  */
 export function columnDraws(
   ids: readonly string[],
@@ -509,7 +510,7 @@ export function columnDraws(
 ): boolean {
   return ids.some((id) => {
     const tool = toolOfItem(id);
-    if (tool) return !!toolSpec(tool) && (tool !== 'pipette' || has.pipette);
+    if (tool) return tool !== 'pipette' || has.pipette;
     if (id === 'publish') return has.publish;
     if (id === 'fullscreen') return has.fullscreen;
     return true;

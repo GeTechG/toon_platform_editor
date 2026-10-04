@@ -804,11 +804,6 @@
   .old {
     cursor: pointer;
   }
-  @media (hover: hover) {
-    .old:hover {
-      opacity: 1;
-    }
-  }
   /* Outside the canvas, on the window's own white: laid over the drawing, the
      red ring vanished on the red end of the hue strip and the red side of the
      field. The stage's 14px gutter and the 10px gaps have room for it. */
