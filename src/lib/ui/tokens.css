@@ -123,3 +123,12 @@
   outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* The ring stands 5 px outside its element, and Tab brings the next one only
+   just into view: flush with the edge of what scrolls, which cut that side of
+   the ring off — «Сохранить сейчас» in the settings, the last row of the brush
+   box. What scrolls keeps the ring's room. Named, not `*`: a box that only
+   hides its overflow would be scrolled by the focus and could not be put back. */
+:where(.editor) :where(.sheet-body, .sheet-dialog, .box, .tab-window, .left, .right, .toolbar, .audio-plate) {
+  scroll-padding: 6px;
+}

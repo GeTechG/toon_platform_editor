@@ -87,9 +87,14 @@
   function keepFocus(node: HTMLElement): () => void {
     let inside = false;
     const enter = () => (inside = true);
-    // Only a move to somewhere else counts: a removal leaves the node detached.
+    // Only a move to somewhere else counts. Chrome sends a focusout for the
+    // control it removes as well, the window still in the page: whether it
+    // was a removal is known only once the removal is over.
     const leave = (e: FocusEvent) => {
-      if (node.isConnected && !node.contains(e.relatedTarget as Node | null)) inside = false;
+      if (node.contains(e.relatedTarget as Node | null)) return;
+      queueMicrotask(() => {
+        if (node.isConnected) inside = false;
+      });
     };
     node.addEventListener('focusin', enter);
     node.addEventListener('focusout', leave);

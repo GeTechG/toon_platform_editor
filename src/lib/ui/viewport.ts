@@ -276,6 +276,12 @@ export function zoomCentredOn(
   stage: Stage,
 ): Viewport2D {
   const next = clampZoom(zoom);
+  // The recentring is part of the zoom: at the limit there is none, and every
+  // spare notch of the wheel slid the sheet a cursor-to-middle further, up to
+  // the edge of the table.
+  if (next === view.zoom) {
+    return view;
+  }
   // Where the point sits along the sheet, 0..1, whatever the current view.
   const u = (x - view.panX) / (stage.sheetWidth * view.zoom);
   const v = (y - view.panY) / (stage.sheetHeight * view.zoom);

@@ -10,6 +10,8 @@ import type { ToolDescriptor } from '../format/types';
 // The store is a runes component, so it is asserted as source, like audit17.
 const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
 
+const walk = await Bun.file(new URL('./structure-undo.ts', import.meta.url)).text();
+
 function method(name: string): string {
   const match = state.match(new RegExp(`\\n  (?:get |private )?${name}\\([^]*?\\n  }\\n`));
   if (!match) throw new Error(`missing ${name}`);
@@ -37,9 +39,10 @@ describe('two block edits of one cell are two steps of undo', () => {
     // the last stroke of the frame instead of giving the first sweep back.
     const undo = method('undo');
     const block = undo.slice(undo.indexOf('const edit = this.restorableEdit'), undo.indexOf('const cell = this.activeCell'));
-    expect(block).toContain('older.cell === snapshot.was');
-    expect(block).toContain('older.cell = restored');
-    expect(block.indexOf('replaceStrokes(')).toBeLessThan(block.indexOf('older.cell = restored'));
+    // Since the twenty-first audit the walk is `repoint` in structure-undo.ts.
+    expect(block.indexOf('replaceStrokes(')).toBeLessThan(block.indexOf('repoint(this.edits, snapshot,'));
+    expect(walk).toContain('older.cell === undone.was');
+    expect(walk).toContain('older.cell = restored');
   });
 });
 

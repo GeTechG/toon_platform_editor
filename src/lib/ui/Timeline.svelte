@@ -142,7 +142,12 @@
     if (!strip || editor.playing || !(inStrip || dropped)) {
       return;
     }
-    void tick().then(() => strip?.querySelector<HTMLElement>('.cell.active')?.focus());
+    // Not from under the frame menu: a right press on a cell outside the
+    // block picks it and opens the menu, and this took the focus back off the
+    // menu's first item — the arrows walked the layers under an open menu.
+    void tick().then(() => {
+      if (!menu) strip?.querySelector<HTMLElement>('.cell.active')?.focus();
+    });
   });
 
   // --- Studio grid ----------------------------------------------------------

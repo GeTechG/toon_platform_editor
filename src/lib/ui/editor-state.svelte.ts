@@ -85,7 +85,7 @@ import {
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
-import { recell, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
+import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
@@ -225,6 +225,8 @@ interface CellSnapshot {
   strokes: Stroke[];
   /** Stroke count the edit left behind. */
   after: number;
+  /** The stroke it left on top (structure-undo.ts `EditedCell.last`). */
+  last?: Stroke;
 }
 
 /** A frame or layer delete, as undo puts it back: the shape and what the studio pointed at. */
@@ -1793,11 +1795,24 @@ export class EditorState {
       });
       return;
     }
-    for (const snapshot of snapshots) {
+    // Only the cells the edit changed are the step: a paste of what a frame
+    // already held left it a cell that, taken back alone, undid nothing. Such
+    // a cell gets its own object back, like the edit that changed none.
+    const changed = snapshots.filter((snapshot) =>
+      !sameStrokes(snapshot.strokes, this.doc.layers[snapshot.layer].frames[snapshot.frame].strokes));
+    this.#write((doc) => {
+      for (const snapshot of snapshots) {
+        if (!changed.includes(snapshot)) {
+          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.cell;
+        }
+      }
+    });
+    for (const snapshot of changed) {
       snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
       snapshot.after = snapshot.cell.strokes.length;
+      snapshot.last = snapshot.cell.strokes[snapshot.after - 1];
     }
-    this.edits = [...this.edits, snapshots].slice(-EDIT_HISTORY_LIMIT);
+    this.edits = [...this.edits, changed].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
     this.redoStructure = null;
     this.touched = true;
@@ -1913,35 +1928,35 @@ export class EditorState {
     }
     const edit = this.restorableEdit;
     if (edit) {
+      // A frame or a layer added since has moved the cells along.
+      placeBlock(this.doc, edit);
       if (!this.mayEdit(edit.map((snapshot) => snapshot.layer))) {
         return;
       }
-      // Not always the top: an edit of another frame may lie over it.
-      this.edits = this.edits.filter((step) => step !== edit);
+      // What a cut took may not fit any more: lines drawn elsewhere since
+      // have filled the mult. Then nothing goes back and the step stays —
+      // thrown out of the key, it was gone from the history with its strokes.
+      const left = edit.map((snapshot) => this.doc.layers[snapshot.layer].frames[snapshot.frame]);
+      try {
+        this.#write((doc) => edit.forEach((snapshot) =>
+          replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes)));
+      } catch (err) {
+        this.#write((doc) => edit.forEach((snapshot, i) => {
+          doc.layers[snapshot.layer].frames[snapshot.frame] = left[i];
+        }));
+        if (!this.refuseAtLimit(err)) {
+          throw err;
+        }
+        return;
+      }
+      // Not always the top: an edit of another frame may lie over it. And
+      // not always the whole step: the cell stood on alone, when another
+      // cell of the step was edited since.
+      this.edits = dropCells(this.edits, edit);
       for (const snapshot of edit) {
-        this.#write((doc) => replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes));
-        // The restore is a new cell object, and the step under this one
-        // knows the cell by the object it left: unmatched, a second Z after
-        // two sweeps took a stroke instead of giving the first sweep back.
-        const restored = this.doc.layers[snapshot.layer].frames[snapshot.frame];
-        for (const older of this.edits.flatMap((step) => (Array.isArray(step) ? step : []))) {
-          if (older.cell === snapshot.was) {
-            older.cell = restored;
-          }
-        }
-        // And so does a delete or a layer move: unmatched, a frame deleted
-        // before a sweep never came back once the sweep was undone.
-        for (const step of this.edits) {
-          if (Array.isArray(step)) {
-            continue;
-          }
-          recell(step.snap, snapshot.cell, restored, restored.strokes.length - snapshot.after);
-          recell(step.snap, snapshot.was, restored);
-          if (step.redo) {
-            recell(step.redo.snap, snapshot.cell, restored, restored.strokes.length - snapshot.after);
-            recell(step.redo.snap, snapshot.was, restored);
-          }
-        }
+        // The restore is a new cell object, and the steps left in the history
+        // — block edits, deletes, layer moves — know the cell by the old one.
+        repoint(this.edits, snapshot, this.doc.layers[snapshot.layer].frames[snapshot.frame]);
       }
       this.undone = [];
       this.redoStructure = null;

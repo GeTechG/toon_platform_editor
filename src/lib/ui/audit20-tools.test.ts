@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { addFrame, addStroke, createDocument, removeFrame, replaceStrokes, transformStrokes } from '../model/operations';
-import { recell, restorableBlock, restoreStructure, structureIntact, takeStructure } from './structure-undo';
+import { recell, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure } from './structure-undo';
 
 // Twentieth audit, tools. The nineteenth let undo reach a block edit lying
 // under edits of other frames — and with it a paste over two frames could be
@@ -43,14 +43,16 @@ function edit(doc: ReturnType<typeof createDocument>, at: number[], write: (fram
 }
 
 describe('an older block edit is not reached past a newer one of its cells', () => {
-  it('a transform made since on one cell of a paste keeps the paste where it is', () => {
+  it('a transform made since on one cell of a paste keeps that cell of the paste where it is', () => {
     const doc = frames(2);
     const paste = edit(doc, [0, 1], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame].strokes.slice(0, 1)));
     // In place: the same cell object, the same count.
     const moved = edit(doc, [1], (frame) => transformStrokes(doc, 0, frame, null, [1, 0, 0, 1, 8, 0]));
     expect(moved[0].cell).toBe(paste[1].cell);
     const edits = [paste, moved];
-    expect(restorableBlock(doc, edits, doc.layers[0].frames[0])).toBeUndefined();
+    // The other cell goes back alone (owner, after the twenty-first audit):
+    // the paste is never taken off the frame the transform was made on.
+    expect(restorableBlock(doc, edits, doc.layers[0].frames[0])).toEqual([paste[0]]);
     // From the frame the transform was made on it goes first, as ever.
     expect(restorableBlock(doc, edits, doc.layers[0].frames[1])).toBe(moved);
     expect(restorableBlock(doc, [paste], doc.layers[0].frames[0])).toBe(paste);
@@ -92,9 +94,17 @@ describe('a delete is still undone after a block edit over it was', () => {
   });
 
   it('the store re-points every delete in the history, and the move it would redo', () => {
-    const undo = method('undo');
-    expect(undo).toContain('recell(step.snap, snapshot.cell, restored, restored.strokes.length - snapshot.after)');
-    expect(undo).toContain('recell(step.redo.snap, snapshot.was, restored)');
+    // Since the twenty-first audit the walk lives beside `recell`, as `repoint`.
+    expect(method('undo')).toContain('repoint(this.edits, snapshot, this.doc.layers[snapshot.layer].frames[snapshot.frame])');
+    const doc = frames(2);
+    const move = { snap: takeStructure(doc), redo: { snap: takeStructure(doc) } };
+    move.snap.seal(doc);
+    const [erase] = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame].strokes.slice(0, 1)));
+    replaceStrokes(doc, 0, 0, erase.strokes);
+    repoint([move], erase, doc.layers[0].frames[0]);
+    expect(move.snap.frames[0][0]).toBe(doc.layers[0].frames[0]);
+    expect(move.snap.after!.frames[0][0]).toBe(doc.layers[0].frames[0]);
+    expect(move.redo.snap.frames[0][0]).toBe(doc.layers[0].frames[0]);
   });
 });
 

@@ -68,7 +68,8 @@ describe('a block edit is undone from the cell it was made in', () => {
   it('the store asks it, and takes that step off the history wherever it lies', () => {
     expect(method('restorableEdit')).toContain('restorableBlock<CellSnapshot>(this.doc, this.edits, this.activeCell)');
     const undo = method('undo');
-    expect(undo).toContain('this.edits = this.edits.filter((step) => step !== edit)');
+    // Since the owner's answer after the twenty-first audit a step may go cell by cell.
+    expect(undo).toContain('this.edits = dropCells(this.edits, edit)');
   });
 });
 

@@ -25,11 +25,15 @@ export default {
     ru: { label: 'Сдвиг', apply: 'Сдвинуть' },
     en: { label: 'Shift', apply: 'Shift' },
   },
-  tool: {
-    label: { t: 'label' },          // ключ в свой каталог
-    title: 'Одинаково на всех языках', // или просто строка
-    activate(host) {
-      host.window({ title: host.t('label') });  // и в рантайме — по ключу
+  tools: {
+    'example.shift': {                   // id инструмента в реестре; их может быть несколько
+      label: { t: 'label' },             // ключ в свой каталог
+      title: 'Одинаково на всех языках', // или просто строка
+      key: '',
+      icon: '<path d="M4 12h16M14 6l6 6-6 6" />',
+      activate(host) {
+        host.window({ title: host.t('label') });  // и в рантайме — по ключу
+      },
     },
   },
 };

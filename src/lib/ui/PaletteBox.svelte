@@ -597,6 +597,11 @@
     position: absolute;
     right: 4px;
     bottom: 4px;
+    /* Away from the seam as the text grows: at 200 % the swap disc (44 px on
+       the seam) lay over the inner half of both marks. Nothing at 100 %, and
+       never into the «+» of the far corner: a 76 px swatch (a 320 px phone
+       at 200 %) has no room for all three, and there the mark stays put. */
+    margin-right: max(0px, min(calc(1.5rem - 24px), calc(100% - 2rem - 16px)));
     display: flex;
     pointer-events: none;
   }
@@ -657,6 +662,8 @@
   .big + .big .mark {
     right: auto;
     left: 4px;
+    margin-right: 0;
+    margin-left: max(0px, min(calc(1.5rem - 24px), calc(100% - 2rem - 16px)));
   }
   .swap {
     position: absolute;

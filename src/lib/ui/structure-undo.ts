@@ -25,6 +25,10 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
     firstStrokes: doc.layers.map((l) => [...(l.frames[0]?.strokes ?? [])]),
     after: null,
     seal(d) {
+      // Only a delete that took every frame empties the first cells. Kept for
+      // the others too, a first frame emptied since by another undo — a paste
+      // taken back — was filled again with the frames put back.
+      this.firstStrokes = this.firstStrokes.map((strokes, l) => (this.frames[l][0]?.strokes.length ? [] : strokes));
       this.after = {
         layers: [...d.layers],
         frames: d.layers.map((l) => [...l.frames]),
@@ -54,6 +58,22 @@ export interface EditedCell {
   layer: number;
   frame: number;
   after: number;
+  /**
+   * The stroke the edit left on top. The count alone does not tell: one stroke
+   * taken off a pasted cell and another drawn in its place, and Z took the
+   * paste back with the new stroke in it.
+   */
+  last?: Stroke;
+}
+
+/** The same mark: redo puts a copy back, so the object is not asked. */
+function sameStroke(a: Stroke | undefined, b: Stroke | undefined): boolean {
+  if (a === b || !a || !b) {
+    return a === b;
+  }
+  const same = (x: readonly number[] | undefined, y: readonly number[] | undefined) =>
+    (x?.length ?? 0) === (y?.length ?? 0) && (x ?? []).every((v, i) => v === y![i]);
+  return a.tool_id === b.tool_id && same(a.points, b.points) && same(a.pressure, b.pressure);
 }
 
 /**
@@ -63,6 +83,13 @@ export interface EditedCell {
  * since, and Z here took a piece of a cut line instead of the cut. An older
  * edit of the same cell is never reached past a newer one: a stroke drawn
  * since is undone first, as before.
+ *
+ * A step over several cells goes back whole while it is whole. Once another
+ * of its cells was edited since, the cell stood on goes back alone (owner,
+ * after the twenty-first audit) and the rest stays in the history, to be
+ * taken back from its own frame: Z used to take a stroke of the pasted
+ * drawing instead, and the paste had no way back at all. What comes back is
+ * the step itself, or the one cell of it — `dropCells` takes either off.
  */
 export function restorableBlock<S extends EditedCell>(
   doc: ToonDocument,
@@ -83,13 +110,60 @@ export function restorableBlock<S extends EditedCell>(
       step.forEach((s: S) => newer.add(s.cell));
       continue;
     }
-    const intact = step.every((s: S) => {
-      const cell = doc.layers[s.layer]?.frames[s.frame];
-      return cell === s.cell && cell.strokes.length === s.after && !newer.has(cell);
-    });
-    return intact ? step : undefined;
+    const intact = (s: S) =>
+      placeOf(doc, s) !== undefined && s.cell.strokes.length === s.after && !newer.has(s.cell)
+      && (s.last === undefined || sameStroke(s.cell.strokes[s.after - 1], s.last));
+    if (step.every(intact)) {
+      return step;
+    }
+    const own = step.filter((s: S) => s.cell === active && intact(s));
+    return own.length > 0 ? own : undefined;
   }
   return undefined;
+}
+
+/**
+ * The history without the cells undo has just put back: the whole step, or
+ * the one cell of it. A step left with no cells is gone — kept, it would be a
+ * step that undoes nothing.
+ */
+export function dropCells<T>(edits: readonly T[], back: readonly EditedCell[]): T[] {
+  const gone = new Set<unknown>(back);
+  return edits
+    .map((step) => (Array.isArray(step) && step !== back ? step.filter((s) => !gone.has(s)) as T : step))
+    .filter((step) => step !== back && !(Array.isArray(step) && step.length === 0));
+}
+
+/**
+ * Where a cell of a block edit stands now. The numbers it was filed under go
+ * stale: a frame or a layer added in front moves the cell along, and looked up
+ * by them the cut was never found again — Z took a piece of a cut line.
+ */
+function placeOf(doc: ToonDocument, s: EditedCell): { layer: number; frame: number } | undefined {
+  if (doc.layers[s.layer]?.frames[s.frame] === s.cell) {
+    return s;
+  }
+  // ponytail: a scan of the document, only for a cell that has moved — its
+  // own row first, where a frame added in front leaves it.
+  const rows = doc.layers.map((_, layer) => layer);
+  for (const layer of doc.layers[s.layer] ? [s.layer, ...rows] : rows) {
+    const frame = doc.layers[layer].frames.indexOf(s.cell);
+    if (frame !== -1) {
+      return { layer, frame };
+    }
+  }
+  return undefined;
+}
+
+/** Re-points a block edit at the places its cells stand in now, before undo writes them. */
+export function placeBlock(doc: ToonDocument, step: readonly EditedCell[]): void {
+  for (const s of step) {
+    const at = placeOf(doc, s);
+    if (at) {
+      s.layer = at.layer;
+      s.frame = at.frame;
+    }
+  }
 }
 
 /**
@@ -109,12 +183,52 @@ export function recell(snap: StructureSnapshot, from: Frame, to: Frame, grew = 0
   if (snap.after) swap(snap.after.frames, snap.after.counts);
 }
 
+/** A step of the history as undo walks it: a block edit's cells, or a delete or a move. */
+type HistoryStep =
+  | readonly (EditedCell & { was: Frame })[]
+  | { snap: StructureSnapshot; redo?: { snap: StructureSnapshot } };
+
+/**
+ * A block edit undone puts `restored` where its cell stood: every step left in
+ * the history that knew the cell by the old object is re-pointed. `undone` is
+ * the cell of the step taken back — what it left, and what it was made over.
+ */
+export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { was: Frame }, restored: Frame): void {
+  const grew = restored.strokes.length - undone.after;
+  for (const step of steps) {
+    if ('snap' in step) {
+      // A delete or a layer move: unmatched, a frame deleted before a sweep
+      // never came back once the sweep was undone.
+      for (const snap of step.redo ? [step.snap, step.redo.snap] : [step.snap]) {
+        recell(snap, undone.cell, restored, grew);
+        recell(snap, undone.was, restored);
+      }
+      continue;
+    }
+    for (const older of step) {
+      // The step under this one knows the cell by the object it left:
+      // unmatched, a second Z after two sweeps took a stroke instead of
+      // giving the first sweep back.
+      if (older.cell === undone.was) {
+        older.cell = restored;
+      }
+      // A transform or a mirror writes in place — the cell it was made over
+      // is the cell it left. Left pointing at the old object, the third Z
+      // after three mirrors found no step and took a stroke.
+      if (older.was === undone.was) {
+        older.was = restored;
+      }
+    }
+  }
+}
+
 export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): void {
   doc.layers = [...snap.layers];
   snap.layers.forEach((layer, l) => {
     layer.frames = [...snap.frames[l]];
     const first = layer.frames[0];
-    if (first && first.strokes.length === 0 && snap.firstStrokes[l].length > 0) {
+    // Sealed by a delete only: the shape a move is redone to empties nothing.
+    if (snap.after && first && first.strokes.length === 0 && snap.firstStrokes[l].length > 0) {
       first.strokes.push(...snap.firstStrokes[l]);
     }
   });

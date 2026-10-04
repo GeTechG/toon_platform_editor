@@ -284,6 +284,13 @@
     outline: 3px solid Highlight !important;
     outline-offset: -3px;
   }
+  /* A key's only boundary was its fill: in this mode «Готово» and the export
+     formats were bold words among the labels. An outline, so nothing moves;
+     the focus ring is the same property and takes over. */
+  :where(.editor) :where(.key):not(:focus-visible) {
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+  }
   /* What stood over the canvas by its shadow alone. */
   :where(.editor) :is(dialog, [popover], [role='menu']) {
     outline: 1px solid CanvasText;

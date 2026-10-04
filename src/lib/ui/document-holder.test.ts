@@ -31,6 +31,8 @@ const READ_ONLY = new Set([
   // A copy with the live transform applied; the document is not touched.
   'bakeTransform',
   'structureIntact',
+  // Finds where a block edit's cells stand now; it writes the step, not the document.
+  'placeBlock',
   'seal',
   'copiedMarks',
   'isMarked',

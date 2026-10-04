@@ -63,7 +63,9 @@
    * its field. A file dropped mid-rename replaces the document: the number
    * alone opened the field in the new drawing's row and named its layer.
    */
-  let renaming = $state<{ layer: number; ref: Layer; text: string } | null>(null);
+  // Raw: the document is raw too, and a layer put into deep state came back
+  // as a proxy that never equalled the document's own — the field never opened.
+  let renaming = $state.raw<{ layer: number; ref: Layer; text: string } | null>(null);
 
   /**
    * A double click on the row opens its name — but the row is also where the
@@ -185,6 +187,13 @@
 
   // Undo and redo of a move say where the layer went, like the move itself
   // (owner, 14th audit); one made before this panel mounted is not repeated.
+  // Svelte moves the row to reorder the list and the focus in it drops to
+  // <body>: asked before the rows move, put back after.
+  let hadFocus = false;
+  $effect.pre(() => {
+    void editor.layerMoved;
+    hadFocus = !!listEl?.contains(document.activeElement);
+  });
   let heard: { layer: number } | null | undefined;
   $effect(() => {
     const moved = editor.layerMoved;
@@ -195,6 +204,7 @@
     if (moved && moved !== heard) {
       heard = moved;
       announce(moved.layer);
+      if (hadFocus) focusCell(moved.layer);
     }
   });
 
@@ -546,7 +556,8 @@
             class="name rename"
             autofocus
             maxlength={MAX_LAYER_NAME}
-            bind:value={renaming.text}
+            value={renaming.text}
+            oninput={(e) => (renaming = { ...renaming!, text: e.currentTarget.value })}
             onclick={(e) => e.stopPropagation()}
             onfocus={(e) => e.currentTarget.select()}
             onkeydown={onRenameKeydown}

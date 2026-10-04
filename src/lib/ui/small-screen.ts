@@ -21,7 +21,7 @@ export interface Room {
 /** Past the floor by this much before a step goes back up: no flicker at the edge. */
 export const HYSTERESIS = 32;
 /** The tablet's canvas beside its column: a phone's column would eat the phone. */
-const TABLET_MIN_W = 360;
+export const TABLET_MIN_W = 360;
 /**
  * The least canvas height the columns and the bar may leave, px. A phone
  * lying down (740×360, 844×390) kept 209–239 px of it beside the desktop's
@@ -31,6 +31,32 @@ const TABLET_MIN_W = 360;
  * short screen is short too. A laptop keeps twice this.
  */
 export const FULL_MIN_H = 320;
+
+/** The least canvas the full layout may leave: what `pickStep` asks of `rooms.full`. */
+export function canvasFloor(view: Room): Room {
+  return { w: Math.min(360, 0.45 * view.w), h: Math.max(FULL_MIN_H, 0.38 * view.h) };
+}
+
+/**
+ * A size the hand stretched — the bar's height, a column's width — as drawn:
+ * no more than `room`, what the canvas's floor leaves it, and never under its
+ * own `floor`. Drawn, never stored: a bigger screen has the stretch whole
+ * again. The step is picked from the floors alone, so a stretch (or a box
+ * dropped into a row) cannot take a desktop to the phone's layout — where
+ * there is no divider to drag back (owner, 21st audit).
+ */
+export function yieldToCanvas(stored: number, floor: number, room: number): number {
+  return Math.max(floor, Math.min(stored, room));
+}
+
+/**
+ * A bottom row that is tall because a box lies in it (the palette, the
+ * brush), not because its keys wrapped: its height is the arrangement's
+ * doing, not the screen's, and stays out of the floor the step is picked by.
+ */
+export function boxRow(row: readonly string[]): boolean {
+  return row.includes('palette') || row.includes('brush');
+}
 
 function fits(room: Room, minW: number, minH: number, view: Room, slack: number): boolean {
   return room.w >= minW + slack && room.h >= Math.max(minH, 0.38 * view.h) + slack;
@@ -45,7 +71,8 @@ function fits(room: Room, minW: number, minH: number, view: Room, slack: number)
 export function pickStep(current: LayoutStep, rooms: { full: Room; tablet: Room }, view: Room): LayoutStep {
   const rank = { full: 0, tablet: 1, phone: 2 };
   const slack = (step: LayoutStep) => (rank[step] < rank[current] ? HYSTERESIS : 0);
-  if (fits(rooms.full, Math.min(360, 0.45 * view.w), FULL_MIN_H, view, slack('full'))) {
+  const floor = canvasFloor(view);
+  if (fits(rooms.full, floor.w, floor.h, view, slack('full'))) {
     return 'full';
   }
   // The in-between step is the portrait tablet's (the owner's call): lying

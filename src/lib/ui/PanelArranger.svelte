@@ -214,7 +214,8 @@
       return { slot, index: 0, line: null, panel };
     }
     // A folded bar draws no rows to aim between: the item goes to the end of
-    // its last one, and the bar unfolds (owner, 19th audit).
+    // its last one, and the bar unfolds (owner, 19th audit). A folded column
+    // the same: with nothing drawn in it, the drop landed above its first key.
     if (panelEl.dataset.folded !== undefined) {
       return { slot, index: Number.MAX_SAFE_INTEGER, line: null, panel };
     }
@@ -623,6 +624,10 @@
   }
   .arrange-hint {
     margin: 0;
+    /* Two lines kept: the idle hint is two, «Переносим…» one, and the shelf
+       jumped 19px up from under the hand as a drag began. In em: Safari 16
+       has no line-height unit. */
+    min-height: 2.7em;
     font-size: 0.88rem;
     color: var(--ink-2);
   }
@@ -632,6 +637,7 @@
     position: absolute;
     width: 1px;
     height: 1px;
+    min-height: 0;
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;

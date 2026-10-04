@@ -58,7 +58,7 @@
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
-  import { compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
+  import { TABLET_MIN_W, boxRow, canvasFloor, compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, yieldToCanvas, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
@@ -178,6 +178,13 @@
    */
   /** Each bottom row's content box — padding out, so a row's bleed is not a wrap. */
   let rowBoxes = $state<(DOMRectReadOnly | undefined)[]>([]);
+  // A row that went leaves its box behind: the palette's 239px, counted again
+  // under the next row made at that index, took the studio to the phone's
+  // layout in the middle of arranging — and with no bar drawn, for good.
+  $effect(() => {
+    const rows = editor.panels.rows.length;
+    if (untrack(() => rowBoxes.length) > rows) rowBoxes.length = rows;
+  });
   /** One key tall: what the floor's arithmetic expects of a row of keys. */
   const KEY_ROW = 44;
   /**
@@ -207,9 +214,21 @@
    */
   const wrapExtra = $derived(
     editor.panels.rows.reduce(
-      (sum, row, i) => (row.includes('timeline') ? sum : sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW * textScale)),
+      (sum, row, i) => (row.includes('timeline') || boxRow(row) ? sum : sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW * textScale)),
       0,
     ),
+  );
+  /**
+   * What a row with a box in it (the palette, the brush) takes beyond one key.
+   * The bar is drawn that much taller where the canvas can spare it, but the
+   * floor below does not hear of it: the step is picked by the floor, and a
+   * box dropped into a row took a laptop to the phone's layout.
+   */
+  const boxExtra = $derived(
+    Math.round(editor.panels.rows.reduce(
+      (sum, row, i) => (!row.includes('timeline') && boxRow(row) ? sum + Math.max(0, (rowBoxes[i]?.height ?? 0) - KEY_ROW * textScale) : sum),
+      0,
+    )),
   );
   const panelFloor = $derived(
     Math.round(
@@ -220,10 +239,6 @@
         + Math.max(0, editor.panels.rows.length - 2) * PANEL_ROW_STEP) * textScale
         + wrapExtra,
     ),
-  );
-  /** The stored panel height, never more than three quarters of the viewport. */
-  const panelHeight = $derived(
-    Math.max(panelFloor, Math.min(editor.panelHeight, Math.round((viewportHeight || 800) * 0.75))),
   );
   /** Keyboard step for the divider, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const PANEL_STEP = 22;
@@ -241,6 +256,8 @@
         axis: 'x' | 'y';
         side: SideId | 'panel' | null;
         apply: (px: number, persist?: boolean) => void;
+        /** The most the canvas leaves it: the hand stops there, and so does what is stored. */
+        max: number;
         /** The size drawn by the last move, stored on the release. */
         px?: number;
       }
@@ -254,11 +271,12 @@
     size: number,
     apply: (px: number, persist?: boolean) => void,
     side: SideId | 'panel' | null = null,
+    max = Infinity,
   ): void {
     // Only the main button: a right press opened the context menu, which
     // swallowed the release, and the column followed the bare hover.
     if (!e.isPrimary || e.button !== 0) return;
-    resize = { pointerId: e.pointerId, from: axis === 'y' ? e.clientY : e.clientX, size, sign, axis, side, apply };
+    resize = { pointerId: e.pointerId, from: axis === 'y' ? e.clientY : e.clientX, size, sign, axis, side, apply, max };
   }
 
   function onDividerMove(e: PointerEvent): void {
@@ -271,7 +289,7 @@
     const now = resize.axis === 'y' ? e.clientY : e.clientX;
     // Drawn at once, stored on the release: the whole UI config went to
     // storage on every pointer sample.
-    resize.px = resize.size + (now - resize.from) * resize.sign;
+    resize.px = Math.min(resize.max, resize.size + (now - resize.from) * resize.sign);
     resize.apply(resize.px, false);
   }
 
@@ -289,7 +307,7 @@
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault();
-        editor.setPanelHeight(panelHeight + PANEL_STEP);
+        editor.setPanelHeight(Math.min(panelMax, panelHeight + PANEL_STEP));
         break;
       case 'ArrowDown':
         e.preventDefault();
@@ -332,20 +350,53 @@
   function sideDraws(id: SideId): boolean {
     return draws(editor.panels[id]);
   }
-  /** A column as the full layout would draw it: its dragged width, its rem default, or its strip. */
-  function columnPx(id: SideId, remWidth: number): number {
+  /** The columns' default widths, in rem (the `.left` and `.right` rules below). */
+  const SIDE_REM: Record<SideId, number> = { left: 8.4, right: 15.9 };
+  /**
+   * A column's floor in the full layout: its rem default — or the narrower
+   * width it was dragged to — or its strip. Not the width it was dragged out
+   * to: the step is picked from this, and a column pulled to 480px on a
+   * 1024px screen took the studio to the phone's layout, with no edge to
+   * drag back (owner, 21st audit).
+   */
+  function sideBase(id: SideId): number {
     if (!sideDraws(id)) return 0;
     if (editor.sides[id].collapsed) return 0.75 * rem;
-    return editor.sides[id].width ?? remWidth * rem;
+    return Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
   }
+  /** The canvas's floor: what the bar and the columns, however stretched, leave it. */
+  const stageFloor = $derived(canvasFloor({ w: viewportWidth || boxW, h: viewportHeight || boxH }));
+  /** What the canvas's floor leaves the bar; anything, until the editor is measured. */
+  const panelRoom = $derived(boxH ? Math.floor(boxH - stageFloor.h) : Infinity);
+  /** The least the bar is drawn at: its floor, and its boxes where the canvas spares the room. */
+  const panelLow = $derived(yieldToCanvas(panelFloor + boxExtra, panelFloor, panelRoom));
+  /** The most the divider gives it: three quarters of the viewport, less where the canvas needs it. */
+  const panelMax = $derived(Math.max(panelLow, Math.min(Math.round((viewportHeight || 800) * 0.75), panelRoom)));
+  /** The stored panel height as drawn — stored whole, for a bigger screen. */
+  const panelHeight = $derived(yieldToCanvas(editor.panelHeight, panelLow, panelMax));
+  /**
+   * What the canvas's floor leaves a column. The left one is asked first; the
+   * right one takes what the left one, as drawn, has left. A tablet has the
+   * one column, beside a canvas of its own floor.
+   */
+  function sideRoom(id: SideId): number {
+    if (!boxW) return Infinity;
+    if (step === 'tablet') return boxW - TABLET_MIN_W;
+    // Whole px: the width is spoken by the divider as its value.
+    return Math.floor(boxW - stageFloor.w - (id === 'left' ? sideBase('right') : folded('left') || !sideDraws('left') ? sideBase('left') : sideWidth('left')));
+  }
+  /** The most a column's edge gives it. */
+  const sideMax = (id: SideId): number => Math.floor(Math.max(sideFloor(id), Math.min(SIDE_WIDTH_MAX, sideRoom(id))));
+  /** An open column's floor: `sideBase` without the fold. */
+  const sideFloor = (id: SideId): number => Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
   $effect(() => {
     if (!boxW || !boxH) return;
-    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelHeight;
-    const full = { w: boxW - columnPx('left', 8.4) - columnPx('right', 15.9), h: boxH - bar };
+    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelFloor;
+    const full = { w: boxW - sideBase('left') - sideBase('right'), h: boxH - bar };
     // The tablet's column is never folded; its dock is one line lying down, two standing.
     // It is drawn when anything reaches it — tools from the right column too.
     const column = railDrawn(compactLayout(editor.panels, 'tablet', editor.settings.tabOrder), !!onPublish)
-      ? (editor.sides.left.width ?? 8.4 * rem)
+      ? sideFloor('left')
       : 0;
     const tablet = { w: boxW - column, h: boxH - (boxW < boxH ? 2 : 1) * 3.5 * rem };
     const view = { w: viewportWidth || boxW, h: viewportHeight || boxH };
@@ -544,16 +595,20 @@
   const transportDrawn = $derived(
     compact || itemDrawn(editor.panels, 'transport', { left: folded('left'), right: folded('right'), rows: panelFolded }),
   );
-  const sideWidth = (id: SideId): number => editor.sides[id].width ?? sidePx[id];
+  /** An open column's width as drawn: the stored one, giving way to the canvas; unstored, as measured. */
+  const sideWidth = (id: SideId): number => {
+    const stored = editor.sides[id].width;
+    return stored ? yieldToCanvas(stored, sideFloor(id), sideRoom(id)) : sidePx[id];
+  };
   /** A folded column is sized by its strip rule, not by the width it remembers. */
   const sideStyle = (id: SideId): string | undefined =>
-    !folded(id) && editor.sides[id].width ? `width: ${editor.sides[id].width}px` : undefined;
+    !folded(id) && editor.sides[id].width ? `width: ${sideWidth(id)}px` : undefined;
   /** Collapse points away from the canvas, expand points back towards it. */
   const foldIcon = (id: SideId, collapsed: boolean): 'chevron-left' | 'chevron-right' =>
     atLeft(id) === collapsed ? 'chevron-right' : 'chevron-left';
 
   function onSideDown(e: PointerEvent, id: SideId): void {
-    startResize(e, 'x', atLeft(id) ? 1 : -1, sideWidth(id), (px, persist) => editor.setSideWidth(id, px, persist), id);
+    startResize(e, 'x', atLeft(id) ? 1 : -1, sideWidth(id), (px, persist) => editor.setSideWidth(id, px, persist), id, sideMax(id));
   }
 
   function onSideKey(e: KeyboardEvent, id: SideId): void {
@@ -562,7 +617,7 @@
     const step = e.key === 'ArrowRight' ? SIDE_STEP : e.key === 'ArrowLeft' ? -SIDE_STEP : 0;
     if (!step) return;
     e.preventDefault();
-    editor.setSideWidth(id, sideWidth(id) + step * (atLeft(id) ? 1 : -1));
+    editor.setSideWidth(id, Math.min(sideMax(id), sideWidth(id) + step * (atLeft(id) ? 1 : -1)));
   }
 
   /** Arrow keys: Shift grows the timeline selection, a bare arrow moves the active cell. */
@@ -907,7 +962,11 @@
       // same key with Ctrl inserts one in front of it.
       case 'a':
       case 'F7':
-        if (e.ctrlKey || e.metaKey) {
+        // Shift+F7 is the layer, as Shift+A: with the letters off the manual's
+        // «F7 … Shift — слой» added a frame, and no key added a layer at all.
+        if (e.shiftKey) {
+          editor.addLayerAtActive(e.ctrlKey || e.metaKey);
+        } else if (e.ctrlKey || e.metaKey) {
           editor.addFrameBeforeActive();
         } else {
           editor.addFrameAfterActive();
@@ -1268,7 +1327,10 @@
   // last one behind your back (`toonio.bundle.js:233`) — so does this: the
   // editor opens on a clean sheet and offers the list when there is one.
   let draftsOpen = $state(false);
-  let drafts = $state<DraftEntry[]>([]);
+  // Raw: `$state` hands every entry out as a proxy, the document in it too —
+  // a draft opened from the list was one IndexedDB refuses to write
+  // (DataCloneError), so nothing drawn on it since was ever saved.
+  let drafts = $state.raw<DraftEntry[]>([]);
 
   /** How much of the device's storage everything on it takes, for the header. */
   let storageUsed = $state(0);
@@ -1949,7 +2011,10 @@
     // moved and not applied is not in the document at all: it asks too (a
     // lasso only picked up has no step yet, and closes quietly).
     const unsaved = (editor.touched && (dirty || writing > 0) && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
-    flushOnLeave();
+    // With the move, as a hidden tab's: `pagehide` applies it and writes, but
+    // a write begun there never lands — the page is gone before storage
+    // answers — and a reload lost the move it had just asked about.
+    flushOnHide();
     if (unsaved) {
       e.preventDefault();
     }
@@ -2022,7 +2087,7 @@
         aria-label={t('editor.panel_width', { label })}
         aria-valuenow={sideWidth(id)}
         aria-valuemin={SIDE_WIDTH_MIN[id]}
-        aria-valuemax={SIDE_WIDTH_MAX}
+        aria-valuemax={sideMax(id)}
         tabindex="0"
         onpointerdown={(e) => onSideDown(e, id)}
         onkeydown={(e) => onSideKey(e, id)}
@@ -2225,6 +2290,7 @@
          opens it with the key taken off the layout or shut in «Ещё». -->
     <button
       class="key"
+      aria-haspopup="dialog"
       onclick={() => exportButton?.start()}
       data-key={hasProjectFile ? undefined : 'Alt+S'}
       aria-keyshortcuts={hasProjectFile ? undefined : 'Alt+S'}
@@ -2384,6 +2450,7 @@
       class:collapsed={folded('left')}
       aria-label={t('editor.tools_side')}
       data-slot="left"
+      data-folded={folded('left') ? '' : undefined}
       style={sideStyle('left')}
       bind:clientWidth={sidePx.left}
     >
@@ -2500,6 +2567,7 @@
       class:collapsed={folded('right')}
       aria-label={t('editor.palette_side')}
       data-slot="right"
+      data-folded={folded('right') ? '' : undefined}
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
     >
@@ -2514,6 +2582,7 @@
   <div
     class="panel"
     class:collapsed={panelFolded}
+    class:boxed={boxExtra > 0}
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, editor.panels.rows.length - 1)}` : undefined}
     data-folded={panelFolded && editor.arranging ? '' : undefined}
     class:dragging={resize?.side === 'panel'}
@@ -2541,11 +2610,11 @@
         aria-label={t('editor.bottom_height')}
         aria-orientation="horizontal"
         aria-valuenow={panelHeight}
-        aria-valuemin={panelFloor}
-        aria-valuemax={Math.max(panelFloor, Math.round((viewportHeight || 800) * 0.75))}
+        aria-valuemin={panelLow}
+        aria-valuemax={panelMax}
         tabindex="0"
         onpointerdown={(e) =>
-          startResize(e, 'y', -1, panelHeight, (px, persist) => editor.setPanelHeight(px, persist), 'panel')}
+          startResize(e, 'y', -1, panelHeight, (px, persist) => editor.setPanelHeight(px, persist), 'panel', panelMax)}
         onkeydown={onDividerKey}
         title={t('editor.bottom_height_title')}
       ></div>
@@ -3241,6 +3310,12 @@
     /* The strip is a tall grid, so the keys beside it sit at its top rather
        than floating in the middle of it — the strip itself stretches. */
     align-items: flex-start;
+  }
+  /* A box in the bar (the palette, the brush) with the canvas at its floor:
+     the rows scroll, the strip is not the one squeezed to nothing. Its height
+     under the bar's own floor, one row of keys over it. */
+  .studio .panel.boxed .row.strip-row {
+    min-height: 4.875rem;
   }
   .studio .row.strip-row > .timeline,
   .studio .row.strip-row > .arr[data-item='timeline'] {

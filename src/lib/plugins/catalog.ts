@@ -169,6 +169,12 @@ export async function readCatalog(
     if (timedOut(error)) {
       return { plugins: [], error: t('plugin.catalog_timeout', { count: seconds(timeout) }) };
     }
+    // A page answered 200 where `index.json` should be (a site that serves
+    // its own page at every path): the parser's words are about characters.
+    if (error instanceof SyntaxError) {
+      console.warn('catalog is not JSON:', error);
+      return { plugins: [], error: t('plugin.catalog_not_one') };
+    }
     return { plugins: [], error: t('plugin.catalog_unreadable', { reason: reason(error) }) };
   }
   const body = typeof index === 'object' && index !== null ? index as Record<string, unknown> : {};

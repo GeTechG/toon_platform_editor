@@ -79,7 +79,7 @@ describe('leaving writes the draft whatever the autosave setting', () => {
   });
 
   it('beforeunload writes too, before it asks', () => {
-    expect(editorUi).toMatch(/onbeforeunload=\{\(e\) => \{[^]*?flushOnLeave\(\);[^]*?e\.preventDefault\(\)/);
+    expect(editorUi).toMatch(/onbeforeunload=\{\(e\) => \{[^]*?flushOn(?:Leave|Hide)\(\);[^]*?e\.preventDefault\(\)/);
   });
 });
 
