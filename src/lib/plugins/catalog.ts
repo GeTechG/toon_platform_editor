@@ -46,6 +46,8 @@ export interface CatalogEntry {
   readonly description: string;
   readonly icon: string;
   readonly url: string;
+  /** The catalog the record was read from; a record made by hand has none. */
+  readonly catalog?: string;
 }
 
 export interface Catalog {
@@ -112,6 +114,7 @@ function readEntry(value: unknown, base: string): CatalogEntry | null {
     description: localized(record.description, text(record.id)),
     icon: text(record.icon),
     url,
+    catalog: base,
   };
 }
 
@@ -192,8 +195,10 @@ export async function readCatalog(
 
 /**
  * Reviewed: it came from our catalog, where every plugin went through a pull
- * request. A catalog at another address, like a file, is nobody's review.
+ * request. A catalog at another address, like a file, is nobody's review —
+ * and it stays nobody's when it lists our bundle: the name, the words and the
+ * version around it are its own («999» switched the plugin's updates off).
  */
-export function reviewed(entry: Pick<CatalogEntry, 'url'>): boolean {
-  return entry.url.startsWith(OFFICIAL_CATALOG);
+export function reviewed(entry: Pick<CatalogEntry, 'url' | 'catalog'>): boolean {
+  return entry.url.startsWith(OFFICIAL_CATALOG) && (entry.catalog ?? '').startsWith(OFFICIAL_CATALOG);
 }

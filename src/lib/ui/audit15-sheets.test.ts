@@ -28,6 +28,7 @@ const entry = (id: string, version = '2.0.0'): CatalogEntry => ({
   description: '',
   icon: '',
   url: `${OFFICIAL_CATALOG}${id}/plugin.js`,
+  catalog: OFFICIAL_CATALOG,
 });
 
 const stored = (id: string, version = '1.0.0'): InstalledPlugin => ({

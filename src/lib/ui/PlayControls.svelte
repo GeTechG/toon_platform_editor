@@ -152,6 +152,21 @@
     player = null;
   });
 
+  // A hidden tab gets no frames (rAF stands still) while the element played
+  // on — an untied track went round and round under a film nobody saw. The
+  // sound waits with the frames and picks up on the way back (owner, after
+  // the eighteenth audit). Only the preview this component runs.
+  function onVisibility(): void {
+    if (!editor.playing || !player) {
+      return;
+    }
+    if (document.hidden) {
+      editor.audio.stop();
+    } else {
+      editor.audio.resume(editor.playbackFrame, editor.doc.frame_rate);
+    }
+  }
+
   // The sound refused mid-preview (the browser's autoplay rule, a file the
   // element will not play) wrote why into the «Звук» plate, which is shut
   // while one watches the frames: the preview went on mute with nothing said.
@@ -174,6 +189,8 @@
     cancelAnimationFrame(rafId);
   });
 </script>
+
+<svelte:document onvisibilitychange={onVisibility} />
 
 <button
   class="key play"

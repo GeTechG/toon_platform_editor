@@ -24,6 +24,7 @@ const entry = (id: string): CatalogEntry => ({
   description: '',
   icon: '',
   url: `${OFFICIAL_CATALOG}${id}/plugin.js`,
+  catalog: OFFICIAL_CATALOG,
 });
 
 async function quiet<T>(run: () => Promise<T>): Promise<T> {

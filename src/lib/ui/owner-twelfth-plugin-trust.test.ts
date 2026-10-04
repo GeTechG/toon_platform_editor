@@ -16,7 +16,7 @@ const CODE = 'export default { id: "straight-line", api: 1 };';
 const offline = async () => {
   throw new Error('offline');
 };
-const entry = (url: string) => ({ id: 'p', name: 'p', version: '1.0.0', description: '', icon: '', url });
+const entry = (url: string) => ({ id: 'p', name: 'p', version: '1.0.0', description: '', icon: '', url, catalog: OFFICIAL_CATALOG });
 
 describe('no official and community any more', () => {
   it('there is no register and no hash to check', () => {

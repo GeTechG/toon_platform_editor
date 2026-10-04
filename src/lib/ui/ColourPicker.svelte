@@ -250,7 +250,8 @@
    * colour it opened with — here, and not only in the dialog's `cancel`: the
    * phone's tab window above takes an Esc that bubbles to it for its own and
    * closes, picker and all. `cancel` stays for the close requests that are
-   * not a key (Android's back). Tab is the dialog's own trap. The key's default goes too: focus returns
+   * not a key (Android's back) and takes the colour, as a tap outside does:
+   * a phone has no Esc, and its «назад» threw the choice away. Tab is the dialog's own trap. The key's default goes too: focus returns
    * to the swatch on close, and the same Enter pressed it, reopening the
    * window on the new colour as if nothing had changed.
    * Enter on text that is not a colour closes nothing: the field shows the
@@ -425,7 +426,7 @@
   onclick={(e) => e.target === box && outside(e) && requestClose()}
   oncancel={(e) => {
     e.preventDefault();
-    requestClose({ revert: true });
+    requestClose();
   }}
   onclose={() => onclose(intent)}
   style:left="{x}px"

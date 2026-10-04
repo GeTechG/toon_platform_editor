@@ -1391,6 +1391,12 @@
     return e.pointerType === 'touch' && editor.penSeen && penBusy();
   }
 
+  /** A finger pinching or panning the sheet, not drawing on it. */
+  function movesView(e: PointerEvent): boolean {
+    return e.pointerType === 'touch'
+      && ((gesture !== null && touches.has(e.pointerId)) || panning?.pointerId === e.pointerId);
+  }
+
   /** The side buttons draw here, but their release must not page the browser back (side-buttons.ts). */
   const sideButtons = createSideButtonGuard();
   // A side button pressed on the sheet is let go wherever the hand is by then:
@@ -1588,9 +1594,15 @@
       // out (pointerleave), and the mouse or the pen that had been there all
       // along gets no new pointerenter: under `cursor: none` there was no
       // cursor at all until it left the canvas and came back.
-      cursorVisible = true;
-      cursorX = e.clientX;
-      cursorY = e.clientY;
+      // Fingers moving the sheet carry no brush: the ring jumped between the
+      // two of a pinch (owner, after the eighteenth audit).
+      if (movesView(e)) {
+        cursorVisible = false;
+      } else {
+        cursorVisible = true;
+        cursorX = e.clientX;
+        cursorY = e.clientY;
+      }
       // Where the zoom buttons, the slider and `+`/`-` will zoom around.
       editor.lastScalePivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }

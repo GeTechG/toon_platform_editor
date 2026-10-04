@@ -258,7 +258,7 @@ describe('loadInstalled', () => {
 
 describe('updateInstalled', () => {
   // Only our catalog updates unasked: a record elsewhere is not reviewed.
-  const ours = (id: string, version: string): CatalogEntry => ({ ...entry(id, version), url: `${OFFICIAL_CATALOG}${id}/plugin.js` });
+  const ours = (id: string, version: string): CatalogEntry => ({ ...entry(id, version), url: `${OFFICIAL_CATALOG}${id}/plugin.js`, catalog: OFFICIAL_CATALOG });
 
   test('takes the newer version, replaces the code and re-registers the tool', async () => {
     setIndexedDB(fakeIndexedDB(new Map(), 1));

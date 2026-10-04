@@ -343,4 +343,17 @@ export class AudioTrackState {
   stop(): void {
     this.#element?.pause();
   }
+
+  /**
+   * Back from a hidden tab, where the sound was paused: tied, the track stands
+   * where the frame does; untied, it goes on from where the pause left it.
+   */
+  resume(frame: number, fps: number): void {
+    if (this.sync) {
+      this.playFrom(frame, fps);
+      return;
+    }
+    // A refusal here was already said at the press that started the preview.
+    void this.#element?.play().catch(() => {});
+  }
 }

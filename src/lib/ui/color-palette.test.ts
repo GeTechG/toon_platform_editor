@@ -307,11 +307,12 @@ describe('the colour picker follows the reference window', () => {
   });
 
   it('closes with a revert flag on Esc and without one otherwise', () => {
-    // Esc is `cancel` now that the window is a real `<dialog>`, and every exit
+    // Esc is the keydown's; `cancel` is what is left — the phone's «назад» —
+    // and takes the colour (owner, after the eighteenth audit). Every exit
     // routes through `close()` so the platform hands focus back to the swatch.
     // The contract the parent sees is the one it always saw.
     expect(picker).toContain('onclose: (options?: { revert?: boolean }) => void');
-    expect(picker).toMatch(/oncancel=\{[^]{0,200}requestClose\(\{ revert: true \}\)/);
+    expect(picker).toMatch(/if \(action === 'revert'\) requestClose\(\{ revert: true \}\)/);
     expect(picker).toContain('onclose={() => onclose(intent)}');
     // Which key closes is `pickerKeyAction`'s (canvas-tools-audit.test.ts).
     expect(picker).toMatch(/pickerKeyAction\([^]{0,300}requestClose\(\)/);

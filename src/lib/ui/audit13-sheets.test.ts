@@ -49,6 +49,7 @@ const record = (id: string): InstalledPlugin => ({
 });
 
 const entry = (id: string, url: string): CatalogEntry => ({
+  catalog: OFFICIAL_CATALOG,
   id,
   name: id,
   version: '2.0.0',
