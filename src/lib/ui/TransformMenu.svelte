@@ -32,8 +32,10 @@
   let typing: Field | null = null;
   function set(field: Field, value: number): void {
     if (session && Number.isFinite(value)) {
-      editor.setTransform({ ...session, [field]: value }, typing === field);
-      typing = field;
+      // Only a value that was filed began the step the next key replaces.
+      if (editor.setTransform({ ...session, [field]: value }, typing === field)) {
+        typing = field;
+      }
     }
   }
 

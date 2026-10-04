@@ -424,6 +424,26 @@ export function pickedPixel(x: number, y: number, now: DrawnView, drawn: DrawnVi
 }
 
 /**
+ * Whether a picture of the whole table drawn under `drawn` still holds all of
+ * the sheet the view `now` has on the table. A shot is the table as it was:
+ * at 300 % a third of the sheet is on it, and the part a pan or a pinch out
+ * brings in was bare paper until the hand let go. A pixel of slack, so a
+ * fraction of one does not count as uncovered.
+ */
+export function shotCovers(drawn: DrawnView, now: DrawnView, stage: Stage): boolean {
+  const k = now.zoom / drawn.zoom;
+  const axis = (was: number, pan: number, table: number, sheet: number): boolean => {
+    // The sheet on the table now, and where the shot's table lands.
+    const from = Math.max(0, pan);
+    const to = Math.min(table, pan + sheet * now.zoom);
+    const shotFrom = pan - k * was;
+    return to <= from || (shotFrom <= from + 1 && shotFrom + k * table >= to - 1);
+  };
+  return axis(drawn.panX, now.panX, stage.width, stage.sheetWidth)
+    && axis(drawn.panY, now.panY, stage.height, stage.sheetHeight);
+}
+
+/**
  * Where a picture drawn under `from` lands under `to`: the uniform scale and
  * offset, in `to`'s device pixels, that put every point of it back where the
  * new view would draw it. Pan and pinch show the last composed frame through

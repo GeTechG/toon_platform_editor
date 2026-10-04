@@ -153,6 +153,9 @@
      everybody draws with get most of it. The track holds positions, so the
      reader hears the size, and a key steps a whole size, as + and − do — at
      the thin end one step of the track would not reach the next whole size.
+     Let go between two sizes, the thumb goes to the one it gave: the value
+     is written only when the size changes, and at «1» it stood wherever the
+     hand left it, up to a sixteenth of the track off.
      `pixels`: a linear track in logical pixels (the simplify step), which the
      reader hears with its unit, as the thickness. -->
 {#snippet slider(label: string, min: number, max: number, value: number, set: (v: number) => void, log = false, pixels = false)}
@@ -166,6 +169,7 @@
       aria-label={label}
       aria-valuetext={t('brush.size_value', { count: value })}
       oninput={(e) => set(sizeAtPosition(e.currentTarget.valueAsNumber, min, max))}
+      onchange={(e) => (e.currentTarget.value = String(Math.round(positionOfSize(value, min, max))))}
       onkeydown={(e) => {
         // The arrows step as + and − do, by the preset's own ladder.
         const next = sizeByKey(e.key, value, min, max, editor.ux);

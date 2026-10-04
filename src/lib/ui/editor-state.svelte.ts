@@ -85,12 +85,13 @@ import {
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
-import { restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
+import { restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import type { TransformSession } from '../tools/lasso';
 import {
   EMPTY_TRANSFORM,
   nudged,
+  sameSession,
   selectionBounds,
   sessionMatrix,
   sessionWidthScale,
@@ -434,6 +435,14 @@ export class EditorState {
    * one, collapsed simply hides the picker.
    */
   paletteExpanded = $state(true);
+  /**
+   * Whether the pipette has a key where the arrangement puts it: only once
+   * the palette is enabled (ToolPanel.hx), and under Toonio never — the
+   * palette's foot holds it (reference `E:205-208`).
+   */
+  get pipetteOffered(): boolean {
+    return !this.ux.pipetteOffRail && (!this.ux.pipetteNeedsPalette || this.paletteExpanded);
+  }
   /** Bumped on frame copy/paste so the view can flash a confirmation. */
   flashTick = $state(0);
   /** When the draft was last written, for the panel's «Сохранено HH:MM». */
@@ -1826,19 +1835,11 @@ export class EditorState {
   }
 
   /**
-   * The block edit undo would put back, if every cell it wrote is still as it
-   * left it and the user is standing on one of them.
+   * The block edit undo would put back: the newest one of the cell the user
+   * is standing on, if every cell it wrote is still as it left it.
    */
   get restorableEdit(): CellSnapshot[] | undefined {
-    const top = this.edits[this.edits.length - 1];
-    if (!top || !Array.isArray(top)) {
-      return undefined;
-    }
-    const intact = top.every((s) => {
-      const cell = this.doc.layers[s.layer]?.frames[s.frame];
-      return cell === s.cell && cell.strokes.length === s.after;
-    });
-    return intact && top.some((s) => s.cell === this.activeCell) ? top : undefined;
+    return restorableBlock<CellSnapshot>(this.doc, this.edits, this.activeCell);
   }
 
   get canUndo(): boolean {
@@ -1912,7 +1913,8 @@ export class EditorState {
       if (!this.mayEdit(edit.map((snapshot) => snapshot.layer))) {
         return;
       }
-      this.edits = this.edits.slice(0, -1);
+      // Not always the top: an edit of another frame may lie over it.
+      this.edits = this.edits.filter((step) => step !== edit);
       for (const snapshot of edit) {
         this.#write((doc) => replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes));
         // The restore is a new cell object, and the step under this one
@@ -2158,10 +2160,13 @@ export class EditorState {
    * still being typed — and replaces the step it began instead of filing one
    * per event.
    */
-  setTransform(session: TransformSession, continuing = false): void {
+  setTransform(session: TransformSession, continuing = false): boolean {
     const open = this.transform;
-    if (!open) {
-      return;
+    // A session that did not change is no step: a pen's pressure on the
+    // selection, a scale key at the floor, the same number typed again filed
+    // one that undid nothing — and the tab asked before closing over it.
+    if (!open || sameSession(session, open.session)) {
+      return false;
     }
     this.transform = {
       ...open,
@@ -2171,6 +2176,7 @@ export class EditorState {
         : [...open.past, open.session].slice(-TRANSFORM_HISTORY_LIMIT),
       future: [],
     };
+    return true;
   }
 
   get canUndoTransform(): boolean {

@@ -32,7 +32,9 @@ describe('every autosave interval the sheet offers has a label', () => {
 
 describe('the rail and the chrome follow the reference studio', () => {
   it('drops the pipette from the rail where the profile says so', () => {
-    expect(tools).toContain('editor.ux.pipetteOffRail');
+    // The rule moved into the state so the shell asks the same (19th audit).
+    expect(tools).toContain('editor.pipetteOffered');
+    expect(state).toContain('!this.ux.pipetteOffRail');
   });
 
   it('gives the rail a Справка button with no key caption', () => {

@@ -80,7 +80,8 @@ describe('четырнадцатый аудит: переключатель пр
     // Привязанный короткий трек доиграл и встал; отвязанный посреди просмотра
     // он молчал до следующего нажатия «Проиграть».
     const effect = play.match(/\$effect\(\(\) => \{(?:(?!\$effect)[\s\S])*?editor\.audio\.playFrom\(untrack[\s\S]*?\n  \}\);/)?.[0] ?? '';
-    expect(effect).toContain('void editor.audio.sync');
+    // Читает её в переменную с 19-го аудита: включённая привязка ещё и переставляет трек.
+    expect(effect).toContain('= editor.audio.sync;');
   });
 });
 

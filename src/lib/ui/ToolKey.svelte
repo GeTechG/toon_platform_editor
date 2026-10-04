@@ -21,11 +21,7 @@
   // themselves: it exists only once the palette is enabled (ToolPanel.hx), and
   // under Toonio it is not a rail button at all — the palette's foot holds it
   // (reference `E:205-208`).
-  const offered = $derived(
-    tool !== 'pipette'
-      || (!editor.ux.pipetteOffRail
-        && (!editor.ux.pipetteNeedsPalette || editor.paletteExpanded)),
-  );
+  const offered = $derived(tool !== 'pipette' || editor.pipetteOffered);
   // A second press opens the browser's own eyedropper — only where there is
   // one and the setting lets it (owner, sixteenth audit): Safari and Firefox
   // have none, and the title promised it there.

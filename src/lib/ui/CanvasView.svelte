@@ -32,6 +32,7 @@
     pickedPixel,
     renderDensity,
     reprojection,
+    shotCovers,
     resizedView,
     type DrawnView,
     toDocument,
@@ -437,14 +438,25 @@
   /** The view the last composed frame was drawn under. */
   let lastDrawn: DrawnView | null = null;
   /** That frame, copied when a pan or pinch starts, and the view it was drawn in. */
-  let navShot: { canvas: HTMLCanvasElement; view: DrawnView } | null = null;
+  let navShot: { canvas: HTMLCanvasElement; view: DrawnView; at: number } | null = null;
   let shotCanvas: HTMLCanvasElement | undefined;
+  /**
+   * How often the frame is composed afresh under a moving hand, once the shot
+   * no longer holds what the hand brought onto the table, ms. The calibration
+   * knob: lower fills the sheet in sooner, higher spares a weak phone.
+   */
+  const NAV_COMPOSE_MS = 100;
 
   function takeNavShot(): void {
     // Nor while a frame is waiting to be drawn: the canvas still shows what
     // that frame is to replace — the line of a pinch's first finger, just
     // discarded, stayed on the sheet for the whole pinch. `draw` takes it then.
     if (!canvasEl || !lastDrawn || navShot || rafPending) {
+      return;
+    }
+    // Nor through the preview: nobody shows it there (`draw`), and every frame
+    // of the film dropped it — a copy of the whole table per frame, for nothing.
+    if (editor.playing) {
       return;
     }
     shotCanvas ??= document.createElement('canvas');
@@ -457,7 +469,7 @@
       return;
     }
     shotCtx.drawImage(canvasEl, 0, 0);
-    navShot = { canvas: shotCanvas, view: lastDrawn };
+    navShot = { canvas: shotCanvas, view: lastDrawn, at: performance.now() };
   }
 
   function draw(): void {
@@ -530,7 +542,19 @@
       // While the hand pans or pinches, the picture is the one it grabbed, moved:
       // nothing in it changes until it lets go, and rebuilding every layer and
       // ghost per animation frame was what the gesture stuttered on.
+      // But the shot is the table as it was: the part of a magnified sheet the
+      // hand has brought in since is not on it, and lay there as bare paper
+      // until the hand let go. Then the frame is composed afresh — every
+      // NAV_COMPOSE_MS, not every animation frame — and is the shot from there.
+      const uncovered = navShot !== null && !shotCovers(navShot.view, drawn, stage);
+      if (navShot && uncovered && performance.now() - navShot.at >= NAV_COMPOSE_MS) {
+        navShot = null;
+      }
       const shot = navShot && navigating() && !editor.playing ? navShot : null;
+      // Too soon: asked again, so a hand that stops is not left with the gap.
+      if (uncovered && shot) {
+        scheduleDraw();
+      }
       if (shot) {
         const to = reprojection(shot.view, drawn);
         ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
@@ -1452,6 +1476,11 @@
       hold = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, timer: setTimeout(startDropper, HOLD_PICK_MS) as unknown as number };
     }
     if (startNavigation(e)) {
+      // The finger brought the ring with it (pointerenter) and it stood under
+      // it until the first move: fingers moving the sheet carry no brush.
+      if (movesView(e)) {
+        cursorVisible = false;
+      }
       e.preventDefault();
       return;
     }
@@ -1777,18 +1806,20 @@
     const [x, y] = toDocUnits(e, rect);
     const start = { x: grab.x, y: grab.y };
     const pos = { x, y };
-    // The first move files the step, the rest of the drag replaces it.
-    const continuing = grab.moved;
-    grab.moved = true;
+    let next: TransformSession;
     if (grab.mode === 'move') {
       const moved = movedBy(grab.base, start, pos, e.shiftKey, grab.axis);
       grab.axis = moved.axis;
-      editor.setTransform(moved.session, continuing);
+      next = moved.session;
     } else if (grab.mode === 'rotate') {
-      editor.setTransform(rotatedTo(grab.base, open.box, start, pos, e.ctrlKey || e.metaKey), continuing);
+      next = rotatedTo(grab.base, open.box, start, pos, e.ctrlKey || e.metaKey);
     } else {
-      editor.setTransform(scaledBy(grab.base, open.box, grab.mode, start, pos, e.shiftKey), continuing);
+      next = scaledBy(grab.base, open.box, grab.mode, start, pos, e.shiftKey);
     }
+    // The first move that changes the session files the step, the rest of the
+    // drag replaces it. A move that changed nothing (a pen's pressure alone)
+    // has not begun it: counted, the next one replaced the step before the drag.
+    grab.moved = editor.setTransform(next, grab.moved) || grab.moved;
   }
 
   function commitPendingStroke(): void {

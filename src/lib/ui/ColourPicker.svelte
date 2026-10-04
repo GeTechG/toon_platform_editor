@@ -280,6 +280,14 @@
     return !r || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
   }
 
+  /**
+   * Whether the press began outside as well. A drag that began inside and was
+   * let go past the edge — text selected in the field, a slider pulled to its
+   * end — clicks on the nearest thing both ends share, the dialog itself, at a
+   * point outside it: the window shut in the middle of the edit.
+   */
+  let pressedOutside = false;
+
   function dragWindow(e: PointerEvent): void {
     const el = e.currentTarget as HTMLElement;
     // The capture would retarget the pointerup and eat the close button's click.
@@ -423,7 +431,8 @@
   bind:this={box}
   aria-label={t('picker.title', { label })}
   onkeydown={onKeydown}
-  onclick={(e) => e.target === box && outside(e) && requestClose()}
+  onpointerdown={(e) => (pressedOutside = e.target === box && outside(e))}
+  onclick={(e) => pressedOutside && e.target === box && outside(e) && requestClose()}
   oncancel={(e) => {
     e.preventDefault();
     requestClose();
@@ -769,6 +778,17 @@
   @media (pointer: coarse) {
     .preview {
       min-height: var(--key-h);
+    }
+  }
+  /* The strip is the reference's 31 px, and a slider under a finger is a
+     finger deep. Its value is read off the box's width alone, so the taller
+     box stretches the same columns; px, as the 176 px it is wide. */
+  @media (pointer: coarse) {
+    .bar {
+      /* Both: a canvas given a height alone keeps its 176:31 and went
+         250 px wide, out of the window. */
+      width: 100%;
+      height: var(--tap, 44px);
     }
   }
   .swatch {

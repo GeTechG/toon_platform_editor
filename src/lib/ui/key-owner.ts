@@ -72,6 +72,13 @@ export function composing(e: { isComposing: boolean; keyCode: number }): boolean
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);
 
+/**
+ * The named keys the table holds. Every other one — Tab, the page keys, F5 —
+ * is the browser's: taken as the editor's, a held Tab was swallowed with the
+ * auto-repeat of the toggles and walked one control instead of the row.
+ */
+const NAMED = new Set([...PAN_ARROWS, 'Enter', 'Escape', 'Delete', 'Backspace', 'F7']);
+
 function kindOf(target: KeyTarget): { field: boolean; pressed: boolean; slider: boolean } {
   const tag = target.tagName.toLowerCase();
   const role = target.getAttribute('role');
@@ -102,7 +109,7 @@ export function typesText(target: KeyTarget | null): boolean {
 }
 
 export function keyOwner(e: KeyPress): 'editor' | 'control' {
-  if (e.defaultPrevented || e.modalOpen) {
+  if (e.defaultPrevented || e.modalOpen || (e.key.length > 1 && !NAMED.has(e.key))) {
     return 'control';
   }
   const chord = e.ctrlKey || e.metaKey;

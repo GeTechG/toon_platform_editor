@@ -20,6 +20,23 @@ export function fitThumb(
 /** The timeline's frame: the cap a cell thumbnail fits into. */
 export const CELL_BOX = { w: 46, h: 46 };
 
+/**
+ * The floor of a cell's thumbnail box: with the 1px border a side the cell's
+ * button is 24 px, the Dense-Timeline floor (WCAG 2.2 AA 2.5.8).
+ */
+const CELL_FLOOR = 22;
+
+/**
+ * The box a timeline cell gives its thumbnail: the canvas fitted into the
+ * frame, and never under the floor. A panorama sheet (1280×320) made cells
+ * 14 px tall and a 20:1 one 4 px — a frame nobody could press. The drawing
+ * keeps its proportions inside (`fitThumb`); the cell centres it.
+ */
+export function cellSize(width: number, height: number): { w: number; h: number } {
+  const fit = fitThumb(width, height, CELL_BOX.w, CELL_BOX.h);
+  return { w: Math.max(CELL_FLOOR, fit.w), h: Math.max(CELL_FLOOR, fit.h) };
+}
+
 /** Cell border (1px a side) plus the strip's 2px padding above and below. */
 const CELL_CHROME = 6;
 

@@ -128,12 +128,19 @@
   // than staying silent until the next press.
   // The tie switch too: a tied track that ran out stood silent, and untied
   // mid-preview it stayed so until the next press.
+  // Tied mid-preview, a sounding track stood where the untied one had got to
+  // until the lap came round: it is pulled to the frame at once.
+  // Not in a hidden tab: a track that finished decoding there joined frames
+  // that stand still (the sound waits with them; `onVisibility` brings it back).
+  let tied: boolean | undefined;
   $effect(() => {
-    void editor.audio.sync;
-    if (!editor.audio.hasTrack || !editor.playing) {
+    const now = editor.audio.sync;
+    const retied = now && tied === false;
+    tied = now;
+    if (!editor.audio.hasTrack || !editor.playing || document.hidden) {
       return;
     }
-    if (untrack(() => editor.audio.sounding)) {
+    if (!retied && untrack(() => editor.audio.sounding)) {
       return;
     }
     editor.audio.playFrom(untrack(() => editor.playbackFrame), editor.doc.frame_rate);

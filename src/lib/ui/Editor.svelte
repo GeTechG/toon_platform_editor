@@ -56,7 +56,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { itemDrawn, panelItem as panelItemSpec, toolOfItem } from './panels';
+  import { columnDraws, itemDrawn, panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
   import { compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
@@ -319,9 +319,18 @@
   let step = $state<LayoutStep>('full');
   /** One rem now: the columns are in rem, twice as wide at 200 % text. */
   const rem = $derived(16 * textScale);
+  /** Whether the column has an item the profile draws: one of undrawn ones stood as an empty strip. */
+  function sideDraws(id: SideId): boolean {
+    void editor.pluginsVersion;
+    return columnDraws(editor.panels[id], {
+      pipette: editor.pipetteOffered,
+      publish: !!onPublish,
+      fullscreen: document.fullscreenEnabled,
+    });
+  }
   /** A column as the full layout would draw it: its dragged width, its rem default, or its strip. */
   function columnPx(id: SideId, remWidth: number): number {
-    if (editor.panels[id].length === 0) return 0;
+    if (!sideDraws(id)) return 0;
     if (editor.sides[id].collapsed) return 0.75 * rem;
     return editor.sides[id].width ?? remWidth * rem;
   }
@@ -1054,7 +1063,9 @@
    * again: the user may have freed the room in the drafts list since.
    */
   function saveNow(byHand = false, leaving = false, shown?: ToonDocument): Promise<boolean> {
-    if (!editor.touched) {
+    // `shown` is an edit by itself: a move on a draft just opened and not
+    // touched since went unwritten into the background.
+    if (!editor.touched && !shown) {
       return Promise.resolve(true);
     }
     // Leaving is the last chance, failure or not: the list may have been
@@ -1226,7 +1237,10 @@
       return;
     }
     const timer = setInterval(() => {
-      if (!dirty) {
+      // A hidden tab was written as it went (flushOnHide) and nothing is
+      // drawn in it: the clock waits, or it wrote the document over the
+      // record that holds the live move.
+      if (!dirty || document.hidden) {
         return;
       }
       // The reference defers a write until playback is over — `saveQueued`
@@ -1279,6 +1293,12 @@
     const shown = editor.docWithTransform();
     if (shown !== editor.doc) {
       void saveNow(false, true, shown);
+      // The record is now ahead of the document. Dropped by Esc after the
+      // return, the move stayed in the draft: Save was dark, the clock had
+      // nothing to write and the tab closed unasked. Unsaved again — the
+      // clock puts the record right once the tab is back.
+      editor.touched = true;
+      dirty = true;
       return;
     }
     flushOnLeave();
@@ -2342,7 +2362,7 @@
         {/if}
       </aside>
     {/if}
-  {:else if editor.panels.left.length > 0 || editor.arranging}
+  {:else if sideDraws('left') || editor.arranging}
     <aside
       class="left"
       class:collapsed={folded('left')}
@@ -2458,7 +2478,7 @@
       </p>
     {/if}
   </div>
-  {#if !compact && (editor.panels.right.length > 0 || editor.arranging)}
+  {#if !compact && (sideDraws('right') || editor.arranging)}
     <aside
       class="right"
       class:collapsed={folded('right')}
@@ -3249,8 +3269,10 @@
   .editor.arranging .arr.wide {
     place-self: stretch;
     /* «Сохранено» before the first save is empty: its handle was a 4px
-       sliver no hand could take. */
+       sliver no hand could take — across in a row, and down in a column,
+       where it is stretched to the column's width. */
     min-width: var(--key-h);
+    min-height: var(--key-h);
   }
   .editor.arranging .arr-body {
     display: contents;

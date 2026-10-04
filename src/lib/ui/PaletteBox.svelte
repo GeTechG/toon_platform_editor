@@ -285,6 +285,9 @@
   /* Reference `bundle:7783`: the grid follows the chosen outline — the grid
      alone, not the rail or the tab window it stands in. */
   $effect(() => {
+    // And an outline that joins the grid already chosen («+», the colour
+    // window closing): the colour did not change, its cell appeared.
+    void outlineInGrid;
     const cell = gridEl?.querySelector(`[data-color="${editor.brushColor}"]`);
     if (!gridEl || !cell) return;
     const g = gridEl.getBoundingClientRect();
@@ -621,8 +624,11 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: var(--key-h, 2.75rem);
-    height: var(--key-h, 2.75rem);
+    /* The tap floor in px, not the rem key: 88 px boxes at 200 % text lay
+       over the whole of a phone's 76 px swatch, and nothing opened its
+       colour window. The glyphs still grow; a finger does not. */
+    width: var(--tap, 44px);
+    height: var(--tap, 44px);
     transform: translate(-50%, -50%);
   }
   .swap {

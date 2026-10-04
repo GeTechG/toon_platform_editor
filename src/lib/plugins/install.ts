@@ -183,7 +183,10 @@ async function install(
   // One that storage refused is only in `session`: a refused new build of it
   // left nothing to put back, and the working plugin was gone until the file
   // was picked again.
-  const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id) ?? session.get(id);
+  // Only while it runs: taken off («Удалить»), its record is still in
+  // `session`, and a refused new build brought the removed plugin back.
+  const kept = registry.holds(id) ? session.get(id) : undefined;
+  const was = (await listInstalled().catch(() => [])).find((plugin) => plugin.id === id) ?? kept;
   // What the register holds, not what the disk does: a plugin that storage
   // refused runs until the page is left, and a second install of it came back
   // «такой id уже загружен». The editor's own stay (`remove` refuses them).
@@ -361,6 +364,9 @@ export async function updateInstalled(
     const refused = accept(got.manifest, registry);
     if (refused) {
       registry.fail(plugin.id, t('plugin.update_failed', { reason: refused }));
+      // What the new one registered before it threw goes too, as in `install`:
+      // left in, its id was «уже загружен» to the version being put back.
+      registry.remove(plugin.id);
       // The working version goes back in: a refused update is not a removal.
       try {
         accept(manifestOf(await run(plugin.code, ports)), registry);

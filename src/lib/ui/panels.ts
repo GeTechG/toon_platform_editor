@@ -497,6 +497,25 @@ export function itemDrawn(
     || (!folded.rows && layout.rows.some((row) => row.includes(id)));
 }
 
+/**
+ * Whether a column has anything to draw. Some items draw nothing where they
+ * lie — the pipette's key under a preset that keeps it elsewhere, «Отправить»
+ * off the site, a removed plugin's tool — and a column holding only those
+ * stood as an empty strip taking the canvas's room.
+ */
+export function columnDraws(
+  ids: readonly string[],
+  has: { pipette: boolean; publish: boolean; fullscreen: boolean },
+): boolean {
+  return ids.some((id) => {
+    const tool = toolOfItem(id);
+    if (tool) return !!toolSpec(tool) && (tool !== 'pipette' || has.pipette);
+    if (id === 'publish') return has.publish;
+    if (id === 'fullscreen') return has.fullscreen;
+    return true;
+  });
+}
+
 /** Where a window with no place stored is drawn (FloatWindow). */
 export const FLOAT_HOME: Readonly<{ x: number; y: number }> = { x: 24, y: 24 };
 

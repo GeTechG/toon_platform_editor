@@ -6,7 +6,7 @@
   // not what it is.
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
-  import { CELL_BOX, fitThumb, rowHeight, rowHeightCss } from './thumb-size';
+  import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
   import { scrollToFrame, stripTabStop, stripTail, stripWindow } from './strip-window';
   import {
     frameMenuKey,
@@ -430,7 +430,7 @@
   // The canvas max-fitted into one frame — the same caps for every project.
   // `+2` is the 1px border on each side of the cell around the thumbnail; the
   // row it sits in grows with it, down to the floor its name and icons need.
-  const cell = $derived(fitThumb(editor.doc.width, editor.doc.height, CELL_BOX.w, CELL_BOX.h));
+  const cell = $derived(cellSize(editor.doc.width, editor.doc.height));
   const row = $derived(rowHeight(editor.doc));
   const thumbWidth = $derived(cell.w + 2);
   /** The frames built right now — the ones in view, plus a screen either side. */

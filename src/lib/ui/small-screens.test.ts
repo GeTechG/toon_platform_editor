@@ -138,7 +138,7 @@ describe('the studio takes its step from the sum, not from a width query', () =>
   });
 
   it('on a small screen the right column, the bottom bar and the windows are not drawn', () => {
-    expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.right\.length > 0/);
+    expect(editorUi).toMatch(/\{#if !compact && \(sideDraws\('right'\)/);
     expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.rows\.length > 0/);
     expect(editorUi).toMatch(/\{#if !compact\}\s*\{#each \[\.\.\.editor\.panels\.float\]/);
   });

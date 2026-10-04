@@ -10,7 +10,7 @@
    */
   import { tick, type Snippet } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
-  import { clampWindowPosition } from './draggable';
+  import { clampWindowPosition, pastDragThreshold } from './draggable';
   import { FLOAT_HOME, panelItem, slotOf } from './panels';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
@@ -170,6 +170,12 @@
 
   function onMove(e: PointerEvent): void {
     if (!grab || e.pointerId !== grab.pointerId) {
+      return;
+    }
+    // A press is not a move: a pen changing its pressure, or a finger that
+    // trembled, «moved» the window by nothing — and wrote the place a narrow
+    // screen draws it at over the one the hand had left it in.
+    if (!grab.moved && !pastDragThreshold(e.clientX - grab.x, e.clientY - grab.y, e.pointerType)) {
       return;
     }
     const next = clampWindowPosition(

@@ -654,10 +654,11 @@
     color: var(--ink-2);
   }
   .chip {
-    /* A finger picks these up off the shelf; 24px was the bare minimum. */
+    /* A finger picks these up off the shelf: a key's height, as every
+       other thing it presses in the studio. */
     display: inline-flex;
     align-items: center;
-    min-height: 2.25rem;
+    min-height: var(--key-h, 2.75rem);
     padding: 0.2rem 0.6rem;
     border: none;
     border-radius: var(--r-pill);

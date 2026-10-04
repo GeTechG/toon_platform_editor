@@ -48,6 +48,41 @@ export function structureIntact(doc: ToonDocument, snap: StructureSnapshot): boo
   );
 }
 
+/** One cell of a block edit, as undo recognises it: the cell it left and its count. */
+export interface EditedCell {
+  cell: Frame;
+  layer: number;
+  frame: number;
+  after: number;
+}
+
+/**
+ * The block edit undo would put back: the newest one that wrote the active
+ * cell, while every cell it wrote is still as it left it. Only the top of the
+ * history used to be asked — a sweep of the mega eraser on another frame
+ * since, and Z here took a piece of a cut line instead of the cut. An older
+ * edit of the same cell is never reached past a newer one: a stroke drawn
+ * since is undone first, as before.
+ */
+export function restorableBlock<S extends EditedCell>(
+  doc: ToonDocument,
+  edits: readonly (readonly S[] | object)[],
+  active: Frame | undefined,
+): S[] | undefined {
+  for (let i = edits.length - 1; i >= 0; i--) {
+    const step = edits[i];
+    if (!Array.isArray(step) || !step.some((s: S) => s.cell === active)) {
+      continue;
+    }
+    const intact = step.every((s: S) => {
+      const cell = doc.layers[s.layer]?.frames[s.frame];
+      return cell === s.cell && cell.strokes.length === s.after;
+    });
+    return intact ? step : undefined;
+  }
+  return undefined;
+}
+
 export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): void {
   doc.layers = [...snap.layers];
   snap.layers.forEach((layer, l) => {

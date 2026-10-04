@@ -355,7 +355,7 @@ describe('the bottom panel folds like the sides', () => {
     // that folds nothing is a dead control.
     // A small screen draws neither the bar nor the column seams at all.
     expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.rows\.length > 0/);
-    expect(editorUi).toMatch(/\{#if cut\}[^]*?\{:else if editor\.panels\.left\.length > 0[^]*?\{@render sideEdge\('left'/);
+    expect(editorUi).toMatch(/\{#if cut\}[^]*?\{:else if sideDraws\('left'\)[^]*?\{@render sideEdge\('left'/);
     expect(editorUi).toContain('editor.sides[id].collapsed && !compact');
   });
 

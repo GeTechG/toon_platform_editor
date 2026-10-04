@@ -57,7 +57,7 @@ describe('nothing edits a hidden layer', () => {
     expect(undo).toContain('this.mayEdit(edit.map(');
     // The step stays on the stack: the guard comes before anything is sliced off.
     const block = undo.slice(undo.indexOf('const edit = this.restorableEdit'));
-    expect(block.indexOf('this.mayEdit(')).toBeLessThan(block.indexOf('this.edits = this.edits.slice(0, -1)'));
+    expect(block.indexOf('this.mayEdit(')).toBeLessThan(block.indexOf('this.edits = this.edits.filter((step) => step !== edit)'));
     expect(undo.indexOf('this.mayEdit()')).toBeGreaterThan(undo.indexOf('const cell = this.activeCell'));
     const structure = undo.slice(0, undo.indexOf('const edit = this.restorableEdit'));
     expect(structure).not.toContain('mayEdit');

@@ -99,7 +99,12 @@
     if (current >= frameCount(view)) {
       return;
     }
-    const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike;
+    const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike | null;
+    // Safari hands out null once the page's canvas memory is spent: a frame
+    // not drawn, not an effect that throws.
+    if (!ctx) {
+      return;
+    }
     renderer.render(view, current, ctx, { scale: cssWidth / view.width, dpr });
   }
 
@@ -250,8 +255,8 @@
       <!-- Two paths inline instead of the editor's Icon component: this entry
            point exists to keep the viewer's module graph small. -->
       <svg
-        width="20"
-        height="20"
+        width="1.25rem"
+        height="1.25rem"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

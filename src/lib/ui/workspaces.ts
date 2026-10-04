@@ -45,6 +45,14 @@ function maxId(ids: Iterable<number>): number {
   }
   return max;
 }
+/**
+ * An id a file may bring: a whole number small enough that «the next free
+ * one» is another number — past 2^53, `max + 1` is `max` again, and three
+ * arrangements shared an id the bar's keyed list broke on.
+ */
+function usableId(id: unknown): id is number {
+  return typeof id === 'number' && Number.isInteger(id) && Math.abs(id) < 2 ** 31;
+}
 /** What the live arrangement is called when it is exported unnamed. */
 export const currentName = (): string => t('workspace.current');
 
@@ -85,7 +93,7 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
   const names = new Set<string>();
   const stored = data
     .map((e) => (e as { id?: unknown } | null)?.id)
-    .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+    .filter(usableId);
   const fresh = (): number => Math.max(maxId(taken), maxId(stored)) + 1;
   return data.flatMap((entry): Workspace[] => {
     const row = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<string, unknown>;
@@ -94,7 +102,7 @@ export function parseWorkspaces(raw: string | null): Workspace[] {
       return [];
     }
     names.add(name);
-    const id = typeof row.id === 'number' && Number.isFinite(row.id) && !taken.has(row.id) ? row.id : fresh();
+    const id = usableId(row.id) && !taken.has(row.id) ? row.id : fresh();
     taken.add(id);
     return [{
       id,

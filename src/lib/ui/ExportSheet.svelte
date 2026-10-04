@@ -170,7 +170,10 @@
     // back to «Скачать» when the file is out or the build is called off.
     void tick().then(() => cancelEl?.focus());
     const signal = cancelling.signal;
-    const options = { width, watermark, signal, onProgress: track };
+    // A frame the encoder had in flight ends after «Отменить» and reports
+    // itself: the sheet, idle by then, showed «Кодирование…» for good.
+    const onProgress: typeof track = (...args) => void (signal.aborted || track(...args));
+    const options = { width, watermark, signal, onProgress };
     // PNG takes no signal, and a plugin's format may ignore the one it gets:
     // a file built after «Отменить» is not handed over all the same.
     // Said when it is out: a video streamed to disk has no download of the

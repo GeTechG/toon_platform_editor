@@ -138,8 +138,10 @@ export function unlockElement(element: { play(): Promise<unknown>; pause(): unkn
  * will not play) stays «not paused» at 0:00 for good, with `error` set: read
  * as the clock, it held the picture on one frame under a «pause» key.
  */
-export function trackKeepsTime(sound: { paused: boolean; error: unknown }): boolean {
-  return !sound.paused && !sound.error;
+export function trackKeepsTime(sound: { paused: boolean; error: unknown; ended?: boolean }): boolean {
+  // Firefox leaves a track that played out «not paused»: a tied track shorter
+  // than the animation held the picture on its last frame.
+  return !sound.paused && !sound.ended && !sound.error;
 }
 
 /** Complaint about a picked file, or null if it may be loaded. */

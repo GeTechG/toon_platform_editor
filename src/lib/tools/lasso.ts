@@ -29,6 +29,12 @@ export interface TransformSession {
 
 export const EMPTY_TRANSFORM: TransformSession = { dx: 0, dy: 0, rotate: 0, scaleX: 1, scaleY: 1 };
 
+/** Whether two sessions put the selection in the same place. */
+export function sameSession(a: TransformSession, b: TransformSession): boolean {
+  return a.dx === b.dx && a.dy === b.dy && a.rotate === b.rotate
+    && a.scaleX === b.scaleX && a.scaleY === b.scaleY;
+}
+
 /** What the pointer is over: which handle, the body, the turning ring, or nothing. */
 export type HitMode =
   | 'move'

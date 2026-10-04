@@ -18,6 +18,11 @@ const DRAG_THRESHOLD = 4;
 /** A finger is never that still: a tap on «+» that trembled 5px was a drag, and the key lost it. */
 const TOUCH_DRAG_THRESHOLD = 10;
 
+/** Whether a press that has travelled (dx, dy) is a drag: 4px for a mouse or a pen, 10 for a finger. */
+export function pastDragThreshold(dx: number, dy: number, pointerType: string): boolean {
+  return Math.hypot(dx, dy) >= (pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD : DRAG_THRESHOLD);
+}
+
 export interface Size {
   width: number;
   height: number;
@@ -137,8 +142,7 @@ export function draggable(node: HTMLElement): { destroy(): void } {
       return;
     }
     if (!grab.moving) {
-      const threshold = e.pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD : DRAG_THRESHOLD;
-      if (Math.hypot(e.clientX - grab.x, e.clientY - grab.y) < threshold) {
+      if (!pastDragThreshold(e.clientX - grab.x, e.clientY - grab.y, e.pointerType)) {
         return;
       }
       beginDrag();
