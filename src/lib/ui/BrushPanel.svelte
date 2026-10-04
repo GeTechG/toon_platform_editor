@@ -41,20 +41,29 @@
   let list = $state<HTMLDivElement | null>(null);
   let trigger = $state<HTMLButtonElement | null>(null);
   let picking = $state(false);
-  let at = $state({ x: 0, y: 0 });
+  let at = $state<{ x: number; y: number; room: number | null }>({ x: 0, y: 0, room: null });
 
-  /** Under the button, or above it when the bottom of the window is too near. */
+  /**
+   * Under the button, or above it when the bottom of the window is too near.
+   * Where it fits neither side it takes the roomier one and scrolls inside
+   * it: laid over its own button, a second press picked a type instead of
+   * closing the list.
+   */
   function place(): void {
     if (!list || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
     const box = list.getBoundingClientRect();
+    // The whole list, not what an earlier limit left of it.
+    const tall = list.scrollHeight;
     const below = anchor.bottom + 4;
-    at = {
-      x: Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8)),
-      y: below + box.height > window.innerHeight - 8
-        ? Math.max(8, anchor.top - box.height - 4)
-        : below,
-    };
+    const under = window.innerHeight - 8 - below;
+    const over = anchor.top - 4 - 8;
+    const up = tall > under && over > under;
+    const room = up ? over : under;
+    const x = Math.max(8, Math.min(anchor.left, window.innerWidth - box.width - 8));
+    // No side holds even two types (400 % zoom): the list takes the window.
+    if (room < 120) at = { x, y: 8, room: null };
+    else at = { x, y: up ? anchor.top - 4 - Math.min(tall, over) : below, room };
   }
 
   /**
@@ -287,11 +296,14 @@
       bind:this={list}
       style:left="{at.x}px"
       style:top="{at.y}px"
+      style:max-height={at.room === null ? null : `${at.room}px`}
       onbeforetoggle={(e) => {
         // `toggle` comes as a task of its own, after the list is drawn: for a
-        // frame it stood where it was left — the first time, at 0,0. Under
-        // its button it starts; `toggle` then fits it by its real size.
-        if ((e as ToggleEvent).newState === 'open') place();
+        // frame it stood where it was left — the first time, at 0,0. Here it
+        // has no size yet, and placed by a height of zero it stood under the
+        // button and then jumped above it: the frame's own callback runs with
+        // the list laid out and before it is painted.
+        if ((e as ToggleEvent).newState === 'open') requestAnimationFrame(place);
       }}
       ontoggle={(e) => opened((e as ToggleEvent).newState === 'open')}
     >
@@ -303,9 +315,10 @@
           onkeydown={walk}
           onfocusout={(e) => {
             // Tab out of the list closes it: an open list left behind covers
-            // the sliders the focus has moved on to.
+            // the sliders the focus has moved on to. Not to its own button: a
+            // press there closed the list, and the click opened it again.
             const to = e.relatedTarget as Node | null;
-            if (to && !list?.contains(to)) close();
+            if (to && !list?.contains(to) && !trigger?.contains(to)) close();
           }}
           onclick={() => {
             editor.setBrushType(option.id);
