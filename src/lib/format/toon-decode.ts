@@ -277,14 +277,25 @@ function toolDescriptor(type: number, width: number, color: string, fill: string
 
 /** Structurally interns a legacy inline tool, mirroring the reference's GetToolS. */
 function internLegacyTool(tool: ToolDescriptor, tools: ToolDescriptor[]): number {
-  const key = JSON.stringify(tool);
-  const existing = tools.findIndex((candidate) => JSON.stringify(candidate) === key);
-  if (existing !== -1) {
-    return existing;
+  // Looked up, not searched for: every line of a file compared with every
+  // tool before it, and half a megabyte of lines each in a colour of its own
+  // held the tab for minutes before the limits got to say no.
+  let seen = interned.get(tools);
+  if (!seen) {
+    seen = new Map();
+    interned.set(tools, seen);
   }
-  tools.push(tool);
-  return tools.length - 1;
+  const key = JSON.stringify(tool);
+  let at = seen.get(key);
+  if (at === undefined) {
+    at = tools.push(tool) - 1;
+    seen.set(key, at);
+  }
+  return at;
 }
+
+/** The tools of a file being read, by their text; gone with the file's table. */
+const interned = new WeakMap<ToolDescriptor[], Map<string, number>>();
 
 function readColor(reader: Reader): string {
   const channel = (): string => {

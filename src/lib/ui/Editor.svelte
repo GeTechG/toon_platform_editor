@@ -56,7 +56,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { panelItem as panelItemSpec, toolOfItem } from './panels';
+  import { itemDrawn, panelItem as panelItemSpec, toolOfItem } from './panels';
   import type { SideId } from './presets';
   import { compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
@@ -314,6 +314,8 @@
   // does not change, so the sum cannot chase its own tail.
   let boxW = $state(0);
   let boxH = $state(0);
+  /** The stage as drawn: under 44rem the canvas's hint rises over the zoom window's row. */
+  let stageWidth = $state(0);
   let step = $state<LayoutStep>('full');
   /** One rem now: the columns are in rem, twice as wide at 200 % text. */
   const rem = $derived(16 * textScale);
@@ -427,10 +429,15 @@
   async function passFocusOnDisable(e: MouseEvent): Promise<void> {
     const key = e.target instanceof Element ? e.target.closest('button') : null;
     if (!key || key.closest('dialog')) return;
+    // Safari's mouse click focuses no button: there is nothing to pass.
+    const held = document.activeElement === key;
     // A task, not a tick: the capture runs before the key's own handler, and
     // the page's microtasks run between the two.
     await new Promise((done) => setTimeout(done));
-    if (!key.disabled || document.activeElement !== key) return;
+    // Chrome moves the focus to <body> with its next frame, which may have
+    // been drawn before this task: the focus was then left where it fell.
+    const at = document.activeElement;
+    if (!held || !key.disabled || (at !== key && at !== document.body)) return;
     const all = [...editorEl.querySelectorAll<HTMLElement>('button, input, select, [tabindex]')];
     focusHeir(all, key, usableKey)?.focus();
   }
@@ -514,6 +521,14 @@
   const folded = (id: SideId): boolean => editor.sides[id].collapsed && !compact;
   /** The bottom bar, folded away by the same rule. */
   const panelFolded = $derived(editor.panelCollapsed && !compact);
+  /**
+   * The transport's key is on screen (a small screen's dock always has one).
+   * The preview's loop lives in that key: with the bar folded, or the
+   * transport put away, Space pressed nothing — so a hidden one stands in.
+   */
+  const transportDrawn = $derived(
+    compact || itemDrawn(editor.panels, 'transport', { left: folded('left'), right: folded('right'), rows: panelFolded }),
+  );
   const sideWidth = (id: SideId): number => editor.sides[id].width ?? sidePx[id];
   /** A folded column is sized by its strip rule, not by the width it remembers. */
   const sideStyle = (id: SideId): string | undefined =>
@@ -992,6 +1007,8 @@
    * and the move went with the studio unwritten.
    */
   let writtenDoc: ToonDocument | null = null;
+  /** The layer tags that write took: they ride the record, not the document. */
+  let writtenTags = '';
 
   // Track the change signals (fps, frame count, per-frame stroke count —
   // strokes are append-only). Skipping the untouched document also avoids
@@ -1007,7 +1024,11 @@
     // applies a live move and writes it before this effect runs, and the
     // flag it cleared came back on — Save lit, the tab asking over a record
     // already on disk.
-    if (editor.doc !== writtenDoc) {
+    // A layer's tag is an edit kept beside the document: changed after a
+    // write it lit nothing, and went with the tab. Read first, so the effect
+    // hears it whatever the document says.
+    const tags = editor.layerColors.join();
+    if (editor.doc !== writtenDoc || tags !== writtenTags) {
       dirty = true;
     }
   });
@@ -1052,6 +1073,7 @@
     queued = false;
     dirty = false;
     writtenDoc = doc;
+    writtenTags = editor.layerColors.join();
     writing++;
     return saveDraft(draftId, doc, editor.sessionState(), track).finally(() => writing--).then(({ ok, bytes }) => {
       if (ok && bytes === 0) {
@@ -1183,7 +1205,9 @@
   $effect(() => {
     const { name, author, sync } = editor.audio;
     const credits = `${name}\u0000${author}\u0000${sync}`;
-    if (credits === storedCredits || !untrack(() => editor.audio.hasTrack)) {
+    // While a track is being read the fields still hold the last one's: a
+    // draft just opened took the previous draft's name and author.
+    if (credits === storedCredits || editor.audio.loading || !untrack(() => editor.audio.hasTrack)) {
       return;
     }
     storedCredits = credits;
@@ -1781,7 +1805,8 @@
         ['Ctrl + X', t('key.cut')],
         // Without a fullscreen here (an iPhone) the key and its button are not there either.
         (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
-        ['A', t('key.add_frame')],
+        // F7 is the frame's key with the letters off: the row went with «A».
+        ['A, F7', t('key.add_frame')],
         ['Del / Backspace', t('key.delete_frame')],
         ['J / L', t('key.ends')],
         ['← / →', t('key.steps')],
@@ -1839,7 +1864,8 @@
   });
 
   function onAddFrame(e: MouseEvent): void {
-    if (e.ctrlKey) {
+    // Cmd too, as the keys take it: on a Mac Ctrl+click is the context menu.
+    if (e.ctrlKey || e.metaKey) {
       editor.addFrameBeforeActive();
     } else {
       editor.addFrameAfterActive();
@@ -1985,7 +2011,10 @@
      order, comes from the config (panels.ts) — not from its place in this
      file. The gear and Publish are the two exceptions below. -->
 {#snippet panelItem(id: string)}
-  {@const tool = toolOfItem(id)}
+  <!-- The register of plugins is no state, and a row keyed by its id is never
+       drawn again: a plugin's key read before the plugin was in (a reload)
+       stayed empty. Heard through `pluginsVersion`. -->
+  {@const tool = (void editor.pluginsVersion, toolOfItem(id))}
   {#if tool}
     <ToolKey {editor} {tool} />
   {:else if id === 'save'}
@@ -2328,7 +2357,7 @@
     </aside>
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
-  <div class="stage" data-slot="float" class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
+  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} class:narrow={stageWidth < 44 * rem} class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
     style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}
     style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
     <CanvasView {editor} />
@@ -2501,6 +2530,11 @@
             {@render slot(row)}
           </div>
         {/each}
+        {#if editor.arranging && editor.panels.rows.length === 0}
+          <!-- Every row gone, the bar had nothing to drop on: only «Сбросить»
+               brought it back. A drop here makes the first row. -->
+          <div class="row" data-slot="newrow:0">{@render slot([])}</div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -2713,6 +2747,12 @@
     }}
   />
 
+  <!-- Space's own player while no transport is drawn, as the export sheet
+       above is Alt+S's: not shown, not focusable, only there to be toggled. -->
+  {#if !transportDrawn}
+    <div hidden><PlayControls bind:this={playControls} {editor} /></div>
+  {/if}
+
   <!-- The lock: an update is coming down, and nothing else is to be touched
        while it does. Esc does not call it off — there is nothing to call off. -->
   <dialog class="updating" bind:this={updatingEl} aria-labelledby="editor-updating" oncancel={(e) => e.preventDefault()}
@@ -2899,18 +2939,17 @@
      window in its corner on a narrow stage (audit 17). On the desk it keeps
      to the gap between that window and its mirror (its inset, two keys, the
      readout, a gap)… */
-  .studio:not(.compact) .stage {
-    container: stage / inline-size;
-  }
   .studio:not(.compact) .stage :global(.hint) {
     max-width: calc(100% - 2 * (clamp(0.5rem, 2.2vw, 1.25rem) + 2 * var(--key-h, 2.75rem) + 3.4rem + 1rem));
   }
-  /* …and where that gap is too narrow for a sentence, rises above its row. */
-  @container stage (width < 44rem) {
-    .studio:not(.compact) .stage :global(.hint) {
-      max-width: calc(100% - 24px);
-      bottom: calc(clamp(0.5rem, 2.2vw, 1.25rem) + var(--key-h, 2.75rem) + 4px + 0.5rem);
-    }
+  /* …and where that gap is too narrow for a sentence, rises above its row.
+     By a measured class, not a container query: a query container is layout
+     containment in Safari before 18.4 — the stage became the block every
+     `position: fixed` in it is placed against (the brush ring, a tool window
+     being dragged) and a stacking context of its own. */
+  .studio:not(.compact) .stage.narrow :global(.hint) {
+    max-width: calc(100% - 24px);
+    bottom: calc(clamp(0.5rem, 2.2vw, 1.25rem) + var(--key-h, 2.75rem) + 4px + 0.5rem);
   }
   /* Quiet at rest is the window's own business now (ScaleMenu.svelte): it is
      the fill that steps back, not the window, so the readout and the edge keep
@@ -3963,6 +4002,9 @@
     align-items: center;
     gap: 0.5rem;
     width: max-content;
+    /* The padding inside the 92 %: on top of it the × was cut at the edge
+       of a phone's stage. */
+    box-sizing: border-box;
     max-width: min(32rem, 92%);
     margin: 0 auto;
     padding: 0.5rem 0.75rem;
@@ -4005,6 +4047,9 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    /* The padding inside the 92 %: on top of it the note was 267 px on a
+       phone's 260 px stage. */
+    box-sizing: border-box;
     max-width: min(32rem, 92%);
     margin: 0;
     padding: 0.25rem 0.75rem;
@@ -4014,6 +4059,19 @@
     color: var(--ink);
     font-size: 0.85rem;
     pointer-events: auto;
+  }
+  /* On a small screen the zoom window holds the stage's top corner and the
+     thickness rail its left edge, and «браузер не даёт хранить черновики»
+     — up for as long as the storage is refused, four lines on a phone — lay
+     a rung over both: neither could be pressed. The notes start under the
+     zoom row, right of the rail… */
+  .studio.compact .stage-notes {
+    top: var(--zoom-foot);
+    inset-inline: calc(1rem + var(--tap)) 0.5rem;
+  }
+  /* …and lying down end where the tab window begins, not under it. */
+  .studio.compact .stage.side-window .stage-notes {
+    inset-inline-end: calc(min(55%, 24rem) + 0.5rem);
   }
   .layers {
     position: relative;

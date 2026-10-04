@@ -10,7 +10,7 @@
   import { frameCount } from '../model/operations';
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
-  import { frameForTime, playRefusal, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
+  import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
   // named import of the JSON leaves the rest out of the bundle.
@@ -174,7 +174,7 @@
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);
       if (audioSync && sound) {
-        if (!sound.paused) {
+        if (trackKeepsTime(sound)) {
           // Tied, the track is pinned to the first frame and comes back round
           // with the animation instead of running on past it.
           if (trackShouldRestart(sound.currentTime, frameCount(view), view.frame_rate)) {

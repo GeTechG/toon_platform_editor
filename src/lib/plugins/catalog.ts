@@ -169,6 +169,11 @@ export async function readCatalog(
     return { plugins: [], error: t('plugin.catalog_unreadable', { reason: reason(error) }) };
   }
   const body = typeof index === 'object' && index !== null ? index as Record<string, unknown> : {};
+  // Some other JSON at a mistyped address is not a catalog «для другой версии
+  // редактора (API undefined)»: nothing here needs a newer editor.
+  if (body.api === undefined) {
+    return { plugins: [], error: t('plugin.catalog_not_one') };
+  }
   if (body.api !== PLUGIN_API) {
     return { plugins: [], error: t('plugin.catalog_foreign_major', { api: String(body.api) }) };
   }

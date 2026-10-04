@@ -89,8 +89,13 @@ export const FALLBACK_BRUSH: BrushRecord = { width: 4, smooth: 3, minDistance: 3
 export function defaultBrushOf(brush: string): BrushRecord {
   // Through the same frame as a stored record: a plugin's defaults arrive
   // unchecked, and −3 or «толсто» went into the brush as they were.
-  const defaults: unknown = plugins.probeRules(brush)?.defaults;
-  return brushFromStore(typeof defaults === 'object' && defaults !== null ? defaults : {}, FALLBACK_BRUSH);
+  const rules = plugins.probeRules(brush);
+  const defaults: unknown = rules?.defaults;
+  const record = brushFromStore(typeof defaults === 'object' && defaults !== null ? defaults : {}, FALLBACK_BRUSH);
+  // And inside the brush's own track: one that stops at 20 and starts at 50
+  // showed 50 in the field and drew it, a width its slider cannot reach.
+  const { min, max } = widthRange(rules?.range, MAX_BRUSH_SIZE_LOGICAL);
+  return { ...record, width: Math.min(max, Math.max(min, record.width)) };
 }
 
 /**

@@ -53,9 +53,13 @@ function policyOf(
   if (!tool) {
     return { policy: 'line', width: 0, cubic: false };
   }
+  const policy = cutOf?.(tool) ?? defaultCut(tool);
+  const width = 'width' in tool ? tool.width : 0;
   return {
-    policy: cutOf?.(tool) ?? defaultCut(tool),
-    width: 'width' in tool ? tool.width : 0,
+    // A grid of cells no wide has no next cell: the walk between two of them
+    // never arrived, and the release hung. Such a mark is cut as a line.
+    policy: policy === 'cells' && !(width > 0) ? 'line' : policy,
+    width,
     cubic: tool.geometry === 'cubic',
   };
 }

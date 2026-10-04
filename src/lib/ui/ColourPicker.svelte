@@ -161,13 +161,14 @@
     return rgbToHex({ r, g, b: bl });
   }
 
-  /** Enter or blur: what parses is kept and shown as hex, anything else gives the field the colour back. */
-  function commitHex(): void {
+  /** Enter or blur: what parses is kept and shown as hex, anything else gives the field the colour back. False: it did not parse. */
+  function commitHex(): boolean {
     const hex = parseColourInput(hexText, namedColour);
     if (hex) {
       pick(hex);
       hexText = hex;
     } else hexText = color;
+    return hex !== null;
   }
 
   /**
@@ -252,6 +253,8 @@
    * not a key (Android's back). Tab is the dialog's own trap. The key's default goes too: focus returns
    * to the swatch on close, and the same Enter pressed it, reopening the
    * window on the new colour as if nothing had changed.
+   * Enter on text that is not a colour closes nothing: the field shows the
+   * colour back and the window stays — closed, «#ff88» looked taken.
    */
   function onKeydown(e: KeyboardEvent): void {
     // The Enter or Esc that ends an IME composition is the composition's.
@@ -259,11 +262,11 @@
     if (heldEnter(e)) return;
     const action = pickerKeyAction(e.key, (e.target as HTMLElement | null)?.tagName ?? '');
     if (!action) return;
-    if (action === 'commit') commitHex();
+    const ok = action !== 'commit' || commitHex();
     e.stopPropagation();
     e.preventDefault();
     if (action === 'revert') requestClose({ revert: true });
-    else requestClose();
+    else if (ok) requestClose();
   }
 
   /**
@@ -760,6 +763,12 @@
     border-radius: var(--r-sm);
     box-shadow: inset 0 0 0 1px var(--hairline);
     overflow: hidden;
+  }
+  /* «исходный» is a key: under a finger it takes the studio's key height. */
+  @media (pointer: coarse) {
+    .preview {
+      min-height: var(--key-h);
+    }
   }
   .swatch {
     display: flex;

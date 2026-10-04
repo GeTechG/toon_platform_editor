@@ -37,7 +37,10 @@ export function createSideButtonGuard(
         return;
       }
       e.preventDefault();
-      if (e.type === 'mouseup') {
+      // The auxclick too: a press that began a pan had its pointerdown
+      // cancelled, no mouseup follows it, and the guard stayed up to swallow
+      // the next «back» anywhere in the studio.
+      if (e.type !== 'pointerup') {
         later(() => {
           armed = false;
         });

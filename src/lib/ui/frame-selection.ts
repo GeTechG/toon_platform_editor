@@ -359,12 +359,18 @@ export function extendTarget(
   dLayer: number,
   bounds: CellBounds,
 ): Cell {
-  const far = (list: readonly number[], at: number) =>
-    Math.min(...list) === at ? Math.max(...list) : Math.min(...list);
+  // The arrows walk inside a block, so the anchor may stand in its middle:
+  // then the far edge is the one the arrow points at — taken as the low one,
+  // Shift+→ collapsed the block onto the active cell.
+  const far = (list: readonly number[], at: number, d: number) => {
+    const lo = Math.min(...list);
+    const hi = Math.max(...list);
+    return lo === at ? hi : hi === at || d < 0 ? lo : hi;
+  };
   const clamp = (value: number, limit: number) => Math.max(0, Math.min(limit - 1, value));
   return {
-    frame: clamp(far(selection.frames, active.frame) + dFrame, bounds.frames),
-    layer: clamp(far(selection.layers, active.layer) + dLayer, bounds.layers),
+    frame: clamp(far(selection.frames, active.frame, dFrame) + dFrame, bounds.frames),
+    layer: clamp(far(selection.layers, active.layer, dLayer) + dLayer, bounds.layers),
   };
 }
 

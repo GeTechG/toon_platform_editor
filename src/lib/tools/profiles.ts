@@ -216,9 +216,37 @@ export function previewStrokePressure(
   session: StrokeSession,
   points: readonly number[],
 ): number[] | undefined {
-  const { kind } = session.descriptor;
-  if (!feelsPressure(session) || points.length < 2 || kind === 'stamp') return undefined;
+  if (!feelsPressure(session) || points.length < 2 || !landsPressured(session)) return undefined;
   return pressureAlong(points, session.pressureSamples);
+}
+
+/** Only a line with a width takes the pen's pressure — a stamp's marks and a contour's baked ring do not. */
+function takesPressure<T extends { kind?: unknown }>(
+  tool: T | undefined,
+): tool is Extract<T, { kind: 'pencil' | 'eraser' | 'feather' }> {
+  const kind = tool?.kind;
+  return kind === 'pencil' || kind === 'eraser' || kind === 'feather';
+}
+
+/**
+ * Whether the gesture lands with its pressure. A brush with a commit of its
+ * own may land another kind than it draws with — the old pen draws a pencil
+ * and lands a contour — so it is asked, once a gesture: read off the
+ * descriptor, the line under the hand ran thin where the hand was light, and
+ * a contour of the full width landed in its place.
+ */
+const landing = new WeakMap<StrokeSession, boolean>();
+function landsPressured(session: StrokeSession): boolean {
+  let lands = landing.get(session);
+  if (lands === undefined) {
+    const { commit } = session.rules;
+    const tool: { kind?: unknown } | undefined = commit
+      ? commit(session.rawPoints, session.descriptor)?.tool
+      : session.descriptor;
+    lands = takesPressure(tool);
+    landing.set(session, lands);
+  }
+  return lands;
 }
 
 /**
@@ -241,8 +269,7 @@ export function feelsPressure(session: StrokeSession): boolean {
  */
 function withPressure(stroke: ResolvedStroke, session: StrokeSession): ResolvedStroke {
   const tool = stroke?.tool;
-  if (!feelsPressure(session) || !tool
-    || (tool.kind !== 'pencil' && tool.kind !== 'eraser' && tool.kind !== 'feather')
+  if (!feelsPressure(session) || !takesPressure(tool)
     || !Array.isArray(stroke.points) || stroke.points.length < 2) {
     return stroke;
   }

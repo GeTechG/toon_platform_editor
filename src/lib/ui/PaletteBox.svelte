@@ -663,7 +663,9 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(35px, 1fr));
-    max-height: 120px;
+    /* Three rows and most of a fourth, in the cells' own unit: at 120 px
+       the 2rem cells of 200 % text showed under two. */
+    max-height: 7.5rem;
     overflow: auto;
     background: var(--sub);
   }
@@ -698,6 +700,10 @@
     }
     .cell {
       height: var(--key-h, 2.75rem);
+    }
+    /* As many rows as the mouse gets, of the taller cells. */
+    .grid {
+      max-height: calc(3.75 * var(--key-h, 2.75rem));
     }
   }
   .cell:focus-visible {

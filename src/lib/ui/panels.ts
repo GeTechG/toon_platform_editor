@@ -481,6 +481,22 @@ export function panelItemVisible(layout: PanelLayout, id: string): boolean {
   return !layout.hidden.includes(id);
 }
 
+/**
+ * Whether the full layout has the item on screen: in a window, or in a column
+ * or the bar that is not folded away. The preview's loop lives in the
+ * transport's key, and with the bar folded Space had nothing to press.
+ */
+export function itemDrawn(
+  layout: PanelLayout,
+  id: string,
+  folded: { left: boolean; right: boolean; rows: boolean },
+): boolean {
+  return layout.float.includes(id)
+    || (!folded.left && layout.left.includes(id))
+    || (!folded.right && layout.right.includes(id))
+    || (!folded.rows && layout.rows.some((row) => row.includes(id)));
+}
+
 /** Where a window with no place stored is drawn (FloatWindow). */
 export const FLOAT_HOME: Readonly<{ x: number; y: number }> = { x: 24, y: 24 };
 

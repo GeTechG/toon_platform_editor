@@ -129,6 +129,13 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     if (!grab || e.pointerId !== grab.pointerId) {
       return;
     }
+    // A mouse or pen moving with nothing pressed let go where its release
+    // never came from (Ctrl+click on a Mac opens the menu, which swallows
+    // it): the window then rode the bare hover.
+    if (e.pointerType !== 'touch' && e.buttons === 0) {
+      release();
+      return;
+    }
     if (!grab.moving) {
       const threshold = e.pointerType === 'touch' ? TOUCH_DRAG_THRESHOLD : DRAG_THRESHOLD;
       if (Math.hypot(e.clientX - grab.x, e.clientY - grab.y) < threshold) {

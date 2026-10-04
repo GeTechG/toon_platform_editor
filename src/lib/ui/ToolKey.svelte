@@ -10,7 +10,9 @@
 
   let { editor, tool }: { editor: EditorState; tool: string } = $props();
 
-  const spec = $derived(toolSpec(tool));
+  // The register is no state: an updated plugin's icon and label are heard
+  // through `pluginsVersion`, or the key kept the old ones until a reload.
+  const spec = $derived((void editor.pluginsVersion, toolSpec(tool)));
   // Both keys where a tool has two (the hand D or O, the lasso Q or S), each
   // left out when single-letter keys are off.
   const keys = $derived(toolKeyList(tool).map((key) => editor.keyHint(key)).filter(Boolean));

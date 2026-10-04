@@ -216,6 +216,8 @@ function sameStrokes(a: readonly Stroke[], b: readonly Stroke[]): boolean {
 interface CellSnapshot {
   /** The cell object the edit produced — identity is how undo knows it is untouched. */
   cell: Frame;
+  /** The cell object the edit was made over: what an older step knows it by. */
+  was: Frame;
   layer: number;
   frame: number;
   /** What the cell held before. Tool ids stay valid: the tool table only grows. */
@@ -838,10 +840,17 @@ export class EditorState {
     const hex = parseColourInput(color);
     if (!hex) return;
     if (!keepTool && (this.tool === 'eraser' || this.tool === 'mega-eraser')) {
-      this.hold('pencil');
+      // By the colour's rule: a fill picked over a white outline under
+      // Multator handed out a white pencil.
+      this.hold(toolAfterColorChange(this.brushColor, this.ux) ?? 'pencil');
     }
     if (target === 'fill') {
       this.fillColor = hex;
+    } else if (keepTool) {
+      // Past «a colour is the pencil»: under Multator the held finger took
+      // the eraser away after all. A white pencil still becomes the eraser.
+      this.brushColor = hex;
+      this.keepColourRules();
     } else {
       this.setBrushColor(hex);
     }
@@ -1016,6 +1025,12 @@ export class EditorState {
     const { workspaces, loaded } = importWorkspaces(this.workspaces, raw, keep);
     this.workspaces = workspaces;
     saveWorkspaces(this.workspaces);
+    // A file from another machine names keys of plugins this one has not got:
+    // as a window, such a key was an empty frame nothing could close. While
+    // the installed plugins are still loading, their own cleaning is to come.
+    if (this.pluginsVersion > 0) {
+      this.dropGhostKeys();
+    }
     return { loaded, kept: keep.size };
   }
 
@@ -1098,6 +1113,11 @@ export class EditorState {
   private keepToolOnPanel(): void {
     if (this.tool !== 'pencil' && !this.availableTools.includes(this.tool)) {
       this.selectTool('pencil', 'outline', [...this.availableTools, 'pencil']);
+    }
+    // And the way back from a help tool: the pipette handed over a tool
+    // whose key had left the panels while it was in hand.
+    if (!this.availableTools.includes(this.previousDrawingTool)) {
+      this.previousDrawingTool = 'pencil';
     }
   }
 
@@ -1479,7 +1499,9 @@ export class EditorState {
     // on, and a session is not something a reopened draft brings back — with
     // the lock on, it also kept the studio from going to the saved frame.
     if (saved.tool && saved.tool !== 'lasso') {
-      this.selectTool(saved.tool as Tool);
+      // Put back, not picked afresh: a pipette picked opened the browser's
+      // screen eyedropper over the draft that had just been opened.
+      this.restoreTool(saved.tool as Tool);
     }
     this.persistUiConfig();
   }
@@ -1729,6 +1751,7 @@ export class EditorState {
         const cell = this.doc.layers[layer].frames[frame];
         snapshots.push({
           cell,
+          was: cell,
           layer,
           frame,
           strokes: cell.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id, ...pressureOf(s) })),
@@ -1892,6 +1915,15 @@ export class EditorState {
       this.edits = this.edits.slice(0, -1);
       for (const snapshot of edit) {
         this.#write((doc) => replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes));
+        // The restore is a new cell object, and the step under this one
+        // knows the cell by the object it left: unmatched, a second Z after
+        // two sweeps took a stroke instead of giving the first sweep back.
+        const restored = this.doc.layers[snapshot.layer].frames[snapshot.frame];
+        for (const older of this.edits.flatMap((step) => (Array.isArray(step) ? step : []))) {
+          if (older.cell === snapshot.was) {
+            older.cell = restored;
+          }
+        }
       }
       this.undone = [];
       this.touched = true;
@@ -2368,6 +2400,18 @@ export class EditorState {
       && catalog.some((entry) => entry.id === plugin.id && reviewed(entry) && compareVersions(entry.version, plugin.version) > 0));
   }
 
+  /** The saved arrangements, without the keys of tools the register does not have. */
+  private dropGhostKeys(): void {
+    // From storage, as every change to the list: the one in memory may be
+    // older than another tab's, and writing it back erased that tab's saves.
+    const stored = $state.snapshot(loadWorkspaces(this.workspaces));
+    const workspaces = stored.map((w) => ({ ...w, panels: normalizePanels(w.panels) }));
+    if (JSON.stringify(workspaces) !== JSON.stringify(stored)) {
+      this.workspaces = workspaces;
+      saveWorkspaces(this.workspaces);
+    }
+  }
+
   /**
    * The register changed. The arrangement is read again — a tool that arrived
    * takes the place its preset has for it, and one that is gone leaves without
@@ -2395,14 +2439,7 @@ export class EditorState {
     // the register is what it is, and a key without a tool goes — from the
     // saved arrangements as well, so the list does not keep ghosts.
     this.panels = normalizePanels(this.panels);
-    // From storage, as every change to the list: the one in memory may be
-    // older than another tab's, and writing it back erased that tab's saves.
-    const stored = $state.snapshot(loadWorkspaces(this.workspaces));
-    const workspaces = stored.map((w) => ({ ...w, panels: normalizePanels(w.panels) }));
-    if (JSON.stringify(workspaces) !== JSON.stringify(stored)) {
-      this.workspaces = workspaces;
-      saveWorkspaces(this.workspaces);
-    }
+    this.dropGhostKeys();
     this.pluginsVersion++;
     // The way back from a help tool must not lead to a tool that is gone.
     if (!plugins.tool(this.previousDrawingTool)) {

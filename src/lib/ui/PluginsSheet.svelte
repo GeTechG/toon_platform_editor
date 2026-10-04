@@ -265,9 +265,10 @@
 
   /**
    * A catalog icon is markup from the network, drawn before anyone has
-   * trusted the plugin — so it goes into an <img>, where a script inside the
-   * SVG does not run. An installed plugin's own icon comes from its code,
-   * which the editor is already running, and is drawn as markup like any other.
+   * trusted the plugin — so it goes into an image, where a script inside the
+   * SVG does not run. The icon kept with an installed record is that same
+   * text (or a file's), so «Мои» draws it the same way; a tool's own icon
+   * comes from the code the editor is already running, and is markup.
    */
   function iconUrl(markup: string): string {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#0b0c10" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${markup}</svg>`;
@@ -343,8 +344,12 @@
         <ul class="plugins">
           {#each listed as plugin (plugin.id)}
             <li class:off={broken(plugin.id) || notLoaded(plugin)}>
+              <!-- A record's icon came with the catalog's index or a file's
+                   manifest and was kept as text: a catalog at another address
+                   may list our own bundle — installed with no warning — under
+                   markup of its own. Only the delivery's is drawn as markup. -->
               <span class="face" aria-hidden="true">
-                {#if plugin.icon}<Icon name={plugin.icon} />{/if}
+                {#if plugin.source === 'bundled'}<Icon name={plugin.icon} />{:else if plugin.icon}<img src={iconUrl(plugin.icon)} alt="" width="48" height="48" />{/if}
               </span>
               <span class="about">
                 <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>

@@ -132,6 +132,16 @@ export function unlockElement(element: { play(): Promise<unknown>; pause(): unkn
   element.pause();
 }
 
+/**
+ * Whether a tied track's own clock may drive the frames. An element whose
+ * file failed to load (a 404, a dropped connection, a format this browser
+ * will not play) stays «not paused» at 0:00 for good, with `error` set: read
+ * as the clock, it held the picture on one frame under a «pause» key.
+ */
+export function trackKeepsTime(sound: { paused: boolean; error: unknown }): boolean {
+  return !sound.paused && !sound.error;
+}
+
 /** Complaint about a picked file, or null if it may be loaded. */
 export function checkAudioFile(file: { type: string; size: number; name?: string }): string | null {
   if (!isAudioFile(file)) {

@@ -281,7 +281,26 @@ export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Pro
 
 /** WebCodecs: frames are encoded as fast as the machine manages. */
 async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
-  const { plan, audio, onProgress, signal, trackSeconds, sink, discard, ...raster } = options;
+  const { sink, signal, discard } = options;
+  // Held before anything can fail: the muxer's chunk that did not load, a
+  // canvas the browser had no memory for — the export threw before it took
+  // the file, which stayed open, empty and locked under the name picked.
+  const file = sink ? guardSink(sink, signal, discard) : null;
+  try {
+    return await encodeFrames(doc, options, file);
+  } catch (err) {
+    await file?.drop();
+    throw err;
+  }
+}
+
+async function encodeFrames(
+  doc: ToonDocument,
+  options: VideoExportOptions,
+  file: ReturnType<typeof guardSink> | null,
+): Promise<Blob | null> {
+  // `sink` and `discard` are the guard's: named here only to stay out of `raster`.
+  const { plan, audio, onProgress, signal, trackSeconds, sink: _sink, discard: _discard, ...raster } = options;
   const target = plan.target;
   if (!target) {
     throw new Error(t('export.no_codec'));
@@ -293,7 +312,6 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   const frames = frameCount(doc);
   const total = exportFrameCount(frames, fps, trackSeconds);
   const rasterizer = new FrameRasterizer(doc, raster);
-  const file = sink ? guardSink(sink, signal, discard) : null;
   const buffer = new BufferTarget();
   const output = new Output({
     format: target.extension === 'mp4' ? new Mp4OutputFormat() : new WebMOutputFormat(),

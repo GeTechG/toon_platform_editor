@@ -136,7 +136,13 @@
     const key = item?.matches(focusable) ? item : item?.querySelector<HTMLElement>(focusable);
     (key ?? panel?.querySelector<HTMLElement>(focusable))?.focus();
   }
-  const label = $derived(panelItem(id)?.label ?? id);
+  /**
+   * The register of plugins is no state: a tool's window read before its
+   * plugin was in (a reload) kept the raw id for a title. Heard through
+   * `pluginsVersion`; until then there is nothing to show.
+   */
+  const item = $derived((void editor.pluginsVersion, panelItem(id)));
+  const label = $derived(item?.label ?? id);
 
   function onDown(e: PointerEvent): void {
     // A press on the close key is a press on the key, not a grab of the bar:
@@ -220,6 +226,7 @@
   bind:this={el}
   class="float"
   class:handle={editor.arranging}
+  class:waiting={!item}
   data-item={id}
   style="left: {shown.left}px; top: {shown.top}px; z-index: calc({rung} + {depth})"
   onpointerdowncapture={raise}
@@ -278,6 +285,10 @@
        edge at all once the ring went (stage-windows-by-tone). */
     background: var(--paper);
     overflow: hidden;
+  }
+  /* Its tool's plugin is still loading: an empty frame titled «tool:…». */
+  .float.waiting {
+    display: none;
   }
   /* While arranging it is a handle like every item in the panels, and wears
      the same dashed frame — it wore none, and did not read as movable. */

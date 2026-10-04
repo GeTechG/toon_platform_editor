@@ -85,8 +85,11 @@ describe('пипетка читает внутри буфера композит
 });
 
 describe('подсказка холста не ложится на окно зума', () => {
-  it('сцена на десктопе — контейнер по ширине', () => {
-    expect(editorView).toMatch(/\.studio:not\(\.compact\) \.stage \{\s*container: stage \/ inline-size;/);
+  // Не контейнер запросов (18-й аудит): в Safari до 18.4 он делал сцену
+  // опорой для position: fixed — кольцо кисти и окна уезжали от курсора.
+  it('сцена на десктопе меряет свою ширину', () => {
+    expect(editorView).toContain('class:narrow={stageWidth < 44 * rem}');
+    expect(editorView).not.toContain('container: stage');
   });
 
   it('широкая сцена: подсказка уже, чем промежуток между окнами зума', () => {
@@ -94,10 +97,9 @@ describe('подсказка холста не ложится на окно зу
   });
 
   it('узкая сцена: подсказка поднимается над рядом зума', () => {
-    const at = editorView.indexOf('@container stage');
+    const at = editorView.indexOf('.studio:not(.compact) .stage.narrow :global(.hint) {');
     expect(at).toBeGreaterThan(-1);
-    const block = editorView.slice(at, editorView.indexOf('}\n  }', at));
-    expect(block).toContain(':global(.hint)');
+    const block = editorView.slice(at, editorView.indexOf('}', at));
     expect(block).toMatch(/bottom: calc\([^;]*var\(--key-h, 2\.75rem\)/);
   });
 });

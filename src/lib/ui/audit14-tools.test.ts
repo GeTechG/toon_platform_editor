@@ -197,7 +197,7 @@ describe('a draft reopened with the transform in hand', () => {
     // The lasso took the first frame on open; with the lock on, going to the
     // saved frame was then refused and the studio said «Сначала примени…».
     const restore = method('restoreState');
-    expect(restore.indexOf('this.selectFrame(')).toBeLessThan(restore.indexOf('this.selectTool('));
+    expect(restore.indexOf('this.selectFrame(')).toBeLessThan(restore.indexOf('this.restoreTool('));
     expect(restore).toContain("saved.tool !== 'lasso'");
   });
 });

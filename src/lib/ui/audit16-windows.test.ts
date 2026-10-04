@@ -41,8 +41,9 @@ describe('окно в режиме раскладки берётся пальц�
 // erased (audit15 fixed the same for save, load and delete).
 describe('чистка раскладок после плагинов не стирает раскладки другой вкладки', () => {
   test('чистка начинает с хранилища', () => {
-    const body = member('refreshPlugins(): void {');
-    const clean = body.slice(body.indexOf('normalizePanels(this.panels)'));
+    // The cleaning is a member of its own since the 18th audit (a file load runs it too).
+    expect(member('refreshPlugins(): void {')).toContain('this.dropGhostKeys()');
+    const clean = member('private dropGhostKeys(): void {');
     expect(clean).toContain('loadWorkspaces(');
     expect(clean.indexOf('loadWorkspaces(')).toBeLessThan(clean.indexOf('saveWorkspaces('));
   });

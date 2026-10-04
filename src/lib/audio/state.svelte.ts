@@ -155,7 +155,9 @@ export class AudioTrackState {
     let duration: number;
     try {
       const bytes = await file.arrayBuffer();
-      tags = readId3(bytes);
+      // A draft's credits are what the person left in the fields: the file's
+      // tags put them back on every reopening, and into the publication.
+      tags = keep ? tags : readId3(bytes);
       const decoded = await new OfflineAudioContext(1, 1, DECODE_RATE).decodeAudioData(bytes);
       envelope = trackEnvelope(decoded);
       duration = decoded.duration;

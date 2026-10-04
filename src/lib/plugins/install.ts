@@ -146,7 +146,14 @@ async function evaluated(
  * leaves nothing behind.
  */
 function accept(manifest: unknown, registry: PluginRegistry): string | null {
-  return registry.register(manifest);
+  // A manifest is somebody's object: a getter in it that throws is a refused
+  // install like any other, not a rejection nobody reports.
+  try {
+    return registry.register(manifest);
+  } catch (error) {
+    console.warn('plugin manifest threw:', error);
+    return reason(error) || t('plugins.faulty');
+  }
 }
 
 /** Installed plugins storage refused: they live as long as the page does. */
@@ -192,6 +199,9 @@ async function install(
     session.set(id, record);
     return t('plugins.not_kept');
   }
+  // What a manifest registered before it threw goes too: left in, its id was
+  // «уже загружен» to the version being put back.
+  registry.remove(id);
   if (was) {
     try {
       accept(manifestOf(await run(was.code, ports)), registry);

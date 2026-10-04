@@ -441,7 +441,10 @@
   let shotCanvas: HTMLCanvasElement | undefined;
 
   function takeNavShot(): void {
-    if (!canvasEl || !lastDrawn || navShot) {
+    // Nor while a frame is waiting to be drawn: the canvas still shows what
+    // that frame is to replace — the line of a pinch's first finger, just
+    // discarded, stayed on the sheet for the whole pinch. `draw` takes it then.
+    if (!canvasEl || !lastDrawn || navShot || rafPending) {
       return;
     }
     shotCanvas ??= document.createElement('canvas');
@@ -568,6 +571,11 @@
     ctx.strokeStyle = 'rgba(11, 12, 16, 0.141)';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(sheet.x) + 0.5, Math.round(sheet.y) + 0.5, Math.round(sheet.w), Math.round(sheet.h));
+    // A frame composed under a moving hand — no shot could be taken when it
+    // took hold, or what the shot showed has changed since — is the shot now.
+    if (navigating() && !editor.playing) {
+      takeNavShot();
+    }
   }
 
   /**
@@ -832,6 +840,25 @@
     void editor.transform;
     composer.invalidate();
     scheduleDraw();
+  });
+
+  // The shot is the picture as the hand grabbed it. What it is made of changed
+  // under the moving hand — a key in the tail of a trackpad fling, a button
+  // under the other hand, the film ending mid-pan — and the old frame stayed
+  // on the sheet until the hand let go. The shot goes, and `draw` takes
+  // another off the frame it composes. Not the view: the gesture is what
+  // changes it.
+  $effect(() => {
+    void editor.doc;
+    void editor.displayedFrame;
+    void editor.activeLayer;
+    void editor.showOnionSkin;
+    void editor.onionHistoryLayerIndices.length;
+    void editor.ux;
+    void editor.transform;
+    void editor.tool;
+    void editor.playing;
+    navShot = null;
   });
 
   // The pixel grid is painted over the composited stack, so picking the tool
@@ -1355,8 +1382,13 @@
 
   /** The pen (or mouse) is in the middle of something on the sheet. */
   function penBusy(): boolean {
-    return pointer.session !== null || grab !== null || gesturePointerId !== -1
+    return pointer.session !== null || grab !== null || gesturePointerId !== -1 || sizing !== null
       || (panning !== null && !touches.has(panning.pointerId));
+  }
+
+  /** A palm resting by the working pen: not a gesture, and not the cursor either. */
+  function isPalm(e: PointerEvent): boolean {
+    return e.pointerType === 'touch' && editor.penSeen && penBusy();
   }
 
   /** The side buttons draw here, but their release must not page the browser back (side-buttons.ts). */
@@ -1517,6 +1549,9 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
+    // A second button pressed while the first is held comes as a move, not a
+    // pointerdown: a thumb on «back» in the middle of a line left the studio.
+    sideButtons.press(e.button);
     // A mouse or a pen moving with no button held has let go somewhere the
     // canvas did not hear (a native dialog, the window losing focus): end the
     // gesture here, or the stroke follows the hover and refuses the next press.
@@ -1545,12 +1580,20 @@
         editor.brushRange.min, editor.brushSizeMax);
       return;
     }
-    cursorX = e.clientX;
-    cursorY = e.clientY;
-    // Where the zoom buttons, the slider and `+`/`-` will zoom around. Read
-    // once here and handed to every branch below, so a move costs one query.
+    // Read once here and handed to every branch below, so a move costs one query.
     const rect = canvasRect();
-    editor.lastScalePivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    // The ring stays under the nib: a palm sliding by it took it at every move.
+    if (!isPalm(e)) {
+      // Whatever moves over the canvas is on it. A finger lifting put the ring
+      // out (pointerleave), and the mouse or the pen that had been there all
+      // along gets no new pointerenter: under `cursor: none` there was no
+      // cursor at all until it left the canvas and came back.
+      cursorVisible = true;
+      cursorX = e.clientX;
+      cursorY = e.clientY;
+      // Where the zoom buttons, the slider and `+`/`-` will zoom around.
+      editor.lastScalePivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
     if (panning && e.pointerId === panning.pointerId) {
       panBy(e.clientX - panning.x, e.clientY - panning.y);
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
@@ -1852,11 +1895,14 @@
     }}
     onlostpointercapture={onPointerCancel}
     onpointerenter={(event) => {
+      if (isPalm(event)) return;
       cursorVisible = true;
       cursorX = event.clientX;
       cursorY = event.clientY;
     }}
-    onpointerleave={() => {
+    onpointerleave={(event) => {
+      // A palm lifting by the pen takes neither the ring nor the pivot.
+      if (isPalm(event)) return;
       cursorVisible = false;
       pickPreview = null;
       // Off the canvas the zoom keys zoom around the middle of the view, not

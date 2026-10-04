@@ -108,8 +108,11 @@ describe('a reload is not a plugin coming back', () => {
   it('the editor reads keys as waiting only until the plugins are in, then cleans the workspaces too', () => {
     const refresh = member('refreshPlugins(): void');
     expect(refresh).toContain('normalizePanels(this.panels)');
-    expect(refresh).toContain('this.workspaces');
-    expect(refresh).toContain('saveWorkspaces(');
+    // The cleaning is a member of its own since the 18th audit (a file load runs it too).
+    expect(refresh).toContain('this.dropGhostKeys()');
+    const clean = member('private dropGhostKeys(): void');
+    expect(clean).toContain('this.workspaces');
+    expect(clean).toContain('saveWorkspaces(');
     // A preset whose plugin arrives late does not take the arrangement with it.
     expect(refresh).toMatch(/const kept = this\.panels;[^]*applyPreset\(this\.preset, false\);[^]*this\.panels = kept;/);
   });

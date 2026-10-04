@@ -303,8 +303,14 @@ export class FrameComposer {
       this.#liveSeed = '';
       this.#livePainted = 0;
       ctx.globalCompositeOperation = live.erase ? 'destination-out' : 'source-over';
-      live.paint(ctx);
-      ctx.globalCompositeOperation = 'source-over';
+      // The line is a brush's code. One that throws must not leave the buffer
+      // erasing: the next frame laid the active layer into it that way, and
+      // the layer was gone from the sheet.
+      try {
+        live.paint(ctx);
+      } finally {
+        ctx.globalCompositeOperation = 'source-over';
+      }
       return buffer;
     }
     const points = live.points ?? [];
