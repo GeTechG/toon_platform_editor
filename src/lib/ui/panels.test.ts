@@ -186,10 +186,11 @@ describe('one arrangement for everybody', () => {
   });
 
   test('a preset starts from its own set, on the same machinery', () => {
-    // The editor's own preset is the default arrangement itself, bar the one
-    // key it keeps on the shelf.
+    // The editor's own preset has an arrangement of its own too (owner):
+    // the same items as the default, placed its way, the pixel on the shelf.
     const toonop = presets.presetPanels('toonop');
-    expect(toonop).toEqual(hidePanelItem(defaultPanels(), toolItem('pixel')));
+    expect(allPlaced(toonop).sort()).toEqual(allPlaced(defaultPanels()).sort());
+    expect(toonop.hidden).toContain(toolItem('pixel'));
 
     const bar = presets.presetPanels('bar');
     // Every item is accounted for in both, just placed differently.
@@ -207,21 +208,28 @@ describe('one arrangement for everybody', () => {
 });
 
 describe('the default layouts', () => {
-  test('the studio opens with the keys over the strip, the pixel on the shelf', () => {
+  test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
     expect(studio.left).toEqual([
-      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso', 'distort']
-        .map(toolItem),
-      'save', 'export', 'publish', 'history', 'fullscreen', 'manual',
+      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
+      'save', 'export', 'settings', 'publish', 'history', 'manual', 'fullscreen',
     ]);
     expect(studio.right).toEqual(['palette', 'brush']);
     expect(studio.rows).toEqual([
-      ['fps', 'transport', 'add-frame', 'onion', 'audio', 'settings', 'drafts', 'saved'],
+      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'],
       ['timeline'],
     ]);
-    expect(studio.hidden).toEqual([
-      'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge', toolItem('pixel'),
-    ]);
+    expect(studio.float).toEqual([]);
+    expect(studio.hidden.slice().sort()).toEqual([
+      'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
+      toolItem('pixel'), toolItem('distort'), 'drafts',
+    ].sort());
+  });
+
+  test('the one arrangement the reference presets start from is not toonop\'s', () => {
+    const base = defaultPanels();
+    expect(base.rows[0]).toEqual(['fps', 'transport', 'add-frame', 'onion', 'audio', 'settings', 'drafts', 'saved']);
+    expect(base.left).toContain(toolItem('distort'));
   });
 
   test('every item is placed or hidden, exactly once', () => {

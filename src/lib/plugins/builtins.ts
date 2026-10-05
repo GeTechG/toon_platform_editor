@@ -91,9 +91,33 @@ const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
   brush: 'toonop-brush',
   ux: TOONOP_UX,
-  // The pixel draws on a grid nobody asked for until they ask: the profile
-  // holds it, the rail starts without it, and a key from the shelf brings it.
-  panels: { hide: ['tool:pixel'] },
+  // Its own arrangement (owner): the gear among the keys that leave the
+  // editor, «+» before Play, and what is rarely
+  // pressed on the shelf, a key away — the pixel (a grid nobody asked for
+  // until they ask), the distort, the drafts. The one default arrangement
+  // stays the reference presets'.
+  panels: {
+    base: {
+      left: [
+        'tool:pencil',
+        'tool:eraser',
+        'tool:feather',
+        'tool:mega-eraser',
+        'tool:pipette',
+        'tool:drag',
+        'tool:lasso',
+        'save',
+        'export',
+        'settings',
+        'publish',
+        'history',
+        'manual',
+        'fullscreen',
+      ],
+      right: ['palette', 'brush'],
+      rows: [['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'], ['timeline']],
+    },
+  },
 };
 
 export const BUILTIN_PLUGIN: Plugin = {
