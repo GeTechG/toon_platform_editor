@@ -11,7 +11,7 @@
    * storage or replaces the drawing, stay with the editor and come in as
    * calls.
    */
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import type { DraftEntry } from '../draft/restore';
   import FrameThumb from './FrameThumb.svelte';
@@ -28,6 +28,8 @@
     thumbUrls,
     storageUsed,
     draftId,
+    create = false,
+    ready,
     onOpen,
     onCopy,
     onDownload,
@@ -45,6 +47,10 @@
     storageUsed: number;
     /** The draft behind the drawing on the canvas. */
     draftId: string;
+    /** Open on the choice of a sheet, past the drafts. */
+    create?: boolean;
+    /** The drafts have been read: until then the hub cannot know its view. */
+    ready: boolean;
     onOpen: (entry: DraftEntry) => void;
     onCopy: (ids: string[]) => Promise<void>;
     onDownload: (ids: string[]) => Promise<void>;
@@ -89,7 +95,27 @@
   const choosing = $derived(selecting || picked.length > 0);
   // The hub left over a clean sheet: it shows the sheets a drawing can start
   // on — a proportion, a size and the side it lies on.
-  let creating = $state(false);
+  // The host asked for a new drawing: the sheets, from the first frame.
+  let creating = $state(untrack(() => create));
+  // Otherwise the view waits for the drafts to be read — the paper only, not
+  // a view it may have to take back. With none there is nothing to show but
+  // the sheets (owner, 2026-10-05); with some, the drafts.
+  let settled = $state(untrack(() => create));
+  $effect(() => {
+    if (ready && !settled) {
+      settled = true;
+      void untrack(async () => {
+        if (drafts.length === 0) {
+          await showCreate(true);
+          return;
+        }
+        // The view came after the hub was shown: the focus goes into it.
+        await tick();
+        // Not the first button: «Выбрать» is not drawn under a cursor.
+        dialogEl?.querySelector<HTMLElement>('.draft-open, .hub-new')?.focus();
+      });
+    }
+  });
   let newProportion = $state('16:9');
   let newSize = $state('720p');
   let newStanding = $state(false);
@@ -99,6 +125,10 @@
   let coarse = $state(false);
   onMount(() => {
     coarse = matchMedia('(hover: none)').matches;
+    // The sheet the drawing has, and the focus, as «Новый мульт» takes them.
+    if (creating) {
+      void showCreate(true);
+    }
   });
   const touchHub = $derived(compact || coarse);
   let reelEl = $state<HTMLDivElement | undefined>();
@@ -366,7 +396,7 @@
       </div>
     </div>
     {/if}
-  {:else}
+  {:else if settled}
   <header class="hub-head">
     <h2>{t('editor.drafts')}</h2>
     <span class="hub-keys">

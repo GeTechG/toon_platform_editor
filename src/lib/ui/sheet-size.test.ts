@@ -86,11 +86,14 @@ describe('размер меняется, пока лист пуст', () => {
     expect(open).toContain('this.undone.length');
   });
 
-  it('выбор стоит на сцене, только пока лист открыт, и это один родной список', () => {
-    const shown = editorUi.match(/\{#if editor\.sheetOpen\}[^]*?\{\/if\}/)?.[0] ?? '';
-    expect(shown).toContain('<select');
-    expect(shown).toContain('editor.setSheet(');
-    expect(shown).toContain("t('sheet.size')");
+  // Владелец, 2026-10-05: выбор разрешения с холста убран — лист выбирается в
+  // хабе, на экране «Новый мульт».
+  it('на сцене выбора листа нет: он в хабе', async () => {
+    expect(editorUi).not.toContain('sheet-size"');
+    expect(editorUi).not.toContain('.sheet-size');
+    expect(editorUi).not.toMatch(/<select[^>]*>\s*\{#each [^}]*sheetChoices/);
+    const hub = await Bun.file(UI + 'DraftsHub.svelte').text();
+    expect(hub).toContain('onSheet(value)');
   });
 });
 

@@ -151,6 +151,48 @@ describe('the hub is laid out for a desktop too', () => {
   });
 });
 
+describe('with no drafts there is nothing to show but the sheets', () => {
+  // Owner, 2026-10-05: «если нет черновиков то сразу выбор разрешения».
+  it('the hub opens on the choice of a sheet once the drafts are read and there are none', () => {
+    expect(shell).toMatch(/if \(ready && !settled\) \{\s*settled = true;[^]*?drafts\.length === 0[^]*?showCreate\(true\)/);
+  });
+});
+
+describe('the studio does not blink before the hub', () => {
+  // Owner, 2026-10-05: on the way in from the site's tile the studio showed
+  // for a moment — the hub waited for the drafts to be read. It is up from
+  // the first frame now, and until the drafts are read shows the paper only,
+  // not a view it may have to take back.
+  it('the hub is told when the drafts are read', () => {
+    expect(studio).toContain('ready={draftsRead}');
+    expect(shell).toMatch(/ready: boolean;/);
+  });
+
+  it('until then neither view is shown, unless a new drawing was asked for', () => {
+    expect(shell).toContain('let settled = $state(untrack(() => create));');
+    expect(shell).toMatch(/\{#if creating\}[^]*?\n  \{:else if settled\}\n/);
+  });
+
+  it('the focus goes into the view when it comes', () => {
+    // A card, not the first button: «Выбрать» is not drawn under a cursor,
+    // and the focus fell to the page.
+    expect(shell).toMatch(/settled = true;[^]*?await tick\(\);[^]*?querySelector<HTMLElement>\('\.draft-open, \.hub-new'\)\?\.focus\(\)/);
+  });
+});
+
+describe('a host can ask for a new drawing outright', () => {
+  // Owner, 2026-10-05: the site's «Новый мульт» tile goes past the drafts.
+  it('the editor takes `startNew` and opens the hub on the sheets, once', () => {
+    expect(studio).toMatch(/startNew\?: boolean;/);
+    expect(studio).toContain('let createOnOpen = $state(untrack(() => startNew === true));');
+    expect(studio).toMatch(/create=\{createOnOpen\}[^]*?onClose=\{\(\) => \{\s*draftsOpen = false;\s*createOnOpen = false;/);
+  });
+
+  it('the hub starts on the sheets when asked, drafts or none', () => {
+    expect(shell).toContain('let creating = $state(untrack(() => create));');
+  });
+});
+
 describe('a mouse picks a card without a mode', () => {
   // Dreams is made for a finger; under a cursor the card shows its checkbox.
   it('every card carries a checkbox, named by its date', () => {
@@ -191,7 +233,7 @@ describe('«Выбрать» turns the cards into a choice', () => {
   it('closing the hub ends the choice', () => {
     // The choice lives in the hub and goes with it.
     expect(shell).toContain('onclose={onClose}');
-    expect(studio).toMatch(/\{#if draftsOpen\}\s*<DraftsHub[^]*?onClose=\{\(\) => \(draftsOpen = false\)\}/);
+    expect(studio).toMatch(/\{#if draftsOpen\}\s*<DraftsHub[^]*?onClose=\{\(\) => \{\s*draftsOpen = false;/);
     expect(studio).not.toMatch(/let (selecting|picked|creating)\b/);
   });
 

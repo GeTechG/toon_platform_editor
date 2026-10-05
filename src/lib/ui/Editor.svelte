@@ -12,7 +12,6 @@
   import PanelArranger from './PanelArranger.svelte';
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
-  import { sheetChoices, sheetName, sheetValue } from './sheet-size';
   import ExportSheet from './ExportSheet.svelte';
   import AudioPanel from './AudioPanel.svelte';
   import Timeline from './Timeline.svelte';
@@ -74,13 +73,20 @@
   // `stageNote` is the host's own word over the canvas — the site's first-run
   // hint. The stage is the only box that knows where the canvas is, so the
   // note is placed against it rather than against the whole editor.
+  // `startNew` is the host asking for a new drawing outright (the site's
+  // «Новый мульт» tile): the studio opens on the choice of a sheet, past the
+  // drafts and whatever the start-up setting says.
   let {
     onPublish,
     stageNote,
+    startNew,
   }: {
     onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void;
     stageNote?: Snippet;
+    startNew?: boolean;
   } = $props();
+  /** Once: the hub opened by hand later starts on the drafts as ever. */
+  let createOnOpen = $state(untrack(() => startNew === true));
 
   const editor = new EditorState();
   // The session being autosaved. Minted when the editor opens and kept for as
@@ -1325,8 +1331,13 @@
   // Drafts saved on this device. The reference keeps every local save and
   // greets you with "Доступно локальное сохранение!" rather than loading the
   // last one behind your back (`toonio.bundle.js:233`) — so does this: the
-  // editor opens on a clean sheet and offers the list when there is one.
-  let draftsOpen = $state(false);
+  // studio opens on the hub, drafts or none (owner, 2026-10-05), and a draft
+  // is loaded only when picked. The sheet for a new drawing is chosen there.
+  // Up from the first frame: the studio showed for a blink while the hub
+  // waited for the drafts to be read (owner, 2026-10-05). `draftsRead` tells
+  // the hub when it has them.
+  let draftsOpen = $state(untrack(() => startNew === true || editor.settings.showDraftsOnStart));
+  let draftsRead = $state(false);
   // Raw: `$state` hands every entry out as a proxy, the document in it too —
   // a draft opened from the list was one IndexedDB refuses to write
   // (DataCloneError), so nothing drawn on it since was ever saved.
@@ -1459,9 +1470,7 @@
     // moment the device is short of space.
     void navigator.storage?.persist?.().catch(() => false);
     await refreshDrafts();
-    // The list reads whole documents and may come late: by then a stroke may
-    // be under way or a sheet open, and a modal over either is a hand knocked.
-    draftsOpen = drafts.length > 0 && editor.settings.showDraftsOnStart && !editor.touched && !sheetOpen();
+    draftsRead = true;
   });
 
   async function openDrafts(): Promise<void> {
@@ -2535,27 +2544,6 @@
     <div class="scale-window" data-over-sheet style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
       <ScaleMenu {editor} />
     </div>
-    {#if editor.sheetOpen}
-      <!-- The sheet's size, for as long as there is nothing on it: the first
-           line fixes it. One native list — a phone brings its own picker. -->
-      <label class="sheet-size">
-        <span class="sr-only">{t('sheet.size')}</span>
-        <select
-          value={sheetValue(editor.doc)}
-          title={t('sheet.size')}
-          onchange={(e) => editor.setSheet(e.currentTarget.value)}
-        >
-          {#each [...new Set(sheetChoices().map((choice) => choice.ratio))] as ratio (ratio)}
-            <optgroup label={`${sheetName(ratio)} · ${ratio}`}>
-              {#each sheetChoices().filter((choice) => choice.ratio === ratio) as choice (choice.value)}
-                <option value={choice.value}>{choice.name} · {choice.width}×{choice.height}</option>
-              {/each}
-            </optgroup>
-          {/each}
-        </select>
-        <Icon name="chevron-down" size={16} />
-      </label>
-    {/if}
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
     {/if}
@@ -2769,13 +2757,18 @@
       {thumbUrls}
       {storageUsed}
       {draftId}
+      create={createOnOpen}
+      ready={draftsRead}
       onOpen={openDraft}
       onCopy={copyDrafts}
       onDownload={downloadDrafts}
       onRemove={removeDrafts}
       onRemoveAll={removeAllDrafts}
       onSheet={startSheet}
-      onClose={() => (draftsOpen = false)}
+      onClose={() => {
+        draftsOpen = false;
+        createOnOpen = false;
+      }}
     />
   {/if}
 
@@ -2995,35 +2988,6 @@
     z-index: var(--z-tool);
     /* One row of keys — it takes the width it needs, not a panel's. */
     width: max-content;
-  }
-  /* The sheet's size, at the foot of the stage for as long as the sheet is
-     empty. Not `data-over-sheet`: the sheet is not fitted around a window that
-     leaves with the first line. */
-  .sheet-size {
-    position: absolute;
-    left: 50%;
-    bottom: clamp(0.5rem, 2.2vw, 1.25rem);
-    transform: translateX(-50%);
-    z-index: var(--z-tool);
-  }
-  .sheet-size select {
-    min-height: var(--key-h, 2.75rem);
-    /* Room for the chevron: the studio's lists wear no arrow of their own. */
-    padding: 0 2.1rem 0 0.75rem;
-    border: none;
-    border-radius: var(--r-md);
-    background: var(--paper);
-    color: var(--ink);
-    font: inherit;
-    font-size: 0.8125rem;
-    cursor: pointer;
-  }
-  .sheet-size :global(svg) {
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
   }
   /* The canvas's hint, in the middle of the stage's foot, lay over the zoom
      window in its corner on a narrow stage (audit 17). On the desk it keeps
