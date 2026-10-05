@@ -490,6 +490,19 @@ export function visibleTools(layout: PanelLayout): string[] {
   return toolOrder().filter((tool) => panelItemVisible(layout, toolItem(tool)));
 }
 
+/**
+ * Whether a tool's key, pressed while the tool is in hand, opens the brush
+ * box under itself (toonop: the brush and its settings are one key). Only a
+ * tool that draws, and only where the arrangement places no brush control of
+ * its own — the box, its key, the row of dots: there the brush is already on
+ * a panel, and a reference preset's keys stay as the reference had them.
+ */
+export function toolOpensBrush(layout: PanelLayout, tool: string): boolean {
+  const spec = toolSpec(tool);
+  return !!spec && !spec.help
+    && ['brush', 'brush-key', 'brush-sizes'].every((id) => !panelItemVisible(layout, id));
+}
+
 /** Whether the item is drawn at all. */
 export function panelItemVisible(layout: PanelLayout, id: string): boolean {
   return !layout.hidden.includes(id);

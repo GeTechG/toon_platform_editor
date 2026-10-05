@@ -94,10 +94,12 @@ export type TabId = 'color' | 'brush' | 'timeline' | 'sound' | 'more';
 
 export const DEFAULT_TAB_ORDER: readonly TabId[] = ['color', 'brush', 'timeline', 'sound', 'more'];
 
+const BRUSH_ITEMS: readonly string[] = ['brush', 'brush-sizes', 'brush-key'];
+
 /** What each named tab takes from the layout; «⋯» takes whatever is left. */
 const TAB_ITEMS: Record<Exclude<TabId, 'more'>, readonly string[]> = {
   color: ['palette', 'color', 'color-key'],
-  brush: ['brush', 'brush-sizes', 'brush-key'],
+  brush: BRUSH_ITEMS,
   // The «слой × кадр» strip and what the desktop keeps beside it to set the
   // frames and the playback. Not the transport: the mini transport does that.
   timeline: ['fps', 'add-frame', 'delete-frame', 'onion', 'copy', 'paste', 'merge', 'timeline'],
@@ -165,7 +167,11 @@ export function compactLayout(
   order: readonly TabId[],
   keep?: PhoneKeep,
 ): CompactLayout {
-  const placed = allPlaced({ ...layout, hidden: [] });
+  const laid = allPlaced({ ...layout, hidden: [] });
+  // Where the brush is behind its tool's key (panels.ts `toolOpensBrush`) no
+  // brush control is placed at all, and «Кисть» would be a tab of nothing: a
+  // small screen has the one window, not a box under a key.
+  const placed = BRUSH_ITEMS.some((id) => laid.includes(id)) ? laid : [...laid, 'brush-key'];
   const fits = (id: string) => step === 'tablet' || id === 'history' || !panelItem(id)?.wide;
   // The transport is the mini transport's, wherever the desktop put it.
   const own = layout.left.filter((id) => id !== 'publish' && id !== 'transport' && fits(id));

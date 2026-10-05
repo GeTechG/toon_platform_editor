@@ -57,7 +57,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { columnDraws, itemDrawn, panelItem as panelItemSpec, toolOfItem } from './panels';
+  import { columnDraws, itemDrawn, panelItem as panelItemSpec, toolOfItem, toolOpensBrush } from './panels';
   import type { SideId } from './presets';
   import { TABLET_MIN_W, boxRow, canvasFloor, compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, yieldToCanvas, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
@@ -2153,7 +2153,7 @@
        stayed empty. Heard through `pluginsVersion`. -->
   {@const tool = (void editor.pluginsVersion, toolOfItem(id))}
   {#if tool}
-    <ToolKey {editor} {tool} />
+    <ToolKey {editor} {tool} brush={!compact && toolOpensBrush(editor.panels, tool)} />
   {:else if id === 'save'}
     <!-- Reference «Сохранить»: the draft goes to disk now rather than on the
          next turn of the autosave clock. Nothing to write, nothing to press. -->

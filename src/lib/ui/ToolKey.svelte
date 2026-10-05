@@ -6,9 +6,20 @@
   import type { EditorState } from './editor-state.svelte';
   import { toolKeyList, toolSpec } from './panels';
   import Icon from './Icon.svelte';
+  import BrushPanel from './BrushPanel.svelte';
+  import PopKey from './PopKey.svelte';
   import { t } from '../i18n';
 
-  let { editor, tool }: { editor: EditorState; tool: string } = $props();
+  let {
+    editor,
+    tool,
+    brush = false,
+  }: {
+    editor: EditorState;
+    tool: string;
+    /** Pressed while in hand, the key opens the brush box under itself (panels.ts `toolOpensBrush`). */
+    brush?: boolean;
+  } = $props();
 
   // The register is no state: an updated plugin's icon and label are heard
   // through `pluginsVersion`, or the key kept the old ones until a reload.
@@ -32,7 +43,27 @@
   );
 </script>
 
-{#if offered && spec}
+{#if offered && spec && brush}
+  <PopKey
+    label={spec.label}
+    title={t('tool.again_brush', { title: editor.keyHint(title) })}
+    active={editor.tool === tool}
+    gate={() => {
+      if (editor.tool === tool) return true;
+      editor.selectTool(tool);
+      return false;
+    }}
+    attrs={{
+      'aria-pressed': editor.tool === tool,
+      'data-key': keys.join(' / ') || undefined,
+      'data-tool': tool,
+      'aria-keyshortcuts': keys.join(' ') || undefined,
+    }}
+  >
+    {#snippet face()}<Icon name={spec.icon} />{/snippet}
+    <BrushPanel {editor} />
+  </PopKey>
+{:else if offered && spec}
   <button
     class="key icon"
     class:active={editor.tool === tool}

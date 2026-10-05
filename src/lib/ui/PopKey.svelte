@@ -2,7 +2,7 @@
   /**
    * A key on a bar with its box behind it: pressed, the box opens under the
    * key; a press elsewhere, Esc or the key again closes it. The top bar's form
-   * of the brush box and the colours (toonop) — the sound's plate, made
+   * of the colours and of a tool's brush (toonop) — the sound's plate, made
    * general.
    */
   import type { Snippet } from 'svelte';
@@ -12,7 +12,16 @@
     title = label,
     face,
     children,
+    active = false,
+    gate,
+    attrs = {},
   }: {
+    /** Drawn as pressed though its box is shut: a tool in hand. */
+    active?: boolean;
+    /** Asked at each press: false — the press did something else, the box stays as it is. */
+    gate?: () => boolean;
+    /** What else the key carries: its hotkey, its pressed state. */
+    attrs?: Record<string, unknown>;
     label: string;
     title?: string;
     /** What the key shows: an icon, the colour in hand. */
@@ -56,6 +65,12 @@
     return () => window.removeEventListener('pointerdown', away, true);
   });
 
+  // A gated key's box belongs to its being active: the tool changed by a
+  // hotkey, and the box showed another tool's brush under this key.
+  $effect(() => {
+    if (gate && !active) open = false;
+  });
+
   function onKey(e: KeyboardEvent): void {
     if (e.key !== 'Escape' || e.defaultPrevented || !open) return;
     // A list open inside (the brush types, the harmonies) takes this Esc: the
@@ -77,10 +92,13 @@
 <div class="pop-key" onkeydown={onKey}>
   <button
     class="key icon"
-    class:active={open}
+    {...attrs}
+    class:active={open || active}
     aria-expanded={open}
     bind:this={key}
-    onclick={() => (open = !open)}
+    onclick={() => {
+      if (!gate || gate()) open = !open;
+    }}
     {title}
     aria-label={label}
   >

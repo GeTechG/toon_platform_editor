@@ -23,6 +23,7 @@ import {
   showPanelItem,
   samePanels,
   itemDrawn,
+  toolOpensBrush,
 } from './panels';
 import * as presets from './presets';
 
@@ -212,14 +213,15 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    expect(studio.left).toEqual([
-      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
-      'save', 'export', 'settings', 'publish', 'history', 'manual', 'fullscreen',
-    ]);
+    expect(studio.left).toEqual(['save', 'export', 'settings', 'publish', 'history', 'manual', 'fullscreen']);
     // The owner (2026-10-05): no right column — a top bar with a key for the
     // brush and a key for the colours, each opening its own window.
     expect(studio.right).toEqual([]);
-    expect(studio.top).toEqual(['brush-key', 'color-key']);
+    // …and the tools on that bar too, before the two keys (the same day).
+    expect(studio.top).toEqual([
+      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
+      'color-key',
+    ]);
     expect(studio.rows).toEqual([
       ['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'],
       ['timeline'],
@@ -227,8 +229,21 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key',
     ].sort());
+  });
+
+  test('a drawing tool pressed again opens its brush — where no brush control is placed', () => {
+    const studio = presets.presetPanels('toonop');
+    expect(toolOpensBrush(studio, 'pencil')).toBe(true);
+    expect(toolOpensBrush(studio, 'eraser')).toBe(true);
+    // A help tool has no brush: the hand, the lasso, the pipette.
+    expect(toolOpensBrush(studio, 'drag')).toBe(false);
+    expect(toolOpensBrush(studio, 'pipette')).toBe(false);
+    // The box, its key or the row of dots on a panel: the brush is already there.
+    expect(toolOpensBrush(defaultPanels(), 'pencil')).toBe(false);
+    expect(toolOpensBrush(movePanelItem(studio, 'brush-key', 'top'), 'pencil')).toBe(false);
+    expect(toolOpensBrush(movePanelItem(studio, 'brush-sizes', 'left'), 'pencil')).toBe(false);
   });
 
   test('the top bar is a slot like the columns: it takes a drop, is read back, and is offered', () => {
