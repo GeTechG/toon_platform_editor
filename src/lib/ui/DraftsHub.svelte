@@ -144,9 +144,11 @@
   // The chip's menu of sizes — the studio's own, not the browser's list
   // (owner, 2026-10-05). It stands at the hub's level: the reel scrolls and
   // its cards are containers, so a menu inside one would be cut.
-  let sizeMenu = $state<{ x: number; y: number; from: HTMLElement } | null>(null);
+  // The same window holds the frame rate instead, opened from the three dots
+  // in the card's corner (`more`; owner, 2026-10-05).
+  let sizeMenu = $state<{ x: number; y: number; from: HTMLElement; more: boolean } | null>(null);
   let sizeMenuEl = $state<HTMLDivElement | undefined>();
-  async function openSizeMenu(from: HTMLElement, proportion: string): Promise<void> {
+  async function openSizeMenu(from: HTMLElement, proportion: string, more = false): Promise<void> {
     const hub = dialogEl;
     if (!hub) {
       return;
@@ -154,7 +156,7 @@
     newProportion = proportion;
     const chip = from.getBoundingClientRect();
     const box = hub.getBoundingClientRect();
-    sizeMenu = { x: chip.left - box.left, y: chip.bottom - box.top + 6, from };
+    sizeMenu = { x: chip.left - box.left, y: chip.bottom - box.top + 6, from, more };
     await tick();
     if (!sizeMenuEl) {
       return;
@@ -162,10 +164,11 @@
     // Under the chip where there is room; otherwise as near as the hub lets.
     sizeMenu = {
       from,
+      more,
       x: Math.min(sizeMenu.x, Math.max(8, box.width - sizeMenuEl.offsetWidth - 8)),
       y: Math.min(sizeMenu.y, Math.max(8, box.height - sizeMenuEl.offsetHeight - 8)),
     };
-    sizeMenuEl.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    sizeMenuEl.querySelector<HTMLElement>('[aria-checked="true"], input')?.focus();
   }
   function closeSizeMenu(): void {
     const from = sizeMenu?.from;
@@ -331,7 +334,21 @@
         <h2>{t('editor.new_sheet')}</h2>
       </span>
       {#if touchHub}
-        <button class="key" onclick={() => showCreate(false)}>{t('transform.cancel')}</button>
+        <span class="hub-keys">
+          <!-- Three dots in the corner (owner, 2026-10-05): what a sheet is
+               given besides its size — the frame rate. One for the whole
+               reel: a card is too small to hold them clear of its name. -->
+          <button
+            class="key icon reel-more"
+            aria-expanded={sizeMenu !== null && sizeMenu.more}
+            title={t('editor.fps')}
+            aria-label={t('editor.fps')}
+            onclick={(e) => openSizeMenu(e.currentTarget, newProportion, true)}
+          >
+            <Icon name="more" />
+          </button>
+          <button class="key" onclick={() => showCreate(false)}>{t('transform.cancel')}</button>
+        </span>
       {/if}
     </header>
     {#if touchHub}
@@ -348,7 +365,7 @@
               <button
                 class="reel-size"
                 aria-haspopup="menu"
-                aria-expanded={sizeMenu !== null && proportion === newProportion}
+                aria-expanded={sizeMenu !== null && !sizeMenu.more && proportion === newProportion}
                 aria-label={t('sheet.size_chip', { size: newSize })}
                 onclick={(e) => openSizeMenu(e.currentTarget, proportion)}
               >{newSize}</button>
@@ -375,22 +392,25 @@
       <div class="size-scrim" onclick={closeSizeMenu}></div>
       <div
         class="size-menu"
-        role="menu"
+        role={sizeMenu.more ? 'group' : 'menu'}
         tabindex="-1"
-        aria-label={t('export.resolution')}
+        aria-label={sizeMenu.more ? t('editor.fps') : t('export.resolution')}
         bind:this={sizeMenuEl}
         style:left="{sizeMenu.x}px"
         style:top="{sizeMenu.y}px"
         onkeydown={sizeMenuKeys}
       >
-        {#each sheetSizes() as size (size)}
-          {@const sheet = sheetOf(newProportion, size, newStanding)}
-          <button role="menuitemradio" aria-checked={size === newSize} onclick={() => pickSize(size)}>
-            <span>{size}</span>
-            <small>{sheet.width}×{sheet.height}</small>
-          </button>
-        {/each}
-        {@render fpsField()}
+        {#if sizeMenu.more}
+          {@render fpsField()}
+        {:else}
+          {#each sheetSizes() as size (size)}
+            {@const sheet = sheetOf(newProportion, size, newStanding)}
+            <button role="menuitemradio" aria-checked={size === newSize} onclick={() => pickSize(size)}>
+              <span>{size}</span>
+              <small>{sheet.width}×{sheet.height}</small>
+            </button>
+          {/each}
+        {/if}
       </div>
     {/if}
     {:else}
@@ -947,8 +967,7 @@
     grid-column: 1 / -1;
   }
   .size-menu .sheet-fps {
-    padding: 6px 10px 4px;
-    border-top: 1px solid var(--hairline-soft);
+    padding: 2px 10px 4px;
   }
   /* The studio's track is the sub-tone, and so is the menu: on it the track
      takes the tone of the size chosen. */
