@@ -1555,7 +1555,7 @@
    * nothing is asked — unless it did not reach the disk. Says whether the
    * sheet was started: the hub closes on a yes.
    */
-  async function startSheet(value: string): Promise<boolean> {
+  async function startSheet(value: string, fps: number): Promise<boolean> {
     if (!editor.sheetOpen) {
       if (!editor.leaveTransform()) {
         return false;
@@ -1573,7 +1573,7 @@
       draftId = newDraftId();
       editor.lastSavedAt = null;
     }
-    editor.setSheet(value);
+    editor.setSheet(value, fps);
     return true;
   }
 

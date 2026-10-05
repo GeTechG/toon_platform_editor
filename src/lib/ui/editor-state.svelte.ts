@@ -1533,12 +1533,18 @@ export class EditorState {
     return sheetOpen(this.doc, this.edits.length + this.undone.length) && !this.transform;
   }
 
-  /** Gives an untouched sheet the size picked from the list. Not an edit: there is nothing on it to keep. */
-  setSheet(value: string): void {
+  /**
+   * Gives an untouched sheet the size picked from the list, and the frame
+   * rate chosen beside it. Not an edit: there is nothing on it to keep.
+   */
+  setSheet(value: string, fps = this.doc.frame_rate): void {
     if (!this.sheetOpen) {
       return;
     }
-    this.#write((doc) => resizeSheet(doc, value));
+    this.#write((doc) => {
+      resizeSheet(doc, value);
+      setFrameRate(doc, clampPlayerFps(fps, this.ux.fpsRange));
+    });
   }
 
   /** Back to 100% with the sheet centred on the worktable. */

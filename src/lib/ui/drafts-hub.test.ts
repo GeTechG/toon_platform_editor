@@ -86,8 +86,8 @@ describe('the choice of a sheet comes after the drafts', () => {
     expect(body).toMatch(/if \(!editor\.sheetOpen\) \{/);
     expect(body).toMatch(/await saveNow\(true\)/);
     expect(body).toContain("confirm(t('editor.new_sheet_lost_confirm'))");
-    expect(body).toMatch(/editor\.newSheet\(\)[^]*draftId = newDraftId\(\)[^]*editor\.setSheet\(value\);\s*return true;/);
-    expect(fn('pickSheet')).toMatch(/if \(await onSheet\(value\)\) \{\s*dialogEl\?\.close\(\);/);
+    expect(body).toMatch(/editor\.newSheet\(\)[^]*draftId = newDraftId\(\)[^]*editor\.setSheet\(value, fps\);\s*return true;/);
+    expect(fn('pickSheet')).toMatch(/if \(await onSheet\(value, newFps\)\) \{\s*dialogEl\?\.close\(\);/);
     expect(studio).toContain('onSheet={startSheet}');
   });
 
@@ -298,6 +298,30 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
     expect(menu).toContain('role="menu"');
     expect(menu).toMatch(/<button role="menuitemradio" aria-checked=\{size === newSize\} onclick=\{\(\) => pickSize\(size\)\}>\s*<span>\{size\}<\/span>\s*<small>\{sheet\.width\}×\{sheet\.height\}<\/small>/);
+  });
+
+  // Owner, 2026-10-05: the frame rate is chosen where the resolution is — in
+  // the side column under a cursor, in the chip's menu under a finger.
+  it('the frame rate stands with the resolution in both layouts', () => {
+    const field = shell.match(/\{#snippet fpsField\(\)\}[^]*?\{\/snippet\}/)?.[0] ?? '';
+    expect(field).toContain("{t('editor.fps')}");
+    expect(field).toMatch(/type="range"\s+min=\{editor\.ux\.fpsRange\[0\]\}\s+max=\{editor\.ux\.fpsRange\[1\]\}\s+value=\{newFps\}/);
+    expect(field).toMatch(/type="number"[^>]*aria-label=\{t\('editor\.fps'\)\}/);
+    const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
+    expect(menu).toContain('{@render fpsField()}');
+    const side = shell.match(/<div class="sheet-side">[^]*?\{t\('sheet\.start'\)\}/)?.[0] ?? '';
+    expect(side).toContain('{@render fpsField()}');
+  });
+
+  it('a new sheet starts at the preset\'s rate, and an empty field keeps the rate', () => {
+    expect(shell).toContain('let newFps = $state(untrack(() => editor.ux.defaultFps));');
+    expect(fn('onNewFps')).toContain('fpsFromField(input.value, newFps, editor.ux.fpsRange)');
+  });
+
+  it('the menu\'s arrows leave the rate field its own, and Tab reaches it', () => {
+    const keys = fn('sizeMenuKeys');
+    expect(keys).toMatch(/e\.target instanceof HTMLInputElement/);
+    expect(keys).toMatch(/'Tab'[^]*\.focus\(\)/);
   });
 
   it('the menu stands outside the reel, which would clip it, and inside the screen', () => {

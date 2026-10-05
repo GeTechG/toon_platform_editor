@@ -86,6 +86,16 @@ describe('размер меняется, пока лист пуст', () => {
     expect(open).toContain('this.undone.length');
   });
 
+  // Владелец, 2026-10-05: частота кадров выбирается там же, где разрешение.
+  // Она ложится на лист вместе с размером — одной записью, не правкой, и в
+  // пределах профиля.
+  it('вместе с размером открытый лист берёт частоту кадров', () => {
+    const set = state.match(/\n  setSheet\([^]*?\n  }/)![0];
+    expect(set).toMatch(/setSheet\(value: string, fps = this\.doc\.frame_rate\)/);
+    expect(set).toMatch(/resizeSheet\(doc, value\);\s*setFrameRate\(doc, clampPlayerFps\(fps, this\.ux\.fpsRange\)\);/);
+    expect(set).not.toContain('this.touched');
+  });
+
   // Владелец, 2026-10-05: выбор разрешения с холста убран — лист выбирается в
   // хабе, на экране «Новый мульт».
   it('на сцене выбора листа нет: он в хабе', async () => {
@@ -93,7 +103,7 @@ describe('размер меняется, пока лист пуст', () => {
     expect(editorUi).not.toContain('.sheet-size');
     expect(editorUi).not.toMatch(/<select[^>]*>\s*\{#each [^}]*sheetChoices/);
     const hub = await Bun.file(UI + 'DraftsHub.svelte').text();
-    expect(hub).toContain('onSheet(value)');
+    expect(hub).toContain('onSheet(value, newFps)');
   });
 });
 

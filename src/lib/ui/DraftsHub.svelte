@@ -19,6 +19,7 @@
   import { draftSizeClass, formatFileSize } from './file-size';
   import { fitThumb } from './thumb-size';
   import { sheetAbout, sheetChoices, sheetName, sheetOf, sheetProportions, sheetSizes, sheetValue } from './sheet-size';
+  import { fpsFromField } from './frame-selection';
   import { dateLocale, t } from '../i18n';
 
   let {
@@ -58,7 +59,7 @@
     onRemove: (ids: string[]) => Promise<boolean>;
     onRemoveAll: () => Promise<boolean>;
     /** Says whether the sheet was started; the hub closes on a yes. */
-    onSheet: (value: string) => Promise<boolean>;
+    onSheet: (value: string, fps: number) => Promise<boolean>;
     onClose: () => void;
   } = $props();
 
@@ -119,6 +120,14 @@
   let newProportion = $state('16:9');
   let newSize = $state('720p');
   let newStanding = $state(false);
+  // The frame rate is chosen where the resolution is (owner, 2026-10-05).
+  let newFps = $state(untrack(() => editor.ux.defaultFps));
+  function onNewFps(e: Event): void {
+    const input = e.currentTarget as HTMLInputElement;
+    // A field left empty keeps the rate, as the one on the bar does.
+    newFps = fpsFromField(input.value, newFps, editor.ux.fpsRange);
+    input.value = String(newFps);
+  }
   const newChoice = $derived(sheetOf(newProportion, newSize, newStanding));
   // Under a finger and on a small screen the hub is laid out as Dreams'
   // Theater is; under a cursor on a wide one, as a desktop editor's.
@@ -170,11 +179,20 @@
   function sizeMenuKeys(e: KeyboardEvent): void {
     const items = [...(sizeMenuEl?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
     const at = items.indexOf(document.activeElement as HTMLButtonElement);
-    if (e.key === 'Escape' || e.key === 'Tab') {
+    // The sizes are one stop, the two fields of the rate one each; Tab past
+    // either end puts the menu away.
+    const stops: (HTMLElement | undefined)[] = [at < 0 ? items[0] : items[at], ...(sizeMenuEl?.querySelectorAll<HTMLInputElement>('input') ?? [])];
+    const next = e.key === 'Tab' ? stops[stops.indexOf(document.activeElement as HTMLElement) + (e.shiftKey ? -1 : 1)] : undefined;
+    if (e.key === 'Tab' && next) {
+      e.preventDefault();
+      next.focus();
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
       // Esc is the menu's here, not the hub's.
       e.preventDefault();
       e.stopPropagation();
       closeSizeMenu();
+    } else if (e.target instanceof HTMLInputElement) {
+      // The arrows are the field's own: they change the rate.
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
@@ -259,11 +277,32 @@
 
   /** «Рисовать»: the editor starts the sheet; the hub closes when it did. */
   async function pickSheet(value: string): Promise<void> {
-    if (await onSheet(value)) {
+    if (await onSheet(value, newFps)) {
       dialogEl?.close();
     }
   }
 </script>
+
+{#snippet fpsField()}
+  <label class="sheet-fps">
+    <span class="hub-hint">{t('editor.fps')}</span>
+    <input
+      type="range"
+      min={editor.ux.fpsRange[0]}
+      max={editor.ux.fpsRange[1]}
+      value={newFps}
+      oninput={onNewFps}
+    />
+    <input
+      type="number"
+      min={editor.ux.fpsRange[0]}
+      max={editor.ux.fpsRange[1]}
+      value={newFps}
+      onchange={onNewFps}
+      aria-label={t('editor.fps')}
+    />
+  </label>
+{/snippet}
 
 <dialog
   bind:this={dialogEl}
@@ -351,6 +390,7 @@
             <small>{sheet.width}×{sheet.height}</small>
           </button>
         {/each}
+        {@render fpsField()}
       </div>
     {/if}
     {:else}
@@ -388,6 +428,7 @@
             </button>
           {/each}
         </div>
+        {@render fpsField()}
         <label class="sheet-stand">
           <input type="checkbox" bind:checked={newStanding} disabled={newProportion === '1:1'} />
           {t('sheet.standing')}
@@ -893,6 +934,52 @@
     font-weight: 400;
     font-variant-numeric: tabular-nums;
     color: var(--text-2);
+  }
+  /* The rate under the sizes: its name over a slider and a box, as on the bar. */
+  .sheet-fps {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3.2rem;
+    align-items: center;
+    column-gap: 0.5rem;
+    color: var(--text-2);
+  }
+  .sheet-fps span {
+    grid-column: 1 / -1;
+  }
+  .size-menu .sheet-fps {
+    padding: 6px 10px 4px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+  /* The studio's track is the sub-tone, and so is the menu: on it the track
+     takes the tone of the size chosen. */
+  .size-menu .sheet-fps input[type='range']::-webkit-slider-runnable-track {
+    background: var(--canvas);
+  }
+  .size-menu .sheet-fps input[type='range']::-moz-range-track {
+    background: var(--canvas);
+  }
+  .sheet-fps input[type='range'] {
+    width: 100%;
+    margin: 0;
+    height: var(--key-h, 2.75rem);
+  }
+  .sheet-fps input[type='number'] {
+    height: var(--key-h, 2.75rem);
+    box-sizing: border-box;
+    padding: 0 0.3rem;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+  /* Safari on an iPhone zooms the page onto a field under 16 px. */
+  @media (pointer: coarse) {
+    .sheet-fps input[type='number'] {
+      font-size: max(16px, 1em);
+    }
   }
   .sheet-stand {
     display: flex;
