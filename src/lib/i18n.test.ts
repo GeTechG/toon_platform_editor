@@ -111,4 +111,11 @@ describe('the dictionary says one thing one way', async () => {
     expect(all).not.toContain('точка на событие');
     expect(ru.settings.mouse_mode_hint).toBeTruthy();
   });
+
+  it('a trailing-off line ends in three full stops, not «…»', () => {
+    // M PLUS Rounded 1c is a Japanese face: its U+2026 sits at mid-height, so
+    // «Загрузить палитры…» read as three dots hanging in the middle of the key.
+    expect(all).not.toContain('…');
+    expect(ru.settings.load_palettes).toBe('Загрузить палитры...');
+  });
 });
