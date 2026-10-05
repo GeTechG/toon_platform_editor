@@ -255,6 +255,34 @@ const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
 /** The catalog the editor opens with: ours (`../plugins/catalog`). */
 export const PLUGIN_CATALOG = OFFICIAL_CATALOG;
 
+/** The settings sheet's categories, in the order its tabs stand. */
+export const SETTINGS_TABS = ['drawing', 'palette', 'view', 'saving', 'more'] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+/**
+ * Where a key takes the tab list from `current`: the arrows walk it round —
+ * either pair, the list lies down on a phone and stands up beside the panel —
+ * Home and End jump to its ends. Any other key is not the list's: null.
+ */
+export function stepTab(current: SettingsTab, key: string): SettingsTab | null {
+  const at = SETTINGS_TABS.indexOf(current);
+  const last = SETTINGS_TABS.length - 1;
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return SETTINGS_TABS[at === last ? 0 : at + 1];
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return SETTINGS_TABS[at === 0 ? last : at - 1];
+    case 'Home':
+      return SETTINGS_TABS[0];
+    case 'End':
+      return SETTINGS_TABS[last];
+    default:
+      return null;
+  }
+}
+
 /** Offered autosave intervals, reference order; 0 is "never". */
 export const AUTOSAVE_INTERVALS: readonly number[] = [
   10_000, 30_000, 60_000, 300_000, 600_000, 1_800_000, 3_600_000, 0,

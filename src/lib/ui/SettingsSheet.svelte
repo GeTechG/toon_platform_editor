@@ -1,7 +1,19 @@
+<script module lang="ts">
+  import type { SettingsTab } from './presets';
+
+  /**
+   * The category the sheet was left on, for as long as the page lives: the
+   * arranger and the plugins window close the sheet, and coming back from
+   * them should not start over at «Рисование».
+   */
+  let lastTab: SettingsTab = 'drawing';
+</script>
+
 <script lang="ts">
   /**
-   * The reference's settings window (`index.html #settings`): drawing,
-   * palette, autosave and view. Every control writes straight through to the
+   * The reference's settings window (`index.html #settings`), cut into
+   * categories: one long scroll of seven headings became five tabs with one
+   * short panel on screen. Every control writes straight through to the
    * persisted UI config, so there is no apply button and no draft state.
    *
    * A native <dialog> rather than a hand-rolled sheet — showModal() brings the
@@ -18,6 +30,7 @@
     PALETTE_LIMIT_MIN,
     PALETTE_LIMIT_STEP,
     presets,
+    stepTab,
   } from './presets';
   import Icon from './Icon.svelte';
   import { saveFile } from './save-file';
@@ -53,6 +66,33 @@
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
+  let bodyEl = $state<HTMLDivElement | undefined>();
+  let tab = $state(lastTab);
+
+  /** A function, like `presets()`: the names follow the language. */
+  const tabs = (): { id: SettingsTab; label: string }[] => [
+    { id: 'drawing', label: t('settings.drawing') },
+    { id: 'palette', label: t('settings.palette') },
+    { id: 'view', label: t('settings.view') },
+    { id: 'saving', label: t('settings.saving') },
+    { id: 'more', label: t('settings.more') },
+  ];
+
+  function selectTab(id: SettingsTab): void {
+    tab = lastTab = id;
+    // One body for every panel: the next one starts from its top.
+    if (bodyEl) bodyEl.scrollTop = 0;
+    // On a phone the strip scrolls sideways: the picked tab comes into it.
+    document.getElementById(`settings-tab-${id}`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function onTabKey(e: KeyboardEvent): void {
+    const next = stepTab(tab, e.key);
+    if (!next) return;
+    e.preventDefault();
+    selectTab(next);
+    document.getElementById(`settings-tab-${next}`)?.focus({ preventScroll: true });
+  }
   let paletteFile = $state<HTMLInputElement | undefined>();
   let draftFile = $state<HTMLInputElement | undefined>();
   let saveDraftsEl = $state<HTMLButtonElement | undefined>();
@@ -216,7 +256,7 @@
   onchange={onDraftFile}
 />
 
-<dialog bind:this={dialogEl} class="sheet sheet-dialog" aria-label={t('settings.sheet')} onclose={onClose}>
+<dialog bind:this={dialogEl} class="sheet sheet-dialog settings" aria-label={t('settings.sheet')} onclose={onClose}>
   <header class="sheet-head">
     <h2>{t('settings.sheet')}</h2>
     <button class="key icon" onclick={() => dialogEl?.close()} aria-label={t('picker.close')}>
@@ -224,260 +264,299 @@
     </button>
   </header>
 
-  <div class="sheet-body">
-    <h3 class="sheet-hint">{t('settings.drawing')}</h3>
-    <!--
-      The option is Tonio's `toonio_old_pen`: one point per event instead of
-      the coalesced batch. It is the editor's own, not a brush's — the batch
-      is what every brush is handed, so the switch is offered whatever is in
-      hand. (The old pen it used to mean here is a type of the brush now,
-      picked in the brush box.)
-    -->
-    <label class="toggle">
-      <span class="toggle-label stacked">
-        {t('settings.mouse_mode')}
-        <small>{t('settings.mouse_mode_hint')}</small>
-      </span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.mouseMode}
-        onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="toggle">
-      <span class="toggle-label stacked">
-        {t('settings.pen_pressure')}
-        <small>{t('settings.pen_pressure_hint')}</small>
-      </span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.penPressure}
-        onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
-      />
-    </label>
-    {#if hasEyeDropper}
-      <label class="toggle">
-        <span class="toggle-label">{t('settings.browser_pipette')}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          checked={editor.settings.chromePicker}
-          onchange={(e) => editor.setSetting('chromePicker', e.currentTarget.checked)}
-        />
-      </label>
-    {/if}
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.crosshair')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.crossCursor}
-        onchange={(e) => editor.setSetting('crossCursor', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.lock_transform')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.lockTransform}
-        onchange={(e) => editor.setSetting('lockTransform', e.currentTarget.checked)}
-      />
-    </label>
-
-    <h3 class="sheet-hint">{t('settings.palette')}</h3>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.auto_add_colour')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.paletteAutoAdd}
-        onchange={(e) => editor.setSetting('paletteAutoAdd', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="row">
-      <span class="row-label">{t('settings.palette_limit')}</span>
-      <span class="slider">
-        <input
-          type="range"
-          min={PALETTE_LIMIT_MIN}
-          max={PALETTE_LIMIT_MAX}
-          step={PALETTE_LIMIT_STEP}
-          value={editor.settings.paletteLimit}
-          oninput={(e) => (limitDragged = Number(e.currentTarget.value))}
-          onchange={(e) => editor.setSetting('paletteLimit', Number(e.currentTarget.value))}
-        />
-        <output>{limitShown}</output>
-      </span>
-    </label>
-    <div class="actions">
-      <button
-        class="key"
-        onclick={() => download('palettes.json', editor.exportSavedPalettes())}
-      >{t('settings.download_palettes')}</button>
-      <button class="key" onclick={() => paletteFile?.click()}>{t('settings.load_palettes')}</button>
-      <button class="key danger" onclick={wipePalettes}>{t('settings.wipe_palettes')}</button>
-    </div>
-
-    <h3 class="sheet-hint">{t('settings.autosave')}</h3>
-    <label class="row">
-      <span class="row-label">{t('settings.interval')}</span>
-      <select
-        value={editor.settings.autosaveMs}
-        onchange={(e) => editor.setSetting('autosaveMs', Number(e.currentTarget.value))}
-      >
-        {#each AUTOSAVE_INTERVALS as ms (ms)}
-          <option value={ms}>{autosaveLabel(ms)}</option>
-        {/each}
-      </select>
-    </label>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.mega_eraser_warning')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.megaEraserWarning}
-        onchange={(e) => editor.setSetting('megaEraserWarning', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.show_drafts')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.showDraftsOnStart}
-        onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
-      />
-    </label>
-    {#if drafts.length > 0}
-      <ul class="picklist">
-        {#each drafts as entry (entry.id)}
-          <li>
-            <label class="toggle">
-              <span class="toggle-label stacked">
-                {new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
-                <small>
-                  {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
-                </small>
-              </span>
-              <input
-                type="checkbox"
-                checked={chosen.includes(entry.id)}
-                onchange={(e) => {
-                  chosen = e.currentTarget.checked
-                    ? [...chosen, entry.id]
-                    : chosen.filter((id) => id !== entry.id);
-                }}
-              />
-            </label>
-          </li>
-        {/each}
-      </ul>
-    {/if}
-    {#if exporting}
-      <progress value={exporting.done} max={exporting.total} aria-label={t('settings.download_drafts')}>
-        {t('settings.progress', { done: exporting.done, total: exporting.total })}
-      </progress>
-    {/if}
-    <div class="actions">
-      <button bind:this={saveDraftsEl} class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
-        {t('settings.download_drafts')}
-      </button>
-      <button class="key" onclick={() => draftFile?.click()}>{t('settings.load_drafts')}</button>
-      {#if onOpenDrafts}
-        <button class="key" onclick={() => { dialogEl?.close(); onOpenDrafts(); }}>{t('settings.drafts')}</button>
-      {/if}
-      {#if onOpenFile}
-        <!-- The sheet steps aside, as it does for the plugins and the arranger:
-             an import error lands on the canvas, under this modal, unseen. -->
-        <button class="key" onclick={() => { dialogEl?.close(); onOpenFile(); }}>{t('settings.open_toon')}</button>
-      {/if}
-      {#if onSaveNow}
-        <button class="key" onclick={saveNowHere}>{t('settings.save_now')}</button>
-      {/if}
-      {#if onDownloadErrors}
-        <button class="key" onclick={onDownloadErrors}>{t('settings.download_errors')}</button>
-      {/if}
-      <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
-    </div>
-
-    <h3 class="sheet-hint">{t('settings.view')}</h3>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.mirror_layout')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.altLayout}
-        onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
-      />
-    </label>
-    <label class="toggle">
-      <span class="toggle-label">{t('settings.letter_keys')}</span>
-      <input
-        type="checkbox"
-        role="switch"
-        checked={editor.settings.letterKeys}
-        onchange={(e) => editor.setSetting('letterKeys', e.currentTarget.checked)}
-      />
-    </label>
-
-    <!-- Reference «Настроить панель»: which buttons the toolbar shows, and the
-         preset they come from. The gear is never hideable, so this is always
-         reachable. Last, because it is a set-once concern. -->
-    <h3 class="sheet-hint">{t('settings.panel')}</h3>
-    <div class="presets" role="group" aria-label={t('settings.preset_group')}>
-      {#each presets() as p (p.id)}
+  <div class="settings-main">
+    <!-- The picked tab is the list's one stop; the arrows walk the rest. -->
+    <div class="settings-tabs" role="tablist" tabindex="-1" aria-label={t('settings.tabs')} onkeydown={onTabKey}>
+      {#each tabs() as item (item.id)}
         <button
-          class="preset-chip"
-          class:active={editor.preset === p.id}
-          aria-pressed={editor.preset === p.id}
-          onclick={() => editor.applyPreset(p.id)}
-        >{p.label}</button>
+          id="settings-tab-{item.id}"
+          class="tab"
+          class:active={tab === item.id}
+          role="tab"
+          aria-selected={tab === item.id}
+          aria-controls="settings-panel"
+          tabindex={tab === item.id ? 0 : -1}
+          onclick={() => selectTab(item.id)}
+        >{item.label}</button>
       {/each}
     </div>
 
-    <!-- Расположение: arranged by hand in the editor, where the panels are.
-         A list of selects said the same thing twice and nobody used it. -->
-    <h3 class="sheet-hint">{t('settings.arrangement')}</h3>
-    {#if compact}
-      <p class="hint">{t('settings.tabs_hint')}</p>
-    {:else}
-      <div class="actions">
-        <button
-          class="key"
-          onclick={() => {
-            editor.arranging = true;
-            dialogEl?.close();
-          }}
-        >{t('settings.edit_panels')}</button>
-      </div>
-    {/if}
+    <div
+      bind:this={bodyEl}
+      class="sheet-body"
+      id="settings-panel"
+      role="tabpanel"
+      aria-labelledby={`settings-tab-${tab}`}
+    >
+      {#if tab === 'drawing'}
+        <!--
+          The option is Tonio's `toonio_old_pen`: one point per event instead of
+          the coalesced batch. It is the editor's own, not a brush's — the batch
+          is what every brush is handed, so the switch is offered whatever is in
+          hand. (The old pen it used to mean here is a type of the brush now,
+          picked in the brush box.)
+        -->
+        <label class="toggle">
+          <span class="toggle-label stacked">
+            {t('settings.mouse_mode')}
+            <small>{t('settings.mouse_mode_hint')}</small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.mouseMode}
+            onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="toggle">
+          <span class="toggle-label stacked">
+            {t('settings.pen_pressure')}
+            <small>{t('settings.pen_pressure_hint')}</small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.penPressure}
+            onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.crosshair')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.crossCursor}
+            onchange={(e) => editor.setSetting('crossCursor', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.lock_transform')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.lockTransform}
+            onchange={(e) => editor.setSetting('lockTransform', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.mega_eraser_warning')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.megaEraserWarning}
+            onchange={(e) => editor.setSetting('megaEraserWarning', e.currentTarget.checked)}
+          />
+        </label>
+      {:else if tab === 'palette'}
+        {#if hasEyeDropper}
+          <label class="toggle">
+            <span class="toggle-label">{t('settings.browser_pipette')}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={editor.settings.chromePicker}
+              onchange={(e) => editor.setSetting('chromePicker', e.currentTarget.checked)}
+            />
+          </label>
+        {/if}
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.auto_add_colour')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.paletteAutoAdd}
+            onchange={(e) => editor.setSetting('paletteAutoAdd', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="row">
+          <span class="row-label">{t('settings.palette_limit')}</span>
+          <span class="slider">
+            <input
+              type="range"
+              min={PALETTE_LIMIT_MIN}
+              max={PALETTE_LIMIT_MAX}
+              step={PALETTE_LIMIT_STEP}
+              value={editor.settings.paletteLimit}
+              oninput={(e) => (limitDragged = Number(e.currentTarget.value))}
+              onchange={(e) => editor.setSetting('paletteLimit', Number(e.currentTarget.value))}
+            />
+            <output>{limitShown}</output>
+          </span>
+        </label>
 
-    <h3 class="sheet-hint">{t('settings.plugins')}</h3>
-    <div class="actions">
-      <button
-        class="key"
-        onclick={() => {
-          onOpenPlugins?.();
-          dialogEl?.close();
-        }}
-      >{t('settings.plugins')}</button>
+        <h3 class="sheet-hint">{t('settings.saved_palettes')}</h3>
+        <div class="actions">
+          <button
+            class="key"
+            onclick={() => download('palettes.json', editor.exportSavedPalettes())}
+          >{t('settings.download_palettes')}</button>
+          <button class="key" onclick={() => paletteFile?.click()}>{t('settings.load_palettes')}</button>
+          <button class="key danger" onclick={wipePalettes}>{t('settings.wipe_palettes')}</button>
+        </div>
+      {:else if tab === 'view'}
+        <!-- Reference «Настроить панель»: which buttons the toolbar shows, and
+             the preset they come from. The gear is never hideable, so this is
+             always reachable. -->
+        <h3 class="sheet-hint">{t('settings.panel')}</h3>
+        <div class="presets" role="group" aria-label={t('settings.preset_group')}>
+          {#each presets() as p (p.id)}
+            <button
+              class="preset-chip"
+              class:active={editor.preset === p.id}
+              aria-pressed={editor.preset === p.id}
+              onclick={() => editor.applyPreset(p.id)}
+            >{p.label}</button>
+          {/each}
+        </div>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.mirror_layout')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.altLayout}
+            onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
+          />
+        </label>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.letter_keys')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.letterKeys}
+            onchange={(e) => editor.setSetting('letterKeys', e.currentTarget.checked)}
+          />
+        </label>
+        <!-- Расположение: arranged by hand in the editor, where the panels are.
+             A list of selects said the same thing twice and nobody used it. -->
+        {#if compact}
+          <p class="hint">{t('settings.tabs_hint')}</p>
+        {:else}
+          <div class="actions">
+            <button
+              class="key"
+              onclick={() => {
+                editor.arranging = true;
+                dialogEl?.close();
+              }}
+            >{t('settings.edit_panels')}</button>
+          </div>
+        {/if}
+      {:else if tab === 'saving'}
+        <label class="row">
+          <span class="row-label">{t('settings.autosave')}</span>
+          <select
+            value={editor.settings.autosaveMs}
+            onchange={(e) => editor.setSetting('autosaveMs', Number(e.currentTarget.value))}
+          >
+            {#each AUTOSAVE_INTERVALS as ms (ms)}
+              <option value={ms}>{autosaveLabel(ms)}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="toggle">
+          <span class="toggle-label">{t('settings.show_drafts')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.showDraftsOnStart}
+            onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
+          />
+        </label>
+        <div class="actions">
+          {#if onSaveNow}
+            <button class="key" onclick={saveNowHere}>{t('settings.save_now')}</button>
+          {/if}
+          <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
+        </div>
+
+        {#if onOpenDrafts || onOpenFile}
+          <h3 class="sheet-hint">{t('settings.open')}</h3>
+          <div class="actions">
+            {#if onOpenDrafts}
+              <button class="key" onclick={() => { dialogEl?.close(); onOpenDrafts(); }}>{t('settings.drafts')}</button>
+            {/if}
+            {#if onOpenFile}
+              <!-- The sheet steps aside, as it does for the plugins and the arranger:
+                   an import error lands on the canvas, under this modal, unseen. -->
+              <button class="key" onclick={() => { dialogEl?.close(); onOpenFile(); }}>{t('settings.open_toon')}</button>
+            {/if}
+          </div>
+        {/if}
+
+        <h3 class="sheet-hint">{t('settings.drafts_copy')}</h3>
+        {#if drafts.length > 0}
+          <!-- Everything goes into the copy unless told otherwise: the list of
+               ticks is there for the one who asks, not in everybody's way. -->
+          <details class="pick">
+            <summary>{t('settings.drafts_chosen', { chosen: chosen.length, total: drafts.length })}</summary>
+            <ul class="picklist">
+              {#each drafts as entry (entry.id)}
+                <li>
+                  <label class="toggle">
+                    <span class="toggle-label stacked">
+                      {new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
+                      <small>
+                        {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
+                      </small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={chosen.includes(entry.id)}
+                      onchange={(e) => {
+                        chosen = e.currentTarget.checked
+                          ? [...chosen, entry.id]
+                          : chosen.filter((id) => id !== entry.id);
+                      }}
+                    />
+                  </label>
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+        {#if exporting}
+          <progress value={exporting.done} max={exporting.total} aria-label={t('settings.download_drafts')}>
+            {t('settings.progress', { done: exporting.done, total: exporting.total })}
+          </progress>
+        {/if}
+        <div class="actions">
+          <button bind:this={saveDraftsEl} class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
+            {t('settings.download_drafts')}
+          </button>
+          <button class="key" onclick={() => draftFile?.click()}>{t('settings.load_drafts')}</button>
+        </div>
+      {:else if tab === 'more'}
+        <h3 class="sheet-hint">{t('settings.plugins')}</h3>
+        <div class="actions">
+          <button
+            class="key"
+            onclick={() => {
+              onOpenPlugins?.();
+              dialogEl?.close();
+            }}
+          >{t('settings.open_plugins')}</button>
+        </div>
+        <label class="field">
+          <span>{t('settings.catalog_url')}</span>
+          <input
+            type="url"
+            placeholder={t('settings.catalog_placeholder')}
+            value={editor.settings.pluginCatalog}
+            onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
+          />
+        </label>
+        {#if onDownloadErrors}
+          <h3 class="sheet-hint">{t('settings.errors')}</h3>
+          <div class="actions">
+            <button class="key" onclick={onDownloadErrors}>{t('settings.download_errors')}</button>
+          </div>
+        {/if}
+      {/if}
     </div>
-    <label class="field">
-      <span>{t('settings.catalog_url')}</span>
-      <input
-        type="url"
-        placeholder={t('settings.catalog_placeholder')}
-        value={editor.settings.pluginCatalog}
-        onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
-      />
-    </label>
   </div>
 
   <!-- What the last import or save did, in the foot: the buttons that cause it
-       are high up a scrolling body, where a line at its bottom went unseen.
+       are up in a panel, where a line at its bottom went unseen.
        Mounted before its words, or a reader may not announce them. -->
   <footer class="sheet-foot">
     <button class="key primary" onclick={() => dialogEl?.close()}>{t('settings.done')}</button>
@@ -486,6 +565,107 @@
 </dialog>
 
 <style>
+  /* One size for every category: a sheet that grew and shrank with the tab
+     moved its own tabs from under the pointer. Under `.editor`, or the shared
+     `.editor .sheet` chrome — as heavy, and later in the page — wins. */
+  :global(.editor) .sheet-dialog.settings {
+    height: 85dvh;
+  }
+  .settings-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .settings-main .sheet-body {
+    flex: 1;
+    padding-top: 0.5rem;
+  }
+  /* A panel that opens on a heading needs no gap over it. */
+  .settings-main .sheet-body > .sheet-hint:first-child {
+    margin-top: 0.3rem;
+  }
+  /* Lying down on a phone: a strip that scrolls sideways when the five do not
+     fit — at 200 % text they never do. */
+  .settings-tabs {
+    flex: none;
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.5rem 1rem;
+    overflow-x: auto;
+    /* A tab brought into view keeps the strip's own margin beside it. */
+    scroll-padding-inline: 1rem;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+  .tab {
+    flex: none;
+    min-height: var(--key-h);
+    padding: 0 0.85rem;
+    border: none;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-weight: 650;
+    text-align: start;
+    cursor: pointer;
+  }
+  @media (hover: hover) {
+    .tab:hover {
+      background: var(--sub);
+    }
+  }
+  /* Tinted like the picked preset below it, for the same reason: one solid
+     red key in the sheet, and it is «Готово». */
+  .tab.active {
+    background: color-mix(in srgb, var(--accent) 14%, var(--canvas));
+    color: var(--accent-ink);
+  }
+  /* Inside the tab: the strip clips whatever is drawn past its edge. */
+  .tab:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  @media (min-width: 40.0625rem) {
+    :global(.editor) .sheet-dialog.settings {
+      width: min(40rem, calc(100% - 2rem));
+      height: min(35rem, 85dvh);
+    }
+    .settings-main {
+      flex-direction: row;
+    }
+    /* Standing beside the panel, where there is room for it. */
+    .settings-tabs {
+      flex-direction: column;
+      width: 11rem;
+      padding: 0.6rem;
+      overflow-x: visible;
+      overflow-y: auto;
+      border-bottom: none;
+      border-right: 1px solid var(--hairline-soft);
+    }
+  }
+  /* A low screen scrolls the sheet whole (sheetScrollsWhole): no height of
+     its own then, and the panel is as tall as what it holds. */
+  :global(.editor.low) .sheet-dialog.settings {
+    height: auto;
+  }
+  :global(.editor.low) .settings-main,
+  :global(.editor.low) .settings-main .sheet-body {
+    flex: none;
+  }
+  /* The browser's own marker: a drawn one would be an icon outside the set. */
+  .pick summary {
+    padding: 0.7rem 0.3rem;
+    border-radius: var(--r-sm);
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  .pick summary:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
   /* Preset chips: one row, equal shares (same control as the old sheet) —
      while they fit. A plugin's presets join them, and at 200 % text three
      already did not: squeezed, «Мультатор» broke mid-word inside a chip of

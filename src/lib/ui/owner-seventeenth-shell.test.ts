@@ -18,11 +18,13 @@ function item(id: string): string {
 }
 
 describe('журнал ошибок из «Настроек»', () => {
-  it('кнопка рядом с «Сохранить сейчас» скачивает тот же файл, что Alt+L: одна функция на двоих', () => {
-    const save = settingsUi.indexOf("t('settings.save_now')");
-    const errors = settingsUi.indexOf("t('settings.download_errors')");
-    expect(errors).toBeGreaterThan(save);
-    expect(errors - save).toBeLessThan(400);
+  it('кнопка в разделе «Ещё» скачивает тот же файл, что Alt+L: одна функция на двоих', () => {
+    // Раньше стояла рядом с «Сохранить сейчас»; с разделами журнал — не про
+    // сохранение, он под своим заголовком в последнем.
+    const more = settingsUi.slice(settingsUi.indexOf("tab === 'more'}"));
+    expect(more).toContain("t('settings.errors')");
+    expect(more).toContain("t('settings.download_errors')");
+    expect(ru.settings.errors).toBe('Журнал ошибок');
     expect(settingsUi).toMatch(/onDownloadErrors\?: \(\) => void/);
     expect(editorUi).toMatch(/onDownloadErrors=\{downloadErrorLog\}/);
     expect(editorUi.match(/toonop-errors\.txt/g)).toHaveLength(1);

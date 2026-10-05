@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AUTOSAVE_INTERVALS, autosaveLabel } from './presets';
+import { AUTOSAVE_INTERVALS, autosaveLabel, SETTINGS_TABS, stepTab } from './presets';
 import { t } from '../i18n';
 
 // EditorState and the sheets are runes/Svelte, so they are asserted as source
@@ -18,6 +18,14 @@ function methodBody(source: string, name: string): string {
   const end = source.indexOf('\n  }', open);
   expect(open).toBeGreaterThan(-1);
   return source.slice(open, end);
+}
+
+/** One category's markup: from its branch to the next one. */
+function pane(id: string): string {
+  const open = sheet.indexOf(`tab === '${id}'}`);
+  expect(open).toBeGreaterThan(-1);
+  const next = sheet.indexOf("tab === '", open + 1);
+  return sheet.slice(open, next === -1 ? sheet.indexOf('</dialog>') : next);
 }
 
 describe('every autosave interval the sheet offers has a label', () => {
@@ -88,12 +96,12 @@ describe('the rail and the chrome follow the reference studio', () => {
     expect(claims.filter((m) => m[1] === undefined)).toHaveLength(8);
   });
 
-  it('keeps the panel section as the last one in the settings sheet', () => {
-    expect(sheet).toContain("t('settings.panel')");
+  it('the presets and the way into arranging sit in the view category', () => {
+    expect(pane('view')).toContain("t('settings.panel')");
+    expect(pane('view')).toContain('editor.applyPreset(p.id)');
     // Arranging is a gesture in the editor now — the sheet only opens it.
-    expect(sheet).toContain('editor.arranging = true');
+    expect(pane('view')).toContain('editor.arranging = true');
     expect(sheet).not.toContain('slotsOf(editor.panels)');
-    expect(sheet.indexOf("t('settings.panel')")).toBeGreaterThan(sheet.indexOf("t('settings.view')"));
   });
 
   it('downloads the session error log on Alt+L', () => {
@@ -159,12 +167,67 @@ describe('the settings sheet', () => {
     expect(sheet).toContain('onclose={onClose}');
   });
 
-  it('has the four reference sections', () => {
-    for (const key of ['settings.drawing', 'settings.palette', 'settings.autosave', 'settings.view']) {
-      expect(sheet).toContain(`t('${key}')`);
-      expect(t(key)).not.toBe(key);
+  it('is split into five categories, one on screen at a time', () => {
+    expect([...SETTINGS_TABS]).toEqual(['drawing', 'palette', 'view', 'saving', 'more']);
+    const names = SETTINGS_TABS.map((id) => {
+      expect(sheet).toContain(`t('settings.${id}')`);
+      return t(`settings.${id}`);
+    });
+    expect(names).toEqual(['Рисование', 'Палитра', 'Вид', 'Сохранение', 'Ещё']);
+    for (const id of SETTINGS_TABS) {
+      expect(pane(id).length).toBeGreaterThan(0);
     }
-    expect(t('settings.drawing')).toBe('Рисование');
+  });
+
+  it('the categories are tabs: one stop, arrows between them, a named panel', () => {
+    expect(sheet).toContain('role="tablist"');
+    expect(sheet).toContain('role="tab"');
+    expect(sheet).toContain('aria-selected={tab === item.id}');
+    expect(sheet).toContain('tabindex={tab === item.id ? 0 : -1}');
+    expect(sheet).toMatch(/role="tabpanel"[^>]*aria-labelledby=\{`settings-tab-\$\{tab\}`\}/);
+    expect(sheet).toContain('stepTab(tab, e.key)');
+  });
+
+  it('the arrows walk the categories round, Home and End jump to the ends', () => {
+    expect(stepTab('drawing', 'ArrowRight')).toBe('palette');
+    expect(stepTab('drawing', 'ArrowDown')).toBe('palette');
+    expect(stepTab('palette', 'ArrowLeft')).toBe('drawing');
+    expect(stepTab('palette', 'ArrowUp')).toBe('drawing');
+    expect(stepTab('more', 'ArrowRight')).toBe('drawing');
+    expect(stepTab('drawing', 'ArrowLeft')).toBe('more');
+    expect(stepTab('view', 'Home')).toBe('drawing');
+    expect(stepTab('view', 'End')).toBe('more');
+    expect(stepTab('view', 'a')).toBeNull();
+  });
+
+  it('the sheet comes back on the category it was left on', () => {
+    expect(sheet).toMatch(/<script module lang="ts">[^]*?let lastTab: SettingsTab = 'drawing'/);
+    expect(sheet).toContain('let tab = $state(lastTab)');
+  });
+
+  it('every option sits in the category that names it', () => {
+    const home: Record<string, string[]> = {
+      drawing: ['mouseMode', 'penPressure', 'crossCursor', 'lockTransform', 'megaEraserWarning'],
+      palette: ['chromePicker', 'paletteAutoAdd', 'paletteLimit'],
+      view: ['altLayout', 'letterKeys'],
+      saving: ['autosaveMs', 'showDraftsOnStart'],
+      more: ['pluginCatalog'],
+    };
+    for (const [id, keys] of Object.entries(home)) {
+      for (const key of keys) {
+        expect(pane(id)).toContain(`setSetting('${key}'`);
+      }
+    }
+    expect(pane('palette')).toContain('wipePalettes');
+    expect(pane('saving')).toContain('saveDraftsFile');
+    expect(pane('saving')).toContain('askPersist');
+    expect(pane('more')).toContain('onOpenPlugins');
+    expect(pane('more')).toContain('onDownloadErrors');
+  });
+
+  it('which drafts go into the copy is folded away: all of them, unless told', () => {
+    expect(pane('saving')).toMatch(/<details[^]*?t\('settings\.drafts_chosen'[^]*?class="picklist"[^]*?<\/details>/);
+    expect(t('settings.drafts_chosen', { chosen: 2, total: 3 })).toBe('В копию пойдут 2 из 3');
   });
 
   it('every drawing option writes through setSetting', () => {
