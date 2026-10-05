@@ -9,13 +9,13 @@
    * A native <dialog> for the same reasons as the settings window: focus
    * trap, Esc, inert page.
    */
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { EXPORT_DEFAULT_WIDTH, EXPORT_WIDTHS } from '../format/constants';
   import { frameCount } from '../model/operations';
   import { exportGif } from '../export/export-gif';
   import { exportPng } from '../export/png';
-  import { WATERMARK_TEXT, exportSize, exportWidths, throwIfAborted, type ExportStage } from '../export/rasterize';
+  import { WATERMARK_TEXT, exportSize, exportWidths, logicalSize, throwIfAborted, type ExportStage } from '../export/rasterize';
   import { FileWriteError, exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
   import { pickSaveFile, saveFile as save } from './save-file';
@@ -58,6 +58,13 @@
     if (!offeredWidths.includes(width)) {
       width = offeredWidths[offeredWidths.length - 1];
     }
+  });
+  // A sheet starts at its own width: a 4K one at 4K, a standing 1080p at 1080.
+  // By the sheet alone, so a width picked since stays picked.
+  const ownWidth = $derived(logicalSize(editor.doc).width);
+  $effect(() => {
+    const own = ownWidth;
+    width = untrack(() => offeredWidths.includes(own)) ? own : EXPORT_DEFAULT_WIDTH;
   });
 
   /** The formats plugins bring; a plugin that broke takes its button with it. */

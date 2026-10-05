@@ -83,6 +83,7 @@ import {
   type SavedPalette,
 } from './color-palette';
 import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
+import { resizeSheet, sheetOpen } from './sheet-size';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
@@ -1517,6 +1518,19 @@ export class EditorState {
       this.restoreTool(saved.tool as Tool);
     }
     this.persistUiConfig();
+  }
+
+  /** Whether the sheet can still be given another size (`sheet-size.ts`). */
+  get sheetOpen(): boolean {
+    return sheetOpen(this.doc, this.edits.length + this.undone.length) && !this.transform;
+  }
+
+  /** Gives an untouched sheet the size picked from the list. Not an edit: there is nothing on it to keep. */
+  setSheet(value: string): void {
+    if (!this.sheetOpen) {
+      return;
+    }
+    this.#write((doc) => resizeSheet(doc, value));
   }
 
   /** Back to 100% with the sheet centred on the worktable. */

@@ -85,13 +85,21 @@ function widestExport(doc: ToonDocument): number {
 }
 
 /**
- * The widths the export sheet offers for this document: the reference row
- * without those over the canvas limit. With none left — a needle of a
+ * The widths the export sheet offers for this document: the reference row and
+ * the sheet's own width, without those over the canvas limit. With none left — a needle of a
  * drawing — the largest width that fits stands in for the row.
  */
 export function exportWidths(doc: ToonDocument): number[] {
   const widest = widestExport(doc);
-  const fit = EXPORT_WIDTHS.filter((width) => width <= widest);
+  // The sheet's own width too: a 4K sheet exports at 4K, a standing 1080p at
+  // 1080 — the size it was drawn for, not only the nearest rung of the row.
+  // An odd one stays out (H.264 takes no frame of an odd width), and so does
+  // one under the row: a sliver of a drawing is not exported as a sliver.
+  const own = logicalSize(doc).width;
+  const row = own % 2 === 0 && own >= EXPORT_WIDTHS[0]
+    ? [...new Set([...EXPORT_WIDTHS, own])].sort((a, b) => a - b)
+    : [...EXPORT_WIDTHS];
+  const fit = row.filter((width) => width <= widest);
   return fit.length > 0 ? fit : [widest];
 }
 

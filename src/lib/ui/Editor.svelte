@@ -12,6 +12,7 @@
   import PanelArranger from './PanelArranger.svelte';
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
+  import { sheetChoices, sheetValue } from './sheet-size';
   import ExportSheet from './ExportSheet.svelte';
   import AudioPanel from './AudioPanel.svelte';
   import Timeline from './Timeline.svelte';
@@ -2513,6 +2514,27 @@
     <div class="scale-window" data-over-sheet style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
       <ScaleMenu {editor} />
     </div>
+    {#if editor.sheetOpen}
+      <!-- The sheet's size, for as long as there is nothing on it: the first
+           line fixes it. One native list — a phone brings its own picker. -->
+      <label class="sheet-size">
+        <span class="sr-only">{t('sheet.size')}</span>
+        <select
+          value={sheetValue(editor.doc)}
+          title={t('sheet.size')}
+          onchange={(e) => editor.setSheet(e.currentTarget.value)}
+        >
+          {#each [false, true] as standing (standing)}
+            <optgroup label={t(standing ? 'sheet.standing' : 'sheet.lying')}>
+              {#each sheetChoices().filter((choice) => choice.standing === standing) as choice (choice.value)}
+                <option value={choice.value}>{choice.name} · {choice.width}×{choice.height}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
+        <Icon name="chevron-down" size={16} />
+      </label>
+    {/if}
     {#if flashVisible}
       <div class="flash" aria-hidden="true"></div>
     {/if}
@@ -3045,6 +3067,35 @@
     z-index: var(--z-tool);
     /* One row of keys — it takes the width it needs, not a panel's. */
     width: max-content;
+  }
+  /* The sheet's size, at the foot of the stage for as long as the sheet is
+     empty. Not `data-over-sheet`: the sheet is not fitted around a window that
+     leaves with the first line. */
+  .sheet-size {
+    position: absolute;
+    left: 50%;
+    bottom: clamp(0.5rem, 2.2vw, 1.25rem);
+    transform: translateX(-50%);
+    z-index: var(--z-tool);
+  }
+  .sheet-size select {
+    min-height: var(--key-h, 2.75rem);
+    /* Room for the chevron: the studio's lists wear no arrow of their own. */
+    padding: 0 2.1rem 0 0.75rem;
+    border: none;
+    border-radius: var(--r-md);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  .sheet-size :global(svg) {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
   }
   /* The canvas's hint, in the middle of the stage's foot, lay over the zoom
      window in its corner on a narrow stage (audit 17). On the desk it keeps
