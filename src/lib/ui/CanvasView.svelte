@@ -71,7 +71,6 @@
       globalAlpha: number;
       clearRect(x: number, y: number, w: number, h: number): void;
       rect(x: number, y: number, w: number, h: number): void;
-      strokeRect(x: number, y: number, w: number, h: number): void;
       clip(): void;
       save(): void;
       restore(): void;
@@ -525,7 +524,8 @@
     };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
-    // The paper lies flat on the table: white on the table's tone, no shadow.
+    // The paper lies flat on the table: white on the table's tone, no shadow
+    // and no edge drawn round it (owner, 2026-10-05).
     ctx.fillStyle = BACKGROUND_COLOR;
     ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
     // Everything drawn stays on the paper — a stroke that runs off the edge
@@ -586,15 +586,6 @@
     } finally {
       ctx.restore();
     }
-    // A hairline edge, so the paper reads as a sheet even over a white table.
-    // The value is `--hairline` (14% ink), written out because a 2D context
-    // takes a string and not a custom property.
-    // ponytail: held to the token by `system-craft.test.ts`, not read from the
-    // computed style — one read at mount if a theme ever moves this hue.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.strokeStyle = 'rgba(11, 12, 16, 0.141)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(Math.round(sheet.x) + 0.5, Math.round(sheet.y) + 0.5, Math.round(sheet.w), Math.round(sheet.h));
     // A frame composed under a moving hand — no shot could be taken when it
     // took hold, or what the shot showed has changed since — is the shot now.
     if (navigating() && !editor.playing) {

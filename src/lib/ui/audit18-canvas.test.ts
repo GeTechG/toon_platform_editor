@@ -103,7 +103,12 @@ describe('снимок панорамы не переживает то, из ч�
   it('собранный посреди жеста кадр становится новым снимком', () => {
     const draw = handler('draw');
     expect(draw).toMatch(/if \(navigating\(\) && !editor\.playing\) \{\s*takeNavShot\(\);/);
-    expect(draw.lastIndexOf('takeNavShot()')).toBeGreaterThan(draw.indexOf('ctx.strokeRect('));
+    expect(draw.lastIndexOf('takeNavShot()')).toBeGreaterThan(draw.lastIndexOf('ctx.restore()'));
+  });
+
+  // Владелец, 2026-10-05: обводку у холста убрать. Лист отделяет от стола тон.
+  it('лист не обведён: кромку поверх кадра никто не рисует', () => {
+    expect(source).not.toContain('strokeRect');
   });
 
   // Второй палец щипка сбрасывает линию первого и просит кадр без неё — а

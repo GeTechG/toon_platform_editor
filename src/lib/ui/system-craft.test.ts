@@ -204,7 +204,8 @@ describe('red reaches the studio by role', () => {
 // context, and the guard cannot see it. Two of them stood for tokens — the
 // sheet's hairline edge and the plate shadow under the paper — and one had
 // drifted: 0.18 ink where `--hairline` is 0.141, a number invented at the call
-// site. Hex literals are left alone on purpose: `#303030` there is an operand
+// site. Both are gone since (the edge by the owner's word, 2026-10-05); the
+// guard stays for the next one. Hex literals are left alone on purpose: `#303030` there is an operand
 // of a `difference` composite, not a colour anyone sees.
 describe('a colour drawn on the canvas comes from the table too', () => {
   /** `rgba(11, 12, 16, 0.18)` → `#0b0c102e`, so the two forms can be compared. */
