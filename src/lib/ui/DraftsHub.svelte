@@ -144,9 +144,11 @@
   // The chip's menu of sizes — the studio's own, not the browser's list
   // (owner, 2026-10-05). It stands at the hub's level: the reel scrolls and
   // its cards are containers, so a menu inside one would be cut.
-  let sizeMenu = $state<{ x: number; y: number; from: HTMLElement } | null>(null);
+  // The same window holds the frame rate instead, opened from the three dots
+  // in the card's corner (`more`; owner, 2026-10-05).
+  let sizeMenu = $state<{ x: number; y: number; from: HTMLElement; more: boolean } | null>(null);
   let sizeMenuEl = $state<HTMLDivElement | undefined>();
-  async function openSizeMenu(from: HTMLElement, proportion: string): Promise<void> {
+  async function openSizeMenu(from: HTMLElement, proportion: string, more = false): Promise<void> {
     const hub = dialogEl;
     if (!hub) {
       return;
@@ -154,7 +156,7 @@
     newProportion = proportion;
     const chip = from.getBoundingClientRect();
     const box = hub.getBoundingClientRect();
-    sizeMenu = { x: chip.left - box.left, y: chip.bottom - box.top + 6, from };
+    sizeMenu = { x: chip.left - box.left, y: chip.bottom - box.top + 6, from, more };
     await tick();
     if (!sizeMenuEl) {
       return;
@@ -162,10 +164,11 @@
     // Under the chip where there is room; otherwise as near as the hub lets.
     sizeMenu = {
       from,
+      more,
       x: Math.min(sizeMenu.x, Math.max(8, box.width - sizeMenuEl.offsetWidth - 8)),
       y: Math.min(sizeMenu.y, Math.max(8, box.height - sizeMenuEl.offsetHeight - 8)),
     };
-    sizeMenuEl.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+    sizeMenuEl.querySelector<HTMLElement>('[aria-checked="true"], input')?.focus();
   }
   function closeSizeMenu(): void {
     const from = sizeMenu?.from;
@@ -348,10 +351,22 @@
               <button
                 class="reel-size"
                 aria-haspopup="menu"
-                aria-expanded={sizeMenu !== null && proportion === newProportion}
+                aria-expanded={sizeMenu !== null && !sizeMenu.more && proportion === newProportion}
                 aria-label={t('sheet.size_chip', { size: newSize })}
                 onclick={(e) => openSizeMenu(e.currentTarget, proportion)}
-              >{newSize}<Icon name="more" /></button>
+              >{newSize}</button>
+              <!-- Three dots in the card's corner (owner, 2026-10-05): the
+                   frame rate. Where the corner does not hold them — the words
+                   beside a bare sheet — they stand in the line, as the chip. -->
+              <button
+                class="reel-more"
+                aria-expanded={sizeMenu !== null && sizeMenu.more && proportion === newProportion}
+                title={t('editor.fps')}
+                aria-label={t('editor.fps')}
+                onclick={(e) => openSizeMenu(e.currentTarget, proportion, true)}
+              >
+                <Icon name="more" />
+              </button>
               <strong>{sheetName(shape.ratio)}</strong>
             </p>
             <p class="reel-about">{sheetAbout(shape.ratio)}</p>
@@ -375,22 +390,25 @@
       <div class="size-scrim" onclick={closeSizeMenu}></div>
       <div
         class="size-menu"
-        role="menu"
+        role={sizeMenu.more ? 'group' : 'menu'}
         tabindex="-1"
-        aria-label={t('export.resolution')}
+        aria-label={sizeMenu.more ? t('editor.fps') : t('export.resolution')}
         bind:this={sizeMenuEl}
         style:left="{sizeMenu.x}px"
         style:top="{sizeMenu.y}px"
         onkeydown={sizeMenuKeys}
       >
-        {#each sheetSizes() as size (size)}
-          {@const sheet = sheetOf(newProportion, size, newStanding)}
-          <button role="menuitemradio" aria-checked={size === newSize} onclick={() => pickSize(size)}>
-            <span>{size}</span>
-            <small>{sheet.width}×{sheet.height}</small>
-          </button>
-        {/each}
-        {@render fpsField()}
+        {#if sizeMenu.more}
+          {@render fpsField()}
+        {:else}
+          {#each sheetSizes() as size (size)}
+            {@const sheet = sheetOf(newProportion, size, newStanding)}
+            <button role="menuitemradio" aria-checked={size === newSize} onclick={() => pickSize(size)}>
+              <span>{size}</span>
+              <small>{sheet.width}×{sheet.height}</small>
+            </button>
+          {/each}
+        {/if}
       </div>
     {/if}
     {:else}
@@ -676,6 +694,25 @@
     padding: 0.6rem 0.75rem;
     border-radius: var(--r-xl);
     background: var(--canvas);
+    /* The three dots stand in its corner. */
+    position: relative;
+  }
+  /* The bottom corner, in the line of «Рисовать»: the top one is where the
+     sheet's name ends on a phone. */
+  .reel-more {
+    position: absolute;
+    bottom: 0.35rem;
+    right: 0.35rem;
+    display: grid;
+    place-items: center;
+    min-width: var(--key-h, 2.75rem);
+    min-height: var(--key-h, 2.75rem);
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: none;
+    color: var(--text-2);
+    cursor: pointer;
   }
   .reel-words {
     display: flex;
@@ -708,11 +745,7 @@
      only (DESIGN §2). */
   .reel-size {
     position: relative;
-    /* The size and the three dots after it, on one line. */
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    padding: 0.15rem 0.55rem 0.15rem 0.7rem;
+    padding: 0.15rem 0.7rem;
     border: 0;
     border-radius: var(--r-pill);
     background: var(--sub);
@@ -819,6 +852,10 @@
     }
     .beside .reel-words {
       max-width: 16rem;
+    }
+    /* No plate, no corner: the dots stand in the line, beside the chip. */
+    .beside .reel-more {
+      position: static;
     }
   }
   .reel-stand {
@@ -951,8 +988,7 @@
     grid-column: 1 / -1;
   }
   .size-menu .sheet-fps {
-    padding: 6px 10px 4px;
-    border-top: 1px solid var(--hairline-soft);
+    padding: 2px 10px 4px;
   }
   /* The studio's track is the sub-tone, and so is the menu: on it the track
      takes the tone of the size chosen. */
