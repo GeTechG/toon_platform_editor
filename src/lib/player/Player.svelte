@@ -9,7 +9,7 @@
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
-  import { playLength, replayAt } from './replay';
+  import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
@@ -148,11 +148,22 @@
     if (!playing) {
       return;
     }
+    // A replayed drawing is played once and rests finished: play on the
+    // finished drawing starts it over, and the last stroke stops the clock.
+    const once = length.replay;
+    if (once) {
+      current = replayStart(untrack(() => current), total);
+    }
     const player = new LoopPlayer({
       frameCount: total,
       fps,
       startFrame: Math.min(untrack(() => current), total - 1),
       onFrame: (index) => {
+        if (once && replayEnded(current, index, total)) {
+          current = total - 1;
+          playing = false;
+          return;
+        }
         current = index;
       },
     });

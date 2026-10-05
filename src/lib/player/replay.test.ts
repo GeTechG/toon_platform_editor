@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { Stroke, ToonDocument } from '../format/types';
-import { playLength, REPLAY_FPS, REPLAY_HOLD, replayAt } from './replay';
+import { playLength, REPLAY_FPS, replayAt, replayEnded, replayStart } from './replay';
 
 // A one-frame publication is a drawing, and a drawing that stands still in a
 // player looks broken. So it is replayed the way it was drawn: stroke by
@@ -23,15 +23,15 @@ describe('how long a publication plays', () => {
     expect(playLength(doc([{ frames: [[1], [2], [3]] }]))).toEqual({ frames: 3, fps: 12, replay: false });
   });
 
-  it('a one-frame drawing plays a step per stroke at ten a second, then holds', () => {
+  it('a one-frame drawing plays a step per stroke at ten a second', () => {
     const d = doc([{ frames: [[1, 2]] }, { frames: [[3]] }]);
     expect(REPLAY_FPS).toBe(10);
-    expect(playLength(d)).toEqual({ frames: 3 + REPLAY_HOLD, fps: 10, replay: true });
+    expect(playLength(d)).toEqual({ frames: 3, fps: 10, replay: true });
   });
 
   it('a hidden layer takes no time: nothing of it is ever seen', () => {
     const d = doc([{ frames: [[1, 2]] }, { hidden: true, frames: [[3, 4, 5]] }]);
-    expect(playLength(d).frames).toBe(2 + REPLAY_HOLD);
+    expect(playLength(d).frames).toBe(2);
   });
 
   it('one stroke is not a replay', () => {
@@ -49,12 +49,33 @@ describe('the drawing at a step', () => {
     expect(shown(replayAt(d, 3))).toEqual([[1, 2], [9], [3, 4]]);
   });
 
-  it('stands finished through the hold', () => {
-    expect(shown(replayAt(d, 4 + REPLAY_HOLD - 1))).toEqual([[1, 2], [9], [3, 4]]);
+  it('is whole on its last step', () => {
+    expect(shown(replayAt(d, playLength(d).frames - 1))).toEqual([[1, 2], [9], [3, 4]]);
   });
 
   it('leaves the document it was given alone', () => {
     replayAt(d, 0);
     expect(shown(d)).toEqual([[1, 2], [9], [3, 4]]);
+  });
+});
+
+// The owner, 2026-10-06: a drawing rests finished, is drawn once on a press of
+// play, and stays finished — it does not loop.
+describe('a replay is played once', () => {
+  it('starts over when play is pressed on the finished drawing', () => {
+    expect(replayStart(4, 5)).toBe(0);
+  });
+
+  it('goes on from where the line was dragged to', () => {
+    expect(replayStart(2, 5)).toBe(2);
+  });
+
+  it('ends on the last step', () => {
+    expect(replayEnded(3, 4, 5)).toBe(true);
+    expect(replayEnded(2, 3, 5)).toBe(false);
+  });
+
+  it('ends when a slow tab skips the last step and the clock comes round', () => {
+    expect(replayEnded(3, 0, 5)).toBe(true);
   });
 });
