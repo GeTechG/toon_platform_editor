@@ -2621,8 +2621,8 @@
     style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
     <CanvasView {editor} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
-         under the hub. -->
-    {#if isEmptyDocument(editor.doc) && !draftsOpen}{@render stageNote?.()}{/if}
+         under the hub — and not under a small screen's one window either. -->
+    {#if isEmptyDocument(editor.doc) && !draftsOpen && !shownTab}{@render stageNote?.()}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -2692,6 +2692,7 @@
         id="tab-window"
         class="tab-window"
         class:side={!tall}
+        class:more={shownTab.id === 'more'}
         tabindex="-1"
         aria-label={t(`editor.tab.${shownTab.id}`)}
         bind:this={tabWindow}
@@ -2857,6 +2858,15 @@
           aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
         {/if}
+        <!-- The second frame is the whole point of the studio: its key is on
+             the resting screen, not behind the «Таймлайн» tab. -->
+        <button
+          class="key icon"
+          disabled={editor.playing}
+          onclick={onAddFrame}
+          title={t('editor.add_frame_title')}
+          aria-label={t('editor.add_frame')}
+        ><Icon name="plus" /></button>
       </div>
       <div class="tabs" class:bare={tabsBare} role="group" aria-label={t('editor.tabs')} title={t('editor.tabs_title')} bind:this={tabBar}>
         {#each cut.tabs as tab (tab.id)}
@@ -4281,6 +4291,33 @@
   }
   .tab-window > .timeline {
     height: auto;
+  }
+  /* «Ещё» is the keys that found no tab of their own — the export among them
+     — and under a finger a bare icon has no title to read. Each says its
+     name beside its icon, two to a line. `::before`, ordered last: `::after`
+     is the hotkey's under a cursor. */
+  .tab-window.more > :global(.key[aria-label]) {
+    /* Half a line each, the odd one too: a lone key a line wide read as a
+       heading over the rest. */
+    flex: 0 1 calc(50% - 0.25rem);
+    justify-content: flex-start;
+    gap: 0.6rem;
+    min-width: 0;
+    /* «Сохранить черновик» is two lines in half of 390 px: the key grows. */
+    height: auto;
+    min-height: var(--key-h);
+    padding: 0.3rem 0.85rem;
+    border-radius: var(--r-md);
+    text-align: left;
+  }
+  .tab-window.more > :global(.key[aria-label])::before {
+    content: attr(aria-label);
+    order: 1;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
   }
   /* «сохранено локально 12:34 · 144 КБ» on one line is 458 px at 200 % text:
      the «⋯» window scrolled sideways once the first draft was written.

@@ -73,6 +73,14 @@ export function sheetOf(proportion: string, name: string, standing: boolean): Sh
   return of(standing) ?? of(false) ?? sheetChoices()[0];
 }
 
+/**
+ * Whether «Новый мульт» offers a standing sheet first: a touch screen held
+ * upright. A 16:9 sheet lying down was 246×138 px on a 390×844 phone.
+ */
+export function standsByDefault(view: { w: number; h: number }, coarse: boolean): boolean {
+  return coarse && view.h > view.w;
+}
+
 /** The document's sheet as the list names it. */
 export function sheetValue(doc: ToonDocument): string {
   return `${Math.round(doc.width / FIXED_POINT_SCALE)}x${Math.round(doc.height / FIXED_POINT_SCALE)}`;

@@ -18,7 +18,8 @@
   import Icon from './Icon.svelte';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { fitThumb } from './thumb-size';
-  import { sheetAbout, sheetChoices, sheetName, sheetOf, sheetProportions, sheetSizes, sheetValue } from './sheet-size';
+  import { sheetAbout, sheetChoices, sheetName, sheetOf, sheetProportions, sheetSizes, sheetValue, standsByDefault } from './sheet-size';
+  import { isEmptyDocument } from '../model/operations';
   import { fpsFromField } from './frame-selection';
   import { dateLocale, t } from '../i18n';
 
@@ -262,6 +263,12 @@
       newProportion = now.proportion;
       newSize = now.name;
       newStanding = now.standing;
+    }
+    // A sheet nobody drew on is nobody's choice yet: a phone held upright is
+    // offered one that stands, not a 16:9 strip across its narrow side. Asked
+    // here: the first call comes before the mount has set `coarse`.
+    if (on && isEmptyDocument(editor.doc) && standsByDefault({ w: innerWidth, h: innerHeight }, matchMedia('(hover: none)').matches)) {
+      newStanding = true;
     }
     creating = on;
     selecting = false;

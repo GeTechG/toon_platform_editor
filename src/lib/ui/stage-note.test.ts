@@ -6,6 +6,6 @@ import { expect, it } from 'bun:test';
 // both, so it shows the note only where its words are true.
 const source = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathname).text();
 
-it('the stage note is drawn only over an empty drawing with the hub down', () => {
-  expect(source).toMatch(/\{#if isEmptyDocument\(editor\.doc\) && !draftsOpen\}\s*\{@render stageNote\?\.\(\)\}\s*\{\/if\}/);
+it('the stage note is drawn only over an empty drawing with the hub and the tab window down', () => {
+  expect(source).toMatch(/\{#if isEmptyDocument\(editor\.doc\) && !draftsOpen && !shownTab\}\s*\{@render stageNote\?\.\(\)\}\s*\{\/if\}/);
 });
