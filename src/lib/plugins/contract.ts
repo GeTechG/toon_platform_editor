@@ -280,6 +280,12 @@ export interface UxProfile {
   readonly canvasDensity: 'device' | 'document';
   /** Alt+S downloads the project as a file instead of opening the export. */
   readonly projectFile: boolean;
+  /**
+   * What the transport draws: the reference's ⏮ ⏴ ▶ ⏵ ⏭ (`'full'`, and what
+   * a profile that says nothing gets), or ⏴ ▶ ⏵ without the ends — those are
+   * a press on the strip, or Home and End.
+   */
+  readonly transport?: 'full' | 'steps';
 }
 
 /**

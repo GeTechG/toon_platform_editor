@@ -63,6 +63,8 @@ export const TOONOP_UX: UxProfile = {
   livePipettePreview: true,
   crossCursor: true,
   tools: TOONOP_TOOLS,
+  // Play and a step either side (owner): the ends are a press on the strip.
+  transport: 'steps',
 };
 
 /** Photoshop's bracket ladder: [below this size, the step]. */

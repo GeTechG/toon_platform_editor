@@ -2000,6 +2000,8 @@
   }
 
   const lastFrame = $derived(editor.doc.layers[0].frames.length - 1);
+  /** «В начало» and «в конец»; a profile may keep Play and the steps alone (toonop). */
+  const endKeys = $derived(editor.ux.transport !== 'steps');
   /** The mini transport's count: the frame on screen, played or picked. */
   const frameShown = $derived({ n: (editor.playing ? editor.playbackFrame : editor.activeFrame) + 1, total: lastFrame + 1 });
 
@@ -2205,6 +2207,7 @@
   {:else if id === 'transport'}
     <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads. -->
     <div class="transport-keys" role="group" aria-label={t('editor.transport')}>
+        {#if endKeys}
         <button
           class="key icon ends"
           disabled={editor.playing}
@@ -2213,6 +2216,7 @@
           title={t('editor.first_frame')}
           aria-label={t('editor.first_frame')}
         ><Icon name="frame-first" /></button>
+        {/if}
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2228,6 +2232,7 @@
           title={t('editor.next_frame')}
           aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
+        {#if endKeys}
         <button
           class="key icon ends"
           disabled={editor.playing}
@@ -2236,6 +2241,7 @@
           title={t('editor.last_frame')}
           aria-label={t('editor.last_frame')}
         ><Icon name="frame-last" /></button>
+        {/if}
     </div>
   {:else if id === 'add-frame'}
     <button
