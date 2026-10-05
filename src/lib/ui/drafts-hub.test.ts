@@ -304,25 +304,26 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
   // the side column under a cursor, in the chip's menu under a finger.
   // Owner, 2026-10-05: under a finger (phones, tablets) the frame rate is
   // behind three dots in the corner of the card — not in the head's corner,
-  // not on the chip, not among the sizes. The bottom corner: the top one is
-  // where the sheet's name ends at 390 px.
+  // not on the chip, not among the sizes. The top right one (owner); the plate
+  // keeps a line of air over its words there, so the name does not run under.
   it('under a finger the frame rate is behind three dots in the corner of the card', () => {
     const card = shell.match(/<section class="reel-card"[^]*?<\/section>/)?.[0] ?? '';
     expect(card).toMatch(/<button\s+class="reel-more"\s+aria-expanded=\{sizeMenu !== null && sizeMenu\.more && proportion === newProportion\}\s+title=\{t\('editor\.fps'\)\}\s+aria-label=\{t\('editor\.fps'\)\}\s+onclick=\{\(e\) => openSizeMenu\(e\.currentTarget, proportion, true\)\}\s*>\s*<Icon name="more" \/>/);
     expect(card).toMatch(/>\{newSize\}<\/button>/);
     const corner = rule('.reel-more');
     expect(corner).toMatch(/position:\s*absolute/);
-    expect(corner).toMatch(/bottom:/);
-    expect(corner).toMatch(/right:/);
+    expect(corner).toMatch(/top:\s*0/);
+    expect(corner).toMatch(/right:\s*0/);
+    expect(corner).not.toMatch(/bottom:/);
+    expect(rule('.reel-plate')).toMatch(/padding:\s*1\.9rem 0\.75rem 0\.6rem/);
     expect(corner).toMatch(/min-width:\s*var\(--key-h/);
     expect(rule('.reel-plate')).toMatch(/position:\s*relative/);
     // Beside a bare sheet on a low page they keep the corner — the same one,
     // outside the sheet — and are not put in the middle of the line (owner).
     expect(shell).not.toMatch(/\.beside \.reel-more/);
-    // A low page (a phone lying down): the plate is too small to hold them
-    // clear of «Рисовать», so they stand at the same corner, outside it.
+    // A low page (a phone lying down) moves them nowhere: the same corner.
     const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) {'));
-    expect(low).toMatch(/\n    \.reel-more \{\s*right:\s*auto;\s*left:\s*100%;\s*bottom:\s*0;/);
+    expect(low).not.toMatch(/\n    \.reel-more \{/);
     const head = shell.match(/<header class="hub-head">[^]*?<\/header>/)?.[0] ?? '';
     expect(head).not.toContain('name="more"');
     const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';

@@ -356,8 +356,8 @@
                 onclick={(e) => openSizeMenu(e.currentTarget, proportion)}
               >{newSize}</button>
               <!-- Three dots in the card's corner (owner, 2026-10-05): the
-                   frame rate. Beside a bare sheet they keep that corner,
-                   outside the sheet — never the middle of the line. -->
+                   frame rate. Beside a bare sheet they keep a corner too —
+                   never the middle of the line. -->
               <button
                 class="reel-more"
                 aria-expanded={sizeMenu !== null && sizeMenu.more && proportion === newProportion}
@@ -691,23 +691,24 @@
     /* A standing sheet on a phone lying down: widened to its floor, it must
        not grow past the page with its proportion. */
     max-height: 100cqh;
-    padding: 0.6rem 0.75rem;
+    padding: 1.9rem 0.75rem 0.6rem;
     border-radius: var(--r-xl);
     background: var(--canvas);
     /* The three dots stand in its corner. */
     position: relative;
   }
-  /* The bottom corner, in the line of «Рисовать»: the top one is where the
-     sheet's name ends on a phone. */
+  /* The top right corner (owner, 2026-10-05). The key is a finger deep and
+     its dots are drawn at the top of it; the plate's padding above keeps the
+     sheet's name from running under them on a phone. */
   .reel-more {
     position: absolute;
-    bottom: 0.35rem;
-    right: 0.35rem;
+    top: 0;
+    right: 0;
     display: grid;
-    place-items: center;
+    place-items: start center;
+    padding: 0.3rem 0 0;
     min-width: var(--key-h, 2.75rem);
     min-height: var(--key-h, 2.75rem);
-    padding: 0;
     border: 0;
     border-radius: var(--r-pill);
     background: none;
@@ -852,13 +853,6 @@
     }
     .beside .reel-words {
       max-width: 16rem;
-    }
-    /* A plate this low does not hold the dots clear of «Рисовать»: the same
-       corner, outside it — beside a bare sheet too, after its words. */
-    .reel-more {
-      right: auto;
-      left: 100%;
-      bottom: 0;
     }
   }
   .reel-stand {
