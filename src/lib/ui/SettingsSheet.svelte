@@ -468,7 +468,7 @@
           <!-- Everything goes into the copy unless told otherwise: the list of
                ticks is there for the one who asks, not in everybody's way. -->
           <details class="pick">
-            <summary>{t('settings.drafts_chosen', { chosen: chosen.length, total: drafts.length })}</summary>
+            <summary><span>{t('settings.drafts_chosen', { chosen: chosen.length, total: drafts.length })}</span><span class="pick-word">{t('settings.choose')}</span></summary>
             <ul class="picklist">
               {#each drafts as entry (entry.id)}
                 <li>
@@ -511,14 +511,10 @@
           onOpenPlugins?.();
           dialogEl?.close();
         })}
-        {#if onDownloadErrors}
-          <h3 class="sheet-hint">{t('settings.errors')}</h3>
-          {@render act(t('settings.download_errors'), 'download', onDownloadErrors)}
-        {/if}
-        <!-- Folded, and last: the address is for whoever keeps a catalog of
-             their own — everyone else has nothing to change here. -->
+        <!-- Folded: most have nothing to change here. The row says
+             what it is, the word on its right opens the field. -->
         <details class="pick">
-          <summary>{t('settings.catalog_url')}</summary>
+          <summary><span>{t('settings.catalog_url')}</span><span class="pick-word">{t('settings.change')}</span></summary>
           <div class="field">
             <input
               type="url"
@@ -529,6 +525,10 @@
             />
           </div>
         </details>
+        {#if onDownloadErrors}
+          <h3 class="sheet-hint">{t('settings.errors')}</h3>
+          {@render act(t('settings.download_errors'), 'download', onDownloadErrors)}
+        {/if}
       {/if}
     </div>
   </div>
@@ -696,16 +696,40 @@
   :global(.editor.low) .settings-main .sheet-body {
     flex: none;
   }
-  /* The browser's own marker: a drawn one would be an icon outside the set. */
+  /* A row like the rest: what it is on the left, the word that opens it on
+     the right — in place of the browser's triangle, which said nothing. */
   .pick summary {
-    padding: 0.7rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.9rem;
+    margin-inline: -0.5rem;
+    padding: 0.3rem 0.5rem;
     border-radius: var(--r-sm);
     font-size: 0.95rem;
     cursor: pointer;
   }
-  /* Under a group of rows it is a thing apart, not the group's next row. */
-  .settings-main .act + .pick {
-    margin-top: 0.9rem;
+  .pick summary::-webkit-details-marker {
+    display: none;
+  }
+  @media (hover: hover) {
+    .pick summary:hover {
+      background: var(--sub);
+    }
+  }
+  .pick-word {
+    flex: none;
+    font-weight: 650;
+    color: var(--accent-ink);
+  }
+  /* Open, the word has done its work. */
+  .pick[open] .pick-word {
+    visibility: hidden;
+  }
+  /* The next row of its group: a hairline over it, as between two rows. */
+  .settings-main .act + .pick summary {
+    border-top: 1px solid var(--hairline-soft);
   }
   .pick summary:focus-visible {
     outline: 3px solid var(--accent);

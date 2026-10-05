@@ -243,12 +243,15 @@ describe('the settings sheet', () => {
     expect(pane('more')).toContain('onDownloadErrors');
   });
 
-  it('the catalog address is folded away at the bottom: nothing there for most to change', () => {
+  it('the catalog address is folded away under the plugins: nothing there for most to change', () => {
     const more = pane('more');
-    expect(more).toMatch(/<details class="pick">\s*<summary>\{t\('settings\.catalog_url'\)\}<\/summary>[^]*?setSetting\('pluginCatalog'[^]*?<\/details>/);
-    // Last in the panel, under the error log.
-    expect(more.indexOf("t('settings.catalog_url')")).toBeGreaterThan(more.indexOf("t('settings.download_errors')"));
-    expect(t('settings.catalog_url')).toBe('Свой каталог плагинов');
+    // A row that names the thing, and a word on the right that opens it.
+    expect(more).toMatch(/<details class="pick">\s*<summary><span>\{t\('settings\.catalog_url'\)\}<\/span><span class="pick-word">\{t\('settings\.change'\)\}<\/span><\/summary>[^]*?setSetting\('pluginCatalog'[^]*?<\/details>/);
+    expect(t('settings.change')).toBe('Изменить');
+    // With the plugins it belongs to, over the error log.
+    expect(more.indexOf("t('settings.catalog_url')")).toBeGreaterThan(more.indexOf("t('settings.open_plugins')"));
+    expect(more.indexOf("t('settings.catalog_url')")).toBeLessThan(more.indexOf("t('settings.errors')"));
+    expect(t('settings.catalog_url')).toBe('Каталог плагинов');
     expect(t('settings.catalog_field')).toBe('Адрес каталога');
   });
 
