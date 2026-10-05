@@ -1979,6 +1979,10 @@
   // Reference «Мануал» (`E:61-63`) opens the site's manual page; we have none,
   // so the button opens the list of keys the editor actually implements.
   let manualOpen = $state(false);
+  // What a finger does that no key on screen says: under one, these lead the
+  // manual; under a cursor the keys do.
+  const GESTURES = ['two_fingers', 'hold_sheet', 'hold_frame', 'hold_layer'] as const;
+  const touchFirst = $derived(manualOpen && matchMedia('(hover: none)').matches);
 
   // Mirrors the key handler above one-for-one. If a case is added there and not
   // here, the sheet lies — keep them next to each other for that reason. A key
@@ -2987,15 +2991,30 @@
         <!-- Every shortcut the key handler above actually implements, in one
              place. They were reachable but undocumented: nothing in the UI said
              the editor had any. Behind the sheet, so the toolbar stays quiet. -->
-        <p class="sheet-hint">{t('editor.shortcuts')}</p>
-        <dl class="keylist">
-          {#each SHORTCUTS as [combo, what] (combo)}
-            <div class="keyrow">
-              <dt><kbd>{combo}</kbd></dt>
-              <dd>{what}</dd>
-            </div>
-          {/each}
-        </dl>
+        {#snippet keyList()}
+          <p class="sheet-hint">{t('editor.shortcuts')}</p>
+          <dl class="keylist">
+            {#each SHORTCUTS as [combo, what] (combo)}
+              <div class="keyrow">
+                <dt><kbd>{combo}</kbd></dt>
+                <dd>{what}</dd>
+              </div>
+            {/each}
+          </dl>
+        {/snippet}
+        {#snippet gestureList()}
+          <p class="sheet-hint">{t('editor.gestures')}</p>
+          <dl class="keylist gestures">
+            {#each GESTURES as id (id)}
+              <div class="keyrow">
+                <dt>{t(`gesture.${id}`)}</dt>
+                <dd>{t(`gesture_does.${id}`)}</dd>
+              </div>
+            {/each}
+          </dl>
+        {/snippet}
+        {@render (touchFirst ? gestureList : keyList)()}
+        {@render (touchFirst ? keyList : gestureList)()}
       </div>
 
       <footer class="sheet-foot">
@@ -4641,6 +4660,15 @@
     font-size: 0.9rem;
     color: var(--ink-2);
   }
+  /* A gesture is a phrase, not a key cap: in ink, at the reading size. */
+  .keylist.gestures dt {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .keylist + :global(.sheet-hint) {
+    margin-top: 1rem;
+  }
   .editor :global(.toggle) {
     display: flex;
     align-items: center;
@@ -4716,6 +4744,11 @@
       font-size: 0.8rem;
       font-weight: 700;
       letter-spacing: 0.02em;
+    }
+    /* …but not over the key that is playing: the cursor rests on it after the
+       press, and «Space» there left nothing on screen that said «stop». */
+    .editor :global(.key.play.playing[data-key]:hover:not(:disabled))::after {
+      content: none;
     }
   }
   .editor :global(.saved:empty) {
