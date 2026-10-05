@@ -34,6 +34,8 @@ const WINDOWS = [
   // The colours window of the top bar, and the key that opens it.
   'ColoursPanel.svelte',
   'PopKey.svelte',
+  // The sidebar's sliders: a turned range is still a key wide.
+  'BrushRail.svelte',
   // The studio's own chrome, for the same reason: scoping this to the floating
   // windows alone left the fps slider in the bottom toolbar at 96x24.
   'Editor.svelte',

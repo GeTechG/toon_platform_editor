@@ -64,7 +64,8 @@ describe('a small screen', () => {
   test('the top bar\'s keys go to the tabs of the brush and the colours', () => {
     const cut = compactLayout(presetPanels('toonop'), 'phone', ['color', 'brush', 'timeline', 'sound', 'more']);
     expect(cut.tabs.find((tab) => tab.id === 'color')?.items).toEqual(['color-key']);
-    expect(cut.tabs.find((tab) => tab.id === 'brush')?.items).toEqual(['brush-key']);
+    // The sliders that stand beside the canvas on a desk: the tab draws the brush box for them.
+    expect(cut.tabs.find((tab) => tab.id === 'brush')?.items).toEqual(['brush-rail']);
   });
 
   test('a phone standing up is a phone even with no right column to crowd the canvas', () => {

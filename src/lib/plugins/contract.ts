@@ -286,6 +286,11 @@ export interface UxProfile {
    * a press on the strip, or Home and End.
    */
   readonly transport?: 'full' | 'steps';
+  /**
+   * The left column is a sidebar: always open, at its own width — no seam to
+   * drag and no tab to fold it by. A profile that says nothing keeps both.
+   */
+  readonly leftFixed?: boolean;
 }
 
 /**

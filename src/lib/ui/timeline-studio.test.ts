@@ -365,7 +365,7 @@ describe('the bottom panel folds like the sides', () => {
     // A small screen draws neither the bar nor the column seams at all.
     expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.rows\.length > 0/);
     expect(editorUi).toMatch(/\{#if cut\}[^]*?\{:else if sideDraws\('left'\)[^]*?\{@render sideEdge\('left'/);
-    expect(editorUi).toContain('editor.sides[id].collapsed && !compact');
+    expect(editorUi).toContain('side(id).collapsed && !compact');
   });
 
   it('folded, the bar is a strip with the tab still on it and no toolbar behind it', () => {

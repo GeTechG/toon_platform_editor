@@ -91,25 +91,30 @@ const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
   brush: 'toonop-brush',
   ux: TOONOP_UX,
-  // Its own arrangement (owner): everything on the bar over the canvas — the
-  // film and the studio on its left (draft, export, send, the gear, help,
-  // full screen), what draws on its right (the tools, then the colours; a
-  // tool pressed again opens its brush) — undo and redo alone beside the
-  // canvas, «+» before Play, no right column, and what is rarely pressed on
-  // the shelf, a key away — the pixel (a grid nobody asked for until they
-  // ask), the distort, the drafts. The one default arrangement stays the
+  // Its own arrangement — the owner's, saved by hand and handed over as the
+  // default (2026-10-05). Beside the canvas, as a sidebar: the brush's
+  // thickness, undo and redo. On the bar over the canvas, at its near end:
+  // send, draft, export, the sound, the onion, the gear, help, full screen
+  // and the save note — plain keys; at its far end what draws: the tools,
+  // then the colours (a tool pressed again opens its brush). Over the strip
+  // only what times the film: the rate, «+» and the transport. No right
+  // column. On the shelf, a key away, what is rarely pressed — the pixel,
+  // the distort, the drafts. The one default arrangement stays the
   // reference presets'.
   panels: {
     base: {
-      left: ['history'],
+      left: ['brush-rail', 'history'],
       right: [],
       top: [
+        'publish',
         'save',
         'export',
-        'publish',
+        'audio',
+        'onion',
         'settings',
         'manual',
         'fullscreen',
+        'saved',
         'spring',
         'tool:pencil',
         'tool:eraser',
@@ -120,7 +125,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:lasso',
         'color-key',
       ],
-      rows: [['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'], ['timeline']],
+      rows: [['fps', 'add-frame', 'transport'], ['timeline']],
     },
   },
 };

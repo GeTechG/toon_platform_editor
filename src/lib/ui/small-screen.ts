@@ -94,7 +94,7 @@ export type TabId = 'color' | 'brush' | 'timeline' | 'sound' | 'more';
 
 export const DEFAULT_TAB_ORDER: readonly TabId[] = ['color', 'brush', 'timeline', 'sound', 'more'];
 
-const BRUSH_ITEMS: readonly string[] = ['brush', 'brush-sizes', 'brush-key'];
+const BRUSH_ITEMS: readonly string[] = ['brush', 'brush-sizes', 'brush-key', 'brush-rail'];
 
 /** What each named tab takes from the layout; «⋯» takes whatever is left. */
 const TAB_ITEMS: Record<Exclude<TabId, 'more'>, readonly string[]> = {

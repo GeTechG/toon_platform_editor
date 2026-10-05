@@ -99,15 +99,21 @@
   let touchSeen = $state(false);
   let railHeld = $state<{ pointerId: number; x: number; y: number } | null>(null);
   let railTrack = $state<HTMLElement>();
-  /** The size ring of a gesture: the Shift+drag where it began, the rail in the middle. */
+  /** The size ring of a gesture: the Shift+drag where it began, the rail — or the sidebar's slider — in the middle. */
   const ring = $derived(
     sizing ? { x: sizing.x, y: sizing.y, size: sizing.size }
     : railHeld ? { x: railHeld.x, y: railHeld.y, size: editor.brushSizeLogical }
+    // The sidebar's slider: the ring alone — the number stands over the slider
+    // (owner, 2026-10-05: «слово не нужно, а размер нужно»).
+    : editor.sizeShown && !editor.playing ? { ...stageMiddle(), size: editor.brushSizeLogical, bare: true }
     : null,
   );
-  function holdRail(pointerId: number): void {
+  function stageMiddle(): { x: number; y: number } {
     const r = canvasRect();
-    railHeld = { pointerId, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  function holdRail(pointerId: number): void {
+    railHeld = { pointerId, ...stageMiddle() };
   }
   function railTo(e: PointerEvent): void {
     const r = railTrack!.getBoundingClientRect();
@@ -2018,11 +2024,13 @@
       style:height="{diameterOf(ring.size)}px"
       aria-hidden="true"
     ></span>
+    {#if !('bare' in ring)}
     <span
       class="size-number"
       style:transform="translate({ring.x}px, {ring.y}px) translate(-50%, calc(-100% - 12px))"
       aria-hidden="true"
     >{t('brush.size_title', { size: ring.size })}</span>
+    {/if}
   {/if}
   <!-- The thickness for a finger (Procreate Dreams' sidebar): on the stage,
        not in a column, so it stays whatever the panels around it do. Through

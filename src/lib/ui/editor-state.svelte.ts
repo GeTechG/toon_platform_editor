@@ -349,6 +349,11 @@ export class EditorState {
   /** Cell a full grid overwrites next (reference AddColourToPalette's ring). */
   paletteCursor = $state(0);
   /**
+   * A hand is on a thickness slider off the canvas (the sidebar's): the canvas
+   * shows the size as a ring in the middle of the stage while it is.
+   */
+  sizeShown = $state(false);
+  /**
    * Errors the session has seen, for Alt+L (`bundle:11407-11409`). Capped, so
    * a loop that throws every frame cannot grow the tab out of memory.
    */

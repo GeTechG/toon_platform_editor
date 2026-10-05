@@ -6,6 +6,8 @@
   import BrushPanel from './BrushPanel.svelte';
   import ColoursPanel from './ColoursPanel.svelte';
   import PopKey from './PopKey.svelte';
+  import { sideAsDrawn } from './ux-profile';
+  import BrushRail from './BrushRail.svelte';
   import BrushSizes from './BrushSizes.svelte';
   import ColorPanel from './ColorPanel.svelte';
   import PaletteBox from './PaletteBox.svelte';
@@ -330,6 +332,12 @@
   // where the two columns swap places.
   /** What each column measures now, so an undragged one starts from its own width. */
   const sidePx = $state({ left: 0, right: 0 });
+  /** A column as drawn: a profile's fixed sidebar is open at its own width (ux-profile.ts). */
+  const side = (id: SideId) => sideAsDrawn(editor.ux, id, editor.sides[id]);
+  /** A fixed sidebar's width, rem: one key and its padding (`.studio .left.sidebar`). */
+  const SIDEBAR_REM = 3.95;
+  /** No seam and no fold tab on it. */
+  const sideFixed = (id: SideId): boolean => id === 'left' && !!editor.ux.leftFixed;
   /** How tall each column's card is: its seam is no taller. */
   const sideH = $state({ left: 0, right: 0 });
   /** Keyboard step for a column divider, in px (WCAG 2.2 AA 2.5.7). */
@@ -373,9 +381,10 @@
    */
   function sideBase(id: SideId): number {
     if (!sideDraws(id)) return 0;
-    if (editor.sides[id].collapsed) return 0.75 * rem;
+    if (sideFixed(id)) return (SIDEBAR_REM + SIDE_GAP) * rem;
+    if (side(id).collapsed) return 0.75 * rem;
     // Open, the column is a card with the table at its outer edge (`SIDE_GAP`).
-    return Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem) + SIDE_GAP * rem;
+    return Math.min(side(id).width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem) + SIDE_GAP * rem;
   }
   /** The table between a card — a column, the bottom bar — and the studio's edge, rem (`.studio .left`). */
   const SIDE_GAP = 0.6;
@@ -412,7 +421,7 @@
   /** The most a column's edge gives it. */
   const sideMax = (id: SideId): number => Math.floor(Math.max(sideFloor(id), Math.min(SIDE_WIDTH_MAX, sideRoom(id))));
   /** An open column's floor: `sideBase` without the fold. */
-  const sideFloor = (id: SideId): number => Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
+  const sideFloor = (id: SideId): number => sideFixed(id) ? SIDEBAR_REM * rem : Math.min(side(id).width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
   $effect(() => {
     if (!boxW || !boxH) return;
     // Open, the bar is a card with the table around it: 0.6rem over and under (`.studio .panel`).
@@ -611,7 +620,7 @@
    * Folded away — but never on a small screen, where there are no columns to
    * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => editor.sides[id].collapsed && !compact;
+  const folded = (id: SideId): boolean => side(id).collapsed && !compact;
   /** The bottom bar, folded away by the same rule. */
   const panelFolded = $derived(editor.panelCollapsed && !compact);
   /**
@@ -624,12 +633,12 @@
   );
   /** An open column's width as drawn: the stored one, giving way to the canvas; unstored, as measured. */
   const sideWidth = (id: SideId): number => {
-    const stored = editor.sides[id].width;
+    const stored = side(id).width;
     return stored ? yieldToCanvas(stored, sideFloor(id), sideRoom(id)) : sidePx[id];
   };
   /** A folded column is sized by its strip rule, not by the width it remembers. */
   const sideStyle = (id: SideId): string | undefined =>
-    !folded(id) && editor.sides[id].width ? `width: ${sideWidth(id)}px` : undefined;
+    !folded(id) && side(id).width ? `width: ${sideWidth(id)}px` : undefined;
   /** Collapse points away from the canvas, expand points back towards it. */
   const foldIcon = (id: SideId, collapsed: boolean): 'chevron-left' | 'chevron-right' =>
     atLeft(id) === collapsed ? 'chevron-right' : 'chevron-left';
@@ -2220,6 +2229,8 @@
     <ColorPanel {editor} />
   {:else if id === 'brush'}
     <BrushPanel {editor} />
+  {:else if id === 'brush-rail'}
+    <BrushRail {editor} />
   {:else if id === 'spring'}
     <!-- Room, not a control: what stands after it stands at the far end. -->
     <span class="spring" aria-hidden="true"></span>
@@ -2533,6 +2544,7 @@
       data-folded={folded('left') ? '' : undefined}
       data-over-sheet={folded('left') ? undefined : ''}
       class:at-left={atLeft('left')}
+      class:sidebar={sideFixed('left')}
       style={sideStyle('left')}
       bind:clientWidth={sidePx.left}
       bind:clientHeight={sideH.left}
@@ -2541,7 +2553,9 @@
         {@render slot(editor.panels.left)}
       {/if}
     </aside>
-    {@render sideEdge('left', t('editor.tools_side'))}
+    {#if !sideFixed('left')}
+      {@render sideEdge('left', t('editor.tools_side'))}
+    {/if}
   {/if}
   <div class="stage" data-slot="float" bind:clientWidth={stageWidth} class:narrow={stageWidth < 44 * rem} class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
     style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
@@ -2632,7 +2646,7 @@
           {:else if id === 'color-key'}
             <!-- The top bar's keys are their boxes here: the tab is the key. -->
             <ColoursPanel {editor} docked />
-          {:else if id === 'brush-key'}
+          {:else if id === 'brush-key' || id === 'brush-rail'}
             <BrushPanel {editor} />
           {:else}
             {@render panelItem(id)}
@@ -3231,8 +3245,9 @@
   .resizer {
     position: absolute;
     top: -8px;
-    left: 0;
-    width: 100%;
+    /* The straight part of the card's edge, as the columns' seam. */
+    left: var(--r-lg);
+    width: calc(100% - 2 * var(--r-lg));
     height: 16px;
     cursor: ns-resize;
     touch-action: none;
@@ -3533,6 +3548,16 @@
   .studio:not(.compact) .right.at-left:not(.collapsed) {
     margin: 0.6rem 0 0.6rem 0.6rem;
   }
+  /* A profile's fixed sidebar (toonop): one key wide, its keys one under
+     another — the thickness, then undo over redo. 3.95rem is SIDEBAR_REM. */
+  .studio:not(.compact) .left.sidebar {
+    width: 3.95rem;
+    padding: 0.6rem;
+    grid-template-columns: 1fr;
+  }
+  .studio:not(.compact) .left.sidebar .history {
+    grid-template-columns: 1fr;
+  }
   /* The seam is the card's edge, not a line down the whole stage: under the
      card it took a strip of the canvas from the pencil. */
   .studio:not(.compact) .side-edge:not(.folded) {
@@ -3686,7 +3711,9 @@
      the stage is a seam the drawing does not need. */
   .side-resizer {
     position: absolute;
-    inset: 0 -4px;
+    /* The straight part of the card's edge: over the rounded corners the
+       line stood out past the card. */
+    inset: var(--r-lg) -4px;
     cursor: ew-resize;
     touch-action: none;
   }

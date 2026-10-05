@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { UxProfile } from '../plugins/contract';
 import { isHelpTool } from '../plugins';
 import {
+  sideAsDrawn,
   TOONOP_UX,
   nudgeBrushSize,
   resolveToolSelection,
@@ -142,5 +143,16 @@ describe('help tools and the drawing tool behind them', () => {
     expect(toolAfterHelp('feather')).toBe('feather');
     expect(toolAfterHelp('eraser')).toBe('pencil');
     expect(toolAfterHelp('mega-eraser')).toBe('pencil');
+  });
+});
+
+describe('toonop\'s left column is a sidebar', () => {
+  it('drawn at its own width and open, whatever was stored for it', () => {
+    expect(TOONOP_UX.leftFixed).toBe(true);
+    expect(sideAsDrawn(TOONOP_UX, 'left', { width: 300, collapsed: true })).toEqual({ width: null, collapsed: false });
+    // The right column, and any column of a profile that says nothing, are as stored.
+    expect(sideAsDrawn(TOONOP_UX, 'right', { width: 300, collapsed: true })).toEqual({ width: 300, collapsed: true });
+    expect(sideAsDrawn({ ...TOONOP_UX, leftFixed: undefined }, 'left', { width: 300, collapsed: true }))
+      .toEqual({ width: 300, collapsed: true });
   });
 });

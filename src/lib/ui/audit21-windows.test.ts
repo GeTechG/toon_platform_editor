@@ -98,7 +98,7 @@ describe('растянутое уступает холсту', () => {
     expect(effect).toContain("sideBase('left')");
     expect(effect).toContain("sideBase('right')");
     const base = shell.slice(shell.indexOf('function sideBase('), shell.indexOf('$effect(', shell.indexOf('function sideBase(')));
-    expect(base).toContain('Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem)');
+    expect(base).toContain('Math.min(side(id).width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem)');
   });
 
   test('блок в строке поднимает панель, но не её базовый пол', () => {

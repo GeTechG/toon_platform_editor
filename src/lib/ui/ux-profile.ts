@@ -65,7 +65,22 @@ export const TOONOP_UX: UxProfile = {
   tools: TOONOP_TOOLS,
   // Play and a step either side (owner): the ends are a press on the strip.
   transport: 'steps',
+  // The thickness and undo beside the canvas (owner, 2026-10-05): a sidebar.
+  leftFixed: true,
 };
+
+/**
+ * A column as the profile draws it: a fixed sidebar is open at its own width
+ * whatever was stored for it — a fold stored under another preset would have
+ * left it shut with no tab to open it by.
+ */
+export function sideAsDrawn(
+  ux: UxProfile,
+  id: 'left' | 'right',
+  stored: { width: number | null; collapsed: boolean },
+): { width: number | null; collapsed: boolean } {
+  return id === 'left' && ux.leftFixed ? { width: null, collapsed: false } : stored;
+}
 
 /** Photoshop's bracket ladder: [below this size, the step]. */
 const LADDER: readonly (readonly [number, number])[] = [

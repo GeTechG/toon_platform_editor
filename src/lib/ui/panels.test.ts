@@ -215,8 +215,8 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    // Only undo and redo stay beside the canvas; the rest is on the bar.
-    expect(studio.left).toEqual(['history']);
+    // Beside the canvas: the brush's sliders, then undo and redo — nothing else.
+    expect(studio.left).toEqual(['brush-rail', 'history']);
     // The owner (2026-10-05): no right column — a top bar with a key for the
     // brush and a key for the colours, each opening its own window.
     expect(studio.right).toEqual([]);
@@ -224,13 +224,16 @@ describe('the default layouts', () => {
     // The bar in two halves: the film and the studio on the left, what draws
     // on the right, a spring between them.
     expect(studio.top).toEqual([
-      'save', 'export', 'publish', 'settings', 'manual', 'fullscreen',
+      // «Отправить» first (owner, 2026-10-05).
+      // …then the sound and the onion with them, the save note last: the
+      // owner's own arrangement, saved and handed over as the default.
+      'publish', 'save', 'export', 'audio', 'onion', 'settings', 'manual', 'fullscreen', 'saved',
       'spring',
       ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
       'color-key',
     ]);
     expect(studio.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'],
+      ['fps', 'add-frame', 'transport'],
       ['timeline'],
     ]);
     expect(studio.float).toEqual([]);
@@ -251,6 +254,10 @@ describe('the default layouts', () => {
     expect(toolOpensBrush(defaultPanels(), 'pencil')).toBe(false);
     expect(toolOpensBrush(movePanelItem(studio, 'brush-key', 'top'), 'pencil')).toBe(false);
     expect(toolOpensBrush(movePanelItem(studio, 'brush-sizes', 'left'), 'pencil')).toBe(false);
+  });
+
+  test('the sliders beside the canvas are not the brush box: a tool pressed again still opens it', () => {
+    expect(toolOpensBrush(presets.presetPanels('toonop'), 'pencil')).toBe(true);
   });
 
   test('a spring draws nothing: a bar holding only it is not drawn, a small screen has no use for it', () => {

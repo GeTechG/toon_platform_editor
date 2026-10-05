@@ -147,6 +147,8 @@ function fixedItems(): readonly PanelItem[] {
   { id: 'merge', kind: 'action', label: t('panel.item.merge') },
   { id: 'settings', kind: 'action', label: t('panel.item.settings'), keep: true },
   { id: 'publish', kind: 'action', label: t('panel.item.publish') },
+  // The brush beside the canvas: its sliders standing up, as a sidebar.
+  { id: 'brush-rail', kind: 'widget', wide: true, label: t('panel.item.brush_rail') },
   // Not a control: it takes the room left in a line, so what stands after
   // it stands at the far end (the top bar's two halves).
   { id: 'spring', kind: 'widget', label: t('panel.item.spring') },
