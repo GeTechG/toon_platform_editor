@@ -143,6 +143,6 @@ describe('черновики из файла', () => {
 describe('открытие файла', () => {
   it('всегда спрашивает «заменить рисунок?», а черновик пишется до замены', () => {
     // Alt+Enter no longer mutes the question (owner-twelfth-shell).
-    expect(editorSvelte).toMatch(/if \(editor\.touched\) \{[^]*?if \(!confirm\(t\(question[^]*?await saveNow\(true\)/);
+    expect(editorSvelte).toMatch(/if \(editor\.touched\) \{[^]*?if \(!\(await ask\(t\(question[^]*?await saveNow\(true\)/);
   });
 });

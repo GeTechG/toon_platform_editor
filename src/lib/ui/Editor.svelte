@@ -125,6 +125,31 @@
   $effect(() => {
     manualDialog?.showModal();
   });
+  // The studio's own question, note and name — where the browser's confirm(),
+  // alert() and prompt() stood (critique 2026-10-06): its chrome and its «OK»
+  // at the very moments a drawing is at stake. One at a time; a new one
+  // answers the old with a no.
+  let question = $state<{ kind: 'ask' | 'tell' | 'text'; message: string; yes: string; value: string; done: (yes: boolean) => void } | null>(null);
+  let questionDialog = $state<HTMLDialogElement | undefined>();
+  $effect(() => {
+    questionDialog?.showModal();
+  });
+  function put(kind: 'ask' | 'tell' | 'text', message: string, yes: string, value = ''): Promise<boolean> {
+    question?.done(false);
+    return new Promise((done) => (question = { kind, message, yes, value, done }));
+  }
+  /** What the name field held when it was answered: the question is gone by then. */
+  let typed = '';
+  function answer(yes: boolean): void {
+    const asked = question;
+    typed = asked?.value ?? '';
+    question = null;
+    asked?.done(yes);
+  }
+  const ask = (message: string, yes = t('ask.yes')): Promise<boolean> => put('ask', message, yes);
+  const tell = async (message: string): Promise<void> => void (await put('tell', message, t('ask.ok')));
+  const askText = async (message: string, value: string): Promise<string | null> =>
+    (await put('text', message, t('ask.save'), value)) ? typed : null;
   // The mega-eraser warning: a dialog, not alert(), so it can carry
   // «Больше не показывать» — a reload used to bring the alert back for good.
   let megaWarnOpen = $state(false);
@@ -1240,7 +1265,7 @@
   function saveFailedNow(): void {
     saveFailed = true;
     dirty = true;
-    alert(t('editor.save_failed_alert'));
+    void tell(t('editor.save_failed_alert'));
   }
 
   /**
@@ -1283,12 +1308,12 @@
    * own `.toonop` — the document exactly as the draft and the API hold it, no
    * wrapper. Sound and palette stay in the draft, as they do in a `.toon`.
    */
-  function saveProjectFile(): void {
+  async function saveProjectFile(): Promise<void> {
     // The file takes what the screen shows: a live move applied first.
     if (!editor.leaveTransform()) {
       return;
     }
-    if (!confirm(t('editor.download_project_confirm'))) {
+    if (!(await ask(t('editor.download_project_confirm')))) {
       return;
     }
     // Not JSON to the browser: Safari names a JSON download `toonop.toonop.json`.
@@ -1475,7 +1500,7 @@
     await refreshDrafts();
     // The sources are still there, so a copy is what did not fit.
     if (failed && sources.every((id) => drafts.some((d) => d.id === id))) {
-      alert(t('editor.draft_copy_failed'));
+      void tell(t('editor.draft_copy_failed'));
     }
   }
 
@@ -1492,13 +1517,13 @@
       // A stored blob that will not read (Safari loses them), or a string
       // past the engine's length: the key did nothing and nobody heard why.
       console.warn('draft download failed:', err);
-      alert(t('settings.drafts_save_failed'));
+      void tell(t('settings.drafts_save_failed'));
     }
   }
 
   /** «Удалить все»; says whether it was done, so the hub can place the focus. */
   async function removeAllDrafts(): Promise<boolean> {
-    if (!askDelete(t('editor.drafts_wipe_confirm'))) {
+    if (!(await ask(t('editor.drafts_wipe_confirm'), t('ask.delete')))) {
       return false;
     }
     await deleteAllDrafts();
@@ -1510,7 +1535,10 @@
   onMount(async () => {
     // One place the editor asks from — the state calls it for frames, layers
     // and pastes alike.
-    editor.ask = (message: string) => confirm(message);
+    editor.ask = (message: string, yes?: string) => ask(message, yes);
+    editor.askNow = (message: string) => confirm(message);
+    editor.tell = tell;
+    editor.askText = askText;
     // The transport defers a write until the preview is over and tells us here.
     editor.onStop = saveQueued;
     // Ask the browser to keep the drafts: without this they are evictable the
@@ -1551,7 +1579,7 @@
       return;
     }
     if (editor.touched) {
-      if (!confirm(t('editor.draft_open_confirm'))) {
+      if (!(await ask(t('editor.draft_open_confirm')))) {
         return;
       }
       // By hand, so a clock stopped by a failure tries once more; a drawing
@@ -1583,7 +1611,7 @@
 
   /** Deletes the drafts picked in the hub; says whether it was done. */
   async function removeDrafts(ids: string[]): Promise<boolean> {
-    if (!askDelete(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }))) {
+    if (!(await ask(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }), t('ask.delete')))) {
       return false;
     }
     for (const id of ids) {
@@ -1609,7 +1637,7 @@
       }
       if (editor.touched) {
         const saved = (await saveNow(true)) && !storageBlocked;
-        if (!saved && !confirm(t('editor.new_sheet_lost_confirm'))) {
+        if (!saved && !(await ask(t('editor.new_sheet_lost_confirm')))) {
           return false;
         }
       }
@@ -1672,10 +1700,6 @@
     saveNow().then((ok) => (megaDraftSaved = ok && !storageBlocked));
   });
 
-  function askDelete(message: string): boolean {
-    return confirm(message);
-  }
-
   let fileInput = $state<HTMLInputElement | undefined>();
   /** Import failure, shown until the next attempt. */
   let importError = $state('');
@@ -1715,14 +1739,14 @@
     if (editor.touched) {
       // A browser that keeps no drafts loses the drawing outright: the question says so.
       const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
-      if (!confirm(t(question, { name: file.name }))) {
+      if (!(await ask(t(question, { name: file.name })))) {
         return;
       }
       if (!(await saveNow(true))) {
         return;
       }
       // That write is what learnt the browser keeps nothing: the question asked was about a drawing replaced, not lost.
-      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !confirm(t('editor.file_open_lost_confirm', { name: file.name }))) {
+      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !(await ask(t('editor.file_open_lost_confirm', { name: file.name })))) {
         return;
       }
     }
@@ -1917,7 +1941,7 @@
 
   async function openDraftsFile(file: File): Promise<void> {
     importError = '';
-    if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
+    if (!(await ask(t('settings.drafts_confirm', { name: file.name })))) {
       return;
     }
     let text: string;
@@ -3020,6 +3044,34 @@
       <footer class="sheet-foot">
         <button class="key primary" onclick={() => manualDialog?.close()}>{t('editor.done')}</button>
       </footer>
+    </dialog>
+  {/if}
+
+  {#if question}
+    <!-- Esc and «Отмена» are a no; the form's submit is the yes, so Enter in
+         the name field saves. The message names the dialog: it is the whole
+         of what is asked. -->
+    <dialog
+      bind:this={questionDialog}
+      class="sheet sheet-dialog ask"
+      aria-labelledby="ask-text"
+      onclose={() => answer(false)}
+    >
+      <form onsubmit={(e) => { e.preventDefault(); answer(true); }}>
+        <div class="sheet-body">
+          <p id="ask-text">{question.message}</p>
+          {#if question.kind === 'text'}
+            <!-- svelte-ignore a11y_autofocus -->
+            <input class="ask-name" type="text" autocomplete="off" aria-labelledby="ask-text" autofocus bind:value={question.value} />
+          {/if}
+        </div>
+        <footer class="sheet-foot">
+          <button class="key primary" type="submit">{question.yes}</button>
+          {#if question.kind !== 'tell'}
+            <button class="key" type="button" onclick={() => answer(false)}>{t('ask.no')}</button>
+          {/if}
+        </footer>
+      </form>
     </dialog>
   {/if}
 
@@ -4524,6 +4576,38 @@
   }
   .editor :global(.sheet-dialog)::backdrop {
     background: var(--scrim);
+  }
+  /* The studio's question: the shared sheet, with a form between it and its
+     body and foot — which steps aside so the two stay the sheet's own rows. */
+  .ask form {
+    display: contents;
+  }
+  /* No head above it: the question is the first line and wants the head's air. */
+  .editor :global(.sheet.ask .sheet-body) {
+    padding-block: 1.15rem;
+  }
+  .ask p {
+    margin: 0;
+    max-width: 34rem;
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+  .ask-name {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--key-h, 2.75rem);
+    margin-top: 0.75rem;
+    padding: 0 0.85rem;
+    /* The edge a control is known by (DESIGN: Edge-vs-Hairline). */
+    border: 1px solid var(--edge);
+    border-radius: var(--r-md);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+  }
+  .ask-name:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
   }
   /* Bottom sheet on mobile, centered card on wider screens. */
   .editor :global(.sheet) {

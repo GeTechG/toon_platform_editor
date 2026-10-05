@@ -22,8 +22,8 @@ describe('удаление плагина спрашивает', () => {
   const remove = pluginsSheet.match(/async function remove\(plugin: InstalledPlugin\)[^]*?\n  }\n/)![0];
 
   it('перед удалением — тот же вопрос confirm, что у «Удалить все» палитры', () => {
-    expect(remove).toMatch(/if \(!confirm\(/);
-    expect(remove.indexOf('confirm(')).toBeLessThan(remove.indexOf('editor.removePlugin'));
+    expect(remove).toMatch(/if \(!\(await editor\.ask\(/);
+    expect(remove.indexOf('editor.ask(')).toBeLessThan(remove.indexOf('editor.removePlugin'));
   });
 
   it('поставленный файлом получает свой вопрос: вернуть можно только тем же файлом', () => {

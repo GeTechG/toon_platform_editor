@@ -234,18 +234,18 @@
   const DEFAULT: SavedPalette = { id: -1, name: t('palette.default_name'), created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
   const saved = $derived([...editor.savedPalettes].reverse().concat(DEFAULT));
 
-  function savePalette(): void {
-    const name = prompt(t('palette.save_prompt'), t('palette.new_name'))?.trim();
-    if (name && !editor.saveCurrentPalette(name)) alert(t('palette.not_stored'));
+  async function savePalette(): Promise<void> {
+    const name = (await editor.askText(t('palette.save_prompt'), t('palette.new_name')))?.trim();
+    if (name && !editor.saveCurrentPalette(name)) void editor.tell(t('palette.not_stored'));
   }
-  function usePalette(p: SavedPalette): void {
+  async function usePalette(p: SavedPalette): Promise<void> {
     const limit = editor.settings.paletteLimit;
     const skipped = overLimit(p.colours, limit);
-    if (!confirm(skipped > 0 ? t('palette.replace_over_confirm', { skipped, limit }) : t('palette.replace_confirm'))) return;
+    if (!(await editor.ask(skipped > 0 ? t('palette.replace_over_confirm', { skipped, limit }) : t('palette.replace_confirm')))) return;
     editor.replacePalette(p.colours);
   }
-  function deletePalette(p: SavedPalette): void {
-    if (confirm(t('palette.delete_confirm'))) editor.deleteSavedPalette(p.id);
+  async function deletePalette(p: SavedPalette): Promise<void> {
+    if (await editor.ask(t('palette.delete_confirm'), t('ask.delete'))) editor.deleteSavedPalette(p.id);
   }
 </script>
 

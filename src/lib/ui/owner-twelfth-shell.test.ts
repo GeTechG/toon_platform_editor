@@ -103,8 +103,8 @@ describe('questions cannot be turned off', () => {
   });
 
   it('every question is asked', () => {
-    expect(member(state, 'confirmed')).toMatch(/return this\.ask\(message\);/);
-    expect(fn('askDelete')).toMatch(/return confirm\(message\);/);
+    expect(member(state, 'whenConfirmed')).toMatch(/whenYes\(this\.ask\(message, yes\), then\);/);
+    expect(fn('put')).toMatch(/new Promise\(\(done\) => \(question = /);
   });
 
   it('a file over a drawing the browser will not keep says the drawing goes', () => {

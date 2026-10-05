@@ -91,7 +91,7 @@ describe('the choice of a sheet comes after the drafts', () => {
     const body = fn('startSheet');
     expect(body).toMatch(/if \(!editor\.sheetOpen\) \{/);
     expect(body).toMatch(/await saveNow\(true\)/);
-    expect(body).toContain("confirm(t('editor.new_sheet_lost_confirm'))");
+    expect(body).toContain("await ask(t('editor.new_sheet_lost_confirm'))");
     expect(body).toMatch(/editor\.newSheet\(\)[^]*draftId = newDraftId\(\)[^]*editor\.setSheet\(value, fps\);\s*return true;/);
     expect(fn('pickSheet')).toMatch(/if \(await onSheet\(value, newFps\)\) \{\s*dialogEl\?\.close\(\);/);
     expect(studio).toContain('onSheet={startSheet}');
@@ -232,7 +232,7 @@ describe('«Выбрать» turns the cards into a choice', () => {
     // The hub hands the pick over; the editor reads and writes the storage.
     expect(shell).toContain('const downloadPicked = () => onDownload(picked);');
     expect(fn('downloadDrafts')).toContain('exportDrafts(ids)');
-    expect(fn('removeDrafts')).toMatch(/askDelete\(/);
+    expect(fn('removeDrafts')).toMatch(/await ask\([^]*?t\('ask\.delete'\)/);
     expect(fn('removePicked')).toMatch(/if \(await onRemove\(picked\)\) \{\s*await refocus\(at\);/);
   });
 

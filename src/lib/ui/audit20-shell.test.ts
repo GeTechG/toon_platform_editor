@@ -40,7 +40,7 @@ describe('файл поверх рисунка, который браузер н
     // Запись при заблокированном хранилище отвечает «успех» и ставит storageBlocked.
     expect(fn('saveNow')).toMatch(/ok && bytes === 0[^]*?storageBlocked = true;[^]*?return true;/);
     expect(open).toMatch(
-      /if \(!\(await saveNow\(true\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(storageBlocked && question !== 'editor\.file_open_lost_confirm' && !confirm\(t\('editor\.file_open_lost_confirm', \{ name: file\.name \}\)\)\) \{\s*return;/,
+      /if \(!\(await saveNow\(true\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(storageBlocked && question !== 'editor\.file_open_lost_confirm' && !\(await ask\(t\('editor\.file_open_lost_confirm', \{ name: file\.name \}\)\)\)\) \{\s*return;/,
     );
   });
 });

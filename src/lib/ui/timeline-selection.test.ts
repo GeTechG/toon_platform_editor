@@ -111,14 +111,14 @@ describe('onion history (Toonio parity)', () => {
 
 describe('overwrite confirmation (Toonio parity)', () => {
   it('the state asks through a callback the UI wires up, every time', () => {
-    expect(state).toContain('ask: (message: string) => boolean');
-    expect(member(state, 'confirmed')).toContain('return this.ask(message)');
+    expect(state).toContain('ask: (message: string, yes?: string) => Answer');
+    expect(member(state, 'whenConfirmed')).toContain('whenYes(this.ask(message, yes), then)');
   });
 
   it('a paste over non-empty cells asks, and asks again for a block', () => {
     const apply = member(state, 'applyCopiedCells');
     expect(apply).toContain('pasteNeedsConfirm(this.doc, target)');
-    expect(apply).toContain('this.confirmed(');
+    expect(apply).toContain('this.whenConfirmed(');
     expect(apply).toContain('frames > 1 || layers > 1');
   });
 
@@ -126,12 +126,12 @@ describe('overwrite confirmation (Toonio parity)', () => {
     expect(member(state, 'canRemoveFrame')).toContain("this.ux.playbackRange === 'selection'");
     const remove = member(state, 'removeActiveFrame');
     expect(remove).toContain('this.canRemoveFrame');
-    expect(remove).toContain('this.confirmed(');
+    expect(remove).toContain('this.whenConfirmed(');
   });
 
   it('deleting a layer asks by name, through the same path', () => {
     const remove = member(state, 'removeActiveLayer');
-    expect(remove).toContain('this.confirmed(');
+    expect(remove).toContain('this.whenConfirmed(');
     expect(remove).toContain('this.layerLabel(');
   });
 

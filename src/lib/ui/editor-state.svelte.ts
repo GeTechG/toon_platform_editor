@@ -189,6 +189,7 @@ import {
 } from './presets';
 import { t } from '../i18n';
 import { formatLimitHint } from './format-limit';
+import { whenYes, type Answer } from './ask';
 
 /**
  * A tool is whatever the register has (plugins/registry.ts), so this is an id
@@ -457,11 +458,21 @@ export class EditorState {
   lastSavedAt = $state<number | null>(null);
   /**
    * How the editor asks before it overwrites. Editor.svelte points it at
-   * `confirm`; in tests and on the share page nothing asks, so the default
-   * says yes. Every question is asked: the reference's Alt+Enter that muted
-   * them is gone on purpose (owner, twelfth audit).
+   * its own sheet, which answers later; in tests and on the share page nothing
+   * asks, so the default says yes on the spot. Every question is asked: the
+   * reference's Alt+Enter that muted them is gone on purpose (owner, twelfth
+   * audit). `yes` names the key that agrees — «Удалить», not «Да».
    */
-  ask: (message: string) => boolean = () => true;
+  ask: (message: string, yes?: string) => Answer = () => true;
+  /**
+   * The same, answered on the same line: an arrangement's questions, whose
+   * callers take the outcome as a return value. The browser's `confirm`.
+   */
+  askNow: (message: string) => boolean = () => true;
+  /** A note the reader has to see: the studio's sheet with one key. */
+  tell: (message: string) => void | Promise<void> = () => {};
+  /** A name asked for; null when the reader backed out. */
+  askText: (message: string, value: string) => string | null | Promise<string | null> = (_message, value) => value;
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
   /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
@@ -1053,13 +1064,12 @@ export class EditorState {
 
   deleteWorkspace(id: number): void {
     const name = this.workspaces.find((w) => w.id === id)?.name ?? '';
-    if (!this.confirmed(t('arrange.delete_confirm', { name }))) {
-      return;
-    }
-    // By name, from the stored list: another tab's saves stay, and an id read
-    // here may be another workspace there.
-    this.workspaces = loadWorkspaces(this.workspaces).filter((w) => w.name !== name);
-    saveWorkspaces(this.workspaces);
+    this.whenConfirmed(t('arrange.delete_confirm', { name }), () => {
+      // By name, from the stored list: another tab's saves stay, and an id read
+      // here may be another workspace there.
+      this.workspaces = loadWorkspaces(this.workspaces).filter((w) => w.name !== name);
+      saveWorkspaces(this.workspaces);
+    }, t('ask.delete'));
   }
 
   /** Back into the panel this layout keeps it in. */
@@ -1257,16 +1267,15 @@ export class EditorState {
     if (this.playing || this.doc.layers.length <= 1 || !this.leaveTransform()) {
       return;
     }
-    if (!this.confirmed(t('layer.delete_confirm', { name: this.layerLabel(this.activeLayer) }))) {
-      return;
-    }
     const removed = this.activeLayer;
-    const before = this.takeStructure();
-    this.#write((doc) => removeLayer(doc, removed));
-    this.layerColors.splice(removed, 1);
-    this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
-    this.collapseSelection();
-    this.pushStructure(before);
+    this.whenConfirmed(t('layer.delete_confirm', { name: this.layerLabel(removed) }), () => {
+      const before = this.takeStructure();
+      this.#write((doc) => removeLayer(doc, removed));
+      this.layerColors.splice(removed, 1);
+      this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
+      this.collapseSelection();
+      this.pushStructure(before);
+    }, t('ask.delete'));
   }
 
   /**
@@ -1653,21 +1662,20 @@ export class EditorState {
     const question = count > 1
       ? t('frame.delete_block_confirm', { from: from + 1, to: from + count, count })
       : t('frame.delete_confirm', { n: from + 1 });
-    if (!this.confirmed(question)) {
-      return;
-    }
-    const left = this.activeFrame;
-    const before = this.takeStructure();
-    // Taking every frame keeps the first cell object but empties it: its
-    // copied mark would outlive what was copied.
-    if (count >= frameCount(this.doc)) {
-      this.copiedMarks = new Set();
-    }
-    this.#write((doc) => removeFrame(doc, from, count));
-    this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
-    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
-    this.collapseSelection();
-    this.pushStructure(before);
+    this.whenConfirmed(question, () => {
+      const left = this.activeFrame;
+      const before = this.takeStructure();
+      // Taking every frame keeps the first cell object but empties it: its
+      // copied mark would outlive what was copied.
+      if (count >= frameCount(this.doc)) {
+        this.copiedMarks = new Set();
+      }
+      this.#write((doc) => removeFrame(doc, from, count));
+      this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
+      this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
+      this.collapseSelection();
+      this.pushStructure(before);
+    }, t('ask.delete'));
   }
 
   setFps(value: number): void {
@@ -1719,9 +1727,14 @@ export class EditorState {
     this.applyCopiedCells(mergeCells);
   }
 
-  /** One question, asked every time. */
+  /** One question, asked every time, answered on the same line. */
   private confirmed(message: string): boolean {
-    return this.ask(message);
+    return this.askNow(message);
+  }
+
+  /** One question, asked every time; `then` runs when the answer is yes. */
+  private whenConfirmed(message: string, then: () => void, yes?: string): void {
+    whenYes(this.ask(message, yes), then);
   }
 
   private applyCopiedCells(write: typeof replaceCells): void {
@@ -1739,30 +1752,28 @@ export class EditorState {
     // The reference asks before it overwrites, and asks a second time once
     // more than one cell is at stake (`bundle:8192-8250`).
     const { nonEmpty, frames, layers } = pasteNeedsConfirm(this.doc, target);
-    if (nonEmpty) {
-      if (!this.confirmed(t('frame.replace_confirm'))) {
+    const paste = () => {
+      const snapshots = this.snapshotCells(target);
+      try {
+        this.#write((doc) => write(doc, target, buffer));
+      } catch (err) {
+        // At the document point limit — drop the write and say so on the canvas.
+        if (!this.refuseAtLimit(err)) {
+          console.warn('timeline paste rejected:', err);
+        }
         return;
       }
-      if (
-        (frames > 1 || layers > 1)
-        && !this.confirmed(t('frame.affects_confirm', { frames, layers }))
-      ) {
-        return;
-      }
+      this.pushEdit(snapshots);
+      this.selection = target;
+      this.flashTick++;
+    };
+    if (!nonEmpty) {
+      paste();
+    } else if (frames > 1 || layers > 1) {
+      this.whenConfirmed(t('frame.replace_confirm'), () => this.whenConfirmed(t('frame.affects_confirm', { frames, layers }), paste));
+    } else {
+      this.whenConfirmed(t('frame.replace_confirm'), paste);
     }
-    const snapshots = this.snapshotCells(target);
-    try {
-      this.#write((doc) => write(doc, target, buffer));
-    } catch (err) {
-      // At the document point limit — drop the write and say so on the canvas.
-      if (!this.refuseAtLimit(err)) {
-        console.warn('timeline paste rejected:', err);
-      }
-      return;
-    }
-    this.pushEdit(snapshots);
-    this.selection = target;
-    this.flashTick++;
   }
 
   /** `persist: false` while the divider is dragged; the release writes it once. */

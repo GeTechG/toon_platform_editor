@@ -102,8 +102,8 @@
     onClose();
   }
 
-  function removeTrack(): void {
-    if (confirm(t('audio.remove_confirm'))) {
+  async function removeTrack(): Promise<void> {
+    if (await editor.ask(t('audio.remove_confirm'), t('ask.delete'))) {
       editor.audio.clear();
       close();
     }

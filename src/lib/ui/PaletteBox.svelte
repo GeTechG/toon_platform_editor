@@ -94,18 +94,18 @@
     preview = null;
   }
 
-  function savePalette(): void {
-    const name = prompt(t('palette.save_prompt'), t('palette.new_name'))?.trim();
+  async function savePalette(): Promise<void> {
+    const name = (await editor.askText(t('palette.save_prompt'), t('palette.new_name')))?.trim();
     // Storage full or blocked: said now, not found out after a reload.
-    if (name && !editor.saveCurrentPalette(name)) alert(t('palette.not_stored'));
+    if (name && !editor.saveCurrentPalette(name)) void editor.tell(t('palette.not_stored'));
   }
 
-  function usePalette(p: SavedPalette): void {
+  async function usePalette(p: SavedPalette): Promise<void> {
     // Over the grid's limit only the last ones stay: said in the question
     // (owner, 19th audit), as «Объединить» already does.
     const limit = editor.settings.paletteLimit;
     const skipped = overLimit(p.colours, limit);
-    if (!confirm(skipped > 0 ? t('palette.replace_over_confirm', { skipped, limit }) : t('palette.replace_confirm'))) return;
+    if (!(await editor.ask(skipped > 0 ? t('palette.replace_over_confirm', { skipped, limit }) : t('palette.replace_confirm')))) return;
     editor.replacePalette(p.colours);
     preview = null;
     section = 'colors';
@@ -118,22 +118,22 @@
    * settings actually hold. A grid already at the limit has nothing to ask
    * about: it says so and stops, instead of confirming a merge of zero.
    */
-  function mergePalette(p: SavedPalette): void {
+  async function mergePalette(p: SavedPalette): Promise<void> {
     const limit = editor.settings.paletteLimit;
     const { added, skipped } = mergePalettes(editor.palette, p.colours, limit);
     if (added === 0) {
-      alert(
+      void editor.tell(
         skipped === 0
           ? t('palette.all_present')
           : t('palette.full', { limit, skipped }),
       );
       return;
     }
-    if (skipped > 0 && !confirm(t('palette.partial_confirm', { skipped, limit }))) {
+    if (skipped > 0 && !(await editor.ask(t('palette.partial_confirm', { skipped, limit })))) {
       return;
     }
     editor.mergePalette(p.colours);
-    alert(t('palette.added', { added }));
+    await editor.tell(t('palette.added', { added }));
     preview = null;
     section = 'colors';
     focusFoot('saved');
@@ -144,18 +144,18 @@
     removerMode = !removerMode;
     if (!removerMode || editor.settings.removerTipShown) return;
     editor.setSetting('removerTipShown', true);
-    alert(t('palette.remover_hint'));
+    void editor.tell(t('palette.remover_hint'));
   }
 
-  function deletePalette(p: SavedPalette): void {
-    if (!confirm(t('palette.delete_confirm'))) return;
+  async function deletePalette(p: SavedPalette): Promise<void> {
+    if (!(await editor.ask(t('palette.delete_confirm'), t('ask.delete')))) return;
     editor.deleteSavedPalette(p.id);
     preview = null;
     focusFoot('saved');
   }
 
-  function erasePalette(): void {
-    if (!confirm(t('palette.erase_confirm'))) return;
+  async function erasePalette(): Promise<void> {
+    if (!(await editor.ask(t('palette.erase_confirm'), t('ask.delete')))) return;
     editor.replacePalette([]);
     openSection('colors');
     focusFoot('edit');

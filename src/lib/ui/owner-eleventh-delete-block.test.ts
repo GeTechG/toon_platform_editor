@@ -61,7 +61,7 @@ describe('the editor deletes the selected block', () => {
 
   it('in one write, behind the transform guard and the question', () => {
     expect(remove).toContain('this.leaveTransform()');
-    expect(remove).toContain('this.confirmed(');
+    expect(remove).toContain('this.whenConfirmed(');
     expect(remove).toContain("'frame.delete_block_confirm'");
     expect(remove.match(/this\.#write\(/g)).toHaveLength(1);
     expect(remove).toContain('removeFrame(doc, from, count)');

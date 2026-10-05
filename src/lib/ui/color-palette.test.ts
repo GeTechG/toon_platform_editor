@@ -334,7 +334,7 @@ describe('the palette box follows the reference palette', () => {
   });
 
   it('asks before a merge that would overflow, then reports what was added', () => {
-    expect(paletteBox).toMatch(/skipped > 0[^]{0,200}confirm\(/);
+    expect(paletteBox).toMatch(/skipped > 0[^]{0,200}editor\.ask\(/);
     expect(paletteBox).toContain('editor.settings.paletteLimit');
     expect(paletteBox).toContain("t('palette.added'");
     expect(t('palette.added', { added: 3 })).toContain('Добавлено');
@@ -342,14 +342,14 @@ describe('the palette box follows the reference palette', () => {
   });
 
   it('says nothing fits when the grid is already full, instead of asking and reporting zero', () => {
-    expect(paletteBox).toMatch(/added === 0[^]{0,400}return;[^]{0,200}skipped > 0[^]{0,200}confirm\(/);
+    expect(paletteBox).toMatch(/added === 0[^]{0,400}return;[^]{0,200}skipped > 0[^]{0,200}editor\.ask\(/);
     expect(paletteBox).toContain("t('palette.full'");
     expect(t('palette.full', { limit: 30, skipped: 2 })).toContain('Палитра заполнена');
   });
 
   it('shows the remover hint once, then remembers that it did', () => {
     expect(paletteBox).toContain('removerTipShown');
-    expect(paletteBox).toContain("alert(t('palette.remover_hint'))");
+    expect(paletteBox).toContain("editor.tell(t('palette.remover_hint'))");
     expect(t('palette.remover_hint')).toContain('цвет');
   });
 

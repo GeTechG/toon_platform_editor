@@ -24,7 +24,7 @@ describe('Alt+S saves the project as a file', () => {
   });
 
   it('asks first', () => {
-    expect(editorUi).toMatch(/function saveProjectFile\(\)[^]*?if \(!confirm\(t\('editor\.download_project_confirm'\)\)\)/);
+    expect(editorUi).toMatch(/function saveProjectFile\(\)[^]*?if \(!\(await ask\(t\('editor\.download_project_confirm'\)\)\)\)/);
   });
 
   it('is the export everywhere but in the Toonio preset', () => {

@@ -119,7 +119,7 @@ describe('arrangements are not lost unasked', () => {
   });
 
   test('deleting a saved arrangement asks first', () => {
-    expect(method('deleteWorkspace')).toContain("this.confirmed(t('arrange.delete_confirm'");
+    expect(method('deleteWorkspace')).toContain("this.whenConfirmed(t('arrange.delete_confirm'");
     expect(ru.arrange.delete_confirm).toContain('{{name}}');
   });
 });

@@ -190,7 +190,7 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
-    if (!confirm(t('settings.drafts_confirm', { name: file.name }))) {
+    if (!(await editor.ask(t('settings.drafts_confirm', { name: file.name })))) {
       return;
     }
     let text: string;
@@ -218,8 +218,8 @@
     chosen = [...chosen, ...drafts.filter((entry) => !before.has(entry.id)).map((entry) => entry.id)];
   }
 
-  function wipePalettes(): void {
-    if (confirm(t('settings.wipe_palettes_confirm'))) {
+  async function wipePalettes(): Promise<void> {
+    if (await editor.ask(t('settings.wipe_palettes_confirm'), t('ask.delete'))) {
       editor.deleteAllSavedPalettes();
       report = t('settings.palettes_wiped');
     }

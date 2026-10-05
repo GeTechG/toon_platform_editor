@@ -70,7 +70,7 @@ describe('плагин, который хранилище не приняло', 
     const sheet = await source('./PluginsSheet.svelte');
     expect(sheet).toContain('sessionPlugins(plugins)');
     expect(sheet).toContain("t('plugins.session')");
-    expect(sheet).toContain('confirm(t(question');
+    expect(sheet).toContain('editor.ask(t(question');
     expect(t('plugins.session')).toBe('— до перезагрузки: браузер не дал его сохранить');
   });
 

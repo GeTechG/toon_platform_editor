@@ -118,7 +118,7 @@ describe('a track that did not fit', () => {
     // The track write's answer was dropped: storage full, the track never
     // reached the record, the status said nothing and the tab closed quietly.
     expect(editorUi).toMatch(/setDraftAudio\([^]*?\)\.then\(\(ok\) => \{\s*if \(!ok && blob\) \{\s*(?:\/\/.*\s*)*saveFailedNow\(\);/);
-    expect(editorUi).toMatch(/function saveFailedNow\(\): void \{\s*saveFailed = true;\s*dirty = true;\s*alert\(t\('editor\.save_failed_alert'\)\);/);
+    expect(editorUi).toMatch(/function saveFailedNow\(\): void \{\s*saveFailed = true;\s*dirty = true;\s*void tell\(t\('editor\.save_failed_alert'\)\);/);
   });
 });
 
@@ -131,7 +131,7 @@ function fn(name: string): string {
 describe('opening a draft over a drawing', () => {
   it('asks, as opening a file does, and the draft is written before it goes', () => {
     // Alt+Enter no longer mutes the question (owner-twelfth-shell).
-    expect(fn('openDraft')).toMatch(/if \(editor\.touched\) \{\s*if \(!confirm\(t\('editor\.draft_open_confirm'\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(!\(await saveNow\(true\)\)\)/);
+    expect(fn('openDraft')).toMatch(/if \(editor\.touched\) \{\s*if \(!\(await ask\(t\('editor\.draft_open_confirm'\)\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(!\(await saveNow\(true\)\)\)/);
   });
 });
 

@@ -79,7 +79,7 @@ describe('the drafts sheet', () => {
   });
 
   it('a copy that did not fit says so instead of doing nothing', () => {
-    expect(fn('copyDrafts')).toMatch(/if \(failed && sources\.every\(\(id\) => drafts\.some\(\(d\) => d\.id === id\)\)\) \{\s*alert\(t\('editor\.draft_copy_failed'\)\);/);
+    expect(fn('copyDrafts')).toMatch(/if \(failed && sources\.every\(\(id\) => drafts\.some\(\(d\) => d\.id === id\)\)\) \{\s*void tell\(t\('editor\.draft_copy_failed'\)\);/);
     expect(t('editor.draft_copy_failed')).toContain('места');
   });
 });

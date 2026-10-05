@@ -288,7 +288,7 @@ describe('the settings sheet', () => {
   });
 
   it('deleting every saved palette asks first', () => {
-    expect(sheet).toMatch(/confirm\([^]*?deleteAllSavedPalettes/);
+    expect(sheet).toMatch(/editor\.ask\([^]*?deleteAllSavedPalettes/);
   });
 
   it('the gear popover is the way in', () => {
