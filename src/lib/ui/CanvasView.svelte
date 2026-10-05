@@ -26,6 +26,7 @@
     type TransformSession,
   } from '../tools/lasso';
   import {
+    clipCover,
     clampPan,
     fitSheet,
     fitView,
@@ -298,7 +299,9 @@
 
 
   // What stands over the stage for good (`data-over-sheet`: the thickness
-  // rail, the zoom window), in the wrap's px. The sheet at 100 % is fitted
+  // rail, the zoom window, the bar floating under the canvas — which is the
+  // studio's, not the stage's, hence the search from the editor's root), in
+  // the wrap's px. The sheet at 100 % is fitted
   // clear of it (the owner, after the thirteenth audit: the rail lay over
   // 45 px of the page on a phone). Not while the film plays: the sheet is
   // not to jump then.
@@ -316,9 +319,13 @@
     }
     coversStale = false;
     const box = wrapEl.getBoundingClientRect();
-    const next = [...(wrapEl.parentElement ?? wrapEl).querySelectorAll<HTMLElement>('[data-over-sheet]')].map((el) => {
+    const next = [...(wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl).querySelectorAll<HTMLElement>('[data-over-sheet]')].map((el) => {
       const r = el.getBoundingClientRect();
-      return { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height) };
+      return clipCover(
+        { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height) },
+        Math.round(box.width),
+        Math.round(box.height),
+      );
     });
     if (JSON.stringify(next) !== JSON.stringify(covers)) covers = next;
   }
@@ -336,7 +343,7 @@
     if (!wrapEl || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => measureCovers());
     observer.observe(wrapEl);
-    for (const el of (wrapEl.parentElement ?? wrapEl).querySelectorAll('[data-over-sheet]')) observer.observe(el);
+    for (const el of (wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl).querySelectorAll('[data-over-sheet]')) observer.observe(el);
     return () => observer.disconnect();
   });
   // The sheet at 100%: the document fitted inside the wrap (whose size the
@@ -2069,8 +2076,14 @@
   /* Canvas letterboxed in the middle of the stage. */
   .wrap {
     position: relative;
-    width: 100%;
-    height: 100%;
+    /* The table runs on under what floats beside the stage — the columns and
+       the bar below (Editor sets `--stage-left`, `--stage-right` and
+       `--stage-under` to what each takes): the sheet shows around a card
+       instead of being cut off at a line beside it. */
+    width: calc(100% + var(--stage-left, 0px) + var(--stage-right, 0px));
+    margin-left: calc(-1 * var(--stage-left, 0px));
+    height: calc(100% + var(--stage-under, 0px));
+    background: var(--table);
     display: flex;
     align-items: center;
     justify-content: center;

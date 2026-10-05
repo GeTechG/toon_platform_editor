@@ -330,6 +330,8 @@
   // where the two columns swap places.
   /** What each column measures now, so an undragged one starts from its own width. */
   const sidePx = $state({ left: 0, right: 0 });
+  /** How tall each column's card is: its seam is no taller. */
+  const sideH = $state({ left: 0, right: 0 });
   /** Keyboard step for a column divider, in px (WCAG 2.2 AA 2.5.7). */
   const SIDE_STEP = 16;
   /** Whether the column is the one on the screen's left, after the alt swap. */
@@ -339,6 +341,8 @@
   // the bar, measured from the editor's own box — which the layout inside it
   // does not change, so the sum cannot chase its own tail.
   let boxW = $state(0);
+  /** The bottom bar as drawn: the table runs on under it (`--stage-under`). */
+  let panelBoxH = $state(0);
   let boxH = $state(0);
   /** The stage as drawn: under 44rem the canvas's hint rises over the zoom window's row. */
   let stageWidth = $state(0);
@@ -370,12 +374,24 @@
   function sideBase(id: SideId): number {
     if (!sideDraws(id)) return 0;
     if (editor.sides[id].collapsed) return 0.75 * rem;
-    return Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
+    // Open, the column is a card with the table at its outer edge (`SIDE_GAP`).
+    return Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem) + SIDE_GAP * rem;
   }
+  /** The table between a card — a column, the bottom bar — and the studio's edge, rem (`.studio .left`). */
+  const SIDE_GAP = 0.6;
+  /**
+   * What a column takes of the studio's width as drawn — the canvas runs on
+   * under it by this much (`--stage-left`, `--stage-right`).
+   */
+  function sideTrack(id: SideId): number {
+    if (compact || !(sideDraws(id) || editor.arranging)) return 0;
+    return sidePx[id] + (folded(id) ? 0 : SIDE_GAP * rem);
+  }
+  const sideAt = (left: boolean): SideId => (atLeft('left') === left ? 'left' : 'right');
   /** The canvas's floor: what the bar and the columns, however stretched, leave it. */
   const stageFloor = $derived(canvasFloor({ w: viewportWidth || boxW, h: viewportHeight || boxH }));
   /** What the canvas's floor leaves the bar; anything, until the editor is measured. */
-  const panelRoom = $derived(boxH ? Math.floor(boxH - stageFloor.h) : Infinity);
+  const panelRoom = $derived(boxH ? Math.floor(boxH - stageFloor.h - 1.2 * rem) : Infinity);
   /** The least the bar is drawn at: its floor, and its boxes where the canvas spares the room. */
   const panelLow = $derived(yieldToCanvas(panelFloor + boxExtra, panelFloor, panelRoom));
   /** The most the divider gives it: three quarters of the viewport, less where the canvas needs it. */
@@ -399,7 +415,8 @@
   const sideFloor = (id: SideId): number => Math.min(editor.sides[id].width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem);
   $effect(() => {
     if (!boxW || !boxH) return;
-    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelFloor;
+    // Open, the bar is a card with the table around it: 0.6rem over and under (`.studio .panel`).
+    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelFloor + 1.2 * rem;
     // The top bar is one line of keys in its padding (`.studio .top`).
     const top = draws(editor.panels.top) ? 3.75 * rem : 0;
     const full = { w: boxW - sideBase('left') - sideBase('right'), h: boxH - bar - top };
@@ -2111,6 +2128,7 @@
     class:folded={folded(id)}
     class:at-left={atLeft(id)}
     class:dragging={resize?.side === id}
+    style:--side-h={folded(id) ? undefined : `${sideH[id]}px`}
   >
     {#if !folded(id)}
       <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
@@ -2202,6 +2220,9 @@
     <ColorPanel {editor} />
   {:else if id === 'brush'}
     <BrushPanel {editor} />
+  {:else if id === 'spring'}
+    <!-- Room, not a control: what stands after it stands at the far end. -->
+    <span class="spring" aria-hidden="true"></span>
   {:else if id === 'brush-key'}
     <PopKey label={t('colours.brush_key')}>
       {#snippet face()}<Icon name="brush" />{/snippet}
@@ -2510,8 +2531,11 @@
       aria-label={t('editor.tools_side')}
       data-slot="left"
       data-folded={folded('left') ? '' : undefined}
+      data-over-sheet={folded('left') ? undefined : ''}
+      class:at-left={atLeft('left')}
       style={sideStyle('left')}
       bind:clientWidth={sidePx.left}
+      bind:clientHeight={sideH.left}
     >
       {#if !folded('left')}
         {@render slot(editor.panels.left)}
@@ -2520,6 +2544,9 @@
     {@render sideEdge('left', t('editor.tools_side'))}
   {/if}
   <div class="stage" data-slot="float" bind:clientWidth={stageWidth} class:narrow={stageWidth < 44 * rem} class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
+    style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
+    style:--stage-right={sideTrack(sideAt(false)) ? `${sideTrack(sideAt(false))}px` : undefined}
+    style:--stage-under={!compact && !panelFolded && editor.panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}
     style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}
     style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
     <CanvasView {editor} />
@@ -2632,8 +2659,11 @@
       aria-label={t('editor.palette_side')}
       data-slot="right"
       data-folded={folded('right') ? '' : undefined}
+      data-over-sheet={folded('right') ? undefined : ''}
+      class:at-left={atLeft('right')}
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
+      bind:clientHeight={sideH.right}
     >
       {#if !folded('right')}
         {@render slot(editor.panels.right)}
@@ -2645,6 +2675,8 @@
   {#if !compact && (editor.panels.rows.length > 0 || editor.arranging)}
   <div
     class="panel"
+    data-over-sheet={panelFolded ? undefined : ''}
+    bind:offsetHeight={panelBoxH}
     class:collapsed={panelFolded}
     class:boxed={boxExtra > 0}
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, editor.panels.rows.length - 1)}` : undefined}
@@ -3479,16 +3511,72 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+  /* The columns float as the bar under the canvas does (owner, 2026-10-05):
+     a card as tall as what is in it, the table at its outer edge, the canvas
+     running on under it (CanvasView `--stage-left`, `--stage-right`) and the
+     sheet fitted clear of it (`data-over-sheet`). Over the canvas by its
+     layer: the canvas is positioned and would lie on a column that is not.
+     Folded, a column is the strip it was. */
+  .studio:not(.compact) .left,
+  .studio:not(.compact) .right {
+    position: relative;
+    z-index: 1;
+  }
+  .studio:not(.compact) .left:not(.collapsed),
+  .studio:not(.compact) .right:not(.collapsed) {
+    align-self: start;
+    max-height: calc(100% - 1.2rem);
+    margin: 0.6rem 0.6rem 0.6rem 0;
+    border-radius: var(--r-lg);
+  }
+  .studio:not(.compact) .left.at-left:not(.collapsed),
+  .studio:not(.compact) .right.at-left:not(.collapsed) {
+    margin: 0.6rem 0 0.6rem 0.6rem;
+  }
+  /* The seam is the card's edge, not a line down the whole stage: under the
+     card it took a strip of the canvas from the pencil. */
+  .studio:not(.compact) .side-edge:not(.folded) {
+    align-self: start;
+    height: var(--side-h);
+    margin-top: 0.6rem;
+  }
+  /* Room in a line (the item «Пружина»): what follows stands at the far end. */
+  .spring,
+  .arr[data-item='spring'] {
+    flex: 1;
+  }
+  .editor.arranging .spring {
+    display: block;
+    min-width: 2rem;
+    height: var(--key-h);
+  }
+  /* The bar under the canvas floats (owner, 2026-10-05): a card with the
+     table showing around it, not a shelf across the studio. The canvas runs
+     on under it (CanvasView `--stage-under`), so a sheet moved or magnified
+     shows around the card; the fit keeps the sheet clear of it
+     (`data-over-sheet`). Beside the canvas — under the columns — the table
+     is a layer of the bar's row, since the studio's own ground is paper.
+     Folded, it is the strip it was. */
+  .studio .panel:not(.collapsed) {
+    margin: 0.6rem;
+    border-top: none;
+    border-radius: var(--r-lg);
+  }
+  .editor.studio:not(.compact)::after {
+    content: '';
+    grid-column: 1 / -1;
+    grid-row: 2;
+    background: var(--table);
+  }
   /* The bar over the canvas ends at the first line and spans one row back:
      a row of its own before the two the template names, there only while the
-     bar is — so no area below had to be renumbered for it. Its keys stand at
-     the far end, over where the right column was. */
+     bar is — so no area below had to be renumbered for it. Its keys run from
+     the near end; a spring among them sends the rest to the far one. */
   .studio .top {
     grid-column: 1 / -1;
     grid-row: span 1 / 1;
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
     align-items: center;
     gap: 0.6rem;
     padding: 0.5rem 0.9rem;
@@ -3547,13 +3635,11 @@
     grid-column: 1;
     grid-row: 1;
     width: 8.4rem;
-    border-right: 1px solid var(--hairline);
   }
   .studio .right {
     grid-column: 3;
     grid-row: 1;
     align-items: stretch;
-    border-left: 1px solid var(--hairline);
     /* The palette box's own 225px plus the column padding: its floor is also
        its default, so the box is never squashed, only widened. */
     width: 15.9rem;
@@ -3702,13 +3788,9 @@
      untouched. Only in the full layout, where there are columns to swap. */
   .studio.alt:not(.compact) .left {
     grid-column: 3;
-    border-right: none;
-    border-left: 1px solid var(--hairline);
   }
   .studio.alt:not(.compact) .right {
     grid-column: 1;
-    border-left: none;
-    border-right: 1px solid var(--hairline);
   }
   .studio.alt:not(.compact) .side-edge.edge-left {
     grid-column: 3;

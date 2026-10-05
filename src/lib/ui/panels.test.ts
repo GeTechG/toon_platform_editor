@@ -24,7 +24,9 @@ import {
   samePanels,
   itemDrawn,
   toolOpensBrush,
+  columnDraws,
 } from './panels';
+import { compactLayout } from './small-screen';
 import * as presets from './presets';
 
 const ids = () => panelItems().map((item) => item.id);
@@ -213,12 +215,17 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    expect(studio.left).toEqual(['save', 'export', 'settings', 'publish', 'history', 'manual', 'fullscreen']);
+    // Only undo and redo stay beside the canvas; the rest is on the bar.
+    expect(studio.left).toEqual(['history']);
     // The owner (2026-10-05): no right column — a top bar with a key for the
     // brush and a key for the colours, each opening its own window.
     expect(studio.right).toEqual([]);
     // …and the tools on that bar too, before the two keys (the same day).
+    // The bar in two halves: the film and the studio on the left, what draws
+    // on the right, a spring between them.
     expect(studio.top).toEqual([
+      'save', 'export', 'publish', 'settings', 'manual', 'fullscreen',
+      'spring',
       ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
       'color-key',
     ]);
@@ -244,6 +251,14 @@ describe('the default layouts', () => {
     expect(toolOpensBrush(defaultPanels(), 'pencil')).toBe(false);
     expect(toolOpensBrush(movePanelItem(studio, 'brush-key', 'top'), 'pencil')).toBe(false);
     expect(toolOpensBrush(movePanelItem(studio, 'brush-sizes', 'left'), 'pencil')).toBe(false);
+  });
+
+  test('a spring draws nothing: a bar holding only it is not drawn, a small screen has no use for it', () => {
+    const has = { pipette: true, publish: true, fullscreen: true };
+    expect(columnDraws(['spring'], has)).toBe(false);
+    expect(columnDraws(['spring', 'save'], has)).toBe(true);
+    const cut = compactLayout(presets.presetPanels('toonop'), 'phone', ['color', 'brush', 'timeline', 'sound', 'more']);
+    expect([...cut.rail, ...cut.foot, ...cut.tabs.flatMap((tab) => tab.items)]).not.toContain('spring');
   });
 
   test('the top bar is a slot like the columns: it takes a drop, is read back, and is offered', () => {

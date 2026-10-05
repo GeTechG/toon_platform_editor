@@ -52,6 +52,23 @@ export interface Cover {
   height: number;
 }
 
+/**
+ * A cover by what of it stands over the workspace. One that runs past an
+ * edge (the bar under the canvas runs on under the columns) had a negative
+ * gap there, was taken to stand on that edge alone, and was fitted around
+ * not at all.
+ */
+export function clipCover(cover: Cover, width: number, height: number): Cover {
+  const x = Math.max(0, cover.x);
+  const y = Math.max(0, cover.y);
+  return {
+    x,
+    y,
+    width: Math.max(0, Math.min(width, cover.x + cover.width) - x),
+    height: Math.max(0, Math.min(height, cover.y + cover.height) - y),
+  };
+}
+
 export const IDENTITY_VIEW: Viewport2D = { zoom: 1, panX: 0, panY: 0 };
 
 export function clampZoom(value: number): number {

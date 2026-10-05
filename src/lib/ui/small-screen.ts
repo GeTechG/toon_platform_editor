@@ -167,7 +167,8 @@ export function compactLayout(
   order: readonly TabId[],
   keep?: PhoneKeep,
 ): CompactLayout {
-  const laid = allPlaced({ ...layout, hidden: [] });
+  // The spring is room in a line, and a small screen has no such line.
+  const laid = allPlaced({ ...layout, hidden: [] }).filter((id) => id !== 'spring');
   // Where the brush is behind its tool's key (panels.ts `toolOpensBrush`) no
   // brush control is placed at all, and «Кисть» would be a tab of nothing: a
   // small screen has the one window, not a box under a key.

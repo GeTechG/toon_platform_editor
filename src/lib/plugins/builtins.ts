@@ -91,25 +91,26 @@ const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
   brush: 'toonop-brush',
   ux: TOONOP_UX,
-  // Its own arrangement (owner): the gear among the keys that leave the
-  // editor, «+» before Play, no right column — the tools and the colours are
-  // keys on the bar over the canvas, a tool pressed again opens its brush — and what is rarely
-  // pressed on the shelf, a key away — the pixel (a grid nobody asked for
-  // until they ask), the distort, the drafts. The one default arrangement
-  // stays the reference presets'.
+  // Its own arrangement (owner): everything on the bar over the canvas — the
+  // film and the studio on its left (draft, export, send, the gear, help,
+  // full screen), what draws on its right (the tools, then the colours; a
+  // tool pressed again opens its brush) — undo and redo alone beside the
+  // canvas, «+» before Play, no right column, and what is rarely pressed on
+  // the shelf, a key away — the pixel (a grid nobody asked for until they
+  // ask), the distort, the drafts. The one default arrangement stays the
+  // reference presets'.
   panels: {
     base: {
-      left: [
-        'save',
-        'export',
-        'settings',
-        'publish',
-        'history',
-        'manual',
-        'fullscreen',
-      ],
+      left: ['history'],
       right: [],
       top: [
+        'save',
+        'export',
+        'publish',
+        'settings',
+        'manual',
+        'fullscreen',
+        'spring',
         'tool:pencil',
         'tool:eraser',
         'tool:feather',

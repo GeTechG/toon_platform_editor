@@ -3,6 +3,7 @@ import {
   EDGE_KEEP,
   FIT_PADDING,
   fitSheet,
+  clipCover,
   clampPan,
   clampZoom,
   fitView,
@@ -230,5 +231,21 @@ describe('zoomAt under two fingers', () => {
     expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 0.01, 200, 150, STAGE, false).zoom).toBe(0.1);
     // The keys and the wheel still land on the notches.
     expect(zoomAt({ zoom: 1, panX: 100, panY: 100 }, 1.37, 200, 150, STAGE).zoom).toBe(1.5);
+  });
+});
+
+describe('a cover wider than the workspace', () => {
+  it('counts only by what of it stands over the workspace', () => {
+    // The bar floating under the canvas runs on under the tools column: its
+    // left edge is 124 px before the workspace begins.
+    expect(clipCover({ x: -124, y: 578, width: 1260, height: 151 }, 1146, 739))
+      .toEqual({ x: 0, y: 578, width: 1136, height: 151 });
+    expect(clipCover({ x: 20, y: 30, width: 40, height: 50 }, 1146, 739)).toEqual({ x: 20, y: 30, width: 40, height: 50 });
+  });
+
+  it('so the sheet is fitted over the bar, not under it', () => {
+    const bar = clipCover({ x: -124, y: 578, width: 1260, height: 151 }, 1146, 739);
+    const sheet = fitSheet(1146, 739, { width: 1280, height: 720 }, [bar]);
+    expect(sheet.y + sheet.height).toBeLessThanOrEqual(578 - FIT_PADDING + 1e-6);
   });
 });

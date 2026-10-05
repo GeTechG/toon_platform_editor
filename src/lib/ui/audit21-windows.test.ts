@@ -92,7 +92,8 @@ describe('растянутое уступает холсту', () => {
 
   test('ступень считается по базовому полу, а не по растянутому', () => {
     const effect = shell.slice(shell.indexOf('const bar = editor.panels.rows.length === 0'), shell.indexOf('step = pickStep('));
-    expect(effect).toContain(': panelFloor;');
+    // …plus the table around the card the bar now is (owner, 2026-10-05).
+    expect(effect).toContain(': panelFloor + 1.2 * rem;');
     expect(effect).not.toMatch(/panelHeight|editor\.sides\.\w+\.width \?\?/);
     expect(effect).toContain("sideBase('left')");
     expect(effect).toContain("sideBase('right')");

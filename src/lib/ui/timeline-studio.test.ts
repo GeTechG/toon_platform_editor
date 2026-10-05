@@ -310,12 +310,12 @@ describe('four surfaces, not one field', () => {
     expect(editorUi).toMatch(/\n  \.panel \{[^}]*background: var\(--paper\)/s);
   });
 
-  it('each side panel closes with a hairline on the edge the canvas is on', () => {
-    expect(editorUi).toMatch(/\.studio \.left \{[^}]*border-right: 1px solid var\(--hairline\)/s);
-    expect(editorUi).toMatch(/\.studio \.right \{[^}]*border-left: 1px solid var\(--hairline\)/s);
-    // The alternative layout swaps the columns, so it swaps the edges too.
-    expect(editorUi).toMatch(/\.studio\.alt:not\(\.compact\) \.left \{[^}]*border-left: 1px solid var\(--hairline\)/s);
-    expect(editorUi).toMatch(/\.studio\.alt:not\(\.compact\) \.right \{[^}]*border-right: 1px solid var\(--hairline\)/s);
+  it('each side column is a card on the table, not a strip closed by a hairline', () => {
+    // The owner, 2026-10-05: the columns float as the bottom bar does.
+    const card = editorUi.match(/\.studio:not\(\.compact\) \.left:not\(\.collapsed\),\s*\.studio:not\(\.compact\) \.right:not\(\.collapsed\) \{[^}]*\}/)?.[0] ?? '';
+    expect(card).toContain('border-radius: var(--r-lg)');
+    expect(card).toContain('align-self: start');
+    expect(editorUi).not.toMatch(/\.studio(\.alt:not\(\.compact\))? \.(left|right) \{[^}]*border-(left|right): 1px solid/s);
   });
 });
 
