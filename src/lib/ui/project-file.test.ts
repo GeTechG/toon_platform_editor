@@ -153,7 +153,6 @@ describe('a failed write is not silent', () => {
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);
     expect(editorUi).toContain('onclick={saveByHand}');
-    expect(editorUi).toContain('onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}');
     expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveByHand\(\)/);
     expect(t('editor.save_failed_alert')).not.toContain('перезагруз');
   });
@@ -173,8 +172,11 @@ describe('persistent storage', () => {
     expect(editorUi).toContain('.persist?.()');
     expect(sheet).toContain("t('settings.ask_persist')");
     expect(t('settings.ask_persist')).toBe('Запросить постоянное хранилище');
-    expect(sheet).toContain("t('settings.save_now')");
-    expect(t('settings.save_now')).toStartWith('Сохранить сейчас');
+    // Saving is not a setting (owner, 2026-10-05): Ctrl+S, the rail's key and
+    // the clock write the draft; the sheet has no key for it.
+    expect(sheet).not.toContain('save_now');
+    expect(sheet).not.toContain('onSaveNow');
+    expect(editorUi).not.toContain('onSaveNow');
   });
 
   it('the Toonio rail has a save key, dimmed while there is nothing to save', () => {

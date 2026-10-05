@@ -168,17 +168,6 @@ describe('настройки: черновики и «Сохранить сей�
     const { t } = await import('../i18n');
     expect(t('settings.drafts_unreadable')).toBe('Файл черновиков не читается — выбери его ещё раз');
   });
-
-  it('«Сохранить сейчас» отвечает в строке листа: статус студии под листом не виден и не слышен', async () => {
-    const sheet = await source('./SettingsSheet.svelte');
-    expect(sheet).toContain('onSaveNow?: () => Promise<boolean>');
-    expect(sheet).toContain("t(saved ? 'settings.saved_now' : 'settings.save_not_done')");
-    const editor = await source('./Editor.svelte');
-    expect(editor).toContain('onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}');
-    const { t } = await import('../i18n');
-    expect(t('settings.saved_now')).toBe('Черновик сохранён');
-    expect(t('settings.save_not_done')).toBe('Черновик не сохранился на этом устройстве');
-  });
 });
 
 describe('плагин, который не запускается до конца', () => {

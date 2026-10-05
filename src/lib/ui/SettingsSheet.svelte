@@ -41,7 +41,6 @@
   let {
     editor,
     onClose,
-    onSaveNow,
     onDownloadErrors,
     onOpenFile,
     onOpenDrafts,
@@ -52,8 +51,6 @@
     /** A small screen: its tabs are what moves, the panels are not drawn. */
     compact?: boolean;
     onClose: () => void;
-    /** Resolves `false` when the draft did not reach the disk. */
-    onSaveNow?: () => Promise<boolean>;
     /** Alt+L's file, the session's errors (owner, 17th audit). */
     onDownloadErrors?: () => void;
     /** The file dialog, the draft list and the plugins window live in the editor. */
@@ -218,16 +215,6 @@
     const before = new Set(drafts.map((entry) => entry.id));
     drafts = draftEntries(await listDrafts());
     chosen = [...chosen, ...drafts.filter((entry) => !before.has(entry.id)).map((entry) => entry.id)];
-  }
-
-  /**
-   * The studio's «сохранено» is under this modal, inert: neither seen for the
-   * scrim nor heard. The answer goes in the sheet's own line.
-   */
-  async function saveNowHere(): Promise<void> {
-    if (!onSaveNow) return;
-    const saved = await onSaveNow();
-    report = t(saved ? 'settings.saved_now' : 'settings.save_not_done');
   }
 
   function wipePalettes(): void {
@@ -462,9 +449,6 @@
             onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
           />
         </label>
-        {#if onSaveNow}
-          {@render act(t('settings.save_now'), 'save', saveNowHere)}
-        {/if}
         {@render act(t('settings.ask_persist'), undefined, askPersist)}
 
         {#if onOpenDrafts || onOpenFile}

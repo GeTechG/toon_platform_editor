@@ -2777,7 +2777,6 @@
       {editor}
       {compact}
       onClose={() => (settingsSheetOpen = false)}
-      onSaveNow={() => saveNow(true).then((ok) => ok && !storageBlocked)}
       onDownloadErrors={downloadErrorLog}
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
