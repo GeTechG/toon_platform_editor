@@ -84,6 +84,35 @@ describe('кольцо кисти рядом с пальцем и ладонью
   });
 });
 
+// Пока рука двигает лист, холст показывает снимок кадра, а не собирает его.
+// Но кадр под рукой меняется: клавиша в хвосте броска трекпада, кнопка под
+// другой рукой, фильм, кончившийся посреди панорамы — и до отпускания на
+// листе стоял старый кадр.
+describe('снимок панорамы не переживает то, из чего он сделан', () => {
+  it('рисунок, кадр, слой, кожа, трансформация, инструмент или просмотр сменились — снимок брошен', () => {
+    const effect = source.match(/\$effect\(\(\) => \{\n(?:\s*void [^\n]+\n)+\s*navShot = null;\n\s*\}\);/)?.[0];
+    expect(effect).toBeDefined();
+    for (const read of ['editor.doc', 'editor.displayedFrame', 'editor.activeLayer', 'editor.showOnionSkin',
+      'editor.transform', 'editor.tool', 'editor.playing']) {
+      expect(effect).toContain(`void ${read};`);
+    }
+    // Вид — нет: он и меняется жестом, снимок для того и взят.
+    expect(effect).not.toContain('editor.view');
+  });
+
+  it('собранный посреди жеста кадр становится новым снимком', () => {
+    const draw = handler('draw');
+    expect(draw).toMatch(/if \(navigating\(\) && !editor\.playing\) \{\s*takeNavShot\(\);/);
+    expect(draw.lastIndexOf('takeNavShot()')).toBeGreaterThan(draw.indexOf('ctx.strokeRect('));
+  });
+
+  // Второй палец щипка сбрасывает линию первого и просит кадр без неё — а
+  // снимок брался тут же, с холста, где линия ещё нарисована.
+  it('пока кадр ждёт отрисовки, снимок с холста не берётся: на нём ещё старое', () => {
+    expect(handler('takeNavShot')).toMatch(/if \(!canvasEl \|\| !lastDrawn \|\| navShot \|\| rafPending\)/);
+  });
+});
+
 // Линию под рукой рисует кисть — у плагина это его код. Ластик, упавший
 // посреди кадра, оставлял буфер в режиме destination-out: следующий кадр
 // клал в него активный слой этим же режимом, и слой пропадал с листа.

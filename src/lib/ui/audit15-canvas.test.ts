@@ -37,11 +37,16 @@ function counted(log: { paints: number }[]): () => ComposeBuffer {
 }
 
 describe('сбой посреди кадра не копит клип', () => {
-  it('сбой посреди сборки оставляет лист несобранным: следующий кадр собирает его заново, а клипа, который мог бы остаться, нет', () => {
+  it('save() кадра закрывается restore() в finally: иначе после одного исключения клип старого листа режет все следующие кадры', () => {
     const draw = handler('draw');
-    expect(draw.indexOf('sheetStale = false')).toBeGreaterThan(draw.indexOf('composer.compose('));
-    expect(draw).not.toContain('ctx.save()');
-    expect(draw).not.toContain('ctx.clip()');
+    const save = draw.indexOf('ctx.save()');
+    const tryAt = draw.indexOf('try {', save);
+    const finallyAt = draw.indexOf('} finally {', tryAt);
+    expect(save).toBeGreaterThan(-1);
+    expect(tryAt).toBeGreaterThan(save);
+    expect(draw.indexOf('composer.compose(')).toBeGreaterThan(tryAt);
+    expect(finallyAt).toBeGreaterThan(draw.indexOf('composer.compose('));
+    expect(draw.indexOf('ctx.restore()', finallyAt)).toBeGreaterThan(finallyAt);
   });
 
   it('контекста нет (Safari упёрся в память холстов) — кадр не рисуется, а не падает в каждом rAF', () => {
@@ -50,6 +55,11 @@ describe('сбой посреди кадра не копит клип', () => {
     expect(draw.indexOf('if (!ctx)')).toBeLessThan(draw.indexOf('ctx.setTransform'));
   });
 
+  it('снимок для панорамы без контекста не берётся: иначе вместо рисунка на время жеста — пустой лист', () => {
+    const shot = handler('takeNavShot');
+    expect(shot).not.toContain("getContext('2d')?.drawImage");
+    expect(shot).toMatch(/if \(!\w+\) \{?\s*return;?/);
+  });
 });
 
 describe('потерянный контекст холста', () => {

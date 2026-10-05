@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { renderDensity } from './viewport';
 
 // Owner's answers after the twelfth audit, canvas part. EditorState is a runes
 // class, so its part is asserted as source, like owner-eleventh-delete-block;
@@ -12,6 +13,20 @@ function member(source: string, name: string): string {
   if (!match) throw new Error(`missing ${name}`);
   return match[0];
 }
+
+describe('the document density is capped at two as well', () => {
+  it('a phone sheet of 360 px would ask 3.5x of a 1280 document; it gets 2', () => {
+    expect(renderDensity(1280 / 360)).toBe(2);
+    expect(renderDensity(1280 / 900)).toBeCloseTo(1280 / 900);
+  });
+
+  it('the canvas sends the document density through the cap too', () => {
+    const draw = canvas.match(/function draw\(\)[^]*?\n  }\n/)![0];
+    const dpr = draw.match(/const dpr = [^;]*;/)![0];
+    expect(dpr).toMatch(/^const dpr = renderDensity\(/);
+    expect(dpr).toContain("editor.ux.canvasDensity === 'document'");
+  });
+});
 
 describe('nothing edits a hidden layer', () => {
   const guard = member(state, 'mayEdit');

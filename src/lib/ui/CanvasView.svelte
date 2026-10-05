@@ -29,9 +29,12 @@
     clampPan,
     fitSheet,
     fitView,
+    pickedPixel,
     renderDensity,
-    sheetBitmap,
+    reprojection,
+    shotCovers,
     resizedView,
+    type DrawnView,
     toDocument,
     zoomAt,
     zoomCentredOn,
@@ -67,10 +70,11 @@
     BlitTarget & {
       globalAlpha: number;
       clearRect(x: number, y: number, w: number, h: number): void;
+      rect(x: number, y: number, w: number, h: number): void;
       strokeRect(x: number, y: number, w: number, h: number): void;
-      imageSmoothingEnabled: boolean;
-      imageSmoothingQuality: string;
-      drawImage(image: CanvasImageSource, x: number, y: number, w: number, h: number): void;
+      clip(): void;
+      save(): void;
+      restore(): void;
     };
 
   let canvasEl: HTMLCanvasElement;
@@ -159,6 +163,7 @@
   onDestroy(() => {
     cancelHold();
     clearTimeout(hintTimer);
+    clearTimeout(wheelZoomTimer);
     // The pixels go with the canvas, now rather than when the collector gets
     // to them: Safari caps canvas memory, and a studio opened and left a few
     // times over held ten stage-sized buffers each. A frame already asked for
@@ -166,12 +171,13 @@
     destroyed = true;
     cancelAnimationFrame(rafId);
     composer.dispose();
-    for (const spare of [sheetEl, pickEl, canvasEl]) {
+    for (const spare of [shotCanvas, pickEl, canvasEl]) {
       if (spare) {
         spare.width = 0;
         spare.height = 0;
       }
     }
+    navShot = null;
   });
   /** Pointer that is panning the canvas (middle button or the hand). */
   let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
@@ -429,23 +435,59 @@
     placedStage = wrapWidth > 0 && wrapHeight > 0 ? stage : null;
   });
 
+  /** The view the last composed frame was drawn under. */
+  let lastDrawn: DrawnView | null = null;
+  /** That frame, copied when a pan or pinch starts, and the view it was drawn in. */
+  let navShot: { canvas: HTMLCanvasElement; view: DrawnView; at: number } | null = null;
+  let shotCanvas: HTMLCanvasElement | undefined;
   /**
-   * The frame as it was last composed: the sheet, one pixel of it per logical
-   * pixel of the document, whatever the window, the zoom or the screen. A
-   * zoom or a pan stretches this picture and composes nothing — which is what
-   * rebuilding every layer and ghost per movement of the sheet used to cost.
+   * How often the frame is composed afresh under a moving hand, once the shot
+   * no longer holds what the hand brought onto the table, ms. The calibration
+   * knob: lower fills the sheet in sooner, higher spares a weak phone.
    */
-  let sheetEl: HTMLCanvasElement | null = null;
-  /** Whether the sheet is to be composed again. A change of view leaves it. */
-  let sheetStale = true;
+  const NAV_COMPOSE_MS = 100;
+
+  function takeNavShot(): void {
+    // Nor while a frame is waiting to be drawn: the canvas still shows what
+    // that frame is to replace — the line of a pinch's first finger, just
+    // discarded, stayed on the sheet for the whole pinch. `draw` takes it then.
+    if (!canvasEl || !lastDrawn || navShot || rafPending) {
+      return;
+    }
+    // Nor through the preview: nobody shows it there (`draw`), and every frame
+    // of the film dropped it — a copy of the whole table per frame, for nothing.
+    if (editor.playing) {
+      return;
+    }
+    shotCanvas ??= document.createElement('canvas');
+    shotCanvas.width = canvasEl.width;
+    shotCanvas.height = canvasEl.height;
+    // No context (Safari out of canvas memory): no shot. A blank one showed
+    // an empty sheet for the whole gesture; without one the frame is composed.
+    const shotCtx = shotCanvas.getContext('2d');
+    if (!shotCtx) {
+      return;
+    }
+    shotCtx.drawImage(canvasEl, 0, 0);
+    navShot = { canvas: shotCanvas, view: lastDrawn, at: performance.now() };
+  }
 
   function draw(): void {
     if (!canvasEl || destroyed) {
       return;
     }
-    // The visible canvas is the table, at the screen's density under its cap.
-    // The sheet lying on it keeps the document's own.
-    const dpr = renderDensity(window.devicePixelRatio || 1);
+    // toonio.ru draws into a fixed 1280×720 bitmap the browser then scales to
+    // the element, whatever the screen density — so its lines are rasterized
+    // at one bitmap pixel per logical document pixel, never per device pixel.
+    // It is the preset's rasterisation: one document, one bitmap, whatever
+    // canvas the brush in hand measures on.
+    // The preset that rasterizes in the document's own density keeps it: there
+    // the bitmap is the document's, not the screen's. It goes through the cap
+    // all the same: a phone's 360 px sheet asked 3.5× of a 1280 document, and
+    // the buffers the cap is there for ran to ~60 MB (owner, twelfth audit).
+    const dpr = renderDensity(editor.ux.canvasDensity === 'document'
+      ? editor.doc.width / FIXED_POINT_SCALE / sheetWidth
+      : window.devicePixelRatio || 1);
     const pxWidth = Math.max(1, Math.round(stage.width * dpr));
     const pxHeight = Math.max(1, Math.round(stage.height * dpr));
     if (canvasEl.width !== pxWidth) {
@@ -460,45 +502,21 @@
     if (!ctx) {
       return;
     }
+    const viewport = {
+      scale: (sheetWidth / editor.doc.width) * editor.view.zoom,
+      dpr,
+      panX: editor.view.panX,
+      panY: editor.view.panY,
+    };
     const frame = editor.displayedFrame;
     if (!editor.doc.layers[0]?.frames[frame]) {
       return;
     }
-    // ponytail: the sheet is the document's size whatever the device — a 4K
-    // document is ~33 MB a buffer and the composer keeps about ten. Cap the
-    // bitmap by the device's memory if a phone reloads on one.
-    const bitmap = sheetBitmap(editor.doc);
-    sheetEl = buffer(sheetEl, bitmap.width, bitmap.height);
-    if (sheetStale) {
-      const sheetCtx = sheetEl.getContext('2d') as unknown as ViewCtx | null;
-      if (!sheetCtx) {
-        return;
-      }
-      const viewport = { scale: bitmap.width / editor.doc.width, dpr: 1 };
-      sheetCtx.setTransform(1, 0, 0, 1, 0, 0);
-      sheetCtx.clearRect(0, 0, bitmap.width, bitmap.height);
-      // The frame itself — the layers around the active one, the ghosts, the
-      // line under the hand — is put together by the shared composer, the same
-      // one the benchmark runs. What is left here is the editor's canvas: the
-      // paper the frame lies on and a tool's grid over it.
-      composer.compose(sheetCtx, bitmap.width, bitmap.height, {
-        doc: editor.doc,
-        frame,
-        activeLayer: editor.activeLayer,
-        viewport,
-        tools: previewTools,
-        cellAt: stackCell,
-        ghosts: editor.showOnionSkin
-          ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
-          : undefined,
-        live: liveLine(viewport),
-        // The profile's active alpha (Multator: 0.8, its containerSprite)
-        // applies to the whole current frame.
-        alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
-      });
-      sheetStale = false;
-    }
 
+    // The frame itself — the layers around the active one, the ghosts, the
+    // line under the hand — is put together by the shared composer, the same
+    // one the benchmark runs. What is left here is the editor's canvas: the
+    // paper the frame lies on, the clip to its edges, a tool's grid over it.
     const sheet = {
       x: editor.view.panX * dpr,
       y: editor.view.panY * dpr,
@@ -510,24 +528,78 @@
     // The paper lies flat on the table: white on the table's tone, no shadow.
     ctx.fillStyle = BACKGROUND_COLOR;
     ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
-    // Magnified, the sheet shows its pixels, as a sheet of them does; shrunk
-    // to fit, it is smoothed, or a thin line breaks into dots.
-    ctx.imageSmoothingEnabled = sheet.w <= bitmap.width;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sheetEl, sheet.x, sheet.y, sheet.w, sheet.h);
-    // The grid is a drawing aid, not part of the picture: the preview shows
-    // the frames as they will be exported.
-    if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
-      drawPixelGrid(ctx, pxWidth, pxHeight, dpr, sheet);
+    // Everything drawn stays on the paper — a stroke that runs off the edge
+    // is cut by it, the way it is on export.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
+    ctx.clip();
+    // Whatever throws below (a buffer Safari refused, a broken stroke), the
+    // clip goes with it: left saved, every later frame was cut to the old
+    // sheet's rectangle, and the save stack grew by one per frame.
+    try {
+      const drawn: DrawnView = { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr };
+      // While the hand pans or pinches, the picture is the one it grabbed, moved:
+      // nothing in it changes until it lets go, and rebuilding every layer and
+      // ghost per animation frame was what the gesture stuttered on.
+      // But the shot is the table as it was: the part of a magnified sheet the
+      // hand has brought in since is not on it, and lay there as bare paper
+      // until the hand let go. Then the frame is composed afresh — every
+      // NAV_COMPOSE_MS, not every animation frame — and is the shot from there.
+      const uncovered = navShot !== null && !shotCovers(navShot.view, drawn, stage);
+      if (navShot && uncovered && performance.now() - navShot.at >= NAV_COMPOSE_MS) {
+        navShot = null;
+      }
+      const shot = navShot && navigating() && !editor.playing ? navShot : null;
+      // Too soon: asked again, so a hand that stops is not left with the gap.
+      if (uncovered && shot) {
+        scheduleDraw();
+      }
+      if (shot) {
+        const to = reprojection(shot.view, drawn);
+        ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
+        ctx.drawImage(shot.canvas, 0, 0);
+      } else {
+        lastDrawn = drawn;
+        composer.compose(ctx, pxWidth, pxHeight, {
+          doc: editor.doc,
+          frame,
+          activeLayer: editor.activeLayer,
+          viewport,
+          tools: previewTools,
+          cellAt: stackCell,
+          ghosts: editor.showOnionSkin
+            ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+            : undefined,
+          live: liveLine(viewport),
+          // The profile's active alpha (Multator: 0.8, its containerSprite)
+          // applies to the whole current frame.
+          alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
+        });
+
+        // The grid is a drawing aid, not part of the picture: the preview shows
+        // the frames as they will be exported.
+        if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
+          drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+        }
+      }
+    } finally {
+      ctx.restore();
     }
     // A hairline edge, so the paper reads as a sheet even over a white table.
     // The value is `--hairline` (14% ink), written out because a 2D context
     // takes a string and not a custom property.
     // ponytail: held to the token by `system-craft.test.ts`, not read from the
     // computed style — one read at mount if a theme ever moves this hue.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.strokeStyle = 'rgba(11, 12, 16, 0.141)';
     ctx.lineWidth = 1;
     ctx.strokeRect(Math.round(sheet.x) + 0.5, Math.round(sheet.y) + 0.5, Math.round(sheet.w), Math.round(sheet.h));
+    // A frame composed under a moving hand — no shot could be taken when it
+    // took hold, or what the shot showed has changed since — is the shot now.
+    if (navigating() && !editor.playing) {
+      takeNavShot();
+    }
   }
 
   /**
@@ -535,13 +607,7 @@
    * `difference` keeps it visible over both the white page and a black
    * stroke without a colour of its own.
    */
-  function drawPixelGrid(
-    ctx: ViewCtx,
-    pxWidth: number,
-    pxHeight: number,
-    dpr: number,
-    sheet: { x: number; y: number; w: number; h: number },
-  ): void {
+  function drawPixelGrid(ctx: ViewCtx, pxWidth: number, pxHeight: number, dpr: number): void {
     const step = cursorDiameter * dpr;
     if (step < 4) {
       // Denser than this the grid is a grey wash, not a guide.
@@ -552,18 +618,15 @@
     ctx.strokeStyle = '#303030';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // On the paper only: the grid is the sheet's, and the table has no cells.
-    const left = Math.max(0, sheet.x);
-    const top = Math.max(0, sheet.y);
-    const right = Math.min(pxWidth, sheet.x + sheet.w);
-    const bottom = Math.min(pxHeight, sheet.y + sheet.h);
-    for (let x = sheet.x + Math.ceil((left - sheet.x) / step) * step; x < right; x += step) {
-      ctx.moveTo(Math.round(x) + 0.5, top);
-      ctx.lineTo(Math.round(x) + 0.5, bottom);
+    const originX = editor.view.panX * dpr;
+    const originY = editor.view.panY * dpr;
+    for (let x = originX % step; x < pxWidth; x += step) {
+      ctx.moveTo(Math.round(x) + 0.5, 0);
+      ctx.lineTo(Math.round(x) + 0.5, pxHeight);
     }
-    for (let y = sheet.y + Math.ceil((top - sheet.y) / step) * step; y < bottom; y += step) {
-      ctx.moveTo(left, Math.round(y) + 0.5);
-      ctx.lineTo(right, Math.round(y) + 0.5);
+    for (let y = originY % step; y < pxHeight; y += step) {
+      ctx.moveTo(0, Math.round(y) + 0.5);
+      ctx.lineTo(pxWidth, Math.round(y) + 0.5);
     }
     ctx.stroke();
     ctx.globalCompositeOperation = 'source-over';
@@ -777,9 +840,7 @@
     if (said) untrack(() => showHint(said.text));
   });
 
-  /** Asks for a frame. `stale` false is a change of view: the sheet is shown again as it is. */
-  function scheduleDraw(stale = true): void {
-    sheetStale ||= stale;
+  function scheduleDraw(): void {
     if (rafPending) {
       return;
     }
@@ -795,6 +856,28 @@
     // and a write replaces it, so reading it here is the whole subscription —
     // the walk over every layer's cell that used to stand for it is gone, and
     // with it a read per cell per stroke.
+    void sheetWidth;
+    void editor.doc;
+    void editor.displayedFrame;
+    void editor.activeLayer;
+    void editor.showOnionSkin;
+    void editor.onionHistoryLayerIndices.length;
+    void editor.ux;
+    void editor.view;
+    void editor.transform;
+    composer.invalidate();
+    scheduleDraw();
+  });
+
+  // The shot is the picture as the hand grabbed it. What it is made of changed
+  // under the moving hand — a key in the tail of a trackpad fling, a button
+  // under the other hand, the film ending mid-pan — and the old frame stayed
+  // on the sheet until the hand let go. The shot goes, and `draw` takes
+  // another off the frame it composes. Not the view: the gesture is what
+  // changes it. The table is: resized under the hand, it refits the sheet, and
+  // the shot lay on it at the old fit.
+  $effect(() => {
+    void stage;
     void editor.doc;
     void editor.displayedFrame;
     void editor.activeLayer;
@@ -802,17 +885,9 @@
     void editor.onionHistoryLayerIndices.length;
     void editor.ux;
     void editor.transform;
+    void editor.tool;
     void editor.playing;
-    composer.invalidate();
-    scheduleDraw();
-  });
-
-  // The view moves the sheet, not what is drawn on it: a zoom, a pan or a
-  // table resized puts the same picture elsewhere on the screen.
-  $effect(() => {
-    void stage;
-    void editor.view;
-    scheduleDraw(false);
+    navShot = null;
   });
 
   // The pixel grid is painted over the composited stack, so picking the tool
@@ -822,16 +897,17 @@
     void editor.tool;
     void editor.playing;
     void cursorDiameter;
-    scheduleDraw(false);
+    scheduleDraw();
   });
 
   // A window dragged to a screen of another density changes nothing else the
-  // canvas watches — the stage keeps its CSS size — so the table stayed at the
+  // canvas watches — the stage keeps its CSS size — so the lines stayed at the
   // old screen's density. The screen itself says when it changes.
   $effect(() => {
     let query: MediaQueryList;
     const moved = (): void => {
-      scheduleDraw(false);
+      composer.invalidate();
+      scheduleDraw();
       watch();
     };
     const watch = (): void => {
@@ -887,15 +963,25 @@
     // The frame as it was composed, off the composer's own buffers: no paper
     // under it, no onion over it and no line under the hand.
     const layers = composer.layers;
-    if (!layers) {
+    if (!layers || !lastDrawn) {
       return undefined;
     }
-    // Those buffers are the sheet, a pixel per document pixel: the spot of the
-    // document under the pointer is the pixel, whatever the view shows it at.
+    // Those buffers hold the view of the last frame drawn. Right after a zoom
+    // (the redraw waits for the next frame) and all through a pinch, the
+    // screen is already elsewhere: the pixel is read where that spot of the
+    // sheet lies in them, not at the same place on the screen.
+    const rect = canvasEl.getBoundingClientRect();
+    const [bx, by] = pickedPixel(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+      { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr: lastDrawn.dpr },
+      lastDrawn,
+    );
+    // Inside the buffers read, not the canvas: a stage resized in the middle
+    // of a gesture has a canvas of the new size over layers of the old.
     const read = layers.active as HTMLCanvasElement;
-    const [x, y] = toDocUnits(e);
-    const px = Math.min(read.width - 1, Math.max(0, Math.floor((x / editor.doc.width) * read.width)));
-    const py = Math.min(read.height - 1, Math.max(0, Math.floor((y / editor.doc.height) * read.height)));
+    const px = Math.min(read.width - 1, Math.max(0, Math.floor(bx)));
+    const py = Math.min(read.height - 1, Math.max(0, Math.floor(by)));
     // One pixel is all it reads, so one pixel is all it flattens: the layers
     // land shifted onto a 1×1 scratch. A stage-sized copy was three full blits
     // every 100 ms of the preview and megabytes held for the rest of the session.
@@ -962,7 +1048,10 @@
       strokeLayer = undefined;
     }
     dropOwnGesture();
-    panning = null;
+    if (panning) {
+      panning = null;
+      dropNavShot();
+    }
     try {
       canvasEl.setPointerCapture(pointerId);
     } catch {
@@ -1028,6 +1117,7 @@
         panning = null;
         scheduleDraw();
         gesture = pinchFrom(touches);
+        takeNavShot();
         return true;
       }
       if (touches.size > 1) {
@@ -1040,6 +1130,7 @@
     if (e.button === 1 || editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)) {
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       canvasEl.setPointerCapture(e.pointerId);
+      takeNavShot();
       return true;
     }
     return false;
@@ -1130,13 +1221,21 @@
       return;
     }
     if (e.ctrlKey || e.metaKey) {
-      // A trackpad pinch is a stream of these.
+      // A trackpad pinch is a stream of these: it moves the picture it grabbed,
+      // as two fingers on glass do, and composes afresh once the stream stops.
+      takeNavShot();
+      clearTimeout(wheelZoomTimer);
+      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
       zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
       editor.flashScaleMenu();
       return;
     }
     if (trackpadScroll(e, e.timeStamp - trackpadAt < WHEEL_ZOOM_IDLE_MS)) {
       trackpadAt = e.timeStamp;
+      // A stream like the pinch's: the grabbed picture slides, composed once it stops.
+      takeNavShot();
+      clearTimeout(wheelZoomTimer);
+      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
       panBy(-e.deltaX, -e.deltaY);
       return;
     }
@@ -1156,8 +1255,21 @@
     editor.flashScaleMenu();
   }
 
-  /** How long a trackpad's wheel stream may pause before it counts as over, ms. */
+  /** How long a Ctrl+wheel stream may pause before it counts as over, ms. */
   const WHEEL_ZOOM_IDLE_MS = 150;
+  /** Pending end of a Ctrl+wheel stream; 0 when none is running. */
+  let wheelZoomTimer = 0;
+
+  function endWheelZoom(): void {
+    if (!wheelZoomTimer) {
+      return;
+    }
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = 0;
+    if (!navigating()) {
+      dropNavShot();
+    }
+  }
 
   /**
    * Safari's trackpad pinch is not a Ctrl+wheel stream but WebKit's gesture
@@ -1184,6 +1296,9 @@
       return;
     }
     const rect = canvasRect();
+    takeNavShot();
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
     zoomTo(
       gestureZoom * scale,
       Number.isFinite(clientX) ? clientX! : rect.left + rect.width / 2,
@@ -1194,6 +1309,7 @@
 
   function onGestureEnd(e: Event): void {
     e.preventDefault();
+    endWheelZoom();
   }
 
   /**
@@ -1242,6 +1358,8 @@
    */
   function onContextRestored(): void {
     composer.dispose();
+    navShot = null;
+    lastDrawn = null;
     scheduleDraw();
   }
 
@@ -1371,6 +1489,9 @@
       e.preventDefault();
       return;
     }
+    // A press right after a trackpad pinch draws on the picture as it is now,
+    // not on the moved shot of it.
+    endWheelZoom();
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
@@ -1579,19 +1700,27 @@
     scheduleDraw();
   }
 
-  /** Whether the hand is moving the sheet right now — a pan or two fingers. */
+  /** Whether the hand is moving the picture right now — pan, two fingers, or a trackpad pinch. */
   function navigating(): boolean {
-    return panning !== null || gesture !== null;
+    return panning !== null || gesture !== null || wheelZoomTimer !== 0;
   }
 
-  /** Fingers let go of the sheet at once. */
+  /** Fingers let go of the sheet at once: the picture is composed again, once. */
   function stopTouchNavigation(): void {
     if (!gesture && !(panning && touches.has(panning.pointerId))) {
       return;
     }
     gesture = null;
     panning = null;
-    scheduleDraw(false);
+    dropNavShot();
+  }
+
+  function dropNavShot(): void {
+    navShot = null;
+    if (shotCanvas) {
+      shotCanvas.width = 0;
+    }
+    scheduleDraw();
   }
 
   function endNavigation(e: PointerEvent): boolean {
@@ -1614,8 +1743,14 @@
     if (panning && e.pointerId === panning.pointerId) {
       panning = null;
     }
-    // The lift that ends a gesture ends nothing else.
-    return was && !navigating();
+    // The gesture showed the frame it grabbed; standing still, the picture is
+    // composed again, once, for the view it came to rest in. The shot's
+    // backing store goes back too — a stage of pixels held for nothing.
+    if (was && !navigating()) {
+      dropNavShot();
+      return true;
+    }
+    return false;
   }
 
   function onPointerUp(e: PointerEvent): void {

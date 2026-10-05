@@ -47,6 +47,8 @@ const TOONIO_UX: UxProfile = {
   defaultFps: DEFAULT_FPS,
   brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
   adaptiveBrushStep: false,
+  // The reference draws into a 1280×720 bitmap and lets the browser scale it.
+  canvasDensity: 'document',
   projectFile: true,
   onionMode: 'history',
   colorGrid: true,
@@ -79,6 +81,7 @@ const MULTATOR_UX: UxProfile = {
   // reference's 600-wide canvas — 1..640 on the editor's (×1280/600).
   brushSizeMax: 640,
   adaptiveBrushStep: true,
+  canvasDensity: 'device',
   projectFile: false,
   onionMode: 'neighbors',
   colorGrid: false,

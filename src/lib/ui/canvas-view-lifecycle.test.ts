@@ -360,9 +360,7 @@ describe('the sheet lies on a worktable', () => {
     const draw = handler('draw');
     // The table shows through around the sheet instead of a full-bleed fill.
     expect(draw).toContain('clearRect(0, 0, pxWidth, pxHeight)');
-    // The drawing is the sheet's own bitmap, laid where the paper is: nothing
-    // of it can lie beside the paper, so there is no clip to keep.
-    expect(draw).toContain('ctx.drawImage(sheetEl, sheet.x, sheet.y, sheet.w, sheet.h)');
+    expect(draw).toContain('ctx.clip()');
     // The paper is a flat fill where the sheet lands — no shadow to buffer.
     expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
     expect(draw).toContain('fillRect(sheet.x, sheet.y, sheet.w, sheet.h)');
@@ -379,10 +377,10 @@ describe('the sheet lies on a worktable', () => {
 });
 
 describe('what the canvas asks whom', () => {
-  it('takes its rasterisation from the document, never from the brush in hand or the preset', () => {
+  it('takes its rasterisation from the preset, never from the brush in hand', () => {
     // A document has one bitmap: two brushes of two canvases cannot each have
-    // their own, and no preset has another.
-    expect(source).not.toContain('canvasDensity');
+    // their own. The reference that rasterises at document scale is a preset.
+    expect(source).toContain("editor.ux.canvasDensity === 'document'");
     expect(source).not.toContain("editor.defaultBrush === 'toonio'");
   });
 });
@@ -405,6 +403,27 @@ describe('the frame pays only for what changed', () => {
     const toDocUnits = handler('toDocUnits');
     expect(toDocUnits).not.toContain('getBoundingClientRect');
     expect(source).toContain('function canvasRect');
+  });
+});
+
+// Pan and pinch rebuilt the whole frame on every animation frame: the view is
+// one of the composer's inputs, and the ghosts are cached by a key that
+// includes the pan. The hand moves the picture, not what is in it.
+describe('a navigation gesture moves the picture instead of rebuilding it', () => {
+  it('the gesture takes a shot of the last composed frame when it starts', () => {
+    expect(handler('startNavigation')).toContain('takeNavShot()');
+  });
+
+  it('while the hand moves, draw shows the shot through the reprojection', () => {
+    const draw = handler('draw');
+    expect(draw).toContain('reprojection(');
+    expect(draw.indexOf('reprojection(')).toBeLessThan(draw.indexOf('composer.compose('));
+  });
+
+  it('letting go drops the shot and composes once at full density', () => {
+    expect(handler('endNavigation')).toContain('dropNavShot()');
+    expect(handler('dropNavShot')).toContain('navShot = null');
+    expect(source).not.toContain('renderDensity(window.devicePixelRatio || 1, navigating())');
   });
 });
 

@@ -38,6 +38,16 @@ describe('the wheel over the canvas', () => {
     expect(handler('onWheel')).toContain('editor.flashScaleMenu()');
   });
 
+  it('a trackpad pinch (Ctrl+wheel) moves the grabbed picture instead of rebuilding every layer per event', () => {
+    const wheel = handler('onWheel');
+    expect(wheel).toContain('takeNavShot()');
+    expect(handler('navigating')).toContain('wheelZoomTimer');
+  });
+
+  it('a press ends the pinch picture, so a stroke is never drawn under a stale shot', () => {
+    const down = handler('onPointerDown');
+    expect(down.indexOf('endWheelZoom()')).toBeGreaterThan(down.indexOf('startNavigation(e)'));
+  });
 });
 
 describe('the pipette', () => {

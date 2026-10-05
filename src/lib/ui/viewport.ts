@@ -4,12 +4,10 @@
  *
  * The sheet lies on a worktable the size of the stage: the canvas element is
  * the whole workspace, and the view says where the sheet sits on it and how
- * big it is drawn. The sheet is one bitmap of the document's size and the
- * view stretches it, so it can be walked around and magnified without a
- * buffer of the magnified size.
+ * big it is drawn. Only the visible region is ever rasterized (a 2 GB phone
+ * cannot hold a 10× buffer), so the sheet can be walked around, not just
+ * magnified inside its own frame.
  */
-
-import { FIXED_POINT_SCALE } from '../format/constants';
 
 /** Zoom range: a tenth of the sheet up to the reference's 10× (toonio: 1–10). */
 export const ZOOM_MIN = 0.1;
@@ -389,24 +387,79 @@ export function toDocument(
 }
 
 /**
- * The sheet's bitmap: one pixel per logical pixel of the document, whatever
- * the window, the zoom or the screen. The frame is composed into it once, and
- * the view stretches it.
- */
-export function sheetBitmap(doc: { width: number; height: number }): { width: number; height: number } {
-  return {
-    width: Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE)),
-    height: Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE)),
-  };
-}
-
-/**
- * Device pixels per CSS pixel a canvas on the screen is drawn at — the
- * editor's table, the player, a thumbnail.
+ * Device pixels per CSS pixel the editor rasterizes at.
  *
- * Capped at two: on line art the difference between 2× and 3× is not there to
- * see, and a phone reporting 3 pays two and a quarter times the pixels for it.
+ * Capped at two. The editor keeps about ten full-stage buffers — the three of
+ * the layer stack, the live layer, the composite, a layer scratch, the paper
+ * and the onion ghosts — and each of them is the whole worktable. At the
+ * density 3 a phone reports, their backing store together runs past a hundred
+ * megabytes on a device that is not given that much, and the end of it is not
+ * a lag but a reloaded tab. On line art the difference between 2× and 3× is
+ * not there to see.
+ *
+ * A navigation gesture does not change it: pan and pinch move the last
+ * composed picture (`reprojection`) instead of rebuilding it, so there is
+ * nothing to save by drawing fewer pixels while the hand moves — and nothing
+ * to resize twice when it starts and stops.
  */
 export function renderDensity(deviceDpr: number): number {
   return Number.isFinite(deviceDpr) && deviceDpr > 0 ? Math.min(2, deviceDpr) : 1;
+}
+
+/** A view as the canvas drew it: zoom and pan in CSS px, and the density. */
+export interface DrawnView {
+  zoom: number;
+  panX: number;
+  panY: number;
+  dpr: number;
+}
+
+/**
+ * The pixel of a picture drawn under `drawn` that lies under the workspace
+ * point (x, y), CSS px, of the view on screen `now` — the inverse of
+ * `reprojection`. The pipette reads the composed layers, and those are the
+ * view's of the last frame drawn: right after a zoom, or all through a
+ * pinch, the screen is already elsewhere.
+ */
+export function pickedPixel(x: number, y: number, now: DrawnView, drawn: DrawnView): [number, number] {
+  const k = drawn.zoom / now.zoom;
+  return [
+    drawn.dpr * (drawn.panX + (x - now.panX) * k),
+    drawn.dpr * (drawn.panY + (y - now.panY) * k),
+  ];
+}
+
+/**
+ * Whether a picture of the whole table drawn under `drawn` still holds all of
+ * the sheet the view `now` has on the table. A shot is the table as it was:
+ * at 300 % a third of the sheet is on it, and the part a pan or a pinch out
+ * brings in was bare paper until the hand let go. A pixel of slack, so a
+ * fraction of one does not count as uncovered.
+ */
+export function shotCovers(drawn: DrawnView, now: DrawnView, stage: Stage): boolean {
+  const k = now.zoom / drawn.zoom;
+  const axis = (was: number, pan: number, table: number, sheet: number): boolean => {
+    // The sheet on the table now, and where the shot's table lands.
+    const from = Math.max(0, pan);
+    const to = Math.min(table, pan + sheet * now.zoom);
+    const shotFrom = pan - k * was;
+    return to <= from || (shotFrom <= from + 1 && shotFrom + k * table >= to - 1);
+  };
+  return axis(drawn.panX, now.panX, stage.width, stage.sheetWidth)
+    && axis(drawn.panY, now.panY, stage.height, stage.sheetHeight);
+}
+
+/**
+ * Where a picture drawn under `from` lands under `to`: the uniform scale and
+ * offset, in `to`'s device pixels, that put every point of it back where the
+ * new view would draw it. Pan and pinch show the last composed frame through
+ * this and rebuild it once, when the hand lets go.
+ */
+export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x: number; y: number } {
+  const k = to.zoom / from.zoom;
+  return {
+    scale: (k * to.dpr) / from.dpr,
+    x: to.dpr * (to.panX - k * from.panX),
+    y: to.dpr * (to.panY - k * from.panY),
+  };
 }

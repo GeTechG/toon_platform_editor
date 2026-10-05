@@ -50,10 +50,10 @@ describe('the editor profile', () => {
     expect(toonop.crossCursor).toBe(true);
   });
 
-  it('keeps no project file of its own, and no rasterisation either', () => {
-    // A file is the editor's, not the pen's, and cannot follow a brush. The
-    // rasterisation is the document's: no profile has a say in it.
-    expect('canvasDensity' in toonop).toBe(false);
+  it('rasterises by the screen and keeps no project file of its own', () => {
+    // One document has one rasterisation and a file is the editor's, not the
+    // pen's: neither can follow a brush.
+    expect(toonop.canvasDensity).toBe('device');
     expect(toonop.projectFile).toBe(false);
   });
 
