@@ -356,8 +356,8 @@
                 onclick={(e) => openSizeMenu(e.currentTarget, proportion)}
               >{newSize}</button>
               <!-- Three dots in the card's corner (owner, 2026-10-05): the
-                   frame rate. Where the corner does not hold them — the words
-                   beside a bare sheet — they stand in the line, as the chip. -->
+                   frame rate. Beside a bare sheet they keep that corner,
+                   outside the sheet — never the middle of the line. -->
               <button
                 class="reel-more"
                 aria-expanded={sizeMenu !== null && sizeMenu.more && proportion === newProportion}
@@ -853,9 +853,12 @@
     .beside .reel-words {
       max-width: 16rem;
     }
-    /* No plate, no corner: the dots stand in the line, beside the chip. */
-    .beside .reel-more {
-      position: static;
+    /* A plate this low does not hold the dots clear of «Рисовать»: the same
+       corner, outside it — beside a bare sheet too, after its words. */
+    .reel-more {
+      right: auto;
+      left: 100%;
+      bottom: 0;
     }
   }
   .reel-stand {

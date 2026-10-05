@@ -316,11 +316,13 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     expect(corner).toMatch(/right:/);
     expect(corner).toMatch(/min-width:\s*var\(--key-h/);
     expect(rule('.reel-plate')).toMatch(/position:\s*relative/);
-    // Where the corner does not hold them — the words beside a bare sheet
-    // on a low page — they stand in the line, as the chip does.
+    // Beside a bare sheet on a low page they keep the corner — the same one,
+    // outside the sheet — and are not put in the middle of the line (owner).
+    expect(shell).not.toMatch(/\.beside \.reel-more/);
+    // A low page (a phone lying down): the plate is too small to hold them
+    // clear of «Рисовать», so they stand at the same corner, outside it.
     const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) {'));
-    expect(low).toMatch(/\.beside \.reel-more \{\s*position:\s*static/);
-    expect(card).toMatch(/class="reel-size"[^]*class="reel-more"[^]*<strong>/);
+    expect(low).toMatch(/\n    \.reel-more \{\s*right:\s*auto;\s*left:\s*100%;\s*bottom:\s*0;/);
     const head = shell.match(/<header class="hub-head">[^]*?<\/header>/)?.[0] ?? '';
     expect(head).not.toContain('name="more"');
     const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
