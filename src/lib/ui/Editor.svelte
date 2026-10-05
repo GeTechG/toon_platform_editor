@@ -74,6 +74,8 @@
   // coupling).
   // The soundtrack travels beside the document, not inside it: the toon format
   // holds drawings, and the platform stores the file on its own endpoint.
+  // `sent` is the host's word back that the drawing went out: its draft on this
+  // device goes then — the editor cannot know that, the host cannot reach the draft.
   // `stageNote` is the host's own word over the canvas — the site's first-run
   // hint. The stage is the only box that knows where the canvas is, so the
   // note is placed against it rather than against the whole editor.
@@ -88,7 +90,7 @@
     startNew,
     open,
   }: {
-    onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void;
+    onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null, sent?: () => Promise<void>) => void;
     stageNote?: Snippet;
     startNew?: boolean;
     open?: { doc: ToonDocument; audio?: AudioTrackData | null };
@@ -1623,6 +1625,19 @@
   }
 
   /**
+   * The drawing on screen was published (owner, 2026-10-06): its draft on this
+   * device goes. Clean from here, so leaving the studio — which writes whatever
+   * is unsaved — does not put it back; drawing on starts a record of its own.
+   */
+  async function forgetSent(): Promise<void> {
+    await deleteDraft(draftId);
+    draftId = newDraftId();
+    editor.lastSavedAt = null;
+    editor.touched = false;
+    dirty = false;
+  }
+
+  /**
    * The record behind the drawing on screen is gone (owner, after the tenth
    * audit): the drawing is unsaved again — Save lights up, closing the tab
    * warns — and the next save makes a new record, track and all.
@@ -2488,6 +2503,7 @@
                   sync: editor.audio.sync,
                 }
               : null,
+            forgetSent,
           );
         }}
         title={t('editor.publish')}

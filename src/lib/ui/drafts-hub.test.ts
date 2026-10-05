@@ -573,3 +573,19 @@ describe('a host can hand over a drawing to continue', () => {
     expect(body).toMatch(/catch[^]*?importError = /);
   });
 });
+
+describe('a drawing that went out leaves no local draft', () => {
+  // Owner, 2026-10-06: once the toon is published its draft on this device goes.
+  it('the host is handed the way to say so, with the document', () => {
+    expect(studio).toMatch(/onPublish\?: \(doc: ToonDocument, audio\?: AudioTrackData \| null, sent\?: \(\) => Promise<void>\) => void;/);
+    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(editor\.doc\),[^]*?: null,\s*forgetSent,\s*\);/);
+  });
+  it('the record goes, and leaving does not write it back', () => {
+    const at = studio.indexOf('async function forgetSent(');
+    expect(at).toBeGreaterThan(-1);
+    const body = studio.slice(at, studio.indexOf('\n  }\n', at));
+    expect(body).toMatch(/await deleteDraft\(draftId\);/);
+    // A record of its own if drawing goes on; clean, so the leave-write has nothing to save.
+    expect(body).toMatch(/draftId = newDraftId\(\);[^]*?editor\.touched = false;[^]*?dirty = false;/);
+  });
+});
