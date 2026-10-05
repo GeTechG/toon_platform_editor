@@ -121,7 +121,7 @@
   let newSize = $state('720p');
   let newStanding = $state(false);
   // The frame rate is chosen where the resolution is (owner, 2026-10-05).
-  let newFps = $state(untrack(() => editor.ux.defaultFps));
+  let newFps = $state(untrack(() => editor.doc.frame_rate));
   function onNewFps(e: Event): void {
     const input = e.currentTarget as HTMLInputElement;
     // A field left empty keeps the rate, as the one on the bar does.
@@ -189,6 +189,9 @@
     if (e.key === 'Tab' && next) {
       e.preventDefault();
       next.focus();
+      if (next instanceof HTMLInputElement && next.type === 'number') {
+        next.select();
+      }
     } else if (e.key === 'Escape' || e.key === 'Tab') {
       // Esc is the menu's here, not the hub's.
       e.preventDefault();
@@ -252,6 +255,9 @@
    */
   async function showCreate(on: boolean): Promise<void> {
     const now = sheetChoices().find((sheet) => sheet.value === sheetValue(editor.doc));
+    if (on) {
+      newFps = editor.doc.frame_rate;
+    }
     if (on && now) {
       newProportion = now.proportion;
       newSize = now.name;
@@ -446,11 +452,11 @@
             </button>
           {/each}
         </div>
-        {@render fpsField()}
         <label class="sheet-stand">
           <input type="checkbox" bind:checked={newStanding} disabled={newProportion === '1:1'} />
           {t('sheet.standing')}
         </label>
+        {@render fpsField()}
         <button class="key primary" onclick={() => pickSheet(newChoice.value)}>{t('sheet.start')}</button>
       </div>
     </div>
@@ -673,12 +679,19 @@
     justify-content: center;
     height: 100%;
     padding: 0.5rem 2rem 0.5rem 1rem;
+    /* A plate grown past the page to hold its words (200 % text) is scrolled
+       here, from its top: centred, it ran out both ways — the chip off the
+       top, «Рисовать» off the bottom. */
+    overflow-y: auto;
   }
   /* The card is the sheet, as Dreams draws it: a light plate in the sheet's
      own proportion. A sheet too narrow or too low for its words grows to
      hold them; there the proportion gives way. */
   .reel-plate {
     box-sizing: border-box;
+    /* Centred in the page while it fits, at its top once it does not. */
+    flex: none;
+    margin-block: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -696,6 +709,14 @@
     background: var(--canvas);
     /* The three dots stand in its corner. */
     position: relative;
+  }
+  /* A page low in rem and not in px is a page under enlarged text. There the
+     cap goes: it also caps the floor the words give the plate, and at 200 %
+     they ran out of it both ways. The plate grows, and its page scrolls. */
+  @container reel (max-height: 20rem) and (min-height: 321px) {
+    .reel-plate {
+      max-height: none;
+    }
   }
   /* The top right corner (owner, 2026-10-05). The key is a finger deep and
      its dots are drawn at the top of it; the plate's padding above keeps the
@@ -829,7 +850,7 @@
      not fit, the sheet is drawn bare on the left, in its own proportion, as
      a sample, and the words stand beside it (owner, 2026-10-05). A lying
      sheet fits and stays a plate. */
-  @container reel (max-height: 20rem) {
+  @container reel (max-height: 20rem) and (min-width: 28rem) {
     .reel-plate.beside {
       flex-direction: row;
       gap: 1.25rem;
@@ -915,6 +936,13 @@
     .drafts {
       grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
       gap: 1.5rem;
+    }
+  }
+  /* A phone held upright: one column (owner, 2026-10-05) — two cards a row
+     made each still a stamp. Lying down it keeps the row. */
+  @media (max-width: 40rem) and (orientation: portrait) {
+    .drafts {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
   .draft {

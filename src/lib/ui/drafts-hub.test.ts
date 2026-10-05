@@ -56,6 +56,12 @@ describe('the hub stands in place of the studio', () => {
     expect(rule('.drafts')).toMatch(/grid-template-columns:\s*repeat\(auto-fill, minmax\(/);
   });
 
+  // Owner, 2026-10-05: on a phone held upright the drafts are one column —
+  // two cards a row made each still a stamp.
+  it('a phone held upright lays the drafts in one column', () => {
+    expect(shell).toMatch(/@media \(max-width: 40rem\) and \(orientation: portrait\) \{\s*\.drafts \{\s*grid-template-columns:\s*minmax\(0, 1fr\);/);
+  });
+
   it('a card is its still, large, with the words under it', () => {
     expect(rule('.draft-open')).toMatch(/flex-direction:\s*column/);
     expect(rule('\n  .draft-thumb')).toMatch(/aspect-ratio:\s*16 \/ 9/);
@@ -285,6 +291,12 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     expect(plate).toMatch(/width:\s*min\(100cqw, calc\(86cqh \* var\(--r\)\)\)/);
     // 224×398 in a 266px page: a standing sheet on a phone lying down.
     expect(plate).toMatch(/max-height:\s*100cqh/);
+    // Not under enlarged text — a page low in rem and not in px: the cap also
+    // caps the floor the words give the plate, and at 200 % they ran out of it.
+    expect(shell).toMatch(/@container reel \(max-height: 20rem\) and \(min-height: 321px\) \{\s*\.reel-plate \{\s*max-height:\s*none;/);
+    // And the words stand beside a bare sheet only where the page is wide
+    // enough for both: at 200 % on a phone held upright they were 667px in 390.
+    expect(shell).toContain('@container reel (max-height: 20rem) and (min-width: 28rem) {');
   });
 
   // Owner, 2026-10-05: the browser's own list under the chip was «не
@@ -322,7 +334,7 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     // outside the sheet — and are not put in the middle of the line (owner).
     expect(shell).not.toMatch(/\.beside \.reel-more/);
     // A low page (a phone lying down) moves them nowhere: the same corner.
-    const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) {'));
+    const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) and (min-width: 28rem) {'));
     expect(low).not.toMatch(/\n    \.reel-more \{/);
     const head = shell.match(/<header class="hub-head">[^]*?<\/header>/)?.[0] ?? '';
     expect(head).not.toContain('name="more"');
@@ -339,11 +351,34 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     expect(field).toMatch(/type="number"[^>]*aria-label=\{t\('editor\.fps'\)\}/);
     const side = shell.match(/<div class="sheet-side">[^]*?\{t\('sheet\.start'\)\}/)?.[0] ?? '';
     expect(side).toContain('{@render fpsField()}');
+    // Owner, 2026-10-05: «Вертикальный» stands over the rate, with the sizes
+    // it turns.
+    expect(side.indexOf('class="sheet-stand"')).toBeLessThan(side.indexOf('{@render fpsField()}'));
+    expect(side.indexOf('class="sheet-stand"')).toBeGreaterThan(side.indexOf('class="sheet-sizes"'));
   });
 
   it('a new sheet starts at the preset\'s rate, and an empty field keeps the rate', () => {
-    expect(shell).toContain('let newFps = $state(untrack(() => editor.ux.defaultFps));');
+    // The rate the drawing has, as the size is the one it has: a sheet whose
+    // rate was set on the bar was put back to 12 by «Рисовать» (audit).
+    expect(shell).toContain('let newFps = $state(untrack(() => editor.doc.frame_rate));');
+    expect(fn('showCreate')).toMatch(/if \(on\) \{\s*newFps = editor\.doc\.frame_rate;/);
     expect(fn('onNewFps')).toContain('fpsFromField(input.value, newFps, editor.ux.fpsRange)');
+  });
+
+  // Audit: at 200 % text the words are taller than the page of the reel; they
+  // ran out of the plate both ways — the chip off the top, under the dots,
+  // «Рисовать» off the bottom. The page of the reel scrolls instead, from the
+  // plate's top. Not the words inside the plate: a scroller has no floor, and
+  // the plate stopped growing to hold them (240×197 became 240×135 at 320 px).
+  it('a plate taller than its page of the reel is scrolled, from its top', () => {
+    expect(rule('.reel-card')).toMatch(/overflow-y:\s*auto/);
+    // Auto margins centre and never go negative: `safe center` without Safari 17.
+    expect(rule('.reel-plate')).toMatch(/margin-block:\s*auto/);
+    expect(rule('.reel-words')).not.toMatch(/overflow/);
+  });
+
+  it('Tab onto the number takes the whole of it, as the browser\'s own Tab does', () => {
+    expect(fn('sizeMenuKeys')).toMatch(/next\.focus\(\);\s*if \(next instanceof HTMLInputElement && next\.type === 'number'\) \{\s*next\.select\(\);/);
   });
 
   it('the menu\'s arrows leave the rate field its own, and Tab reaches it', () => {
@@ -430,7 +465,7 @@ describe('a standing sheet on a phone lying down', () => {
 
   it('a low page draws a standing sheet bare, as a sample, and puts the words beside it', () => {
     expect(rule('.reel-card')).toMatch(/container-name:\s*reel/);
-    const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) {'));
+    const low = shell.slice(shell.indexOf('@container reel (max-height: 20rem) and (min-width: 28rem) {'));
     expect(low.indexOf('.reel-plate.beside {')).toBeGreaterThan(-1);
     const plate = low.slice(low.indexOf('.reel-plate.beside {'), low.indexOf('}', low.indexOf('.reel-plate.beside {')));
     expect(plate).toMatch(/flex-direction:\s*row/);

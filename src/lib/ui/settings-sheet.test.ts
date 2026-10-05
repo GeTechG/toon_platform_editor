@@ -246,12 +246,18 @@ describe('the settings sheet', () => {
   it('the catalog address is folded away under the plugins: nothing there for most to change', () => {
     const more = pane('more');
     // A row that names the thing, and a word on the right that opens it.
-    expect(more).toMatch(/<details class="pick">\s*<summary><span>\{t\('settings\.catalog_url'\)\}<\/span><span class="pick-word">\{t\('settings\.change'\)\}<\/span><\/summary>[^]*?setSetting\('pluginCatalog'[^]*?<\/details>/);
+    expect(more).toMatch(/<details class="pick">\s*<summary><span>\{t\('settings\.catalog'\)\}<\/span><span class="pick-word">\{t\('settings\.change'\)\}<\/span><span class="pick-word fold">\{t\('settings\.fold'\)\}<\/span><\/summary>[^]*?setSetting\('pluginCatalog'[^]*?<\/details>/);
     expect(t('settings.change')).toBe('Изменить');
     // With the plugins it belongs to, over the error log.
-    expect(more.indexOf("t('settings.catalog_url')")).toBeGreaterThan(more.indexOf("t('settings.open_plugins')"));
-    expect(more.indexOf("t('settings.catalog_url')")).toBeLessThan(more.indexOf("t('settings.errors')"));
-    expect(t('settings.catalog_url')).toBe('Каталог плагинов');
+    expect(more.indexOf("t('settings.catalog')")).toBeGreaterThan(more.indexOf("t('settings.open_plugins')"));
+    expect(more.indexOf("t('settings.catalog')")).toBeLessThan(more.indexOf("t('settings.errors')"));
+    expect(t('settings.catalog')).toBe('Каталог плагинов');
+    // Open, the row says how to put it away — the word did not just vanish.
+    expect(t('settings.fold')).toBe('Свернуть');
+    expect(sheet).toMatch(/\.pick:not\(\[open\]\) \.fold,\s*\.pick\[open\] \.pick-word:not\(\.fold\) \{\s*display:\s*none/);
+    expect(sheet).not.toMatch(/\.pick\[open\] \.pick-word \{\s*visibility/);
+    // Every action row says what kind of thing it is.
+    expect(pane('saving')).toContain("act(t('settings.ask_persist'), 'save', askPersist)");
     expect(t('settings.catalog_field')).toBe('Адрес каталога');
   });
 

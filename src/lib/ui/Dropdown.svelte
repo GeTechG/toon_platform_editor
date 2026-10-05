@@ -12,7 +12,7 @@
    * elsewhere by itself — before the sheet under it, not with it.
    */
   import Icon from './Icon.svelte';
-  import { placeDropdown, stepOption, type DropdownPlace } from './dropdown';
+  import { letterOption, placeDropdown, stepOption, type DropdownPlace } from './dropdown';
 
   let {
     label,
@@ -76,7 +76,10 @@
       return;
     }
     const all = keys();
-    const next = stepOption(e.key, all.indexOf(document.activeElement as HTMLButtonElement), all.length);
+    const from = all.indexOf(document.activeElement as HTMLButtonElement);
+    // A letter, when no chord is held: Ctrl+S is not a search for «с».
+    const letter = e.ctrlKey || e.metaKey || e.altKey ? null : letterOption(e.key, from, options.map((option) => option.label));
+    const next = stepOption(e.key, from, all.length) ?? letter;
     if (next === null) return;
     // The list's own key: the studio's arrows move frames, and must not here.
     e.preventDefault();
@@ -129,8 +132,10 @@
     }}
   >
     {#each options as option (option.value)}
+      <!-- One stop of Tab for the whole list: the arrows and the letters walk it. -->
       <button
         class="option"
+        tabindex="-1"
         role="option"
         aria-selected={option.value === value}
         onclick={() => {

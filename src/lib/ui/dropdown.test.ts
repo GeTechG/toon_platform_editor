@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { placeDropdown, stepOption } from './dropdown';
+import { letterOption, placeDropdown, stepOption } from './dropdown';
 
 const read = (name: string) => Bun.file(new URL(`./${name}`, import.meta.url)).text();
 const dropdown = await read('Dropdown.svelte');
@@ -42,6 +42,25 @@ describe('the keys of a drop-down list', () => {
     expect(stepOption('End', 0, 3)).toBe(2);
     expect(stepOption('a', 0, 3)).toBeNull();
     expect(stepOption('ArrowDown', 0, 0)).toBeNull();
+  });
+
+  // The system list did both, and the audit found neither here.
+  it('a letter goes to the next option that starts with it, round the end, whatever its case', () => {
+    const names = ['10 секунд', 'минута', '5 минут', 'Никогда', 'неделя'];
+    expect(letterOption('м', 0, names)).toBe(1);
+    expect(letterOption('н', 3, names)).toBe(4);
+    expect(letterOption('Н', 4, names)).toBe(3);
+    expect(letterOption('5', -1, names)).toBe(2);
+    expect(letterOption('я', 0, names)).toBeNull();
+    // A key with a name is not a letter.
+    expect(letterOption('Enter', 0, names)).toBeNull();
+    expect(letterOption(' ', 0, names)).toBeNull();
+  });
+
+  it('the list is one stop of Tab: its options are reached by the arrows', () => {
+    const option = dropdown.match(/<button\s+class="option"[^>]*>/)?.[0] ?? '';
+    expect(option).toContain('tabindex="-1"');
+    expect(dropdown).toContain('letterOption(e.key,');
   });
 });
 

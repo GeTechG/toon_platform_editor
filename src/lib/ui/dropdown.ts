@@ -43,3 +43,18 @@ export function stepOption(key: string, from: number, count: number): number | n
       return null;
   }
 }
+
+/**
+ * A letter typed over the list: the next option after `from` whose name
+ * starts with it, round the end. A key with a name (Enter, Tab) and a space
+ * are not letters.
+ */
+export function letterOption(key: string, from: number, names: readonly string[]): number | null {
+  if (key.length !== 1 || key === ' ') return null;
+  const letter = key.toLocaleLowerCase();
+  for (let step = 1; step <= names.length; step++) {
+    const at = (from + step) % names.length;
+    if (names[at].trim().toLocaleLowerCase().startsWith(letter)) return at;
+  }
+  return null;
+}

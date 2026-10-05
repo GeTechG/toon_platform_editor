@@ -449,7 +449,7 @@
             onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
           />
         </label>
-        {@render act(t('settings.ask_persist'), undefined, askPersist)}
+        {@render act(t('settings.ask_persist'), 'save', askPersist)}
 
         {#if onOpenDrafts || onOpenFile}
           <h3 class="sheet-hint">{t('settings.open')}</h3>
@@ -468,7 +468,7 @@
           <!-- Everything goes into the copy unless told otherwise: the list of
                ticks is there for the one who asks, not in everybody's way. -->
           <details class="pick">
-            <summary><span>{t('settings.drafts_chosen', { chosen: chosen.length, total: drafts.length })}</span><span class="pick-word">{t('settings.choose')}</span></summary>
+            <summary><span>{t('settings.drafts_chosen', { chosen: chosen.length, total: drafts.length })}</span><span class="pick-word">{t('settings.choose')}</span><span class="pick-word fold">{t('settings.fold')}</span></summary>
             <ul class="picklist">
               {#each drafts as entry (entry.id)}
                 <li>
@@ -514,7 +514,7 @@
         <!-- Folded: most have nothing to change here. The row says
              what it is, the word on its right opens the field. -->
         <details class="pick">
-          <summary><span>{t('settings.catalog_url')}</span><span class="pick-word">{t('settings.change')}</span></summary>
+          <summary><span>{t('settings.catalog')}</span><span class="pick-word">{t('settings.change')}</span><span class="pick-word fold">{t('settings.fold')}</span></summary>
           <div class="field">
             <input
               type="url"
@@ -723,9 +723,10 @@
     font-weight: 650;
     color: var(--accent-ink);
   }
-  /* Open, the word has done its work. */
-  .pick[open] .pick-word {
-    visibility: hidden;
+  /* Open, the word says how to put it away. */
+  .pick:not([open]) .fold,
+  .pick[open] .pick-word:not(.fold) {
+    display: none;
   }
   /* The next row of its group: a hairline over it, as between two rows. */
   .settings-main .act + .pick summary {
