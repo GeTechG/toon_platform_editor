@@ -368,9 +368,11 @@ describe('the bottom panel folds like the sides', () => {
     expect(editorUi).toContain('side(id).collapsed && !compact');
   });
 
-  it('folded, the bar is a strip with the tab still on it and no toolbar behind it', () => {
+  it('folded, the bar is its tab alone: no strip across the studio and no toolbar behind it', () => {
+    // The owner, 2026-10-06: «чтобы видно было только кнопку развернуть и всё».
     expect(editorUi).toContain('{#if !panelFolded}');
-    expect(editorUi).toMatch(/\.panel\.collapsed \{[^}]*height: 0\.75rem/s);
+    expect(editorUi).toMatch(/\.panel\.collapsed \{[^}]*height: 0;[^}]*background: none/s);
+    expect(editorUi).toMatch(/\.left\.collapsed,\s*\.studio \.right\.collapsed \{[^}]*width: 0;[^}]*background: none/s);
   });
 });
 

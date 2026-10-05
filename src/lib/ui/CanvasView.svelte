@@ -342,15 +342,35 @@
     }
   }
   // A cover appears (the first finger), goes (display: none) or is resized
-  // (text zoom); the wrap's own resize moves the corner ones.
+  // (text zoom); the wrap's own resize moves the corner ones. One that
+  // becomes a cover later — the bar under the canvas unfolded, a column put
+  // back — was not there to be watched when this ran: folded again, nobody
+  // heard it go, and the sheet stayed fitted over a bar that was not there.
+  // So the set itself is watched: the mark put on or taken off, a panel
+  // added to or removed from the studio.
   $effect(() => {
     void editor.playing;
     void touchSeen;
     if (!wrapEl || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => measureCovers());
-    observer.observe(wrapEl);
-    for (const el of (wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl).querySelectorAll('[data-over-sheet]')) observer.observe(el);
-    return () => observer.disconnect();
+    const root = wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl;
+    const sizes = new ResizeObserver(() => measureCovers());
+    const watch = (): void => {
+      sizes.disconnect();
+      sizes.observe(wrapEl!);
+      for (const el of root.querySelectorAll('[data-over-sheet]')) sizes.observe(el);
+      measureCovers();
+    };
+    watch();
+    const marks = new MutationObserver(watch);
+    marks.observe(root, { attributes: true, attributeFilter: ['data-over-sheet'], subtree: true });
+    // Only the studio's own children: the panels. Its whole tree changes with every frame drawn.
+    const panels = new MutationObserver(watch);
+    panels.observe(root, { childList: true });
+    return () => {
+      sizes.disconnect();
+      marks.disconnect();
+      panels.disconnect();
+    };
   });
   // The sheet at 100%: the document fitted inside the wrap (whose size the
   // page layout sets, not the canvas itself), with air around it.

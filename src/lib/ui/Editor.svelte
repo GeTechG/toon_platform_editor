@@ -354,6 +354,7 @@
   let boxH = $state(0);
   /** The stage as drawn: under 44rem the canvas's hint rises over the zoom window's row. */
   let stageWidth = $state(0);
+  let stageHeight = $state(0);
   let step = $state<LayoutStep>('full');
   /** One rem now: the columns are in rem, twice as wide at 200 % text. */
   const rem = $derived(16 * textScale);
@@ -382,7 +383,8 @@
   function sideBase(id: SideId): number {
     if (!sideDraws(id)) return 0;
     if (sideFixed(id)) return (SIDEBAR_REM + SIDE_GAP) * rem;
-    if (side(id).collapsed) return 0.75 * rem;
+    // Folded, a column is its tab alone, over the canvas.
+    if (side(id).collapsed) return 0;
     // Open, the column is a card with the table at its outer edge (`SIDE_GAP`).
     return Math.min(side(id).width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem) + SIDE_GAP * rem;
   }
@@ -425,7 +427,7 @@
   $effect(() => {
     if (!boxW || !boxH) return;
     // Open, the bar is a card with the table around it: 0.6rem over and under (`.studio .panel`).
-    const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelFloor + 1.2 * rem;
+    const bar = editor.panels.rows.length === 0 || editor.panelCollapsed ? 0 : panelFloor + 1.2 * rem;
     // The top bar is one line of keys in its padding (`.studio .top`).
     const top = draws(editor.panels.top) ? 3.75 * rem : 0;
     const full = { w: boxW - sideBase('left') - sideBase('right'), h: boxH - bar - top };
@@ -440,6 +442,15 @@
   });
   /** A small screen: one window at a time instead of the columns and the bar. */
   const compact = $derived(step !== 'full');
+  /**
+   * The zoom window stands under the column on the screen's left, at the
+   * studio's own edge (owner, 2026-10-06: there is room there now) — while
+   * that column is open and short enough to leave the window its corner.
+   */
+  const scaleUnder = $derived.by((): SideId | null => {
+    const id = sideAt(true);
+    return !compact && sideDraws(id) && !folded(id) && sideH[id] + (SIDE_GAP + 5.5) * rem <= stageHeight ? id : null;
+  });
   /** Standing up: the strip lies across the top, the window comes up from the bottom. */
   const tall = $derived(boxH >= boxW);
   const cut = $derived(
@@ -2557,7 +2568,8 @@
       {@render sideEdge('left', t('editor.tools_side'))}
     {/if}
   {/if}
-  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} class:narrow={stageWidth < 44 * rem} class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
+  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:transforming={!!editor.transform?.session} class:side-window={!!shownTab && !tall} class:low-window={!!shownTab && tall}
+    style:--scale-left={scaleUnder ? `${-sidePx[scaleUnder]}px` : undefined}
     style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
     style:--stage-right={sideTrack(sideAt(false)) ? `${sideTrack(sideAt(false))}px` : undefined}
     style:--stage-under={!compact && !panelFolded && editor.panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}
@@ -3061,7 +3073,9 @@
   }
   .scale-window {
     position: absolute;
-    left: clamp(0.5rem, 2.2vw, 1.25rem);
+    /* Under the left column, where there is room for it (`--scale-left`,
+       set by the stage): in line with the column's own edge. */
+    left: var(--scale-left, clamp(0.5rem, 2.2vw, 1.25rem));
     bottom: clamp(0.5rem, 2.2vw, 1.25rem);
     z-index: var(--z-tool);
     /* One row of keys — it takes the width it needs, not a panel's. */
@@ -3286,10 +3300,14 @@
   .fold.lying:active {
     transform: translateX(-50%);
   }
-  /* Folded, the bar is a strip with its tab on it. */
+  /* Folded, the bar is its tab alone. */
   .studio .panel.collapsed {
-    height: 0.75rem;
+    /* Folded, only its tab is left (owner, 2026-10-06): no strip across the
+       studio — the canvas runs to the edge, the tab stands on it. */
+    height: 0;
     padding: 0;
+    border: none;
+    background: none;
   }
   .panel.collapsed .fold,
   .side-edge.folded .fold {
@@ -3531,7 +3549,7 @@
      running on under it (CanvasView `--stage-left`, `--stage-right`) and the
      sheet fitted clear of it (`data-over-sheet`). Over the canvas by its
      layer: the canvas is positioned and would lie on a column that is not.
-     Folded, a column is the strip it was. */
+     Folded, a column is its tab alone. */
   .studio:not(.compact) .left,
   .studio:not(.compact) .right {
     position: relative;
@@ -3547,6 +3565,13 @@
   .studio:not(.compact) .left.at-left:not(.collapsed),
   .studio:not(.compact) .right.at-left:not(.collapsed) {
     margin: 0.6rem 0 0.6rem 0.6rem;
+  }
+  /* The boxes' column, packed closer for the same reason as the brush box
+     in it (BrushPanel): the palette and the brush fit a desk screen's height
+     without the column scrolling. */
+  .studio:not(.compact) .right:not(.collapsed) {
+    padding-block: 0.6rem;
+    gap: 0.4rem;
   }
   /* A profile's fixed sidebar (toonop): one key wide, its keys one under
      another — the thickness, then undo over redo. 3.95rem is SIDEBAR_REM. */
@@ -3581,7 +3606,7 @@
      shows around the card; the fit keeps the sheet clear of it
      (`data-over-sheet`). Beside the canvas — under the columns — the table
      is a layer of the bar's row, since the studio's own ground is paper.
-     Folded, it is the strip it was. */
+     Folded, it is its tab alone. */
   .studio .panel:not(.collapsed) {
     margin: 0.6rem;
     border-top: none;
@@ -3655,6 +3680,21 @@
   .studio .left > :global(.key),
   .studio .right > :global(.key) {
     min-width: 0;
+  }
+  /* A key in a column is as wide as its cell, and its own side padding came
+     out of the icon: in a column dragged to one key wide the padded keys —
+     export, send, undo, redo — drew their icons a few px across. */
+  .studio .left > :global(.key.key),
+  .studio .right > :global(.key.key),
+  .studio .left .history :global(.key.key),
+  .studio .right .history :global(.key.key) {
+    /* `.key.key`: the send key's own, wider padding is a later rule of the
+       same weight (`.key.primary`), and it kept its icon squeezed out. */
+    padding-inline: 0;
+  }
+  .studio .left :global(.key svg),
+  .studio .right :global(.key svg) {
+    flex: none;
   }
   .studio .left {
     grid-column: 1;
@@ -3806,9 +3846,11 @@
      carry the circle and nothing else. */
   .studio .left.collapsed,
   .studio .right.collapsed {
-    width: 0.75rem;
+    /* Folded, only the tab is left, as with the bar under the canvas. */
+    width: 0;
     padding: 0;
     overflow: visible;
+    background: none;
   }
   /* Reference «альтернативная раскладка» (`S:2321-2331`): the two side columns
      swap places. Classes only — the DOM order, and so the tab order, is

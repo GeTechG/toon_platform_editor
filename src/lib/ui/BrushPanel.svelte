@@ -639,4 +639,20 @@
   :global(:where(.studio.phone)) .live {
     display: none;
   }
+  /* In a side column the box is packed closer (owner, 2026-10-06): under the
+     palette it ran 58 px past the column on a 1080p screen and the column
+     scrolled for the last slider. No «Тип» over a list that names itself,
+     smaller gaps, and a heading only as tall as its words — the «i» keeps
+     its 44 px and reaches into the empty band of the rows around it. The
+     window behind a tool's key (toonop) keeps the roomy form. */
+  :global(:where(.studio:not(.compact) > aside)) .brush-box {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+  :global(:where(.studio:not(.compact) > aside)) .type-title {
+    display: none;
+  }
+  :global(:where(.studio:not(.compact) > aside)) .field {
+    margin-block: -0.5rem;
+  }
 </style>
