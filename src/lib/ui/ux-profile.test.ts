@@ -3,6 +3,7 @@ import type { UxProfile } from '../plugins/contract';
 import { isHelpTool } from '../plugins';
 import {
   sideAsDrawn,
+  transportKeys,
   TOONOP_UX,
   nudgeBrushSize,
   resolveToolSelection,
@@ -154,5 +155,14 @@ describe('toonop\'s left column is a sidebar', () => {
     expect(sideAsDrawn(TOONOP_UX, 'right', { width: 300, collapsed: true })).toEqual({ width: 300, collapsed: true });
     expect(sideAsDrawn({ ...TOONOP_UX, leftFixed: undefined }, 'left', { width: 300, collapsed: true }))
       .toEqual({ width: 300, collapsed: true });
+  });
+});
+
+describe('what the transport draws', () => {
+  it('the ends and the steps by the profile: all five, three, or Play alone', () => {
+    expect(transportKeys({ ...TOONOP_UX, transport: undefined })).toEqual({ ends: true, steps: true });
+    expect(transportKeys({ ...TOONOP_UX, transport: 'full' })).toEqual({ ends: true, steps: true });
+    expect(transportKeys(TOONOP_UX)).toEqual({ ends: false, steps: true });
+    expect(transportKeys({ ...TOONOP_UX, transport: 'play' })).toEqual({ ends: false, steps: false });
   });
 });

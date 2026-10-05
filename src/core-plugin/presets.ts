@@ -89,6 +89,8 @@ const MULTATOR_UX: UxProfile = {
   livePipettePreview: false,
   crossCursor: false,
   tools: MULTATOR_TOOLS,
+  // Play alone (owner, 2026-10-06): a frame is a press on the strip.
+  transport: 'play',
 };
 
 /** The keys the reference draws, in its own order (`ToolPanel.hx`). */
@@ -109,8 +111,9 @@ export const PRESETS: Readonly<Record<string, PluginPreset>> = {
     //
     // Each line sits where the reference put it. The strip's line holds only
     // what acts on frames — `+` and `×` right beside it. The next line opens
-    // on play and ends on the send button, with what the reference had no key
-    // for (fullscreen, the gear) between them and the save note last. The
+    // on play, then what the reference had no key for (fullscreen, the gear),
+    // then the send button, and the save note after it (owner, 2026-10-06:
+    // the note stood between the gear and the button). The
     // saves, undo, onion and fps stay on the shelf, a gesture away.
     // The drawing line reads left to right the way the reference drew it:
     // the tools, then the row of dots, then the two colour squares.
@@ -118,7 +121,7 @@ export const PRESETS: Readonly<Record<string, PluginPreset>> = {
       base: {
         rows: [
           ['add-frame', 'delete-frame', 'timeline'],
-          ['transport', 'fullscreen', 'settings', 'saved', 'publish'],
+          ['transport', 'fullscreen', 'settings', 'publish', 'saved'],
           [...MULTATOR_KEYS, 'brush-sizes', 'color'],
         ],
       },

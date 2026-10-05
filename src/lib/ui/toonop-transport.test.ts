@@ -5,10 +5,15 @@ import { TOONOP_UX } from './ux-profile';
 const editorSrc = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 
 describe('toonop\'s transport is Play and a step either side', () => {
-  it('the profile says so; the reference presets keep the whole transport', () => {
+  it('the profile says so; Toonio keeps the whole transport, Multator Play alone', () => {
     expect(TOONOP_UX.transport).toBe('steps');
     expect(PRESETS.toonio.ux.transport).toBeUndefined();
-    expect(PRESETS.multator.ux.transport).toBeUndefined();
+    // The owner, 2026-10-06: «убери перемотку кадров, оставь только play».
+    expect(PRESETS.multator.ux.transport).toBe('play');
+  });
+
+  it('the steps wait for a profile that has them, on the bar and in a small screen\'s dock', () => {
+    expect(editorSrc.match(/\{#if stepKeys\}/g)?.length).toBe(4);
   });
 
   it('only the first and the last keys wait for the whole transport', () => {

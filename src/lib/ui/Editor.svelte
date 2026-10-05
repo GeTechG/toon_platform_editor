@@ -6,7 +6,7 @@
   import BrushPanel from './BrushPanel.svelte';
   import ColoursPanel from './ColoursPanel.svelte';
   import PopKey from './PopKey.svelte';
-  import { sideAsDrawn } from './ux-profile';
+  import { sideAsDrawn, transportKeys } from './ux-profile';
   import BrushRail from './BrushRail.svelte';
   import BrushSizes from './BrushSizes.svelte';
   import ColorPanel from './ColorPanel.svelte';
@@ -2042,7 +2042,9 @@
 
   const lastFrame = $derived(editor.doc.layers[0].frames.length - 1);
   /** «В начало» and «в конец»; a profile may keep Play and the steps alone (toonop). */
-  const endKeys = $derived(editor.ux.transport !== 'steps');
+  const endKeys = $derived(transportKeys(editor.ux).ends);
+  /** «Назад» and «вперёд» on a frame; a profile may keep Play alone (Multator). */
+  const stepKeys = $derived(transportKeys(editor.ux).steps);
   /** The mini transport's count: the frame on screen, played or picked. */
   const frameShown = $derived({ n: (editor.playing ? editor.playbackFrame : editor.activeFrame) + 1, total: lastFrame + 1 });
 
@@ -2274,6 +2276,7 @@
           aria-label={t('editor.first_frame')}
         ><Icon name="frame-first" /></button>
         {/if}
+        {#if stepKeys}
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2281,7 +2284,9 @@
           title={t('editor.prev_frame')}
           aria-label={t('editor.prev_frame')}
         ><Icon name="frame-prev" /></button>
+        {/if}
       <PlayControls bind:this={playControls} {editor} />
+        {#if stepKeys}
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2289,6 +2294,7 @@
           title={t('editor.next_frame')}
           aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
+        {/if}
         {#if endKeys}
         <button
           class="key icon ends"
@@ -2792,6 +2798,7 @@
       <div class="mini-transport" role="group" aria-label={t('editor.transport')}>
         <!-- «1 / 3» for the eyes; a reader said «один косая черта три». -->
         <span class="frame-of"><span aria-hidden="true">{t('editor.frame_of', frameShown)}</span><span class="sr-only">{t('editor.frame_of_said', frameShown)}</span></span>
+        {#if stepKeys}
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2799,7 +2806,9 @@
           title={t('editor.prev_frame')}
           aria-label={t('editor.prev_frame')}
         ><Icon name="frame-prev" /></button>
+        {/if}
         <PlayControls bind:this={playControls} {editor} />
+        {#if stepKeys}
         <button
           class="key icon"
           disabled={editor.playing || lastFrame === 0}
@@ -2807,6 +2816,7 @@
           title={t('editor.next_frame')}
           aria-label={t('editor.next_frame')}
         ><Icon name="frame-next" /></button>
+        {/if}
       </div>
       <div class="tabs" class:bare={tabsBare} role="group" aria-label={t('editor.tabs')} title={t('editor.tabs_title')} bind:this={tabBar}>
         {#each cut.tabs as tab (tab.id)}

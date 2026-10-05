@@ -282,10 +282,11 @@ export interface UxProfile {
   readonly projectFile: boolean;
   /**
    * What the transport draws: the reference's ⏮ ⏴ ▶ ⏵ ⏭ (`'full'`, and what
-   * a profile that says nothing gets), or ⏴ ▶ ⏵ without the ends — those are
-   * a press on the strip, or Home and End.
+   * a profile that says nothing gets), ⏴ ▶ ⏵ without the ends — those are
+   * a press on the strip, or Home and End — or ▶ alone (`'play'`): a frame is
+   * picked on the strip.
    */
-  readonly transport?: 'full' | 'steps';
+  readonly transport?: 'full' | 'steps' | 'play';
   /**
    * The left column is a sidebar: always open, at its own width — no seam to
    * drag and no tab to fold it by. A profile that says nothing keeps both.

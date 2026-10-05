@@ -69,6 +69,12 @@ export const TOONOP_UX: UxProfile = {
   leftFixed: true,
 };
 
+/** Which keys stand beside Play: the two ends, the two steps. */
+export function transportKeys(ux: UxProfile): { ends: boolean; steps: boolean } {
+  const kind = ux.transport ?? 'full';
+  return { ends: kind === 'full', steps: kind !== 'play' };
+}
+
 /**
  * A column as the profile draws it: a fixed sidebar is open at its own width
  * whatever was stored for it — a fold stored under another preset would have
