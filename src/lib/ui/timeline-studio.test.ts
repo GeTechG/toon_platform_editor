@@ -100,7 +100,8 @@ describe('layer column divider', () => {
     // The floor is the row without its name: eye, tag, handle, delete. 128
     // was 7 px short of them, and the bin went under the column's edge; 136
     // was a pixel over, and that pixel showed a sliver of the name (owner).
-    expect(timeline).toContain('const COL_MIN = 135;');
+    // 117 since the keys moved closer together.
+    expect(timeline).toContain('const COL_MIN = 117;');
   });
 
   it('the hairline stands at the names\' edge, so a row\'s fill runs up to it', () => {

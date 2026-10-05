@@ -140,7 +140,7 @@ describe('the layer column fits the name the editor gives a layer', () => {
   /** «Слой 1» at 0.85rem, measured in the browser. */
   const DEFAULT_NAME = 45;
   /** Eye, tag, handle, delete, the row's padding and its four gaps. */
-  const FURNITURE = 137;
+  const FURNITURE = 117;
 
 
   /** `11rem` / `176px` → 176. */
@@ -167,12 +167,31 @@ describe('the layer column fits the name the editor gives a layer', () => {
   });
 
   it('the divider stops at the keys: the column is never narrower than its furniture', () => {
-    /** Padding 8 + 5, eye 28, tag 14, handle 30, bin 26 and four 6 px gaps. */
-    const KEYS = 135;
+    /** Padding 8 + 5, eye, handle and bin at 24, the tag's 16 and four 4 px gaps. */
+    const KEYS = 117;
     expect(Number(timeline.match(/const COL_MIN = (\d+);/)?.[1])).toBeGreaterThanOrEqual(KEYS);
     // The keys are in rem: at larger text the px stop alone is too short.
     const floor = timeline.match(/\n  \.layer-col \{[^}]*\n    min-width:\s*([^;]+);/s)?.[1];
-    expect(floor).toBe('calc(5.25rem + 51px)');
+    expect(floor).toBe('calc(3rem + 69px)');
+  });
+
+  // Eye 28, handle 30, bin 26 around 16 px glyphs, with 6 px gaps: 19 px of
+  // air between two glyphs, and the owner asked for the keys closer. Each key
+  // is its glyph and the 24 px press floor (WCAG 2.5.8), as on the phone.
+  it('the keys stand close: a glyph and the press floor each, 4 px apart', () => {
+    const rule = (sel: string) => layerRows.match(new RegExp(`\\n  \\.${sel} \\{([^}]*)\\}`))?.[1] ?? '';
+    expect(rule('row')).toMatch(/gap: 4px;/);
+    for (const key of ['eye', 'handle', 'kill']) {
+      expect(rule(key)).toMatch(/width: calc\(1rem \+ 8px\);/);
+    }
+    // A button's own 6 px of side padding left 12 px inside a 24 px key, and
+    // the 16 px eye was drawn at 12 — on the phone all along.
+    for (const key of ['eye', 'kill']) {
+      expect(rule(key)).toMatch(/padding: 0;/);
+    }
+    // The tag's 24 px press circle reaches 5 px past its key: a pixel each
+    // side keeps it off the eye and the name across a 4 px gap.
+    expect(rule('tag')).toMatch(/margin-inline: 1px;/);
   });
 });
 

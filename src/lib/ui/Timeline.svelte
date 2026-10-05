@@ -469,9 +469,9 @@
   // The divider between the layer list and the grid. Until it is dragged the
   // column keeps its CSS width, so the phone layout stays narrow on its own.
   /** The floor is a row without its name: eye, tag, handle, delete, the
-   *  padding and the gaps — 135 px at 100 % text (`.layer-col` holds it in rem).
+   *  padding and the gaps — 117 px at 100 % text (`.layer-col` holds it in rem).
    *  To the pixel: one over showed a sliver of the name. */
-  const COL_MIN = 135;
+  const COL_MIN = 117;
   const COL_MAX = 320;
   /** Keyboard step, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const COL_STEP = 16;
@@ -742,10 +742,10 @@
        delete and four gaps — so 11rem left 39 for the name and «Слой 1» needs
        45. The editor's own default name did not fit the editor's own default
        column; the divider is for long names, not for that. */
-    /* Never narrower than the row's keys (LayerRows): eye, handle and bin in
-       rem, the tag's 14, the padding's 13 and four 6 px gaps. The name gives
-       way down to nothing; the keys do not leave the column. */
-    min-width: calc(5.25rem + 51px);
+    /* Never narrower than the row's keys (LayerRows): eye, handle and bin at
+       1rem + 8px, the tag's 16, the padding's 13 and four 4 px gaps. The name
+       gives way down to nothing; the keys do not leave the column. */
+    min-width: calc(3rem + 69px);
     /* 10rem at 200 % text on a 320 px phone is the whole strip: not one
        cell was left to press. The names give way before the frames do. */
     max-width: 50%;

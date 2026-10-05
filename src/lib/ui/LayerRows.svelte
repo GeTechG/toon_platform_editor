@@ -620,8 +620,9 @@
     align-items: center;
     /* In px, though the eye, the handle and the bin are in rem (their glyphs
        grow with the text): rem gaps doubled with 200 % text as well and
-       pushed the bin out of the column. */
-    gap: 6px;
+       pushed the bin out of the column. 4, not 6: with 28–30 px keys round
+       16 px glyphs the icons stood 19 px apart (owner). */
+    gap: 4px;
     box-sizing: border-box;
     min-height: 32px;
     padding: 0 5px 0 8px;
@@ -667,8 +668,12 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 1.75rem;
-    height: 1.75rem;
+    /* The glyph and the 24 px press floor (WCAG 2.5.8), as the handle and
+       the bin: wider keys only put air between the icons. */
+    width: calc(1rem + 8px);
+    height: calc(1rem + 8px);
+    /* A button's own padding left 12 px for the 16 px glyph. */
+    padding: 0;
     border: 0;
     border-radius: var(--r-sm, 7px);
     background: transparent;
@@ -719,6 +724,9 @@
     width: 4px;
     height: 24px;
     padding: 0 5px;
+    /* The 24 px press circle reaches 5 px past the key: a pixel each side
+       keeps it off the eye and the name across the 4 px gap. */
+    margin-inline: 1px;
     border: 0;
     border-radius: 2px;
     background-clip: content-box;
@@ -747,7 +755,7 @@
     display: grid;
     place-items: center;
     flex: none;
-    width: 1.875rem;
+    width: calc(1rem + 8px);
     align-self: stretch;
     touch-action: none;
     cursor: grab;
@@ -789,9 +797,10 @@
   .kill {
     display: grid;
     place-items: center;
-    width: 1.625rem;
-    height: 1.625rem;
+    width: calc(1rem + 8px);
+    height: calc(1rem + 8px);
     flex: none;
+    padding: 0;
     border: 0;
     border-radius: var(--r-sm, 7px);
     background: transparent;
