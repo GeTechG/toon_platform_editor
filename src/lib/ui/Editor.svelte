@@ -2620,7 +2620,9 @@
     style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}
     style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
     <CanvasView {editor} />
-    {@render stageNote?.()}
+    <!-- The host's note speaks of an empty sheet: not over a drawing, not
+         under the hub. -->
+    {#if isEmptyDocument(editor.doc) && !draftsOpen}{@render stageNote?.()}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
