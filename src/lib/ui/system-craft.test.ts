@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Four rules of the shipped package that nothing else holds. The site has its
 // own copy of this file (`apps/web/src/lib/shell-craft.test.ts`); the editor
 // had none, and every one of these drifted in the gap: the shadow vocabulary,
@@ -245,7 +248,7 @@ describe('a draft thumbnail reserves its box', () => {
   it('states both sides so the list does not reflow behind the blob', () => {
     // The record carries the document, so the box is the same `fitThumb` the
     // sibling `FrameThumb` branch already uses — not a guess.
-    const tag = editorUi.match(/<img[^>]*thumbUrls[^>]*>/)?.[0] ?? '';
+    const tag = hubUi.match(/<img[^>]*thumbUrls[^>]*>/)?.[0] ?? '';
     expect(tag).toContain('width=');
     expect(tag).toContain('height=');
   });

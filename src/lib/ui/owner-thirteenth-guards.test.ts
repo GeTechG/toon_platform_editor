@@ -91,7 +91,7 @@ describe('a file dropped over an open sheet', () => {
   const over = member(editorUi, 'onDragOver');
 
   it('any modal dialog counts as a sheet', () => {
-    expect(member(editorUi, 'sheetOpen')).toContain("'dialog:modal'");
+    expect(member(editorUi, 'sheetOpen')).toContain('SHEET_UP');
   });
 
   it('the drop is refused before anything is opened', () => {

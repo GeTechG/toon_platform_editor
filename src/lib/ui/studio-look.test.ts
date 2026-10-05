@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // The studio wears the site's look (web-look «Студия в том же виде»): one
 // palette in the shared table, a red accent, flat pill keys, the host's face.
 const UI = new URL('./', import.meta.url).pathname;
@@ -132,31 +135,14 @@ describe('a draft row gives its words the room', () => {
   // the date two lines and the size line three.
   it('writes the date to the minute, on one line', () => {
     // In the catalogue's locale, not a hard-coded 'ru' (audit14-system).
-    expect(editorUi).toContain("toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })");
+    expect(hubUi).toContain("toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })");
     // One line because the keys make way — the date's own box is its content
     // and the row wraps them under it — not `nowrap`: at 200 % text the date
     // alone is wider than a 320px sheet, and a nowrap pushed the sheet out.
-    expect(rule(editorUi, '.draft-open')).toContain('flex: 1 1 auto;');
-    expect(rule(editorUi, '.draft-date')).not.toContain('white-space: nowrap;');
+    expect(rule(hubUi, '.draft-open')).toContain('flex: 1 1 auto;');
+    expect(rule(hubUi, '.draft-date')).not.toContain('white-space: nowrap;');
   });
 
-  it('packs the row keys shoulder to shoulder', () => {
-    expect(rule(editorUi, '.draft')).toContain('gap: 0;');
-  });
-
-  it('leaves the icon keys bare, their hover circle smaller than the target', () => {
-    // Once the sheet keys took the ghost fill, three 44px circles stood rim
-    // to rim. The press area stays 44; the drawn circle is the content box.
-    const body = rule(editorUi, '.editor :global(.sheet .draft .key.icon:not(.active))');
-    expect(body).toContain('background: none;');
-    expect(body).toContain('background-clip: content-box;');
-    expect(body).toMatch(/padding: \d/);
-    // Svelte weighs a scoped `.draft .key` as one class; the ghost fill is a
-    // global rule of six. Only a later, heavier global rule gets through.
-    expect(editorUi.indexOf('.sheet .draft .key.icon')).toBeGreaterThan(
-      editorUi.indexOf('.editor :global(.sheet .key:not(.primary):not(.active)) {'),
-    );
-  });
 });
 
 describe('nothing that lies in the studio casts a soft shadow', () => {

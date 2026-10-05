@@ -1437,6 +1437,14 @@ export class EditorState {
     this.touched = false;
   }
 
+  /** A clean sheet in place of the drawing, as the studio opens on: not an edit. */
+  newSheet(): void {
+    const doc = createDocument({ frameRate: this.ux.defaultFps });
+    renameLayer(doc, 0, t('layer.default_name', { n: 1 }));
+    this.openDraft(doc);
+    this.original = '';
+  }
+
   /**
    * Opens an imported document: like a loaded draft, but it *is* an edit —
    * the local draft must keep it, so the document counts as touched.

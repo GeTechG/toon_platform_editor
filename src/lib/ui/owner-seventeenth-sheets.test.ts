@@ -70,11 +70,10 @@ describe('видео прямо на диск: кодировщик, котор�
 });
 
 describe('черновики: id из чужого файла', () => {
-  it('ключи строки привязаны к дате по индексу, а не по id черновика с пробелами', async () => {
-    const editor = await source('./Editor.svelte');
-    expect(editor).toMatch(/\{#each drafts as entry, index \(entry\.id\)\}/);
-    expect(editor).toMatch(/<span class="draft-date" id="draft-date-\{index\}"/);
-    expect(editor.match(/aria-describedby="draft-date-\{index\}"/g)?.length).toBe(3);
+  // The hub's keys act on the pick, not on a row: no id is built from a draft's.
+  it('id черновика с пробелами не попадает в DOM id', async () => {
+    const editor = await source('./DraftsHub.svelte');
+    expect(editor).toMatch(/\{#each drafts as entry \(entry\.id\)\}/);
     expect(editor).not.toMatch(/draft-date-\{entry\.id\}/);
   });
 });

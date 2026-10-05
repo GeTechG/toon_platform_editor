@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { Glob } from 'bun';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Five sheets, three of them right. Settings, plugins and export open as native
 // `<dialog>` with `showModal()`, which brings the focus trap, the Esc key and an
 // inert page behind them for free (WCAG 2.1.2, 2.4.3). Drafts and the shortcut
@@ -96,13 +99,13 @@ describe('a sheet is never wider than the screen', () => {
     expect(rule(settings, '.slider input')).toMatch(/min-width:\s*0/);
   });
 
-  it('a draft row lets its keys go under the date', () => {
-    expect(rule(editorUi, '.draft')).toMatch(/flex-wrap:\s*wrap/);
-    expect(rule(editorUi, '.draft-date')).not.toMatch(/white-space:\s*nowrap/);
+  it('a draft card breaks its date rather than widening the hub', () => {
+    expect(rule(hubUi, '.draft')).toMatch(/min-width:\s*0/);
+    expect(rule(hubUi, '.draft-date')).not.toMatch(/white-space:\s*nowrap/);
   });
 
-  it('the three draft keys wrap as one group, not one by one', () => {
-    expect(editorUi).toMatch(/<span class="draft-keys">[^]*copyDraft[^]*downloadDraft[^]*removeDraft[^]*<\/span>\s*<\/li>/);
+  it('the hub keys wrap under the title rather than leaving the screen', () => {
+    expect(rule(hubUi, '.hub-keys')).toMatch(/flex-wrap:\s*wrap/);
   });
 
   it('a sheet title breaks rather than running under its close key', () => {

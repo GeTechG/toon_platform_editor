@@ -13,7 +13,7 @@ function fn(name: string): string {
 
 describe('deleting the draft that is on the canvas', () => {
   it('leaves the drawing on screen unsaved: Save lights up and closing the tab warns', () => {
-    expect(fn('removeDraft')).toMatch(/draftId === entry\.id\)? \{[^}]*forgetStoredDraft\(\)/);
+    expect(fn('removeDrafts')).toMatch(/ids\.includes\(draftId\)\) \{[^}]*forgetStoredDraft\(\)/);
     expect(fn('removeAllDrafts')).toContain('forgetStoredDraft()');
     const forget = fn('forgetStoredDraft');
     expect(forget).toContain('draftId = newDraftId()');

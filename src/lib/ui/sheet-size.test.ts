@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { addStroke, createDocument } from '../model/operations';
 import { exportWidths } from '../export/rasterize';
-import { resizeSheet, sheetChoices, sheetOpen, sheetValue } from './sheet-size';
+import { resizeSheet, sheetChoices, sheetOf, sheetOpen, sheetProportions, sheetSizes, sheetValue } from './sheet-size';
 
 // Размер листа выбирается в начале: 720p, 1080p, 2K, 4K, лёжа и стоя. Пока на
 // листе ничего нет — его можно сменить; после первого штриха он закреплён.
@@ -15,11 +15,28 @@ const editorUi = await Bun.file(UI + 'Editor.svelte').text();
 const line = { points: [0, 0, 80, 80], width: 40, color: '#000000' };
 
 describe('листы, с которых можно начать', () => {
-  it('четыре размера, каждый лёжа и стоя', () => {
-    expect(sheetChoices().map((choice) => choice.value)).toEqual([
+  it('16:9 — четыре размера, каждый лёжа и стоя', () => {
+    expect(sheetChoices().filter((choice) => choice.proportion === '16:9').map((choice) => choice.value)).toEqual([
       '1280x720', '1920x1080', '2560x1440', '3840x2160',
       '720x1280', '1080x1920', '1440x2560', '2160x3840',
     ]);
+  });
+
+  // Владелец, 2026-10-05: карточка — пропорции, размер — по длинной стороне.
+  it('четыре пропорции; размер — длинная сторона, короткая чётная', () => {
+    expect(sheetProportions()).toEqual(['16:9', '4:3', '1:1', '21:9']);
+    expect(sheetSizes()).toEqual(['720p', '1080p', '2K', '4K']);
+    expect(sheetOf('4:3', '1080p', false).value).toBe('1920x1440');
+    expect(sheetOf('21:9', '4K', false).value).toBe('3840x1646');
+    expect(sheetOf('21:9', '720p', true).value).toBe('548x1280');
+    expect(sheetOf('21:9', '720p', true).ratio).toBe('9:21');
+  });
+
+  it('квадрат один: стоя он тот же лист', () => {
+    expect(sheetOf('1:1', '2K', true)).toEqual(sheetOf('1:1', '2K', false));
+    const values = sheetChoices().map((choice) => choice.value);
+    expect(new Set(values).size).toBe(values.length);
+    expect(values.length).toBe(28);
   });
 
   it('каждый — документ, который формат принимает', () => {

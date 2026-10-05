@@ -101,7 +101,7 @@ describe('закрытие вкладки, пока черновик пишет�
 
 describe('«Скачать черновик» с карточки', () => {
   it('говорит об отказе, а не молчит с необработанным промисом', () => {
-    const download = fn('downloadDraft');
+    const download = fn('downloadDrafts');
     expect(download).toMatch(/catch/);
     expect(download).toMatch(/settings\.drafts_save_failed/);
   });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Twentieth audit, the small screens and the shared system. Read as source,
 // like audit19-system: the sums are in the comments, measured in Chrome with
 // a coarse pointer at 1024×768 (the arrange mode) and on the phone sizes.
@@ -128,8 +131,8 @@ describe('a draft keeps its picture at any text size', () => {
   // item that could shrink — gave way to 16 px: a sliver of a drawing the
   // list is told apart by. The words give way instead.
   it('the still does not shrink; the words do', () => {
-    expect(rule('\n  .draft-thumb', shell)).toMatch(/flex:\s*none/);
-    const meta = rule('\n  .draft-meta', shell);
+    expect(rule('\n  .draft-thumb', hubUi)).toMatch(/flex:\s*none/);
+    const meta = rule('\n  .draft-meta', hubUi);
     expect(meta).toMatch(/min-width:\s*0/);
     expect(meta).toMatch(/overflow-wrap:\s*anywhere/);
   });

@@ -4,6 +4,9 @@ import { repeats } from './key-owner';
 import { duplicateDraft, listDrafts, saveDraft } from '../draft/store';
 import { FakeReq, fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Eleventh audit, the studio shell. Editor.svelte is asserted as source, like
 // shell-audit.test.ts; what can run for real (the key rule, the store) does.
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
@@ -51,7 +54,7 @@ describe('Alt+E and Alt+S under an open sheet', () => {
     // With the settings open, Alt+S stacked the export over them and Alt+E
     // the mega-eraser warning over both — three modals deep.
     const handler = fn('onKeydown');
-    expect(handler).toMatch(/const modalOpen = document\.querySelector\('dialog:modal'\) !== null;/);
+    expect(handler).toMatch(/const modalOpen = document\.querySelector\(SHEET_UP\) !== null;/);
     expect(handler).toMatch(/if \(!e\.repeat && !modalOpen && !editor\.gestureHeld\) \{\s*editor\.selectTool\('mega-eraser'\);/);
     expect(handler).toMatch(/if \(e\.repeat \|\| modalOpen\) \{\s*return;\s*\}\s*\/\/ Reference Alt\+S/);
   });
@@ -70,13 +73,13 @@ describe('the drafts sheet', () => {
   it('says the list is empty in the same live region that counted it', () => {
     // Deleting the last draft swapped the counting region for a plain
     // paragraph, so the one deletion that empties the list was not heard.
-    expect(editorUi).toMatch(
-      /<div class="drafts-said" aria-live="polite">\s*\{#if drafts\.length === 0\}\s*<p class="empty">\{t\('editor\.drafts_empty'\)\}<\/p>\s*\{:else\}\s*<p class="sheet-hint">/,
+    expect(hubUi).toMatch(
+      /<div class="drafts-said" aria-live="polite">\s*\{#if drafts\.length === 0\}\s*<p class="empty">\{t\('editor\.drafts_empty'\)\}<\/p>\s*\{:else\}\s*<p class="hub-hint">/,
     );
   });
 
   it('a copy that did not fit says so instead of doing nothing', () => {
-    expect(fn('copyDraft')).toMatch(/if \(!copy && drafts\.some\(\(d\) => d\.id === entry\.id\)\) \{\s*alert\(t\('editor\.draft_copy_failed'\)\);/);
+    expect(fn('copyDrafts')).toMatch(/if \(failed && sources\.every\(\(id\) => drafts\.some\(\(d\) => d\.id === id\)\)\) \{\s*alert\(t\('editor\.draft_copy_failed'\)\);/);
     expect(t('editor.draft_copy_failed')).toContain('места');
   });
 });

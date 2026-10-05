@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { t } from '../i18n';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Editor.svelte and the sheets are Svelte, so they are asserted as source —
 // the same contract style as editor-keys.test.ts. The logic they call into
 // (decoders, the draft store, `isEmptyDocument`, `formatFileSize`) is tested
@@ -185,16 +188,16 @@ describe('the drafts list', () => {
   it('shows the screenshot, the track and the weight of every record', () => {
     expect(editorUi).toContain('entry.screenshot');
     expect(editorUi).toContain('entry.audio');
-    expect(editorUi).toContain('formatFileSize(entry.bytes');
+    expect(hubUi).toContain('formatFileSize(entry.bytes');
     expect(editorUi).toContain('navigator.storage?.estimate');
   });
 
-  it('hands one record to the browser as a file, without asking', () => {
-    expect(editorUi).toContain('async function downloadDraft(entry: DraftEntry)');
-    expect(editorUi).toContain('exportDrafts([entry.id])');
+  it('hands the picked records to the browser as a file, without asking', () => {
+    expect(editorUi).toContain('async function downloadDrafts(ids: string[])');
+    expect(editorUi).toContain('exportDrafts(ids)');
     expect(editorUi).toContain("'draft.toonops'");
-    expect(editorUi).toContain('onclick={() => downloadDraft(entry)}');
-    expect(editorUi).toContain("t('editor.draft_download_title')");
+    expect(hubUi).toContain('onclick={downloadPicked}');
+    expect(hubUi).toContain("t('editor.draft_download_title')");
     expect(t('editor.draft_download')).toBe('Скачать черновик');
   });
 
@@ -207,10 +210,10 @@ describe('the drafts list', () => {
 
   // The pressed key went with its row and the focus fell to the page under a
   // modal sheet: the next Tab started again from the top of the sheet.
-  it('a delete leaves the focus on the row that took its place, or on «Закрыть»', () => {
-    expect(editorUi).toMatch(/async function removeDraft[^]*?refocusDrafts\(at\)/);
-    expect(editorUi).toMatch(/async function removeAllDrafts[^]*?refocusDrafts\(0\)/);
-    expect(editorUi).toMatch(/function refocusDrafts[^]*?await tick\(\)[^]*?\.draft-open[^]*?\.sheet-foot \.primary/);
+  it('a delete leaves the focus on the card that took its place, or on «Создать»', () => {
+    expect(hubUi).toMatch(/async function removePicked[^]*?refocus\(at\)/);
+    expect(hubUi).toMatch(/async function removeAllDrafts[^]*?refocus\(0\)/);
+    expect(hubUi).toMatch(/function refocus[^]*?await tick\(\)[^]*?\.draft-open[^]*?\.hub-new/);
   });
 });
 

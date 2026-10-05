@@ -12,7 +12,7 @@ describe('проект и черновики сохраняются под св�
     const editor = await source('./Editor.svelte');
     expect(editor).not.toMatch(/type: 'application\/json' \}\), '(toonop\.toonop|draft\.toonops)'/);
     expect(editor).toMatch(/type: 'application\/octet-stream' \}\), 'toonop\.toonop'/);
-    expect(editor).toMatch(/type: 'application\/octet-stream' \}\), 'draft\.toonops'/);
+    expect(editor).toMatch(/type: 'application\/octet-stream' \}\), ids\.length === 1 \? 'draft\.toonops' : 'drafts\.toonops'/);
   });
 
   it('проект из листа экспорта — тоже', async () => {

@@ -10,14 +10,18 @@
 import { FIXED_POINT_SCALE } from '../format/constants';
 import type { ToonDocument } from '../format/types';
 import { isEmptyDocument } from '../model/operations';
+import { t } from '../i18n';
 
-/** Logical px, lying; standing swaps the sides. */
+/** The long side in logical px; the short one follows the proportion. */
 const SHEET_SIZES = [
-  { name: '720p', width: 1280, height: 720 },
-  { name: '1080p', width: 1920, height: 1080 },
-  { name: '2K', width: 2560, height: 1440 },
-  { name: '4K', width: 3840, height: 2160 },
+  { name: '720p', long: 1280 },
+  { name: '1080p', long: 1920 },
+  { name: '2K', long: 2560 },
+  { name: '4K', long: 3840 },
 ] as const;
+
+/** Lying; standing swaps the sides. */
+const PROPORTIONS = [[16, 9], [4, 3], [1, 1], [21, 9]] as const;
 
 export interface SheetChoice {
   /** `1280x720`: what the list holds and `resizeSheet` takes. */
@@ -26,14 +30,47 @@ export interface SheetChoice {
   readonly width: number;
   readonly height: number;
   readonly standing: boolean;
+  /** The proportion lying, `16:9`: what the cards are told apart by. */
+  readonly proportion: string;
+  /** The proportion as the sheet lies or stands: `9:16`. */
+  readonly ratio: string;
 }
 
-/** Every sheet a drawing can start on: each size lying, then each standing. */
+export function sheetProportions(): string[] {
+  return PROPORTIONS.map(([w, h]) => `${w}:${h}`);
+}
+
+export function sheetSizes(): string[] {
+  return SHEET_SIZES.map((size) => size.name);
+}
+
+/** Every sheet a drawing can start on: each proportion lying, then each standing; a square is one sheet. */
 export function sheetChoices(): SheetChoice[] {
-  return [false, true].flatMap((standing) => SHEET_SIZES.map(({ name, width, height }) => {
-    const [w, h] = standing ? [height, width] : [width, height];
-    return { value: `${w}x${h}`, name, width: w, height: h, standing };
-  }));
+  return [false, true].flatMap((standing) =>
+    PROPORTIONS.filter(([w, h]) => !standing || w !== h).flatMap(([w, h]) =>
+      SHEET_SIZES.map(({ name, long }) => {
+        // Even, so a video encoder takes the frame as it is.
+        const short = Math.round((long * h) / w / 2) * 2;
+        const [width, height] = standing ? [short, long] : [long, short];
+        return {
+          value: `${width}x${height}`,
+          name,
+          width,
+          height,
+          standing,
+          proportion: `${w}:${h}`,
+          ratio: standing ? `${h}:${w}` : `${w}:${h}`,
+        };
+      }),
+    ),
+  );
+}
+
+/** The sheet of a proportion, a size and a side; a square standing is the square. */
+export function sheetOf(proportion: string, name: string, standing: boolean): SheetChoice {
+  const of = (stands: boolean) =>
+    sheetChoices().find((sheet) => sheet.proportion === proportion && sheet.name === name && sheet.standing === stands);
+  return of(standing) ?? of(false) ?? sheetChoices()[0];
 }
 
 /** The document's sheet as the list names it. */
@@ -58,3 +95,10 @@ export function resizeSheet(doc: ToonDocument, value: string): void {
     doc.height = choice.height * FIXED_POINT_SCALE;
   }
 }
+
+/**
+ * A sheet is called by what it is for (owner, 2026-10-05): «16:9» says
+ * nothing to someone who came to draw. Keyed by the ratio as it lies.
+ */
+export const sheetName = (ratio: string): string => t(`sheet.name_${ratio.replace(':', '_')}`);
+export const sheetAbout = (ratio: string): string => t(`sheet.about_${ratio.replace(':', '_')}`);

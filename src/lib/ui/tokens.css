@@ -37,6 +37,11 @@
   --text-2: #535b6e;
   --sub: #dae1f0; /* tabs, chips, a key under the cursor */
   --well: #f4f6fb; /* the well a preview sits in */
+  /* «Новый мульт»: the tile a gallery opens with — the site's feed and the
+     studio's drafts hub alike. Tile ink on the tile holds 6.9:1. */
+  --tile: #ffd9d1;
+  --tile-hover: #ffcfc5;
+  --tile-ink: #7a3327;
   /* Red is the one accent: fills and rings take the working red (4.1:1 on the
      paper, over the 3:1 they need), text the deep step (5.7:1). Electric stays
      with the drawing aids — the first layer tag and the onion-skin. */

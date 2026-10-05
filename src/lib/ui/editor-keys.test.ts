@@ -23,7 +23,7 @@ describe('modifiers reach the keymap', () => {
     const source = onKeydown();
     expect(source).toContain('keyOwner(');
     expect(source).toContain('letterKeys: editor.settings.letterKeys');
-    expect(source).toContain("document.querySelector('dialog:modal')");
+    expect(source).toContain('document.querySelector(SHEET_UP)');
     expect(editorUi).not.toContain('TYPING_KEYS');
   });
 });

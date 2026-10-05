@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { t } from '../i18n';
 
+// The drafts hub is its own component since 2026-10-05.
+const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
+
 // Tenth audit, the studio shell. Editor.svelte is asserted as source, like
 // editor-keys.test.ts and project-file.test.ts; the store it calls into is
 // tested for real in draft/store.test.ts.
@@ -21,7 +24,7 @@ describe('the draft already on the canvas', () => {
   });
 
   it('is marked in the list, so pressing it closing the sheet is expected', () => {
-    expect(editorUi).toContain("t('draft.current')");
+    expect(hubUi).toContain("t('draft.current')");
     expect(t('draft.current')).toBe('сейчас на холсте');
   });
 });
@@ -43,7 +46,7 @@ describe('replacing the drawing waits for its own save', () => {
 describe('closing the drafts sheet by opening a draft', () => {
   it('closes the dialog, so focus goes back to the key that opened it', () => {
     // Unmounting an open <dialog> drops focus on <body>.
-    expect(fn('openDraft')).toContain('draftsDialog?.close()');
+    expect(fn('openDraft')).toContain('hub?.close()');
     expect(fn('openDraft')).not.toContain('draftsOpen = false');
   });
 });
@@ -84,13 +87,8 @@ describe('copy', () => {
 });
 
 describe('a draft row', () => {
-  it('ties its copy, download and delete keys to the draft they act on', () => {
-    expect(editorUi).toMatch(/<span class="draft-date" id="draft-date-\{index\}"/);
-    expect(editorUi.match(/aria-describedby="draft-date-\{index\}"/g)?.length).toBe(3);
-  });
-
   it('a copy made or a draft deleted is heard, not only seen', () => {
     // Eleventh audit: the region wraps the empty-list line too (audit11-shell).
-    expect(editorUi).toMatch(/<div class="drafts-said" aria-live="polite">[^]*?<p class="sheet-hint">\s*\{t\('draft\.count'/);
+    expect(hubUi).toMatch(/<div class="drafts-said" aria-live="polite">[^]*?<p class="hub-hint">\s*\{t\('draft\.count'/);
   });
 });

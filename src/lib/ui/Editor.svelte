@@ -12,12 +12,13 @@
   import PanelArranger from './PanelArranger.svelte';
   import TransformMenu from './TransformMenu.svelte';
   import ScaleMenu from './ScaleMenu.svelte';
-  import { sheetChoices, sheetValue } from './sheet-size';
+  import { sheetChoices, sheetName, sheetValue } from './sheet-size';
   import ExportSheet from './ExportSheet.svelte';
   import AudioPanel from './AudioPanel.svelte';
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
+  import DraftsHub from './DraftsHub.svelte';
   import PluginsSheet from './PluginsSheet.svelte';
   import Icon, { type IconName } from './Icon.svelte';
   import './tokens.css';
@@ -27,7 +28,6 @@
   import { isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
-  import { fitThumb } from './thumb-size';
   import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
   import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
@@ -49,7 +49,6 @@
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import { isAudioFile } from '../audio/track';
-  import FrameThumb from './FrameThumb.svelte';
   import {
     PANEL_HEIGHT_AUDIO,
     PANEL_HEIGHT_MIN,
@@ -102,11 +101,11 @@
   // The two sheets the editor draws itself. `showModal()` is what makes them
   // modal in fact and not only in the accessibility tree; `onclose` puts the
   // flag back, so Esc and the close buttons end at the same place.
-  let draftsDialog = $state<HTMLDialogElement | undefined>();
+  /** The drafts hub, when it is up: `close()` is its way out. */
+  let hub = $state<DraftsHub | undefined>();
+  /** A sheet is up: a modal one, or the hub standing in place of the studio. */
+  const SHEET_UP = 'dialog:modal, dialog.hub[open]';
   let manualDialog = $state<HTMLDialogElement | undefined>();
-  $effect(() => {
-    draftsDialog?.showModal();
-  });
   $effect(() => {
     manualDialog?.showModal();
   });
@@ -655,7 +654,7 @@
     const key = latinKey(e);
     // An open sheet is where the hands are: Alt+E and Alt+S stacked the
     // mega-eraser warning and the export over it, three modals deep.
-    const modalOpen = document.querySelector('dialog:modal') !== null;
+    const modalOpen = document.querySelector(SHEET_UP) !== null;
     // A small screen's window closes on Esc wherever the focus is — except
     // under a sheet, and in a live transform, whose Esc is the cancel.
     if (key === 'Escape' && openTab && shownTab && !modalOpen && !editor.transform && !e.defaultPrevented) {
@@ -1332,7 +1331,6 @@
   // a draft opened from the list was one IndexedDB refuses to write
   // (DataCloneError), so nothing drawn on it since was ever saved.
   let drafts = $state.raw<DraftEntry[]>([]);
-
   /** How much of the device's storage everything on it takes, for the header. */
   let storageUsed = $state(0);
 
@@ -1410,25 +1408,28 @@
     storageUsed = (await navigator.storage?.estimate?.().catch(() => null))?.usage ?? 0;
   }
 
-  /** Reference «копия»: the same drawing under a new key, the original untouched. */
-  async function copyDraft(entry: DraftEntry): Promise<void> {
-    const copy = await duplicateDraft(entry.id);
+  /** Reference «копия»: the same drawings under new keys, the originals untouched. */
+  async function copyDrafts(sources: string[]): Promise<void> {
+    let failed = false;
+    for (const id of sources) {
+      failed = !(await duplicateDraft(id)) || failed;
+    }
     await refreshDrafts();
-    // The source is still there, so the copy is what did not fit.
-    if (!copy && drafts.some((d) => d.id === entry.id)) {
+    // The sources are still there, so a copy is what did not fit.
+    if (failed && sources.every((id) => drafts.some((d) => d.id === id))) {
       alert(t('editor.draft_copy_failed'));
     }
   }
 
   /**
-   * The record as a file, straight from the card — the same `.toonops` the
-   * settings export writes, one save in it, so it comes back through the same
-   * import with its screenshot, its track and the hand it was saved with.
+   * The records picked in the hub as a file — the same `.toonops` the settings export
+   * writes, so it comes back through the same import with its screenshots,
+   * its tracks and the hand each was saved with.
    */
-  async function downloadDraft(entry: DraftEntry): Promise<void> {
+  async function downloadDrafts(ids: string[]): Promise<void> {
     try {
-      const text = await exportDrafts([entry.id]);
-      saveFile(new Blob([text], { type: 'application/octet-stream' }), 'draft.toonops');
+      const text = await exportDrafts(ids);
+      saveFile(new Blob([text], { type: 'application/octet-stream' }), ids.length === 1 ? 'draft.toonops' : 'drafts.toonops');
     } catch (err) {
       // A stored blob that will not read (Safari loses them), or a string
       // past the engine's length: the key did nothing and nobody heard why.
@@ -1437,25 +1438,15 @@
     }
   }
 
-  async function removeAllDrafts(): Promise<void> {
+  /** «Удалить все»; says whether it was done, so the hub can place the focus. */
+  async function removeAllDrafts(): Promise<boolean> {
     if (!askDelete(t('editor.drafts_wipe_confirm'))) {
-      return;
+      return false;
     }
     await deleteAllDrafts();
     forgetStoredDraft();
     await refreshDrafts();
-    await refocusDrafts(0);
-  }
-
-  /**
-   * A deleted row takes its pressed key with it, and the focus would fall to
-   * the page under the modal sheet. It goes to the row that took the place,
-   * the one above when the last went, or «Закрыть» when none is left.
-   */
-  async function refocusDrafts(at: number): Promise<void> {
-    await tick();
-    const rows = draftsDialog?.querySelectorAll<HTMLButtonElement>('.draft-open') ?? [];
-    (rows[Math.min(at, rows.length - 1)] ?? draftsDialog?.querySelector<HTMLButtonElement>('.sheet-foot .primary'))?.focus();
+    return true;
   }
 
   onMount(async () => {
@@ -1495,7 +1486,7 @@
     // The draft on the canvas is newer than its card: the list was read when
     // the sheet opened, and loading it would put back the older copy.
     if (entry.id === draftId) {
-      draftsDialog?.close();
+      hub?.close();
       return;
     }
     // A selection moved and not applied belongs to the drawing being left: it
@@ -1531,20 +1522,50 @@
     draftId = entry.id;
     editor.lastSavedAt = null;
     // close(), not the flag: an unmounted open dialog drops focus on <body>.
-    draftsDialog?.close();
+    hub?.close();
   }
 
-  async function removeDraft(entry: DraftEntry): Promise<void> {
-    if (!askDelete(t('editor.draft_delete_confirm'))) {
-      return;
+  /** Deletes the drafts picked in the hub; says whether it was done. */
+  async function removeDrafts(ids: string[]): Promise<boolean> {
+    if (!askDelete(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }))) {
+      return false;
     }
-    const at = drafts.findIndex((d) => d.id === entry.id);
-    await deleteDraft(entry.id);
-    if (draftId === entry.id) {
+    for (const id of ids) {
+      await deleteDraft(id);
+    }
+    if (ids.includes(draftId)) {
       forgetStoredDraft();
     }
     await refreshDrafts();
-    await refocusDrafts(at);
+    return true;
+  }
+
+  /**
+   * «Рисовать»: the sheet put together. Over a drawing it is a new one: the
+   * drawing left behind is written first and stays a card in the hub, so
+   * nothing is asked — unless it did not reach the disk. Says whether the
+   * sheet was started: the hub closes on a yes.
+   */
+  async function startSheet(value: string): Promise<boolean> {
+    if (!editor.sheetOpen) {
+      if (!editor.leaveTransform()) {
+        return false;
+      }
+      if (editor.touched) {
+        const saved = (await saveNow(true)) && !storageBlocked;
+        if (!saved && !confirm(t('editor.new_sheet_lost_confirm'))) {
+          return false;
+        }
+      }
+      editor.newSheet();
+      editor.audio.clear();
+      storedBlob = null;
+      storedCredits = '';
+      draftId = newDraftId();
+      editor.lastSavedAt = null;
+    }
+    editor.setSheet(value);
+    return true;
   }
 
   /**
@@ -1702,7 +1723,7 @@
    * then would change the drawing under the sheet: it is refused instead.
    */
   function sheetOpen(): boolean {
-    return document.querySelector('dialog:modal') !== null;
+    return document.querySelector(SHEET_UP) !== null;
   }
   /** The refusal, as a note above the sheet (the top layer), for a moment. */
   let dropNote = $state(false);
@@ -2524,9 +2545,9 @@
           title={t('sheet.size')}
           onchange={(e) => editor.setSheet(e.currentTarget.value)}
         >
-          {#each [false, true] as standing (standing)}
-            <optgroup label={t(standing ? 'sheet.standing' : 'sheet.lying')}>
-              {#each sheetChoices().filter((choice) => choice.standing === standing) as choice (choice.value)}
+          {#each [...new Set(sheetChoices().map((choice) => choice.ratio))] as ratio (ratio)}
+            <optgroup label={`${sheetName(ratio)} · ${ratio}`}>
+              {#each sheetChoices().filter((choice) => choice.ratio === ratio) as choice (choice.value)}
                 <option value={choice.value}>{choice.name} · {choice.width}×{choice.height}</option>
               {/each}
             </optgroup>
@@ -2739,116 +2760,23 @@
     <PanelArranger {editor} />
   {/if}
 
-  <!-- Drafts sheet: every local save with its first frame, newest first.
-       A native <dialog>, like the settings and plugins sheets: showModal()
-       brings the focus trap, the Esc key and an inert page behind it. The
-       hand-rolled version claimed `aria-modal` without any of the three, and
-       its Esc was bound to a backdrop that never received a key. -->
   {#if draftsOpen}
-    <dialog
-      bind:this={draftsDialog}
-      class="sheet sheet-dialog"
-      aria-label={t('editor.drafts')}
-      onclose={() => (draftsOpen = false)}
-    >
-      <header class="sheet-head">
-        <h2>{t('editor.drafts')}</h2>
-        <button class="key icon" onclick={() => draftsDialog?.close()} aria-label={t('editor.close')}>
-          <Icon name="x" />
-        </button>
-      </header>
-
-      <div class="sheet-body">
-        <!-- One region for the count and the empty list alike: deleting the
-             last draft swapped the counting region out and was not heard. -->
-        <div class="drafts-said" aria-live="polite">
-          {#if drafts.length === 0}
-            <p class="empty">{t('editor.drafts_empty')}</p>
-          {:else}
-            <p class="sheet-hint">
-              {t('draft.count', { count: drafts.length })}{t('editor.on_this_device')}
-              {#if storageUsed}{t('editor.storage_used', { size: formatFileSize(storageUsed) })}{/if}
-            </p>
-          {/if}
-        </div>
-        {#if drafts.length > 0}
-          <ul class="drafts">
-            {#each drafts as entry, index (entry.id)}
-              <!-- The DOM id is by place, not the draft's id: one from another
-                   file (.toonio's url) may carry a space and cut the tie. -->
-              <li class="draft">
-                <button class="draft-open" onclick={() => openDraft(entry)}>
-                  <span class="draft-thumb">
-                    {#if thumbUrls[entry.id]}
-                      <!-- The still written with the record: no document to
-                           re-render, and it is what the drawing looked like. -->
-                      {@const box = fitThumb(entry.doc.width, entry.doc.height, 44)}
-                      <img src={thumbUrls[entry.id]} alt="" width={box.w} height={box.h} />
-                    {:else}
-                      <FrameThumb doc={entry.doc} frameIndex={0} maxW={44} />
-                    {/if}
-                  </span>
-                  <span class="draft-meta">
-                    <span class="draft-date" id="draft-date-{index}">{new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
-                    <span class="draft-size">
-                      {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
-                      {t('draft.layers', { count: entry.doc.layers.length })}
-                      {#if entry.bytes}
-                        · <span class={draftSizeClass(entry.bytes)}>{formatFileSize(entry.bytes)}</span>
-                      {/if}
-                    </span>
-                    {#if entry.audio}
-                      <span class="draft-track">
-                        <Icon name="note" size={13} />
-                        {entry.audio.author ? t('draft.track_by', { author: entry.audio.author }) : ''}{entry.audio.name || t('editor.audio_unnamed')}
-                      </span>
-                    {/if}
-                  </span>
-                </button>
-                <!-- The three keys travel together: where the row wraps, they
-                     go under the date as one group, not one by one. -->
-                <span class="draft-keys">
-                <button
-                  class="key icon"
-                  onclick={() => copyDraft(entry)}
-                  title={t('editor.draft_copy_title')}
-                  aria-label={t('editor.draft_copy')}
-                  aria-describedby="draft-date-{index}"
-                >
-                  <Icon name="copy" />
-                </button>
-                <button
-                  class="key icon"
-                  onclick={() => downloadDraft(entry)}
-                  title={t('editor.draft_download_title')}
-                  aria-label={t('editor.draft_download')}
-                  aria-describedby="draft-date-{index}"
-                >
-                  <Icon name="download" />
-                </button>
-                <button
-                  class="key icon"
-                  onclick={() => removeDraft(entry)}
-                  title={t('editor.draft_delete_title')}
-                  aria-label={t('editor.draft_delete')}
-                  aria-describedby="draft-date-{index}"
-                >
-                  <Icon name="trash" />
-                </button>
-                </span>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </div>
-
-      <footer class="sheet-foot">
-        {#if drafts.length > 0}
-          <button class="key" onclick={removeAllDrafts}>{t('editor.drafts_wipe')}</button>
-        {/if}
-        <button class="key primary" onclick={() => draftsDialog?.close()}>{t('editor.close')}</button>
-      </footer>
-    </dialog>
+    <DraftsHub
+      bind:this={hub}
+      {editor}
+      {compact}
+      {drafts}
+      {thumbUrls}
+      {storageUsed}
+      {draftId}
+      onOpen={openDraft}
+      onCopy={copyDrafts}
+      onDownload={downloadDrafts}
+      onRemove={removeDrafts}
+      onRemoveAll={removeAllDrafts}
+      onSheet={startSheet}
+      onClose={() => (draftsOpen = false)}
+    />
   {/if}
 
   {#if settingsSheetOpen}
@@ -4464,81 +4392,6 @@
     gap: 0.55rem;
     font-size: 0.95rem;
   }
-  /* One row per draft: preview, when it was saved, how big it is, delete. */
-  .drafts {
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-  /* The keys stand shoulder to shoulder: on a phone-width sheet the gaps
-     between them were the room the date needed. */
-  /* Where the date and the keys do not share a line (320px, 200 % text) the
-     keys go under it, to the right, instead of pushing the sheet wider. */
-  .draft {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0;
-  }
-  .draft-keys {
-    display: flex;
-  }
-  .draft + .draft {
-    border-top: 1px solid var(--hairline-soft);
-  }
-  .draft-open {
-    display: flex;
-    /* Its content as the basis: the date keeps its line, and the keys are
-       what moves down when the two do not fit. */
-    flex: 1 1 auto;
-    align-items: center;
-    gap: 0.75rem;
-    min-height: 3.4rem;
-    padding: 0.4rem 0.3rem;
-    border: 0;
-    border-radius: var(--r-sm);
-    background: none;
-    font: inherit;
-    text-align: left;
-    color: inherit;
-    cursor: pointer;
-  }
-  @media (hover: hover) {
-    .draft-open:hover {
-      background: var(--sub);
-    }
-  }
-  .draft-thumb {
-    display: flex;
-    /* The still is what a draft is known by: at 200 % text on a phone the
-       words beside it squeezed it to 16 px. */
-    flex: none;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    background: var(--canvas);
-    overflow: hidden;
-  }
-  .draft-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-  .draft-date {
-    font-size: 0.95rem;
-  }
-  .draft-size {
-    font-size: 0.8rem;
-    color: var(--ink-2);
-  }
-  .empty {
-    margin: 1.2rem 0;
-    color: var(--ink-2);
-  }
   .editor :global(.sheet-foot) {
     display: flex;
     justify-content: space-between;
@@ -4654,23 +4507,6 @@
   @media (hover: hover) {
     .editor :global(.sheet .key:not(.primary):not(.active):hover:not(:disabled)) {
       background: color-mix(in oklab, var(--sub), var(--text) 8%);
-    }
-  }
-  /* An icon is form enough: the ghost fill is for word keys, and three ghost
-     circles shoulder to shoulder in a draft row stood rim to rim. At rest the
-     key is bare; under the cursor its circle is drawn in the content box, 4px
-     in from each side, so it never touches a neighbour. The target stays 44.
-     Global and after the ghost rules: Svelte scopes every class past the
-     first with `:where()`, and a scoped rule weighed less than the fill. */
-  .editor :global(.sheet .draft .key.icon:not(.active)) {
-    padding: 4px;
-    background: none;
-    background-clip: content-box;
-  }
-  /* The hover above writes the `background` shorthand, which resets the clip. */
-  @media (hover: hover) {
-    .editor :global(.sheet .draft .key.icon:hover:not(:disabled)) {
-      background-clip: content-box;
     }
   }
   .editor :global(.key.primary.icon) {
