@@ -59,7 +59,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { columnDraws, itemDrawn, panelItem as panelItemSpec, toolOfItem, toolOpensBrush } from './panels';
+  import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush } from './panels';
   import type { SideId } from './presets';
   import { TABLET_MIN_W, boxRow, canvasFloor, compactLayout, moveTab, phoneTools, pickStep, railDrawn, sheetScrollsWhole, tabLabelsFit, yieldToCanvas, type LayoutStep, type TabId } from './small-screen';
   import { dropPlacement } from './arrange';
@@ -672,6 +672,10 @@
    */
   const transportDrawn = $derived(
     compact || itemDrawn(editor.panels, 'transport', { left: folded('left'), right: folded('right'), rows: panelFolded }),
+  );
+  /** The stage's own thickness rail: not where a panel already draws the slider (panels.ts). */
+  const stageRail = $derived(
+    stageRailShown(editor.panels, { left: folded('left'), right: folded('right'), rows: panelFolded }, compact),
   );
   /** An open column's width as drawn: the stored one, giving way to the canvas; unstored, as measured. */
   const sideWidth = (id: SideId): number => {
@@ -2650,7 +2654,7 @@
     style:--stage-under={!compact && !panelFolded && editor.panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}
     style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}
     style:--tool-windows-h={editor.transform || pipetteUp || editor.pluginWindow ? `${toolWindowsHeight}px` : undefined}>
-    <CanvasView {editor} />
+    <CanvasView {editor} rail={stageRail} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
          under the hub — and not under a small screen's one window either. -->
     {#if isEmptyDocument(editor.doc) && !draftsOpen && !shownTab}{@render stageNote?.()}{/if}

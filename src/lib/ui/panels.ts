@@ -531,6 +531,21 @@ export function itemDrawn(
 }
 
 /**
+ * Whether the stage keeps its own thickness rail (CanvasView). The sidebar's
+ * slider (`brush-rail`) is the same control: where the full layout draws it,
+ * the rail under it was a second one (owner, 2026-10-06: «оставить что-то
+ * одно»). A small screen draws no column, and a folded one took its slider
+ * with it — there the rail is the only one.
+ */
+export function stageRailShown(
+  layout: PanelLayout,
+  folded: { left: boolean; right: boolean; rows: boolean },
+  compact: boolean,
+): boolean {
+  return compact || !panelItemVisible(layout, 'brush-rail') || !itemDrawn(layout, 'brush-rail', folded);
+}
+
+/**
  * Whether a column has anything to draw. Some items draw nothing where they
  * lie — the pipette's key under a preset that keeps it elsewhere, «Отправить»
  * off the site — and a column holding only those stood as an empty strip

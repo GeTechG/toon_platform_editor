@@ -63,7 +63,8 @@
   import { nextHint } from './canvas-hint';
   import { createSideButtonGuard } from './side-buttons';
 
-  let { editor }: { editor: EditorState } = $props();
+  /** `rail`: the stage's own thickness rail — off where a panel already holds the slider (panels.ts). */
+  let { editor, rail = true }: { editor: EditorState; rail?: boolean } = $props();
 
   // The visible context needs a few more members than the pure Canvas2DLike/
   // BlitTarget seam (alpha compositing, clearing). It is a real 2D context.
@@ -150,6 +151,10 @@
   // must not stay in the middle of the stage through the preview.
   $effect(() => {
     if (editor.playing) railHeld = null;
+  });
+  // …nor after the rail itself went, the slider put on a panel under the hand.
+  $effect(() => {
+    if (!rail) railHeld = null;
   });
   /** A finger held still, waiting to become the pipette (hold-pick.ts). */
   let hold: { pointerId: number; x: number; y: number; timer: number } | null = null;
@@ -351,6 +356,8 @@
   $effect(() => {
     void editor.playing;
     void touchSeen;
+    // The rail put on or taken off the stage is inside the wrap: no panel changed.
+    void rail;
     if (!wrapEl || typeof ResizeObserver === 'undefined') return;
     const root = wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl;
     const sizes = new ResizeObserver(() => measureCovers());
@@ -2056,6 +2063,7 @@
        not in a column, so it stays whatever the panels around it do. Through
        the preview it stays as the fps slider does, aria-disabled: gone, it
        dropped the focus on it to <body> (owner, after the seventeenth audit). -->
+  {#if rail}
   <div
     class="size-rail"
     data-over-sheet
@@ -2085,6 +2093,7 @@
       ></span>
     </span>
   </div>
+  {/if}
   {#if cursorVisible && !editor.playing && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
     <span
       class="brush-cursor"
