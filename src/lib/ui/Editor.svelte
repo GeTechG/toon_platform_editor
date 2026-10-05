@@ -80,14 +80,18 @@
   // `startNew` is the host asking for a new drawing outright (the site's
   // «Новый мульт» tile): the studio opens on the choice of a sheet, past the
   // drafts and whatever the start-up setting says.
+  // `open` is the host handing over a drawing to continue (a draft kept on
+  // the account): the studio starts on it, as on a file just opened.
   let {
     onPublish,
     stageNote,
     startNew,
+    open,
   }: {
     onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null) => void;
     stageNote?: Snippet;
     startNew?: boolean;
+    open?: { doc: ToonDocument; audio?: AudioTrackData | null };
   } = $props();
   /** Once: the hub opened by hand later starts on the drafts as ever. */
   let createOnOpen = $state(untrack(() => startNew === true));
@@ -1660,6 +1664,24 @@
   let fileInput = $state<HTMLInputElement | undefined>();
   /** Import failure, shown until the next attempt. */
   let importError = $state('');
+
+  // The host's drawing, once, as the studio comes up: past the hub, validated
+  // like a file and under a draft record of its own. Its track is not on this
+  // device yet, so the autosave is left to write it.
+  const handed = untrack(() => open);
+  if (handed) {
+    try {
+      adoptOpenedDoc(loadDocument(handed.doc), '');
+      // Only once it is in: a drawing that did not open leaves the usual start.
+      draftsOpen = false;
+      if (handed.audio) {
+        void editor.audio.restore(handed.audio);
+      }
+    } catch (err) {
+      console.warn('handed drawing failed:', err);
+      importError = t('editor.file_failed', { reason: t('editor.file_not_toonop') });
+    }
+  }
 
   /**
    * The one door every drawing comes in through: the file dialog and a drop on

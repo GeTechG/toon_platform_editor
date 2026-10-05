@@ -557,3 +557,19 @@ describe('the hub says what it is and where it is', () => {
     expect(shell).toContain('<section class="reel-card" aria-label={sheetName(shape.ratio)} inert={proportion !== newProportion}>');
   });
 });
+
+describe('a host can hand over a drawing to continue', () => {
+  // Owner, 2026-10-06: a draft kept on the account opens in the studio.
+  it('the editor takes `open` and starts on that drawing, past the hub', () => {
+    expect(studio).toMatch(/open\?: \{ doc: ToonDocument; audio\?: AudioTrackData \| null \};/);
+    const at = studio.indexOf('const handed = untrack(() => open);');
+    expect(at).toBeGreaterThan(studio.indexOf('let importError = $state'));
+    const body = studio.slice(at, studio.indexOf('\n  }\n', at));
+    // As a file: validated, under a draft record of its own.
+    expect(body).toMatch(/adoptOpenedDoc\(loadDocument\(handed\.doc\), ''\);[^]*?draftsOpen = false;/);
+    // The track comes with it, and is not yet on this device's disk.
+    expect(body).toMatch(/if \(handed\.audio\) \{\s*void editor\.audio\.restore\(handed\.audio\);/);
+    // A drawing this build cannot read is said, not thrown through the mount.
+    expect(body).toMatch(/catch[^]*?importError = /);
+  });
+});
