@@ -625,7 +625,8 @@
     "plugins": "Плагины",
     "open_plugins": "Открыть плагины",
     "errors": "Журнал ошибок",
-    "catalog_url": "Адрес каталога",
+    "catalog_url": "Свой каталог плагинов",
+    "catalog_field": "Адрес каталога",
     "catalog_placeholder": "пусто — каталога нет",
     "done": "Готово"
   },

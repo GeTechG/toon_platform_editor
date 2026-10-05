@@ -243,6 +243,15 @@ describe('the settings sheet', () => {
     expect(pane('more')).toContain('onDownloadErrors');
   });
 
+  it('the catalog address is folded away at the bottom: nothing there for most to change', () => {
+    const more = pane('more');
+    expect(more).toMatch(/<details class="pick">\s*<summary>\{t\('settings\.catalog_url'\)\}<\/summary>[^]*?setSetting\('pluginCatalog'[^]*?<\/details>/);
+    // Last in the panel, under the error log.
+    expect(more.indexOf("t('settings.catalog_url')")).toBeGreaterThan(more.indexOf("t('settings.download_errors')"));
+    expect(t('settings.catalog_url')).toBe('Свой каталог плагинов');
+    expect(t('settings.catalog_field')).toBe('Адрес каталога');
+  });
+
   it('which drafts go into the copy is folded away: all of them, unless told', () => {
     expect(pane('saving')).toMatch(/<details[^]*?t\('settings\.drafts_chosen'[^]*?class="picklist"[^]*?<\/details>/);
     expect(t('settings.drafts_chosen', { chosen: 2, total: 3 })).toBe('В копию пойдут 2 из 3');

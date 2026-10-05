@@ -511,19 +511,24 @@
           onOpenPlugins?.();
           dialogEl?.close();
         })}
-        <label class="field">
-          <span>{t('settings.catalog_url')}</span>
-          <input
-            type="url"
-            placeholder={t('settings.catalog_placeholder')}
-            value={editor.settings.pluginCatalog}
-            onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
-          />
-        </label>
         {#if onDownloadErrors}
           <h3 class="sheet-hint">{t('settings.errors')}</h3>
           {@render act(t('settings.download_errors'), 'download', onDownloadErrors)}
         {/if}
+        <!-- Folded, and last: the address is for whoever keeps a catalog of
+             their own — everyone else has nothing to change here. -->
+        <details class="pick">
+          <summary>{t('settings.catalog_url')}</summary>
+          <div class="field">
+            <input
+              type="url"
+              aria-label={t('settings.catalog_field')}
+              placeholder={t('settings.catalog_placeholder')}
+              value={editor.settings.pluginCatalog}
+              onchange={(e) => editor.setSetting('pluginCatalog', e.currentTarget.value.trim())}
+            />
+          </div>
+        </details>
       {/if}
     </div>
   </div>
@@ -697,6 +702,10 @@
     border-radius: var(--r-sm);
     font-size: 0.95rem;
     cursor: pointer;
+  }
+  /* Under a group of rows it is a thing apart, not the group's next row. */
+  .settings-main .act + .pick {
+    margin-top: 0.9rem;
   }
   .pick summary:focus-visible {
     outline: 3px solid var(--accent);
