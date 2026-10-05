@@ -21,6 +21,7 @@
     | 'gear'
     | 'download'
     | 'send'
+    | 'heart'
     | 'play'
     | 'pause'
     | 'stop'
@@ -112,6 +113,9 @@
     // Two beamed notes: the reference's «нота» that attaches a soundtrack.
     note: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
     send: 'M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z',
+    // The host's «нравится», under a toon and under a comment.
+    heart:
+      'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.500 3c-1.76 0-3 .5-4.500 2-1.500-1.500-2.740-2-4.500-2A5.500 5.500 0 0 0 2 8.500c0 2.300 1.500 4.050 3 5.500l7 7Z',
     play: 'M8 5.5v13l11-6.5-11-6.5Z',
     pause: 'M9 6v12M15 6v12',
     // Transport: a step of one frame, and the jump to either end of the strip.
