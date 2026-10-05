@@ -1665,6 +1665,26 @@
     dirty = false;
   }
 
+  /** «Отправить мульт»: the key's work, and the export sheet's way on. */
+  function sendOut(): void {
+    // A live transform is on the screen and not yet in the document: the
+    // mult went out with the selection where it was lifted. The lock
+    // refuses and says so, as it does for a frame change.
+    if (!editor.leaveTransform()) return;
+    onPublish?.(
+      $state.snapshot(editor.doc),
+      editor.audio.blob
+        ? {
+            blob: editor.audio.blob,
+            name: editor.audio.name,
+            author: editor.audio.author,
+            sync: editor.audio.sync,
+          }
+        : null,
+      forgetSent,
+    );
+  }
+
   /**
    * The record behind the drawing on screen is gone (owner, after the tenth
    * audit): the drawing is unsaved again — Save lights up, closing the tab
@@ -2516,24 +2536,7 @@
       <button
         class="key primary publish"
         disabled={editor.audio.loading}
-        onclick={() => {
-          // A live transform is on the screen and not yet in the document: the
-          // mult went out with the selection where it was lifted. The lock
-          // refuses and says so, as it does for a frame change.
-          if (!editor.leaveTransform()) return;
-          onPublish?.(
-            $state.snapshot(editor.doc),
-            editor.audio.blob
-              ? {
-                  blob: editor.audio.blob,
-                  name: editor.audio.name,
-                  author: editor.audio.author,
-                  sync: editor.audio.sync,
-                }
-              : null,
-            forgetSent,
-          );
-        }}
+        onclick={sendOut}
         title={t('editor.publish')}
         aria-label={t('editor.publish')}
       >
@@ -2971,6 +2974,7 @@
   <ExportSheet
     bind:this={exportButton}
     {editor}
+    onPublish={onPublish ? sendOut : undefined}
     onOpen={() => {
       editor.commitTransform(); // under the lock too (owner, 16th audit)
       saveNow();

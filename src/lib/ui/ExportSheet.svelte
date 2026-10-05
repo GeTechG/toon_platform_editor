@@ -22,8 +22,11 @@
   import { plugins } from '../plugins';
   import { makeScene } from '../plugins/scene';
   import { formatPercent, t } from '../i18n';
+  import { formatFileSize } from './file-size';
 
-  let { editor, onOpen }: { editor: EditorState; onOpen?: () => void } = $props();
+  // `onPublish` is the studio's send key, where the host publishes: the file
+  // made is half of the loop, the link a friend opens is the other.
+  let { editor, onOpen, onPublish }: { editor: EditorState; onOpen?: () => void; onPublish?: () => void } = $props();
 
   /** A plugin's format is its register id behind a prefix, so it cannot pass for ours. */
   type Format = 'project' | 'png' | 'gif' | 'video' | `plugin:${string}`;
@@ -46,6 +49,17 @@
   let planned = $state(false);
   /** The save picker is up or on its way: `busy` is not set until it answers. */
   let picking = false;
+  /**
+   * What the last export made: its weight, and — a picture — an address to
+   * show it by. «Файл готов» alone left the author looking at nothing.
+   */
+  let result = $state<{ url: string | null; bytes: number } | null>(null);
+  function forget(): void {
+    if (result?.url) {
+      URL.revokeObjectURL(result.url);
+    }
+    result = null;
+  }
 
   const singleFrame = $derived(frameCount(editor.doc) === 1);
 
@@ -180,6 +194,7 @@
     progress = 0;
     error = '';
     cancelling = new AbortController();
+    forget();
     // «Скачать» goes disabled under the finger, and a disabled key drops the
     // focus to the page: it goes to «Отменить», the one thing left to do, and
     // back to «Скачать» when the file is out or the build is called off.
@@ -198,6 +213,7 @@
       throwIfAborted(signal);
       save(blob, name);
       saved = true;
+      result = { url: blob.type.startsWith('image/') ? URL.createObjectURL(blob) : null, bytes: blob.size };
     };
     try {
       if (format === 'project') {
@@ -266,6 +282,7 @@
     // Last time's «Экспорт отменён» is not news on a new visit.
     error = '';
     stage = '';
+    forget();
     open = true;
   }
 
@@ -276,6 +293,7 @@
   // The sheet goes with its panel, or with the studio when the site moves on:
   // a build left running handed its file over on whatever page came next.
   onDestroy(cancel);
+  onDestroy(forget);
 
   function close(): void {
     cancel();
@@ -298,6 +316,7 @@
     onclose={() => {
       open = false;
       cancel();
+      forget();
     }}
   >
     <header class="sheet-head">
@@ -420,7 +439,19 @@
         <progress max="100" value={progress} aria-label={stage}></progress>
         <button bind:this={cancelEl} class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {:else if stage}
-        <p class="note" aria-hidden="true">{stage}</p>
+        {#if result?.url}
+          <img class="result" src={result.url} alt={t('export.result_alt')} />
+        {/if}
+        <p class="made" aria-hidden="true">{stage}{#if result}{' · '}{formatFileSize(result.bytes)}{/if}</p>
+        {#if onPublish}
+          <button class="key wide" onclick={() => {
+            close();
+            onPublish();
+          }}>
+            <Icon name="send" />
+            {t('export.publish')}
+          </button>
+        {/if}
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>
@@ -469,6 +500,26 @@
     margin: 0.2rem 0;
     font-size: 0.82rem;
     color: var(--ink-2);
+  }
+  /* The file as it came out, on the white it was drawn on; no taller than
+     leaves the keys under it in reach on a phone lying down. */
+  .result {
+    display: block;
+    max-width: 100%;
+    max-height: min(14rem, 30dvh);
+    margin: 0.7rem auto 0;
+    /* White on the white sheet: a hairline says where the picture ends. */
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+  }
+  /* Read, not glanced past: the end of the work is said in ink. */
+  .made {
+    margin: 0.5rem 0 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-align: center;
+    color: var(--ink);
   }
   progress {
     width: 100%;

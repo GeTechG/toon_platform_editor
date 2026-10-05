@@ -167,6 +167,6 @@ describe('экспорт: конец сборки', () => {
     expect(t('export.saved')).toBe('Файл готов');
     // Said in the status region a reader already follows, and shown under the key.
     expect(sheet).toMatch(/stage = saved \? t\('export\.saved'\) : ''/);
-    expect(sheet).toMatch(/\{:else if stage\}\s*<p class="note" aria-hidden="true">\{stage\}<\/p>/);
+    expect(sheet).toMatch(/\{:else if stage\}[^]*?<p class="made" aria-hidden="true">\{stage\}/);
   });
 });

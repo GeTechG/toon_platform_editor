@@ -132,9 +132,11 @@ describe('the drafts connection', () => {
 
 describe('what is on the screen is what leaves', () => {
   it('a publish applies a live transform first — the move on screen went unpublished', () => {
+    // The key's work is `sendOut`, which the export sheet's way on shares.
     const at = editorUi.indexOf("{:else if id === 'publish'}");
-    const block = editorUi.slice(at, editorUi.indexOf("{:else if id === 'merge'}", at));
-    expect(block).toMatch(/editor\.leaveTransform\(\)[^]*onPublish\?\.\(/);
+    expect(editorUi.slice(at, editorUi.indexOf("{:else if id === 'merge'}", at))).toContain('onclick={sendOut}');
+    const send = editorUi.slice(editorUi.indexOf('function sendOut('), editorUi.indexOf('forgetSent,\n    );'));
+    expect(send).toMatch(/editor\.leaveTransform\(\)[^]*onPublish\?\.\(/);
   });
 
   it('so does an export', () => {
