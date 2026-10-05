@@ -469,8 +469,9 @@
   // The divider between the layer list and the grid. Until it is dragged the
   // column keeps its CSS width, so the phone layout stays narrow on its own.
   /** The floor is a row without its name: eye, tag, handle, delete, the
-   *  padding and the gaps — 135 px at 100 % text (`.layer-col` holds it in rem). */
-  const COL_MIN = 136;
+   *  padding and the gaps — 135 px at 100 % text (`.layer-col` holds it in rem).
+   *  To the pixel: one over showed a sliver of the name. */
+  const COL_MIN = 135;
   const COL_MAX = 320;
   /** Keyboard step, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const COL_STEP = 16;
@@ -763,11 +764,12 @@
     cursor: ew-resize;
     touch-action: none;
   }
-  /* The hairline the column used to draw sits in the band's middle. */
+  /* The hairline the column used to draw, at the names' edge: in the band's
+     middle it left 12 px of white between a row's fill and the line. */
   .col-resizer::after {
     content: '';
     position: absolute;
-    left: 50%;
+    left: 0;
     top: 0;
     bottom: 0;
     width: 1px;

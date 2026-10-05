@@ -98,8 +98,15 @@ describe('layer column divider', () => {
 
   it('narrows down to the icons, never into the eye', () => {
     // The floor is the row without its name: eye, tag, handle, delete. 128
-    // was 7 px short of them, and the bin went under the column's edge.
-    expect(timeline).toContain('const COL_MIN = 136;');
+    // was 7 px short of them, and the bin went under the column's edge; 136
+    // was a pixel over, and that pixel showed a sliver of the name (owner).
+    expect(timeline).toContain('const COL_MIN = 135;');
+  });
+
+  it('the hairline stands at the names\' edge, so a row\'s fill runs up to it', () => {
+    // In the band's middle it left 12 px of white between the active row's
+    // fill and the line (owner). The band's 24 px are the frames' side now.
+    expect(timeline).toMatch(/\.col-resizer::after \{[^}]*left: 0;/s);
   });
 
   it('the arrows resize it too, so no pointer drag is required (WCAG 2.5.7)', () => {
