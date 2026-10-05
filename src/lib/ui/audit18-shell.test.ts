@@ -12,7 +12,7 @@ function fn(name: string): string {
   return match[0];
 }
 
-const layout = (patch: Partial<PanelLayout>): PanelLayout => ({ left: [], right: [], rows: [], float: [], hidden: [], ...patch });
+const layout = (patch: Partial<PanelLayout>): PanelLayout => ({ left: [], right: [], top: [], rows: [], float: [], hidden: [], ...patch });
 const open = { left: false, right: false, rows: false };
 
 describe('Пробел при свёрнутой панели', () => {

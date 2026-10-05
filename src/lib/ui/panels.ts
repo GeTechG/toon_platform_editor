@@ -60,11 +60,12 @@ export function toolOfItem(id: string): string | null {
 /**
  * Where an item can go. The bottom panel is however many rows the user made:
  * `row:N` is one of them, `newrow:N` is the gap between them — dropping there
- * makes a row. The rest are the two side columns, the canvas and the shelf.
+ * makes a row. The rest are the two side columns, the bar over the canvas,
+ * the canvas and the shelf.
  */
-export type PanelSlot = 'left' | 'right' | 'float' | 'hidden' | `row:${number}` | `newrow:${number}`;
+export type PanelSlot = 'left' | 'right' | 'top' | 'float' | 'hidden' | `row:${number}` | `newrow:${number}`;
 /** The slots that are always there, whatever the rows are doing. */
-export const FIXED_SLOTS = ['left', 'right', 'float', 'hidden'] as const;
+export const FIXED_SLOTS = ['left', 'right', 'top', 'float', 'hidden'] as const;
 
 
 
@@ -128,6 +129,9 @@ function fixedItems(): readonly PanelItem[] {
   { id: 'brush', kind: 'widget', wide: true, label: t('panel.item.brush') },
   // The plain pair, for whoever wants a key instead of a box.
   { id: 'color', kind: 'widget', label: t('panel.item.color') },
+  // A key each, the box behind it: the top bar's form of the two (toonop).
+  { id: 'brush-key', kind: 'widget', label: t('panel.item.brush_key') },
+  { id: 'color-key', kind: 'widget', label: t('panel.item.color_key') },
   { id: 'brush-sizes', kind: 'widget', wide: true, label: t('panel.item.brush_sizes') },
   { id: 'timeline', kind: 'widget', wide: true, label: t('panel.item.timeline') },
   { id: 'transport', kind: 'widget', label: t('panel.item.transport') },
@@ -165,6 +169,8 @@ export function panelItems(): readonly PanelItem[] {
 export interface PanelLayout {
   left: string[];
   right: string[];
+  /** The bar over the canvas, drawn only when it holds something. */
+  top: string[];
   /** The bottom panel, top row first; a row that empties is removed. */
   rows: string[][];
   /** Windows over the canvas. */
@@ -209,6 +215,7 @@ function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
     'manual',
   ],
   right: ['palette', 'brush'],
+  top: [],
   rows: [[
     'fps',
     'transport',
@@ -223,12 +230,12 @@ function defaultBase(): Omit<PanelLayout, 'float' | 'hidden'> {
 }
 
 function emptyLayout(): PanelLayout {
-  return { left: [], right: [], rows: [], float: [], hidden: [] };
+  return { left: [], right: [], top: [], rows: [], float: [], hidden: [] };
 }
 
 /** Every item the layout draws somewhere, in reading order. */
 export function allPlaced(layout: PanelLayout): string[] {
-  return [...layout.left, ...layout.right, ...layout.rows.flat(), ...layout.float, ...layout.hidden];
+  return [...layout.left, ...layout.right, ...layout.top, ...layout.rows.flat(), ...layout.float, ...layout.hidden];
 }
 
 /**
@@ -246,7 +253,7 @@ export function itemsOf(layout: PanelLayout, slot: PanelSlot): string[] {
   if (row) {
     return row.fresh ? [] : layout.rows[row.index] ?? [];
   }
-  return layout[slot as 'left' | 'right' | 'float' | 'hidden'] ?? [];
+  return layout[slot as (typeof FIXED_SLOTS)[number]] ?? [];
 }
 
 /** The slots this layout offers now: its rows, plus one more to make. */
@@ -254,6 +261,7 @@ export function slotsOf(layout: PanelLayout): PanelSlot[] {
   return [
     'left',
     'right',
+    'top',
     ...layout.rows.map((_, i) => rowSlot(i)),
     newRowSlot(layout.rows.length),
     'float',
@@ -311,6 +319,7 @@ function layoutOf(base: Partial<Omit<PanelLayout, 'hidden'>>): PanelLayout {
   const next: PanelLayout = {
     left: [...(base.left ?? [])],
     right: [...(base.right ?? [])],
+    top: [...(base.top ?? [])],
     rows: (base.rows ?? []).map((row) => [...row]),
     float: [...(base.float ?? [])],
     hidden: [],
@@ -360,6 +369,7 @@ export function normalizePanels(value: unknown, waiting = false): PanelLayout {
   };
   next.left = take(stored.left);
   next.right = take(stored.right);
+  next.top = take(stored.top);
   // Rows as stored, or — for a layout written when the bottom panel had fixed
   // rows — those, in the order they were drawn. The old `draw` row is left
   // out on purpose: it belonged to a layout with no side columns and held the
@@ -415,6 +425,7 @@ export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, 
   const next: PanelLayout = {
     left: without(layout.left),
     right: without(layout.right),
+    top: without(layout.top),
     rows: layout.rows.map(without),
     float: without(layout.float),
     hidden: without(layout.hidden),
@@ -430,7 +441,7 @@ export function movePanelItem(layout: PanelLayout, id: string, slot: PanelSlot, 
       into.splice(Math.max(0, Math.min(into.length, index ?? into.length)), 0, id);
     }
   } else {
-    const into = next[slot as 'left' | 'right' | 'float' | 'hidden'];
+    const into = next[slot as (typeof FIXED_SLOTS)[number]];
     into.splice(Math.max(0, Math.min(into.length, index ?? into.length)), 0, id);
   }
   next.rows = next.rows.filter((list) => list.length > 0);
@@ -448,6 +459,9 @@ export function showPanelItem(layout: PanelLayout, id: string, preset?: PanelLay
   }
   if (home.right.includes(id)) {
     return movePanelItem(layout, id, 'right');
+  }
+  if (home.top.includes(id)) {
+    return movePanelItem(layout, id, 'top');
   }
   const rowIndex = home.rows.findIndex((row) => row.includes(id));
   // Its row in the default may not exist here; the last row is close enough.
@@ -492,6 +506,7 @@ export function itemDrawn(
   folded: { left: boolean; right: boolean; rows: boolean },
 ): boolean {
   return layout.float.includes(id)
+    || layout.top.includes(id)
     || (!folded.left && layout.left.includes(id))
     || (!folded.right && layout.right.includes(id))
     || (!folded.rows && layout.rows.some((row) => row.includes(id)));
@@ -537,7 +552,7 @@ export function samePanels(
   bPos?: Readonly<Record<string, { x: number; y: number }>>,
 ): boolean {
   const key = (p: PanelLayout) =>
-    JSON.stringify([p.left, p.right, p.rows, [...p.float].sort(), [...p.hidden].sort()]);
+    JSON.stringify([p.left, p.right, p.top, p.rows, [...p.float].sort(), [...p.hidden].sort()]);
   if (key(a) !== key(b)) {
     return false;
   }

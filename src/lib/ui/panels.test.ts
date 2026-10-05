@@ -21,6 +21,8 @@ import {
   normalizePanels,
   panelItem,
   showPanelItem,
+  samePanels,
+  itemDrawn,
 } from './panels';
 import * as presets from './presets';
 
@@ -214,7 +216,10 @@ describe('the default layouts', () => {
       ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
       'save', 'export', 'settings', 'publish', 'history', 'manual', 'fullscreen',
     ]);
-    expect(studio.right).toEqual(['palette', 'brush']);
+    // The owner (2026-10-05): no right column — a top bar with a key for the
+    // brush and a key for the colours, each opening its own window.
+    expect(studio.right).toEqual([]);
+    expect(studio.top).toEqual(['brush-key', 'color-key']);
     expect(studio.rows).toEqual([
       ['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'],
       ['timeline'],
@@ -222,8 +227,23 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush',
     ].sort());
+  });
+
+  test('the top bar is a slot like the columns: it takes a drop, is read back, and is offered', () => {
+    const base = defaultPanels();
+    expect(base.top).toEqual([]);
+    expect(base.hidden).toEqual(expect.arrayContaining(['brush-key', 'color-key']));
+    const moved = movePanelItem(base, 'onion', 'top');
+    expect(moved.top).toEqual(['onion']);
+    expect(moved.rows.flat()).not.toContain('onion');
+    expect(itemsOf(moved, 'top')).toEqual(['onion']);
+    expect(slotsOf(moved)).toContain('top');
+    expect(slotLabel('top')).toBe('Сверху');
+    expect(normalizePanels(JSON.parse(JSON.stringify(moved))).top).toEqual(['onion']);
+    expect(samePanels(moved, base)).toBe(false);
+    expect(itemDrawn(moved, 'onion', { left: true, right: true, rows: true })).toBe(true);
   });
 
   test('the one arrangement the reference presets start from is not toonop\'s', () => {

@@ -305,7 +305,7 @@ export interface PluginPreset {
 
 /** A patch on the editor's one arrangement (see `ui/panels.ts`). */
 export interface PluginPanels {
-  readonly base?: { left?: string[]; right?: string[]; rows?: string[][]; float?: string[] };
+  readonly base?: { left?: string[]; right?: string[]; top?: string[]; rows?: string[][]; float?: string[] };
   readonly hide?: readonly string[];
   readonly swap?: readonly (readonly [string, string])[];
 }

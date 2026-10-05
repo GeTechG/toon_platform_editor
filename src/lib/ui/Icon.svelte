@@ -53,9 +53,21 @@
     | 'note'
     | 'help'
     | 'more'
-    | 'info';
+    | 'info'
+    | 'brush'
+    | 'disc'
+    | 'square'
+    | 'harmony'
+    | 'sliders';
 
   const PATHS: Record<IconName, string> = {
+    // The top bar's brush key, and the five ways of the colours window.
+    brush:
+      'M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3ZM9 8c-2 3-4 3.500-7 4l8 10c2-1 6-5 6-7M14.5 17.5 4.5 15',
+    disc: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z',
+    square: 'M6 5h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
+    harmony: 'M4 6l8 6 8-2M12 12l-5 7',
+    sliders: 'M4 8h16M4 16h16M9 6v4M15 14v4',
     plus: 'M12 3v18M3 12h18',
     minus: 'M3 12h18',
     // Two arrows passing each other: outline and fill trade places.

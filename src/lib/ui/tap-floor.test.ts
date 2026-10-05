@@ -31,6 +31,9 @@ const WINDOWS = [
   // The colour panel stands in a toolbar row, not in the montage: its saved
   // swatches are chrome beside the keys, and the row is already a key tall.
   'ColorPanel.svelte',
+  // The colours window of the top bar, and the key that opens it.
+  'ColoursPanel.svelte',
+  'PopKey.svelte',
   // The studio's own chrome, for the same reason: scoping this to the floating
   // windows alone left the fps slider in the bottom toolbar at 96x24.
   'Editor.svelte',
@@ -42,6 +45,8 @@ const EXEMPT = new Map<string, string>([
   // At 44 the grid alone is wider than the window that holds it. This is the
   // second dense grid in the product and DESIGN §5 names it beside the first.
   ['PaletteBox.svelte .cell', 'palette swatch grid — dense by the same argument as the timeline'],
+  // The same grid in the colours window: ten to a row of a 21rem plate.
+  ['ColoursPanel.svelte .cell', 'palette swatch grid — dense by the same argument as the timeline'],
   ['PaletteBox.svelte .micro', 'the swatch drawing inside the cell, not a target of its own'],
   // The thin things DESIGN §5 writes the pseudo-element clause for. Each is a
   // seam or a tab that would become a bar if drawn at 44, and each grows its

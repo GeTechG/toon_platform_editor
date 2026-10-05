@@ -92,7 +92,8 @@ const TOONOP_PRESET: PluginPreset = {
   brush: 'toonop-brush',
   ux: TOONOP_UX,
   // Its own arrangement (owner): the gear among the keys that leave the
-  // editor, «+» before Play, and what is rarely
+  // editor, «+» before Play, no right column — the brush and the colours are
+  // a key each on the bar over the canvas — and what is rarely
   // pressed on the shelf, a key away — the pixel (a grid nobody asked for
   // until they ask), the distort, the drafts. The one default arrangement
   // stays the reference presets'.
@@ -114,7 +115,8 @@ const TOONOP_PRESET: PluginPreset = {
         'manual',
         'fullscreen',
       ],
-      right: ['palette', 'brush'],
+      right: [],
+      top: ['brush-key', 'color-key'],
       rows: [['fps', 'add-frame', 'transport', 'onion', 'audio', 'saved'], ['timeline']],
     },
   },

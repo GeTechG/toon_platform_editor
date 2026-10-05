@@ -62,7 +62,7 @@ describe('компакт → полный: фокус из окна вкладк
 
 describe('шаг планшета считает колонку, которая рисуется', () => {
   it('левая пуста, история в правой: на планшете она в колонке, и та рисуется', () => {
-    const panels = { left: [], right: ['history'], rows: [], float: [], hidden: [] };
+    const panels = { left: [], right: ['history'], top: [], rows: [], float: [], hidden: [] };
     const cut = compactLayout(panels, 'tablet', ['color', 'brush', 'timeline', 'sound', 'more']);
     expect(cut.rail).toEqual(['history']);
     expect(railDrawn(cut, false)).toBe(true);

@@ -4,6 +4,8 @@
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
+  import ColoursPanel from './ColoursPanel.svelte';
+  import PopKey from './PopKey.svelte';
   import BrushSizes from './BrushSizes.svelte';
   import ColorPanel from './ColorPanel.svelte';
   import PaletteBox from './PaletteBox.svelte';
@@ -398,7 +400,9 @@
   $effect(() => {
     if (!boxW || !boxH) return;
     const bar = editor.panels.rows.length === 0 ? 0 : editor.panelCollapsed ? 0.75 * rem : panelFloor;
-    const full = { w: boxW - sideBase('left') - sideBase('right'), h: boxH - bar };
+    // The top bar is one line of keys in its padding (`.studio .top`).
+    const top = draws(editor.panels.top) ? 3.75 * rem : 0;
+    const full = { w: boxW - sideBase('left') - sideBase('right'), h: boxH - bar - top };
     // The tablet's column is never folded; its dock is one line lying down, two standing.
     // It is drawn when anything reaches it — tools from the right column too.
     const column = railDrawn(compactLayout(editor.panels, 'tablet', editor.settings.tabOrder), !!onPublish)
@@ -2198,6 +2202,16 @@
     <ColorPanel {editor} />
   {:else if id === 'brush'}
     <BrushPanel {editor} />
+  {:else if id === 'brush-key'}
+    <PopKey label={t('colours.brush_key')}>
+      {#snippet face()}<Icon name="brush" />{/snippet}
+      <BrushPanel {editor} />
+    </PopKey>
+  {:else if id === 'color-key'}
+    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })}>
+      {#snippet face()}<span class="colour-dot" style:--swatch={editor.brushColor} style:--fill={editor.fillColor}></span>{/snippet}
+      <ColoursPanel {editor} />
+    </PopKey>
   {:else if id === 'brush-sizes'}
     <BrushSizes {editor} />
   {:else if id === 'timeline'}
@@ -2467,6 +2481,14 @@
   bind:clientHeight={boxH}
 >
   <span class="rem-probe" aria-hidden="true" bind:this={remProbe}></span>
+  {#if !compact && (draws(editor.panels.top) || editor.arranging)}
+    <!-- The bar over the canvas (toonop: the brush and the colours, a key
+         each). Drawn only when it holds something; a small screen has its
+         tabs instead. -->
+    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top">
+      {@render slot(editor.panels.top)}
+    </div>
+  {/if}
   {#if cut}
     <!-- A small screen: the desktop's left column down the left edge, one
          key wide on a phone, with «Отправить мульт» at its foot; everything
@@ -2580,6 +2602,11 @@
         {#each shownTab.items as id (id)}
           {#if id === 'audio'}
             <AudioPanel {editor} docked publishes={!!onPublish} onClose={closeTab} />
+          {:else if id === 'color-key'}
+            <!-- The top bar's keys are their boxes here: the tab is the key. -->
+            <ColoursPanel {editor} docked />
+          {:else if id === 'brush-key'}
+            <BrushPanel {editor} />
           {:else}
             {@render panelItem(id)}
           {/if}
@@ -3451,6 +3478,45 @@
   .studio .panel {
     grid-column: 1 / -1;
     grid-row: 2;
+  }
+  /* The bar over the canvas ends at the first line and spans one row back:
+     a row of its own before the two the template names, there only while the
+     bar is — so no area below had to be renumbered for it. Its keys stand at
+     the far end, over where the right column was. */
+  .studio .top {
+    grid-column: 1 / -1;
+    grid-row: span 1 / 1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--paper);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .editor.arranging .top {
+    min-height: var(--key-h);
+  }
+  /* The colours key: the outline's colour, the fill's peeping from under it. */
+  .colour-dot {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--edge);
+    position: relative;
+  }
+  .colour-dot::after {
+    content: '';
+    position: absolute;
+    right: -0.3rem;
+    bottom: -0.3rem;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--fill);
+    box-shadow: 0 0 0 1px var(--edge);
   }
   /* A column holds whatever the config puts in it, so it is a grid of keys:
      loose keys pair up across the width the column was dragged to, and the

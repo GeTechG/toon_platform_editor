@@ -32,6 +32,13 @@ export const TABLET_MIN_W = 360;
  */
 export const FULL_MIN_H = 320;
 
+/**
+ * The narrowest screen the full layout is drawn on, px. The canvas's floor is
+ * a share of the width, and an arrangement with one column (toonop: the brush
+ * and the colours are keys on the top bar) cleared it on a phone standing up.
+ */
+export const FULL_MIN_W = 600;
+
 /** The least canvas the full layout may leave: what `pickStep` asks of `rooms.full`. */
 export function canvasFloor(view: Room): Room {
   return { w: Math.min(360, 0.45 * view.w), h: Math.max(FULL_MIN_H, 0.38 * view.h) };
@@ -72,7 +79,7 @@ export function pickStep(current: LayoutStep, rooms: { full: Room; tablet: Room 
   const rank = { full: 0, tablet: 1, phone: 2 };
   const slack = (step: LayoutStep) => (rank[step] < rank[current] ? HYSTERESIS : 0);
   const floor = canvasFloor(view);
-  if (fits(rooms.full, floor.w, floor.h, view, slack('full'))) {
+  if (view.w >= FULL_MIN_W && fits(rooms.full, floor.w, floor.h, view, slack('full'))) {
     return 'full';
   }
   // The in-between step is the portrait tablet's (the owner's call): lying
@@ -89,8 +96,8 @@ export const DEFAULT_TAB_ORDER: readonly TabId[] = ['color', 'brush', 'timeline'
 
 /** What each named tab takes from the layout; «⋯» takes whatever is left. */
 const TAB_ITEMS: Record<Exclude<TabId, 'more'>, readonly string[]> = {
-  color: ['palette', 'color'],
-  brush: ['brush', 'brush-sizes'],
+  color: ['palette', 'color', 'color-key'],
+  brush: ['brush', 'brush-sizes', 'brush-key'],
   // The «слой × кадр» strip and what the desktop keeps beside it to set the
   // frames and the playback. Not the transport: the mini transport does that.
   timeline: ['fps', 'add-frame', 'delete-frame', 'onion', 'copy', 'paste', 'merge', 'timeline'],
