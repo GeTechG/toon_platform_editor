@@ -6,8 +6,11 @@ import { describe, expect, it } from 'bun:test';
 const thumb = await Bun.file(new URL('./FrameThumb.svelte', import.meta.url)).text();
 
 describe('a draft thumbnail follows the document it is given', () => {
-  it('a different document is a redraw, whatever its stroke counts', () => {
-    expect(thumb).toContain('doc === paintedDoc');
-    expect(thumb).toContain('paintedDoc = doc');
+  it('a moved drawing is a redraw, whatever its stroke counts', () => {
+    // By what the cells hold, not by the document's identity: a list read
+    // back from storage hands over a new document for an unchanged draft,
+    // and every card redrew.
+    expect(thumb).toContain('cellStamp(cell)');
+    expect(thumb).not.toContain('paintedDoc');
   });
 });

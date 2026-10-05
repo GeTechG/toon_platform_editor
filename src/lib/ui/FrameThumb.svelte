@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
-  import { fitThumb } from './thumb-size';
+  import { cellStamp, fitThumb } from './thumb-size';
+  import { whenOnScreen } from './on-screen';
   import { renderDensity } from './viewport';
 
   // `maxW`/`maxH` are the frame the thumbnail fits into: the canvas is drawn
@@ -18,21 +19,38 @@
   const renderer = new Canvas2DFrameRenderer();
   const box = $derived(fitThumb(doc.width, doc.height, maxW, maxH));
 
+  // The context is taken when the thumbnail comes into view, as a cell's is
+  // (LayerThumb): a long list of drafts is mostly below the fold.
+  let onScreen = $state(false);
+  $effect(() => {
+    if (!canvasEl) {
+      return;
+    }
+    return whenOnScreen(canvasEl, () => {
+      onScreen = true;
+    });
+  });
+
   /**
-   * The document and the cells this thumbnail was last drawn from. The counts
-   * alone missed a lasso move or a distort, which keep every one of them; a
-   * list read back from storage hands over a new document for a changed draft.
+   * What this thumbnail was last drawn from: the stamp of every visible cell
+   * of the frame, in layer order (`cellStamp`). The document's identity
+   * redrew every thumbnail whenever a new one was handed over, changed or
+   * not; the counts alone missed a lasso move or a
+   * distort, which keep every one of them.
    */
   let painted = '';
-  let paintedDoc: typeof doc | undefined;
 
   $effect(() => {
-    // Redraw when the cells, their strokes, the layer order or a layer's
-    // visibility change — and not merely because the document was written to.
-    const cells = doc.layers
-      .map((layer) => (layer.hidden ? 'x' : (layer.frames[frameIndex]?.strokes.length ?? 'x')))
-      .join('|') + `:${box.w}x${box.h}`;
-    if (!canvasEl || (cells === painted && doc === paintedDoc)) {
+    if (!canvasEl || !onScreen) {
+      return;
+    }
+    let stamp = 0;
+    for (const layer of doc.layers) {
+      const cell = layer.frames[frameIndex];
+      stamp = (Math.imul(stamp, 31) + (layer.hidden || !cell ? -1 : cellStamp(cell))) | 0;
+    }
+    const cells = `${stamp}:${box.w}x${box.h}`;
+    if (cells === painted) {
       return;
     }
     const dpr = renderDensity(window.devicePixelRatio || 1);
@@ -45,7 +63,6 @@
       return;
     }
     painted = cells;
-    paintedDoc = doc;
     renderer.render(doc, frameIndex, ctx, { scale: box.w / doc.width, dpr });
   });
 </script>
