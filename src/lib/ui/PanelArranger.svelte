@@ -12,6 +12,7 @@
    */
   import { tick, untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
+  import Dropdown from './Dropdown.svelte';
   import { saveFile } from './save-file';
   import { arrangeBarBox, dropPlacement, rowEdge, type Box } from './arrange';
   import { clampWindowPosition } from './draggable';
@@ -484,27 +485,21 @@
       <summary class="key">{t('arrange.workspaces')}</summary>
       <div class="ws-keys">
         <!-- Named arrangements: «Планшет», «Стол», whatever the hand wants back. -->
-        <select
-          class="workspaces"
-          aria-label={t('arrange.workspace')}
-          value={shownPick}
-          onchange={(e) => {
-            const value = e.currentTarget.value;
-            if (value) {
+        <span class="workspaces">
+          <Dropdown
+            label={t('arrange.workspace')}
+            value={shownPick}
+            options={[
+              { value: '', label: t('arrange.workspace_none') },
+              ...editor.workspaces.map((workspace) => ({ value: String(workspace.id), label: workspace.name })),
+            ]}
+            onpick={(value) => {
               // A «no» to losing the hand's arrangement: the list shows what is on.
-              if (!editor.applyWorkspace(Number(value))) {
-                e.currentTarget.value = shownPick;
-                return;
-              }
-            }
-            picked = value;
-          }}
-        >
-          <option value="">{t('arrange.workspace_none')}</option>
-          {#each editor.workspaces as workspace (workspace.id)}
-            <option value={String(workspace.id)}>{workspace.name}</option>
-          {/each}
-        </select>
+              if (value && !editor.applyWorkspace(Number(value))) return;
+              picked = value;
+            }}
+          />
+        </span>
         <input
           class="ws-name"
           type="text"

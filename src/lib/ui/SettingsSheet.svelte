@@ -33,6 +33,7 @@
     stepTab,
   } from './presets';
   import Icon, { type IconName } from './Icon.svelte';
+  import Dropdown from './Dropdown.svelte';
   import { saveFile } from './save-file';
   import { pickerAccept } from './file-accept';
   import type { EditorState } from './editor-state.svelte';
@@ -429,17 +430,16 @@
           })}
         {/if}
       {:else if tab === 'saving'}
-        <label class="row">
+        <!-- A div, not a label: the list's button names itself (Dropdown). -->
+        <div class="row">
           <span class="row-label">{t('settings.autosave')}</span>
-          <select
+          <Dropdown
+            label={t('settings.autosave')}
             value={editor.settings.autosaveMs}
-            onchange={(e) => editor.setSetting('autosaveMs', Number(e.currentTarget.value))}
-          >
-            {#each AUTOSAVE_INTERVALS as ms (ms)}
-              <option value={ms}>{autosaveLabel(ms)}</option>
-            {/each}
-          </select>
-        </label>
+            options={AUTOSAVE_INTERVALS.map((ms) => ({ value: ms, label: autosaveLabel(ms) }))}
+            onpick={(ms) => editor.setSetting('autosaveMs', ms)}
+          />
+        </div>
         <label class="toggle">
           <span class="toggle-label">{t('settings.show_drafts')}</span>
           <input

@@ -114,7 +114,8 @@ describe('arrangements are not lost unasked', () => {
   });
 
   test('a «no» puts the list back', () => {
-    expect(arranger).toMatch(/if \(!editor\.applyWorkspace\(Number\(value\)\)\) \{\s*e\.currentTarget\.value = (?:picked|shownPick);/);
+    // The list shows `shownPick`, which a refused pick never moves: nothing to put back by hand.
+    expect(arranger).toMatch(/value=\{shownPick\}[^]*?if \(value && !editor\.applyWorkspace\(Number\(value\)\)\) return;\s*picked = value;/);
   });
 
   test('deleting a saved arrangement asks first', () => {
