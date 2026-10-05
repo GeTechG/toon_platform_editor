@@ -97,8 +97,9 @@ describe('layer column divider', () => {
   });
 
   it('narrows down to the icons, never into the eye', () => {
-    // The floor is the row without its name: eye, tag, handle, delete.
-    expect(timeline).toContain('const COL_MIN = 128;');
+    // The floor is the row without its name: eye, tag, handle, delete. 128
+    // was 7 px short of them, and the bin went under the column's edge.
+    expect(timeline).toContain('const COL_MIN = 136;');
   });
 
   it('the arrows resize it too, so no pointer drag is required (WCAG 2.5.7)', () => {

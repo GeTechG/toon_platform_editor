@@ -676,11 +676,10 @@
   }
   .name {
     flex: 1;
-    /* The name is the only thing telling two rows apart, so it keeps a floor of
-       its own: «Слой 1» measures 45 and the column is sized to honour this.
-       `min-width: 0` let it shrink to nothing and the list to a column of
-       «Сло…». Past the floor the ellipsis is right — the divider widens it. */
-    min-width: 3rem;
+    /* The name is what gives way when the column is squeezed. A floor of 3rem
+       under it held the name and pushed the handle and the bin out of the
+       column instead (owner); the column's own floor (Timeline) is the keys. */
+    min-width: 0;
     align-self: stretch;
     padding: 0;
     border: 0;

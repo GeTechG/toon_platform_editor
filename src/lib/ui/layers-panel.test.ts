@@ -156,12 +156,23 @@ describe('the layer column fits the name the editor gives a layer', () => {
     expect(px(width!)).toBeGreaterThanOrEqual(FURNITURE + DEFAULT_NAME);
   });
 
-  it('puts a floor under the name, so a later squeeze cannot take it back', () => {
+  // The floor under the name (3rem) did take the squeeze back — and handed it
+  // to the keys: with the divider at its stop the name still held 48 px, and
+  // the handle and the bin stood 36 and 50 px past the column's edge (owner).
+  // The name is what gives way; the keys are what the column never drops.
+  it('the name gives way to the keys when the column is squeezed', () => {
     const name = layerRows.match(/\n  \.name \{([^}]*)\}/)?.[1];
     expect(name).toBeDefined();
-    const floor = name!.match(/min-width:\s*([^;]+);/)?.[1];
-    expect(floor).toBeDefined();
-    expect(px(floor!)).toBeGreaterThanOrEqual(DEFAULT_NAME);
+    expect(name!.match(/min-width:\s*([^;]+);/)?.[1]).toBe('0');
+  });
+
+  it('the divider stops at the keys: the column is never narrower than its furniture', () => {
+    /** Padding 8 + 5, eye 28, tag 14, handle 30, bin 26 and four 6 px gaps. */
+    const KEYS = 135;
+    expect(Number(timeline.match(/const COL_MIN = (\d+);/)?.[1])).toBeGreaterThanOrEqual(KEYS);
+    // The keys are in rem: at larger text the px stop alone is too short.
+    const floor = timeline.match(/\n  \.layer-col \{[^}]*\n    min-width:\s*([^;]+);/s)?.[1];
+    expect(floor).toBe('calc(5.25rem + 51px)');
   });
 });
 
