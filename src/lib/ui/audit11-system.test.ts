@@ -26,7 +26,7 @@ describe('the share page does not download the studio’s vocabulary', () => {
 
 describe('the player', () => {
   it('a shorter document does not leave the old frame on screen', () => {
-    expect(player).toMatch(/current >= frameCount\(view\)[^]{0,80}current = 0/);
+    expect(player).toMatch(/current >= total[^]{0,80}current = 0/);
   });
 
   it('lets go of the track it was fetching when it goes', () => {

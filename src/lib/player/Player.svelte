@@ -7,9 +7,9 @@
   import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
-  import { frameCount } from '../model/operations';
   import { renderDensity } from '../ui/viewport';
   import { LoopPlayer } from './player';
+  import { playLength, replayAt } from './replay';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
@@ -62,6 +62,11 @@
 
   // The server stores v7 only (no migrations), so the document is drawn as is.
   const view = $derived(doc);
+  // A one-frame drawing is replayed stroke by stroke: then the "frames" below
+  // are its strokes and the rate is the replay's own.
+  const length = $derived(playLength(view));
+  const total = $derived(length.frames);
+  const fps = $derived(length.fps);
 
   const renderer = new Canvas2DFrameRenderer();
   let canvasEl: HTMLCanvasElement;
@@ -96,7 +101,7 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    if (current >= frameCount(view)) {
+    if (current >= total) {
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike | null;
@@ -105,7 +110,12 @@
     if (!ctx) {
       return;
     }
-    renderer.render(view, current, ctx, { scale: cssWidth / view.width, dpr });
+    const viewport = { scale: cssWidth / view.width, dpr };
+    if (length.replay) {
+      renderer.render(replayAt(view, current), 0, ctx, viewport);
+    } else {
+      renderer.render(view, current, ctx, viewport);
+    }
   }
 
   // The soundtrack, when there is one. It is built once per src and its own
@@ -139,9 +149,9 @@
       return;
     }
     const player = new LoopPlayer({
-      frameCount: frameCount(view),
-      fps: view.frame_rate,
-      startFrame: Math.min(untrack(() => current), frameCount(view) - 1),
+      frameCount: total,
+      fps,
+      startFrame: Math.min(untrack(() => current), total - 1),
       onFrame: (index) => {
         current = index;
       },
@@ -157,7 +167,7 @@
       // lap below): set there, `play()` rewound the ended track to 0, and the
       // frames, read off its clock, jumped back to the first.
       const at = audioSync
-        ? trackTimeFor(untrack(() => current) % frameCount(view), view.frame_rate, sound.duration)
+        ? trackTimeFor(untrack(() => current) % total, fps, sound.duration)
         : sound.currentTime;
       if (at !== null) {
         sound.currentTime = at;
@@ -182,10 +192,10 @@
         if (trackKeepsTime(sound)) {
           // Tied, the track is pinned to the first frame and comes back round
           // with the animation instead of running on past it.
-          if (trackShouldRestart(sound.currentTime, frameCount(view), view.frame_rate)) {
+          if (trackShouldRestart(sound.currentTime, total, fps)) {
             sound.currentTime = 0;
           }
-          current = frameForTime(sound.currentTime, view.frame_rate) % frameCount(view);
+          current = frameForTime(sound.currentTime, fps) % total;
         } else if (current < lastFrame) {
           // A track shorter than the animation starts again with it.
           sound.currentTime = 0;
@@ -210,7 +220,7 @@
     }
     untrack(() => {
       if (audio) {
-        audio.currentTime = (frame % frameCount(view)) / view.frame_rate;
+        audio.currentTime = (frame % total) / fps;
       }
     });
   });
@@ -219,7 +229,7 @@
   // the next) may be shorter than the frame on screen: the draw below would
   // skip it and leave the previous drawing up, counted «кадр 38 из 10».
   $effect.pre(() => {
-    if (current >= frameCount(view)) {
+    if (current >= total) {
       current = 0;
     }
   });
@@ -242,7 +252,7 @@
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     role="img"
-    aria-label={t('play.frame_alt', { current: current + 1, total: frameCount(view) })}
+    aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>
   {#if controls}
     <button

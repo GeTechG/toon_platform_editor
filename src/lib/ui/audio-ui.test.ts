@@ -139,7 +139,7 @@ describe('the synchronisation flag', () => {
 
   it('the player can be stepped a frame at a time, and the track follows', () => {
     expect(player).toContain('current = $bindable(0)');
-    expect(player).toContain('audio.currentTime = (frame % frameCount(view))');
+    expect(player).toContain('audio.currentTime = (frame % total)');
   });
 
   it('rides the light write, never the file', () => {

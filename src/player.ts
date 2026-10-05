@@ -6,4 +6,5 @@
 // watch an 8-frame loop. This subpath keeps the viewer's graph to the renderer
 // and the loop clock.
 export { default } from './lib/player/Player.svelte';
+export { playLength } from './lib/player/replay';
 export type { ToonDocument } from './lib/format/types';
