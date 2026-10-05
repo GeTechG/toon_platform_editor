@@ -260,7 +260,7 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
   });
 
   it('the new drawing is cancelled from the right', () => {
-    expect(shell).toMatch(/\{#if touchHub\}\s*<span class="hub-keys">[^]*?<button class="key" onclick=\{\(\) => showCreate\(false\)\}>\{t\('transform\.cancel'\)\}<\/button>\s*<\/span>/);
+    expect(shell).toMatch(/\{#if touchHub\}\s*<button class="key" onclick=\{\(\) => showCreate\(false\)\}>\{t\('transform\.cancel'\)\}<\/button>/);
   });
 
   it('the proportions are a reel: one card a screen, swiped up and down', () => {
@@ -292,35 +292,32 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
   it('the size is a chip that opens a menu of the sizes with their pixels', () => {
     const card = shell.match(/<section class="reel-card"[^]*?<\/section>/)?.[0] ?? '';
     expect(card).not.toContain('<select');
-    expect(card).toMatch(/<button\s+class="reel-size"\s+aria-haspopup="menu"\s+aria-expanded=\{sizeMenu !== null && !sizeMenu\.more && proportion === newProportion\}\s+aria-label=\{t\('sheet\.size_chip', \{ size: newSize \}\)\}\s+onclick=\{\(e\) => openSizeMenu\(e\.currentTarget, proportion\)\}/);
+    expect(card).toMatch(/<button\s+class="reel-size"\s+aria-haspopup="menu"\s+aria-expanded=\{sizeMenu !== null && proportion === newProportion\}\s+aria-label=\{t\('sheet\.size_chip', \{ size: newSize \}\)\}\s+onclick=\{\(e\) => openSizeMenu\(e\.currentTarget, proportion\)\}/);
     expect(card).toContain('<strong>{sheetName(shape.ratio)}</strong>');
     expect(card).toMatch(/class="key primary" onclick=\{\(\) => pickSheet\(shape\.value\)\}>\{t\('sheet\.start'\)\}/);
     const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
-    expect(menu).toContain("role={sizeMenu.more ? 'group' : 'menu'}");
+    expect(menu).toContain('role="menu"');
     expect(menu).toMatch(/<button role="menuitemradio" aria-checked=\{size === newSize\} onclick=\{\(\) => pickSize\(size\)\}>\s*<span>\{size\}<\/span>\s*<small>\{sheet\.width\}×\{sheet\.height\}<\/small>/);
   });
 
   // Owner, 2026-10-05: the frame rate is chosen where the resolution is — in
-  // the side column under a cursor. Under a finger (phones, tablets) it is
-  // behind three dots in the corner — the head's, beside «Отмена»: in a
-  // card's own corner they stood on its name at 390 px.
-  it('under a finger the frame rate is behind three dots in the corner', () => {
-    const head = shell.match(/\{#if touchHub\}\s*<span class="hub-keys">[^]*?<\/span>/)?.[0] ?? '';
-    expect(head).toMatch(/<button\s+class="key icon reel-more"\s+aria-expanded=\{sizeMenu !== null && sizeMenu\.more\}\s+title=\{t\('editor\.fps'\)\}\s+aria-label=\{t\('editor\.fps'\)\}\s+onclick=\{\(e\) => openSizeMenu\(e\.currentTarget, newProportion, true\)\}\s*>\s*<Icon name="more" \/>/);
-    expect(head.indexOf("t('transform.cancel')")).toBeGreaterThan(head.indexOf('reel-more'));
+  // the side column under a cursor, in the chip's menu under a finger.
+  // Owner, 2026-10-05: three dots on the resolution, not in a corner — the
+  // chip says there is more behind it than the sizes.
+  it('the chip wears three dots: the frame rate is behind it too', () => {
     const card = shell.match(/<section class="reel-card"[^]*?<\/section>/)?.[0] ?? '';
-    expect(card).not.toContain('reel-more');
-    const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
-    expect(menu).toMatch(/\{#if sizeMenu\.more\}\s*\{@render fpsField\(\)\}\s*\{:else\}\s*\{#each sheetSizes\(\)/);
-    // It opens on the slider, as the sizes open on the one chosen.
-    expect(fn('openSizeMenu')).toContain("'[aria-checked=\"true\"], input'");
+    expect(card).toMatch(/>\{newSize\}<Icon name="more" \/><\/button>/);
+    expect(shell).not.toContain('reel-more');
+    expect(rule('.reel-size')).toMatch(/display:\s*inline-flex/);
   });
 
-  it('the frame rate stands with the resolution under a cursor', () => {
+  it('the frame rate stands with the resolution in both layouts', () => {
     const field = shell.match(/\{#snippet fpsField\(\)\}[^]*?\{\/snippet\}/)?.[0] ?? '';
     expect(field).toContain("{t('editor.fps')}");
     expect(field).toMatch(/type="range"\s+min=\{editor\.ux\.fpsRange\[0\]\}\s+max=\{editor\.ux\.fpsRange\[1\]\}\s+value=\{newFps\}/);
     expect(field).toMatch(/type="number"[^>]*aria-label=\{t\('editor\.fps'\)\}/);
+    const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
+    expect(menu).toContain('{@render fpsField()}');
     const side = shell.match(/<div class="sheet-side">[^]*?\{t\('sheet\.start'\)\}/)?.[0] ?? '';
     expect(side).toContain('{@render fpsField()}');
   });
@@ -344,7 +341,7 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
   });
 
   it('the menu opens on the size chosen, walks by arrows, and closes back to the chip', () => {
-    expect(fn('openSizeMenu')).toContain("'[aria-checked=\"true\"], input'");
+    expect(fn('openSizeMenu')).toContain("'[aria-checked=\"true\"]'");
     const keys = fn('sizeMenuKeys');
     expect(keys).toMatch(/'Escape'[^]*e\.stopPropagation\(\)/);
     expect(keys).toContain("'ArrowDown'");
