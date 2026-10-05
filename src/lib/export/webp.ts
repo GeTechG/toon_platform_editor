@@ -113,6 +113,55 @@ export function downscaleSize(
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** One way to make a preview: its long side in px and the still quality (0–1). */
+export interface PreviewRung {
+  side: number;
+  quality: number;
+}
+
+/**
+ * How a preview is made, best first. Quality 1 is lossless where the browser
+ * has it (Chromium): line art keeps its exact colours and edges, which the
+ * lossy encoder's halved colour resolution smeared — a thin coloured line came
+ * out duller and fringed. 512 px, because a card is drawn up to ~320 CSS px
+ * wide and a dense screen doubles that. Each rung down trades some of that for
+ * weight, the old 384 px at 0.75 last.
+ */
+export const PREVIEW_RUNGS: readonly PreviewRung[] = [
+  { side: 512, quality: 1 },
+  { side: 512, quality: 0.92 },
+  { side: 384, quality: 0.92 },
+  { side: 384, quality: 0.75 },
+];
+
+/**
+ * What a whole preview may weigh. A page of the gallery is 24 of them, so
+ * this, not the server's 1 MB cap, is what a phone pays for. Measured
+ * 2026-10-06 on published toons: a lossless 512 px frame is 15–35 KB, so a
+ * short toon stays lossless and a 50-frame one steps down.
+ */
+export const PREVIEW_BUDGET_BYTES = 700 * 1024;
+
+/**
+ * Build with each rung in turn, best first, and return the first result that
+ * weighs no more than `budget`; if none does, the last rung's — a heavy
+ * preview still beats none.
+ */
+export async function firstThatFits<R>(
+  rungs: readonly R[],
+  budget: number,
+  build: (rung: R) => Promise<Uint8Array<ArrayBuffer>>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  let built = new Uint8Array(0);
+  for (const rung of rungs) {
+    built = await build(rung);
+    if (built.length <= budget) {
+      break;
+    }
+  }
+  return built;
+}
+
 // --- byte helpers ---
 
 /** A RIFF chunk: FourCC + uint32-LE size + payload, even-padded. */

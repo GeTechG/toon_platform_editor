@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assembleAnimatedWebp, downscaleSize, previewFrameBudget, type WebpStill } from './webp';
+import { assembleAnimatedWebp, downscaleSize, firstThatFits, PREVIEW_RUNGS, previewFrameBudget, type WebpStill } from './webp';
 
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
   String.fromCharCode(...bytes.subarray(from, to));
@@ -88,5 +88,46 @@ describe('downscaleSize', () => {
 
   test('leaves an already-small image untouched', () => {
     expect(downscaleSize(100, 50, 384)).toEqual({ width: 100, height: 50 });
+  });
+});
+
+// A preview is made as good as its weight allows: tried from the best rung
+// down, and the first one light enough is the one that goes out.
+describe('firstThatFits', () => {
+  const sized = (sizes: number[]) => {
+    const tried: number[] = [];
+    const build = async (rung: number) => {
+      tried.push(rung);
+      return new Uint8Array(sizes[rung]);
+    };
+    return { tried, build };
+  };
+
+  test('the best rung goes out when it is light enough, and nothing else is built', async () => {
+    const { tried, build } = sized([90, 50, 10]);
+    expect((await firstThatFits([0, 1, 2], 100, build)).length).toBe(90);
+    expect(tried).toEqual([0]);
+  });
+
+  test('a heavy toon steps down until it fits', async () => {
+    const { tried, build } = sized([300, 101, 100, 10]);
+    expect((await firstThatFits([0, 1, 2, 3], 100, build)).length).toBe(100);
+    expect(tried).toEqual([0, 1, 2]);
+  });
+
+  test('when nothing fits, the lightest rung goes out rather than nothing', async () => {
+    const { build } = sized([300, 200, 150]);
+    expect((await firstThatFits([0, 1, 2], 100, build)).length).toBe(150);
+  });
+});
+
+describe('PREVIEW_RUNGS', () => {
+  test('starts lossless and never gets better on the way down', () => {
+    expect(PREVIEW_RUNGS[0].quality).toBe(1);
+    for (let i = 1; i < PREVIEW_RUNGS.length; i++) {
+      const [above, here] = [PREVIEW_RUNGS[i - 1], PREVIEW_RUNGS[i]];
+      expect(here.side <= above.side && here.quality <= above.quality).toBe(true);
+      expect(here.side < above.side || here.quality < above.quality).toBe(true);
+    }
   });
 });
