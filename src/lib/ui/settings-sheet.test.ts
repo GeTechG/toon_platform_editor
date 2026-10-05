@@ -179,6 +179,24 @@ describe('the settings sheet', () => {
     }
   });
 
+  it('every string the sheet asks for is in the dictionary', () => {
+    // A key that is not there comes back as itself — and is drawn as a heading.
+    const keys = [...sheet.matchAll(/t\('([a-z_]+\.[a-z_0-9]+)'/g)].map((m) => m[1]);
+    expect(keys.length).toBeGreaterThan(40);
+    for (const key of keys) {
+      expect(t(key, { count: 1 })).not.toBe(key);
+    }
+  });
+
+  it('an action is a row like the switches, not a pill in a heap', () => {
+    // The only keys left are the close key and «Готово».
+    expect(sheet.match(/class="key[ "]/g)).toHaveLength(2);
+    expect(sheet).not.toContain('class="actions"');
+    expect(sheet).toMatch(/\{#snippet act\(label: string, icon: IconName \| undefined, onclick: \(\) => void, danger = false\)\}/);
+    // Deleting is told apart by its words' colour, and still asks first.
+    expect(pane('palette')).toContain("{@render act(t('settings.wipe_palettes'), 'trash', wipePalettes, true)}");
+  });
+
   it('the categories are tabs: one stop, arrows between them, a named panel', () => {
     expect(sheet).toContain('role="tablist"');
     expect(sheet).toContain('role="tab"');

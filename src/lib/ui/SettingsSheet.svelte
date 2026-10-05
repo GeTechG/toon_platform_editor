@@ -32,7 +32,7 @@
     presets,
     stepTab,
   } from './presets';
-  import Icon from './Icon.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
   import { saveFile } from './save-file';
   import { pickerAccept } from './file-accept';
   import type { EditorState } from './editor-state.svelte';
@@ -256,6 +256,16 @@
   onchange={onDraftFile}
 />
 
+<!-- An action is a row like the switches around it: its name on the left, what
+     kind of thing it is on the right. A cluster of pill keys of every width
+     wrapped where it liked and read as a heap. -->
+{#snippet act(label: string, icon: IconName | undefined, onclick: () => void, danger = false)}
+  <button class="act" class:danger {onclick}>
+    <span>{label}</span>
+    {#if icon}<Icon name={icon} />{/if}
+  </button>
+{/snippet}
+
 <dialog bind:this={dialogEl} class="sheet sheet-dialog settings" aria-label={t('settings.sheet')} onclose={onClose}>
   <header class="sheet-head">
     <h2>{t('settings.sheet')}</h2>
@@ -385,14 +395,9 @@
         </label>
 
         <h3 class="sheet-hint">{t('settings.saved_palettes')}</h3>
-        <div class="actions">
-          <button
-            class="key"
-            onclick={() => download('palettes.json', editor.exportSavedPalettes())}
-          >{t('settings.download_palettes')}</button>
-          <button class="key" onclick={() => paletteFile?.click()}>{t('settings.load_palettes')}</button>
-          <button class="key danger" onclick={wipePalettes}>{t('settings.wipe_palettes')}</button>
-        </div>
+        {@render act(t('settings.download_palettes'), 'download', () => download('palettes.json', editor.exportSavedPalettes()))}
+        {@render act(t('settings.load_palettes'), 'chevron-right', () => paletteFile?.click())}
+        {@render act(t('settings.wipe_palettes'), 'trash', wipePalettes, true)}
       {:else if tab === 'view'}
         <!-- Reference «Настроить панель»: which buttons the toolbar shows, and
              the preset they come from. The gear is never hideable, so this is
@@ -431,15 +436,10 @@
         {#if compact}
           <p class="hint">{t('settings.tabs_hint')}</p>
         {:else}
-          <div class="actions">
-            <button
-              class="key"
-              onclick={() => {
-                editor.arranging = true;
-                dialogEl?.close();
-              }}
-            >{t('settings.edit_panels')}</button>
-          </div>
+          {@render act(t('settings.edit_panels'), 'chevron-right', () => {
+            editor.arranging = true;
+            dialogEl?.close();
+          })}
         {/if}
       {:else if tab === 'saving'}
         <label class="row">
@@ -462,25 +462,21 @@
             onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
           />
         </label>
-        <div class="actions">
-          {#if onSaveNow}
-            <button class="key" onclick={saveNowHere}>{t('settings.save_now')}</button>
-          {/if}
-          <button class="key" onclick={askPersist}>{t('settings.ask_persist')}</button>
-        </div>
+        {#if onSaveNow}
+          {@render act(t('settings.save_now'), 'save', saveNowHere)}
+        {/if}
+        {@render act(t('settings.ask_persist'), undefined, askPersist)}
 
         {#if onOpenDrafts || onOpenFile}
           <h3 class="sheet-hint">{t('settings.open')}</h3>
-          <div class="actions">
-            {#if onOpenDrafts}
-              <button class="key" onclick={() => { dialogEl?.close(); onOpenDrafts(); }}>{t('settings.drafts')}</button>
-            {/if}
-            {#if onOpenFile}
-              <!-- The sheet steps aside, as it does for the plugins and the arranger:
-                   an import error lands on the canvas, under this modal, unseen. -->
-              <button class="key" onclick={() => { dialogEl?.close(); onOpenFile(); }}>{t('settings.open_toon')}</button>
-            {/if}
-          </div>
+          {#if onOpenDrafts}
+            {@render act(t('settings.drafts'), 'chevron-right', () => { dialogEl?.close(); onOpenDrafts(); })}
+          {/if}
+          {#if onOpenFile}
+            <!-- The sheet steps aside, as it does for the plugins and the arranger:
+                 an import error lands on the canvas, under this modal, unseen. -->
+            {@render act(t('settings.open_toon'), 'chevron-right', () => { dialogEl?.close(); onOpenFile(); })}
+          {/if}
         {/if}
 
         <h3 class="sheet-hint">{t('settings.drafts_copy')}</h3>
@@ -519,23 +515,18 @@
             {t('settings.progress', { done: exporting.done, total: exporting.total })}
           </progress>
         {/if}
-        <div class="actions">
-          <button bind:this={saveDraftsEl} class="key" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
-            {t('settings.download_drafts')}
-          </button>
-          <button class="key" onclick={() => draftFile?.click()}>{t('settings.load_drafts')}</button>
-        </div>
+        <!-- Written out: this one is bound, for the focus to come back to. -->
+        <button bind:this={saveDraftsEl} class="act" disabled={chosen.length === 0 || exporting !== null} onclick={saveDraftsFile}>
+          <span>{t('settings.download_drafts')}</span>
+          <Icon name="download" />
+        </button>
+        {@render act(t('settings.load_drafts'), 'chevron-right', () => draftFile?.click())}
       {:else if tab === 'more'}
         <h3 class="sheet-hint">{t('settings.plugins')}</h3>
-        <div class="actions">
-          <button
-            class="key"
-            onclick={() => {
-              onOpenPlugins?.();
-              dialogEl?.close();
-            }}
-          >{t('settings.open_plugins')}</button>
-        </div>
+        {@render act(t('settings.open_plugins'), 'chevron-right', () => {
+          onOpenPlugins?.();
+          dialogEl?.close();
+        })}
         <label class="field">
           <span>{t('settings.catalog_url')}</span>
           <input
@@ -547,9 +538,7 @@
         </label>
         {#if onDownloadErrors}
           <h3 class="sheet-hint">{t('settings.errors')}</h3>
-          <div class="actions">
-            <button class="key" onclick={onDownloadErrors}>{t('settings.download_errors')}</button>
-          </div>
+          {@render act(t('settings.download_errors'), 'download', onDownloadErrors)}
         {/if}
       {/if}
     </div>
@@ -581,9 +570,72 @@
     flex: 1;
     padding-top: 0.5rem;
   }
-  /* A panel that opens on a heading needs no gap over it. */
-  .settings-main .sheet-body > .sheet-hint:first-child {
+  /* A group of rows, then air, then the next group: packed edge to edge, the
+     presets sat on the switch under them and a heading on the keys over it. */
+  .settings-main .sheet-body > .sheet-hint {
+    margin: 1.4rem 0 0.5rem;
+  }
+  .settings-main .sheet-body > :is(.presets, .hint, .field, progress) {
+    margin-block: 0.75rem;
+    padding-block: 0;
+  }
+  .settings-main .sheet-body > :first-child {
     margin-top: 0.3rem;
+  }
+  /* One left edge for the headings, the keys and the rows' words: the row's
+     tone on hover reaches past its words into the body's margin instead of
+     pushing them in. */
+  :global(.editor) .settings-main .toggle {
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
+  }
+  /* The same row, pressed instead of switched. */
+  .act {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: calc(100% + 1rem);
+    min-height: 2.9rem;
+    margin-inline: -0.5rem;
+    padding: 0.3rem 0.5rem;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.95rem;
+    text-align: start;
+    cursor: pointer;
+  }
+  .act :global(svg) {
+    flex: none;
+    color: var(--ink-2);
+  }
+  @media (hover: hover) {
+    .act:hover:not(:disabled) {
+      background: var(--sub);
+    }
+  }
+  .act:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  /* Red words, not a red key: the one solid red in the sheet is «Готово». */
+  .act.danger,
+  .act.danger :global(svg) {
+    color: var(--accent-ink);
+  }
+  .act:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  /* A hairline between neighbours, as between two switches. */
+  .settings-main :is(.toggle, .act, .pick) + .act {
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .settings-main :is(.row, .field) {
+    padding-inline: 0;
   }
   /* Lying down on a phone: a strip that scrolls sideways when the five do not
      fit — at 200 % text they never do. */
@@ -657,7 +709,7 @@
   }
   /* The browser's own marker: a drawn one would be an icon outside the set. */
   .pick summary {
-    padding: 0.7rem 0.3rem;
+    padding: 0.7rem 0;
     border-radius: var(--r-sm);
     font-size: 0.95rem;
     cursor: pointer;
@@ -780,12 +832,6 @@
     min-width: 2.2rem;
     text-align: right;
     font-variant-numeric: tabular-nums;
-  }
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    padding: 0.3rem 0 0.1rem;
   }
   .hint {
     margin: 0.3rem 0 0.1rem;
