@@ -374,7 +374,8 @@ test('the preset is asked about the preset, the canvas about the line', () => {
   // file and the mouse-mode option are the preset's, and must not drift back.
   expect(editorUi).toContain('editor.ux.projectFile');
   expect(editorUi).not.toContain('defaultBrush');
-  expect(canvas).toContain('editor.ux.canvasDensity');
+  // Rasterisation is nobody's to choose: the sheet is the document's bitmap.
+  expect(canvas).not.toContain('canvasDensity');
   // Which brush an unopinionated tool follows is the state's question now:
   // the canvas asks for rules, never for the name of a brush.
   expect(canvas).not.toContain('editor.defaultBrush');

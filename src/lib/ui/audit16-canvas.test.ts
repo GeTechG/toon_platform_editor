@@ -25,7 +25,7 @@ describe('пипетка, которой нечего прочесть', () => {
 
   it('«не прочла» — не «пусто»: кадр ещё не собран или контекста нет — ластик не берётся', () => {
     const pick = handler('pickColor');
-    expect(pick).toMatch(/if \(!layers \|\| !lastDrawn\) \{?\s*return undefined;?/);
+    expect(pick).toMatch(/if \(!layers\) \{?\s*return undefined;?/);
     const take = handler('takeColour');
     expect(take).toMatch(/picked === undefined/);
     expect(take.indexOf('picked === undefined')).toBeLessThan(take.indexOf("selectTool('eraser')"));

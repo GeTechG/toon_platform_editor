@@ -138,13 +138,18 @@ export class FrameComposer {
    */
   #belowInk = false;
   #aboveInk = false;
+  /** What each buffer was last painted from, and the view it was painted under. */
+  readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[] }>();
 
   constructor(make: BufferFactory = domBuffer) {
     this.#make = make;
     this.#ghosts = new BufferRing(GHOST_BUFFERS, make);
   }
 
-  /** The document, the frame or the view changed: the stack is stale. */
+  /**
+   * The document, the frame or the view may have changed: the stack is looked
+   * at again. What it finds unchanged it leaves painted.
+   */
   invalidate(): void {
     this.#stale = true;
   }
@@ -240,8 +245,9 @@ export class FrameComposer {
     this.#aboveInk = inked(above);
     const cell = this.#cell(scene, scene.activeLayer);
     const visible = cell && !layers[scene.activeLayer]?.hidden ? [cell] : [];
-    this.#paint(this.#active, visible, scene, width, height);
-    this.#serial += 1;
+    if (this.#paint(this.#active, visible, scene, width, height)) {
+      this.#serial += 1;
+    }
   }
 
   #cell(scene: FrameScene, layer: number): Frame | undefined {
@@ -250,20 +256,61 @@ export class FrameComposer {
       : scene.doc.layers[layer]?.frames[scene.frame];
   }
 
-  /** Rasterizes `cells` into a transparent buffer, bottom-up. */
+  /**
+   * Rasterizes `cells` into a transparent buffer, bottom-up — what of them is
+   * not on it already. A buffer holding the same strokes is left as it is, and
+   * one whose single layer only gained strokes at its end takes those on top:
+   * a finished line costs one line, whatever lies around it. Says whether the
+   * buffer was drawn on. `afresh` is for a buffer handed out of a pool, which
+   * holds whatever its last owner left.
+   */
   #paint(
     buffer: ComposeBuffer,
     cells: readonly Frame[],
     scene: FrameScene,
     width: number,
     height: number,
-  ): void {
+    afresh = false,
+  ): boolean {
+    const { viewport } = scene;
+    const view = `${width}x${height}@${viewport.scale}:${viewport.dpr}:${viewport.panX ?? 0}:${viewport.panY ?? 0}`;
+    // A stroke is its points, its tool and its pressure: an edit in place
+    // (the distort brush) swaps the points of a stroke that stays where it was.
+    const ink = cells.map((cell) => cell.strokes.flatMap((s) => [s.points, scene.tools[s.tool_id], s.pressure]));
+    const was = afresh ? undefined : this.#ink.get(buffer);
+    // Not until it is painted: a stroke that throws half-way leaves a buffer
+    // that holds neither what it had nor what it was asked for.
+    this.#ink.delete(buffer);
+    const painted = this.#lay(buffer, cells, scene, width, height, was?.view === view ? was.ink : undefined, ink);
+    this.#ink.set(buffer, { view, ink });
+    return painted;
+  }
+
+  #lay(
+    buffer: ComposeBuffer,
+    cells: readonly Frame[],
+    scene: FrameScene,
+    width: number,
+    height: number,
+    was: readonly (readonly unknown[])[] | undefined,
+    ink: readonly (readonly unknown[])[],
+  ): boolean {
+    const kept = was !== undefined && was.length === ink.length
+      && was.every((old, c) => old.length <= ink[c].length && old.every((part, i) => part === ink[c][i]));
+    if (kept && was.every((old, c) => old.length === ink[c].length)) {
+      return false;
+    }
+    if (kept && cells.length === 1) {
+      const added = { strokes: cells[0].strokes.slice(was[0].length / 3) };
+      renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport);
+      return true;
+    }
     buffer.size(width, height);
     buffer.clear();
     if (cells.length === 1) {
       // A single layer cannot bleed into another — rasterize it in place.
       renderStrokesLayer(cells[0], scene.tools, buffer.ctx, scene.viewport);
-      return;
+      return true;
     }
     for (const cell of cells) {
       // Each layer rasterizes into its own scratch first, so an eraser cuts
@@ -274,6 +321,7 @@ export class FrameComposer {
       renderStrokesLayer(cell, scene.tools, scratch.ctx, scene.viewport);
       blitLayer(scratch.image, buffer.ctx);
     }
+    return true;
   }
 
   /**
@@ -419,7 +467,7 @@ export class FrameComposer {
     }
     // Layer by layer through the scratch, as the stack is: an eraser on one
     // layer must not cut the line of the layer under it in the ghost either.
-    this.#paint(buffer, cells, { ...scene, tools: scene.doc.tools }, width, height);
+    this.#paint(buffer, cells, { ...scene, tools: scene.doc.tools }, width, height, true);
     return buffer;
   }
 }

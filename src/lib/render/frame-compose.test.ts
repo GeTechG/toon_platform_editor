@@ -128,17 +128,64 @@ describe('the composer stacks a frame', () => {
     expect(target.log).toEqual(['blit b3 @0.8']);
   });
 
-  it('rebuilds the stack only when it is told the frame went stale', () => {
+  it('paints nothing again while the strokes of the frame are what they were', () => {
     const { instance, made } = composer();
     const target = new Recorder('target');
     const scene = { doc: doc(1), frame: 0, activeLayer: 0, viewport, tools: doc(1).tools };
     instance.compose(target.ctx, 100, 50, scene);
-    const painted = made[0].log.filter((entry) => entry === 'clear').length;
-    instance.compose(target.ctx, 100, 50, scene);
-    expect(made[0].log.filter((entry) => entry === 'clear').length).toBe(painted);
+    const painted = made.map((buffer) => buffer.log.length);
+    // Told the frame may have changed — a pan, a zoom, a write elsewhere in
+    // the document — it looks, and finds the same strokes.
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, scene);
-    expect(made[0].log.filter((entry) => entry === 'clear').length).toBeGreaterThan(painted);
+    expect(made.map((buffer) => buffer.log.length)).toEqual(painted);
+  });
+
+  it('lays a finished stroke over its layer and leaves the other layers alone', () => {
+    const built = doc(3);
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    const [below, active, above] = made.map((buffer) => buffer.log.length);
+    addStroke(built, 1, 0, line(900));
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, tools: built.tools });
+    // One stroke on top of what was there: no clear, no second look at the rest.
+    expect(made[1].log.slice(active)).toEqual(['stroke #000000']);
+    expect(made[0].log.length).toBe(below);
+    expect(made[2].log.length).toBe(above);
+  });
+
+  it('paints the layer afresh when a stroke is taken back, and only that layer', () => {
+    const built = doc(2);
+    addStroke(built, 1, 0, line(900));
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    const [below, active] = made.map((buffer) => buffer.log.length);
+    built.layers[1].frames[0].strokes.pop();
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(made[1].log.slice(active)).toEqual(['clear', 'stroke #000000']);
+    expect(made[0].log.length).toBe(below);
+  });
+
+  it('paints the layer afresh when a stroke already on it was given other points', () => {
+    // The distort brush writes new points into the stroke it shakes: the
+    // stroke is the same object, in the same place, and is not the same line.
+    const built = doc(2);
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    const below = made[0].log.length;
+    const shaken = built.layers[0].frames[0].strokes[0];
+    shaken.points = shaken.points.map((value) => value + 8);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(made[0].log.slice(below)).toEqual(['clear', 'stroke #000000']);
   });
 });
 

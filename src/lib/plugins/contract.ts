@@ -271,13 +271,6 @@ export interface UxProfile {
    * 10/50/100/200/300, snapping an odd size onto the next rung).
    */
   readonly adaptiveBrushStep: boolean | 'ladder';
-  /**
-   * How the editor's canvas is rasterised. `device` takes the screen's
-   * `devicePixelRatio`; `document` takes one bitmap pixel per document pixel,
-   * the way toonio.ru draws into a fixed 1280×720 bitmap the browser then
-   * scales. It is the preset's, not the brush's: a document has one bitmap.
-   */
-  readonly canvasDensity: 'device' | 'document';
   /** Alt+S downloads the project as a file instead of opening the export. */
   readonly projectFile: boolean;
 }

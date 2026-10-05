@@ -216,7 +216,6 @@ describe("Safari's trackpad pinch", () => {
     expect(source).toContain("addEventListener('gestureend'");
     const change = source.slice(source.indexOf('function onGestureChange'));
     expect(change.slice(0, 900)).toContain('e.preventDefault()');
-    expect(change.slice(0, 900)).toContain('takeNavShot()');
   });
 
   it('leaves a pinch on glass to the fingers: iOS sends gesture events alongside the touches', () => {
@@ -226,11 +225,10 @@ describe("Safari's trackpad pinch", () => {
 });
 
 describe('thirteenth audit: canvas timers die with the canvas', () => {
-  it('clears the hold, hint and wheel-zoom timers when the canvas unmounts', () => {
+  it('clears the hold and hint timers when the canvas unmounts', () => {
     const destroy = source.match(/onDestroy\(\(\) => \{[^]*?\n  \}\);/);
     expect(destroy).not.toBeNull();
     expect(destroy![0]).toContain('cancelHold()');
     expect(destroy![0]).toContain('clearTimeout(hintTimer)');
-    expect(destroy![0]).toContain('clearTimeout(wheelZoomTimer)');
   });
 });

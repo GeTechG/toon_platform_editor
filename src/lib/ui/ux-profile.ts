@@ -55,7 +55,6 @@ export const TOONOP_UX: UxProfile = {
   brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
   // The thick end in a few presses (owner, 12th audit): 1 → 500 was 499.
   adaptiveBrushStep: 'ladder',
-  canvasDensity: 'device',
   projectFile: false,
   onionMode: 'history',
   colorGrid: true,
