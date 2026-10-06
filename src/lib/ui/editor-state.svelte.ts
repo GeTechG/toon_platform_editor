@@ -10,8 +10,8 @@ import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
-  MAX_FRAMES,
   MAX_LAYERS,
+  MAX_DOCUMENT_WEIGHT,
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
   ONION_SKIN_ALPHAS,
@@ -25,6 +25,8 @@ import {
   copyCells,
   createDocument,
   frameCount,
+  frameFits,
+  documentWeight,
   insertFrameBefore,
   mergeCells,
   moveLayer,
@@ -1170,7 +1172,7 @@ export class EditorState {
 
   /**
    * A write the format had no room for (the frame's strokes, the mult's
-   * points): the refusal is said in the canvas's live line, like a hidden
+   * budget): the refusal is said in the canvas's live line, like a hidden
    * layer's. True when it was such a limit.
    */
   private refuseAtLimit(err: unknown): boolean {
@@ -1179,6 +1181,21 @@ export class EditorState {
       this.canvasHint = { text };
     }
     return text !== null;
+  }
+
+  /**
+   * A frame or a layer the budget may have no room for: the refusal is said
+   * like a stroke's, and `undefined` comes back instead of the new index.
+   */
+  #writeIfRoom(change: (doc: ToonDocument) => number): number | undefined {
+    try {
+      return this.#write(change);
+    } catch (err) {
+      if (!this.refuseAtLimit(err)) {
+        throw err;
+      }
+      return undefined;
+    }
   }
 
   selectLayer(index: number): void {
@@ -1239,7 +1256,10 @@ export class EditorState {
       return;
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
-    this.activeLayer = this.#write((doc) => addLayer(doc, at));
+    if (this.#writeIfRoom((doc) => addLayer(doc, at)) === undefined) {
+      return;
+    }
+    this.activeLayer = at;
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
     this.#write((doc) => renameLayer(doc, at, t('layer.default_name', { n: this.layerCounter })));
@@ -1603,12 +1623,26 @@ export class EditorState {
     this.selection = { frames: this.playing ? this.selection.frames : [this.activeFrame], layers: [this.activeLayer] };
   }
 
+  /** The share of the mult's budget already drawn, 0–1 (see `MAX_DOCUMENT_WEIGHT`). */
+  get budgetShare(): number {
+    return documentWeight(this.doc) / MAX_DOCUMENT_WEIGHT;
+  }
+
+  /** Whether the budget has room for one more frame. */
+  get canAddFrame(): boolean {
+    return frameFits(this.doc);
+  }
+
   addFrameAfterActive(): void {
-    if (this.playing || frameCount(this.doc) >= MAX_FRAMES || !this.leaveTransform()) {
+    if (this.playing || !this.leaveTransform()) {
       return;
     }
     const left = this.activeFrame;
-    this.activeFrame = this.#write((doc) => addFrame(doc, this.activeFrame));
+    const added = this.#writeIfRoom((doc) => addFrame(doc, this.activeFrame));
+    if (added === undefined) {
+      return;
+    }
+    this.activeFrame = added;
     // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
     // the frame it came from goes into the onion history like any other move.
     // Without this the fresh cell showed no ghost of the drawing it follows.
@@ -1619,11 +1653,15 @@ export class EditorState {
 
   /** Ctrl+add in the reference: a new empty frame in front of the current one. */
   addFrameBeforeActive(): void {
-    if (this.playing || frameCount(this.doc) >= MAX_FRAMES || !this.leaveTransform()) {
+    if (this.playing || !this.leaveTransform()) {
       return;
     }
     const left = this.activeFrame;
-    this.activeFrame = this.#write((doc) => insertFrameBefore(doc, this.activeFrame));
+    const added = this.#writeIfRoom((doc) => insertFrameBefore(doc, this.activeFrame));
+    if (added === undefined) {
+      return;
+    }
+    this.activeFrame = added;
     // `AddHistory(prev, ctrl)`: the frame left goes in first, then every entry
     // shifts, because the insert pushed those cells one to the right. The cell
     // that was under `left` now lives at `left + 1` — where its ghost belongs.

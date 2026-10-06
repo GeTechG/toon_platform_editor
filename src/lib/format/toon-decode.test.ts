@@ -272,19 +272,23 @@ describe('decodeLegacyJson', () => {
 // Whatever a decoder builds becomes the draft: a document the validator
 // refuses is a draft that never opens again and a work the API will not take.
 describe('decoders hand out only documents that validate', () => {
-  it('refuses a legacy save with more frames than a document holds', () => {
+  it('opens a legacy save of 5000 frames: frames are not counted, the budget is', () => {
     const result = decodeLegacyJson(JSON.stringify(Array.from({ length: 5000 }, () => [])));
+    expect(result.ok).toBe(true);
+  });
+
+  it('refuses a legacy save whose empty frames alone outweigh the budget', () => {
+    const result = decodeLegacyJson(JSON.stringify(Array.from({ length: 100_001 }, () => [])));
     expect(result.ok).toBe(false);
   });
 
-  it('refuses a .toon with more frames than a document holds', () => {
-    const frames = 5000;
-    const result = decodeToon(encode([
-      ...header(1, frames),
+  it('opens a .toon of 5000 frames, refuses one whose cells outweigh the budget', () => {
+    const toon = (layers: number, frames: number) => decodeToon(encode([
+      ...header(layers, frames),
       1, ...PENCIL,
-      1, 0,
-      ...Array.from({ length: frames }, () => [0, 0]).flat(),
+      ...Array.from({ length: layers }, () => [1, 0, ...Array.from({ length: frames }, () => [0, 0]).flat()]).flat(),
     ]));
-    expect(result.ok).toBe(false);
+    expect(toon(1, 5000).ok).toBe(true);
+    expect(toon(4, 25_001).ok).toBe(false);
   });
 });

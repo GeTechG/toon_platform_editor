@@ -11,7 +11,7 @@ import { OFFICIAL_CATALOG } from '../plugins/catalog';
 import { saveDraft } from '../draft/store';
 import { decodeToon } from '../format/toon-decode';
 import { validateDocument } from '../format/validate';
-import { MAX_FRAMES, SCHEMA_VERSION } from '../format/constants';
+import { SCHEMA_VERSION } from '../format/constants';
 import type { ToolDescriptor, ToonDocument } from '../format/types';
 import { fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
 import { t } from '../i18n';
@@ -246,17 +246,17 @@ describe('.toon: огромный или подделанный файл', () =>
   it('кадров больше, чем вмещает мульт, — отказ по заголовку, без чтения кадров', () => {
     // Truncated right after the first layer's header: only an early refusal
     // can tell the frame count is the problem.
-    const result = decodeToon(encode([...v5(1, MAX_FRAMES + 1), 1, 0]));
+    const result = decodeToon(encode([...v5(4, 25_001), 1, 0]));
     expect(result).toEqual({ ok: false, error: t('file.over_limits') });
   });
 
   it('клоны кадров не раздувают точки без предела — отказ, как только точек больше лимита', () => {
     const points = 400;
     const frame0 = [0, 1, 0, points, ...Array.from({ length: points * 2 }, (_, i) => i % 100)];
-    const clones = Array.from({ length: MAX_FRAMES - 1 }, () => 1);
+    const clones = Array.from({ length: 4095 }, () => 1);
     // Two layers promised, one written: without a running count the reader
     // copies 1.6M points first and only then trips on the missing layer.
-    const result = decodeToon(encode([...v5(2, MAX_FRAMES), 1, 0, ...frame0, ...clones]));
+    const result = decodeToon(encode([...v5(2, 4096), 1, 0, ...frame0, ...clones]));
     expect(result).toEqual({ ok: false, error: t('file.over_limits') });
   });
 });

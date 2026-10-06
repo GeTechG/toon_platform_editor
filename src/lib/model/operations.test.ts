@@ -7,6 +7,9 @@ import {
   addStroke,
   copyCells,
   createDocument,
+  documentWeight,
+  FormatLimitError,
+  frameFits,
   mergeCells,
   insertFrameBefore,
   internTool,
@@ -263,15 +266,6 @@ describe('schema limits', () => {
     expect(validateDocument(createDocument({ width: 32767, height: 32767 })).ok).toBe(true);
   });
 
-  it('addFrame stops at the frame limit', () => {
-    const doc = createDocument();
-    for (let i = 1; i < 4096; i++) {
-      addFrame(doc, 0);
-    }
-    expect(() => addFrame(doc, 0)).toThrow(RangeError);
-    expect(validateDocument(doc).ok).toBe(true);
-  });
-
   it('addStroke rejects strokes over the width and coordinate-count limits', () => {
     const doc = createDocument();
     expect(() => addStroke(doc, 0, 0, { points: [1, 2], width: 5121, color: '#000000' })).toThrow(
@@ -298,19 +292,6 @@ describe('schema limits', () => {
     expect(validateDocument(doc).ok).toBe(true);
   });
 
-  it('addStroke stops at the document-wide point limit', () => {
-    const doc = createDocument();
-    const big = Array.from({ length: 65536 }, (_, i) => i % 2); // 32768 points
-    for (let f = 0; doc.layers[0].frames.length * 32768 <= 1_000_000; f++) {
-      addStroke(doc, 0, f, { points: big, width: 8, color: '#000000' });
-      addFrame(doc, f);
-    }
-    const last = doc.layers[0].frames.length - 1;
-    expect(() => addStroke(doc, 0, last, { points: big, width: 8, color: '#000000' })).toThrow(
-      RangeError,
-    );
-    addStroke(doc, 0, last, { points: [1, 2], width: 8, color: '#000000' });
-  });
 });
 
 describe('layer coordinate', () => {
@@ -393,7 +374,8 @@ describe('layer schema limits', () => {
     expect(limits.MAX_LAYERS).toBe(schema.properties.layers.maxItems);
     expect(schema.properties.layers.minItems).toBe(1);
     expect(schema.$defs.layer.required).toEqual(['hidden', 'frames']);
-    expect(limits.MAX_FRAMES).toBe(schema.$defs.layer.properties.frames.maxItems);
+    // a layer of nothing but empty frames, up to the whole budget
+    expect(schema.$defs.layer.properties.frames.maxItems).toBe(100_000);
     expect(schema.$defs.layer.properties.frames.minItems).toBe(1);
     expect(limits.MAX_STROKES_PER_FRAME).toBe(schema.$defs.frame.properties.strokes.maxItems);
     expect(limits.MAX_STROKE_COORDS).toBe(schema.$defs.stroke.properties.points.maxItems);
@@ -839,5 +821,51 @@ describe('pen pressure travels with the points', () => {
     const [kept, dropped] = doc.layers[0].frames[0].strokes;
     expect(kept.pressure).toEqual([1, 2]);
     expect('pressure' in dropped).toBe(false);
+  });
+});
+
+describe('document budget', () => {
+  it('weighs a point as 1, a stroke as 3 more and a cell as 10', () => {
+    const doc = createDocument();
+    expect(documentWeight(doc)).toBe(10); // one layer, one empty frame
+    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
+    expect(documentWeight(doc)).toBe(15); // + 2 points + 3 for the stroke
+    addFrame(doc, 0);
+    addLayer(doc, 1);
+    expect(documentWeight(doc)).toBe(45); // four cells
+  });
+
+  const emptyFrames = (count: number) => Array.from({ length: count }, () => ({ strokes: [] }));
+
+  it('a frame is refused by the budget, not by a count of frames', () => {
+    const doc = createDocument();
+    doc.layers[0].frames = emptyFrames(99_999);
+    expect(frameFits(doc)).toBe(true);
+    addFrame(doc, 4096);
+    expect(documentWeight(doc)).toBe(1_000_000);
+    expect(frameFits(doc)).toBe(false);
+    expect(() => addFrame(doc, 0)).toThrow(FormatLimitError);
+    expect(doc.layers[0].frames).toHaveLength(100_000);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('a layer costs its frames', () => {
+    const doc = createDocument();
+    doc.layers[0].frames = emptyFrames(50_000);
+    addLayer(doc, 1);
+    expect(() => addLayer(doc, 2)).toThrow(FormatLimitError);
+    expect(doc.layers).toHaveLength(2);
+  });
+
+  it('a stroke is refused when its points and its own 3 do not fit', () => {
+    const doc = createDocument();
+    doc.layers[0].frames = emptyFrames(99_999); // 999 990 of the million
+    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' }); // 999 995
+    expect(() => addStroke(doc, 0, 0, { points: [1, 2, 3, 4, 5, 6], width: 8, color: '#000000' })).toThrow(
+      FormatLimitError,
+    );
+    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
+    expect(documentWeight(doc)).toBe(1_000_000);
+    expect(() => replaceStrokes(doc, 0, 1, [{ points: [1, 2], tool_id: 0 }])).toThrow(FormatLimitError);
   });
 });

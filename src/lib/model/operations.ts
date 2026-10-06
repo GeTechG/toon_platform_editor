@@ -9,13 +9,14 @@ import {
   DEFAULT_DOC_WIDTH,
   DEFAULT_FPS,
   MAX_DOC_DIMENSION,
-  MAX_FRAMES,
   cutLayerName,
   MAX_LAYERS,
   MAX_STROKE_COORDS,
   MAX_STROKE_WIDTH,
   MAX_STROKES_PER_FRAME,
-  MAX_TOTAL_POINTS,
+  MAX_DOCUMENT_WEIGHT,
+  STROKE_WEIGHT,
+  CELL_WEIGHT,
   SCHEMA_VERSION,
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
@@ -24,11 +25,11 @@ import type { Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/type
 
 /**
  * A write the format has no room for: the frame's stroke limit or the
- * document's point limit. Still a RangeError; the name of the limit lets the
+ * document's weight budget. Still a RangeError; the name of the limit lets the
  * studio say which one it hit instead of only warning in the console.
  */
 export class FormatLimitError extends RangeError {
-  constructor(readonly limit: 'strokes' | 'points', message: string) {
+  constructor(readonly limit: 'strokes' | 'weight', message: string) {
     super(message);
     this.name = 'FormatLimitError';
   }
@@ -161,9 +162,7 @@ export function insertFrameBefore(doc: ToonDocument, index: number): number {
 }
 
 function insertEmptyFrame(doc: ToonDocument, at: number): number {
-  if (frameCount(doc) >= MAX_FRAMES) {
-    throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
-  }
+  assertRoom(doc, doc.layers.length * CELL_WEIGHT);
   for (const layer of doc.layers) {
     layer.frames.splice(at, 0, emptyFrame());
   }
@@ -198,6 +197,7 @@ export function addLayer(doc: ToonDocument, at: number): number {
   if (doc.layers.length >= MAX_LAYERS) {
     throw new RangeError(`document already has the maximum of ${MAX_LAYERS} layers`);
   }
+  assertRoom(doc, frameCount(doc) * CELL_WEIGHT);
   const frames = Array.from({ length: frameCount(doc) }, emptyFrame);
   doc.layers.splice(at, 0, { hidden: false, frames });
   return at;
@@ -266,11 +266,8 @@ export function replaceStrokes(
     }
     assertStrokePoints(stroke.points);
   }
-  const outgoing = pointCount(doc.layers[layerIndex].frames[frameIndex].strokes);
-  const incoming = pointCount(strokes as Stroke[]);
-  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
-  }
+  const outgoing = strokesWeight(doc.layers[layerIndex].frames[frameIndex].strokes);
+  assertRoom(doc, strokesWeight(strokes as Stroke[]) - outgoing);
   doc.layers[layerIndex].frames[frameIndex] = {
     strokes: strokes.map((stroke) => ({
       points: stroke.points.slice(), tool_id: stroke.tool_id, ...pressureOf(stroke),
@@ -289,8 +286,20 @@ export function pressureOf(stroke: { points: readonly number[]; pressure?: reado
   return pressure && pressure.length === stroke.points.length / 2 ? { pressure: pressure.slice() } : {};
 }
 
-function pointCount(strokes: { points: number[] }[]): number {
-  return strokes.reduce((sum, s) => sum + s.points.length / 2, 0);
+function strokesWeight(strokes: { points: number[] }[]): number {
+  return strokes.reduce((sum, s) => sum + STROKE_WEIGHT + s.points.length / 2, 0);
+}
+
+/** Refuses a write that would leave the document `added` over its budget. */
+function assertRoom(doc: ToonDocument, added: number): void {
+  if (documentWeight(doc) + added > MAX_DOCUMENT_WEIGHT) {
+    throw new FormatLimitError('weight', `document would exceed its budget of ${MAX_DOCUMENT_WEIGHT}`);
+  }
+}
+
+/** Whether one more frame fits the budget — what the «add frame» controls ask. */
+export function frameFits(doc: ToonDocument): boolean {
+  return documentWeight(doc) + doc.layers.length * CELL_WEIGHT <= MAX_DOCUMENT_WEIGHT;
 }
 
 /**
@@ -335,9 +344,7 @@ export function addStroke(
   if (target.strokes.length >= MAX_STROKES_PER_FRAME) {
     throw new FormatLimitError('strokes', `frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
-  if (totalPoints(doc) + stroke.points.length / 2 > MAX_TOTAL_POINTS) {
-    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
-  }
+  assertRoom(doc, strokesWeight([stroke]));
   const resolved = 'tool' in stroke ? stroke : resolveLegacyStroke(stroke);
   assertTool(resolved.tool);
   target.strokes.push({
@@ -444,12 +451,15 @@ function emptyFrame(): Frame {
   return { strokes: [] };
 }
 
-// O(strokes) scan per commit; keep a running counter if it ever shows up in profiles.
-function totalPoints(doc: ToonDocument): number {
+/**
+ * What the document weighs against `MAX_DOCUMENT_WEIGHT` (see the constant).
+ * O(strokes) scan per commit; keep a running counter if it ever shows up in profiles.
+ */
+export function documentWeight(doc: ToonDocument): number {
   let total = 0;
   for (const layer of doc.layers) {
     for (const frame of layer.frames) {
-      total += pointCount(frame.strokes);
+      total += CELL_WEIGHT + strokesWeight(frame.strokes);
     }
   }
   return total;
@@ -574,14 +584,12 @@ function writeCells(
       if (next.strokes.length > MAX_STROKES_PER_FRAME) {
         throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }
-      outgoing += pointCount(doc.layers[layer].frames[frame].strokes);
-      incoming += pointCount(next.strokes);
+      outgoing += strokesWeight(doc.layers[layer].frames[frame].strokes);
+      incoming += strokesWeight(next.strokes);
       written.push({ layer, frame, strokes: next.strokes });
     }
   }
-  if (totalPoints(doc) - outgoing + incoming > MAX_TOTAL_POINTS) {
-    throw new FormatLimitError('points', `document would exceed the limit of ${MAX_TOTAL_POINTS} points`);
-  }
+  assertRoom(doc, incoming - outgoing);
   for (const { layer, frame, strokes } of written) {
     doc.layers[layer].frames[frame] = { strokes };
   }

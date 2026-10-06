@@ -66,9 +66,9 @@ describe('eleventh audit: a cell says whether it holds a drawing', () => {
 });
 
 describe('eleventh audit: the frame menu at the frame limit', () => {
-  it('«Добавить кадр» is disabled once the document holds MAX_FRAMES', () => {
+  it('«Добавить кадр» is disabled once the budget has no room for a frame', () => {
     const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
-    expect(menu).toMatch(/disabled=\{frameTotal >= MAX_FRAMES\} onclick=\{\(\) => run\(\(\) => editor\.addFrameAfterActive/);
+    expect(menu).toMatch(/disabled=\{!editor\.canAddFrame\} onclick=\{\(\) => run\(\(\) => editor\.addFrameAfterActive/);
   });
 });
 

@@ -20,7 +20,6 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
-  import { MAX_FRAMES } from '../format/constants';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -694,7 +693,7 @@
       {@const k = menuKey(action)}
       {#if k}<kbd aria-hidden="true">{k.label}</kbd>{/if}
     {/snippet}
-    <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={frameTotal >= MAX_FRAMES} onclick={() => run(() => editor.addFrameAfterActive())}>
+    <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={!editor.canAddFrame} onclick={() => run(() => editor.addFrameAfterActive())}>
       <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>

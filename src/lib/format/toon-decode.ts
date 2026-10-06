@@ -10,10 +10,11 @@
 
 import {
   FIXED_POINT_SCALE,
-  MAX_FRAMES,
   MAX_LAYERS,
   MAX_STROKE_WIDTH,
-  MAX_TOTAL_POINTS,
+  MAX_DOCUMENT_WEIGHT,
+  STROKE_WEIGHT,
+  CELL_WEIGHT,
   cutLayerName,
   SCHEMA_VERSION,
   STROKE_COORD_MAX,
@@ -128,15 +129,15 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
   // The limits are known before a single frame is read. A clone frame is one
   // word in the file and a whole copy in memory: a small crafted file would
   // otherwise build millions of points before `checked` got to say no.
-  if (frameCount > MAX_FRAMES) {
+  let weight = layerCount * frameCount * CELL_WEIGHT;
+  if (weight > MAX_DOCUMENT_WEIGHT) {
     throw new Refusal(t('file.over_limits'));
   }
-  let points = 0;
   const tally = (strokes: readonly { points: readonly number[] }[]) => {
     for (const stroke of strokes) {
-      points += stroke.points.length / 2;
+      weight += STROKE_WEIGHT + stroke.points.length / 2;
     }
-    if (points > MAX_TOTAL_POINTS) {
+    if (weight > MAX_DOCUMENT_WEIGHT) {
       throw new Refusal(t('file.over_limits'));
     }
   };

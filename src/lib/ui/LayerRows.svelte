@@ -8,6 +8,7 @@
   // aid — six of them, picked per layer, never written to the document.
   import { flushSync, onDestroy, tick } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
+  import { budgetLabel } from './format-limit';
   import type { EditorState } from './editor-state.svelte';
   import type { Layer } from '../format/types';
   import { dragTargetIndex, layerGridStep } from './frame-selection';
@@ -36,6 +37,7 @@
     editor.doc.layers.map((_, index) => editor.doc.layers.length - 1 - index),
   );
   const canAdd = $derived(editor.doc.layers.length < MAX_LAYERS);
+  const budget = $derived(budgetLabel(editor.budgetShare));
   const canRemove = $derived(editor.doc.layers.length > 1);
 
   // --- One Tab stop ---------------------------------------------------------
@@ -481,6 +483,10 @@
   >
     <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>
+  <!-- The one limit of a mult, where its frames and layers are counted. -->
+  <span class="budget" class:tight={budget.tight} title={budget.title}>
+    <span class="sr-only">{budget.title}</span><span aria-hidden="true">{budget.text}</span>
+  </span>
 </div>
 
 <!-- A layout grid (WAI-ARIA APG): one Tab stop, the arrows inside. Each cell
@@ -772,6 +778,18 @@
     height: 2rem;
     padding: 0 0.3rem;
     border-bottom: 1px solid var(--hairline);
+  }
+  .budget {
+    margin-left: auto;
+    padding: 0 0.3rem;
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ink-2);
+  }
+  .budget.tight {
+    font-weight: 700;
+    color: var(--accent-ink);
   }
   .add-layer {
     display: inline-flex;

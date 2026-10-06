@@ -69,8 +69,15 @@ export const LANG_TOLERANCE_LOGICAL = 10;
 /** That tolerance in document units of a document of the reference's width. */
 export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
 
-/** Semantic limit: total number of points in a document. */
-export const MAX_TOTAL_POINTS = 1_000_000;
+/**
+ * The one limit a mult is drawn against: its weight. A point weighs 1, a
+ * stroke 3 more (what its record costs in the file beside its points) and a
+ * cell — a frame of a layer — 10, so an empty frame is not free. The server
+ * counts the same way; the publish caps are sized so a full budget is sent.
+ */
+export const MAX_DOCUMENT_WEIGHT = 1_000_000;
+export const STROKE_WEIGHT = 3;
+export const CELL_WEIGHT = 10;
 
 /** Schema limits — keep in sync with toon-v1.schema.json (asserted in tests). */
 export const MAX_DOC_DIMENSION = 32767;
@@ -80,7 +87,6 @@ export const MAX_DOC_DIMENSION = 32767;
  */
 export const STROKE_COORD_MIN = -32768;
 export const STROKE_COORD_MAX = 32767;
-export const MAX_FRAMES = 4096;
 /** Layers per document (v3); the Toonio reference caps at the same number. */
 export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
