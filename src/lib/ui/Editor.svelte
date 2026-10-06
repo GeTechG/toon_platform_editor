@@ -67,6 +67,7 @@
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
   import { dateLocale, t } from '../i18n';
+  import { budgetLabel } from './format-limit';
 
   // Optional publish hook. When a host app provides it, a Publish button appears
   // and hands the host a plain snapshot of the current document; the editor
@@ -1675,6 +1676,11 @@
     // mult went out with the selection where it was lifted. The lock
     // refuses and says so, as it does for a frame change.
     if (!editor.leaveTransform()) return;
+    // The server would refuse it after the form was filled in: said here.
+    if (editor.budgetShare > 1) {
+      void tell(t('editor.publish_over_budget', { percent: budgetLabel(editor.budgetShare).text }));
+      return;
+    }
     onPublish?.(
       $state.snapshot(editor.doc),
       editor.audio.blob

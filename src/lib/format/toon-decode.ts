@@ -126,18 +126,18 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
     throw new Refusal(t('file.bad_header'));
   }
-  // The limits are known before a single frame is read. A clone frame is one
-  // word in the file and a whole copy in memory: a small crafted file would
-  // otherwise build millions of points before `checked` got to say no.
+  // A clone frame is one word in the file and a whole copy in memory: a small
+  // crafted file would otherwise build millions of points before anything
+  // got to say no. This guards the tab's memory, not the publish budget — a
+  // mult heavier than the budget opens like any other.
+  // ponytail: ten budgets, a guess; raise it if an honest file ever hits it.
+  const ceiling = 10 * MAX_DOCUMENT_WEIGHT;
   let weight = layerCount * frameCount * CELL_WEIGHT;
-  if (weight > MAX_DOCUMENT_WEIGHT) {
-    throw new Refusal(t('file.over_limits'));
-  }
   const tally = (strokes: readonly { points: readonly number[] }[]) => {
     for (const stroke of strokes) {
       weight += STROKE_WEIGHT + stroke.points.length / 2;
     }
-    if (weight > MAX_DOCUMENT_WEIGHT) {
+    if (weight > ceiling) {
       throw new Refusal(t('file.over_limits'));
     }
   };

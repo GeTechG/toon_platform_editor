@@ -11,7 +11,7 @@
  */
 
 import validateSchema from './schema/toon-v7.validate.js';
-import { SCHEMA_VERSION, MAX_DOCUMENT_WEIGHT, STROKE_WEIGHT, CELL_WEIGHT, wellFormed } from './constants';
+import { SCHEMA_VERSION, wellFormed } from './constants';
 import type { ToolDescriptor, ToonDocument } from './types';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
@@ -96,8 +96,6 @@ function failure(category: ValidationCategory, path: string, message: string): V
 
 function semanticIssues(doc: ToonDocument): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  // The budget (see `MAX_DOCUMENT_WEIGHT`): every cell, every stroke, every point.
-  let weight = doc.layers.reduce((sum, layer) => sum + layer.frames.length * CELL_WEIGHT, 0);
   const toolCount = doc.tools.length;
 
   const cells = doc.layers.map((layer, l) => ({
@@ -129,7 +127,6 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
           });
           return;
         }
-        weight += STROKE_WEIGHT + stroke.points.length / 2;
         if (stroke.pressure && stroke.pressure.length !== stroke.points.length / 2) {
           issues.push({
             category: 'semantic',
@@ -171,13 +168,8 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
     });
   }
 
-  if (weight > MAX_DOCUMENT_WEIGHT) {
-    issues.push({
-      category: 'semantic',
-      path: '',
-      message: `document weighs ${weight} — over the budget of ${MAX_DOCUMENT_WEIGHT}`,
-    });
-  }
+  // The weight budget is not checked here: a mult heavier than what may be
+  // published is still a document — its draft has to open (`overBudget`).
 
   return issues;
 }

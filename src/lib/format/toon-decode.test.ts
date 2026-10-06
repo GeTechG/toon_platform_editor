@@ -282,13 +282,13 @@ describe('decoders hand out only documents that validate', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('opens a .toon of 5000 frames, refuses one whose cells outweigh the budget', () => {
+  it('opens a .toon of 5000 frames, and one heavier than the publish budget', () => {
     const toon = (layers: number, frames: number) => decodeToon(encode([
       ...header(layers, frames),
       1, ...PENCIL,
       ...Array.from({ length: layers }, () => [1, 0, ...Array.from({ length: frames }, () => [0, 0]).flat()]).flat(),
     ]));
     expect(toon(1, 5000).ok).toBe(true);
-    expect(toon(4, 25_001).ok).toBe(false);
+    expect(toon(4, 25_001).ok).toBe(true);
   });
 });

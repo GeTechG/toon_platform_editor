@@ -10,26 +10,40 @@ describe('the budget in the layer column', () => {
     expect(label.tight).toBe(false);
   });
 
-  it('never says 100 % while a stroke still fits', () => {
+  it('rounds toward the truth on both sides of the limit', () => {
     expect(budgetLabel(0.9996).text).toMatch(/^99\s%$/);
     expect(budgetLabel(1).text).toMatch(/^100\s%$/);
+    expect(budgetLabel(1).over).toBe(false);
+    expect(budgetLabel(1.0004).text).toMatch(/^101\s%$/);
   });
 
-  it('turns tight from 80 %, and says what to do about it', () => {
+  it('turns tight from 80 %: publishing is close to its limit', () => {
     expect(budgetLabel(0.79).tight).toBe(false);
     const label = budgetLabel(0.8);
     expect(label.tight).toBe(true);
-    expect(label.title).toMatch(/^Мульт заполнен на 80\s% — места осталось мало$/);
+    expect(label.title).toMatch(/^Мульт заполнен на 80\s% — скоро не получится опубликовать$/);
+  });
+
+  it('past 100 % it keeps counting and says the mult cannot be published', () => {
+    const label = budgetLabel(1.12);
+    expect(label.over).toBe(true);
+    expect(label.text).toMatch(/^112\s%$/);
+    expect(label.title).toMatch(/^Мульт заполнен на 112\s% — больше лимита, опубликовать не получится$/);
   });
 });
 
 // EditorState is a runes class, so its part is asserted as source.
-describe('a frame or a layer the budget has no room for', () => {
+describe('a mult heavier than the publish limit', () => {
   const state = readFileSync(new URL('./editor-state.svelte.ts', import.meta.url), 'utf8');
 
-  it('is refused aloud, not thrown: all three ways in go through #writeIfRoom', () => {
-    for (const op of ['addLayer(doc, at)', 'addFrame(doc, this.activeFrame)', 'insertFrameBefore(doc, this.activeFrame)']) {
-      expect(state).toContain(`this.#writeIfRoom((doc) => ${op})`);
-    }
+  it('the mult that just went over the limit is told so once, in the canvas line', () => {
+    expect(state).toMatch(/if \(!wasOver && this\.budgetShare > 1\) \{\s*this\.canvasHint = \{ text: t\('canvas\.over_budget'\) \};/);
+  });
+
+  it('sending a mult over the limit is refused in the studio, before the site is asked', () => {
+    const studio = readFileSync(new URL('./Editor.svelte', import.meta.url), 'utf8');
+    const send = studio.match(/function sendOut\(\): void \{[^]*?\n {2}\}/)?.[0] ?? '';
+    expect(send.indexOf("t('editor.publish_over_budget'")).toBeGreaterThan(0);
+    expect(send.indexOf("t('editor.publish_over_budget'")).toBeLessThan(send.indexOf('onPublish?.('));
   });
 });

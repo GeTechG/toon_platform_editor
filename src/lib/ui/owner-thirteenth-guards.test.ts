@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { addStroke, createDocument, replaceStrokes } from '../model/operations';
-import { MAX_STROKE_COORDS, MAX_STROKES_PER_FRAME } from '../format/constants';
-import type { Stroke } from '../format/types';
+import { MAX_STROKES_PER_FRAME } from '../format/constants';
 import { formatLimitHint } from './format-limit';
 import { t } from '../i18n';
 
@@ -42,15 +41,6 @@ describe('a refusal at the format limit names the limit', () => {
     expect(formatLimitHint(err)).toBe(t('canvas.frame_full'));
   });
 
-  it('a document at the point limit: the mult is full', () => {
-    const doc = createDocument();
-    const points = Array.from({ length: MAX_STROKE_COORDS }, (_, i) => i % 100);
-    addStroke(doc, 0, 0, { points, width: 9, color: '#000000' });
-    const big: Stroke = doc.layers[0].frames[0].strokes[0];
-    const err = caught(() => replaceStrokes(doc, 0, 0, Array.from({ length: 31 }, () => big)));
-    expect(formatLimitHint(err)).toBe(t('canvas.mult_full'));
-  });
-
   it('any other error is not a limit, and says nothing', () => {
     expect(formatLimitHint(new RangeError('stroke must have an even coordinate count'))).toBeNull();
     expect(formatLimitHint('boom')).toBeNull();
@@ -58,7 +48,6 @@ describe('a refusal at the format limit names the limit', () => {
 
   it('the texts speak to the user', () => {
     expect(ru.canvas.frame_full).toMatch(/^Кадр полон/);
-    expect(ru.canvas.mult_full).toMatch(/^Мульт полон/);
   });
 });
 

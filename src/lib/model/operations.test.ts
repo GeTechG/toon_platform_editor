@@ -8,8 +8,8 @@ import {
   copyCells,
   createDocument,
   documentWeight,
-  FormatLimitError,
   frameFits,
+  overBudget,
   mergeCells,
   insertFrameBefore,
   internTool,
@@ -837,35 +837,26 @@ describe('document budget', () => {
 
   const emptyFrames = (count: number) => Array.from({ length: count }, () => ({ strokes: [] }));
 
-  it('a frame is refused by the budget, not by a count of frames', () => {
+  it('drawing is not held to the budget: only overBudget says the mult cannot be published', () => {
+    const doc = createDocument();
+    doc.layers[0].frames = emptyFrames(99_999); // 999 990 of the million
+    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
+    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
+    expect(documentWeight(doc)).toBe(1_000_000);
+    expect(overBudget(doc)).toBe(false);
+    addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
+    addLayer(doc, 1);
+    expect(overBudget(doc)).toBe(true);
+    // The draft of it still opens: a heavy mult is a valid document.
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('frames stop at the schema ceiling, far past any budget', () => {
     const doc = createDocument();
     doc.layers[0].frames = emptyFrames(99_999);
     expect(frameFits(doc)).toBe(true);
     addFrame(doc, 4096);
-    expect(documentWeight(doc)).toBe(1_000_000);
     expect(frameFits(doc)).toBe(false);
-    expect(() => addFrame(doc, 0)).toThrow(FormatLimitError);
-    expect(doc.layers[0].frames).toHaveLength(100_000);
-    expect(validateDocument(doc).ok).toBe(true);
-  });
-
-  it('a layer costs its frames', () => {
-    const doc = createDocument();
-    doc.layers[0].frames = emptyFrames(50_000);
-    addLayer(doc, 1);
-    expect(() => addLayer(doc, 2)).toThrow(FormatLimitError);
-    expect(doc.layers).toHaveLength(2);
-  });
-
-  it('a stroke is refused when its points and its own 3 do not fit', () => {
-    const doc = createDocument();
-    doc.layers[0].frames = emptyFrames(99_999); // 999 990 of the million
-    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' }); // 999 995
-    expect(() => addStroke(doc, 0, 0, { points: [1, 2, 3, 4, 5, 6], width: 8, color: '#000000' })).toThrow(
-      FormatLimitError,
-    );
-    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
-    expect(documentWeight(doc)).toBe(1_000_000);
-    expect(() => replaceStrokes(doc, 0, 1, [{ points: [1, 2], tool_id: 0 }])).toThrow(FormatLimitError);
+    expect(() => addFrame(doc, 0)).toThrow(RangeError);
   });
 });

@@ -70,10 +70,12 @@ export const LANG_TOLERANCE_LOGICAL = 10;
 export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
 
 /**
- * The one limit a mult is drawn against: its weight. A point weighs 1, a
- * stroke 3 more (what its record costs in the file beside its points) and a
- * cell — a frame of a layer — 10, so an empty frame is not free. The server
- * counts the same way; the publish caps are sized so a full budget is sent.
+ * What a mult may weigh to be published. A point weighs 1, a stroke 3 more
+ * (what its record costs in the file beside its points) and a cell — a frame
+ * of a layer — 10, so an empty frame is not free. Drawing is not held to it
+ * (owner, 2026-10-06): a heavier mult is drawn, saved and opened like any
+ * other, the studio says it cannot be sent, and the server refuses it. The
+ * server counts the same way; its body caps are sized so a full budget fits.
  */
 export const MAX_DOCUMENT_WEIGHT = 1_000_000;
 export const STROKE_WEIGHT = 3;
@@ -88,6 +90,8 @@ export const MAX_DOC_DIMENSION = 32767;
 export const STROKE_COORD_MIN = -32768;
 export const STROKE_COORD_MAX = 32767;
 /** Layers per document (v3); the Toonio reference caps at the same number. */
+/** Frames per layer: the schema's ceiling, not a limit anyone draws up to. */
+export const MAX_FRAMES = 100_000;
 export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
 /** Layer name length (v5); the reference's `MAX_LAYER_NAME`. */
