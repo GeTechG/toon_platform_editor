@@ -406,7 +406,7 @@ describe('a plugin brings its own catalogue', () => {
       tools: { 'a.thief': { label: 'Вор', title: 'Вор', icon: '<path />' } },
     });
 
-    expect(t('tool.pencil.label')).toBe('Карандаш');
+    expect(t('tool.pencil.label')).toBe('Кисть');
   });
 });
 

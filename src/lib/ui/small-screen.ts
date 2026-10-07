@@ -137,6 +137,9 @@ const BEHIND_A_KEY: readonly string[] = ['palette', 'color', 'color-key', 'brush
  */
 const ON_THE_STRIP: readonly string[] = ['delete-frame', 'copy', 'paste', 'merge'];
 
+/** What «⋯» holds on a phone whatever the arrangement: the toon's own keys. */
+const ALWAYS_BEHIND_MORE: readonly string[] = ['save', 'export', 'drafts'];
+
 export type MoreGroup = 'frames' | 'toon' | 'studio';
 
 /**
@@ -166,7 +169,8 @@ export interface PhoneLayout {
  * for — the essential ones first — a key for the rest of them, and the colour.
  * The sound's key stands by the transport: the track is the strip's. Whatever
  * else the user's own arrangement draws is behind «⋯»; what it keeps on the
- * shelf stays there.
+ * shelf stays there — but for saving, export and the drafts, which a phone
+ * always has behind «⋯».
  */
 export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneKeep): PhoneLayout {
   const placed = allPlaced({ ...layout, hidden: [] });
@@ -201,7 +205,11 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
   panels.hidden = BEHIND_A_KEY.filter((id) => !panels.top.includes(id) && !panels.left.includes(id));
   const drawn = [...base.left, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
   // The frame rate is always there: the row it stood in has no room for it.
-  const behind = [...placed.filter((id) => !drawn.includes(id) && toolOfItem(id) === null && id !== 'fps'), 'fps'];
+  // So are saving, export and the drafts, placed or not: a phone has no shelf
+  // to fetch a key from and no arranger, and Multator's arrangement — which
+  // places none of them — left its phone with no way to a GIF or to another toon.
+  const always = ['fps', ...ALWAYS_BEHIND_MORE];
+  const behind = [...placed.filter((id) => !drawn.includes(id) && toolOfItem(id) === null && !always.includes(id)), ...always];
   return { panels, more: moreGroups(behind), tools: rest };
 }
 
@@ -213,7 +221,8 @@ function moreGroups(behind: readonly string[]): PhoneLayout['more'] {
     { id: 'toon', items: MORE_ORDER.toon.filter((id) => behind.includes(id)) },
     { id: 'studio', items: behind.filter((id) => !listed.includes(id)) },
   ];
-  return groups.filter((group) => group.items.length > 0);
+  // The save status is a note, not a key: alone, it is a heading over nothing.
+  return groups.filter((group) => group.items.some((id) => id !== 'saved'));
 }
 
 /** How far the desktop's bar over the canvas is cut to stay one row: whole, the other tools behind their key, the rest behind «⋯» too. */

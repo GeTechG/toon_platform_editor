@@ -245,7 +245,7 @@
     editor.replacePalette(p.colours);
   }
   async function deletePalette(p: SavedPalette): Promise<void> {
-    if (await editor.ask(t('palette.delete_confirm'), t('ask.delete'))) editor.deleteSavedPalette(p.id);
+    if (await editor.ask(t('palette.delete_confirm'), t('ask.delete'), true)) editor.deleteSavedPalette(p.id);
   }
 </script>
 

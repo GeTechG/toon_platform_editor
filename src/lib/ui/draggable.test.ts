@@ -136,3 +136,19 @@ describe('a dragged tool window comes back inside when the page turns', () => {
     expect(dragSource).toContain("removeEventListener('resize', onResize)");
   });
 });
+
+// 2026-10-08 critique: the transform window takes its 13rem from the column
+// it stands in. Out of the flow nothing gave it a width, and dragged by its
+// title it folded into a 19px strip of wrapped letters.
+describe('a window keeps its width when it leaves the flow', () => {
+  const begin = dragSource.slice(
+    dragSource.indexOf('function beginDrag'),
+    dragSource.indexOf('function onPointerMove'),
+  );
+
+  it('holds it to no less than the width it had before going fixed', () => {
+    const pin = begin.indexOf('node.style.minWidth = `${grab.size.width}px`');
+    expect(pin).toBeGreaterThan(-1);
+    expect(pin).toBeLessThan(begin.indexOf("node.style.position = 'fixed'"));
+  });
+});

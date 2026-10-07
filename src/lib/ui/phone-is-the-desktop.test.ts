@@ -11,6 +11,7 @@ import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, 
 void plugins;
 const base = presetPanels(DEFAULT_PRESET);
 const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+const popKeyUi = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
 const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)).text());
 /** Everything behind «⋯», whatever its group. */
 const all = (cut: ReturnType<typeof phoneLayout>) => cut.more.flatMap((group) => group.items);
@@ -61,9 +62,22 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(base, base, keep);
     expect(cut.more).toEqual([
       { id: 'frames', items: ['fps'] },
-      { id: 'toon', items: ['save', 'export', 'saved'] },
+      { id: 'toon', items: ['save', 'export', 'drafts', 'saved'] },
       { id: 'studio', items: ['settings', 'manual', 'fullscreen'] },
     ]);
+  });
+
+  // A phone has no shelf to take a key from and no arranger: what a toon
+  // cannot do without is behind «⋯» whatever the arrangement — Multator's
+  // places neither, and its phone could not get a GIF out or reach a draft.
+  it('saving, export and the drafts are always behind «⋯»: a phone has no shelf to fetch them from', () => {
+    const bare = phoneLayout({ ...base, top: ['publish', 'settings', 'saved'], hidden: ['save', 'export', 'drafts'] }, base, keep);
+    expect(bare.more.find((group) => group.id === 'toon')?.items).toEqual(['save', 'export', 'drafts', 'saved']);
+  });
+
+  it('a group left with the save status alone is not drawn: a heading over nothing', () => {
+    const cut = oneRowTop({ ...base, top: ['publish', 'saved', 'settings', 'manual', ...base.top.filter((id) => id.startsWith('tool:')), 'color-key'] }, 2, { tools: keep.tools })!;
+    expect(cut.more.map((group) => group.id)).toEqual(['studio']);
   });
 
   it('the frame keys are nowhere on a phone: the strip’s own menu, a held finger away, does their work', () => {
@@ -74,7 +88,7 @@ describe('a phone draws toonop’s desktop', () => {
     for (const id of ['merge', 'paste', 'copy', 'delete-frame']) expect(drawn).not.toContain(id);
     expect(cut.more.find((group) => group.id === 'toon')?.items).toEqual(['save', 'export', 'drafts', 'saved']);
     const bare = phoneLayout({ ...base, top: ['publish', 'settings'] }, base, keep);
-    expect(bare.more.map((group) => group.id)).toEqual(['frames', 'studio']);
+    expect(bare.more.map((group) => group.id)).toEqual(['frames', 'toon', 'studio']);
     // No sound and no onion skin placed, no keys for them.
     expect(bare.panels.rows[0]).toEqual(['add-frame', 'transport']);
   });
@@ -125,10 +139,10 @@ describe('a phone draws toonop’s desktop', () => {
     expect(editorUi).toContain('style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ?');
   });
 
-  it('what is on the shelf stays there', () => {
-    const layout = movePanelItem(base, 'export', 'hidden');
+  it('what is on the shelf stays there — but for saving, export and the drafts', () => {
+    const layout = movePanelItem(base, 'manual', 'hidden');
     const cut = phoneLayout(movePanelItem(layout, toolItem('eraser'), 'hidden'), base, keep);
-    expect(all(cut)).not.toContain('export');
+    expect(all(cut)).not.toContain('manual');
     expect(cut.panels.top).not.toContain('tool:eraser');
   });
 
@@ -213,6 +227,15 @@ describe('the studio draws one markup, given the arrangement', () => {
     expect(editorUi).toMatch(/\{:else if id === 'tools'\}[\s\S]*?<PopKey[\s\S]*?active=\{!!held\}[\s\S]*?<Icon name=\{held \? \(toolSpec\(held\)\?\.icon \?\? 'tools'\) : 'tools'\} \/>[\s\S]*?class="more-keys tool-list"[\s\S]*?\{@render slot\(over\?\.tools \?\? \[\]\)\}/);
   });
 
+  // The list has done its job once a tool is taken: left open, it lay over
+  // the transform's window. The brush and the colours are worked in, and stay.
+  it('the list of the other tools closes when a tool is taken from it; the brush and the colours stay open', () => {
+    const popKey = popKeyUi;
+    expect(popKey).toMatch(/\$effect\(\(\) => \{\s*void shutOn;\s*open = false;\s*\}\);/);
+    expect(editorUi).toMatch(/\{:else if id === 'tools'\}[\s\S]*?<PopKey[^>]*shutOn=\{editor\.tool\}/);
+    expect(editorUi.match(/shutOn=/g)?.length).toBe(1);
+  });
+
   it('a finger gets no hand tool: two fingers move the sheet', () => {
     expect(editorUi).toContain("const touch = matchMedia('(pointer: coarse)').matches;");
     expect(editorUi).toContain("&& !(tool === 'drag' && touch)");
@@ -244,8 +267,9 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('a press anywhere else closes «⋯» and the sound sheet, as it closes a key’s box: one thing open at a time', () => {
     const away = editorUi.slice(editorUi.indexOf('// On a phone a press anywhere else closes what is open'), editorUi.indexOf('function onMoreKey('));
     expect(away).toContain("window.addEventListener('pointerdown', away, true);");
-    expect(away).toContain('if (moreOpen && !tabWindow?.contains(hit) && !moreKey?.contains(hit)) moreOpen = false;');
-    expect(away).toContain("if (compact && audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;");
+    // Each tells the sheet of the press that closed it: a tap there only closes (dismiss-press.test.ts).
+    expect(away).toMatch(/if \(moreOpen && !tabWindow\?\.contains\(hit\) && !moreKey\?\.contains\(hit\)\) \{\s*moreOpen = false;/);
+    expect(away).toMatch(/if \(compact && audioOpen && !hit\.closest\('\.audio-plate, dialog'\) && !audioKey\?\.contains\(hit\)\) \{\s*audioOpen = false;/);
   });
 
   it('a phone’s bar is as tall as its rows: one layer stands whole, many scroll in the strip; no divider to drag', () => {

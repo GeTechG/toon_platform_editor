@@ -6,6 +6,7 @@
    * general.
    */
   import type { Snippet } from 'svelte';
+  import { notePopupClosed } from './dismiss-press';
 
   let {
     label,
@@ -14,12 +15,15 @@
     children,
     active = false,
     gate,
+    shutOn,
     attrs = {},
   }: {
     /** Drawn as pressed though its box is shut: a tool in hand. */
     active?: boolean;
     /** Asked at each press: false — the press did something else, the box stays as it is. */
     gate?: () => boolean;
+    /** The box shuts when this changes: a list one picks from, done once the pick is made. */
+    shutOn?: unknown;
     /** What else the key carries: its hotkey, its pressed state. */
     attrs?: Record<string, unknown>;
     label: string;
@@ -56,13 +60,18 @@
       : { x, bottom: window.innerHeight - k.top + 6, max: above };
   });
 
-  // A press anywhere else closes it and still does its own work: the stroke
-  // that follows a colour starts with that press.
+  // A press anywhere else closes it and still does its own work — a key is
+  // pressed, the stroke that follows a colour starts with that press. A tap on
+  // the sheet is the one press that only closes (owner, 2026-10-08): it left a
+  // dot of the brush nobody meant, and the sheet is told of it (dismiss-press.ts).
   $effect(() => {
     if (!open) return;
     const away = (e: PointerEvent) => {
       const hit = e.target as Node | null;
-      if (hit && !plate?.contains(hit) && !key?.contains(hit)) open = false;
+      if (hit && !plate?.contains(hit) && !key?.contains(hit)) {
+        open = false;
+        notePopupClosed(e);
+      }
     };
     window.addEventListener('pointerdown', away, true);
     return () => window.removeEventListener('pointerdown', away, true);
@@ -72,6 +81,14 @@
   // hotkey, and the box showed another tool's brush under this key.
   $effect(() => {
     if (gate && !active) open = false;
+  });
+
+  // A list is done with once something is taken from it: the other tools'
+  // stayed open over the window of the tool just picked. A box one works in
+  // (the brush, the colours) names nothing here and stays.
+  $effect(() => {
+    void shutOn;
+    open = false;
   });
 
   function onKey(e: KeyboardEvent): void {

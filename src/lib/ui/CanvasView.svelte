@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
   import { toolSpec } from './panels';
+  import { pastDragThreshold } from './draggable';
+  import { dismissedOnly } from './dismiss-press';
   import { PENCIL } from '../plugins';
   import type { EditorState, Tool } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
@@ -252,6 +254,17 @@
    * with the fill colour (reference: `c.c = fillColour` for the gesture).
    */
   let strokeButton = 0;
+  /**
+   * The press on the sheet, and whether it has travelled: one that closed a
+   * popup and went nowhere only closed it (owner, 2026-10-08) — its dot is not
+   * drawn. `far` is kept from the moves: a ring drawn back to its start is a
+   * stroke, though it ends where it began.
+   */
+  let press: { event: PointerEvent; far: boolean } | null = null;
+  function onlyDismissed(e: PointerEvent): boolean {
+    return !!press && press.event.pointerId === e.pointerId && !press.far
+      && dismissedOnly(press.event, { dx: e.clientX - press.event.clientX, dy: e.clientY - press.event.clientY }, e.pointerType);
+  }
 
   const pointer = new PointerStrokeController(() => ({
     rules: activeRules(),
@@ -1472,6 +1485,9 @@
 
   function onPointerDown(e: PointerEvent): void {
     sideButtons.press(e.button);
+    if (e.isPrimary) {
+      press = { event: e, far: false };
+    }
     followPenEnd(e);
     // The first finger on the sheet brings the thickness rail.
     if (e.pointerType === 'touch') {
@@ -1624,6 +1640,9 @@
     // A second button pressed while the first is held comes as a move, not a
     // pointerdown: a thumb on «back» in the middle of a line left the studio.
     sideButtons.press(e.button);
+    if (press && !press.far && e.pointerId === press.event.pointerId) {
+      press.far = pastDragThreshold(e.clientX - press.event.clientX, e.clientY - press.event.clientY, e.pointerType);
+    }
     // A mouse or a pen moving with no button held has let go somewhere the
     // canvas did not hear (a native dialog, the window losing focus): end the
     // gesture here, or the stroke follows the hover and refuses the next press.
@@ -1813,6 +1832,13 @@
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
+      // The tap that put a popup away erases nothing either.
+      if (onlyDismissed(e)) {
+        megaGesture = null;
+        gesturePointerId = -1;
+        scheduleDraw();
+        return;
+      }
       const layer = megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1;
       const frame = megaAt.cell ? editor.doc.layers[layer]?.frames.indexOf(megaAt.cell) ?? -1 : -1;
       editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, layer, frame);
@@ -1823,6 +1849,14 @@
       return;
     }
     if (!pointer.session || !e.isPrimary) {
+      return;
+    }
+    // A tap that closed a popup only closed it: its dot goes, unrecorded. A
+    // stroke begun by such a press has travelled, and is drawn whole.
+    if (onlyDismissed(e)) {
+      pointer.discard();
+      strokeLayer = undefined;
+      scheduleDraw();
       return;
     }
     pointer.pointerUp(toPointerSample(e, true));

@@ -103,6 +103,15 @@ export function exportWidths(doc: ToonDocument): number[] {
   return fit.length > 0 ? fit : [widest];
 }
 
+/**
+ * The width the sheet opens on: the drawing's own where it is offered, else
+ * the nearest rung that does not shrink it — a 548 px sheet opened on the
+ * reference's 1280, 2.3× what was drawn — and the largest when all are under.
+ */
+export function startWidth(own: number, offered: readonly number[]): number {
+  return offered.find((width) => width >= own) ?? offered[offered.length - 1];
+}
+
 /** Logical canvas size of the document, in px. */
 export function logicalSize(doc: ToonDocument): ExportSize {
   return {

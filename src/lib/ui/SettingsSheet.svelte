@@ -60,6 +60,13 @@
     onOpenDrafts?: () => void;
   } = $props();
 
+  /**
+   * Nothing here hovers — a phone, a tablet without a mouse: the switches
+   * that only a mouse or a keyboard feels are not shown. The studio's own
+   * check for a finger, by every pointer rather than the first, so a tablet
+   * with a mouse plugged in keeps them. Hidden only: the settings stay as set.
+   */
+  const fingersOnly = typeof matchMedia === 'function' && matchMedia('(any-hover: none)').matches;
   /** Without the API the option would be a switch that does nothing. */
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
 
@@ -219,7 +226,7 @@
   }
 
   async function wipePalettes(): Promise<void> {
-    if (await editor.ask(t('settings.wipe_palettes_confirm'), t('ask.delete'))) {
+    if (await editor.ask(t('settings.wipe_palettes_confirm'), t('ask.delete'), true)) {
       editor.deleteAllSavedPalettes();
       report = t('settings.palettes_wiped');
     }
@@ -247,9 +254,9 @@
 <!-- An action is a row like the switches around it: its name on the left, what
      kind of thing it is on the right. A cluster of pill keys of every width
      wrapped where it liked and read as a heap. -->
-{#snippet act(label: string, icon: IconName | undefined, onclick: () => void, danger = false)}
+{#snippet act(label: string, icon: IconName | undefined, onclick: () => void, danger = false, hint = '')}
   <button class="act" class:danger {onclick}>
-    <span>{label}</span>
+    <span class="act-words">{label}{#if hint}<small>{hint}</small>{/if}</span>
     {#if icon}<Icon name={icon} />{/if}
   </button>
 {/snippet}
@@ -294,6 +301,7 @@
           hand. (The old pen it used to mean here is a type of the brush now,
           picked in the brush box.)
         -->
+        {#if !fingersOnly}
         <label class="toggle">
           <span class="toggle-label stacked">
             {t('settings.mouse_mode')}
@@ -306,6 +314,7 @@
             onchange={(e) => editor.setSetting('mouseMode', e.currentTarget.checked)}
           />
         </label>
+        {/if}
         <label class="toggle">
           <span class="toggle-label stacked">
             {t('settings.pen_pressure')}
@@ -318,6 +327,7 @@
             onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
           />
         </label>
+        {#if !fingersOnly}
         <label class="toggle">
           <span class="toggle-label">{t('settings.crosshair')}</span>
           <input
@@ -327,8 +337,12 @@
             onchange={(e) => editor.setSetting('crossCursor', e.currentTarget.checked)}
           />
         </label>
+        {/if}
         <label class="toggle">
-          <span class="toggle-label">{t('settings.lock_transform')}</span>
+          <span class="toggle-label stacked">
+            {t('settings.lock_transform')}
+            <small>{t('settings.lock_transform_hint')}</small>
+          </span>
           <input
             type="checkbox"
             role="switch"
@@ -401,6 +415,7 @@
             >{p.label}</button>
           {/each}
         </div>
+        <p class="said">{t('settings.preset_hint')}</p>
         <label class="toggle">
           <span class="toggle-label">{t('settings.mirror_layout')}</span>
           <input
@@ -410,6 +425,7 @@
             onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
           />
         </label>
+        {#if !fingersOnly}
         <label class="toggle">
           <span class="toggle-label">{t('settings.letter_keys')}</span>
           <input
@@ -419,6 +435,7 @@
             onchange={(e) => editor.setSetting('letterKeys', e.currentTarget.checked)}
           />
         </label>
+        {/if}
         <!-- Расположение: arranged by hand in the editor, where the panels are.
              A list of selects said the same thing twice and nobody used it. -->
         {#if !compact}
@@ -447,7 +464,7 @@
             onchange={(e) => editor.setSetting('showDraftsOnStart', e.currentTarget.checked)}
           />
         </label>
-        {@render act(t('settings.ask_persist'), 'save', askPersist)}
+        {@render act(t('settings.ask_persist'), 'save', askPersist, false, t('settings.ask_persist_hint'))}
 
         {#if onOpenDrafts || onOpenFile}
           <h3 class="sheet-hint">{t('settings.open')}</h3>
@@ -788,9 +805,24 @@
     align-items: flex-start;
     gap: 0.1rem;
   }
-  .toggle-label small {
+  .toggle-label small,
+  .act-words small {
     font-size: 0.8rem;
     opacity: 0.7;
+  }
+  /* A pressed row's words, with the line under them a switch's row has. */
+  .act-words {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+  /* What the row of sets above it changes, in the hints' own size. */
+  .said {
+    margin: 0.4rem 0 0.3rem;
+    font-size: 0.8rem;
+    color: var(--ink-2);
   }
   /* The shape comes from the shared `.sheet` chrome; a <dialog> only needs
      its own defaults cleared and a backdrop of its own. */

@@ -20,6 +20,7 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
+  import { notePopupClosed } from './dismiss-press';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -423,7 +424,11 @@
   }
 
   function onWindowDown(e: PointerEvent): void {
-    if (menu && !menuEl?.contains(e.target as Node)) closeMenu();
+    // A tap on the sheet that put the menu away only closes it (dismiss-press.ts).
+    if (menu && !menuEl?.contains(e.target as Node)) {
+      closeMenu();
+      notePopupClosed(e);
+    }
   }
 
   // --- Soundtrack -----------------------------------------------------------
@@ -981,6 +986,13 @@
     font: inherit;
     font-size: 0.75rem;
     color: var(--ink-2);
+  }
+  /* A menu opened by a held finger named «A / Del / C / V / M»: keys a phone
+     does not have. Where no pointer is fine there is no keyboard to press. */
+  @media not all and (any-pointer: fine) {
+    .frame-menu kbd {
+      display: none;
+    }
   }
   .frame-menu button:focus-visible {
     background: var(--hairline-soft);

@@ -229,7 +229,8 @@ describe('the rules that used `:has()` keep working without it', () => {
 
   it('a settings label with a note under it says so by a class', () => {
     const withNote = [...settings.matchAll(/<span class="toggle-label([^"]*)">[^<]*<small/g)];
-    expect(withNote.length).toBe(3);
+    // The fourth is the transform lock's (critique 2026-10-08).
+    expect(withNote.length).toBe(4);
     for (const m of withNote) expect(m[1]).toBe(' stacked');
     expect(styleOf('SettingsSheet.svelte', settings)).toMatch(/\.toggle \.toggle-label\.stacked \{[^}]*flex-direction: column/);
   });

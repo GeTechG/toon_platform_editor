@@ -63,9 +63,11 @@
     | 'tools';
 
   const PATHS: Record<IconName, string> = {
-    // The top bar's brush key, and the five ways of the colours window.
+    // An artist's brush — a round handle and a loaded tip — for the drawing
+    // tool and its window. It was a house painter's flat brush (owner,
+    // 2026-10-08: «малярная, не то»).
     brush:
-      'M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3ZM9 8c-2 3-4 3.500-7 4l8 10c2-1 6-5 6-7M14.5 17.5 4.5 15',
+      'M11 10l3 3M6.5 21A3.5 3.5 0 1 0 3 17.500a2.620 2.620 0 0 1-.708 1.792A1 1 0 0 0 3 21zM9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031',
     disc: 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z',
     square: 'M6 5h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
     harmony: 'M4 6l8 6 8-2M12 12l-5 7',
@@ -122,10 +124,13 @@
     play: 'M8 5.5v13l11-6.5-11-6.5Z',
     pause: 'M9 6v12M15 6v12',
     // Transport: a step of one frame, and the jump to either end of the strip.
-    'frame-prev': 'M15 6v12l-9-6 9-6Z',
-    'frame-next': 'M9 6v12l9-6-9-6Z',
-    'frame-first': 'M6 6v12M19 6v12l-9-6 9-6Z',
-    'frame-last': 'M18 6v12M5 6v12l9-6-9-6Z',
+    // A step is a triangle at a bar, an end two triangles at a bar — the
+    // transport's own convention: a bare triangle beside «play» was «play»
+    // again at another size, and nobody could tell «next frame» from it.
+    'frame-prev': 'M7 6v12M18 6v12l-9-6 9-6Z',
+    'frame-next': 'M17 6v12M6 6v12l9-6-9-6Z',
+    'frame-first': 'M5 6v12M13 7v10l-5.5-5 5.5-5ZM20 7v10l-5.5-5 5.5-5Z',
+    'frame-last': 'M19 6v12M11 7v10l5.5-5-5.5-5ZM4 7v10l5.5-5-5.5-5Z',
     undo: 'M3 7v6h6M21 17a9 9 0 0 0-15-6.7L3 13',
     redo: 'M21 7v6h-6M3 17a9 9 0 0 1 15-6.7L21 13',
     stop: 'M6.5 6.5h11v11h-11Z',

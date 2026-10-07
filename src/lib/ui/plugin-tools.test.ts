@@ -75,7 +75,9 @@ afterEach(() => {
 
 test('the built-in tools are in the register, in the order the rail draws them', () => {
   expect(toolOrder().slice(0, 3)).toEqual(['pencil', 'eraser', 'feather']);
-  expect(toolSpec('pencil')?.label).toBe('Карандаш');
+  // The drawing tool is shown as a brush (owner, 2026-10-08); its id stays `pencil`.
+  expect(toolSpec('pencil')?.label).toBe('Кисть');
+  expect(toolSpec('pencil')?.icon).toBe('brush');
   expect(toolSpec('pencil')?.builtin).toBe(true);
 });
 

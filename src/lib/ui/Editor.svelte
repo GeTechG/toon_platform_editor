@@ -6,6 +6,7 @@
   import BrushPanel from './BrushPanel.svelte';
   import ColoursPanel from './ColoursPanel.svelte';
   import PopKey from './PopKey.svelte';
+  import { notePopupClosed } from './dismiss-press';
   import { sideAsDrawn, transportKeys } from './ux-profile';
   import BrushRail from './BrushRail.svelte';
   import BrushSizes from './BrushSizes.svelte';
@@ -28,12 +29,12 @@
   import './controls.css';
   import { decodeLegacyJson, decodeToon, isToonopJson } from '../format/toon-decode';
   import { FormatError, loadDocument } from '../format/validate';
-  import { isEmptyDocument } from '../model/operations';
+  import { frameCount, isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
   import { keyPan, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
-  import { composing, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
   import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -79,7 +80,9 @@
   // device goes then — the editor cannot know that, the host cannot reach the draft.
   // `stageNote` is the host's own word over the canvas — the site's first-run
   // hint. The stage is the only box that knows where the canvas is, so the
-  // note is placed against it rather than against the whole editor.
+  // note is placed against it rather than against the whole editor. It is told
+  // whether a line is drawn, and is drawn until the toon has a second frame:
+  // the hint's «then add a frame» left with the first stroke, when it was next.
   // `startNew` is the host asking for a new drawing outright (the site's
   // «Новый мульт» tile): the studio opens on the choice of a sheet, past the
   // drafts and whatever the start-up setting says.
@@ -89,13 +92,16 @@
     onPublish,
     stageNote,
     named,
+    home,
     startNew,
     open,
   }: {
     onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null, sent?: () => Promise<void>) => void;
-    stageNote?: Snippet;
+    stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean]>;
     /** A first visit: a phone's row of keys wears its names until the host takes this back. */
     named?: boolean;
+    /** The host's way back to its own pages, for where it has put its header away (a phone lying down): a key behind «⋯». */
+    home?: { href: string; label: string };
     startNew?: boolean;
     open?: { doc: ToonDocument; audio?: AudioTrackData | null };
   } = $props();
@@ -123,6 +129,9 @@
   // flag back, so Esc and the close buttons end at the same place.
   /** The drafts hub, when it is up: `close()` is its way out. */
   let hub = $state<DraftsHub | undefined>();
+  /** The hub was called up over the studio, and from which key: it gets the focus back. */
+  let hubFromStudio = false;
+  let hubFrom: Element | null = null;
   /** A sheet is up: a modal one, or the hub standing in place of the studio. */
   const SHEET_UP = 'dialog:modal, dialog.hub[open]';
   let manualDialog = $state<HTMLDialogElement | undefined>();
@@ -133,14 +142,14 @@
   // alert() and prompt() stood (critique 2026-10-06): its chrome and its «OK»
   // at the very moments a drawing is at stake. One at a time; a new one
   // answers the old with a no.
-  let question = $state<{ kind: 'ask' | 'tell' | 'text'; message: string; yes: string; value: string; done: (yes: boolean) => void } | null>(null);
+  let question = $state<{ kind: 'ask' | 'tell' | 'text'; message: string; yes: string; value: string; final: boolean; done: (yes: boolean) => void } | null>(null);
   let questionDialog = $state<HTMLDialogElement | undefined>();
   $effect(() => {
     questionDialog?.showModal();
   });
-  function put(kind: 'ask' | 'tell' | 'text', message: string, yes: string, value = ''): Promise<boolean> {
+  function put(kind: 'ask' | 'tell' | 'text', message: string, yes: string, value = '', final = false): Promise<boolean> {
     question?.done(false);
-    return new Promise((done) => (question = { kind, message, yes, value, done }));
+    return new Promise((done) => (question = { kind, message, yes, value, final, done }));
   }
   /** What the name field held when it was answered: the question is gone by then. */
   let typed = '';
@@ -150,7 +159,10 @@
     question = null;
     asked?.done(yes);
   }
-  const ask = (message: string, yes = t('ask.yes')): Promise<boolean> => put('ask', message, yes);
+  // `final`: the yes cannot be taken back (drafts, palettes, the track, a
+  // plugin) — the sheet then opens on «Отмена», as the plugin warning does: a
+  // second Enter on «Удалить все» took every drawing on the device.
+  const ask = (message: string, yes = t('ask.yes'), final = false): Promise<boolean> => put('ask', message, yes, '', final);
   const tell = async (message: string): Promise<void> => void (await put('tell', message, t('ask.ok')));
   const askText = async (message: string, value: string): Promise<string | null> =>
     (await put('text', message, t('ask.save'), value)) ? typed : null;
@@ -175,6 +187,22 @@
       ? document.exitFullscreen()
       : editorEl.requestFullscreen();
     void request.catch(() => {});
+  }
+
+  /**
+   * A phone's browser keeps its bars and the site its header over a sheet that
+   * has little room as it is (owner, 2026-10-08): the first touch on the studio
+   * takes the whole screen. Once a visit — whoever leaves the mode has said so
+   * — and only for a finger on a phone-size studio: a narrow window under a
+   * mouse is not a phone. On release: a touch gives the browser its leave to
+   * go full screen as it lifts, not as it lands. Where there is no full screen
+   * (an iPhone) nothing happens.
+   */
+  let wentFull = false;
+  function fullOnFirstTouch(e: PointerEvent): void {
+    if (wentFull || !compact || e.pointerType !== 'touch') return;
+    wentFull = true;
+    if (document.fullscreenEnabled && !document.fullscreenElement) void editorEl.requestFullscreen().catch(() => {});
   }
 
   /**
@@ -225,6 +253,10 @@
   let rootFont = $state(readFont());
   /** A finger is the pointer here. */
   const touch = matchMedia('(pointer: coarse)').matches;
+  // No cursor to hover with — a tablet, which is laid out as the desktop: a key
+  // there has no tooltip to name it, so a first visit names the few it starts
+  // with, as a phone does (owner, 2026-10-08).
+  const noHover = matchMedia('(hover: none)').matches;
   let boxW = $state(0);
   let boxH = $state(0);
   /** Standing up. */
@@ -673,19 +705,37 @@
 
   // On a phone a press anywhere else closes what is open — «⋯», the sound's
   // sheet — as it closes a key's box (PopKey): three of them stood open at
-  // once (owner, 2026-10-07). The press still does its own work. A sheet the
-  // sound's plate asked from (a question) is not «elsewhere».
+  // once (owner, 2026-10-07). The press still does its own work — a key is
+  // pressed, a stroke starts — but a tap on the sheet only closes (owner,
+  // 2026-10-08: it left a dot); the sheet is told of it (dismiss-press.ts). A
+  // sheet the sound's plate asked from (a question) is not «elsewhere».
   $effect(() => {
     if (!moreOpen && !(compact && audioOpen)) return;
     const away = (e: PointerEvent) => {
       const hit = e.target instanceof Element ? e.target : null;
       if (!hit) return;
-      if (moreOpen && !tabWindow?.contains(hit) && !moreKey?.contains(hit)) moreOpen = false;
-      if (compact && audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;
+      if (moreOpen && !tabWindow?.contains(hit) && !moreKey?.contains(hit)) {
+        moreOpen = false;
+        notePopupClosed(e);
+      }
+      if (compact && audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) {
+        audioOpen = false;
+        notePopupClosed(e);
+      }
     };
     window.addEventListener('pointerdown', away, true);
     return () => window.removeEventListener('pointerdown', away, true);
   });
+
+  /**
+   * A key in the window that opens a sheet (export, the settings, the manual,
+   * the drafts) shuts the window first: it stood open under the sheet it had
+   * opened. In the capture, before the key's own press — the focus is on «⋯»
+   * by then, and the sheet gives it back there, not to a key that is gone.
+   */
+  function shutMoreForSheet(e: MouseEvent): void {
+    if ((e.target as Element | null)?.closest('[aria-haspopup="dialog"]')) closeMore();
+  }
 
   /** Esc closes the window — unless a control inside took it first (a menu, a field). */
   function onMoreKey(e: KeyboardEvent): void {
@@ -757,7 +807,11 @@
 
   // Editor hotkeys, matching the reference editors: bare single keys, ignored
   // while typing in a form field or when a browser/OS modifier is held.
+  /** Whether the focused key was clicked or reached by Tab (key-owner.ts). */
+  const focusFrom = focusOrigin();
+
   function onKeydown(e: KeyboardEvent): void {
+    focusFrom.key(e.key);
     // An update is downloading: the editor is not there to be typed at. Its
     // Ctrl+S is still not the browser's «save page».
     if (editor.updating) {
@@ -854,6 +908,7 @@
       shiftKey: e.shiftKey,
       modalOpen,
       letterKeys: editor.settings.letterKeys,
+      byPointer: focusFrom.byPointer(e.target),
     });
     if (owner === 'control') {
       return;
@@ -1151,6 +1206,14 @@
       // active frame instead of the start of the range.
       case ' ':
         playControls?.toggle({ fromActive: e.shiftKey });
+        break;
+      // Esc ends every other mode here; the preview ran on under it.
+      case 'Escape':
+        if (editor.playing) {
+          playControls?.toggle();
+        } else {
+          handled = false;
+        }
         break;
       default: {
         // A plugin's key comes from its manifest, not from a case here: the
@@ -1453,6 +1516,19 @@
   // waited for the drafts to be read (owner, 2026-10-05). `draftsRead` tells
   // the hub when it has them.
   let draftsOpen = $state(untrack(() => startNew === true || editor.settings.showDraftsOnStart));
+  // The host's note walks a first visit to its end — a line, a second frame,
+  // play — so the host is told how far the toon has come (a line drawn, the
+  // count of frames, playing) and says when it has nothing left to say. The
+  // studio only keeps the note from under the hub and a phone's «⋯» window.
+  const noteDue = $derived(!draftsOpen && !moreOpen);
+  // A phone's sheet fills its stage, so a note on the stage lay on the paper
+  // the first line is meant for (owner, 2026-10-08): there it stands in the
+  // bottom bar, over the «+» it speaks of. A bare bar lying down has no room.
+  const noteInPanel = $derived(compact && !panelFolded && !barBare && panels.rows.length > 0);
+  // Everywhere else — a phone lying down, a wide screen — the note is a line of
+  // the bar over the canvas: no note lies on the sheet any more (owner,
+  // 2026-10-08, «пофикси везде»). The stage is left for a layout with no bar.
+  const noteInTop = $derived(!noteInPanel && draws(panels.top) && !editor.arranging);
   let draftsRead = $state(false);
   // Raw: `$state` hands every entry out as a proxy, the document in it too —
   // a draft opened from the list was one IndexedDB refuses to write
@@ -1567,7 +1643,7 @@
 
   /** «Удалить все»; says whether it was done, so the hub can place the focus. */
   async function removeAllDrafts(): Promise<boolean> {
-    if (!(await ask(t('editor.drafts_wipe_confirm'), t('ask.delete')))) {
+    if (!(await ask(t('editor.drafts_wipe_confirm'), t('ask.delete'), true))) {
       return false;
     }
     await deleteAllDrafts();
@@ -1579,7 +1655,7 @@
   onMount(async () => {
     // One place the editor asks from — the state calls it for frames, layers
     // and pastes alike.
-    editor.ask = (message: string, yes?: string) => ask(message, yes);
+    editor.ask = (message: string, yes?: string, final?: boolean) => ask(message, yes, final);
     editor.askNow = (message: string) => confirm(message);
     editor.tell = tell;
     editor.askText = askText;
@@ -1606,6 +1682,9 @@
       await saveNow();
     }
     await refreshDrafts();
+    // «Настройки» has closed by now and handed the focus back to its key.
+    hubFrom = document.activeElement;
+    hubFromStudio = true;
     draftsOpen = true;
   }
 
@@ -1655,7 +1734,7 @@
 
   /** Deletes the drafts picked in the hub; says whether it was done. */
   async function removeDrafts(ids: string[]): Promise<boolean> {
-    if (!(await ask(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }), t('ask.delete')))) {
+    if (!(await ask(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }), t('ask.delete'), true))) {
       return false;
     }
     for (const id of ids) {
@@ -1770,8 +1849,21 @@
   });
 
   let fileInput = $state<HTMLInputElement | undefined>();
-  /** Import failure, shown until the next attempt. */
+  /** Import failure, shown until the next attempt, the next drawing or the next line. */
   let importError = $state('');
+  // It is about the drawing it was said over: once that drawing changes — a
+  // line, another draft, a new sheet — it is old news lying on the canvas.
+  // Not under the hub: a handed drawing that failed is said over the studio,
+  // which nobody has seen yet while the sheet for a new one is being chosen.
+  let importErrorSeen = false;
+  $effect(() => {
+    void editor.doc;
+    const first = !importErrorSeen;
+    importErrorSeen = true;
+    if (!first && untrack(() => !draftsOpen || hubFromStudio)) {
+      importError = '';
+    }
+  });
 
   // The host's drawing, once, as the studio comes up: past the hub, validated
   // like a file and under a draft record of its own. Its track is not on this
@@ -1804,20 +1896,6 @@
     // made on before that drawing is written and replaced.
     if (!editor.leaveTransform()) {
       return;
-    }
-    if (editor.touched) {
-      // A browser that keeps no drafts loses the drawing outright: the question says so.
-      const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
-      if (!(await ask(t(question, { name: file.name })))) {
-        return;
-      }
-      if (!(await saveNow(true))) {
-        return;
-      }
-      // That write is what learnt the browser keeps nothing: the question asked was about a drawing replaced, not lost.
-      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !(await ask(t('editor.file_open_lost_confirm', { name: file.name })))) {
-        return;
-      }
     }
     const name = file.name.toLowerCase();
     let doc: ToonDocument;
@@ -1868,6 +1946,22 @@
         reason: newer ? t('file.version_unsupported', { version: String(version) }) : t('editor.file_not_toonop'),
       });
       return;
+    }
+    // Asked once the file is known to open: «Текущий рисунок будет заменён?»
+    // answered yes, and then «файл повреждён», was a question about nothing.
+    if (editor.touched) {
+      // A browser that keeps no drafts loses the drawing outright: the question says so.
+      const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
+      if (!(await ask(t(question, { name: file.name })))) {
+        return;
+      }
+      if (!(await saveNow(true))) {
+        return;
+      }
+      // That write is what learnt the browser keeps nothing: the question asked was about a drawing replaced, not lost.
+      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !(await ask(t('editor.file_open_lost_confirm', { name: file.name })))) {
+        return;
+      }
     }
     adoptOpenedDoc(doc, original);
   }
@@ -2121,6 +2215,9 @@
   // manual; under a cursor the keys do.
   const GESTURES = ['two_fingers', 'hold_sheet', 'hold_frame', 'hold_layer'] as const;
   const touchFirst = $derived(manualOpen && matchMedia('(hover: none)').matches);
+  // Nothing that hovers at all — no mouse, so no keyboard to speak of: the
+  // manual is the gestures alone, not thirty keys the phone does not have.
+  const fingersOnly = $derived(manualOpen && matchMedia('(any-hover: none)').matches);
 
   // Mirrors the key handler above one-for-one. If a case is added there and not
   // here, the sheet lies — keep them next to each other for that reason. A key
@@ -2244,6 +2341,8 @@
   bind:innerHeight={viewportHeight}
   bind:innerWidth={viewportWidth}
   onkeydown={onKeydown}
+  onpointerdowncapture={focusFrom.pointer}
+  onfocusin={(e) => focusFrom.focus(e.target)}
   onpointermove={onDividerMove}
   onpointerup={onDividerUp}
   onpointercancel={onDividerUp}
@@ -2430,7 +2529,7 @@
       <BrushPanel {editor} />
     </PopKey>
   {:else if id === 'color-key'}
-    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })}>
+    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })} attrs={{ 'data-walk': '' }}>
       {#snippet face()}<span class="colour-dot" style:--swatch={editor.brushColor} style:--fill={editor.fillColor}></span>{/snippet}
       <ColoursPanel {editor} />
     </PopKey>
@@ -2460,6 +2559,7 @@
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame - 1, lastFrame + 1))}
           title={t('editor.prev_frame')}
           aria-label={t('editor.prev_frame')}
+          data-name={t('editor.prev_short')}
         ><Icon name="frame-prev" /></button>
         {/if}
       <PlayControls bind:this={playControls} {editor} />
@@ -2470,6 +2570,7 @@
           onclick={() => editor.selectFrame(wrapIndex(editor.activeFrame + 1, lastFrame + 1))}
           title={t('editor.next_frame')}
           aria-label={t('editor.next_frame')}
+          data-name={t('editor.next_short')}
         ><Icon name="frame-next" /></button>
         {/if}
         {#if endKeys}
@@ -2492,6 +2593,7 @@
       aria-keyshortcuts={editor.settings.letterKeys ? 'A F7' : 'F7'}
       title={frameKeyTitle(t('editor.add_frame_title'), 'add', editor.settings.letterKeys, quickPalette)}
       aria-label={t('editor.add_frame')}
+      data-name={t('editor.add_frame_short')}
     >
       <Icon name="plus" />
     </button>
@@ -2550,6 +2652,7 @@
       <button
         class="key"
         class:active={audioOpen}
+        class:has-track={editor.audio.hasTrack}
         aria-expanded={audioOpen}
         bind:this={audioKey}
         onclick={() => (audioOpen = !audioOpen)}
@@ -2629,7 +2732,7 @@
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->
     {@const held = over?.tools.map(toolOfItem).find((tool) => tool === editor.tool)}
-    <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held} attrs={{ 'data-name': t('editor.tools_short') }}>
+    <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held} shutOn={editor.tool} attrs={{ 'data-name': t('editor.tools_short') }}>
       {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} />{/snippet}
       <div class="more-keys tool-list">{@render slot(over?.tools ?? [])}</div>
     </PopKey>
@@ -2712,8 +2815,9 @@
   class:compact={compact}
   class:phone={compact}
   class:tall
+  class:fingers={noHover}
   class:low={sheetScrollsWhole(viewportHeight, rootFont)}
-  class:named={named && !rowPressed}
+  class:named={named && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}
   data-float-root
   onpointerover={nameKey}
   onpointerout={unnameKey}
@@ -2722,6 +2826,7 @@
   onfocusout={unnameKey}
   bind:this={editorEl}
   onclickcapture={passFocusOnDisable}
+  onpointerupcapture={fullOnFirstTouch}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
 >
@@ -2731,6 +2836,7 @@
          each). Drawn only when it holds something; one row on a phone. -->
     <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} onpointerdowncapture={() => (rowPressed = true)}>
       {@render slot(panels.top)}
+      {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
     </div>
   {/if}
   {#if sideDraws('left') || editor.arranging}
@@ -2765,7 +2871,7 @@
     <CanvasView {editor} rail={stageRail} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
          under the hub — and not under a phone's «⋯» window either. -->
-    {#if isEmptyDocument(editor.doc) && !draftsOpen && !moreOpen}{@render stageNote?.()}{/if}
+    {#if noteDue && !noteInPanel && !noteInTop && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -2837,11 +2943,15 @@
         aria-label={t('editor.more')}
         bind:this={tabWindow}
         onkeydown={onMoreKey}
+        onclickcapture={shutMoreForSheet}
       >
         {#each over.more as group (group.id)}
           <h2 class="more-title">{t(`editor.more_group.${group.id}`)}</h2>
           <div class="more-keys" role="group" aria-label={t(`editor.more_group.${group.id}`)}>
             {@render slot(group.items)}
+            <!-- Lying down the host has put its header away to give the sheet
+                 the height (owner, 2026-10-08): its way back stands here. -->
+            {#if group.id === 'studio' && home && !tall}<a class="key" href={home.href} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
           </div>
         {/each}
       </section>
@@ -2923,6 +3033,7 @@
         title={t('editor.bottom_height_title')}
       ></div>
     {/if}
+    {#if noteDue && noteInPanel}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
     {#if !panelFolded}
       <!-- However many rows the arrangement has, top to bottom. A row that
            empties is gone (panels.ts), so no unreachable strip is left; a new
@@ -2981,6 +3092,7 @@
       {thumbUrls}
       {storageUsed}
       {draftId}
+      home={tall ? undefined : home}
       create={createOnOpen}
       ready={draftsRead}
       onOpen={openDraft}
@@ -2992,6 +3104,16 @@
       onClose={() => {
         draftsOpen = false;
         createOnOpen = false;
+        hubFromStudio = false;
+        // Esc and a card opened both left the focus on <body>: it goes back
+        // to the key the hub was called from, once the studio is live again.
+        const back = hubFrom;
+        hubFrom = null;
+        void tick().then(() => {
+          if (back instanceof HTMLElement && back.isConnected && document.activeElement === document.body) {
+            back.focus();
+          }
+        });
       }}
     />
   {/if}
@@ -3084,7 +3206,7 @@
           </dl>
         {/snippet}
         {@render (touchFirst ? gestureList : keyList)()}
-        {@render (touchFirst ? keyList : gestureList)()}
+        {#if !fingersOnly}{@render (touchFirst ? keyList : gestureList)()}{/if}
       </div>
 
       <footer class="sheet-foot">
@@ -3114,7 +3236,8 @@
         <footer class="sheet-foot">
           <button class="key primary" type="submit">{question.yes}</button>
           {#if question.kind !== 'tell'}
-            <button class="key" type="button" onclick={() => answer(false)}>{t('ask.no')}</button>
+            <!-- svelte-ignore a11y_autofocus -->
+            <button class="key" type="button" autofocus={question.final} onclick={() => answer(false)}>{t('ask.no')}</button>
           {/if}
         </footer>
       </form>
@@ -3268,6 +3391,14 @@
     /* Where the window ends — its inset, a key and its 2px frame, a gap: the
        host's note on the stage starts under it. */
     --zoom-foot: calc(var(--zoom-inset) + var(--tap) + 4px + 0.5rem);
+  }
+  /* A first visit: the row's names hang 0.5rem + 3px under the bar, a label
+     tall (`.studio.compact.named .top .key::after`), and the window stood in
+     the same corner 0.5rem under it — the names lay on its keys. It stands
+     under them while they are worn; the sheet is not fitted by it on a phone
+     and does not move. */
+  .studio.compact.named .stage.zoom-corner {
+    --zoom-inset: calc(0.5rem + 3px + 0.7rem + 0.4rem);
   }
   .stage.zoom-corner > .scale-window {
     --key-h: var(--tap);
@@ -3595,6 +3726,11 @@
     align-items: center;
     gap: 0.4rem;
   }
+  /* The sound's key with a track attached: with one and without it looked the
+     same, and only its title knew. The accent's ink, as a chosen key's icon. */
+  .layers > .key.has-track {
+    color: var(--accent-ink);
+  }
   .timeline {
     flex: 1;
     min-width: 0;
@@ -3726,6 +3862,14 @@
   }
   .studio.compact .panel :global(.board) {
     max-height: 34dvh;
+  }
+  /* Undo and redo lying down, in the row: 42.4 px wide — the row took the
+     3 px it was short of from the two keys that could shrink. */
+  .studio.compact .top .history {
+    flex: none;
+  }
+  .studio.compact .top .history :global(.key) {
+    min-width: var(--tap);
   }
   .studio.compact .top {
     gap: 0.25rem;
@@ -4171,6 +4315,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.4rem;
   }
+  /* «Сохранить на устройстве» in half of 390 px stood on four lines, the
+     last a lone «е»: the save takes the row. Lying down the keys are a flex
+     line at their own width, and the rule means nothing there. */
+  .more-keys > :global(.key[aria-keyshortcuts='Control+S']) {
+    grid-column: 1 / -1;
+  }
   /* The other tools, behind their key in the row: one under another, in a
      plate as wide as the longest name. */
   .more-keys.tool-list {
@@ -4218,7 +4368,7 @@
     gap: 0.6rem;
     width: auto;
     min-width: 0;
-    /* «Сохранить черновик» is two lines in half of 390 px: the key grows. */
+    /* «Сохранить на устройстве» is two lines in half of 390 px: the key grows. */
     height: auto;
     min-height: var(--key-h);
     /* The icon a rem and a bit in. Under `.editor`, to outweigh `.editor
@@ -4666,7 +4816,11 @@
   /* A first visit on a phone: the row of keys wears its names, until the first
      stroke. Hung under the bar, out of the flow — the bar keeps its height and
      the sheet does not jump under the stroke that puts them away. */
-  .studio.compact.named .top :global(.key)::after {
+  /* …and on a tablet, laid out as the desktop but with no cursor to hover
+     with: only the keys a first visit starts with — send, brush, eraser,
+     colours. The wide row holds a dozen more, and their names would run on. */
+  .studio.compact.named .top :global(.key)::after,
+  .studio.fingers.named:not(.compact) .top :global(:is(.key.publish, .key[data-walk], .key[data-tool='pencil'], .key[data-tool='eraser']))::after {
     content: attr(aria-label);
     position: absolute;
     top: calc(100% + 0.5rem + 3px);
@@ -4674,7 +4828,9 @@
     z-index: var(--z-float);
     translate: -50% 0;
     color: var(--text-2);
-    /* The tools stand 48 px apart: at 0.75rem «Карандаш» ran into «Ластик».
+    /* The keys stand 48 px apart, so a name wider than that wears a short one
+       (`data-name`): lying down the transport is in this row too, and
+       «Предыдущий кадр» lay across «Добавить кадр» and «Следующий кадр».
        The label step, drawn a touch closer. */
     font-size: 0.7rem;
     letter-spacing: -0.02em;
@@ -4683,8 +4839,16 @@
     white-space: nowrap;
     pointer-events: none;
   }
-  .studio.compact.named .top :global(.key[data-name])::after {
+  .studio.compact.named .top :global(.key[data-name])::after,
+  .studio.fingers.named:not(.compact) .top :global(.key.publish[data-name])::after {
     content: attr(data-name);
+  }
+  /* A wider phone (412 px) has room for more tools in the row, and their names
+     — «Перо», «Мега-ластик», «Трансформация» — ran into one another (owner,
+     2026-10-08). The first visit names the two it starts with; the rest are
+     named by their own tooltip, as everywhere. */
+  .studio.compact.named .top :global(.key[data-tool]:not([data-tool='pencil'], [data-tool='eraser']))::after {
+    content: none;
   }
   .editor :global(.saved:empty) {
     padding: 0;
@@ -4701,6 +4865,24 @@
      Out of the flow, apart by its tone; a failed save stays. */
   .studio .top {
     position: relative;
+  }
+  /* The host's note as a line of the bar, under the keys: its own row of the
+     wrap, so the keys do not move. While the row wears its names they hang
+     between the keys and the line. */
+  .studio .top > .top-note {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  /* The host has nothing to say most of the time, and the holder is still a
+     row of the wrap: with its gap and its margin it stood the bar taller, and
+     the bar dropped back whenever «⋯» took the note down (owner, 2026-10-08).
+     No words, no row. */
+  .studio .top > .top-note:empty {
+    display: none;
+  }
+  .studio.compact.named .top > .top-note,
+  .studio.fingers.named .top > .top-note {
+    margin-top: 1.725rem;
   }
   .studio .top > :global(.saved) {
     position: absolute;

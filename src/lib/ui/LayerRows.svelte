@@ -483,10 +483,14 @@
   >
     <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>
-  <!-- The one limit of a mult, where its frames and layers are counted. -->
-  <span class="budget" class:tight={budget.tight} title={budget.title}>
-    <span class="sr-only">{budget.title}</span><span aria-hidden="true">{budget.text}</span>
-  </span>
+  <!-- The one limit of a mult, where its frames and layers are counted. It
+       limits publishing, not drawing, so it is said only from 80 %, where it
+       warns: a bare «0 %» beside «+ Слой» read as the layer's opacity. -->
+  {#if budget.tight}
+    <span class="budget" title={budget.title}>
+      <span class="sr-only">{budget.title}</span><span aria-hidden="true">{budget.text}</span>
+    </span>
+  {/if}
 </div>
 
 <!-- A layout grid (WAI-ARIA APG): one Tab stop, the arrows inside. Each cell
@@ -785,9 +789,6 @@
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    color: var(--ink-2);
-  }
-  .budget.tight {
     font-weight: 700;
     color: var(--accent-ink);
   }

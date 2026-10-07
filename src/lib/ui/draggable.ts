@@ -119,6 +119,12 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     if (!grab) {
       return;
     }
+    // The width came from the column it stood in, and a window that is a
+    // size container (the transform one) has no width of its own to fall back
+    // on: out of the flow it folded into a 19px strip. A floor, not a width —
+    // the zoom window still grows with «1 000 %». Nothing takes the window
+    // back into the flow, so nothing has to lift it.
+    node.style.minWidth = `${grab.size.width}px`;
     node.style.position = 'fixed';
     node.style.margin = '0';
     node.style.left = `${grab.left}px`;

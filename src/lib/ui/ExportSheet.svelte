@@ -15,7 +15,7 @@
   import { frameCount } from '../model/operations';
   import { exportGif } from '../export/export-gif';
   import { exportPng } from '../export/png';
-  import { WATERMARK_TEXT, exportSize, exportWidths, logicalSize, throwIfAborted, type ExportStage } from '../export/rasterize';
+  import { WATERMARK_TEXT, exportSize, exportWidths, logicalSize, startWidth, throwIfAborted, type ExportStage } from '../export/rasterize';
   import { FileWriteError, exportFrameCount, exportVideo, planVideo, type VideoPlan } from '../export/video';
   import Icon from './Icon.svelte';
   import { pickSaveFile, saveFile as save } from './save-file';
@@ -61,6 +61,21 @@
     result = null;
   }
 
+  // «Файл готов · 27 КБ» and its picture are about the file that was made:
+  // under another format, size or switch they described a file nobody built.
+  $effect(() => {
+    void format;
+    void width;
+    void watermark;
+    void transparent;
+    untrack(() => {
+      if (!busy) {
+        forget();
+        stage = '';
+      }
+    });
+  });
+
   const singleFrame = $derived(frameCount(editor.doc) === 1);
 
   // A frame over Safari's canvas area is not on offer: a drawing of an
@@ -78,7 +93,7 @@
   const ownWidth = $derived(logicalSize(editor.doc).width);
   $effect(() => {
     const own = ownWidth;
-    width = untrack(() => offeredWidths.includes(own)) ? own : EXPORT_DEFAULT_WIDTH;
+    width = untrack(() => startWidth(own, offeredWidths));
   });
 
   /** The formats plugins bring; a plugin that broke takes its button with it. */
@@ -496,6 +511,22 @@
      come and go with the format, and the project or a plugin's format has none. */
   .download {
     margin-top: 0.7rem;
+  }
+  /* A phone lying down: the formats and sizes filled the sheet and the one
+     key it is opened for was under the fold. It holds to the bottom edge of
+     what scrolls until its own place comes up. */
+  @media (max-height: 30rem) {
+    /* Heavier than the studio's `.key`, whose `position: relative` comes
+       later and left the key where it lay. */
+    :global(.editor) .sheet-body > .download {
+      position: sticky;
+      /* Down in the body's own bottom padding, a hair off the foot. */
+      bottom: -0.4rem;
+      z-index: 1;
+      /* A band of the sheet's own tone around it — hard-edged, not a shadow:
+         the sizes scrolling under it showed above and below the key. */
+      box-shadow: 0 0 0 0.5rem var(--canvas);
+    }
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — notes stay ink. */
   .note {

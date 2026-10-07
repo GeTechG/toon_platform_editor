@@ -35,9 +35,15 @@ const TOONOP_TOOLS: readonly string[] = [
 const TOONOP_MAX_BRUSH_SIZE_LOGICAL = 500;
 
 /**
- * The editor's own mode: it took the toonio.ru behaviour whole, then went on
+ * The editor's own mode: it began as the toonio.ru behaviour, then went on
  * by itself. Every value is written out here, never read from a parity
  * profile, so a parity fix never moves toonop and vice versa.
+ *
+ * Two values left the reference for what every other drawing program does
+ * (owner, 2026-10-08): a new layer lands over the active one — it is added to
+ * draw on top, and under it the first line went beneath the picture — and the
+ * onion shows the neighbouring frames, not the ones last visited: a click
+ * along the strip left ghosts of frames that are nowhere near.
  */
 export const TOONOP_UX: UxProfile = {
   quickPalette: null,
@@ -49,14 +55,14 @@ export const TOONOP_UX: UxProfile = {
   afterRemove: 'next',
   playFromStart: false,
   playbackRange: 'selection',
-  newLayerPosition: 'below',
+  newLayerPosition: 'above',
   defaultFps: DEFAULT_FPS,
   brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
   // The thick end in a few presses (owner, 12th audit): 1 → 500 was 499.
   adaptiveBrushStep: 'ladder',
   canvasDensity: 'device',
   projectFile: false,
-  onionMode: 'history',
+  onionMode: 'neighbors',
   colorGrid: true,
   fpsRange: [1, 30],
   livePipettePreview: true,

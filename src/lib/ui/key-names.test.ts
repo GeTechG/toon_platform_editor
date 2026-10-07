@@ -29,15 +29,16 @@ describe('a key says its name', () => {
   it('on a phone the first visit names the row of keys, until the first stroke', () => {
     // …or until a key of the row is pressed: «⋯» and the colours open where
     // the names hang, and lay half over them.
-    expect(shell).toContain('class:named={named && !rowPressed}');
+    expect(shell).toContain('class:named={named && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
     expect(shell).toContain('onpointerdowncapture={() => (rowPressed = true)}');
-    const rule = shell.slice(shell.indexOf('.studio.compact.named .top :global(.key)::after {'));
+    const rule = shell.slice(shell.indexOf('.studio.compact.named .top :global(.key)::after,'));
     expect(rule.slice(0, rule.indexOf('}'))).toContain('content: attr(aria-label);');
-    expect(shell).toContain('.studio.compact.named .top :global(.key[data-name])::after {');
+    expect(shell).toContain('.studio.compact.named .top :global(.key[data-name])::after,');
     // Out of the flow: the bar keeps its height, the sheet does not jump under
     // the stroke that puts the names away.
     expect(rule.slice(0, rule.indexOf('}'))).toContain('position: absolute;');
-    expect(page).toContain('named={showHint}');
+    // …and the host keeps them for its whole first-visit walk (owner, 2026-10-08).
+    expect(page).toContain('named={showHint || nextStep}');
   });
 
   it('the long names have a short one for the row', () => {

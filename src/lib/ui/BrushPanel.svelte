@@ -52,6 +52,9 @@
   function place(): void {
     if (!list || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
+    // As wide as the button it drops from: at its own 240px it stuck 25px out
+    // of the window that holds it. Never under 200, where the hints still read.
+    list.style.width = `${Math.max(anchor.width, 200)}px`;
     const box = list.getBoundingClientRect();
     // The whole list, not what an earlier limit left of it.
     const tall = list.scrollHeight;

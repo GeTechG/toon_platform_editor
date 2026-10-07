@@ -148,14 +148,14 @@
   }
 
   async function deletePalette(p: SavedPalette): Promise<void> {
-    if (!(await editor.ask(t('palette.delete_confirm'), t('ask.delete')))) return;
+    if (!(await editor.ask(t('palette.delete_confirm'), t('ask.delete'), true))) return;
     editor.deleteSavedPalette(p.id);
     preview = null;
     focusFoot('saved');
   }
 
   async function erasePalette(): Promise<void> {
-    if (!(await editor.ask(t('palette.erase_confirm'), t('ask.delete')))) return;
+    if (!(await editor.ask(t('palette.erase_confirm'), t('ask.delete'), true))) return;
     editor.replacePalette([]);
     openSection('colors');
     focusFoot('edit');

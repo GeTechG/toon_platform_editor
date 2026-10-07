@@ -209,6 +209,7 @@
   data-key="Space"
   title={editor.playing ? t('play.title_stop') : t('play.title_play')}
   aria-label={editor.playing ? t('play.stop') : t('play.play')}
+  data-name={editor.playing ? t('play.stop_short') : t('play.play_short')}
 >
   <Icon name={editor.playing ? 'stop' : 'play'} size={22} />
 </button>

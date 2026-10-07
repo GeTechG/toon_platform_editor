@@ -47,3 +47,15 @@ describe('a mult heavier than the publish limit', () => {
     expect(send.indexOf("t('editor.publish_over_budget'")).toBeLessThan(send.indexOf('onPublish?.('));
   });
 });
+
+// 2026-10-08 critique: a bare «0 %» beside «+ Слой» is what every drawing
+// program writes for a layer's opacity. The weight limits publishing, not
+// drawing (owner, 2026-10-06), so the figure stands only where it warns.
+describe('the budget figure waits until it matters', () => {
+  const rows = readFileSync(new URL('./LayerRows.svelte', import.meta.url), 'utf8');
+
+  it('is drawn from 80 % on, not among the layer controls of an empty mult', () => {
+    expect(rows).toMatch(/\{#if budget\.tight\}\s*<span class="budget"[^>]*title=\{budget\.title\}>[^]*?<\/span>\s*\{\/if\}/);
+    expect(rows).not.toContain('class:tight={budget.tight}');
+  });
+});

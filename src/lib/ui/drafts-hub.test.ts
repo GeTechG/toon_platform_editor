@@ -306,7 +306,7 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     expect(card).not.toContain('<select');
     expect(card).toMatch(/<button\s+class="reel-size"\s+aria-haspopup="menu"\s+aria-expanded=\{sizeMenu !== null && !sizeMenu\.more && proportion === newProportion\}\s+aria-label=\{t\('sheet\.size_chip', \{ size: newSize \}\)\}\s+onclick=\{\(e\) => openSizeMenu\(e\.currentTarget, proportion\)\}/);
     expect(card).toContain('<strong>{sheetName(shape.ratio)}</strong>');
-    expect(card).toMatch(/class="key primary" onclick=\{\(\) => pickSheet\(shape\.value\)\}>\{t\('sheet\.start'\)\}/);
+    expect(card).toMatch(/class="key primary" class:draw=\{proportion === newProportion\} onclick=\{\(\) => pickSheet\(shape\.value\)\}>\{t\('sheet\.start'\)\}/);
     const menu = shell.match(/<div\s+class="size-menu"[^]*?<\/div>/)?.[0] ?? '';
     expect(menu).toContain("role={sizeMenu.more ? 'group' : 'menu'}");
     expect(menu).toMatch(/<button role="menuitemradio" aria-checked=\{size === newSize\} onclick=\{\(\) => pickSize\(size\)\}>\s*<span>\{size\}<\/span>\s*<small>\{sheet\.width\}×\{sheet\.height\}<\/small>/);

@@ -467,7 +467,7 @@ export class EditorState {
    * reference's Alt+Enter that muted them is gone on purpose (owner, twelfth
    * audit). `yes` names the key that agrees — «Удалить», not «Да».
    */
-  ask: (message: string, yes?: string) => Answer = () => true;
+  ask: (message: string, yes?: string, final?: boolean) => Answer = () => true;
   /**
    * The same, answered on the same line: an arrangement's questions, whose
    * callers take the outcome as a return value. The browser's `confirm`.

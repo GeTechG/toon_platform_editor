@@ -40,11 +40,11 @@ describe('the editor profile', () => {
     expect(toonop.afterRemove).toBe('next');
     expect(toonop.playFromStart).toBe(false);
     expect(toonop.playbackRange).toBe('selection');
-    expect(toonop.newLayerPosition).toBe('below');
+    expect(toonop.newLayerPosition).toBe('above');
     expect(toonop.defaultFps).toBe(12);
     expect(toonop.brushSizeMax).toBe(500);
     expect(toonop.adaptiveBrushStep).toBe('ladder');
-    expect(toonop.onionMode).toBe('history');
+    expect(toonop.onionMode).toBe('neighbors');
     expect(toonop.colorGrid).toBe(true);
     expect(toonop.fpsRange).toEqual([1, 30]);
     expect(toonop.livePipettePreview).toBe(true);

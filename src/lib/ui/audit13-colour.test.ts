@@ -93,3 +93,17 @@ describe('thirteenth audit: colour', () => {
     expect(palette).toMatch(/aria-pressed=\{removerMode \? undefined : isOutline \|\| isFill\}/);
   });
 });
+
+// 2026-10-08 critique: «Цвет» dropped into a side column kept its one row —
+// 30 swatches, 1407px of them in 226, five to be seen and no scrollbar to say
+// there were more. A column has the height a row has not: there they wrap.
+describe('the strip of saved colours in a side column', () => {
+  it('wraps instead of scrolling sideways', () => {
+    const side = panel.match(/\n  :global\(:where\(\[data-slot='left'\], \[data-slot='right'\]\)\) \.grid \{[^}]*\}/)?.[0] ?? '';
+    expect(side).toContain('flex-wrap: wrap');
+    expect(side).toContain('max-width: none');
+    expect(side).toContain('overflow-x: visible');
+    // After the row's own rule: the two weigh the same, and the later one wins.
+    expect(panel.indexOf(side)).toBeGreaterThan(panel.indexOf('\n  .grid {'));
+  });
+});

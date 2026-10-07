@@ -111,7 +111,7 @@ describe('onion history (Toonio parity)', () => {
 
 describe('overwrite confirmation (Toonio parity)', () => {
   it('the state asks through a callback the UI wires up, every time', () => {
-    expect(state).toContain('ask: (message: string, yes?: string) => Answer');
+    expect(state).toContain('ask: (message: string, yes?: string, final?: boolean) => Answer');
     expect(member(state, 'whenConfirmed')).toContain('whenYes(this.ask(message, yes), then)');
   });
 

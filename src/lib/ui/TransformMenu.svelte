@@ -171,7 +171,7 @@
       {t('transform.width_with_scale')}
     </label>
 
-    <div class="row">
+    <div class="row end">
       <button class="key primary" onclick={() => editor.commitTransform()} aria-label={t('transform.apply_label')}>{t('transform.apply')}</button>
       <button class="key" onclick={() => editor.cancelTransform()} aria-label={t('transform.cancel_label')}>{t('transform.cancel')}</button>
     </div>
@@ -196,8 +196,19 @@
     padding: 0.6rem;
     border: none;
     border-radius: var(--r-md);
-    background: var(--canvas);
+    /* Paper, as every window over the stage (DESIGN §4): white on the white
+       sheet had no edge to be seen by. */
+    background: var(--paper);
     font-size: 0.8125rem;
+    /* The window scrolls, not the column that holds it: the holder is shorter
+       than the window at 1024×768 and on a phone lying down, and dragged out
+       of it the window has only the screen to end at. The floor keeps the
+       title and the last row when another tool window shares the column. */
+    min-height: 7.5rem;
+    max-height: 100dvh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--edge) transparent;
     /* For the fields, which stack where the window is narrow. */
     container: transform / inline-size;
   }
@@ -281,6 +292,18 @@
     .check {
       overflow-wrap: anywhere;
     }
+  }
+  /* «Применить» and «Отмена» end the mode, so they never scroll away: the
+     row stands at the window's bottom edge over whatever runs under it, on
+     the window's own tone and out to its sides. */
+  .row.end {
+    position: sticky;
+    /* Sticky stops at the scroller's padding, not its edge: at 0 the row
+       stood 0.6rem up and the keys under it showed in the strip below. */
+    bottom: -0.6rem;
+    margin: -0.3rem -0.6rem -0.6rem;
+    padding: 0.3rem 0.6rem 0.6rem;
+    background: var(--paper);
   }
   .zoom {
     display: none;

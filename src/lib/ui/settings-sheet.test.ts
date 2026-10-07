@@ -92,7 +92,8 @@ describe('the rail and the chrome follow the reference studio', () => {
     expect(claims.filter((m) => m[1] !== undefined).length).toBeGreaterThanOrEqual(4);
     // Only a wide item's span (in a column, and in a phone's «⋯»), the seams (a row of their own already) and the `.alt` swap
     // claim a column alone.
-    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(9);
+    // The tenth: «Сохранить на устройстве» takes a row of «⋯» (2026-10-08).
+    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(10);
   });
 
   it('the presets and the way into arranging sit in the view category', () => {
@@ -191,7 +192,7 @@ describe('the settings sheet', () => {
     // The only keys left are the close key and «Готово».
     expect(sheet.match(/class="key[ "]/g)).toHaveLength(2);
     expect(sheet).not.toContain('class="actions"');
-    expect(sheet).toMatch(/\{#snippet act\(label: string, icon: IconName \| undefined, onclick: \(\) => void, danger = false\)\}/);
+    expect(sheet).toMatch(/\{#snippet act\(label: string, icon: IconName \| undefined, onclick: \(\) => void, danger = false, hint = ''\)\}/);
     // Deleting is told apart by its words' colour, and still asks first.
     expect(pane('palette')).toContain("{@render act(t('settings.wipe_palettes'), 'trash', wipePalettes, true)}");
   });
@@ -256,7 +257,7 @@ describe('the settings sheet', () => {
     expect(sheet).toMatch(/\.pick:not\(\[open\]\) \.fold,\s*\.pick\[open\] \.pick-word:not\(\.fold\) \{\s*display:\s*none/);
     expect(sheet).not.toMatch(/\.pick\[open\] \.pick-word \{\s*visibility/);
     // Every action row says what kind of thing it is.
-    expect(pane('saving')).toContain("act(t('settings.ask_persist'), 'save', askPersist)");
+    expect(pane('saving')).toContain("act(t('settings.ask_persist'), 'save', askPersist, false, t('settings.ask_persist_hint'))");
     expect(t('settings.catalog_field')).toBe('Адрес каталога');
   });
 

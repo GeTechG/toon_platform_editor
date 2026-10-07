@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
 import { createDocument } from '../model/operations';
-import { exportSize, nextTask, rasterViewport, stampWatermark, watermarkLayout } from './rasterize';
+import { exportSize, nextTask, rasterViewport, stampWatermark, startWidth, watermarkLayout } from './rasterize';
 
 const doc = (logicalWidth: number, logicalHeight: number) =>
   createDocument({
@@ -123,5 +123,27 @@ describe('an export steps aside for the page between frames', () => {
     expect(rasterizeSource).not.toContain('await Promise.resolve()');
     expect(rasterizeSource).toContain('await nextTask()');
     expect(videoSource).toContain('await nextTask()');
+  });
+});
+
+// Critique 2026-10-08: a 548×1280 sheet (9:21, «720p») opened the export on
+// 1280×2990 — 2.3× what was drawn — because its own width is under the row
+// and the sheet fell back to the reference's default.
+describe('the width the export sheet starts on', () => {
+  test('a sheet starts at its own width when the row holds it', () => {
+    expect(startWidth(720, [640, 720, 1280, 1920, 2560])).toBe(720);
+    expect(startWidth(1280, [640, 1280, 1920, 2560])).toBe(1280);
+  });
+
+  test('a sheet narrower than the row starts at the smallest rung, not upscaled past it', () => {
+    expect(startWidth(548, [640, 1280, 1920, 2560])).toBe(640);
+  });
+
+  test('a sheet of an odd width starts at the rung nearest above it', () => {
+    expect(startWidth(1001, [640, 1280, 1920, 2560])).toBe(1280);
+  });
+
+  test('wider than every rung on offer, it starts at the largest', () => {
+    expect(startWidth(3840, [640, 1280, 1920])).toBe(1920);
   });
 });

@@ -45,7 +45,7 @@ const TOONOP_BRUSH: PluginPrimitive = {
 
 /** In the order the rail draws them. */
 const TOOLS: Readonly<Record<string, PluginTool>> = {
-  pencil: { icon: 'pencil', title: t('tool.pencil.title'), label: t('tool.pencil.label'), key: 'B', stroke: PENCIL },
+  pencil: { icon: 'brush', title: t('tool.pencil.title'), label: t('tool.pencil.label'), key: 'B', stroke: PENCIL },
   eraser: { icon: 'eraser', title: t('tool.eraser.title'), label: t('tool.eraser.label'), key: 'E', stroke: ERASER },
   feather: {
     icon: 'feather',

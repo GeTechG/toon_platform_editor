@@ -21,6 +21,16 @@ describe('the list of brush types', () => {
     expect(types).toMatch(/overflow-y:\s*auto/);
   });
 
+  // 2026-10-08 critique: 240px of list under a 205px button stuck 25px out of
+  // the brush window. The list is as wide as the button it drops from.
+  it('is as wide as its button, so it stays inside the window that holds it', () => {
+    const place = panel.match(/function place\(\)[^]*?\n  }\n/)![0];
+    const width = place.indexOf('list.style.width = `${Math.max(anchor.width, 200)}px`');
+    expect(width).toBeGreaterThan(-1);
+    // Before the list is measured: the clamp to the window reads that width.
+    expect(width).toBeLessThan(place.indexOf('list.getBoundingClientRect()'));
+  });
+
   // A phone turned with the list open left it where the old window had it.
   it('follows the window when it changes size', () => {
     expect(panel).toMatch(/<svelte:window[^>]*onresize=/);

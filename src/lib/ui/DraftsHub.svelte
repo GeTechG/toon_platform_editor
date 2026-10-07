@@ -39,6 +39,7 @@
     onRemoveAll,
     onSheet,
     onClose,
+    home,
   }: {
     editor: EditorState;
     /** The studio is on a small screen's layout. */
@@ -62,6 +63,8 @@
     /** Says whether the sheet was started; the hub closes on a yes. */
     onSheet: (value: string, fps: number) => Promise<boolean>;
     onClose: () => void;
+    /** The host's way back to its pages, where it has put its header away: the hub stands over the studio's «⋯» too. */
+    home?: { href: string; label: string };
   } = $props();
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
@@ -275,7 +278,9 @@
     picked = [];
     await tick();
     reelEl?.scrollTo({ top: sheetProportions().indexOf(newProportion) * reelEl.clientHeight });
-    dialogEl?.querySelector<HTMLElement>('.draft-open, .reel .reel-size, .hub-new')?.focus();
+    // Under a finger the card opens on «Рисовать», the way on — not on the
+    // size chip, which is a second thought.
+    dialogEl?.querySelector<HTMLElement>('.draft-open, .reel .draw, .hub-new')?.focus();
   }
 
   /**
@@ -346,6 +351,7 @@
         {/if}
         <h2>{t('editor.new_sheet')}</h2>
       </span>
+      {#if home}<a class="key" href={home.href}>{home.label}</a>{/if}
       {#if touchHub}
         <button class="key" onclick={() => showCreate(false)}>{t('transform.cancel')}</button>
       {/if}
@@ -383,7 +389,7 @@
               <strong>{sheetName(shape.ratio)}</strong>
             </p>
             <p class="reel-about">{sheetAbout(shape.ratio)}</p>
-            <button class="key primary" onclick={() => pickSheet(shape.value)}>{t('sheet.start')}</button>
+            <button class="key primary" class:draw={proportion === newProportion} onclick={() => pickSheet(shape.value)}>{t('sheet.start')}</button>
             </div>
           </div>
         </section>
@@ -487,9 +493,14 @@
         <button class="key icon" onclick={removePicked} disabled={picked.length === 0} title={t('editor.draft_delete_title')} aria-label={t('editor.draft_delete')}>
           <Icon name="trash" />
         </button>
-        <button class="key" onclick={removeAllDrafts}>{t('editor.drafts_wipe')}</button>
-        <button class="key active" onclick={() => { selecting = false; picked = []; }}>{t('editor.done')}</button>
+        <!-- The key goes with the choosing: the focus went to <body>, where
+             Esc no longer closed the hub. A card takes it. -->
+        <button class="key active" onclick={() => { selecting = false; picked = []; void refocus(0); }}>{t('editor.done')}</button>
+        <!-- Last and apart, with the count: it stood a hair from the bin of
+             the picked ones at the same weight, and takes every drawing. -->
+        <button class="key hub-wipe" onclick={removeAllDrafts}>{t('editor.drafts_wipe', { count: drafts.length })}</button>
       {:else}
+        {#if home}<a class="key" href={home.href}>{home.label}</a>{/if}
         {#if drafts.length > 0}
           <button class="key hub-select" onclick={() => (selecting = true)}>{t('editor.drafts_select')}</button>
         {/if}
@@ -630,6 +641,19 @@
     justify-content: flex-start;
     gap: 1rem;
     padding: 0.9rem 1rem 0.6rem;
+    /* As tall with the title alone as with the keys beside it: ticking a
+       card brought the keys in and pushed the cards from under the cursor. */
+    min-height: calc(var(--key-h, 2.75rem) + 1.5rem);
+  }
+  /* The way home on «Новый мульт» stands by «Отмена», not adrift in the middle. */
+  .hub-head > a.key {
+    margin-inline-start: auto;
+  }
+  .hub-head > a.key + .key {
+    margin-inline-start: 0;
+  }
+  .hub-wipe {
+    margin-inline-start: 1rem;
   }
   /* The screen's name: the Card step of the scale (DESIGN §3). */
   .hub-head h2 {
@@ -856,6 +880,20 @@
   }
   .hub .reel-plate .key.primary {
     padding-inline: 1.6rem;
+  }
+  /* A phone lying down with the site's header over it (a Galaxy S8: 740×360)
+     leaves the page some 11 rem. The plate is capped at the page, and at the
+     sheet's proportion it was too narrow for its words: the line about the
+     sheet broke in two and «Рисовать» hung out of the bottom edge (owner,
+     2026-10-08). The line stays (owner, 2026-10-05) — the proportion gives
+     way, sideways: wide enough for the line to lie in one, the plate holds
+     everything. A standing sheet there is drawn beside its words (below). */
+  @container reel (max-height: 13rem) {
+    .reel-plate:not(.beside) {
+      width: min(100cqw, 26rem);
+      aspect-ratio: auto;
+      padding-top: 1.2rem;
+    }
   }
   /* A phone lying down: the page is too low for a standing sheet to hold a
      chip and a key — every one came out the same squat plate. Where it does
@@ -1122,6 +1160,11 @@
   }
   .draft-open.picked .draft-thumb {
     outline: 3px solid var(--accent);
+  }
+  /* Opened, the picked sheet has the focus too, and wore two red rings one
+     inside the other: under the focus ring the wash alone says it is picked. */
+  .draft-open.picked:focus-visible .draft-thumb {
+    outline-color: transparent;
   }
   .draft-thumb {
     display: flex;

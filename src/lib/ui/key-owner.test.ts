@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { keyOwner, latinKey, type KeyPress } from './key-owner';
+import { focusOrigin, keyOwner, latinKey, type KeyPress } from './key-owner';
 
 // The editor listens on the window, so every key a focused control was meant
 // to get reached the hotkey table first. Space played the preview from a
@@ -148,5 +148,67 @@ describe('ninth audit: Space on a timeline cell plays', () => {
 
   it('Enter still presses the cell', () => {
     expect(keyOwner(press('Enter', el('button', { 'data-frame': '3' })))).toBe('control');
+  });
+});
+
+describe('2026-10-08 critique: Space after a mouse click is the preview', () => {
+  // Chromium makes a mouse-focused button match :focus-visible the moment a
+  // key goes down, so the probe above read «reached by keyboard» for every
+  // clicked key: «+» then Space added a second frame, «Калька» then Space
+  // flipped the onion back, and nothing played. Where the focus came from is
+  // remembered at the moment it arrives instead.
+  it('a clicked key hands Space to the preview though the browser now rings it', () => {
+    expect(keyOwner(press(' ', el('button'), { byPointer: true }))).toBe('editor');
+  });
+
+  it('a key reached by Tab still answers Space', () => {
+    expect(keyOwner(press(' ', el('button'), { byPointer: false }))).toBe('control');
+  });
+
+  it('a text field clicked into keeps its space', () => {
+    expect(keyOwner(press(' ', el('input', { type: 'text' }), { byPointer: true }))).toBe('control');
+  });
+
+  it('focus that arrives after a pointer press is the pointer’s, after a key the keyboard’s', () => {
+    const origin = focusOrigin();
+    const add = {};
+    const next = {};
+    origin.pointer();
+    origin.focus(add);
+    expect(origin.byPointer(add)).toBe(true);
+    // The pressed key switched itself off and the focus was passed on: still the click's.
+    origin.focus(next);
+    expect(origin.byPointer(next)).toBe(true);
+    origin.key('Tab');
+    origin.focus(add);
+    expect(origin.byPointer(add)).toBe(false);
+    expect(origin.byPointer(null)).toBe(false);
+  });
+
+  it('Esc out of a sheet opened by a click gives the focus back as the click’s', () => {
+    const origin = focusOrigin();
+    const help = {};
+    origin.pointer();
+    origin.focus(help);
+    origin.key('Escape');
+    origin.focus(help);
+    expect(origin.byPointer(help)).toBe(true);
+  });
+
+  it('the shell feeds it and asks it', async () => {
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+    expect(editorUi).toContain('byPointer: focusFrom.byPointer(e.target)');
+    expect(editorUi).toMatch(/onpointerdowncapture=\{focusFrom\.pointer\}/);
+    expect(editorUi).toMatch(/onfocusin=\{\(e\) => focusFrom\.focus\(e\.target\)\}/);
+  });
+});
+
+describe('2026-10-08 critique: Esc stops the preview', () => {
+  // Esc ends every other mode of the studio — a transform, a sheet, a menu —
+  // and the preview ran on under it: only Space and the stop key ended it.
+  it('a running preview is stopped, and with none running the key stays the browser’s', async () => {
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+    const handler = editorUi.match(/function onKeydown\([^]*?\n  }\n/)![0];
+    expect(handler).toMatch(/case 'Escape':\s*(?:\/\/[^\n]*\s*)*if \(editor\.playing\) \{\s*playControls\?\.toggle\(\);\s*\} else \{\s*handled = false;\s*\}\s*break;/);
   });
 });

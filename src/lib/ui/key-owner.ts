@@ -26,6 +26,40 @@ export interface KeyPress {
   modalOpen: boolean;
   /** The «single-letter keys» setting (WCAG 2.1.4). */
   letterKeys: boolean;
+  /** The focused control took its focus from a pointer press (focusOrigin). */
+  byPointer?: boolean;
+}
+
+/**
+ * Where the focus came from. `:focus-visible` cannot say: Chromium makes a
+ * mouse-focused button match it the moment any key goes down, so by the time
+ * Space reached the table every clicked key read as «reached by keyboard» —
+ * «+» then Space added a second frame and played nothing. Focus that arrives
+ * after a pointer press and before the next key is the pointer's, and that
+ * includes the focus a key passes on as it switches itself off. Esc is the
+ * one key that does not end the press: it closes the sheet a click opened,
+ * and the focus it gives back to that key is still the click's.
+ */
+export function focusOrigin(): {
+  pointer(): void;
+  key(key: string): void;
+  focus(target: unknown): void;
+  byPointer(target: unknown): boolean;
+} {
+  let pressed = false;
+  let borne: unknown = null;
+  return {
+    pointer: () => {
+      pressed = true;
+    },
+    key: (key) => {
+      pressed &&= key === 'Escape';
+    },
+    focus: (target) => {
+      borne = pressed ? target : null;
+    },
+    byPointer: (target) => target !== null && borne === target,
+  };
 }
 
 /** Input types that are typed into rather than pressed. */
@@ -134,7 +168,8 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
   // A timeline cell is selected by being active, so Space there is the
   // preview's too — pressing it collapsed the range about to be played.
   const cell = e.key === ' ' && e.target.getAttribute('data-frame') !== null;
-  if (kind.pressed && !cell && (e.key === ' ' || e.key === 'Enter') && e.target.matches(':focus-visible')) {
+  // What the browser says of it is not enough (focusOrigin): the press itself is asked too.
+  if (kind.pressed && !cell && (e.key === ' ' || e.key === 'Enter') && !e.byPointer && e.target.matches(':focus-visible')) {
     return 'control';
   }
   return 'editor';

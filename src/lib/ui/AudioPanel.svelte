@@ -66,7 +66,11 @@
     }
     const key = anchor.getBoundingClientRect();
     const box = plate.getBoundingClientRect();
-    const x = Math.max(8, Math.min(key.right - box.width, window.innerWidth - box.width - 8));
+    // A key too near the left edge for that holds the plate by its left one:
+    // clamped to the edge instead, the plate lay half over the thickness rail
+    // and a stump of the rail's plate showed under it.
+    const flush = key.right - box.width >= 8 ? key.right - box.width : key.left;
+    const x = Math.max(8, Math.min(flush, window.innerWidth - box.width - 8));
     // Held by the edge that faces the key, so a track's fields grow the plate
     // away from it rather than over it. Too tall for either side (large text),
     // it takes the roomier one and scrolls inside it.
@@ -103,7 +107,7 @@
   }
 
   async function removeTrack(): Promise<void> {
-    if (await editor.ask(t('audio.remove_confirm'), t('ask.delete'))) {
+    if (await editor.ask(t('audio.remove_confirm'), t('ask.delete'), true)) {
       editor.audio.clear();
       close();
     }
@@ -118,15 +122,24 @@
 
 <svelte:window onresize={() => resized++} />
 
-<!-- A group, not a dialog: the plate is docked, it takes no focus of its own
-     and Esc does not close it, so the role that promises a window would be
-     promising three things it does not do. -->
+<!-- A group, not a dialog: the plate is docked and takes no focus of its
+     own, so the role that promises a window would be promising what it does
+     not do. Esc from inside it closes it all the same, as every other sheet
+     of the studio — in a small screen's window the window takes the key. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="audio-plate"
   class:docked
   role="group"
   aria-label={t('audio.panel')}
   bind:this={plate}
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && !docked && !e.isComposing && !e.defaultPrevented) {
+      // The plate's own: a transform under it is not called off by the same key.
+      e.stopPropagation();
+      close();
+    }
+  }}
   style:left={at && `${at.x}px`}
   style:top={at?.top !== undefined ? `${at.top}px` : undefined}
   style:bottom={at?.bottom !== undefined ? `${at.bottom}px` : undefined}

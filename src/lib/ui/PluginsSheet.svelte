@@ -213,7 +213,7 @@
     // Asked first, the way «Удалить все» palettes is. One put in from a file
     // has no catalog to come back from: only the same file brings it back.
     const question = plugin.source === 'local' ? 'plugins.remove_local_confirm' : 'plugins.remove_confirm';
-    if (!(await editor.ask(t(question, { name: plugin.name }), t('ask.delete')))) {
+    if (!(await editor.ask(t(question, { name: plugin.name }), t('ask.delete'), true))) {
       return;
     }
     const kept = await editor.removePlugin(plugin.id);

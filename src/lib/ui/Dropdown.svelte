@@ -98,6 +98,15 @@
     class="trigger"
     bind:this={trigger}
     popovertarget={listId}
+    onkeydown={(e) => {
+      // The arrows open it, as they open the browser's list it stands for;
+      // the studio's arrows move frames, and must not from here.
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !open) {
+        e.preventDefault();
+        e.stopPropagation();
+        list?.showPopover();
+      }
+    }}
     aria-haspopup="listbox"
     aria-label={`${label}: ${current?.label ?? ''}`}
   >

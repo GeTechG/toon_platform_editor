@@ -193,3 +193,30 @@ describe('owner after the tenth audit: zoom inside the transform window on a pho
     expect(menu).toMatch(/:global\(:where\(\.studio\.compact\)\) \.row\.zoom \{[^}]*display: flex/);
   });
 });
+
+// 2026-10-08 critique. The window was white on the white sheet — its edge was
+// not there to see — and «Применить / Отмена» lay under the fold of the
+// holder: sliced at 1440×900, gone at 1024×768 and on a phone lying down.
+describe('the transform window over the sheet', () => {
+  const rule = (selector: string) => menu.match(new RegExp(`\\n  ${selector} \\{[^}]*\\}`))?.[0] ?? '';
+
+  it('lies in the paper tone, as DESIGN §4 has every window over the stage', () => {
+    expect(rule('\\.transform-menu')).toContain('background: var(--paper)');
+    // The fields keep their own surface and the edge that draws them.
+    expect(rule("input\\[type='number'\\]")).toContain('background: var(--canvas)');
+    expect(rule("input\\[type='number'\\]")).toContain('border: 1px solid var(--edge)');
+  });
+
+  it('scrolls by itself, in the holder and dragged out of it, and keeps the last row in view', () => {
+    const window = rule('\\.transform-menu');
+    expect(window).toContain('overflow-y: auto');
+    expect(window).toMatch(/min-height:\s*7\.5rem/);
+    expect(window).toContain('max-height: 100dvh');
+    expect(menu).toMatch(/<div class="row end">\s*<button class="key primary" onclick=\{\(\) => editor\.commitTransform\(\)\}/);
+    const end = rule('\\.row\\.end');
+    expect(end).toContain('position: sticky');
+    // Down by the window's own padding: sticky is held inside it, and at 0 a strip of the keys showed under the row.
+    expect(end).toContain('bottom: -0.6rem');
+    expect(end).toContain('background: var(--paper)');
+  });
+});

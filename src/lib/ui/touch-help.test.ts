@@ -11,7 +11,7 @@ it('the manual names the four gestures a finger has', () => {
 });
 
 it('under a finger the gestures come before the keys', () => {
-  expect(studio).toMatch(/\{@render \(touchFirst \? gestureList : keyList\)\(\)\}\s*\{@render \(touchFirst \? keyList : gestureList\)\(\)\}/);
+  expect(studio).toMatch(/\{@render \(touchFirst \? gestureList : keyList\)\(\)\}\s*\{#if !fingersOnly\}\{@render \(touchFirst \? keyList : gestureList\)\(\)\}\{\/if\}/);
 });
 
 // The hover no longer covers any key's glyph — the playing one included: the
