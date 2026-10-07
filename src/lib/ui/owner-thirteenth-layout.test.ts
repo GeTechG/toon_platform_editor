@@ -44,16 +44,18 @@ describe('the sheet at 100 % lies clear of what stands over the stage', () => {
     expect(overlaps(place, rail)).toBe(false);
     expect(overlaps(place, zoom)).toBe(false);
     expect(sheet.x).toBeGreaterThanOrEqual(rail.x + rail.width + FIT_PADDING);
-    // Cut from the edge the rail stands on, not from under it: the sheet
-    // stays in the middle of the height, as wide as the rest allows.
+    // Cut from the edge the rail stands on, not from under it: the sheet is
+    // as wide as the rest allows — and in the middle of the room the covers
+    // leave it, under the window at the head (owner, 2026-10-07).
     expect(sheet.width).toBeCloseTo(330 - (rail.x + rail.width) - 2 * FIT_PADDING);
-    expect(sheet.y + sheet.height / 2).toBeCloseTo(738 / 2);
+    expect(sheet.y + sheet.height / 2).toBeCloseTo((zoom.y + zoom.height + 738) / 2);
   });
 
   it('a cover the fitted sheet does not reach costs it nothing', () => {
     // The desktop's zoom window, bottom left, under a wide sheet.
     const plain = fitSheet(891, 649, DOC);
-    const sheet = fitSheet(891, 649, DOC, [{ x: 20, y: 581, width: 150, height: 48 }]);
+    // Shy, as it is drawn now: it takes no strip, and the sheet does not reach it.
+    const sheet = fitSheet(891, 649, DOC, [{ x: 20, y: 581, width: 150, height: 48, shy: true }]);
     expect(sheet).toEqual(plain);
   });
 
@@ -84,7 +86,45 @@ describe('the sheet at 100 % lies clear of what stands over the stage', () => {
   it('the canvas measures what stands over the stage and fits around it', () => {
     expect(canvas).toMatch(/fitSheet\([^)]*covers/);
     expect(canvas).toMatch(/class="size-rail"[^>]*data-over-sheet|data-over-sheet[^>]*\n?\s*class="size-rail"/);
-    expect(editorUi).toMatch(/class="scale-window" data-over-sheet/);
+    // The zoom window takes nothing off the sheet (owner, 2026-10-07: «разреши холсту быть под масштабом»): the sheet only steps aside.
+    expect(editorUi).toContain('class="scale-window" data-over-sheet={compact ? undefined : \'beside\'}');
+    expect(canvas).toContain("shy: el.dataset.overSheet === 'beside'");
+  });
+
+  it('a cover lying across the stage takes its strip off the foot, not off a side it happens to be near', () => {
+    // The widget lying on a 320 px phone: 10 px from either side, 190 from the foot under which the bar is —
+    // by the nearest edge it was a side's, left no room, and the sheet lay under it and the bar both.
+    const widget = { x: 10, y: 250, width: 300, height: 57 };
+    const bar = { x: 0, y: 317, width: 320, height: 190 };
+    const sheet = fitSheet(320, 507, { width: 1280, height: 720 }, [widget, bar]);
+    expect(sheet.width).toBeCloseTo(320 - 2 * FIT_PADDING);
+    expect(sheet.y + sheet.height).toBeLessThanOrEqual(250 - FIT_PADDING);
+  });
+
+  it('the sheet lies in the middle of the room the covers leave it, not of the workspace they stand on', () => {
+    // Owner, 2026-10-07, an iPad standing up: «сделай холст по центру» — the workspace runs on
+    // under the bar, and by its middle the sheet sat low, a hand over the widget and half the table over itself.
+    const bar = { x: 0, y: 900, width: 820, height: 200 };
+    const widget = { x: 226, y: 833, width: 368, height: 57 };
+    const sheet = fitSheet(820, 1100, { width: 1280, height: 720 }, [widget, bar]);
+    expect(sheet.width).toBeCloseTo(820 - 2 * FIT_PADDING);
+    expect(sheet.y + sheet.height / 2).toBeCloseTo(833 / 2);
+    expect(sheet.x + sheet.width / 2).toBeCloseTo(410);
+  });
+
+  it('a shy cover takes nothing off the sheet: the sheet steps aside where the stage has room, and lies under it where it has none', () => {
+    // Owner, 2026-10-07: «чтобы холст старался не наезжать, справа есть место — можно сдвинуть».
+    const doc = { width: 1280, height: 720 };
+    const zoom = { x: 10, y: 390, width: 140, height: 44, shy: true };
+    const bare = fitSheet(950, 450, doc);
+    const beside = fitSheet(950, 450, doc, [zoom]);
+    expect(beside.width).toBeCloseTo(bare.width);
+    expect(beside.y).toBeCloseTo(bare.y);
+    // Half the air from the window's edge, and still the air from the stage's.
+    expect(beside.x).toBeCloseTo(150 + FIT_PADDING / 2);
+    expect(beside.x + beside.width).toBeLessThanOrEqual(950 - FIT_PADDING);
+    // No room to step into: where it was, under the window.
+    expect(fitSheet(780, 450, doc, [zoom])).toEqual(fitSheet(780, 450, doc));
   });
 
   it('the rail counts the safe area once: the editor already stands clear of it', () => {

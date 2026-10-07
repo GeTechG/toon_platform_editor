@@ -61,7 +61,7 @@
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
-  import { boxRow, canvasFloor, phoneLayout, phoneTools, pickStep, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep } from './small-screen';
+  import { boxRow, canvasFloor, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -242,7 +242,55 @@
       : null,
   );
   /** The arrangement as drawn: the user's own, or a phone's cut of toonop's. */
-  const panels = $derived(cut?.panels ?? editor.panels);
+  /**
+   * The desktop's bar over the canvas stays one row (small-screen.ts,
+   * `oneRowTop`): what the whole row and the row with its tools behind a key
+   * need, px — measured off the row as drawn, so the cut is picked by the
+   * width alone, with no wrap to detect and nothing to flicker on the way back.
+   */
+  let topNeed = $state<[number, number]>([0, 0]);
+  let topEl = $state<HTMLElement | undefined>();
+  const topCut = $derived<TopCut>(compact || editor.arranging || boxW >= topNeed[0] ? 0 : boxW >= topNeed[1] ? 1 : 2);
+  /** What is cut out of the arrangement: a phone's, or the desktop's one row. */
+  const over = $derived(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }));
+  const panels = $derived(over?.panels ?? editor.panels);
+  // Another arrangement, another text size: both rows are measured anew.
+  const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
+  $effect(() => {
+    void topKey;
+    untrack(() => (topNeed = [0, 0]));
+  });
+  $effect(() => {
+    void panels.top;
+    void topKey;
+    const row = topEl;
+    if (!row || compact || editor.arranging || topCut === 2) return;
+    const level = topCut;
+    // A key in a wrapper (`display: contents`: a tool that opens its brush) has no box of its own.
+    const boxOf = (kid: Element): HTMLElement | null => ((kid as HTMLElement).offsetWidth > 0 ? (kid as HTMLElement) : (kid.firstElementChild as HTMLElement | null));
+    const measure = (): void => {
+      const style = getComputedStyle(row);
+      // The save status is a note out of the flow: not the row's need.
+      const kids = [...row.children].filter((kid) => !kid.matches('.saved'));
+      const need = Math.ceil(
+        parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
+          (parseFloat(style.columnGap) || 0) * Math.max(0, kids.length - 1) +
+          kids.reduce((sum, kid) => sum + (kid.classList.contains('spring') ? 0 : (boxOf(kid)?.offsetWidth ?? 0)), 0),
+      );
+      if (topNeed[level] !== need) topNeed = level === 0 ? [need, topNeed[1]] : [topNeed[0], need];
+    };
+    untrack(measure);
+    // What is in the row grows under it — a key that comes late, a name that
+    // changes — and the row measured once wrapped again (owner, 2026-10-07).
+    if (typeof ResizeObserver === 'undefined') return;
+    const sizes = new ResizeObserver(() => measure());
+    for (const kid of row.children) {
+      sizes.observe(kid);
+      const inner = kid.firstElementChild;
+      if (inner) sizes.observe(inner);
+    }
+    return () => sizes.disconnect();
+  });
   /** Each bottom row's content box — padding out, so a row's bleed is not a wrap. */
   let rowBoxes = $state<(DOMRectReadOnly | undefined)[]>([]);
   // A row that went leaves its box behind: the palette's 239px, counted again
@@ -456,10 +504,24 @@
   /** The table between a card — a column, the bottom bar — and the studio's edge, rem (`.studio .left`). */
   const SIDE_GAP = 0.6;
   /**
+   * The fixed sidebar is a widget of its own (owner, 2026-10-07): it lies —
+   * one line along the stage's foot, in the middle, in no column — or stands
+   * at the edge, whichever leaves the sheet bigger (`railLiesFor`): a wide
+   * sheet on a screen standing up wants the width, an upright one the height.
+   */
+  const railLies = $derived(sideFixed('left') && !editor.arranging && railLiesFor(
+    { w: boxW, h: stageHeight },
+    { width: editor.doc.width, height: editor.doc.height },
+    // Its column (the card and the table at its edge); its line (a key, the card's padding, the table under it).
+    { side: (SIDEBAR_REM + SIDE_GAP) * rem, foot: (compact ? 44 : 2.75 * rem) + 1.4 * rem },
+    tall,
+  ));
+  /**
    * What a column takes of the studio's width as drawn — the canvas runs on
    * under it by this much (`--stage-left`, `--stage-right`).
    */
   function sideTrack(id: SideId): number {
+    if (id === 'left' && railLies) return 0;
     if (!(sideDraws(id) || editor.arranging)) return 0;
     return sidePx[id] + (folded(id) ? 0 : SIDE_GAP * rem);
   }
@@ -504,13 +566,14 @@
   /**
    * The zoom window stands under the column on the screen's left, at the
    * studio's own edge (owner, 2026-10-06: there is room there now) — while
-   * that column is open and short enough to leave the window its corner. A
-   * phone's sidebar stands in the middle of the stage's height, so the corner
-   * is what is left under it: half of the rest.
+   * that column is open and short enough to leave the window its corner. The
+   * sidebar stands in the middle of the stage's height, so the corner is what
+   * is left under it: half of the rest.
    */
   const scaleUnder = $derived.by((): SideId | null => {
+    if (railLies) return null;
     const id = sideAt(true);
-    return sideDraws(id) && !folded(id) && sideH[id] + (compact ? 2 : 1) * (SIDE_GAP + 5.5) * rem <= stageHeight ? id : null;
+    return sideDraws(id) && !folded(id) && sideH[id] + (sideFixed(id) ? 2 : 1) * (SIDE_GAP + 5.5) * rem <= stageHeight ? id : null;
   });
   // A phone's arrangement is not the user's to rearrange: the arranger is
   // for the one the desktop draws.
@@ -523,7 +586,7 @@
   /** «⋯» on a phone: the window with the keys its one row has no room for. */
   let moreOpen = $state(false);
   $effect(() => {
-    if (!compact) moreOpen = false;
+    if (!panels.top.includes('more')) moreOpen = false;
   });
   let moreKey = $state<HTMLButtonElement | undefined>();
   let tabWindow = $state<HTMLElement | undefined>();
@@ -608,12 +671,12 @@
   // once (owner, 2026-10-07). The press still does its own work. A sheet the
   // sound's plate asked from (a question) is not «elsewhere».
   $effect(() => {
-    if (!compact || (!moreOpen && !audioOpen)) return;
+    if (!moreOpen && !(compact && audioOpen)) return;
     const away = (e: PointerEvent) => {
       const hit = e.target instanceof Element ? e.target : null;
       if (!hit) return;
       if (moreOpen && !tabWindow?.contains(hit) && !moreKey?.contains(hit)) moreOpen = false;
-      if (audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;
+      if (compact && audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;
     };
     window.addEventListener('pointerdown', away, true);
     return () => window.removeEventListener('pointerdown', away, true);
@@ -2302,7 +2365,7 @@
   {:else if id === 'brush'}
     <BrushPanel {editor} />
   {:else if id === 'brush-rail'}
-    <BrushRail {editor} />
+    <BrushRail {editor} lying={railLies} />
   {:else if id === 'spring' || id === 'spring:lead'}
     <!-- Room, not a control: what stands after it stands at the far end. -->
     <span class="spring" aria-hidden="true"></span>
@@ -2466,11 +2529,15 @@
       class="saved save-status {saveFailed ? 'too_big' : lastSaved ? draftSizeClass(savedBytes) : ''}"
       role={saveFailed ? 'alert' : 'status'}
     >
-      {#if saveFailed}
-        <Icon name="x" size={14} /> {t('editor.save_failed')}
-      {:else if lastSaved}
-        {t('editor.saved_at', { when: lastSaved, size: formatFileSize(savedBytes) })}
-      {/if}
+      <!-- Keyed by the save: in the bar over the canvas it is a note that
+           shows with each one and goes by itself. -->
+      {#key editor.lastSavedAt}
+        {#if saveFailed}
+          <b class="saved-note"><Icon name="x" size={14} /> {t('editor.save_failed')}</b>
+        {:else if lastSaved}
+          <b class="saved-note">{t('editor.saved_at', { when: lastSaved, size: formatFileSize(savedBytes) })}</b>
+        {/if}
+      {/key}
     </span>
   {:else if id === 'copy'}
     <button
@@ -2506,10 +2573,10 @@
   {:else if id === 'tools'}
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->
-    {@const held = cut?.tools.map(toolOfItem).find((tool) => tool === editor.tool)}
+    {@const held = over?.tools.map(toolOfItem).find((tool) => tool === editor.tool)}
     <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held}>
       {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} />{/snippet}
-      <div class="more-keys tool-list">{@render slot(cut?.tools ?? [])}</div>
+      <div class="more-keys tool-list">{@render slot(over?.tools ?? [])}</div>
     </PopKey>
   {:else if id === 'more'}
     <!-- A phone's one row of keys has room for a few: the rest are here. -->
@@ -2598,7 +2665,7 @@
   {#if draws(panels.top) || editor.arranging}
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
-    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top">
+    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl}>
       {@render slot(panels.top)}
     </div>
   {/if}
@@ -2609,9 +2676,10 @@
       aria-label={t('editor.tools_side')}
       data-slot="left"
       data-folded={folded('left') ? '' : undefined}
-      data-over-sheet={folded('left') || compact ? undefined : ''}
+      data-over-sheet={folded('left') || (compact && !railLies) ? undefined : ''}
       class:at-left={atLeft('left')}
       class:sidebar={sideFixed('left')}
+      class:lies={railLies}
       style={sideStyle('left')}
       style:--stage-h={compact ? `${stageHeight}px` : undefined}
       bind:clientWidth={sidePx.left}
@@ -2625,7 +2693,7 @@
       {@render sideEdge('left', t('editor.tools_side'))}
     {/if}
   {/if}
-  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={compact && !scaleUnder}
+  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={(compact && !scaleUnder) || railLies}
     style:--scale-left={scaleUnder ? `${-sidePx[scaleUnder]}px` : undefined}
     style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
     style:--stage-right={sideTrack(sideAt(false)) ? `${sideTrack(sideAt(false))}px` : undefined}
@@ -2679,7 +2747,7 @@
          far corner, faded back until the hand is up, the wheel turns, or it is
          hovered or focused. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="scale-window" data-over-sheet={compact ? undefined : ''} style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
+    <div class="scale-window" data-over-sheet={compact ? undefined : 'beside'} style:z-index={editor.toolsOnTop ? 'calc(var(--z-float) + 4)' : undefined} onpointerdowncapture={raiseTools} onfocusin={raiseTools}>
       <ScaleMenu {editor} />
     </div>
     {#if flashVisible}
@@ -2695,7 +2763,7 @@
         <p class="stage-note" class:sr-only={!clipShown}>{clipNote}</p>
       {/if}
     </div>
-    {#if cut && moreOpen}
+    {#if over && moreOpen}
       <!-- What a phone's row of keys has no room for, each key by its name. -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <section
@@ -2706,7 +2774,7 @@
         bind:this={tabWindow}
         onkeydown={onMoreKey}
       >
-        {#each cut.more as group (group.id)}
+        {#each over.more as group (group.id)}
           <h3 class="more-title">{t(`editor.more_group.${group.id}`)}</h3>
           <div class="more-keys" role="group" aria-label={t(`editor.more_group.${group.id}`)}>
             {@render slot(group.items)}
@@ -3527,13 +3595,38 @@
   }
   /* A profile's fixed sidebar (toonop): one key wide, its keys one under
      another — the thickness, then undo over redo. 3.95rem is SIDEBAR_REM. */
+  /* In the middle of the stage's height, as Procreate's sliders stand: under
+     the thumb of the hand that holds the phone — and on the desktop as well
+     (owner, 2026-10-07). */
   .studio .left.sidebar {
     width: 3.95rem;
     padding: 0.6rem;
     grid-template-columns: 1fr;
+    align-self: center;
   }
   .studio .left.sidebar .history {
     grid-template-columns: 1fr;
+  }
+  /* The widget lying (a screen standing up): across the stage's row, at its
+     foot, in the middle — over the canvas like any card, in no column. One
+     line: the number, the slider, undo, redo. */
+  .studio .left.sidebar.lies {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    align-self: end;
+    justify-self: center;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    width: auto;
+    max-width: calc(100% - 1.2rem);
+    margin: 0 0 0.6rem;
+    padding: 0.4rem 0.6rem;
+  }
+  .studio .left.sidebar.lies .history {
+    /* Two keys whole: the slider gives way, not they. */
+    flex: none;
+    grid-template-columns: repeat(2, var(--key-h));
   }
   /* A phone's keys stand on the tap floor, not on the text size: at 200 %
      text seven keys of 88 px were three rows over a canvas with no height.
@@ -3563,11 +3656,11 @@
     gap: 0.25rem;
     padding-inline: 0.5rem;
   }
-  /* In the middle of the stage's height, as Procreate's sliders stand: under
-     the thumb of the hand that holds the phone (owner, 2026-10-07). */
   .studio.compact .left.sidebar {
     width: calc(var(--tap) + 1.2rem);
-    align-self: center;
+  }
+  .studio.compact .left.sidebar.lies {
+    width: auto;
   }
   /* A phone lying down: the slider is as long as the stage has room for — its
      height less the card's own 4 rem (margins, padding, the number). Counted
@@ -4021,10 +4114,15 @@
     width: 20rem;
     max-width: 100%;
   }
+  /* The sound's key in its wrapper (the desktop's row cut to «⋯»): a cell like the rest. */
+  .more-keys > .layers {
+    display: grid;
+  }
   /* Under a finger a bare icon has no title to read: each key says its name
      beside its icon — a tool that opens its brush (PopKey) and the sound's
      key in its wrapper as well, or they stood as nameless discs among named
      keys. `::before`, ordered last: `::after` is the hotkey's under a cursor. */
+  .editor .more-keys > .layers > .key,
   .editor .more-keys > :global(.key[aria-label]),
   .editor .more-keys > :global(.pop-key) > :global(.key) {
     justify-content: flex-start;
@@ -4042,10 +4140,12 @@
     text-align: left;
   }
   /* A name on two lines must not squeeze the icon. */
+  .more-keys > .layers > .key > :global(svg),
   .more-keys > :global(.key) > :global(svg),
   .more-keys > :global(.pop-key) > :global(.key) > :global(svg) {
     flex: none;
   }
+  .editor .more-keys > .layers > .key::before,
   .editor .more-keys > :global(.key[aria-label])::before,
   .editor .more-keys > :global(.pop-key) > :global(.key)::before {
     content: attr(aria-label);
@@ -4068,6 +4168,9 @@
   }
   .more-keys > :global(.saved:empty) {
     display: none;
+  }
+  :global(.saved-note) {
+    font-weight: inherit;
   }
   /* The frame rate: a slider with no word on it, so its title is its
      caption; the slider takes what the caption and the box leave. */
@@ -4474,6 +4577,45 @@
     font-size: 0.78rem;
     color: var(--ink-2);
     white-space: nowrap;
+  }
+  /* In the bar over the canvas the status is no word in the row — at its 200 px
+     it wrapped the row, and cut to «сох…» it said nothing — but a note under
+     the bar, shown with each save and gone by itself (owner, 2026-10-07).
+     Out of the flow, apart by its tone; a failed save stays. */
+  .studio .top {
+    position: relative;
+  }
+  .studio .top > :global(.saved) {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 50%;
+    z-index: var(--z-float);
+    padding: 0;
+    translate: -50% 0;
+    pointer-events: none;
+  }
+  .studio .top > :global(.saved > .saved-note) {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: var(--r-pill);
+    background: var(--sub);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .studio .top > :global(.saved[role='status'] > .saved-note) {
+    animation: saved-note 4s ease forwards;
+  }
+  @keyframes saved-note {
+    0%,
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
   }
   .editor :global(.key.icon) {
     padding: 0;

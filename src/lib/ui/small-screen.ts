@@ -10,6 +10,7 @@
  */
 
 import { allPlaced, toolOfItem, toolSpec, type PanelLayout } from './panels';
+import { FIT_PADDING } from './viewport';
 
 export type LayoutStep = 'full' | 'phone';
 
@@ -189,13 +190,45 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
   const drawn = [...base.left, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
   // The frame rate is always there: the row it stood in has no room for it.
   const behind = [...placed.filter((id) => !drawn.includes(id) && toolOfItem(id) === null && id !== 'fps'), 'fps'];
+  return { panels, more: moreGroups(behind), tools: rest };
+}
+
+/** «⋯»'s named groups, in the window's own order; no group is empty. */
+function moreGroups(behind: readonly string[]): PhoneLayout['more'] {
   const listed = Object.values(MORE_ORDER).flat();
   const groups: PhoneLayout['more'] = [
     { id: 'frames', items: MORE_ORDER.frames.filter((id) => behind.includes(id)) },
     { id: 'toon', items: MORE_ORDER.toon.filter((id) => behind.includes(id)) },
     { id: 'studio', items: behind.filter((id) => !listed.includes(id)) },
   ];
-  return { panels, more: groups.filter((group) => group.items.length > 0), tools: rest };
+  return groups.filter((group) => group.items.length > 0);
+}
+
+/** How far the desktop's bar over the canvas is cut to stay one row: whole, the other tools behind their key, the rest behind «⋯» too. */
+export type TopCut = 0 | 1 | 2;
+
+/** What stays in the desktop's row at any cut: «Отправить», the room, the keys of the colour and the brush. */
+const STAYS_IN_ROW: readonly string[] = ['publish', 'spring', ...BEHIND_A_KEY];
+
+/**
+ * The desktop's arrangement with its bar over the canvas cut to one row
+ * (owner, 2026-10-07, an iPad Air standing up: the row wrapped, the colour
+ * key alone on a second line) — as Procreate keeps one row, and as the phone
+ * does: first the tools past the essential ones go behind one key, then what
+ * is neither a tool nor `STAYS_IN_ROW` behind «⋯». Each key stands where the
+ * first of what it hides stood; one key is not hidden behind another. The
+ * columns and the bar under the canvas are the user's own. `null`: no cut.
+ */
+export function oneRowTop(layout: PanelLayout, cut: TopCut, keep: { tools: readonly string[] }): PhoneLayout | null {
+  if (cut === 0) return null;
+  const fold = (top: readonly string[], hide: (id: string) => boolean, key: string): { top: string[]; hidden: string[] } => {
+    const hidden = top.filter(hide);
+    if (hidden.length < 2) return { top: [...top], hidden: [] };
+    return { top: top.flatMap((id) => (id === hidden[0] ? [key] : hide(id) ? [] : [id])), hidden };
+  };
+  const tools = fold(layout.top, (id) => toolOfItem(id) !== null && !keep.tools.includes(toolOfItem(id) ?? ''), 'tools');
+  const rest = cut === 2 ? fold(tools.top, (id) => toolOfItem(id) === null && id !== 'tools' && !STAYS_IN_ROW.includes(id), 'more') : { top: tools.top, hidden: [] };
+  return { panels: { ...layout, top: rest.top }, more: moreGroups(rest.hidden), tools: tools.hidden };
 }
 
 /**
@@ -206,4 +239,20 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
  */
 export function sheetScrollsWhole(viewHeight: number, rootFont: number): boolean {
   return viewHeight > 0 && viewHeight < 20 * rootFont;
+}
+
+/**
+ * Whether the thickness widget lies along the stage's foot or stands at its
+ * side: by the sheet, not by the screen (owner, 2026-10-07: «пускай
+ * адаптируется положение не по разрешению, а по типу холста, чтобы он
+ * максимально место занимал») — whichever leaves the fitted sheet bigger.
+ * `rail` is what the widget takes: its column standing, its line lying.
+ * All the same to the sheet (nothing measured yet): by the screen, `tall`.
+ */
+export function railLiesFor(stage: Room, doc: { width: number; height: number }, rail: { side: number; foot: number }, tall: boolean): boolean {
+  const fit = (w: number, h: number): number =>
+    Math.min(Math.max(0, w - 2 * FIT_PADDING) / doc.width, Math.max(0, h - 2 * FIT_PADDING) / doc.height);
+  const lying = fit(stage.w, stage.h - rail.foot);
+  const standing = fit(stage.w - rail.side, stage.h);
+  return Math.abs(lying - standing) < 1e-9 ? tall : lying > standing;
 }

@@ -310,7 +310,7 @@
 
 
   // What stands over the stage for good (`data-over-sheet`: the thickness
-  // rail, the zoom window, the bar floating under the canvas — which is the
+  // rail, the bar floating under the canvas — which is the
   // studio's, not the stage's, hence the search from the editor's root), in
   // the wrap's px. The sheet at 100 % is fitted
   // clear of it (the owner, after the thirteenth audit: the rail lay over
@@ -333,7 +333,8 @@
     const next = [...(wrapEl.closest('[data-float-root]') ?? wrapEl.parentElement ?? wrapEl).querySelectorAll<HTMLElement>('[data-over-sheet]')].map((el) => {
       const r = el.getBoundingClientRect();
       return clipCover(
-        { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height) },
+        // The zoom window (`beside`): the sheet lies under it, and steps aside where it can.
+        { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height), shy: el.dataset.overSheet === 'beside' },
         Math.round(box.width),
         Math.round(box.height),
       );

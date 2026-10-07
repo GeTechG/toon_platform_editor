@@ -12,7 +12,8 @@
 
   import { onDestroy } from 'svelte';
 
-  let { editor }: { editor: EditorState } = $props();
+  /** `lying`: the widget lies along the stage's foot (a screen standing up) — the number, then a lying range. */
+  let { editor, lying = false }: { editor: EditorState; lying?: boolean } = $props();
   // The column folded, or the layout changed, under the hand: the ring must not stay.
   onDestroy(() => (editor.sizeShown = false));
 
@@ -21,7 +22,7 @@
   const size = $derived(editor.brushSizeLogical);
 </script>
 
-<div class="brush-rail" role="group" aria-label={t('brush.box')}>
+<div class="brush-rail" class:lying role="group" aria-label={t('brush.box')}>
   <!-- The number over it: what the slider holds now. The track is a lying
        range turned on its end — up is more, and the arrows agree. -->
   <label class="v" title={t('brush.thickness')}>
@@ -35,7 +36,7 @@
         step="any"
         value={Math.round(positionOfSize(size, min, max))}
         aria-label={t('brush.sizes_group')}
-        aria-orientation="vertical"
+        aria-orientation={lying ? 'horizontal' : 'vertical'}
         aria-valuetext={t('brush.size_value', { count: size })}
         onpointerdown={() => (editor.sizeShown = true)}
         onpointerup={() => (editor.sizeShown = false)}
@@ -96,5 +97,32 @@
        the browser took the drag, cancelled the pointer, and the size ring
        on the canvas went a moment after it came. */
     touch-action: none;
+  }
+  /* Lying: the range as it is made, the number before it. */
+  .brush-rail.lying,
+  .brush-rail.lying .v {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .brush-rail.lying .v {
+    flex-direction: row;
+    gap: 0.4rem;
+    width: auto;
+  }
+  .brush-rail.lying .now {
+    min-width: 2ch;
+    text-align: center;
+  }
+  .brush-rail.lying .well {
+    /* Fourteen rem where the stage has them, what it has where it has not. */
+    flex: 0 1 auto;
+    min-width: 4rem;
+    width: 14rem;
+    height: var(--key-h);
+  }
+  .brush-rail.lying .well input {
+    position: static;
+    width: 100%;
+    transform: none;
   }
 </style>

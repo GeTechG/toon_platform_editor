@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
 import { defaultPanels, movePanelItem, toolItem, toolOpensBrush } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
-import { HYSTERESIS, phoneLayout, phoneTools, pickStep, toolRoom } from './small-screen';
+import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, toolRoom } from './small-screen';
 
 // The owner, 2026-10-07: «сделай телефонный/планшетный варианты как у
 // procreate, по сути это нынешний десктоп». A tablet already draws the
@@ -186,7 +186,7 @@ describe('the studio draws one markup, given the arrangement', () => {
 
   it('a phone’s cut is toonop’s arrangement, and everything is drawn from `panels`', () => {
     expect(editorUi).toContain('const cut = $derived(\n    compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
-    expect(editorUi).toContain('const panels = $derived(cut?.panels ?? editor.panels);');
+    expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     const markup = editorUi.slice(editorUi.indexOf('<div\n  class="editor studio"'), editorUi.indexOf('<style>'));
     expect(markup).not.toContain('editor.panels');
     // No branch of the markup is the desktop's alone — only the bar's stored height and its divider.
@@ -203,14 +203,14 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('«⋯» is a disclosure: a key in the row, a window of named keys, Esc and a second press close it', () => {
     expect(ru.editor.more).toBe('Ещё');
     expect(editorUi).toMatch(/\{:else if id === 'more'\}[\s\S]*?aria-expanded=\{moreOpen\}[\s\S]*?aria-controls=\{moreOpen \? 'more-window' : undefined\}/);
-    expect(editorUi).toMatch(/\{#if cut && moreOpen\}[\s\S]*?id="more-window"[\s\S]*?\{#each cut\.more as group \(group\.id\)\}[\s\S]*?\{t\(`editor\.more_group\.\$\{group\.id\}`\)\}[\s\S]*?\{@render slot\(group\.items\)\}/);
+    expect(editorUi).toMatch(/\{#if over && moreOpen\}[\s\S]*?id="more-window"[\s\S]*?\{#each over\.more as group \(group\.id\)\}[\s\S]*?\{t\(`editor\.more_group\.\$\{group\.id\}`\)\}[\s\S]*?\{@render slot\(group\.items\)\}/);
     expect(ru.editor.more_group).toEqual({ frames: 'Кадры', toon: 'Мульт', studio: 'Студия' });
     expect(editorUi).toMatch(/key === 'Escape' && moreOpen && !modalOpen/);
   });
 
   it('the key for the other tools wears the tool in hand, and lists them by name', () => {
     expect(ru.editor.tools_more).toBe('Другие инструменты');
-    expect(editorUi).toMatch(/\{:else if id === 'tools'\}[\s\S]*?<PopKey[\s\S]*?active=\{!!held\}[\s\S]*?<Icon name=\{held \? \(toolSpec\(held\)\?\.icon \?\? 'tools'\) : 'tools'\} \/>[\s\S]*?class="more-keys tool-list"[\s\S]*?\{@render slot\(cut\?\.tools \?\? \[\]\)\}/);
+    expect(editorUi).toMatch(/\{:else if id === 'tools'\}[\s\S]*?<PopKey[\s\S]*?active=\{!!held\}[\s\S]*?<Icon name=\{held \? \(toolSpec\(held\)\?\.icon \?\? 'tools'\) : 'tools'\} \/>[\s\S]*?class="more-keys tool-list"[\s\S]*?\{@render slot\(over\?\.tools \?\? \[\]\)\}/);
   });
 
   it('a finger gets no hand tool: two fingers move the sheet', () => {
@@ -245,7 +245,7 @@ describe('the studio draws one markup, given the arrangement', () => {
     const away = editorUi.slice(editorUi.indexOf('// On a phone a press anywhere else closes what is open'), editorUi.indexOf('function onMoreKey('));
     expect(away).toContain("window.addEventListener('pointerdown', away, true);");
     expect(away).toContain('if (moreOpen && !tabWindow?.contains(hit) && !moreKey?.contains(hit)) moreOpen = false;');
-    expect(away).toContain("if (audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;");
+    expect(away).toContain("if (compact && audioOpen && !hit.closest('.audio-plate, dialog') && !audioKey?.contains(hit)) audioOpen = false;");
   });
 
   it('a phone’s bar is as tall as its rows: one layer stands whole, many scroll in the strip; no divider to drag', () => {
@@ -284,23 +284,134 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('the zoom window with no room under the sidebar goes to the far top corner, not beside the sidebar', () => {
-    expect(editorUi).toContain('class:zoom-corner={compact && !scaleUnder}');
+    expect(editorUi).toContain('class:zoom-corner={(compact && !scaleUnder) || railLies}');
     expect(editorUi).toMatch(/\.stage\.zoom-corner > \.scale-window \{[^}]*inset: var\(--zoom-inset\) var\(--zoom-inset\) auto auto;/);
     // The site's first-run note starts under it (apps/web, `--zoom-foot`).
     expect(editorUi).toMatch(/\.stage\.zoom-corner \{[^}]*--zoom-foot: calc\(var\(--zoom-inset\) \+ var\(--tap\)/);
   });
 
   it('on a phone the sheet is fitted under the sidebar and the zoom window: a bigger sheet is worth it (owner, 2026-10-07)', () => {
-    expect(editorUi).toContain("data-over-sheet={folded('left') || compact ? undefined : ''}");
-    expect(editorUi).toContain('class="scale-window" data-over-sheet={compact ? undefined : \'\'}');
+    // Lying at the stage's foot the widget costs the sheet nothing: there the sheet keeps clear of it, on a phone too.
+    expect(editorUi).toContain("data-over-sheet={folded('left') || (compact && !railLies) ? undefined : ''}");
+    // …and under the zoom window on every screen (owner, 2026-10-07): a corner of the sheet is not worth a third of it.
+    expect(editorUi).not.toMatch(/class="scale-window" data-over-sheet=\{compact \? undefined : ''\}/);
   });
 
   it('the sidebar stands in the middle of the stage’s height; the zoom window takes the corner under it only where half the rest holds it', () => {
-    expect(editorUi).toMatch(/\.studio\.compact \.left\.sidebar \{[^}]*align-self: center;/);
-    expect(editorUi).toContain('sideH[id] + (compact ? 2 : 1) * (SIDE_GAP + 5.5) * rem <= stageHeight');
+    // …and the desktop's as well (owner, 2026-10-07: «левую тоже сделай по центру»).
+    expect(editorUi).toMatch(/\n  \.studio \.left\.sidebar \{[^}]*align-self: center;/);
+    expect(editorUi).toContain('sideH[id] + (sideFixed(id) ? 2 : 1) * (SIDE_GAP + 5.5) * rem <= stageHeight');
   });
 
   it('the sidebar is the fixed one on a phone, under any preset', () => {
     expect(editorUi).toContain("id === 'left' && (compact || !!editor.ux.leftFixed)");
   });
 });
+
+// The owner, 2026-10-07, an iPad Air standing up: «плохой адаптив» — the
+// desktop's bar over the canvas wrapped, the colour key alone on a second
+// line. As Procreate keeps one row: what has no room goes behind a key.
+describe('the desktop’s bar over the canvas stays one row', () => {
+  const tools = phoneTools(presetUx(DEFAULT_PRESET));
+  const firstTool = base.top.findIndex((id) => id.startsWith('tool:'));
+
+  it('with room for it all the arrangement is drawn as it is', () => {
+    expect(oneRowTop(base, 0, { tools })).toBeNull();
+  });
+
+  it('first the other tools go behind their key, where the first of them stood; the rest of the row is as arranged', () => {
+    const cut = oneRowTop(base, 1, { tools })!;
+    expect(cut.panels.top.slice(0, firstTool)).toEqual(base.top.slice(0, firstTool));
+    expect(cut.panels.top.slice(firstTool)).toEqual(['tool:pencil', 'tool:eraser', 'tools', 'color-key']);
+    // The pipette's item is toonop's own: it draws no key there, in the row or in the list.
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso']);
+    expect(cut.more).toEqual([]);
+    // The columns and the bar under the canvas are the user's own.
+    expect(cut.panels.left).toEqual(base.left);
+    expect(cut.panels.rows).toEqual(base.rows);
+  });
+
+  it('then what is neither a tool, nor «Отправить», nor the colour goes behind «⋯», in its named groups', () => {
+    const cut = oneRowTop(base, 2, { tools })!;
+    expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
+    expect(cut.more.map((group) => group.id)).toEqual(['toon', 'studio']);
+    expect(cut.more.flatMap((group) => group.items).sort()).toEqual(base.top.filter((id) => !cut.panels.top.includes(id) && !id.startsWith('tool:')).sort());
+  });
+
+  it('one key is not hidden behind another: a single other tool stays in the row', () => {
+    const few = { ...base, top: ['publish', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'color-key'] };
+    expect(oneRowTop(few, 2, { tools })!.panels.top).toEqual(few.top);
+  });
+
+  it('the row is measured again when a key in it grows: the save status comes after the first measure', () => {
+    expect(editorUi).toMatch(/const sizes = new ResizeObserver\(\(\) => measure\(\)\);\s*for \(const kid of row\.children\) \{\s*sizes\.observe\(kid\);/);
+  });
+
+  it('the save status is no word in the row: a note under the bar that goes by itself (owner, 2026-10-07)', () => {
+    // «сохранено локально 04:10 · 1,1 КБ» wrapped the row, and cut to «сох…» it said nothing.
+    expect(editorUi).toMatch(/\.studio \.top > :global\(\.saved\) \{[^}]*position: absolute;[^}]*top: calc\(100% \+ 0\.5rem\);[^}]*pointer-events: none;/);
+    // Each save shows it anew; a failed save stays until the next one that takes.
+    expect(editorUi).toContain('{#key editor.lastSavedAt}');
+    expect(editorUi).toMatch(/\.studio \.top > :global\(\.saved\[role='status'\] > \.saved-note\) \{[^}]*animation: saved-note 4s ease forwards;/);
+    // Out of the flow, it is not the row's need.
+    expect(editorUi).toContain("const kids = [...row.children].filter((kid) => !kid.matches('.saved'));");
+  });
+
+  it('the sound’s key, behind «⋯» in its wrapper, says its name like the rest', () => {
+    expect(editorUi).toContain('.editor .more-keys > .layers > .key::before,');
+  });
+
+  it('the studio measures what each row needs and picks the cut by the width — no wrap to detect, no flicker on the way back', () => {
+    expect(editorUi).toContain('const topCut = $derived<TopCut>(compact || editor.arranging || boxW >= topNeed[0] ? 0 : boxW >= topNeed[1] ? 1 : 2);');
+    expect(editorUi).toContain('const over = $derived(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }));');
+    expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
+    expect(editorUi).toContain('{#if over && moreOpen}');
+  });
+});
+
+// The owner, 2026-10-07: «вместо левой панели сделаем отдельный виджет …
+// в зависимости от экрана то вертикальным, то горизонтальным, меняя
+// положение» — standing up it lies along the stage's foot, in the middle.
+describe('the thickness and undo are a widget of their own, standing or lying by the screen', () => {
+  const railUi = Bun.file(new URL('./BrushRail.svelte', import.meta.url)).text();
+
+  it('it lies or stands by the sheet, not by the screen: whichever leaves the sheet bigger (owner, 2026-10-07)', () => {
+    const rail = { side: 73, foot: 67 };
+    const wide = { width: 1280, height: 720 };
+    const upright = { width: 720, height: 1280 };
+    // An iPad standing up: a wide sheet wants the width, an upright one the height.
+    expect(railLiesFor({ w: 820, h: 893 }, wide, rail, true)).toBe(true);
+    expect(railLiesFor({ w: 820, h: 893 }, upright, rail, true)).toBe(false);
+    // A desk lying down: a wide sheet is bound by the height, an upright one more so.
+    expect(railLiesFor({ w: 1366, h: 513 }, wide, rail, false)).toBe(false);
+    expect(railLiesFor({ w: 1366, h: 513 }, upright, rail, false)).toBe(false);
+    // A square sheet on a wide desk loses height to a lying widget; on a phone standing up, width to a standing one.
+    expect(railLiesFor({ w: 1366, h: 513 }, { width: 800, height: 800 }, rail, false)).toBe(false);
+    expect(railLiesFor({ w: 390, h: 572 }, { width: 800, height: 800 }, rail, true)).toBe(true);
+    // All the same to the sheet: by the screen, as before.
+    expect(railLiesFor({ w: 0, h: 0 }, wide, rail, true)).toBe(true);
+    expect(railLiesFor({ w: 0, h: 0 }, wide, rail, false)).toBe(false);
+  });
+
+  it('on a screen standing up the widget lies: one line at the foot of the stage, in the middle', () => {
+    expect(editorUi).toContain("const railLies = $derived(sideFixed('left') && !editor.arranging && railLiesFor(");
+    expect(editorUi).toContain('class:lies={railLies}');
+    expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \{[^}]*grid-column: 1 \/ -1;[^}]*align-self: end;[^}]*justify-self: center;[^}]*display: flex;/);
+    expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \.history \{[^}]*flex: none;\s*grid-template-columns: repeat\(2, var\(--key-h\)\);/);
+  });
+
+  it('lying, it takes no column: the canvas has the width, and the zoom window the far top corner', () => {
+    expect(editorUi).toMatch(/function sideTrack\(id: SideId\): number \{\s*if \(id === 'left' && railLies\) return 0;/);
+    expect(editorUi).toContain('class:zoom-corner={(compact && !scaleUnder) || railLies}');
+    expect(editorUi).toMatch(/const scaleUnder = \$derived\.by\(\(\): SideId \| null => \{\s*if \(railLies\) return null;/);
+  });
+
+  it('the slider lies with it: a lying range, the number before it, left and right are less and more', async () => {
+    expect(editorUi).toContain('<BrushRail {editor} lying={railLies} />');
+    const rail = await railUi;
+    expect(rail).toContain('let { editor, lying = false }: { editor: EditorState; lying?: boolean } = $props();');
+    expect(rail).toContain("aria-orientation={lying ? 'horizontal' : 'vertical'}");
+    expect(rail).toMatch(/\.brush-rail\.lying \.well input \{[^}]*transform: none;/);
+  });
+});
+

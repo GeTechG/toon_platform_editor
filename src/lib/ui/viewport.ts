@@ -50,6 +50,8 @@ export interface Cover {
   y: number;
   width: number;
   height: number;
+  /** Takes nothing off the sheet: the sheet only steps aside from it, where the stage has room (the zoom window). */
+  shy?: boolean;
 }
 
 /**
@@ -62,6 +64,7 @@ export function clipCover(cover: Cover, width: number, height: number): Cover {
   const x = Math.max(0, cover.x);
   const y = Math.max(0, cover.y);
   return {
+    ...cover,
     x,
     y,
     width: Math.max(0, Math.min(width, cover.x + cover.width) - x),
@@ -183,9 +186,10 @@ export function fitSheet(
   doc: { width: number; height: number },
   covers: readonly Cover[] = [],
 ): { width: number; height: number; x: number; y: number } {
-  const on = covers.filter(
+  const over = covers.filter(
     (c) => c.width > 0 && c.height > 0 && c.x < width && c.x + c.width > 0 && c.y < height && c.y + c.height > 0,
   );
+  const on = over.filter((c) => !c.shy);
   const cuts = on.map((c): Cut[] => {
     const gaps: [Cut, number][] = [
       ['left', c.x],
@@ -194,9 +198,14 @@ export function fitSheet(
       ['bottom', height - c.y - c.height],
     ];
     const near = Math.min(...gaps.map(([, gap]) => gap));
-    return [null, ...gaps.filter(([, gap]) => gap <= near + COVER_EDGE_SLACK).map(([cut]) => cut)];
+    // …and one lying across more than half the stage is the foot's or the
+    // head's as well: by the nearest edge alone a widget 10 px from either
+    // side was a side's, and left no room at all.
+    const across: Cut[] = c.width > width / 2 ? ['top', 'bottom'] : c.height > height / 2 ? ['left', 'right'] : [];
+    return [null, ...new Set([...gaps.filter(([, gap]) => gap <= near + COVER_EDGE_SLACK).map(([cut]) => cut), ...across])];
   });
   let best: { width: number; height: number; x: number; y: number } | null = null;
+  let bestBox = { l: 0, t: 0, r: width, b: height };
   let bestOff = Infinity;
   const pick = (index: number, box: { l: number; t: number; r: number; b: number }, free: Cover[]): void => {
     if (index < on.length) {
@@ -221,22 +230,55 @@ export function fitSheet(
     const scale = Math.min(Math.max(1, room) / doc.width, Math.max(1, tall) / doc.height);
     const w = doc.width * scale;
     const h = doc.height * scale;
-    // In the middle of the workspace, moved no further than into its box.
-    const x = Math.min(box.r - FIT_PADDING - w, Math.max(box.l + FIT_PADDING, (width - w) / 2));
-    const y = Number.isFinite(height)
-      ? Math.min(box.b - FIT_PADDING - h, Math.max(box.t + FIT_PADDING, (height - h) / 2))
-      : 0;
+    // In the middle of its box — the room the covers leave — not of the
+    // workspace: that runs on under the bar, and by its middle the sheet sat
+    // low on a screen standing up (owner, 2026-10-07).
+    const x = (box.l + box.r - w) / 2;
+    const y = Number.isFinite(height) ? (box.t + box.b - h) / 2 : 0;
     const place = { width: w, height: h, x, y };
     if (free.some((c) => c.x < x + w && x < c.x + c.width && c.y < y + h && y < c.y + c.height)) return;
-    const off = Math.abs(x + w / 2 - width / 2) + (Number.isFinite(height) ? Math.abs(y + h / 2 - height / 2) : 0);
+    // Of sheets of one size, first the one that stands clear of the most
+    // covers by a strip of its own — the middle of the room they leave, even
+    // where the sheet would not reach them — then the one nearest the middle.
+    const off =
+      free.length * 1e6 + Math.abs(x + w / 2 - width / 2) + (Number.isFinite(height) ? Math.abs(y + h / 2 - height / 2) : 0);
     if (!best || w > best.width + 1e-9 || (w > best.width - 1e-9 && off < bestOff - 1e-9)) {
       best = place;
+      bestBox = box;
       bestOff = off;
     }
   };
   pick(0, { l: 0, t: 0, r: width, b: height }, []);
   // Covers that leave no room at all are not fitted around: the sheet is the product.
-  return best ?? fitSheet(width, height, doc);
+  const laid: { width: number; height: number; x: number; y: number } = best ?? fitSheet(width, height, doc);
+  // A shy cover (the zoom window) takes nothing off the sheet (owner,
+  // 2026-10-07): the sheet, its size kept, steps aside by the shortest way
+  // the stage has room for — half the air between them — or stays under it.
+  for (const c of over.filter((cover) => cover.shy)) {
+    if (!(c.x < laid.x + laid.width && laid.x < c.x + c.width && c.y < laid.y + laid.height && laid.y < c.y + c.height)) continue;
+    const air = FIT_PADDING / 2;
+    const ways = [
+      { dx: c.x + c.width + air - laid.x, dy: 0 },
+      { dx: c.x - air - laid.width - laid.x, dy: 0 },
+      ...(Number.isFinite(height)
+        ? [
+            { dx: 0, dy: c.y + c.height + air - laid.y },
+            { dx: 0, dy: c.y - air - laid.height - laid.y },
+          ]
+        : []),
+    ].filter(
+      ({ dx, dy }) =>
+        laid.x + dx >= bestBox.l + FIT_PADDING - 1e-9 &&
+        laid.x + dx + laid.width <= bestBox.r - FIT_PADDING + 1e-9 &&
+        laid.y + dy >= bestBox.t + FIT_PADDING - 1e-9 &&
+        (dy === 0 || laid.y + dy + laid.height <= bestBox.b - FIT_PADDING + 1e-9),
+    );
+    if (ways.length === 0) continue;
+    const way = ways.reduce((a, b) => (Math.abs(b.dx) + Math.abs(b.dy) < Math.abs(a.dx) + Math.abs(a.dy) ? b : a));
+    laid.x += way.dx;
+    laid.y += way.dy;
+  }
+  return laid;
 }
 
 /** Where the sheet at 100% lies: the fit's place, or the middle of the workspace. */

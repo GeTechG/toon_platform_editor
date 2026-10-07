@@ -32,7 +32,7 @@ describe('the tab window does not outlive the small screen', () => {
   // A tablet turned (or text made smaller) goes to the full layout with the
   // tab still «open»: turned back, the window came up by itself.
   it('leaving the compact step closes it', () => {
-    expect(editorUi).toMatch(/\$effect\(\(\) => \{\s*if \(!compact\) moreOpen = false;\s*\}\);/);
+    expect(editorUi).toMatch(/\$effect\(\(\) => \{\s*if \(!panels\.top\.includes\('more'\)\) moreOpen = false;\s*\}\);/);
   });
 
   it('a track dropped opens the sound plate, on a phone as on a desk: its key is in the transport row', () => {
