@@ -50,7 +50,8 @@ export const TOONOP_UX: UxProfile = {
   playFromStart: false,
   playbackRange: 'selection',
   newLayerPosition: 'below',
-  redoSurvivesStroke: true,
+  // Not the reference: a stroke drawn after undo ends redo (owner, 2026-10-07).
+  redoSurvivesStroke: false,
   defaultFps: DEFAULT_FPS,
   brushSizeMax: TOONOP_MAX_BRUSH_SIZE_LOGICAL,
   // The thick end in a few presses (owner, 12th audit): 1 → 500 was 499.
