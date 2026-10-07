@@ -443,15 +443,6 @@
           <img class="result" src={result.url} alt={t('export.result_alt')} />
         {/if}
         <p class="made" aria-hidden="true">{stage}{#if result}{' · '}{formatFileSize(result.bytes)}{/if}</p>
-        {#if onPublish}
-          <button class="key wide" onclick={() => {
-            close();
-            onPublish();
-          }}>
-            <Icon name="send" />
-            {t('export.publish')}
-          </button>
-        {/if}
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>
@@ -460,6 +451,17 @@
 
     <footer class="sheet-foot">
       <button class="key" onclick={close}>{t('export.done')}</button>
+      <!-- The way on, in the foot: under the picture of the file it was below
+           the fold on a phone, and the session ended on «Готово». -->
+      {#if onPublish && !busy && stage}
+        <button class="key" onclick={() => {
+          close();
+          onPublish();
+        }}>
+          <Icon name="send" />
+          {t('export.publish')}
+        </button>
+      {/if}
     </footer>
   </dialog>
 {/if}

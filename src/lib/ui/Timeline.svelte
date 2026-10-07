@@ -568,6 +568,7 @@
   <div class="body" bind:this={body} onscrollcapture={syncRowScroll}>
     <div
       class="layer-col"
+      class:single={editor.doc.layers.length === 1}
       bind:clientWidth={colPx}
       style:width={colWidth === null ? undefined : `${colWidth}px`}
     >
@@ -1052,6 +1053,14 @@
        Under half the strip before, at 200 % text the bin was scrolled out. */
     min-width: calc(3rem + 63px);
     width: 10rem;
+  }
+  /* One layer has nothing to be moved past and cannot be deleted: its handle
+     and its bin are gone (LayerRows) and the column is as wide as what is
+     left — its head and the name. It held 54 % of the strip, five frames of
+     eight in sight. A width set by the divider is the hand's, and stays. */
+  :global(:where(.studio.phone)) .layer-col.single {
+    min-width: 0;
+    width: max-content;
   }
   :global(:where(.studio.phone)) .body {
     container: strip / inline-size;

@@ -861,6 +861,11 @@
   :global(:where(.studio.phone)) .name {
     min-width: 0;
   }
+  /* One layer: nothing to move it past, nothing to delete (Timeline.svelte). */
+  :global(:where(.studio.phone .layer-col.single)) .handle,
+  :global(:where(.studio.phone .layer-col.single)) .kill {
+    display: none;
+  }
   /* Where the keys would take more than half the strip (200 % text on a
      phone standing up), the drag handle folds away: the bin and the eye stay
      in reach, and the frames keep a cell. Alt+↑/↓ still moves a layer. */

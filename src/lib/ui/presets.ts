@@ -134,8 +134,8 @@ export interface DrawingUiConfig {
   brushType: BrushType;
   /** Where the pipette reads its color from: the visible composite or the active layer. */
   pickSource: PickSource;
-  /** Studio bottom-panel height in CSS px, set by dragging its divider. */
-  panelHeight: number;
+  /** Studio bottom-panel height in CSS px, set by dragging its divider; null until it is — the bar then stands by its layers. */
+  panelHeight: number | null;
   /** The two studio side columns, each resizable from its inner edge. */
   sides: Record<SideId, SidePanelConfig>;
   /** The bottom bar folded away to its strip. */
@@ -192,7 +192,7 @@ export const DEFAULT_DRAWING_UI_CONFIG: Readonly<DrawingUiConfig> = {
   byTool: {},
   brushType: NORMAL_BRUSH_TYPE,
   pickSource: 'canvas',
-  panelHeight: PANEL_HEIGHT_MIN,
+  panelHeight: null,
   sides: {
     left: { width: null, collapsed: false },
     right: { width: null, collapsed: false },
@@ -627,15 +627,21 @@ function normalizeDrawingConfig(value: unknown, defaultBrush: string, brushType:
     byTool: brushRecords(drawing.byTool !== undefined ? record(drawing.byTool) : fromCanvasBuckets(buckets)),
     brushType: typeof drawing.brushType === 'string' ? drawing.brushType : brushType,
     pickSource: drawing.pickSource === 'layer' ? 'layer' : DEFAULT_DRAWING_UI_CONFIG.pickSource,
-    panelHeight: clampNumber(
-      drawing.panelHeight,
-      PANEL_HEIGHT_MIN,
-      PANEL_HEIGHT_MAX,
-      DEFAULT_DRAWING_UI_CONFIG.panelHeight,
-    ),
+    panelHeight: storedPanelHeight(drawing.panelHeight),
     sides: parseSides(drawing.sides),
     panelCollapsed: drawing.panelCollapsed === true,
   };
+}
+
+/**
+ * A height at the floor is the old default, written into every config before
+ * 2026-10-07, not a choice. ponytail: a hand that drags the bar to its very
+ * floor reads the same after a reload; a stored flag if that is ever missed.
+ */
+function storedPanelHeight(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const px = clampNumber(value, PANEL_HEIGHT_MIN, PANEL_HEIGHT_MAX, PANEL_HEIGHT_MIN);
+  return px > PANEL_HEIGHT_MIN ? px : null;
 }
 
 function parseSides(value: unknown): Record<SideId, SidePanelConfig> {

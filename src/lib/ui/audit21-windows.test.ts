@@ -103,7 +103,7 @@ describe('растянутое уступает холсту', () => {
     const wrap = shell.slice(shell.indexOf('const wrapExtra = $derived('), shell.indexOf('const panelFloor = $derived('));
     expect(wrap).toContain("row.includes('timeline') || boxRow(row)");
     expect(shell).toMatch(/const panelLow = \$derived\(yieldToCanvas\(panelFloor \+ boxExtra, panelFloor, panelRoom\)\);/);
-    expect(shell).toMatch(/const panelHeight = \$derived\(yieldToCanvas\(editor\.panelHeight, panelLow, panelMax\)\);/);
+    expect(shell).toMatch(/const panelHeight = \$derived\(yieldToCanvas\(editor\.panelHeight \?\? panelByLayers\([^;]*, panelLow, panelMax\)\);/);
   });
 
   test('разделители упираются в тот же предел и называют его', () => {

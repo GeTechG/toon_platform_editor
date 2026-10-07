@@ -61,8 +61,8 @@
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
-  import { rowOver } from './thumb-size';
-  import { boxRow, canvasFloor, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
+  import { rowHeight, rowOver } from './thumb-size';
+  import { boxRow, canvasFloor, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -88,11 +88,14 @@
   let {
     onPublish,
     stageNote,
+    named,
     startNew,
     open,
   }: {
     onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null, sent?: () => Promise<void>) => void;
     stageNote?: Snippet;
+    /** A first visit: a phone's row of keys wears its names until the host takes this back. */
+    named?: boolean;
     startNew?: boolean;
     open?: { doc: ToonDocument; audio?: AudioTrackData | null };
   } = $props();
@@ -537,7 +540,7 @@
   /** The most the divider gives it: three quarters of the viewport, less where the canvas needs it. */
   const panelMax = $derived(Math.max(panelLow, Math.min(Math.round((viewportHeight || 800) * 0.75), panelRoom)));
   /** The stored panel height as drawn — stored whole, for a bigger screen. */
-  const panelHeight = $derived(yieldToCanvas(editor.panelHeight, panelLow, panelMax));
+  const panelHeight = $derived(yieldToCanvas(editor.panelHeight ?? panelByLayers(panelLow, editor.doc.layers.length, rowHeight(editor.doc)), panelLow, panelMax));
   /**
    * What the canvas's floor leaves a column. The left one is asked first; the
    * right one takes what the left one, as drawn, has left.
@@ -1919,6 +1922,56 @@
    */
   const popovers = typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
   /**
+   * The key under the cursor (or the keyboard's focus), named: what its title
+   * says, on a plate by the key, at once. The icon used to be swapped for the
+   * shortcut's letter — just as it was being looked at. The title is taken off
+   * while the plate is up: the browser's own tooltip said the same a second
+   * later.
+   */
+  /** A key of the row has been pressed: the names have been read, and what it opens lies where they hang. */
+  let rowPressed = $state(false);
+  let keyName = $state<{ text: string; x: number; y: number; over: boolean } | null>(null);
+  let keyNameEl = $state<HTMLElement | undefined>();
+  let namedKey: Element | null = null;
+  function nameKey(e: PointerEvent | FocusEvent): void {
+    // A finger has no hover: the plate would stick after the tap.
+    if ('pointerType' in e ? e.pointerType !== 'mouse' : !(e.target as Element).matches(':focus-visible')) return;
+    const key = (e.target as Element).closest('.key');
+    if (key === namedKey) return;
+    unnameKey();
+    const text = key?.matches(':disabled') ? null : key?.getAttribute('title') ?? key?.getAttribute('aria-label');
+    if (!key || !text || key.textContent?.trim() === text) return;
+    const box = key.getBoundingClientRect();
+    const over = box.top > window.innerHeight / 2;
+    namedKey = key;
+    if (key.hasAttribute('title')) {
+      key.setAttribute('data-title', text);
+      key.removeAttribute('title');
+    }
+    keyName = { text, x: box.left + box.width / 2, y: over ? box.top : box.bottom, over };
+  }
+  function unnameKey(): void {
+    const title = namedKey?.getAttribute('data-title');
+    if (namedKey && title !== null && title !== undefined && !namedKey.hasAttribute('title')) namedKey.setAttribute('title', title);
+    namedKey?.removeAttribute('data-title');
+    namedKey = null;
+    keyName = null;
+  }
+  $effect(() => {
+    const el = keyNameEl;
+    if (!el || !popovers) return;
+    // Above whatever sheet is on top now, as the drop note.
+    if (el.matches(':popover-open')) el.hidePopover();
+    if (keyName) el.showPopover();
+  });
+  // Kept whole on the screen: a key at the edge has half a plate past it.
+  $effect(() => {
+    const el = keyNameEl;
+    if (!el || !keyName) return;
+    const half = el.offsetWidth / 2 + 8;
+    el.style.left = `${Math.max(half, Math.min(keyName.x, window.innerWidth - half))}px`;
+  });
+  /**
    * An arrange handle whose key the profile does not draw is marked
    * `data-empty` and hidden. Not `:has()`: Firefox 115 has none, and the rule
    * with it went whole, leaving empty handles standing on the panels.
@@ -2576,7 +2629,7 @@
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->
     {@const held = over?.tools.map(toolOfItem).find((tool) => tool === editor.tool)}
-    <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held}>
+    <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held} attrs={{ 'data-name': t('editor.tools_short') }}>
       {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} />{/snippet}
       <div class="more-keys tool-list">{@render slot(over?.tools ?? [])}</div>
     </PopKey>
@@ -2605,6 +2658,7 @@
         onclick={sendOut}
         title={t('editor.publish')}
         aria-label={t('editor.publish')}
+        data-name={t('editor.publish_short')}
       >
         <Icon name="send" />
       </button>
@@ -2649,15 +2703,23 @@
 
 <!-- The words are the catalogue's, whatever language the page around them is
      in: a reader speaks them, and a hyphen breaks them, in that language. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="editor studio"
   lang={dateLocale()}
   class:alt={editor.settings.altLayout}
   class:arranging={editor.arranging}
   class:compact={compact}
+  class:phone={compact}
   class:tall
   class:low={sheetScrollsWhole(viewportHeight, rootFont)}
+  class:named={named && !rowPressed}
   data-float-root
+  onpointerover={nameKey}
+  onpointerout={unnameKey}
+  onpointerdown={unnameKey}
+  onfocusin={nameKey}
+  onfocusout={unnameKey}
   bind:this={editorEl}
   onclickcapture={passFocusOnDisable}
   bind:clientWidth={boxW}
@@ -2667,7 +2729,7 @@
   {#if draws(panels.top) || editor.arranging}
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
-    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl}>
+    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} onpointerdowncapture={() => (rowPressed = true)}>
       {@render slot(panels.top)}
     </div>
   {/if}
@@ -2777,13 +2839,14 @@
         onkeydown={onMoreKey}
       >
         {#each over.more as group (group.id)}
-          <h3 class="more-title">{t(`editor.more_group.${group.id}`)}</h3>
+          <h2 class="more-title">{t(`editor.more_group.${group.id}`)}</h2>
           <div class="more-keys" role="group" aria-label={t(`editor.more_group.${group.id}`)}>
             {@render slot(group.items)}
           </div>
         {/each}
       </section>
     {/if}
+    <p class="key-name" popover="manual" aria-hidden="true" class:shown={keyName} class:over={keyName?.over} style:--y="{keyName?.y ?? 0}px" bind:this={keyNameEl}>{keyName?.text ?? ''}</p>
     <p class="import-error drop-note" class:shown={dropNote} popover="manual" role="status" bind:this={dropNoteEl}>
       {dropNote ? t('editor.drop_sheet_open') : ''}
     </p>
@@ -3719,6 +3782,12 @@
     padding: 0;
     background: none;
   }
+  /* Its rows are in the bar over the canvas, and the empty box of them still
+     lay in the bar's clip margin — past the window's edge, so a phone lying
+     down scrolled sideways by six pixels. */
+  .studio .panel.bare .toolbar {
+    display: none;
+  }
   .editor.studio::after {
     content: '';
     grid-column: 1 / -1;
@@ -3881,6 +3950,14 @@
     width: 100%;
     height: 100%;
     transform: translate(-50%, -50%);
+  }
+  /* A folded bar's tab stands on the window's bottom edge: the band's lower
+     half hung past it, and the page scrolled by those five pixels. Up only. */
+  .panel.collapsed .fold.lying::after,
+  .panel.bare .fold.lying::after {
+    top: auto;
+    bottom: 0;
+    transform: translateX(-50%);
   }
   .side-edge.dragging .side-resizer {
     background: linear-gradient(var(--accent), var(--accent)) center / 2px 100% no-repeat;
@@ -4558,28 +4635,56 @@
       background 0.15s ease,
       color 0.15s ease;
   }
-  /* Reference `.control p`: hovering a key with a shortcut swaps its icon for
-     the key itself. Drawn over the icon, so no button reflows on hover; the
-     same letter is in the title and the aria-label for everyone else. */
-  /* A touch "hover" sticks after a tap — the letter would cover the icon. */
-  @media (hover: hover) {
-    .editor :global(.key[data-key]:hover:not(:disabled))::after {
-      content: attr(data-key);
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      border-radius: inherit;
-      background: inherit;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-    }
-    /* …but not over the key that is playing: the cursor rests on it after the
-       press, and «Space» there left nothing on screen that said «stop». */
-    .editor :global(.key.play.playing[data-key]:hover:not(:disabled))::after {
-      content: none;
-    }
+  /* The key's name by the key (`nameKey`): in ink, the one tone that reads on
+     the paper of a panel, the table and the sheet alike. Fixed, in the top
+     layer where there is one; never in the pointer's way. */
+  .key-name {
+    position: fixed;
+    inset: auto;
+    top: var(--y);
+    z-index: var(--z-menu);
+    width: max-content;
+    max-width: min(22rem, 100% - 1rem);
+    margin: 0;
+    padding: 0.3rem 0.6rem;
+    border: none;
+    border-radius: var(--r-sm);
+    background: var(--ink);
+    color: var(--canvas);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.3;
+    translate: -50% 0.4rem;
+    pointer-events: none;
+  }
+  .key-name.over {
+    translate: -50% calc(-100% - 0.4rem);
+  }
+  .key-name:not(.shown) {
+    display: none;
+  }
+  /* A first visit on a phone: the row of keys wears its names, until the first
+     stroke. Hung under the bar, out of the flow — the bar keeps its height and
+     the sheet does not jump under the stroke that puts them away. */
+  .studio.compact.named .top :global(.key)::after {
+    content: attr(aria-label);
+    position: absolute;
+    top: calc(100% + 0.5rem + 3px);
+    left: 50%;
+    z-index: var(--z-float);
+    translate: -50% 0;
+    color: var(--text-2);
+    /* The tools stand 48 px apart: at 0.75rem «Карандаш» ran into «Ластик».
+       The label step, drawn a touch closer. */
+    font-size: 0.7rem;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .studio.compact.named .top :global(.key[data-name])::after {
+    content: attr(data-name);
   }
   .editor :global(.saved:empty) {
     padding: 0;

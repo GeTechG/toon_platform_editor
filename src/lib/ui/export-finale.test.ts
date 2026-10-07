@@ -26,7 +26,10 @@ it('the file’s weight is said with it', () => {
 });
 
 it('where the host publishes, the sheet leads on to it', () => {
-  expect(sheet).toMatch(/\{#if onPublish\}\s*<button class="key wide" onclick=\{\(\) => \{\s*close\(\);\s*onPublish\(\);/);
+  // In the foot, which a phone always shows: under the picture it was below
+  // the fold (critique 2026-10-07).
+  const foot = sheet.slice(sheet.indexOf('<footer class="sheet-foot">'), sheet.indexOf('</footer>'));
+  expect(foot).toMatch(/\{#if onPublish && !busy && stage\}\s*<button class="key" onclick=\{\(\) => \{\s*close\(\);\s*onPublish\(\);/);
   expect(studio).toMatch(/<ExportSheet[^]*?onPublish=\{onPublish \? sendOut : undefined\}/);
   expect(ru.export.publish).toBe('Отправить мульт');
 });

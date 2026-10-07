@@ -298,7 +298,6 @@ test('a tool with no shortcut carries no data-key at all', () => {
   // background. With an empty attribute it draws nothing over it — which is
   // to say it rubs the icon out (the pixel tool has had no key from the start,
   // and a plugin need not ask for one).
-  expect(editorUi).toContain('.editor :global(.key[data-key]:hover:not(:disabled))::after');
   expect(toolKey).toContain("data-key={keys.join(' / ') || undefined}");
 });
 

@@ -14,8 +14,5 @@ it('under a finger the gestures come before the keys', () => {
   expect(studio).toMatch(/\{@render \(touchFirst \? gestureList : keyList\)\(\)\}\s*\{@render \(touchFirst \? keyList : gestureList\)\(\)\}/);
 });
 
-// The cursor rests on Play after the press, and the hover put «Space» over
-// the key: nothing on screen said «stop».
-it('the playing key keeps its stop glyph under the cursor', () => {
-  expect(studio).toMatch(/\.key\.play\.playing\[data-key\]:hover:not\(:disabled\)\)::after \{\s*content: none;/);
-});
+// The hover no longer covers any key's glyph — the playing one included: the
+// name is on a plate by the key (key-names.test.ts).

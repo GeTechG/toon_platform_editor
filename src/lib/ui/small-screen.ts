@@ -55,6 +55,18 @@ export function yieldToCanvas(stored: number, floor: number, room: number): numb
   return Math.max(floor, Math.min(stored, room));
 }
 
+/** The most layers the bar grows for by itself; the rest scroll. */
+const LAYERS_SHOWN = 4;
+
+/**
+ * The bar's height while no hand has dragged its divider: its floor shows one
+ * layer, and every layer after it (up to four) gets its row — «+ Слой» on a
+ * fresh studio slid the first layer half under the frame numbers.
+ */
+export function panelByLayers(floor: number, layers: number, row: number): number {
+  return floor + (Math.min(Math.max(layers, 1), LAYERS_SHOWN) - 1) * row;
+}
+
 /**
  * A bottom row that is tall because a box lies in it (the palette, the
  * brush), not because its keys wrapped: its height is the arrangement's

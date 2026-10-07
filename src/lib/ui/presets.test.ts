@@ -11,7 +11,6 @@ import {
   presets,
   parseUiConfig,
   PANEL_HEIGHT_MAX,
-  PANEL_HEIGHT_MIN,
   SIDE_WIDTH_MAX,
   SIDE_WIDTH_MIN,
   PALETTE_LIMIT_MAX,
@@ -143,7 +142,7 @@ test('brush records are clamped to supported ranges', () => {
     byTool: { pencil: clamped, eraser: clamped, feather: clamped, 'mega-eraser': clamped },
     brushType: 'normal',
     pickSource: 'canvas',
-    panelHeight: PANEL_HEIGHT_MIN,
+    panelHeight: null,
     sides: DEFAULT_DRAWING_UI_CONFIG.sides,
     panelCollapsed: false,
   });
@@ -205,7 +204,8 @@ test('panel height is clamped to the draggable range and falls back when absent'
   }))?.drawing.panelHeight;
 
   expect(stored(300)).toBe(300);
-  expect(stored(10)).toBe(PANEL_HEIGHT_MIN);
+  // At the floor is where the old default stood: not a choice (panel-by-layers).
+  expect(stored(10)).toBeNull();
   expect(stored(9999)).toBe(PANEL_HEIGHT_MAX);
   expect(stored('tall')).toBe(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
 });

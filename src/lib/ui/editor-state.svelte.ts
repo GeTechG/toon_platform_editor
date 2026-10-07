@@ -426,7 +426,7 @@ export class EditorState {
    * Studio bottom-panel height in CSS px (persisted), set by dragging the
    * divider on its top edge. The timeline is the row that grows with it.
    */
-  panelHeight = $state(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
+  panelHeight = $state<number | null>(DEFAULT_DRAWING_UI_CONFIG.panelHeight);
   /**
    * The two studio side columns (persisted): the width each was dragged to,
    * and whether it is folded away to its arrow strip.

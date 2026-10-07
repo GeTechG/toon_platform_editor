@@ -449,22 +449,27 @@
         {/each}
       </ul>
       <div class="sheet-side">
-        <p class="hub-hint" id="sheet-res">{t('export.resolution')}</p>
-        <div class="sheet-sizes" role="group" aria-labelledby="sheet-res">
-          {#each sheetSizes() as size (size)}
-            {@const sheet = sheetOf(newProportion, size, newStanding)}
-            <button class="key" class:active={size === newSize} aria-pressed={size === newSize} onclick={() => (newSize = size)}>
-              <span>{size}</span>
-              <small>{sheet.width}×{sheet.height}</small>
-            </button>
-          {/each}
-        </div>
         <label class="sheet-stand">
           <input type="checkbox" bind:checked={newStanding} disabled={newProportion === '1:1'} />
           {t('sheet.standing')}
         </label>
-        {@render fpsField()}
         <button class="key primary" onclick={() => pickSheet(newChoice.value)}>{t('sheet.start')}</button>
+        <!-- Folded: «1080p или 2K?» is not a question for before the first
+             stroke. The summary says what they stand at. -->
+        <details class="sheet-more">
+          <summary>{t('sheet.more')}<span class="sheet-now">{newSize} · {newFps}</span><Icon name="chevron-down" size={16} /></summary>
+          <p class="hub-hint" id="sheet-res">{t('export.resolution')}</p>
+          <div class="sheet-sizes" role="group" aria-labelledby="sheet-res">
+            {#each sheetSizes() as size (size)}
+              {@const sheet = sheetOf(newProportion, size, newStanding)}
+              <button class="key" class:active={size === newSize} aria-pressed={size === newSize} onclick={() => (newSize = size)}>
+                <span>{size}</span>
+                <small>{sheet.width}×{sheet.height}</small>
+              </button>
+            {/each}
+          </div>
+          {@render fpsField()}
+        </details>
       </div>
     </div>
     {/if}
@@ -1007,6 +1012,35 @@
     font-weight: 400;
     font-variant-numeric: tabular-nums;
     color: var(--text-2);
+  }
+  /* The size and the rate, folded (TransformMenu's «Числа»): a row as tall as
+     a key, what they stand at beside the name, the chevron turning. */
+  .sheet-more summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--key-h, 2.75rem);
+    list-style: none;
+    color: var(--text-2);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .sheet-more summary::-webkit-details-marker {
+    display: none;
+  }
+  .sheet-now {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .sheet-more[open] summary :global(svg) {
+    transform: rotate(180deg);
+  }
+  .sheet-more[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
   }
   /* The rate under the sizes: its name over a slider and a box, as on the bar. */
   .sheet-fps {

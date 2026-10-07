@@ -349,12 +349,25 @@ describe('under a finger and on a small screen the hub is Dreams’ Theater', ()
     expect(field).toContain("{t('editor.fps')}");
     expect(field).toMatch(/type="range"\s+min=\{editor\.ux\.fpsRange\[0\]\}\s+max=\{editor\.ux\.fpsRange\[1\]\}\s+value=\{newFps\}/);
     expect(field).toMatch(/type="number"[^>]*aria-label=\{t\('editor\.fps'\)\}/);
-    const side = shell.match(/<div class="sheet-side">[^]*?\{t\('sheet\.start'\)\}/)?.[0] ?? '';
+    const side = shell.match(/<div class="sheet-side">[^]*?<\/details>/)?.[0] ?? '';
     expect(side).toContain('{@render fpsField()}');
-    // Owner, 2026-10-05: «Вертикальный» stands over the rate, with the sizes
-    // it turns.
-    expect(side.indexOf('class="sheet-stand"')).toBeLessThan(side.indexOf('{@render fpsField()}'));
-    expect(side.indexOf('class="sheet-stand"')).toBeGreaterThan(side.indexOf('class="sheet-sizes"'));
+    expect(side.indexOf('class="sheet-sizes"')).toBeLessThan(side.indexOf('{@render fpsField()}'));
+  });
+
+  // Critique 2026-10-07, owner's pick: ten controls stood between a cursor and
+  // the sheet — «1080p или 2K?» before the first stroke — where a phone asks
+  // for a card and «Рисовать». The proportion, its side and the way on are in
+  // sight; the size and the rate fold away, saying what they stand at.
+  it('under a cursor the size and the rate wait folded behind the way on', () => {
+    const side = shell.match(/<div class="sheet-side">[^]*?<\/details>/)?.[0] ?? '';
+    const start = side.indexOf("{t('sheet.start')}");
+    const more = side.indexOf('<details class="sheet-more">');
+    expect(start).toBeGreaterThan(-1);
+    expect(side.indexOf('class="sheet-stand"')).toBeLessThan(start);
+    expect(more).toBeGreaterThan(start);
+    expect(side.indexOf('class="sheet-sizes"')).toBeGreaterThan(more);
+    expect(side).toMatch(/<summary>\{t\('sheet\.more'\)\}<span class="sheet-now">\{newSize\} · \{newFps\}<\/span>/);
+    expect(side).not.toMatch(/<details class="sheet-more"[^>]*\bopen\b/);
   });
 
   it('a new sheet starts at the preset\'s rate, and an empty field keeps the rate', () => {
