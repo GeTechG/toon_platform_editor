@@ -41,7 +41,6 @@ describe('the editor profile', () => {
     expect(toonop.playFromStart).toBe(false);
     expect(toonop.playbackRange).toBe('selection');
     expect(toonop.newLayerPosition).toBe('below');
-    expect(toonop.redoSurvivesStroke).toBe(false);
     expect(toonop.defaultFps).toBe(12);
     expect(toonop.brushSizeMax).toBe(500);
     expect(toonop.adaptiveBrushStep).toBe('ladder');

@@ -43,7 +43,6 @@ const TOONIO_UX: UxProfile = {
   playFromStart: false,
   playbackRange: 'selection',
   newLayerPosition: 'below',
-  redoSurvivesStroke: true,
   defaultFps: DEFAULT_FPS,
   brushSizeMax: TONIO_MAX_BRUSH_SIZE_LOGICAL,
   adaptiveBrushStep: false,
@@ -74,7 +73,6 @@ const MULTATOR_UX: UxProfile = {
   playFromStart: true,
   playbackRange: 'document',
   newLayerPosition: 'above',
-  redoSurvivesStroke: false,
   // draw31.fla stage is 30 fps, doPlay runs every 6th tick → 5 fps.
   defaultFps: 5,
   // DrawField.setPenSize(_, delta): clamp 1..300 with adaptive steps, on the

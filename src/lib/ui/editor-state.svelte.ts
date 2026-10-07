@@ -2107,9 +2107,7 @@ export class EditorState {
       console.warn('stroke rejected:', err);
       return;
     }
-    if (!this.ux.redoSurvivesStroke) {
-      this.undone = [];
-    }
+    this.undone = [];
     // The reference drops the "copied" mark off a cell as soon as it is drawn
     // into (`bundle:8143-8151`); the rest of the block keeps it.
     const drawn = this.doc.layers[layerIndex]?.frames[frame];
