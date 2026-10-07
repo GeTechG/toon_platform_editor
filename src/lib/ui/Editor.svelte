@@ -61,6 +61,7 @@
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
+  import { rowOver } from './thumb-size';
   import { boxRow, canvasFloor, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
@@ -350,7 +351,8 @@
         // The floor is written for a strip and one row; every row beyond that
         // needs its own height, or it is cut off at the panel's edge.
         + Math.max(0, rows - 2) * PANEL_ROW_STEP) * textScale
-        + wrap,
+        + wrap
+        + rowOver(editor.doc),
     );
   const panelFloor = $derived(floorOf(panels.rows.length, wrapExtra));
   /**
@@ -3642,6 +3644,16 @@
      key tall, and the desktop's floor cut the first one) — up to a share of
      the screen, past which the layers scroll in the strip. No divider: there
      is nothing to drag. */
+  /* The transport's row is one line on the narrowest phone, as the row over
+     the canvas is: on a folded Z Fold (344 px) six keys were a pixel over and
+     the sound fell to a second line (owner, 2026-10-07). */
+  .studio.compact .panel {
+    padding-inline: 0.5rem;
+  }
+  .studio.compact .panel .row:not(.strip-row),
+  .studio.compact .panel .row:not(.strip-row) .transport-keys {
+    gap: 0.2rem;
+  }
   .studio.compact .panel .row.strip-row {
     flex: none;
   }
@@ -4050,7 +4062,7 @@
      cells of one size. */
   .more-window {
     position: absolute;
-    z-index: var(--z-float);
+    z-index: calc(var(--z-float) + 5);
     top: 0.5rem;
     left: 0.5rem;
     width: min(100% - 1rem, 24rem);

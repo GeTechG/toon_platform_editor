@@ -44,10 +44,13 @@
     void resized;
     if (!open || !key || !plate) return;
     const k = key.getBoundingClientRect();
-    const width = plate.offsetWidth;
-    const x = Math.max(8, Math.min(k.right - width, window.innerWidth - width - 8));
     const above = k.top - 14;
     const below = window.innerHeight - k.bottom - 14;
+    // Told before the box is measured: a box may lay itself out by the room
+    // it has (the colours in a low window), and that changes its width.
+    plate.style.setProperty('--room', `${Math.max(above, below)}px`);
+    const width = plate.offsetWidth;
+    const x = Math.max(8, Math.min(k.right - width, window.innerWidth - width - 8));
     at = below >= above
       ? { x, top: k.bottom + 6, max: below }
       : { x, bottom: window.innerHeight - k.top + 6, max: above };
@@ -129,13 +132,17 @@
   }
   .pop-plate {
     position: fixed;
-    z-index: var(--z-float);
+    /* Over the whole stack of floating windows: the zoom window, once pressed, stands on its top rung (+4) and lay over the colours. */
+    z-index: calc(var(--z-float) + 5);
     box-sizing: border-box;
     /* As wide as the box in it: the brush box is 225px, the colours 21rem,
        and a plate of one width stood half empty around the narrower.
        Fixed, so `100%` is the window — the room that actually exists. */
     width: max-content;
     max-width: calc(100% - 16px);
+    /* The height under (or over) the key, set at each placing; the box in the
+       plate may lay itself out by it. */
+    --room: 100dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
     /* Over the stage by tone, as the scale window: white read as the sheet. */

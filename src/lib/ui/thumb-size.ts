@@ -79,3 +79,16 @@ export function cellStamp(cell: { strokes: readonly { points: readonly number[];
   }
   return h;
 }
+
+/** The layer row the bottom bar's floor is written for, px (presets.ts, `PANEL_HEIGHT_MIN`). */
+const FLOOR_ROW = 44;
+
+/**
+ * What a sheet's layer row stands over that one: an upright sheet's frame is
+ * 46 px and its row 52, and at the floor the bar cut the frame's foot off
+ * (owner, 2026-10-07).
+ */
+export function rowOver(doc: { width: number; height: number }): number {
+  return Math.max(0, rowHeight(doc) - FLOOR_ROW);
+}
+

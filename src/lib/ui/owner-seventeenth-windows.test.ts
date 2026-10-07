@@ -75,3 +75,15 @@ describe('система', () => {
     expect(t('brush.broken_cubic', { count: 5 })).toContain('из 5 чисел');
   });
 });
+
+// Владелец, 2026-10-07: «масштаб рисуется поверх попап цвета, это неправильно».
+// Нажатое окно масштаба встаёт на верхнюю ступень плавающих окон (--z-float + 4),
+// а окно клавиши стояло на нижней.
+describe('окно, открытое клавишей, стоит над стопкой плавающих окон', () => {
+  it('окно клавиши и окно «⋯» — на ступень выше поднятого окна масштаба', async () => {
+    const popKey = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
+    expect(popKey).toMatch(/position: fixed;\s*(?:\/\*[^*]*\*\/\s*)?z-index: calc\(var\(--z-float\) \+ 5\);/);
+    expect(editorUi).toMatch(/\.more-window \{\s*position: absolute;\s*z-index: calc\(var\(--z-float\) \+ 5\);/);
+  });
+});

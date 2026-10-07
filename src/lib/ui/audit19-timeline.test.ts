@@ -68,3 +68,14 @@ describe('девятнадцатый аудит: плеер без контек�
     expect(player).toMatch(/as unknown as Canvas2DLike \| null;[^]{0,200}if \(!ctx\) \{\s+return;/);
   });
 });
+
+// Владелец, 2026-10-07: «обрезается кадр слоя» — у вертикального листа кадр
+// 46 px, строка 52, а пол нижней панели написан под строку в 44.
+describe('пол нижней панели держит строку слоя целиком при любом листе', () => {
+  it('строка выше 44 px добавляет полу свою разницу', async () => {
+    expect(thumbs.rowOver({ width: 720, height: 1280 })).toBe(8);
+    expect(thumbs.rowOver({ width: 1280, height: 720 })).toBe(0);
+    const editorUi = await Bun.file(UI + 'Editor.svelte').text();
+    expect(editorUi).toMatch(/\+ wrap\s*\+ rowOver\(editor\.doc\),/);
+  });
+});

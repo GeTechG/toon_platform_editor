@@ -174,7 +174,8 @@ describe('the overlays over the canvas stack by name', () => {
       const text = files.find((f) => f.file.endsWith(file))!.text;
       const at = text.indexOf(`  ${selector} {`);
       expect(at).toBeGreaterThan(-1);
-      expect(text.slice(at, text.indexOf('}', at))).toContain(`z-index: var(${rung})`);
+      // On the rung, or a step counted from it: a key's window stands over the floating windows' stack (`+ 5`).
+      expect(text.slice(at, text.indexOf('}', at))).toMatch(new RegExp(`z-index: (calc\\()?var\\(${rung}\\)`));
     }
   });
 

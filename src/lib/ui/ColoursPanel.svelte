@@ -292,6 +292,22 @@
   </div>
 {/snippet}
 
+{#snippet drawingPalette()}
+  <section>
+    <div class="row">
+      <h3>{t('colours.current')}</h3>
+      <button class="key icon" onclick={() => editor.addColorToPalette(current)} title={t('color.add')} aria-label={t('color.add')}>
+        <Icon name="plus" />
+      </button>
+    </div>
+    {#if editor.palette.length > 0}
+      {@render swatches(editor.palette, t('colours.current'))}
+    {:else}
+      <p class="empty">{t('color.empty')}</p>
+    {/if}
+  </section>
+{/snippet}
+
 <div class="colours" class:docked>
   <header>
     <h2>{tab === 'palettes' ? t('colours.palettes') : t('colours.title')}</h2>
@@ -316,102 +332,98 @@
     </div>
   </header>
 
-  {#if tab === 'disc'}
-    <div
-      class="surface disc"
-      role="slider"
-      tabindex="0"
-      aria-label={t('colours.disc_keys')}
-      aria-valuenow={Math.round(hsv.h)}
-      aria-valuetext={current}
-      onpointerdown={onDisc}
-      onkeydown={(e) => onSurfaceKey(e)}
-    >
-      <div class="ring"></div>
-      <canvas bind:this={discCanvas} width={DISC_PX} height={DISC_PX}></canvas>
-      <span class="reticle" style={pos(huePoint(hsv.h, (1 + RING) / 2))} style:--swatch={pure}></span>
-      <span class="reticle big" style={pos(discAt, DISC)} style:--swatch={current}></span>
-    </div>
-  {:else if tab === 'classic'}
-    <div
-      class="surface square"
-      role="slider"
-      tabindex="0"
-      aria-label={t('colours.square_keys')}
-      aria-valuenow={Math.round(hsv.s)}
-      aria-valuetext={current}
-      style:--pure={pure}
-      onpointerdown={onSquare}
-      onkeydown={(e) => onSurfaceKey(e)}
-    >
-      <span class="reticle" style={pos({ x: hsv.s / 50 - 1, y: 1 - hsv.v / 50 })} style:--swatch={current}></span>
-    </div>
-    <div class="sliders bare">{@render hsvSliders()}</div>
-  {:else if tab === 'harmony'}
-    <div class="mode">
-      <Dropdown
-        label={t('colours.harmony')}
-        value={harmony}
-        options={HARMONIES.map((value) => ({ value, label: t(`colours.harmonies.${value}`) }))}
-        onpick={(next) => (harmony = next)}
-      />
-    </div>
-    <div
-      class="surface wheel"
-      role="slider"
-      tabindex="0"
-      aria-label={t('colours.wheel_keys')}
-      aria-valuenow={Math.round(hsv.h)}
-      aria-valuetext={current}
-      onpointerdown={onWheel}
-      onkeydown={(e) => onSurfaceKey(e, true)}
-    >
-      <div class="hues" style:filter={`brightness(${hsv.v / 100})`}></div>
-      {#each mates as mate (mate.h)}
-        <!-- The colour that goes with the chosen one: pressed, it is the chosen one. -->
-        <button
-          class="reticle mate"
-          style={pos(huePoint(mate.h, hsv.s / 100))}
-          style:--swatch={mate.colour}
-          onpointerdown={(e) => e.stopPropagation()}
-          onkeydown={(e) => e.stopPropagation()}
-          onclick={() => pick(mate.colour)}
-          oncontextmenu={(e) => pickFill(e, mate.colour)}
-          title={t('colours.swatch_title', { color: mate.colour })}
-          aria-label={t('colours.mate', { color: mate.colour })}
-        ></button>
-      {/each}
-      <span class="reticle big" style={pos(huePoint(hsv.h, hsv.s / 100))} style:--swatch={current}></span>
-    </div>
-    <div class="sliders bare">
-      {@render slider(t('colours.value'), 'B', hsv.v, 100, ramp({ ...hsv, v: 0 }, { ...hsv, v: 100 }), (v) => set({ v }), `${Math.round(hsv.v)}%`)}
-    </div>
-  {:else if tab === 'value'}
-    <div class="sliders">{@render hsvSliders()}</div>
-    <div class="sliders">
-      {@render slider(t('colours.red'), 'R', rgb.r, 255, ramp({ ...rgb, r: 0 }, { ...rgb, r: 255 }), (r) => setRgb({ r }), String(rgb.r))}
-      {@render slider(t('colours.green'), 'G', rgb.g, 255, ramp({ ...rgb, g: 0 }, { ...rgb, g: 255 }), (g) => setRgb({ g }), String(rgb.g))}
-      {@render slider(t('colours.blue'), 'B', rgb.b, 255, ramp({ ...rgb, b: 0 }, { ...rgb, b: 255 }), (b) => setRgb({ b }), String(rgb.b))}
-    </div>
-    <label class="hex">
-      <span>{t('colours.hex')}</span>
-      <input type="text" value={current} spellcheck="false" autocomplete="off" maxlength="32" onchange={onHex} />
-    </label>
-  {:else}
-    <div class="palettes">
-      <section>
-        <div class="row">
-          <h3>{t('colours.current')}</h3>
-          <button class="key icon" onclick={() => editor.addColorToPalette(current)} title={t('color.add')} aria-label={t('color.add')}>
-            <Icon name="plus" />
-          </button>
-        </div>
-        {#if editor.palette.length > 0}
-          {@render swatches(editor.palette, t('colours.current'))}
-        {:else}
-          <p class="empty">{t('color.empty')}</p>
-        {/if}
-      </section>
+  <div class="stage">
+    {#if tab === 'disc'}
+      <div
+        class="surface disc"
+        role="slider"
+        tabindex="0"
+        aria-label={t('colours.disc_keys')}
+        aria-valuenow={Math.round(hsv.h)}
+        aria-valuetext={current}
+        onpointerdown={onDisc}
+        onkeydown={(e) => onSurfaceKey(e)}
+      >
+        <div class="ring"></div>
+        <canvas bind:this={discCanvas} width={DISC_PX} height={DISC_PX}></canvas>
+        <span class="reticle" style={pos(huePoint(hsv.h, (1 + RING) / 2))} style:--swatch={pure}></span>
+        <span class="reticle big" style={pos(discAt, DISC)} style:--swatch={current}></span>
+      </div>
+    {:else if tab === 'classic'}
+      <div
+        class="surface square"
+        role="slider"
+        tabindex="0"
+        aria-label={t('colours.square_keys')}
+        aria-valuenow={Math.round(hsv.s)}
+        aria-valuetext={current}
+        style:--pure={pure}
+        onpointerdown={onSquare}
+        onkeydown={(e) => onSurfaceKey(e)}
+      >
+        <span class="reticle" style={pos({ x: hsv.s / 50 - 1, y: 1 - hsv.v / 50 })} style:--swatch={current}></span>
+      </div>
+    {:else if tab === 'harmony'}
+      <div class="mode">
+        <Dropdown
+          label={t('colours.harmony')}
+          value={harmony}
+          options={HARMONIES.map((value) => ({ value, label: t(`colours.harmonies.${value}`) }))}
+          onpick={(next) => (harmony = next)}
+        />
+      </div>
+      <div
+        class="surface wheel"
+        role="slider"
+        tabindex="0"
+        aria-label={t('colours.wheel_keys')}
+        aria-valuenow={Math.round(hsv.h)}
+        aria-valuetext={current}
+        onpointerdown={onWheel}
+        onkeydown={(e) => onSurfaceKey(e, true)}
+      >
+        <div class="hues" style:filter={`brightness(${hsv.v / 100})`}></div>
+        {#each mates as mate (mate.h)}
+          <!-- The colour that goes with the chosen one: pressed, it is the chosen one. -->
+          <button
+            class="reticle mate"
+            style={pos(huePoint(mate.h, hsv.s / 100))}
+            style:--swatch={mate.colour}
+            onpointerdown={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            onclick={() => pick(mate.colour)}
+            oncontextmenu={(e) => pickFill(e, mate.colour)}
+            title={t('colours.swatch_title', { color: mate.colour })}
+            aria-label={t('colours.mate', { color: mate.colour })}
+          ></button>
+        {/each}
+        <span class="reticle big" style={pos(huePoint(hsv.h, hsv.s / 100))} style:--swatch={current}></span>
+      </div>
+    {:else if tab === 'value'}
+      <div class="sliders">{@render hsvSliders()}</div>
+      <label class="hex">
+        <span>{t('colours.hex')}</span>
+        <input type="text" value={current} spellcheck="false" autocomplete="off" maxlength="32" onchange={onHex} />
+      </label>
+    {:else}
+      {@render drawingPalette()}
+    {/if}
+  </div>
+
+  <div class="rest">
+    {#if tab === 'classic'}
+      <div class="sliders bare">{@render hsvSliders()}</div>
+    {:else if tab === 'harmony'}
+      <div class="sliders bare">
+        {@render slider(t('colours.value'), 'B', hsv.v, 100, ramp({ ...hsv, v: 0 }, { ...hsv, v: 100 }), (v) => set({ v }), `${Math.round(hsv.v)}%`)}
+      </div>
+    {:else if tab === 'value'}
+      <div class="sliders">
+        {@render slider(t('colours.red'), 'R', rgb.r, 255, ramp({ ...rgb, r: 0 }, { ...rgb, r: 255 }), (r) => setRgb({ r }), String(rgb.r))}
+        {@render slider(t('colours.green'), 'G', rgb.g, 255, ramp({ ...rgb, g: 0 }, { ...rgb, g: 255 }), (g) => setRgb({ g }), String(rgb.g))}
+        {@render slider(t('colours.blue'), 'B', rgb.b, 255, ramp({ ...rgb, b: 0 }, { ...rgb, b: 255 }), (b) => setRgb({ b }), String(rgb.b))}
+      </div>
+    {:else if tab === 'palettes'}
       {#each saved as p (p.id)}
         <section>
           <div class="row">
@@ -426,28 +438,28 @@
           {@render swatches(p.colours, p.name)}
         </section>
       {/each}
-    </div>
-  {/if}
-
-  {#if tab !== 'palettes'}
-    <section>
-      <div class="row">
-        <h3>{t('colours.history')}</h3>
-        <button class="key" disabled={history.length === 0} onclick={clearHistory}>{t('colours.clear')}</button>
-      </div>
-      {#if history.length > 0}
-        {@render swatches(history, t('colours.history'))}
-      {:else}
-        <div class="cells blank" aria-hidden="true"></div>
-      {/if}
-    </section>
-    {#if editor.palette.length > 0}
-      <section>
-        <div class="row"><h3>{t('color.grid')}</h3></div>
-        {@render swatches(editor.palette, t('color.grid'))}
-      </section>
     {/if}
-  {/if}
+
+    {#if tab !== 'palettes'}
+      <section>
+        <div class="row">
+          <h3>{t('colours.history')}</h3>
+          <button class="key" disabled={history.length === 0} onclick={clearHistory}>{t('colours.clear')}</button>
+        </div>
+        {#if history.length > 0}
+          {@render swatches(history, t('colours.history'))}
+        {:else}
+          <div class="cells blank" aria-hidden="true"></div>
+        {/if}
+      </section>
+      {#if editor.palette.length > 0}
+        <section>
+          <div class="row"><h3>{t('color.grid')}</h3></div>
+          {@render swatches(editor.palette, t('color.grid'))}
+        </section>
+      {/if}
+    {/if}
+  </div>
 
   <div class="tabs" role="group" aria-label={t('colours.ways')}>
     {#each TABS as id (id)}
@@ -483,6 +495,12 @@
     max-width: 21rem;
     margin: 0 auto;
     box-sizing: border-box;
+  }
+  /* The surface, or what stands for it, and what follows it: one column
+     here, two in a low window (below). */
+  .stage,
+  .rest {
+    display: contents;
   }
   header,
   .row {
@@ -715,11 +733,6 @@
     font-size: 0.85rem;
     color: var(--ink-2);
   }
-  .palettes {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
   .mode {
     display: flex;
   }
@@ -760,6 +773,63 @@
   }
   .tab.active {
     color: var(--accent);
+  }
+  /* A low window — a phone lying down: under the key there is half the room
+     the column takes, and the ring stood cut over the tabs. The surface
+     stands beside the rest, as tall as the room (`--room`, told by the key's
+     plate); the rest scrolls on its own between the heading and the tabs.
+     ponytail: asked of the window, not of the room — a key on a bottom row of
+     a tall window still gets the column; branch on `--room` if that shows. */
+  @media (max-height: 36rem) and (min-width: 40rem) {
+    .colours {
+      /* The plate's two hairlines and the padding over and under the surface. */
+      --side: min(17rem, var(--room) - 1.2rem - 2px);
+      display: grid;
+      /* Five tabs with their words take 19rem; an iPhone SE lying down is 41 wide. */
+      grid-template: auto minmax(0, 1fr) auto / auto 19rem;
+      column-gap: 0.75rem;
+      width: auto;
+      height: calc(var(--side) + 1.2rem);
+    }
+    .stage,
+    .rest {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .stage {
+      grid-area: 1 / 1 / -1 / 2;
+      /* The width a list in it is drawn for; a surface is its own. */
+      min-width: 17rem;
+      padding-bottom: 0.6rem;
+    }
+    header {
+      grid-area: 1 / 2;
+    }
+    .rest {
+      grid-area: 2 / 2;
+    }
+    .tabs {
+      position: static;
+      grid-area: 3 / 2;
+      margin: 0 -0.4rem;
+    }
+    .surface {
+      flex: none;
+      width: var(--side);
+      max-width: none;
+    }
+    /* Square here: a wider one made the plate wider than its key placed it. */
+    .surface.square {
+      aspect-ratio: 1;
+    }
+    /* The list of harmonies stands over the wheel, and takes a key of its height. */
+    .surface.wheel {
+      width: calc(var(--side) - var(--key-h) - 0.5rem);
+    }
   }
   @media (hover: hover) {
     .tab:hover {

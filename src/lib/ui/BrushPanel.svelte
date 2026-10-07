@@ -639,6 +639,37 @@
   :global(:where(.studio.phone)) .live {
     display: none;
   }
+  /* Behind a tool's key in a low window — a phone lying down: 270px under the
+     key and a column of 488, the last two sliders under a scroll. A setting
+     is one line here — its name, the track, the number — and the list of
+     types, which shows its own sample and names itself, stands alone over
+     them. Only the box in a key's plate: a side column is as narrow as ever.
+     The edges are the colours window's (ColoursPanel). */
+  @media (max-height: 36rem) and (min-width: 40rem) {
+    :global(.pop-plate) .brush-box {
+      grid-template-columns: auto minmax(9rem, 1fr) 4rem;
+      gap: 6px 10px;
+      width: 25rem;
+      padding: 8px 10px;
+    }
+    :global(.pop-plate) .type-title,
+    :global(.pop-plate) .live {
+      display: none;
+    }
+    :global(.pop-plate) .trigger {
+      grid-column: 1 / -1;
+    }
+    :global(.pop-plate) .field {
+      grid-column: 1;
+      justify-content: space-between;
+      text-align: start;
+    }
+    /* The words of the «i» are as wide as the box, not as its name. */
+    :global(.pop-plate) .note {
+      right: auto;
+      width: 23rem;
+    }
+  }
   /* In a side column the box is packed closer (owner, 2026-10-06): under the
      palette it ran 58 px past the column on a 1080p screen and the column
      scrolled for the last slider. No «Тип» over a list that names itself,

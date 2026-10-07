@@ -279,6 +279,12 @@ describe('the studio draws one markup, given the arrangement', () => {
     expect(editorUi).toContain('onclick={() => (compact ? (stripShut = !stripFolded) : editor.togglePanel())}');
   });
 
+  it('the transport’s row is one line on the narrowest phone: closer keys, less padding, as in the row over the canvas', () => {
+    // A folded Z Fold, 344 px: six keys were a pixel over, and the sound fell to a second line.
+    expect(editorUi).toMatch(/\.studio\.compact \.panel \{\s*padding-inline: 0\.5rem;/);
+    expect(editorUi).toMatch(/\.studio\.compact \.panel \.row:not\(\.strip-row\),\s*\.studio\.compact \.panel \.row:not\(\.strip-row\) \.transport-keys \{\s*gap: 0\.2rem;/);
+  });
+
   it('a phone’s keys stand on the tap floor: 200 % text does not make three rows of them', () => {
     expect(editorUi).toMatch(/\.studio\.compact \.top,\s*\.studio\.compact \.left\.sidebar,\s*\.studio\.compact \.panel \.row:not\(\.strip-row\) \{\s*--key-h: var\(--tap\);/);
   });

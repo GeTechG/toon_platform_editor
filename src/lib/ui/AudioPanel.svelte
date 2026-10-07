@@ -222,7 +222,8 @@
 <style>
   .audio-plate {
     position: fixed;
-    z-index: var(--z-float);
+    /* A key's window: over the stack of floating windows, as PopKey's plate is. */
+    z-index: calc(var(--z-float) + 5);
     display: flex;
     flex-direction: column;
     /* Fixed, so `100%` would be the whole window. The viewport clamp this
