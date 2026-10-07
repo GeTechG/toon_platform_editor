@@ -71,7 +71,7 @@ describe('раскладка из файла не приносит клавиш 
 // что-либо можно было только «Сбросить», потеряв расстановку.
 describe('в пустую нижнюю панель можно бросить', () => {
   test('без строк панель предлагает новую строку', () => {
-    expect(shell).toMatch(/\{#if editor\.arranging && editor\.panels\.rows\.length === 0\}[^]*?data-slot="newrow:0"/);
+    expect(shell).toMatch(/\{#if editor\.arranging && panels\.rows\.length === 0\}[^]*?data-slot="newrow:0"/);
   });
 
   test('бросок туда делает первую строку', () => {
@@ -90,7 +90,7 @@ describe('сцена не становится опорой для fixed-око�
     expect(shell).not.toMatch(/container: stage/);
     expect(shell).not.toContain('@container stage');
     expect(shell).toContain('class:narrow={stageWidth < 44 * rem}');
-    expect(shell).toContain('.studio:not(.compact) .stage.narrow :global(.hint)');
+    expect(shell).toContain('.studio .stage.narrow :global(.hint)');
   });
 });
 

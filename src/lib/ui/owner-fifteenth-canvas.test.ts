@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { trackpadScroll } from './viewport';
 
 const source = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
-const editorView = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 
 function handler(name: string): string {
   const match = source.match(new RegExp(`function ${name}\\([^]*?\\n  }`));
@@ -62,16 +61,5 @@ describe('во время просмотра жесты вида работаю�
 });
 
 describe('рейка толщины над окном вкладки стоящего телефона', () => {
-  it('сцена знает, что окно открыто снизу', () => {
-    expect(editorView).toMatch(/class:low-window=\{!!shownTab && tall\}/);
-  });
 
-  it('низ рейки поднимается над окном (до 55% сцены), и вся шкала достижима', () => {
-    const rule = editorView.match(/\.stage\.low-window :global\(\.size-rail\) \{[^}]*\}/);
-    expect(rule).not.toBeNull();
-    // Или выше, если на окне стоит окно инструмента (audit16-system).
-    expect(rule![0]).toMatch(/bottom: calc\((max\()?55%[^;]*\+ [\d.]+rem\)/);
-    // Окно не выше 55% сцены — иначе рейка снова уйдёт под него.
-    expect(editorView).toMatch(/\.tab-window \{[^}]*max-height: 55%;/);
-  });
 });

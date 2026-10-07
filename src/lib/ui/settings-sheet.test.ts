@@ -90,10 +90,9 @@ describe('the rail and the chrome follow the reference studio', () => {
     const claims = [...studioCss.matchAll(/grid-column: [^;]+;\s*(grid-row: [^;]+;)?/g)];
     expect(claims.length).toBeGreaterThanOrEqual(4);
     expect(claims.filter((m) => m[1] !== undefined).length).toBeGreaterThanOrEqual(4);
-    // Only a wide item's span (the columns' and the small screen's column
-    // keys'), the seams (a row of their own already) and the `.alt` swap
+    // Only a wide item's span (in a column, and in a phone's «⋯»), the seams (a row of their own already) and the `.alt` swap
     // claim a column alone.
-    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(8);
+    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(9);
   });
 
   it('the presets and the way into arranging sit in the view category', () => {

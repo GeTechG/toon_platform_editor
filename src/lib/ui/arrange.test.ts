@@ -109,7 +109,7 @@ describe('arranging happens in the editor itself', () => {
     // arrangement that empties it gives the canvas the room.
     expect(editorUi).toContain("sideDraws('left') || editor.arranging");
     expect(editorUi).toContain("sideDraws('right') || editor.arranging");
-    expect(editorUi).toContain('editor.panels.rows.length > 0 || editor.arranging');
+    expect(editorUi).toContain('panels.rows.length > 0 || editor.arranging');
   });
 
   test('every panel is a drop target and every item is a handle', () => {

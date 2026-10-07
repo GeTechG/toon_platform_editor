@@ -26,7 +26,7 @@ import {
   toolOpensBrush,
   columnDraws,
 } from './panels';
-import { compactLayout } from './small-screen';
+import { phoneLayout } from './small-screen';
 import * as presets from './presets';
 
 const ids = () => panelItems().map((item) => item.id);
@@ -260,12 +260,12 @@ describe('the default layouts', () => {
     expect(toolOpensBrush(presets.presetPanels('toonop'), 'pencil')).toBe(true);
   });
 
-  test('a spring draws nothing: a bar holding only it is not drawn, a small screen has no use for it', () => {
+  test('a spring draws nothing: a bar holding only it is not drawn, a phone keeps it out of «⋯»', () => {
     const has = { pipette: true, publish: true, fullscreen: true };
     expect(columnDraws(['spring'], has)).toBe(false);
     expect(columnDraws(['spring', 'save'], has)).toBe(true);
-    const cut = compactLayout(presets.presetPanels('toonop'), 'phone', ['color', 'brush', 'timeline', 'sound', 'more']);
-    expect([...cut.rail, ...cut.foot, ...cut.tabs.flatMap((tab) => tab.items)]).not.toContain('spring');
+    const toonop = presets.presetPanels('toonop');
+    expect(phoneLayout(toonop, toonop, { tools: [], tall: true, room: 4, drawn: () => true }).more.flatMap((group) => group.items)).not.toContain('spring');
   });
 
   test('the top bar is a slot like the columns: it takes a drop, is read back, and is offered', () => {
@@ -475,10 +475,10 @@ describe('the editor is arranged from the config', () => {
   test('every panel draws the items the config puts in it', () => {
     expect(editorUi).toContain('{#snippet slot(');
     expect(editorUi).toContain('{#snippet panelItem(');
-    expect(editorUi).toContain('{@render slot(editor.panels.left)');
-    expect(editorUi).toContain('{@render slot(editor.panels.right)');
+    expect(editorUi).toContain('{@render slot(panels.left)');
+    expect(editorUi).toContain('{@render slot(panels.right)');
     // The bottom panel is as many rows as the arrangement has.
-    expect(editorUi).toContain('{#each editor.panels.rows as row, i (i)}');
+    expect(editorUi).toContain('{#each panels.rows as row, i (i)}');
     expect(editorUi).toContain('data-slot="row:{i}"');
   });
 

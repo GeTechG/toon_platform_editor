@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { t } from '../i18n';
 import { twinSelector } from './focus-heir';
-import { compactLayout, railDrawn } from './small-screen';
 
 // Owner after the seventeenth audit: nothing small is put off. Windows, small
 // screens and the system. The Svelte glue is checked by its source (as in
@@ -53,33 +52,10 @@ describe('компакт → полный: фокус из окна вкладк
   });
 
   it('Editor переносит фокус на двойника, иначе на наследника', () => {
-    const pass = editorSvelte.slice(editorSvelte.indexOf('// The tab window goes with the small screen'));
+    const pass = editorSvelte.slice(editorSvelte.indexOf('// The «⋯» window goes with the small screen'));
     expect(pass).toContain('twinSelector(');
     expect(pass.slice(0, 1200)).toContain('$effect.pre(');
     expect(pass.slice(0, 1200)).toMatch(/usableKey/);
-  });
-});
-
-describe('шаг планшета считает колонку, которая рисуется', () => {
-  it('левая пуста, история в правой: на планшете она в колонке, и та рисуется', () => {
-    const panels = { left: [], right: ['history'], top: [], rows: [], float: [], hidden: [] };
-    const cut = compactLayout(panels, 'tablet', ['color', 'brush', 'timeline', 'sound', 'more']);
-    expect(cut.rail).toEqual(['history']);
-    expect(railDrawn(cut, false)).toBe(true);
-  });
-
-  it('пустая колонка без отправки не рисуется; с отправкой рисуется', () => {
-    expect(railDrawn({ rail: [], foot: [], tabs: [] }, true)).toBe(false);
-    expect(railDrawn({ rail: [], foot: ['publish'], tabs: [] }, false)).toBe(false);
-    expect(railDrawn({ rail: [], foot: ['publish'], tabs: [] }, true)).toBe(true);
-    expect(railDrawn({ rail: ['pencil'], foot: [], tabs: [] }, false)).toBe(true);
-  });
-
-  it('и разметка, и расчёт шага спрашивают одно и то же', () => {
-    expect(editorSvelte).toContain('{#if railDrawn(cut, !!onPublish)}');
-    const effect = editorSvelte.slice(editorSvelte.indexOf('const full = { w: boxW'), editorSvelte.indexOf('step = pickStep('));
-    expect(effect).toContain("railDrawn(compactLayout(editor.panels, 'tablet', editor.settings.tabOrder), !!onPublish)");
-    expect(effect).not.toContain('editor.panels.left.length ?');
   });
 });
 

@@ -20,13 +20,13 @@ describe('окно предмета, который профиль не рису
   });
 
   test('оболочка ставит окно только рисуемому предмету', () => {
-    const floats = shell.slice(shell.indexOf('{#each [...editor.panels.float].sort() as id (id)}'));
+    const floats = shell.slice(shell.indexOf('{#each [...panels.float].sort() as id (id)}'));
     const gate = floats.indexOf('{#if draws([id])}');
     expect(gate).toBeGreaterThan(0);
     expect(gate).toBeLessThan(floats.indexOf('<FloatWindow'));
   });
 
   test('колонка и окно спрашивают одно и то же', () => {
-    expect(shell).toMatch(/function sideDraws\(id: SideId\): boolean \{\s*return draws\(editor\.panels\[id\]\);/);
+    expect(shell).toMatch(/function sideDraws\(id: SideId\): boolean \{\s*return draws\(panels\[id\]\);/);
   });
 });

@@ -58,6 +58,8 @@
 
 <style>
   .brush-rail {
+    /* How tall the turned slider stands; a phone lying down has less (Editor.svelte). */
+    --rail-h: 9rem;
     display: flex;
     justify-content: center;
     gap: 0.4rem;
@@ -79,16 +81,20 @@
   .well {
     position: relative;
     width: var(--key-h);
-    height: 9rem;
+    height: var(--rail-h);
   }
   /* Turned, not `writing-mode: vertical-lr`: Safari 16 lays that one down. */
   .well input {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 9rem;
+    width: var(--rail-h);
     height: var(--key-h);
     margin: 0;
     transform: translate(-50%, -50%) rotate(-90deg);
+    /* The finger's whole travel is the slider's: where the page could pan,
+       the browser took the drag, cancelled the pointer, and the size ring
+       on the canvas went a moment after it came. */
+    touch-action: none;
   }
 </style>

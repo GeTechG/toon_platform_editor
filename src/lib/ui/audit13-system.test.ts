@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test';
-import ru from '../i18n/ru.json';
 
 // Thirteenth audit, the small screens and the shared system: the first look
 // at the one-window layout since it shipped. Measured live at 360×740,
@@ -25,39 +24,8 @@ describe('the step follows the text size, not only the window', () => {
   });
 });
 
-describe('the dock stays one line lying down at 200 % text', () => {
-  // 740×360 at 200 %: three 88 px transport keys and five tabs did not share
-  // a line, the dock took 167 px and left the sheet 160. On 360×740 the
-  // transport itself broke in two. The tabs already sit on the 44 px floor.
-  it('the mini transport keys take the tap floor, as the tabs do', () => {
-    expect(rule('.mini-transport')).toMatch(/--key-h:\s*var\(--tap\)/);
-  });
-});
-
 describe('the zoom window is whole on a narrow stage', () => {
-  // 360×740 at 200 %: 293 px of keys on a 240 px stage, «−» clipped under
-  // the tool column — neither seen nor pressable.
-  it('keys on the tap floor, never wider than the stage', () => {
-    const zoom = rule('.studio.compact .scale-window');
-    expect(zoom).toMatch(/--key-h:\s*var\(--tap\)/);
-    expect(zoom).toMatch(/max-width:\s*calc\(100% - 2 \* var\(--zoom-inset\)\)/);
-    expect(rule('.studio.compact .scale-window :global(.value)')).toMatch(/min-width:\s*0/);
-  });
 
-  it('the thickness rail clears the window as tall as it now is', () => {
-    expect(editorUi).toMatch(/--zoom-foot: calc\(var\(--zoom-inset\) \+ var\(--tap\) \+ 4px/);
-  });
-});
-
-describe('the mini transport says which frame in words', () => {
-  // «1 / 3» was read as «один косая черта три».
-  it('the count is spoken as «Кадр 1 из 3», the slash is for the eyes', () => {
-    expect(ru.editor.frame_of_said).toBe('Кадр {{n}} из {{total}}');
-    const count = editorUi.match(/<span class="frame-of"[^]*?<\/span>\s*<\/span>/)?.[0] ?? '';
-    expect(count).toContain('aria-hidden="true"');
-    expect(count).toContain("t('editor.frame_of_said'");
-    expect(count).toContain('class="sr-only"');
-  });
 });
 
 describe('the studio in full screen keeps off the cutout', () => {

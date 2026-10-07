@@ -95,11 +95,10 @@ describe('the sheet at 100 % lies clear of what stands over the stage', () => {
 
 describe('a phone lying down takes the compact step', () => {
   // What Editor.svelte measures at 100 % text: the columns 8.4 + 15.9 rem,
-  // the bottom bar ~151 px; the tablet's column beside a one-line dock.
+  // the bottom bar ~151 px.
   function step(w: number, h: number, current: 'full' | 'phone' = 'full') {
     const full: Room = { w: w - 389, h: h - 151 };
-    const tablet: Room = { w: w - 134, h: h - 56 };
-    return pickStep(current, { full, tablet }, { w, h });
+    return pickStep(current, full, { w, h });
   }
 
   it('740×360 and 844×390 draw on the whole screen', () => {

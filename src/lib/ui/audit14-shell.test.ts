@@ -217,7 +217,7 @@ describe('набор через IME (японский, китайский, ко�
     const guard = keys.indexOf('if (composing(e)) {');
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(keys.indexOf("key === 'Escape'"));
-    expect(fn('onTabWindowKey')).toMatch(/!composing\(e\)/);
+    expect(fn('onMoreKey')).toMatch(/!composing\(e\)/);
   });
 });
 

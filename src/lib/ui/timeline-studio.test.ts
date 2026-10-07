@@ -157,14 +157,14 @@ describe('bottom panel divider', () => {
   it('the floor grows with every row the arrangement adds', () => {
     // 151px is written for a strip and one row; a third row needs its own
     // height or it is cut off at the bottom edge.
-    expect(editorUi).toContain('editor.panels.rows.length - 2) * PANEL_ROW_STEP');
+    expect(editorUi).toContain('Math.max(0, rows - 2) * PANEL_ROW_STEP');
   });
 
   it('the panel owns the height and the timeline takes what is left of it', () => {
     // The whole bar resizes; the timeline is the row that grows with it, so
     // the grid gains rows and frames instead of the buttons drifting apart.
     // (arrange mode lets the bar size to its contents, hence the second term)
-    expect(editorUi).toContain('style={!panelFolded && !editor.arranging ?');
+    expect(editorUi).toContain('style={!panelFolded && !compact && !editor.arranging ?');
     expect(editorUi).toContain('height: ${panelHeight}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
@@ -277,10 +277,8 @@ describe('side panel dividers', () => {
     expect(editorUi).not.toContain('class="expand"');
   });
 
-  it('the stored width drives the column, and the phone layout ignores it', () => {
+  it('the stored width drives the column', () => {
     expect(editorUi).toContain('width: ${');
-    // The phone's strip is one key thick whatever the desktop column was dragged to.
-    expect(editorUi).toContain("style={step === 'tablet' ? sideStyle('left') : undefined}");
   });
 });
 
@@ -312,10 +310,10 @@ describe('four surfaces, not one field', () => {
 
   it('each side column is a card on the table, not a strip closed by a hairline', () => {
     // The owner, 2026-10-05: the columns float as the bottom bar does.
-    const card = editorUi.match(/\.studio:not\(\.compact\) \.left:not\(\.collapsed\),\s*\.studio:not\(\.compact\) \.right:not\(\.collapsed\) \{[^}]*\}/)?.[0] ?? '';
+    const card = editorUi.match(/\.studio \.left:not\(\.collapsed\),\s*\.studio \.right:not\(\.collapsed\) \{[^}]*\}/)?.[0] ?? '';
     expect(card).toContain('border-radius: var(--r-lg)');
     expect(card).toContain('align-self: start');
-    expect(editorUi).not.toMatch(/\.studio(\.alt:not\(\.compact\))? \.(left|right) \{[^}]*border-(left|right): 1px solid/s);
+    expect(editorUi).not.toMatch(/\.studio(\.alt)? \.(left|right) \{[^}]*border-(left|right): 1px solid/s);
   });
 });
 
@@ -357,15 +355,6 @@ describe('the bottom panel folds like the sides', () => {
     expect(editorUi).toMatch(/\.panel\.dragging \.resizer \{[^}]*var\(--accent\)/s);
     expect(editorUi).toMatch(/@media \(hover: hover\) \{\s*\.resizer:hover \{[^}]*var\(--accent\)/s);
     expect(editorUi).not.toMatch(/\.resizer \{[^}]*3rem 2px no-repeat/s);
-  });
-
-  it('a phone has no folding at all, so it carries none of the tabs', () => {
-    // The columns are rows there and the bar sizes to its contents; a tab
-    // that folds nothing is a dead control.
-    // A small screen draws neither the bar nor the column seams at all.
-    expect(editorUi).toMatch(/\{#if !compact && \(editor\.panels\.rows\.length > 0/);
-    expect(editorUi).toMatch(/\{#if cut\}[^]*?\{:else if sideDraws\('left'\)[^]*?\{@render sideEdge\('left'/);
-    expect(editorUi).toContain('side(id).collapsed && !compact');
   });
 
   it('folded, the bar is its tab alone: no strip across the studio and no toolbar behind it', () => {

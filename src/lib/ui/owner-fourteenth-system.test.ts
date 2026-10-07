@@ -222,11 +222,6 @@ describe('the rules that used `:has()` keep working without it', () => {
     expect(styleOf('Editor.svelte', editorUi)).toMatch(/\.studio \.row\.strip-row > \.arr\[data-item='timeline'\]/);
   });
 
-  it('the zoom window steps aside for the transform window by a class on the stage', () => {
-    expect(editorUi).toMatch(/class="stage"[^>]*class:transforming=\{!!editor\.transform\?\.session\}/);
-    expect(styleOf('Editor.svelte', editorUi)).toMatch(/\.studio\.compact \.stage\.transforming > \.scale-window \{\s*display: none/);
-  });
-
   it('an arrange handle with nothing drawn in it is marked empty by the markup it holds', () => {
     expect(editorUi).toMatch(/class="arr-body" inert use:markEmpty>/);
     expect(styleOf('Editor.svelte', editorUi)).toMatch(/\.editor\.arranging \.arr:global\(\[data-empty\]\) \{\s*display: none/);

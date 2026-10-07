@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { compactLayout, pickStep } from './small-screen';
-import { presetPanels } from './presets';
+import { pickStep } from './small-screen';
 import { HARMONIES, discToSquare, harmonyHues, pointHue, pushHistory, squareToDisc } from './colour-wheel';
 
 describe('the disc holds the whole square', () => {
@@ -61,17 +60,10 @@ describe('history', () => {
 });
 
 describe('a small screen', () => {
-  test('the top bar\'s keys go to the tabs of the brush and the colours', () => {
-    const cut = compactLayout(presetPanels('toonop'), 'phone', ['color', 'brush', 'timeline', 'sound', 'more']);
-    expect(cut.tabs.find((tab) => tab.id === 'color')?.items).toEqual(['color-key']);
-    // The sliders that stand beside the canvas on a desk: the tab draws the brush box for them.
-    expect(cut.tabs.find((tab) => tab.id === 'brush')?.items).toEqual(['brush-rail']);
-  });
-
   test('a phone standing up is a phone even with no right column to crowd the canvas', () => {
     // toonop without its right column left a 390 px screen 256 px of canvas —
     // over the floor, so the desktop's layout stayed on a phone.
-    const rooms = { full: { w: 256, h: 600 }, tablet: { w: 256, h: 700 } };
+    const rooms = { w: 256, h: 600 };
     expect(pickStep('full', rooms, { w: 390, h: 844 })).toBe('phone');
     expect(pickStep('phone', rooms, { w: 390, h: 844 })).toBe('phone');
   });

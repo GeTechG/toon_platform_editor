@@ -1,5 +1,5 @@
 /**
- * Small screens: which layout step the studio takes, and what the tabs hold.
+ * Small screens: which layout step the studio takes, and what a phone draws.
  *
  * The step is a sum, not a media query: how much the canvas would keep if the
  * columns and the bottom bar stayed, against `min(360px, 45vw)` ×
@@ -9,9 +9,9 @@
  * Pure, so `bun test` runs it; Editor.svelte measures and draws.
  */
 
-import { allPlaced, panelItem, toolOfItem, toolSpec, type PanelLayout } from './panels';
+import { allPlaced, toolOfItem, toolSpec, type PanelLayout } from './panels';
 
-export type LayoutStep = 'full' | 'tablet' | 'phone';
+export type LayoutStep = 'full' | 'phone';
 
 export interface Room {
   w: number;
@@ -20,8 +20,6 @@ export interface Room {
 
 /** Past the floor by this much before a step goes back up: no flicker at the edge. */
 export const HYSTERESIS = 32;
-/** The tablet's canvas beside its column: a phone's column would eat the phone. */
-export const TABLET_MIN_W = 360;
 /**
  * The least canvas height the columns and the bar may leave, px. A phone
  * lying down (740×360, 844×390) kept 209–239 px of it beside the desktop's
@@ -65,153 +63,139 @@ export function boxRow(row: readonly string[]): boolean {
   return row.includes('palette') || row.includes('brush');
 }
 
-function fits(room: Room, minW: number, minH: number, view: Room, slack: number): boolean {
-  return room.w >= minW + slack && room.h >= Math.max(minH, 0.38 * view.h) + slack;
-}
-
 /**
- * The widest step that leaves the canvas its floor; the tablet step only on a
- * screen standing up. `rooms` is what the canvas
- * would keep in each: `full` with the columns and the bar, `tablet` beside the
- * tool column above the dock. A step above `current` needs the hysteresis too.
+ * The desktop where the canvas keeps its floor, the phone where it does not:
+ * there is no step between (owner, 2026-10-07 — a tablet is the desktop).
+ * `full` is what the canvas would keep beside the columns and the bar. Back up
+ * to the desktop needs the hysteresis too.
  */
-export function pickStep(current: LayoutStep, rooms: { full: Room; tablet: Room }, view: Room): LayoutStep {
-  const rank = { full: 0, tablet: 1, phone: 2 };
-  const slack = (step: LayoutStep) => (rank[step] < rank[current] ? HYSTERESIS : 0);
+export function pickStep(current: LayoutStep, full: Room, view: Room): LayoutStep {
+  const slack = current === 'phone' ? HYSTERESIS : 0;
   const floor = canvasFloor(view);
-  if (view.w >= FULL_MIN_W && fits(rooms.full, floor.w, floor.h, view, slack('full'))) {
-    return 'full';
-  }
-  // The in-between step is the portrait tablet's (the owner's call): lying
-  // down, a column of tools costs the width a one-key strip leaves alone.
-  if (view.h >= view.w && fits(rooms.tablet, TABLET_MIN_W, 0, view, slack('tablet'))) {
-    return 'tablet';
-  }
-  return 'phone';
-}
-
-export type TabId = 'color' | 'brush' | 'timeline' | 'sound' | 'more';
-
-export const DEFAULT_TAB_ORDER: readonly TabId[] = ['color', 'brush', 'timeline', 'sound', 'more'];
-
-const BRUSH_ITEMS: readonly string[] = ['brush', 'brush-sizes', 'brush-key', 'brush-rail'];
-
-/** What each named tab takes from the layout; «⋯» takes whatever is left. */
-const TAB_ITEMS: Record<Exclude<TabId, 'more'>, readonly string[]> = {
-  color: ['palette', 'color', 'color-key'],
-  brush: BRUSH_ITEMS,
-  // The «слой × кадр» strip and what the desktop keeps beside it to set the
-  // frames and the playback. Not the transport: the mini transport does that.
-  timeline: ['fps', 'add-frame', 'delete-frame', 'onion', 'copy', 'paste', 'merge', 'timeline'],
-  sound: ['audio'],
-};
-
-/** A stored order, cleaned: unknown ids and repeats out, missing ones back at the end. */
-export function normalizeTabOrder(value: unknown): TabId[] {
-  const out: TabId[] = [];
-  for (const stored of Array.isArray(value) ? value : []) {
-    // «Слои» became «Таймлайн» and keeps its place.
-    const id = stored === 'layers' ? 'timeline' : stored;
-    if (DEFAULT_TAB_ORDER.includes(id) && !out.includes(id)) {
-      out.push(id);
-    }
-  }
-  return [...out, ...DEFAULT_TAB_ORDER.filter((id) => !out.includes(id))];
-}
-
-/** The order with `id` moved to `index` (counted in the order without it). */
-export function moveTab(order: readonly TabId[], id: TabId, index: number): TabId[] {
-  const rest = order.filter((other) => other !== id);
-  rest.splice(Math.max(0, Math.min(rest.length, index)), 0, id);
-  return rest;
+  return view.w >= FULL_MIN_W && full.w >= floor.w + slack && full.h >= floor.h + slack ? 'full' : 'phone';
 }
 
 /**
- * What a phone's column keeps of a preset's tools (the owner: «оставим только
- * важные»): its first drawing tool, the eraser, the lasso — and the pipette
- * only where the preset draws it as a tool key (Multator's reference three);
- * elsewhere it sits by the palette and a held finger does its work.
+ * What a phone's row keeps of a preset's tools (the owner: «оставим только
+ * важные»): its first drawing tool and the eraser — the transform is with
+ * the other tools (owner, 2026-10-07) — and the pipette only where the preset
+ * draws it as a tool key (Multator); elsewhere it sits by the palette and a
+ * held finger does its work.
  */
 export function phoneTools(ux: { tools: readonly string[]; pipetteOffRail: boolean }): string[] {
   const primary = ux.tools.find((tool) => toolSpec(tool)?.stroke) ?? 'pencil';
-  return [primary, 'eraser', 'lasso', ...(ux.pipetteOffRail ? [] : ['pipette'])];
+  return [primary, 'eraser', ...(ux.pipetteOffRail ? [] : ['pipette'])];
 }
 
-/** A phone's cut: the essential tools, and the one in hand wherever it came from. */
+/** A phone's cut: what its row of keys is made from. */
 export interface PhoneKeep {
+  /** The essential tools: first into the row. */
   tools: readonly string[];
-  active: string;
+  /** Standing up. Lying down the sidebar has no height for undo and redo: the row takes them. */
+  tall: boolean;
+  /** How many tool keys the row has room for (`toolRoom`). */
+  room: number;
+  /** Whether the profile draws the tool's key at all: one it does not takes no room. */
+  drawn: (tool: string) => boolean;
 }
 
-export interface CompactLayout {
-  /** The desktop's left column: one key wide on a phone, as wide as it is on a tablet. */
-  rail: string[];
-  /** The foot of that column: «Отправить мульт», wherever the layout put it. */
-  foot: string[];
-  /** The tabs that have something in them, in the user's order. */
-  tabs: { id: TabId; items: string[] }[];
+/** A key on the tap floor and the gap after it, px (`.studio.compact .top`). */
+const keyPitch = (rem: number): number => 44 + 0.25 * rem;
+
+/**
+ * How many tool keys a phone's row has room for: the top bar scales with the
+ * screen (owner, 2026-10-07) — what does not fit goes behind one key for the
+ * other tools. `keys` is what else stands in the row beside «Отправить»: «⋯»,
+ * the colour, undo and redo lying down. Never under two: a tool and that key.
+ */
+export function toolRoom(width: number, rem: number, row: { publish: boolean; keys: number }): number {
+  const pitch = keyPitch(rem);
+  const taken = rem + (row.publish ? 3.25 * rem + 0.25 * rem : 0) + row.keys * pitch;
+  return Math.max(2, Math.floor((width - taken) / pitch));
+}
+
+/** What the phone's own keys already open: the colour key, a tool's key pressed again, the sidebar. */
+const BEHIND_A_KEY: readonly string[] = ['palette', 'color', 'color-key', 'brush', 'brush-sizes', 'brush-key', 'brush-rail'];
+
+/**
+ * The frame keys a phone does not draw (owner, 2026-10-07: «убрать и сделать
+ * напрямую на таймлайне жестами»): the strip's own menu, a held finger on a
+ * cell, deletes, copies, pastes and merges.
+ */
+const ON_THE_STRIP: readonly string[] = ['delete-frame', 'copy', 'paste', 'merge'];
+
+export type MoreGroup = 'frames' | 'toon' | 'studio';
+
+/**
+ * The order inside «⋯»'s named groups: the window's own, not the
+ * arrangement's — a hand-made arrangement came out as a pile, live keys and
+ * dead ones mixed (owner, 2026-10-07). What is in neither list is the
+ * studio's, in the order it was placed.
+ */
+const MORE_ORDER: Record<'frames' | 'toon', readonly string[]> = {
+  frames: ['fps'],
+  toon: ['save', 'export', 'drafts', 'saved'],
+};
+
+export interface PhoneLayout {
+  /** What the studio draws: the desktop's markup, given this arrangement. */
+  panels: PanelLayout;
+  /** Behind «⋯»: everything else the user's arrangement draws, by group; no group is empty. */
+  more: { id: MoreGroup; items: string[] }[];
+  /** Behind the key for the other tools: those the row had no room for. */
+  tools: string[];
 }
 
 /**
- * The user's layout, cut for a small screen. The column is the desktop's left
- * column in its own order, then the tools and the history placed elsewhere;
- * a phone's column is one key wide, so a wide widget (the history aside)
- * goes to its tab. Publishing is pinned to the column's foot (the owner's
- * call). Everything else placed — the rows, the right column, the floating
- * windows (their places stay stored for the big screen) — goes to the tabs;
- * the shelf does not, and the transport's work is done by the mini transport.
+ * A phone's arrangement (owner, 2026-10-07: «как у procreate, по сути это
+ * нынешний десктоп»): `base` — toonop's desktop — with its bar over the canvas
+ * cut to one row: «Отправить», «⋯», then as many tools as the row has room
+ * for — the essential ones first — a key for the rest of them, and the colour.
+ * The sound's key stands by the transport: the track is the strip's. Whatever
+ * else the user's own arrangement draws is behind «⋯»; what it keeps on the
+ * shelf stays there.
  */
-export function compactLayout(
-  layout: PanelLayout,
-  step: Exclude<LayoutStep, 'full'>,
-  order: readonly TabId[],
-  keep?: PhoneKeep,
-): CompactLayout {
-  // The spring is room in a line, and a small screen has no such line.
-  const laid = allPlaced({ ...layout, hidden: [] }).filter((id) => id !== 'spring');
-  // Where the brush is behind its tool's key (panels.ts `toolOpensBrush`) no
-  // brush control is placed at all, and «Кисть» would be a tab of nothing: a
-  // small screen has the one window, not a box under a key.
-  const placed = BRUSH_ITEMS.some((id) => laid.includes(id)) ? laid : [...laid, 'brush-key'];
-  const fits = (id: string) => step === 'tablet' || id === 'history' || !panelItem(id)?.wide;
-  // The transport is the mini transport's, wherever the desktop put it.
-  const own = layout.left.filter((id) => id !== 'publish' && id !== 'transport' && fits(id));
-  const column = [...own, ...placed.filter((id) => !own.includes(id) && (toolOfItem(id) !== null || id === 'history'))];
-  // A phone keeps the essentials; the rest goes to «⋯», and the tool in hand
-  // shows in the column as well while it is in hand.
-  const essential = (id: string, tools: readonly string[]) => {
-    const tool = toolOfItem(id);
-    return tool === null ? id === 'history' : tools.includes(tool);
+export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneKeep): PhoneLayout {
+  const placed = allPlaced({ ...layout, hidden: [] });
+  const tools = placed.filter((id) => keep.drawn(toolOfItem(id) ?? '') && toolOfItem(id) !== null);
+  const essential = (id: string) => keep.tools.includes(toolOfItem(id) ?? '');
+  const ranked = [...tools.filter(essential), ...tools.filter((id) => !essential(id))];
+  // All of them, or the essential ones and a key for the rest: a row that
+  // took «whatever came next» showed a different third tool at every width.
+  // Lying down the row holds the transport too: the other tools are behind their key whatever the width.
+  const inRow = keep.tall && ranked.length <= keep.room ? ranked : ranked.filter(essential).slice(0, keep.room - 1);
+  const rest = ranked.slice(inRow.length);
+  const lying = keep.tall ? [] : ['history'];
+  // By the transport, at the far end: the onion skin and the sound are the strip's.
+  const far = ['onion', 'audio'].filter((id) => placed.includes(id));
+  const sound = far.length > 0 ? ['spring', ...far] : [];
+  // The frame rate's slider took the transport's line on 390 px: behind «⋯».
+  const rows = base.rows.map((row) => (row.includes('transport') ? [...row.filter((id) => id !== 'fps'), ...sound] : row));
+  // Lying down the height is the canvas's (owner, 2026-10-07): the transport's
+  // keys stand in the row over it, which has the width, and the bar is the
+  // strip alone — folded, only its fold key.
+  // In the middle of the row, a spring on either side (owner: «сделай их по центру»).
+  const lifted = keep.tall ? [] : ['spring:lead', ...rows.filter((row) => row.includes('transport')).flat().filter((id) => id !== 'spring')];
+  const panels: PanelLayout = {
+    left: base.left.filter((id) => !lying.includes(id)),
+    right: [],
+    top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 ? ['tools'] : []), 'color-key'],
+    rows: keep.tall ? rows : rows.filter((row) => !row.includes('transport')),
+    float: [],
+    hidden: [],
   };
-  const base = step === 'phone' && keep ? column.filter((id) => essential(id, keep.tools)) : column;
-  const rail = step === 'phone' && keep ? column.filter((id) => essential(id, [...keep.tools, keep.active])) : column;
-  const foot: string[] = placed.filter((id) => id === 'publish');
-  const rest = placed.filter((id) => !base.includes(id) && !foot.includes(id) && id !== 'transport');
-  const named = Object.values(TAB_ITEMS).flat();
-  const tabs = order.map((id) => ({
-    id,
-    items: id === 'more'
-      ? rest.filter((item) => !named.includes(item))
-      : TAB_ITEMS[id].filter((item) => rest.includes(item)),
-  }));
-  return { rail, foot, tabs: tabs.filter((tab) => tab.items.length > 0) };
-}
-
-/**
- * Whether a small screen draws the column: something in it, or «Отправить
- * мульт» at its foot where the host publishes. The step asks the same, so the
- * tablet's room is the room the column really leaves.
- */
-export function railDrawn(cut: CompactLayout, publishes: boolean): boolean {
-  return cut.rail.length > 0 || (publishes && cut.foot.length > 0);
-}
-
-/**
- * Whether every tab's word fits on one line across its tab. All or none (the
- * owner's call): one word too wide and every tab shows only its icon.
- */
-export function tabLabelsFit(labels: readonly { scrollWidth: number; clientWidth: number }[]): boolean {
-  return labels.every((label) => label.scrollWidth <= label.clientWidth);
+  // Off the panels, as toonop keeps them: a tool's key opens the brush only where no brush control is placed.
+  panels.hidden = BEHIND_A_KEY.filter((id) => !panels.top.includes(id) && !panels.left.includes(id));
+  const drawn = [...base.left, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
+  // The frame rate is always there: the row it stood in has no room for it.
+  const behind = [...placed.filter((id) => !drawn.includes(id) && toolOfItem(id) === null && id !== 'fps'), 'fps'];
+  const listed = Object.values(MORE_ORDER).flat();
+  const groups: PhoneLayout['more'] = [
+    { id: 'frames', items: MORE_ORDER.frames.filter((id) => behind.includes(id)) },
+    { id: 'toon', items: MORE_ORDER.toon.filter((id) => behind.includes(id)) },
+    { id: 'studio', items: behind.filter((id) => !listed.includes(id)) },
+  ];
+  return { panels, more: groups.filter((group) => group.items.length > 0), tools: rest };
 }
 
 /**

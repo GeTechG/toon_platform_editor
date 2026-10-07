@@ -76,7 +76,7 @@ describe('набор через IME в Safari', () => {
 
   it('студия и окно вкладки спрашивают именно его', () => {
     expect(fn('onKeydown')).toMatch(/if \(composing\(e\)\)/);
-    expect(fn('onTabWindowKey')).toMatch(/!composing\(e\)/);
+    expect(fn('onMoreKey')).toMatch(/!composing\(e\)/);
   });
 });
 

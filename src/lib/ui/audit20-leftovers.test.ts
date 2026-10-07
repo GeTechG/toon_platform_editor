@@ -24,7 +24,7 @@ describe('подсказка от состояния не вешает студ�
 // предмет в конец последней строки, панель разворачивается.
 describe('свёрнутая нижняя панель принимает бросок', () => {
   test('в режиме раскладки она — цель: последняя строка', () => {
-    expect(shell).toContain('data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, editor.panels.rows.length - 1)}` : undefined}');
+    expect(shell).toContain('data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, panels.rows.length - 1)}` : undefined}');
     expect(shell).toContain('data-folded={panelFolded && editor.arranging ? \'\' : undefined}');
     expect(arranger).toContain('panelEl.dataset.folded !== undefined');
   });

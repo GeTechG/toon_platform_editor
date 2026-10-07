@@ -6,7 +6,6 @@ import { formatPercent, i18n } from '../i18n-core';
 // size, and a percent is written by the interface's locale, not by hand.
 const UI = new URL('./', import.meta.url).pathname;
 const read = (file: string) => Bun.file(UI + file).text();
-const editorUi = await read('Editor.svelte');
 const canvas = await read('CanvasView.svelte');
 const rule = (selector: string, from: string) => {
   const at = from.indexOf(`${selector} {`);
@@ -23,9 +22,6 @@ describe('the thickness rail on a phone', () => {
     expect(rule('.rail-track', canvas)).toMatch(/top:\s*14px;\s*bottom:\s*14px/);
   });
 
-  it('stands half a rem off the column in the compact view: there is no fold tab to clear', () => {
-    expect(rule('.studio.compact .stage :global(.size-rail)', editorUi)).toMatch(/left:\s*0\.5rem/);
-  });
 });
 
 describe('a percent is the locale’s', () => {

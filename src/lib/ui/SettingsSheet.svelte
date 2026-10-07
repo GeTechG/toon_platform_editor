@@ -421,9 +421,7 @@
         </label>
         <!-- Расположение: arranged by hand in the editor, where the panels are.
              A list of selects said the same thing twice and nobody used it. -->
-        {#if compact}
-          <p class="hint">{t('settings.tabs_hint')}</p>
-        {:else}
+        {#if !compact}
           {@render act(t('settings.edit_panels'), 'chevron-right', () => {
             editor.arranging = true;
             dialogEl?.close();
@@ -564,7 +562,7 @@
   .settings-main .sheet-body > .sheet-hint {
     margin: 1.4rem 0 0.5rem;
   }
-  .settings-main .sheet-body > :is(.presets, .hint, .field, progress) {
+  .settings-main .sheet-body > :is(.presets, .field, progress) {
     margin-block: 0.75rem;
     padding-block: 0;
   }
@@ -850,11 +848,6 @@
     min-width: 2.2rem;
     text-align: right;
     font-variant-numeric: tabular-nums;
-  }
-  .hint {
-    margin: 0.3rem 0 0.1rem;
-    font-size: 0.9rem;
-    color: var(--ink-2);
   }
   .report {
     flex: 1;

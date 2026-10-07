@@ -2373,7 +2373,9 @@
   }
   .hint {
     position: absolute;
-    bottom: 12px;
+    /* The wrap runs on under the bottom bar (`--stage-under`): 12px from its
+       own foot, the pill lay under the bar, its words cut by the strip. */
+    bottom: calc(12px + var(--stage-under, 0px));
     left: 50%;
     transform: translateX(-50%);
     /* Its own width up to the stage's: a box starting at the middle is

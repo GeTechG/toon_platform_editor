@@ -43,7 +43,7 @@ describe('a window pushed inside by a smaller screen keeps its own place', () =>
 // not raise it at all.
 describe('the window in use is the one in front', () => {
   test('the stack is a z-index, and the nodes never move', () => {
-    expect(editorUi).toContain('{#each [...editor.panels.float].sort() as id (id)}');
+    expect(editorUi).toContain('{#each [...panels.float].sort() as id (id)}');
     // The rung is the plate's while arranging (owner, 16th audit); the depth is added either way.
     expect(win).toContain('z-index: calc({rung} + {depth})');
   });

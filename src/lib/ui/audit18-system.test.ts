@@ -12,21 +12,7 @@ const rule = (selector: string, from = editorUi) => {
 };
 
 describe('a note on a small stage keeps clear of the zoom window and the rail', () => {
-  // «Браузер не даёт хранить черновики…» stays up for as long as the storage
-  // is refused. On a 260 px phone stage it is 239 px wide and four lines
-  // tall at the top, one rung over the zoom window in the same corner and
-  // over the top of the thickness rail: neither could be pressed under it.
-  it('starts under the zoom row and right of the rail', () => {
-    const notes = rule('.studio.compact .stage-notes');
-    expect(notes).toMatch(/top:\s*var\(--zoom-foot\)/);
-    expect(notes).toMatch(/inset-inline:\s*calc\(1rem \+ var\(--tap\)\)/);
-  });
 
-  // Lying down the tab window takes the right of the stage, and the note was
-  // centred across the whole of it: its second half ran under the window.
-  it('ends where the side window begins', () => {
-    expect(rule('.studio.compact .stage.side-window .stage-notes')).toMatch(/inset-inline-end:\s*calc\(min\(55%, 24rem\)/);
-  });
 });
 
 describe('a note is never wider than the stage it lies on', () => {

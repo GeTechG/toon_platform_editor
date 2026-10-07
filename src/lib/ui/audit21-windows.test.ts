@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { defaultPanels, movePanelItem } from './panels';
-import { boxRow, canvasFloor, pickStep, TABLET_MIN_W, yieldToCanvas } from './small-screen';
+import { boxRow, canvasFloor, pickStep, yieldToCanvas } from './small-screen';
 
 // Двадцать первый аудит, окна и раскладка. Клей Svelte проверяется по
 // исходнику (как в audit11–20-windows), чистые части — вживую.
@@ -17,7 +17,7 @@ describe('мерка ушедшей строки не переживает ст�
   test('оболочка обрезает мерки до числа строк', () => {
     const at = shell.indexOf('let rowBoxes = $state');
     const cut = shell.slice(at, shell.indexOf('const KEY_ROW', at));
-    expect(cut).toMatch(/\$effect\(\(\) => \{\s*const rows = editor\.panels\.rows\.length;/);
+    expect(cut).toMatch(/\$effect\(\(\) => \{\s*const rows = panels\.rows\.length;/);
     expect(cut).toMatch(/rowBoxes\.length\) > rows\) rowBoxes\.length = rows;/);
   });
 });
@@ -63,10 +63,9 @@ describe('растянутое уступает холсту', () => {
     expect(canvasFloor({ w: 700, h: 500 }).w).toBeCloseTo(315);
     // Ровно пол — ещё полная раскладка, на пиксель меньше — уже нет.
     const view = { w: 1400, h: 900 };
-    const roomy = { w: 900, h: 900 };
-    expect(pickStep('full', { full: { w: 360, h: 342 }, tablet: roomy }, view)).toBe('full');
-    expect(pickStep('full', { full: { w: 360, h: 341 }, tablet: roomy }, view)).not.toBe('full');
-    expect(pickStep('full', { full: { w: 359, h: 342 }, tablet: roomy }, view)).not.toBe('full');
+    expect(pickStep('full', { w: 360, h: 342 }, view)).toBe('full');
+    expect(pickStep('full', { w: 360, h: 341 }, view)).not.toBe('full');
+    expect(pickStep('full', { w: 359, h: 342 }, view)).not.toBe('full');
   });
 
   test('размер рисуется не больше, чем оставляет холст, и не меньше своего пола', () => {
@@ -87,17 +86,16 @@ describe('растянутое уступает холсту', () => {
     expect(boxRow(['brush'])).toBe(true);
     expect(boxRow(['timeline'])).toBe(false);
     expect(boxRow(['fps', 'transport', 'add-frame'])).toBe(false);
-    expect(TABLET_MIN_W).toBe(360);
   });
 
   test('ступень считается по базовому полу, а не по растянутому', () => {
     const effect = shell.slice(shell.indexOf('const bar = editor.panels.rows.length === 0'), shell.indexOf('step = pickStep('));
     // …plus the table around the card the bar now is (owner, 2026-10-05).
-    expect(effect).toContain(': panelFloor + 1.2 * rem;');
+    expect(effect).toContain(': floorOf(editor.panels.rows.length, fullWrap) + 1.2 * rem;');
     expect(effect).not.toMatch(/panelHeight|editor\.sides\.\w+\.width \?\?/);
-    expect(effect).toContain("sideBase('left')");
-    expect(effect).toContain("sideBase('right')");
-    const base = shell.slice(shell.indexOf('function sideBase('), shell.indexOf('$effect(', shell.indexOf('function sideBase(')));
+    expect(effect).toContain("fullBase('left')");
+    expect(effect).toContain("fullBase('right')");
+    const base = shell.slice(shell.indexOf('function fullBase('), shell.indexOf('$effect(', shell.indexOf('function fullBase(')));
     expect(base).toContain('Math.min(side(id).width ?? SIDE_REM[id] * rem, SIDE_REM[id] * rem)');
   });
 

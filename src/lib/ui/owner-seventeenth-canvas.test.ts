@@ -93,11 +93,11 @@ describe('подсказка холста не ложится на окно зу
   });
 
   it('широкая сцена: подсказка уже, чем промежуток между окнами зума', () => {
-    expect(editorView).toMatch(/\.studio:not\(\.compact\) \.stage :global\(\.hint\) \{\s*max-width: calc\(100% - 2 \* /);
+    expect(editorView).toMatch(/\.studio \.stage :global\(\.hint\) \{\s*max-width: calc\(100% - 2 \* /);
   });
 
   it('узкая сцена: подсказка поднимается над рядом зума', () => {
-    const at = editorView.indexOf('.studio:not(.compact) .stage.narrow :global(.hint) {');
+    const at = editorView.indexOf('.studio .stage.narrow :global(.hint) {');
     expect(at).toBeGreaterThan(-1);
     const block = editorView.slice(at, editorView.indexOf('}', at));
     expect(block).toMatch(/bottom: calc\([^;]*var\(--key-h, 2\.75rem\)/);

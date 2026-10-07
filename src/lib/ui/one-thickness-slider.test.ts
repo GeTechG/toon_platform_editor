@@ -9,18 +9,15 @@ const sidebar = panelsFrom({ base: { left: ['brush-rail', 'history'] } });
 
 describe('one thickness slider at a time', () => {
   it('the sidebar holds the slider: no rail on the stage', () => {
-    expect(stageRailShown(sidebar, open, false)).toBe(false);
+    expect(stageRailShown(sidebar, open)).toBe(false);
   });
 
   it('no slider in the arrangement: the rail stays for a finger', () => {
-    expect(stageRailShown(panelsFrom({ base: { left: ['history'] } }), open, false)).toBe(true);
+    expect(stageRailShown(panelsFrom({ base: { left: ['history'] } }), open)).toBe(true);
   });
 
   it('the column folded away takes its slider with it: the rail is back', () => {
-    expect(stageRailShown(sidebar, { ...open, left: true }, false)).toBe(true);
+    expect(stageRailShown(sidebar, { ...open, left: true })).toBe(true);
   });
 
-  it('a small screen draws no column: the rail stays', () => {
-    expect(stageRailShown(sidebar, open, true)).toBe(true);
-  });
 });

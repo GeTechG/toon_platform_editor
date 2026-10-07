@@ -51,31 +51,6 @@ describe('the studio says which language its words are in', () => {
   });
 });
 
-describe('the tab words come back once they fit', () => {
-  // The tab's sides went to 0.1 rem (audit 14), the hidden words stayed laid
-  // out 0.25 rem in from each side: measured 0.3 rem narrower than they would
-  // show, a word that fit again was still called too wide, and the tabs kept
-  // only their icons after a turn or a smaller text.
-  it('the hidden word is laid out across the width the shown one has', () => {
-    const side = rule('.tab').match(/padding:\s*\S+\s+(\S+);/)?.[1];
-    expect(side).toBeTruthy();
-    const bare = rule('.tabs.bare .tab-label');
-    expect(bare).toContain(`left: ${side};`);
-    expect(bare).toContain(`right: ${side};`);
-  });
-});
-
-describe('the window lying down does not cover the zoom window', () => {
-  // 740×360: the tab window comes in from the right over the whole height,
-  // and the zoom window sits in the top right corner — under it, its keys
-  // still in the Tab order (WCAG 2.4.11). It steps aside, as it does for the
-  // transform window; a pinch zooms meanwhile.
-  it('the stage says a side window is up, and the zoom window goes', () => {
-    expect(editorUi).toMatch(/class:side-window=\{!!shownTab && !tall\}/);
-    expect(rule('.studio.compact .stage.side-window > .scale-window')).toMatch(/display:\s*none/);
-  });
-});
-
 describe('an icon name the vocabulary lacks still draws something', () => {
   // A plugin tool with `icon: "star"` (a word, not markup) drew an empty key:
   // `PATHS["star"]` is undefined and the path had no `d`.
@@ -92,7 +67,6 @@ describe('a tap does not leave a key tinted', () => {
   it('the hover tones of the keys and the tabs are for a pointer that hovers', () => {
     const hovering = [...editorUi.matchAll(/@media \(hover: hover\) \{([^]*?)\n {2}\}/g)].map((m) => m[1]).join('\n');
     for (const selector of [
-      '.tab:hover',
       '.editor :global(.key:hover:not(:disabled))',
       '.editor :global(.key.active:hover:not(:disabled))',
       '.editor :global(.key.primary:hover:not(:disabled))',

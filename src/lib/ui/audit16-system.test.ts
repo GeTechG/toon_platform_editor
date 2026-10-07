@@ -38,30 +38,3 @@ describe('a sheet on a low screen scrolls whole', () => {
     expect(body).toMatch(/overflow-y:\s*visible/);
   });
 });
-
-describe('a tool window on a small screen stays clear of the tab window', () => {
-  // 390×844, the «Цвет» tab open and the pipette picked in it: its source
-  // window («Холст» / «Слой») lay in the stage's bottom row, wholly under the
-  // tab window — out of the finger's reach, its keys still in the Tab order
-  // (WCAG 2.4.11). Lying down (740×360) the side window hid «Слой». The
-  // transform fields and a plugin's window sit in the same row.
-  it('standing, the tool windows rise above the tab window, as tall as it is measured', () => {
-    expect(editorUi).toMatch(/id="tab-window"[^>]*bind:offsetHeight=\{tabWindowHeight\}/);
-    expect(editorUi).toMatch(/class="tool-windows" bind:offsetHeight=\{toolWindowsHeight\}/);
-    expect(editorUi).toContain('style:--tab-window-h={shownTab ? `${tabWindowHeight}px` : undefined}');
-    const low = rule('.studio.compact .stage.low-window > .tool-windows');
-    expect(low).toMatch(/position:\s*absolute/);
-    // `inset`, not `bottom`: the float's own `top` stretched it to 403 px.
-    expect(low).toMatch(/inset:\s*auto 0 var\(--tab-window-h\) 0/);
-  });
-
-  it('and the thickness rail ends above both', () => {
-    expect(rule('.studio.compact .stage.low-window :global(.size-rail)')).toMatch(
-      /bottom:\s*calc\(max\(55%, var\(--tab-window-h, 0px\) \+ var\(--tool-windows-h, 0px\)\) \+ 0\.75rem\)/,
-    );
-  });
-
-  it('lying down, they end where the side window begins', () => {
-    expect(rule('.studio.compact .stage.side-window > .tool-windows')).toMatch(/margin-right:\s*calc\(min\(55%, 24rem\) \+ 0\.5rem\)/);
-  });
-});

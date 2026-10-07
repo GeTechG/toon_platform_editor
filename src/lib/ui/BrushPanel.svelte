@@ -645,14 +645,14 @@
      smaller gaps, and a heading only as tall as its words — the «i» keeps
      its 44 px and reaches into the empty band of the rows around it. The
      window behind a tool's key (toonop) keeps the roomy form. */
-  :global(:where(.studio:not(.compact) > aside)) .brush-box {
+  :global(:where(.studio > aside)) .brush-box {
     gap: 6px;
     padding: 6px 10px;
   }
-  :global(:where(.studio:not(.compact) > aside)) .type-title {
+  :global(:where(.studio > aside)) .type-title {
     display: none;
   }
-  :global(:where(.studio:not(.compact) > aside)) .field {
+  :global(:where(.studio > aside)) .field {
     margin-block: -0.5rem;
   }
 </style>

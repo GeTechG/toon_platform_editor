@@ -99,17 +99,6 @@ describe('the transform window does not scroll sideways', () => {
   });
 });
 
-describe('the save status does not widen the tab window', () => {
-  // «сохранено локально 12:34 · 144 КБ» is one unbreakable line, 458 px at
-  // 200 % text. In the «⋯» window after the first save it made the window
-  // scroll sideways: 482 px in 200 on a phone standing up, in 397 lying down.
-  it('it wraps there, and never asks more than the window', () => {
-    const saved = rule('.tab-window > :global(.saved)', shell);
-    expect(saved).toMatch(/white-space:\s*normal/);
-    expect(saved).toMatch(/min-width:\s*0/);
-  });
-});
-
 describe('the sound window with a track in it does not scroll sideways', () => {
   // 320×568 at 200 % text: the plate is 104 px. «Привязать к кадрам» and its
   // switch stood on one line — the words 145 px (they do not break), the

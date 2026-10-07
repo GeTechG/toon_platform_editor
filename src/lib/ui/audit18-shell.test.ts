@@ -31,7 +31,7 @@ describe('Пробел при свёрнутой панели', () => {
   });
 
   it('тогда у клавиши есть свой невидимый проигрыватель — как лист экспорта у Alt+S', () => {
-    expect(editorUi).toMatch(/const transportDrawn = \$derived\(\s*compact \|\| itemDrawn\(editor\.panels, 'transport', \{ left: folded\('left'\), right: folded\('right'\), rows: panelFolded \}\)/);
+    expect(editorUi).toMatch(/const transportDrawn = \$derived\(\s*itemDrawn\(panels, 'transport', \{ left: folded\('left'\), right: folded\('right'\), rows: panelFolded \}\)/);
     expect(editorUi).toMatch(/\{#if !transportDrawn\}\s*<div hidden><PlayControls bind:this=\{playControls\} \{editor\} \/><\/div>\s*\{\/if\}/);
   });
 });

@@ -59,7 +59,8 @@
     | 'disc'
     | 'square'
     | 'harmony'
-    | 'sliders';
+    | 'sliders'
+    | 'tools';
 
   const PATHS: Record<IconName, string> = {
     // The top bar's brush key, and the five ways of the colours window.
@@ -69,6 +70,8 @@
     square: 'M6 5h12a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
     harmony: 'M4 6l8 6 8-2M12 12l-5 7',
     sliders: 'M4 8h16M4 16h16M9 6v4M15 14v4',
+    // Four of a kind: the tools a phone's row had no room for.
+    tools: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
     plus: 'M12 3v18M3 12h18',
     minus: 'M3 12h18',
     // Two arrows passing each other: outline and fill trade places.

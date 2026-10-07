@@ -28,48 +28,15 @@ describe('a field under a finger is 16 px or more', () => {
   });
 });
 
-describe('the open tab keeps its word whole', () => {
-  // 360×740: the open tab was bold, and «Таймлайн» in bold is 4 px wider than
-  // its tab. The words are measured in the regular weight — a change of weight
-  // resizes no box, so no observer fired — and «Таймлайн» lost its «н».
-  // Reserving the bold width instead sent every 360 px phone to bare icons
-  // (all or none, the owner's call), so the weight moved to the icon's line.
-  it('the word keeps its weight; the open tab draws its icon heavier', () => {
-    expect(rule('.tab.open')).not.toMatch(/font-weight/);
-    expect(rule('.tab.open :global(svg)')).toMatch(/stroke-width:\s*2\.75/);
-    expect(editorUi).not.toContain('.tab-label::after');
-  });
-});
-
-describe('the frame rate fits the timeline tab', () => {
-  // 390×844 at 200 %: a 6 rem slider and a 3.2 rem box are 381 px in a 270 px
-  // window — the box stood past the screen's edge.
-  it('shares a line where it fits, and on a line of its own its slider gives way', () => {
-    const fps = rule('.tab-window > .fps-inline');
-    expect(fps).toMatch(/flex:\s*0 1 auto/);
-    expect(fps).toMatch(/max-width:\s*100%/);
-    expect(fps).toMatch(/min-width:\s*0/);
-    const range = rule(".tab-window .fps-inline input[type='range']");
-    expect(range).toMatch(/flex:\s*1 1 auto/);
-    expect(range).toMatch(/min-width:\s*0/);
-  });
-});
-
-describe('a tab points only at a window that is there', () => {
-  it('aria-controls on the open tab alone', () => {
-    expect(editorUi).toContain("aria-controls={openTab === tab.id ? 'tab-window' : undefined}");
-  });
-});
-
 describe('the tab window does not outlive the small screen', () => {
   // A tablet turned (or text made smaller) goes to the full layout with the
   // tab still «open»: turned back, the window came up by itself.
   it('leaving the compact step closes it', () => {
-    expect(editorUi).toMatch(/\$effect\(\(\) => \{\s*if \(!compact\) openTab = null;\s*\}\);/);
+    expect(editorUi).toMatch(/\$effect\(\(\) => \{\s*if \(!compact\) moreOpen = false;\s*\}\);/);
   });
 
-  it('a track dropped on a small screen opens the «Звук» tab, not the desktop plate', () => {
-    expect(editorUi).toMatch(/isAudioFile\(file\)\) \{[^}]*compact && cut\?\.tabs\.some\(\(tab\) => tab\.id === 'sound'\)[^}]*openTab = 'sound'/);
+  it('a track dropped opens the sound plate, on a phone as on a desk: its key is in the transport row', () => {
+    expect(editorUi).toMatch(/isAudioFile\(file\)\) \{[^}]*audioOpen = true;/);
   });
 });
 
@@ -118,35 +85,5 @@ describe('dates speak the interface’s language', () => {
 });
 
 describe('lying down at 200 % text the dock is one line again', () => {
-  // 740×360: the icons grew with the text (owner, thirteenth audit), and a
-  // bare tab became 59 px — five of them 312, with the 281 px transport and
-  // the 24 px gap 13 px past the dock. The tabs went to a second line, the
-  // dock took 131 px and the sheet kept 229 of the 360.
-  it('a tab’s sides are a hair, not a quarter rem: its width is the tap floor or the icon', () => {
-    expect(rule('.tab')).toMatch(/padding:\s*0\.15rem 0\.1rem;/);
-  });
 
-  it('the gap between the transport and the tabs is half a rem, so a 150-frame count still fits', () => {
-    expect(rule('\n  .dock')).toMatch(/gap:\s*0\.35rem 0\.5rem;/);
-  });
-});
-
-describe('the mini transport keeps one line with a long mult', () => {
-  // 320×640 at 200 %: «150 / 150», two 44 px steps and a 3.4 rem play key
-  // (109 px) are 351 px on a 304 px dock — the count went to a line of its
-  // own and the dock took 183 px. Any mult past nine frames did the same.
-  it('the play key there is wider than a step, but not by 3.4 rem of text', () => {
-    expect(rule('.dock .mini-transport :global(.key.play)')).toMatch(/min-width:\s*min\(3\.4rem, calc\(var\(--tap\) \* 1\.25\)\)/);
-    // Its width was the icon and the key's 0.7 rem sides, not the floor.
-    expect(rule('.dock .mini-transport :global(.key.play)')).toMatch(/padding-inline:\s*0;/);
-  });
-});
-
-describe('lying down the column keeps off the home indicator', () => {
-  // A phone lying down: the column runs the whole height beside the dock, and
-  // the dock alone padded by the bottom inset — «Отправить мульт» at the
-  // column's foot (8 px of padding) sat under the 21 px home indicator.
-  it('the column pads its foot by the safe area', () => {
-    expect(rule('.studio.compact:not(.tall) .left')).toMatch(/padding-bottom:\s*env\(safe-area-inset-bottom\)/);
-  });
 });
