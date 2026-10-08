@@ -18,6 +18,7 @@ import {
 } from '../format/constants';
 import {
   addFrame,
+  duplicateFrame,
   addLayer,
   pasteNeedsConfirm,
   renameLayer,
@@ -1627,6 +1628,18 @@ export class EditorState {
     // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
     // the frame it came from goes into the onion history like any other move.
     // Without this the fresh cell showed no ghost of the drawing it follows.
+    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
+    this.collapseSelection();
+    this.touched = true;
+  }
+
+  /** The frame once more, right after itself: the next drawing begins from this one (owner, 2026-10-08). */
+  duplicateActiveFrame(): void {
+    if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
+      return;
+    }
+    const left = this.activeFrame;
+    this.activeFrame = this.#write((doc) => duplicateFrame(doc, this.activeFrame));
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
     this.touched = true;

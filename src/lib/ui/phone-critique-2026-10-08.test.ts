@@ -115,7 +115,7 @@ it('with no cursor to hover with, the wide row names send, brush, eraser and col
 // the sheet (owner, 2026-10-08). The way back to the site is a key behind «⋯».
 it('lying down «⋯» holds the host\'s way home', () => {
   expect(editorUi).toContain('home?: { href: string; label: string };');
-  expect(editorUi).toContain("{#if group.id === 'studio' && home && !tall}<a class=\"key\" href={home.href} aria-label={home.label}>");
+  expect(editorUi).toContain("{#if group.id === 'studio' && home}<a class=\"key\" href={home.href} aria-label={home.label}>");
 });
 
 // The hub and «Новый мульт» stand in place of the studio, over its «⋯» too:
@@ -123,6 +123,6 @@ it('lying down «⋯» holds the host\'s way home', () => {
 // 2026-10-08). Both heads hold the same way home.
 it('lying down the hub and the new-toon screen hold the way home too', async () => {
   const hub = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
-  expect(editorUi).toContain('home={tall ? undefined : home}');
+  expect(editorUi).toContain('      {home}\n');
   expect(hub.match(/\{#if home\}<a class="key" href=\{home\.href\}>\{home\.label\}<\/a>\{\/if\}/g)?.length).toBe(2);
 });

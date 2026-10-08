@@ -424,9 +424,9 @@ export function cursorShape(width: number, crossCursor: boolean): { ring: boolea
 }
 
 /** What the frame menu offers. */
-export type FrameMenuAction = 'add' | 'delete' | 'copy' | 'paste' | 'merge';
+export type FrameMenuAction = 'add' | 'duplicate' | 'delete' | 'copy' | 'paste' | 'merge';
 
-const MENU_LETTERS: Record<FrameMenuAction, string> = { add: 'A', delete: '', copy: 'C', paste: 'V', merge: 'M' };
+const MENU_LETTERS: Record<FrameMenuAction, string> = { add: 'A', duplicate: 'G', delete: '', copy: 'C', paste: 'V', merge: 'M' };
 
 /**
  * The key a frame-menu item names, or `null` when it has none. With the letter
@@ -442,6 +442,9 @@ export function frameMenuKey(
 ): { aria: string; label: string } | null {
   if (action === 'delete') return { aria: 'Delete Backspace', label: 'Del' };
   if (action === 'merge' && quickPalette) return null;
+  // «Дублировать» is ours, not the reference's: its letter has no chord —
+  // Ctrl+G is the browser's «find next».
+  if (action === 'duplicate' && !letterKeys) return null;
   if (letterKeys) return { aria: MENU_LETTERS[action], label: MENU_LETTERS[action] };
   if (action === 'add') return { aria: 'F7', label: 'F7' };
   return { aria: `Control+${MENU_LETTERS[action]}`, label: `Ctrl+${MENU_LETTERS[action]}` };

@@ -84,3 +84,43 @@ it('opens the export on its own key, not on «Закрыть»', () => {
 it('names the send key by the word written on it', () => {
   expect(ru.editor.publish).toContain(ru.editor.publish_short);
 });
+
+// --- the owner's answers, 2026-10-08 ---------------------------------------
+
+import { addStroke, createDocument, duplicateFrame } from '../model/operations';
+import { frameMenuKey } from './frame-selection';
+
+it('duplicates a frame after itself, in every layer, as a copy of its own', () => {
+  const doc = createDocument();
+  addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#112233' });
+  expect(duplicateFrame(doc, 0)).toBe(1);
+  expect(doc.layers[0].frames).toHaveLength(2);
+  expect(doc.layers[0].frames[1]).toEqual(doc.layers[0].frames[0]);
+  // A copy: a stroke added to one is not in the other.
+  addStroke(doc, 0, 1, { points: [3, 4], width: 8, color: '#112233' });
+  expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
+  expect(doc.layers[0].frames[1].strokes).toHaveLength(2);
+});
+
+it('offers «Дублировать» in the frame menu', () => {
+  expect(timeline).toContain('onclick={() => run(() => editor.duplicateActiveFrame())}');
+  expect(frameMenuKey('duplicate', true, false)?.label).toBe('G');
+  expect(frameMenuKey('duplicate', false, false)).toBeNull();
+  expect(ru.panel.item.duplicate_frame).toBe('Дублировать кадр');
+});
+
+it('tells the truth when the draft on the sheet is deleted', () => {
+  // The card goes, the drawing stays and is saved anew — «отменить нельзя»
+  // promised a loss that did not happen.
+  expect(ru.editor.draft_delete_open_confirm).toContain('останется');
+  expect(editor).toContain("t('editor.draft_delete_open_confirm')");
+});
+
+it('draws the way to the site wherever the host hands it over', () => {
+  // The host decides (its bar is away: a phone lying down, full screen, a low
+  // desktop window); the studio no longer second-guesses it by the screen's
+  // shape, and a desk — which has no «⋯» — gets the key at the head of its row.
+  expect(editor.includes('home && !tall')).toBe(false);
+  expect(editor.includes('tall ? undefined : home')).toBe(false);
+  expect(editor).toContain('{#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}>');
+});

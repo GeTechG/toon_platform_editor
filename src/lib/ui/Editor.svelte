@@ -1155,6 +1155,12 @@
       case 'A':
         editor.addLayerAtActive(e.ctrlKey || e.metaKey);
         break;
+      // The frame once more, after itself (owner, 2026-10-08). Bare only:
+      // Ctrl+G is the browser's.
+      case 'g':
+      case 'G':
+        if (!e.ctrlKey && !e.metaKey) editor.duplicateActiveFrame();
+        break;
       // Backspace is Delete's other name — the Mac's «delete» key sends it.
       case 'Delete':
       case 'Backspace':
@@ -1736,7 +1742,14 @@
 
   /** Deletes the drafts picked in the hub; says whether it was done. */
   async function removeDrafts(ids: string[]): Promise<boolean> {
-    if (!(await ask(ids.length === 1 ? t('editor.draft_delete_confirm') : t('editor.drafts_delete_confirm', { count: ids.length }), t('ask.delete'), true))) {
+    // The drawing on the sheet outlives its card (`forgetStoredDraft`), and
+    // the question says so (owner, 2026-10-08).
+    const open = ids.includes(draftId) && !isEmptyDocument(editor.doc);
+    const question =
+      ids.length === 1
+        ? open ? t('editor.draft_delete_open_confirm') : t('editor.draft_delete_confirm')
+        : t('editor.drafts_delete_confirm', { count: ids.length }) + (open ? ` ${t('editor.drafts_delete_open')}` : '');
+    if (!(await ask(question, t('ask.delete'), true))) {
       return false;
     }
     for (const id of ids) {
@@ -2838,6 +2851,9 @@
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
     <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} onpointerdowncapture={() => (rowPressed = true)}>
+      <!-- The host's bar is away on a low window (owner, 2026-10-08) and a
+           desk has no «⋯»: the way back heads the row. -->
+      {#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
       {@render slot(panels.top)}
       {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
     </div>
@@ -2954,7 +2970,7 @@
             {@render slot(group.items)}
             <!-- Lying down the host has put its header away to give the sheet
                  the height (owner, 2026-10-08): its way back stands here. -->
-            {#if group.id === 'studio' && home && !tall}<a class="key" href={home.href} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
+            {#if group.id === 'studio' && home}<a class="key" href={home.href} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
           </div>
         {/each}
       </section>
@@ -3095,7 +3111,7 @@
       {thumbUrls}
       {storageUsed}
       {draftId}
-      home={tall ? undefined : home}
+      {home}
       create={createOnOpen}
       ready={draftsRead}
       onOpen={openDraft}

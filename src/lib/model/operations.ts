@@ -156,6 +156,15 @@ export function addFrame(doc: ToonDocument, afterIndex: number): number {
   return insertEmptyFrame(doc, afterIndex + 1);
 }
 
+/** A copy of the frame at index, in every layer, right after it; returns the copy's index. */
+export function duplicateFrame(doc: ToonDocument, index: number): number {
+  const at = addFrame(doc, index);
+  for (const layer of doc.layers) {
+    layer.frames[at] = structuredClone(layer.frames[index]);
+  }
+  return at;
+}
+
 /** Inserts an empty frame in front of the frame at index (Ctrl+add); returns its index. */
 export function insertFrameBefore(doc: ToonDocument, index: number): number {
   assertFrameIndex(doc, index);

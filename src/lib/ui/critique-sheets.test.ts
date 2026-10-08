@@ -18,7 +18,8 @@ describe('a question whose yes cannot be taken back', () => {
   it('drafts, saved palettes, the track and a plugin are asked about that way', async () => {
     const editor = await read('Editor.svelte');
     expect(editor).toContain("ask(t('editor.drafts_wipe_confirm'), t('ask.delete'), true)");
-    expect(editor).toMatch(/drafts_delete_confirm', \{ count: ids\.length \}\), t\('ask\.delete'\), true\)/);
+    expect(editor).toMatch(/drafts_delete_confirm', \{ count: ids\.length \}\)/);
+    expect(editor).toContain("ask(question, t('ask.delete'), true)");
     expect(await read('SettingsSheet.svelte')).toContain("t('settings.wipe_palettes_confirm'), t('ask.delete'), true)");
     expect(await read('AudioPanel.svelte')).toContain("t('audio.remove_confirm'), t('ask.delete'), true)");
     expect(await read('PluginsSheet.svelte')).toContain("t('ask.delete'), true)");

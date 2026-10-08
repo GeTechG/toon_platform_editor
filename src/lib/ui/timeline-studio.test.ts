@@ -561,7 +561,7 @@ describe('tenth audit: menu items are named without their key letter', () => {
     // «Добавить кадрA» was the accessible name: the kbd text ran into it.
     const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
-    expect(items.length).toBe(5);
+    expect(items.length).toBe(6);
     for (const item of items) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
       expect(item).toContain('{@render key(');
