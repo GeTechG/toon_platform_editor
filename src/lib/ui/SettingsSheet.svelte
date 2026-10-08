@@ -611,6 +611,7 @@
     font-size: 0.95rem;
     text-align: start;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out);
   }
   .act :global(svg) {
     flex: none;
@@ -666,6 +667,8 @@
     font-weight: 650;
     text-align: start;
     cursor: pointer;
+    /* The picked tab takes its tone, it does not snap to it. */
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .tab:hover {
@@ -773,6 +776,7 @@
     font: inherit;
     font-weight: 650;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .preset-chip:hover {
@@ -832,9 +836,22 @@
     max-width: none;
     border: none;
     color: var(--ink);
+    /* A screen of the studio rather than a sheet over it: it only fades in
+       (controls.css `studio-pop`), and leaves at once. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
+  /* The scrim only fades: moved with the sheet, it showed its own edge. Its
+     own keyframe — a browser whose backdrop cannot read the tokens (before
+     Safari 17.4) drops the line and the scrim simply stands. */
   .sheet-dialog::backdrop {
     background: var(--scrim);
+    animation: scrim-in var(--dur-enter) var(--ease-out);
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
   }
   .row {
     display: flex;

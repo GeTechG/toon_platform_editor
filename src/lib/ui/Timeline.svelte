@@ -4,7 +4,8 @@
   // on the right, filling whatever height the resizable bottom panel gives
   // it. One shape for every preset — a preset patches where the strip sits,
   // not what it is.
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import type { Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
   import { scrollToFrame, stripTabStop, stripTail, stripWindow } from './strip-window';
@@ -24,6 +25,28 @@
 
   let { editor }: { editor: EditorState } = $props();
 
+  // The one frame or layer that has just come: it fades in so the eye finds
+  // where it landed. Found by the count growing by one, not by a node being
+  // built — the strip builds cells as it scrolls, and those must stand still.
+  // Never under a preview: there the strip only shows which frame is up.
+  // Raw: a proxy of the layer would never equal the layer it stands for.
+  let arrived = $state.raw<{ frame?: number; layer?: Layer } | null>(null);
+  let counted: { frames: number; layers: number } | null = null;
+  $effect(() => {
+    const now = editor.cellBounds;
+    const was = counted;
+    counted = now;
+    if (editor.playing) {
+      arrived = null;
+      return;
+    }
+    if (!was) return;
+    if (now.frames === was.frames + 1 && now.layers === was.layers) {
+      arrived = { frame: untrack(() => editor.activeFrame) };
+    } else if (now.layers === was.layers + 1 && now.frames === was.frames) {
+      arrived = { layer: untrack(() => editor.doc.layers[editor.activeLayer]) };
+    }
+  });
 
   let strip = $state<HTMLDivElement | undefined>();
   /**
@@ -624,6 +647,7 @@
       onwheel={wheelAlong}
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
+      onanimationend={() => (arrived = null)}
     >
       <div class="head" style:min-width={`${stripExtent}px`} style:--pitch="{thumbWidth}px">
         {#if view.before > 0}
@@ -643,7 +667,7 @@
         {/if}
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-        <div class="cells" style:height={rowHeightCss(editor.doc)}>
+        <div class="cells" style:height={rowHeightCss(editor.doc)} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
           {#if view.before > 0}
             <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
           {/if}
@@ -656,6 +680,7 @@
               class:selected={isSelected(i, layerIndex)}
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
+              class:arrived={arrived?.frame === i}
               data-frame={i}
               tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
               aria-disabled={editor.playing}
@@ -887,6 +912,17 @@
   .cell[aria-disabled='true'] {
     cursor: default;
   }
+  /* No transition on a cell: the ring of the frame on screen jumps, at a
+     click as under a preview — eased, it smeared across the strip at 24
+     frames a second. What moves is the one frame or layer that has just
+     come (`arrived`), once, so the eye finds where it landed. A layer comes
+     as a row, in one piece: its cells one by one were a strip of them. */
+  .cell.arrived {
+    animation: cell-in var(--dur-enter) var(--ease-out);
+  }
+  .cells.arrived {
+    animation: fade-in var(--dur-enter) var(--ease-out);
+  }
   /* Forced colours drop the active cell's inset ring (a shadow) and repaint
      every border alike: the active cell takes a thick Highlight border, the
      selection keeps its dashes in Highlight, and the onion numbers, whose
@@ -943,6 +979,7 @@
     border-radius: var(--r-pill);
     background: var(--paper);
     box-shadow: var(--shadow-menu);
+    animation: fade-in var(--dur-enter) var(--ease-out);
   }
   .pick-bar p {
     margin: 0;
@@ -979,6 +1016,9 @@
     border-radius: var(--r-md);
     background: var(--paper);
     box-shadow: var(--shadow-menu);
+    /* Up into place: it opens over the press. Only the look — the items take
+       the press and the focus from the first frame. */
+    animation: menu-in var(--dur-enter) var(--ease-out);
   }
   .frame-menu button {
     display: flex;
@@ -1120,6 +1160,31 @@
     }
     .wave {
       background: var(--accent-tint);
+    }
+  }
+  /* --- Motion ------------------------------------------------------------ */
+  @keyframes cell-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  /* What came still says so by its tone; it does not travel. */
+  @media (prefers-reduced-motion: reduce) {
+    .cell.arrived,
+    .frame-menu {
+      animation-name: fade-in;
     }
   }
 </style>

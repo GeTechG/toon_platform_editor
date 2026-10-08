@@ -130,6 +130,7 @@
 <div
   class="audio-plate"
   class:docked
+  class:below={at?.top !== undefined}
   role="group"
   aria-label={t('audio.panel')}
   bind:this={plate}
@@ -253,13 +254,45 @@
     background: var(--paper);
     border: none;
     border-radius: var(--r-md);
+    /* From the key that called it: up when it stands over the key, down when
+       under. A shift only — the plate is measured as it opens, and a scale
+       would have been measured with it. */
+    animation: plate-in var(--dur-enter) var(--ease-out);
   }
-  /* In a small screen's window: the window is the frame, the plate its body. */
+  .audio-plate.below {
+    animation-name: plate-down;
+  }
+  @keyframes plate-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  @keyframes plate-down {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @keyframes plate-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  /* In a small screen's window: the window is the frame, the plate its body
+     — the window arrives, not what is in it. */
   .audio-plate.docked {
     position: static;
     width: auto;
     max-height: none;
     overflow: visible;
+    animation: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .audio-plate,
+    .audio-plate.below {
+      animation-name: plate-fade;
+    }
   }
   /* Its edge is a tone over the stage, and forced colors paint every tone
      alike: outlined, as controls.css does for menus and dialogs. */

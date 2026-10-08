@@ -424,6 +424,11 @@
     border-radius: var(--r-md);
     background: var(--canvas);
     box-shadow: var(--shadow-menu);
+    /* It opens under its button or over it, as the room lets: a fade and no
+       travel (controls.css `studio-pop`) — which also covers the frame it
+       stands unplaced in. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* A closed popover is hidden by the browser's own `display: none`, which
      any layout declared here would quietly override. */
@@ -456,6 +461,7 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .type:hover {
@@ -536,8 +542,10 @@
     text-align: left;
     color: var(--ink-2);
   }
+  /* The words drop from the heading they belong to. */
   .note.open {
     display: block;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* 1.1rem was the drawn size of the glyph and the size of the target with it —
      18px, under any floor at all. The glyph stays the glyph's size; the box

@@ -323,9 +323,10 @@
     font: inherit;
     font-weight: 650;
     cursor: pointer;
+    /* No fallbacks: the player brings the table of tokens itself (above). */
     transition:
-      transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
-      background-color 0.13s cubic-bezier(0.2, 0.8, 0.2, 1);
+      transform var(--dur-fast) var(--ease-out),
+      background-color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .play-key:hover {

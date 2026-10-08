@@ -65,7 +65,7 @@
        not white: with no shadow and no ring, white on the white sheet had no
        edge at all. */
     background: color-mix(in srgb, var(--paper) 80%, transparent);
-    transition: background 120ms ease;
+    transition: background-color var(--dur) var(--ease-out);
     font-size: 0.75rem;
     /* The row is its own handle; only its keys are not. */
     cursor: move;

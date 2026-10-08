@@ -4159,8 +4159,8 @@
     color: var(--text-2);
     cursor: pointer;
     transition:
-      opacity 0.13s ease,
-      background 0.15s ease;
+      opacity var(--dur-fast) var(--ease-out),
+      background var(--dur) var(--ease-out);
   }
   /* The tab leans out over the stage, never over the panel's own contents. */
   .at-left .fold {
@@ -4311,6 +4311,9 @@
     overscroll-behavior: contain;
     background: var(--paper);
     border-radius: var(--r-lg);
+    /* Down from the bar its key stands on (controls.css). */
+    --pop-from: -4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .more-window:focus-visible {
     outline: 3px solid var(--accent);
@@ -4567,6 +4570,21 @@
   .editor :global(.sheet-dialog)::backdrop {
     background: var(--scrim);
   }
+  /* The studio's own sheets — the manual, a question — arrive as the settings
+     do: a fade, the scrim with them, gone at once (controls.css `studio-pop`).
+     Scoped, so the export sheet keeps the rise it gives itself. */
+  .sheet-dialog {
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  .sheet-dialog::backdrop {
+    animation: scrim-in var(--dur-enter) var(--ease-out);
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
+  }
   /* The studio's question: the shared sheet, with a form between it and its
      body and foot — which steps aside so the two stay the sheet's own rows. */
   .ask form {
@@ -4798,9 +4816,9 @@
     font-weight: 700;
     cursor: pointer;
     transition:
-      transform 0.13s cubic-bezier(0.2, 0.8, 0.2, 1),
-      background 0.15s ease,
-      color 0.15s ease;
+      transform var(--dur-fast) var(--ease-out),
+      background var(--dur) var(--ease-out),
+      color var(--dur) var(--ease-out);
   }
   /* The key's name by the key (`nameKey`): in ink, the one tone that reads on
      the paper of a panel, the table and the sheet alike. Fixed, in the top
@@ -5000,7 +5018,7 @@
   /* Reduced motion keeps the pressed tone, not the squeeze. */
   @media (prefers-reduced-motion: reduce) {
     .editor :global(.key) {
-      transition: background 0.15s ease, color 0.15s ease;
+      transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
     }
     .editor :global(.key:active:not(:disabled)) {
       transform: none;

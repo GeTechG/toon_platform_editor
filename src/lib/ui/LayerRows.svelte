@@ -6,7 +6,7 @@
   // A row shows the layer's stored name, or its position when it has none,
   // so moving an unnamed layer renumbers its row. The colour tag is a display
   // aid — six of them, picked per layer, never written to the document.
-  import { flushSync, onDestroy, tick } from 'svelte';
+  import { flushSync, onDestroy, tick, untrack } from 'svelte';
   import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import { budgetLabel } from './format-limit';
   import type { EditorState } from './editor-state.svelte';
@@ -36,6 +36,19 @@
   const rows = $derived(
     editor.doc.layers.map((_, index) => editor.doc.layers.length - 1 - index),
   );
+  // The layer that has just come fades in, as its row of cells does
+  // (Timeline). By the count growing by one: the list itself, built on load
+  // or when the panel is moved, stands still.
+  // Raw: a proxy of the layer would never equal the layer it stands for.
+  let arrived = $state.raw<Layer | null>(null);
+  let counted = -1;
+  $effect(() => {
+    const now = editor.doc.layers.length;
+    if (counted >= 0 && now === counted + 1 && !editor.playing) {
+      arrived = untrack(() => editor.doc.layers[editor.activeLayer]);
+    }
+    counted = now;
+  });
   const canAdd = $derived(editor.doc.layers.length < MAX_LAYERS);
   const budget = $derived(budgetLabel(editor.budgetShare));
   const canRemove = $derived(editor.doc.layers.length > 1);
@@ -518,6 +531,8 @@
         style:height={rowHeightCss(editor.doc)}
         class:active={layerIndex === editor.activeLayer}
         class:dragging={drag?.currentLayer === layerIndex}
+        class:arrived={arrived === editor.doc.layers[layerIndex]}
+        onanimationend={() => (arrived = null)}
         role="row"
         data-layer={layerIndex}
         onclick={() => editor.selectLayer(layerIndex)}
@@ -643,6 +658,18 @@
     cursor: pointer;
     /* A held finger renames the layer, not the system callout. */
     -webkit-touch-callout: none;
+    /* The picked row takes its tone rather than snapping to it. A dozen rows
+       at most, and the preview never changes the layer. */
+    transition: background-color var(--dur) var(--ease-out);
+  }
+  /* Opacity alone, so reduced motion has nothing to take away. */
+  .row.arrived {
+    animation: row-in var(--dur-enter) var(--ease-out);
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+    }
   }
   /* The active row, in the tool keys' language — a light red fill and red
      ink — plus what is not colour: a bar at the left edge (the accent, 3.5:1

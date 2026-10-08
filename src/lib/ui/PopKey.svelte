@@ -129,6 +129,7 @@
          behind it stays live (the sound's plate, for the same reasons). -->
     <div
       class="pop-plate"
+      class:up={at?.bottom !== undefined}
       role="group"
       aria-label={label}
       bind:this={plate}
@@ -167,6 +168,15 @@
     /* A hair of an edge: over the bars it lies paper on paper. */
     border: 1px solid var(--hairline);
     border-radius: var(--r-md);
+    /* It comes out of its key (controls.css); shut, it is simply gone. The
+       side is named, not left to the default: a window it stands in fades
+       in place, and its `0px` would be inherited here. */
+    --pop-from: -4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  /* Over its key, it comes up from it. */
+  .pop-plate.up {
+    --pop-from: 4px;
   }
   /* The box in it lies on the plate's paper: white, it read as a piece of
      the sheet under it. */

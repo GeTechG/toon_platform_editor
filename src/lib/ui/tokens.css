@@ -92,6 +92,18 @@
      one, and each carried its own copy. */
   --scrim: #0b0c106b; /* 42% ink */
 
+  /* Motion. The drawing is the animation here, so the chrome only answers:
+     a press, a change of state, something arriving from where it was called.
+     Transform and opacity, nothing that loops, nothing over a stroke in
+     flight — the budget is a 2 GB phone rendering in software. What leaves
+     takes `--dur-fast`; under `prefers-reduced-motion` the travel goes and
+     the change of tone or opacity stays. The curve is the one the site's
+     buttons already squeezed on. */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 0.12s; /* a press, a leave */
+  --dur: 0.15s; /* a change of state: hover, picked, toggled */
+  --dur-enter: 0.2s; /* a menu, a window, a sheet arriving */
+
   --r-sm: 7px;
   --r-md: 14px;
   --r-lg: 16px;

@@ -128,12 +128,9 @@
     background: var(--swatch);
     box-shadow: 0 0 0 1px var(--edge);
     cursor: pointer;
-    transition: border-color 0.15s ease, transform 0.13s ease;
-  }
-  @media (hover: hover) {
-    .swatch:hover {
-      transform: translateY(-1px);
-    }
+    /* The pick is a ring taking its tone; the swatch does not rise under a
+       cursor — nothing in the studio does. */
+    transition: border-color var(--dur) var(--ease-out);
   }
   .swatch.active {
     border-color: var(--canvas);
@@ -222,15 +219,5 @@
     background: transparent;
     opacity: 0;
     cursor: pointer;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .swatch {
-      transition: background 0.15s ease, border-color 0.15s ease;
-    }
-    @media (hover: hover) {
-      .swatch:hover {
-        transform: none;
-      }
-    }
   }
 </style>

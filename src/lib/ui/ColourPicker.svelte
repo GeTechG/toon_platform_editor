@@ -580,6 +580,10 @@
     background: var(--canvas);
     color: var(--ink);
     box-shadow: var(--shadow-menu);
+    /* The window fades in and no more (controls.css `studio-pop`): it is
+       placed and dragged by `transform`, and its field takes the hand at once. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* The old catcher was an invisible full-screen button, so the page behind
      stayed lit. `::backdrop` takes over the job and keeps the look. */
@@ -647,6 +651,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .models button:hover {
@@ -680,7 +685,8 @@
     /* The wheel is square in the maths; the corners outside it are clipped away. */
     border-radius: 50%;
   }
-  /* The pointers sit over their canvas without eating its events. */
+  /* The pointers sit over their canvas without eating its events — and move
+     with the hand, never after it: no transition belongs on either. */
   .dot {
     position: absolute;
     width: 12px;

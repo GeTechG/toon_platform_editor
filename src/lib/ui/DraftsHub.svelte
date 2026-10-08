@@ -633,6 +633,12 @@
     width: 100%;
     max-width: 60rem;
     margin-inline: auto;
+    /* A screen in the studio's box: what is on it fades in — when the hub
+       opens and when the shelf gives way to «Новый мульт» and back — over the
+       paper, which stands at once, so the studio never shows through. All of
+       it together: the shelf is not dealt out card by card. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* The keys by the title, over the cards they act on. */
   .hub-head {
@@ -844,6 +850,9 @@
     padding: 4px;
     border-radius: var(--r-md);
     background: var(--sub);
+    /* Over or under its chip, as the room lets: a fade, no travel. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .size-menu button {
     display: flex;
@@ -950,6 +959,7 @@
     height: 0.4rem;
     border-radius: 50%;
     background: var(--edge);
+    transition: background-color var(--dur) var(--ease-out);
   }
   .reel-dots span.on {
     background: var(--accent);
@@ -1149,6 +1159,8 @@
     text-align: left;
     color: inherit;
     cursor: pointer;
+    /* Tone under a cursor and when picked; the card itself never moves. */
+    transition: background-color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .draft-open:hover {

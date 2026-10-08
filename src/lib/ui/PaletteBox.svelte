@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { fade } from 'svelte/transition';
   import type { EditorState, Tool } from './editor-state.svelte';
   import {
     TONIO_DEFAULT_PALETTE,
@@ -379,8 +380,12 @@
       {#each editor.palette as color, i (color)}
         {@const isOutline = editor.brushColor === color}
         {@const isFill = editor.fillColor === color}
+        <!-- A colour kept comes in with a fade, so the eye finds where it
+             landed; local, so the grid itself appears as it is. One taken
+             out leaves at once. 150 is `--dur`. -->
         <button
           class="cell"
+          in:fade={{ duration: 150 }}
           data-color={color}
           style:--swatch={color}
           style:color={contrastInk(color)}
@@ -825,6 +830,7 @@
     cursor: pointer;
     /* The pipette's long press is the fill: no callout over it on iOS. */
     -webkit-touch-callout: none;
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
   }
   .foot-btn + .foot-btn {
     border-left: 1px solid var(--hairline);
@@ -853,6 +859,12 @@
   .foot-btn:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: -3px;
+  }
+  /* The saved palette opened beside the box: it fades in (controls.css
+     `studio-pop`), with no key of its own side to come from. */
+  .preview {
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .preview-head {
     display: flex;

@@ -8,7 +8,7 @@
    * the arranger instead (it is what puts it back into a panel), so the title
    * bar stands down.
    */
-  import { tick, type Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import { clampWindowPosition, pastDragThreshold } from './draggable';
   import { FLOAT_HOME, panelItem, slotOf } from './panels';
@@ -20,6 +20,10 @@
     id,
     children,
   }: { editor: EditorState; id: string; children: Snippet } = $props();
+
+  /** Pulled out by hand, not restored with the layout: windows leave their
+   * panels only in arrange mode. Read once — the class must not come and go. */
+  const born = untrack(() => editor.arranging);
 
   let el = $state<HTMLDivElement | undefined>();
   /** The size and the stage are read once, on the press: neither changes during a drag. */
@@ -233,6 +237,7 @@
   class="float"
   class:handle={editor.arranging}
   class:waiting={!item}
+  class:born
   data-item={id}
   style="left: {shown.left}px; top: {shown.top}px; z-index: calc({rung} + {depth})"
   onpointerdowncapture={raise}
@@ -291,6 +296,13 @@
        edge at all once the ring went (stage-windows-by-tone). */
     background: var(--paper);
     overflow: hidden;
+  }
+  /* A window has no key to come from: it only fades in (controls.css) — and
+     only one just pulled out of a panel. Those the layout kept stand with the
+     studio as it opens. */
+  .float.born {
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* Its tool's plugin is still loading: an empty frame titled «tool:…». */
   .float.waiting {

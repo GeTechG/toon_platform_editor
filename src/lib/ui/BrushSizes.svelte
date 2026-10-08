@@ -54,8 +54,8 @@
     background: transparent;
     cursor: pointer;
     transition:
-      background 0.15s ease,
-      border-color 0.15s ease;
+      background-color var(--dur) var(--ease-out),
+      border-color var(--dur) var(--ease-out);
   }
   @media (hover: hover) {
     .size-btn:hover {

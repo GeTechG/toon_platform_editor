@@ -616,6 +616,9 @@
        tone (no soft shadow on a plate), and a white key on it has its form
        again — on white, «Сохранить» and «Скачать» read as bare words. */
     background: var(--paper);
+    /* The mode is told by its bar coming down (controls.css). */
+    --pop-from: -4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .arrange-hint {
     margin: 0;

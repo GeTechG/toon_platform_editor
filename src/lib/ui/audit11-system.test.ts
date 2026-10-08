@@ -60,7 +60,7 @@ describe('reduced motion', () => {
   it('a switch changes its tone, its knob does not travel', async () => {
     const controls = await read('./controls.css');
     const reduced = controls.match(/@media \(prefers-reduced-motion: reduce\) \{[^]*?\n\}/)?.[0] ?? '';
-    expect(reduced).toMatch(/input\[type='checkbox'\]\[role='switch'\] \{\s*transition: background-color 0\.15s, border-color 0\.15s;/);
+    expect(reduced).toMatch(/input\[type='checkbox'\]\[role='switch'\] \{\s*transition: background-color var\(--dur\), border-color var\(--dur\);/);
   });
 });
 

@@ -764,6 +764,7 @@
     font-size: 0.7rem;
     font-weight: 700;
     cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
   }
   .tab span {
     max-width: 100%;

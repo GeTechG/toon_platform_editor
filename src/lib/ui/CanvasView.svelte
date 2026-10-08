@@ -2394,7 +2394,7 @@
   }
   @media (prefers-reduced-motion: no-preference) {
     .loupe {
-      animation: loupe-in 120ms ease-out;
+      animation: loupe-in var(--dur-fast) var(--ease-out);
     }
   }
   @keyframes loupe-in {

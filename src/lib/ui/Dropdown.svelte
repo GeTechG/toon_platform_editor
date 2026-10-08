@@ -38,22 +38,21 @@
   let list = $state<HTMLDivElement | null>(null);
   let trigger = $state<HTMLButtonElement | null>(null);
   let open = $state(false);
-  let at = $state<DropdownPlace & { minWidth: number }>({ x: 0, y: 0, maxHeight: null, minWidth: 0 });
+  let at = $state<DropdownPlace & { minWidth: number; up: boolean }>({ x: 0, y: 0, maxHeight: null, minWidth: 0, up: false });
 
   const current = $derived(options.find((option) => option.value === value));
 
   function place(): void {
     if (!list || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
-    at = {
-      ...placeDropdown(
-        anchor,
-        // The whole list, not what an earlier limit left of it; as wide as its button at least.
-        { width: Math.max(list.offsetWidth, anchor.width), height: list.scrollHeight },
-        { width: window.innerWidth, height: window.innerHeight },
-      ),
-      minWidth: anchor.width,
-    };
+    const spot = placeDropdown(
+      anchor,
+      // The whole list, not what an earlier limit left of it; as wide as its button at least.
+      { width: Math.max(list.offsetWidth, anchor.width), height: list.scrollHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    // Over its button, it arrives from below (the `up` of its style).
+    at = { ...spot, minWidth: anchor.width, up: spot.y < anchor.top };
   }
 
   function keys(): HTMLButtonElement[] {
@@ -117,6 +116,7 @@
     class="list"
     id={listId}
     popover
+    class:up={at.up}
     role="listbox"
     tabindex="-1"
     aria-label={label}
@@ -225,6 +225,13 @@
   .list:popover-open {
     display: grid;
     gap: 2px;
+    /* Out of its button (controls.css). Here, on the open state: the browser
+       shows it by `display`, and that is what starts the ride each time. */
+    --pop-from: -4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  .list.up:popover-open {
+    --pop-from: 4px;
   }
   .option {
     display: flex;

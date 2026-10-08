@@ -491,9 +491,23 @@
     max-width: none;
     border: none;
     color: var(--ink);
+    /* A sheet comes up from the edge it stands on (controls.css `studio-pop`):
+       a few pixels, and none under reduced motion. Closing is instant — the
+       hand is already back on the drawing. */
+    --pop-from: 8px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
+  /* The scrim only fades: moved with the sheet, it showed its own edge. Its
+     own keyframe — a browser whose backdrop cannot read the tokens (before
+     Safari 17.4) drops the line and the scrim simply stands. */
   .sheet-dialog::backdrop {
     background: var(--scrim);
+    animation: scrim-in var(--dur-enter) var(--ease-out);
+  }
+  @keyframes scrim-in {
+    from {
+      opacity: 0;
+    }
   }
   .choices {
     display: flex;
@@ -546,6 +560,11 @@
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     background: var(--canvas);
+    /* The end of the work — the picture, the words, a refusal — fades in
+       where the bar stood (controls.css `studio-pop`): swapped in one frame,
+       it read as the sheet twitching. */
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   /* Read, not glanced past: the end of the work is said in ink. */
   .made {
@@ -554,6 +573,12 @@
     font-weight: 700;
     text-align: center;
     color: var(--ink);
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  .note[role='alert'] {
+    --pop-from: 0px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   progress {
     width: 100%;
