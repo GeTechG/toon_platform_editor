@@ -405,7 +405,9 @@ describe('saveDraft reports whether the write landed', () => {
     const original = console.warn;
     console.warn = mock(() => {});
     try {
-      expect((await saveDraft('a', doc(1))).ok).toBe(false);
+      // Nothing landed, so nothing is weighed: a size here would be shown
+      // as the size of a draft that is not on disk.
+      expect(await saveDraft('a', doc(1))).toEqual({ ok: false, bytes: 0 });
     } finally {
       console.warn = original;
     }

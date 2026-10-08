@@ -279,6 +279,7 @@ async function updateDraft(
     if (!tx) {
       return true;
     }
+    let bytes: number | undefined;
     await new Promise<void>((resolve, reject) => {
       const store = tx.objectStore(STORE);
       const read = store.get(id);
@@ -289,7 +290,7 @@ async function updateDraft(
           return; // nothing to write; the transaction completes on its own
         }
         next.bytes = recordBytes(next, previous);
-        wrote?.(next.bytes);
+        bytes = next.bytes;
         store.put(next);
       };
       tx.oncomplete = () => resolve();
@@ -298,6 +299,11 @@ async function updateDraft(
       // and a promise left pending here held up every write queued after it.
       tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
     });
+    // Told only once the transaction has landed: a `put` that was handed over
+    // may still be thrown out with it, and its size is then nobody's.
+    if (bytes !== undefined) {
+      wrote?.(bytes);
+    }
     return true;
   } catch (err) {
     console.warn(`${what} failed:`, err);
