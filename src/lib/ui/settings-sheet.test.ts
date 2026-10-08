@@ -64,13 +64,6 @@ describe('the rail and the chrome follow the reference studio', () => {
     expect(editorUi).toContain('class:active={isFullscreen}');
   });
 
-  it('leaves fullscreen when a sheet takes the screen over', () => {
-    expect(editorUi).toContain('leaveFullscreen()');
-    expect(editorUi).toMatch(/function leaveFullscreen[^]{0,200}document\.exitFullscreen\(\)/);
-    expect(editorUi).toMatch(/function openSettingsSheet[^]{0,120}leaveFullscreen\(\)/);
-    expect(editorUi).toMatch(/async function openDrafts[^]{0,120}leaveFullscreen\(\)/);
-  });
-
   it('puts the panels on the left under the alternative layout', () => {
     expect(editorUi).toContain('class:alt={editor.settings.altLayout}');
     expect(sheet).toContain("setSetting('altLayout'");

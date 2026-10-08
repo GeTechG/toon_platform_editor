@@ -42,6 +42,8 @@ export interface Stage {
    */
   sheetX?: number;
   sheetY?: number;
+  /** Where a panel lying across the foot of the table begins (`footOf`); the table's own height without one. */
+  foot?: number;
 }
 
 /** What stands over the stage for good — the thickness rail, the zoom window — in workspace px. */
@@ -387,8 +389,24 @@ export function clampPan(view: Viewport2D, stage: Stage): Viewport2D {
   return {
     zoom: view.zoom,
     panX: panAxis(view.panX, stage.width, stage.sheetWidth * view.zoom),
-    panY: panAxis(view.panY, stage.height, stage.sheetHeight * view.zoom),
+    // The table runs on under the bottom panel: kept by its whole height, the
+    // sheet's last 64 px lay behind the panel, out of sight.
+    panY: panAxis(view.panY, stage.foot ?? stage.height, stage.sheetHeight * view.zoom),
   };
+}
+
+/**
+ * The top of what lies across the foot of the table — a cover wider than
+ * half of it that reaches its bottom edge (the timeline) — or the table's
+ * height. The shy zoom window and a window in a corner are not a foot.
+ */
+export function footOf(covers: readonly Cover[], width: number, height: number): number {
+  return Math.min(
+    height,
+    ...covers
+      .filter((c) => !c.shy && c.width > width / 2 && height - c.y - c.height <= COVER_EDGE_SLACK)
+      .map((c) => c.y),
+  );
 }
 
 /** A key press moves the sheet this share of the table — ten presses cross it. */

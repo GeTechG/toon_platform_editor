@@ -99,7 +99,7 @@ describe('thirteenth audit: colour', () => {
 // there were more. A column has the height a row has not: there they wrap.
 describe('the strip of saved colours in a side column', () => {
   it('wraps instead of scrolling sideways', () => {
-    const side = panel.match(/\n  :global\(:where\(\[data-slot='left'\], \[data-slot='right'\]\)\) \.grid \{[^}]*\}/)?.[0] ?? '';
+    const side = panel.match(/\n  :global\(:where\(\[data-slot='left'\], \[data-slot='right'\], \[data-slot='float'\]\)\) \.grid \{[^}]*\}/)?.[0] ?? '';
     expect(side).toContain('flex-wrap: wrap');
     expect(side).toContain('max-width: none');
     expect(side).toContain('overflow-x: visible');

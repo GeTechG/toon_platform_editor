@@ -194,7 +194,10 @@
   let hadFocus = false;
   $effect.pre(() => {
     void editor.layerMoved;
-    hadFocus = !!listEl?.contains(document.activeElement);
+    // …the keyboard's focus only: a row dragged by the mouse leaves a focus
+    // nobody sees on its handle, and brought back after an undo it gave Space
+    // to a layer's tag instead of the film.
+    hadFocus = !!listEl?.contains(document.activeElement) && !!document.activeElement?.matches(':focus-visible');
   });
   let heard: { layer: number } | null | undefined;
   $effect(() => {

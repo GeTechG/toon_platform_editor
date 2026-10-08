@@ -42,7 +42,7 @@ describe('двадцать первый аудит: отмена перенос�
   // уходил на <body> — следующий Tab начинал со страницы заново. Сам перенос
   // фокус возвращает (`focusCell`), отмена и повтор — нет.
   it('до перестановки запоминается, был ли фокус в списке', () => {
-    expect(rows).toMatch(/\$effect\.pre\(\(\) => \{\s+void editor\.layerMoved;\s+hadFocus = !!listEl\?\.contains\(document\.activeElement\);/);
+    expect(rows).toMatch(/\$effect\.pre\(\(\) => \{\s+void editor\.layerMoved;[^]*?hadFocus = !!listEl\?\.contains\(document\.activeElement\) &&/);
   });
 
   it('после объявления фокус ставится на перенесённый слой', () => {

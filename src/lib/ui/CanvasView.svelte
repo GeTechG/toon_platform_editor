@@ -30,6 +30,7 @@
   import {
     clipCover,
     clampPan,
+    footOf,
     fitSheet,
     fitView,
     pickedPixel,
@@ -418,6 +419,7 @@
     sheetHeight,
     sheetX: sheet.x,
     sheetY: sheet.y,
+    foot: footOf(covers, Math.max(1, wrapWidth || sheetWidth), Math.max(1, wrapHeight || sheetHeight)),
   });
   // The canvas is the product. Without a role and a name it lands in the
   // accessibility tree as an anonymous box, so it says what it is and which

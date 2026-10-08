@@ -10,6 +10,7 @@ export { default as Editor } from './lib/ui/Editor.svelte';
 // Read-only looping viewer for a document (the platform's public share page).
 export { default as Player } from './lib/player/Player.svelte';
 export type { ToonDocument } from './lib/format/types';
+export { isEmptyDocument } from './lib/model/operations';
 
 // The soundtrack the editor hands back with a published document.
 export type { AudioTrackData } from './lib/audio/state.svelte';

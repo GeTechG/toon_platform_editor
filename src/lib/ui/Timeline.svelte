@@ -26,6 +26,17 @@
 
 
   let strip = $state<HTMLDivElement | undefined>();
+  /**
+   * A mouse has one wheel and the frames run sideways: with no layers to
+   * scroll through, the plain wheel walks the frames, as Shift+wheel does.
+   */
+  function wheelAlong(e: WheelEvent): void {
+    if (!strip || e.ctrlKey || e.shiftKey || e.deltaX !== 0 || strip.scrollHeight > strip.clientHeight) return;
+    const before = strip.scrollLeft;
+    strip.scrollLeft += e.deltaY;
+    // At either end the wheel is the page's again.
+    if (strip.scrollLeft !== before) e.preventDefault();
+  }
   let body = $state<HTMLDivElement | undefined>();
 
   /** Keeps the layer names level with their row of cells. */
@@ -610,6 +621,7 @@
       aria-label={t('timeline.grid')}
       bind:this={strip}
       bind:clientWidth={stripWidth}
+      onwheel={wheelAlong}
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
     >

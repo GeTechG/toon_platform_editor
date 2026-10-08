@@ -65,7 +65,14 @@ interface Grab {
   bounds: Size;
 }
 
-export function draggable(node: HTMLElement): { destroy(): void } {
+/**
+ * Where a window that comes and goes was left, by its name: the transform
+ * window is mounted anew at every «Q», and opened over the sheet's corner
+ * each time, however often it was moved aside. For as long as the page lives.
+ */
+const remembered = new Map<string, { left: number; top: number; minWidth: string }>();
+
+export function draggable(node: HTMLElement, remember?: string): { destroy(): void } {
   let grab: Grab | null = null;
   /**
    * Where the hand left it. A smaller screen draws it pushed inside, and a
@@ -163,6 +170,7 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
     placed = { left, top };
+    if (remember) remembered.set(remember, { left, top, minWidth: node.style.minWidth });
   }
 
   /** Only the finger that holds it lets go: another one lifting ended the drag. */
@@ -199,6 +207,17 @@ export function draggable(node: HTMLElement): { destroy(): void } {
     node.style.top = `${top}px`;
   }
 
+  const was = remember ? remembered.get(remember) : undefined;
+  if (was) {
+    placed = { left: was.left, top: was.top };
+    node.style.minWidth = was.minWidth;
+    node.style.position = 'fixed';
+    node.style.margin = '0';
+    node.style.left = `${was.left}px`;
+    node.style.top = `${was.top}px`;
+    // The screen may have changed since: drawn inside it, like after a turn.
+    onResize();
+  }
   node.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('resize', onResize);
   return {

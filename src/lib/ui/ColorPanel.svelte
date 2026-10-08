@@ -155,7 +155,7 @@
   }
   /* In a side column the strip has the height a row has not: one row there
      hid 25 swatches of 30 behind a scroll with no bar to say so. */
-  :global(:where([data-slot='left'], [data-slot='right'])) .grid {
+  :global(:where([data-slot='left'], [data-slot='right'], [data-slot='float'])) .grid {
     flex-wrap: wrap;
     max-width: none;
     overflow-x: visible;

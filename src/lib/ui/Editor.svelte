@@ -206,16 +206,6 @@
   }
 
   /**
-   * A sheet over a full-screen editor is a dialog with nowhere to go, so the
-   * reference drops out of the mode first (`bundle:7551-7560, 7104-7125`).
-   */
-  function leaveFullscreen(): void {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => {});
-    }
-  }
-
-  /**
    * Alt+L, the reference's own debug hatch (`bundle:11407-11409`): whatever
    * the session logged as an error, as a file. Nothing leaves the machine.
    */
@@ -287,6 +277,16 @@
   let topNeed = $state<[number, number]>([0, 0]);
   let topEl = $state<HTMLElement | undefined>();
   const topCut = $derived<TopCut>(compact || editor.arranging || boxW >= topNeed[0] ? 0 : boxW >= topNeed[1] ? 1 : 2);
+  /** Escape on the key that opened the sound plate closes it: opened by a click, the focus is still here, not in the plate. */
+  function escAudio(e: KeyboardEvent): void {
+    if (e.key !== 'Escape' || !audioOpen) return;
+    e.stopPropagation();
+    audioOpen = false;
+  }
+  /** Enter and Escape give the keys back: left in the frame-rate field, E, A and Space went on typing into it. */
+  function leaveField(e: KeyboardEvent): void {
+    if (e.key === 'Enter' || e.key === 'Escape') (e.currentTarget as HTMLElement).blur();
+  }
   /** What is cut out of the arrangement: a phone's, or the desktop's one row. */
   const over = $derived(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }));
   const panels = $derived(over?.panels ?? editor.panels);
@@ -306,8 +306,10 @@
     const boxOf = (kid: Element): HTMLElement | null => ((kid as HTMLElement).offsetWidth > 0 ? (kid as HTMLElement) : (kid.firstElementChild as HTMLElement | null));
     const measure = (): void => {
       const style = getComputedStyle(row);
-      // The save status is a note out of the flow: not the row's need.
-      const kids = [...row.children].filter((kid) => !kid.matches('.saved'));
+      // The save status is a note out of the flow, and the first-visit note
+      // takes a line of its own: neither is the row's need. Counted, the
+      // note folded a wide desk into the phone's row at the first autosave.
+      const kids = [...row.children].filter((kid) => !kid.matches('.saved, .top-note'));
       const need = Math.ceil(
         parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
           (parseFloat(style.columnGap) || 0) * Math.max(0, kids.length - 1) +
@@ -550,7 +552,8 @@
     { w: boxW, h: stageHeight },
     { width: editor.doc.width, height: editor.doc.height },
     // Its column (the card and the table at its edge); its line (a key, the card's padding, the table under it).
-    { side: (SIDEBAR_REM + SIDE_GAP) * rem, foot: (compact ? 44 : 2.75 * rem) + 1.4 * rem },
+    // On a phone the standing widget takes no column: the sheet lies under it.
+    { side: compact ? 0 : (SIDEBAR_REM + SIDE_GAP) * rem, foot: (compact ? 44 : 2.75 * rem) + 1.4 * rem },
     tall,
   ));
   /**
@@ -1669,7 +1672,6 @@
   });
 
   async function openDrafts(): Promise<void> {
-    leaveFullscreen();
     // The card's copy and download take the drawing as the screen shows it.
     editor.leaveTransform();
     // The effect that marks the applied move runs after this.
@@ -2181,7 +2183,6 @@
   let settingsSheetOpen = $state(false);
 
   function openSettingsSheet(): void {
-    leaveFullscreen();
     // «Скачать черновики» there: the live move goes into the record first.
     editor.leaveTransform();
     // The effect that marks the applied move runs after this.
@@ -2641,6 +2642,7 @@
         max={editor.ux.fpsRange[1]}
         value={editor.doc.frame_rate}
         onchange={onFpsChange}
+        onkeydown={leaveField}
         aria-disabled={editor.playing || undefined}
         aria-label={t('editor.fps')}
       />
@@ -2655,6 +2657,7 @@
         class:has-track={editor.audio.hasTrack}
         aria-expanded={audioOpen}
         bind:this={audioKey}
+        onkeydown={escAudio}
         onclick={() => (audioOpen = !audioOpen)}
         title={editor.audio.hasTrack ? t('editor.audio_of', { name: editor.audio.name || t('editor.audio_unnamed') }) : t('editor.audio')}
         aria-label={t('editor.audio')}
@@ -3142,8 +3145,6 @@
     onOpen={() => {
       editor.commitTransform(); // under the lock too (owner, 16th audit)
       saveNow();
-      // The live selection goes where the screen shows it, then to the draft.
-      leaveFullscreen();
     }}
   />
 

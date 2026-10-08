@@ -169,6 +169,7 @@
   $effect(() => {
     if (open) {
       dialogEl?.showModal();
+      downloadEl?.focus();
     }
   });
 

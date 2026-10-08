@@ -118,7 +118,7 @@
     class="transform-menu"
     role="group"
     aria-label={t('transform.title')}
-    use:draggable
+    use:draggable={'transform'}
     {@attach keepFocus}
     onkeydown={(e) => {
       // Escape inside the fields still cancels (WCAG 2.1.2: no keyboard trap).

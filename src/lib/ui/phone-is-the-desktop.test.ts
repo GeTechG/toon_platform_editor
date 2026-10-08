@@ -384,7 +384,7 @@ describe('the desktop’s bar over the canvas stays one row', () => {
     expect(editorUi).toContain('{#key editor.lastSavedAt}');
     expect(editorUi).toMatch(/\.studio \.top > :global\(\.saved\[role='status'\] > \.saved-note\) \{[^}]*animation: saved-note 4s ease forwards;/);
     // Out of the flow, it is not the row's need.
-    expect(editorUi).toContain("const kids = [...row.children].filter((kid) => !kid.matches('.saved'));");
+    expect(editorUi).toContain("const kids = [...row.children].filter((kid) => !kid.matches('.saved, .top-note'));");
   });
 
   it('the sound’s key, behind «⋯» in its wrapper, says its name like the rest', () => {
