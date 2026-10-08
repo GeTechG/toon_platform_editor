@@ -459,7 +459,23 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
     destination.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
   }
 
-  const recorder = new MediaRecorder(stream, { mimeType: format.mimeType });
+  const release = () => {
+    stream.getTracks().forEach((track) => track.stop());
+    audioElement?.pause();
+    void audioContext?.close();
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
+  };
+  // A recorder the browser refuses to make must not leave the track playing
+  // into nothing: what was opened for it above is closed here too.
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, { mimeType: format.mimeType });
+  } catch (err) {
+    release();
+    throw err;
+  }
   const chunks: Blob[] = [];
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) {
@@ -513,11 +529,6 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
     if (recorder.state !== 'inactive') {
       recorder.stop();
     }
-    stream.getTracks().forEach((track) => track.stop());
-    audioElement?.pause();
-    void audioContext?.close();
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
+    release();
   }
 }
