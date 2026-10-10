@@ -2,14 +2,13 @@ import { describe, expect, it } from 'bun:test';
 import { FrameCache } from './frame-cache';
 
 // Плеер растеризует кадры заранее и потом только выкладывает готовое. Кэш
-// знает, сколько кадров в него влезает и какой рисовать следующим.
+// знает, какой рисовать следующим и сколько уже готово.
 
 const doc = {};
-const MB = 1024 * 1024;
 
 describe('кэш кадров плеера', () => {
   it('отдаёт положенный кадр', () => {
-    const cache = new FrameCache<string>(8 * MB);
+    const cache = new FrameCache<string>();
     cache.fit(doc, 100, 100);
     expect(cache.get(3)).toBeUndefined();
     cache.put(3, 'третий');
@@ -17,7 +16,7 @@ describe('кэш кадров плеера', () => {
   });
 
   it('следующий к растеризации — первый неготовый от кадра на экране, по кругу', () => {
-    const cache = new FrameCache<string>(8 * MB);
+    const cache = new FrameCache<string>();
     cache.fit(doc, 100, 100);
     cache.put(2, 'a');
     cache.put(3, 'b');
@@ -28,28 +27,25 @@ describe('кэш кадров плеера', () => {
     expect(cache.next(4, 2)).toBeNull();
   });
 
-  it('держит не больше бюджета: 1280×720 — 3,5 МБ кадр, в 8 МБ влезает два', () => {
-    const cache = new FrameCache<string>(8 * MB);
-    cache.fit(doc, 1280, 720);
-    expect(cache.put(0, 'a')).toBe(true);
-    expect(cache.put(1, 'b')).toBe(true);
-    expect(cache.put(2, 'c')).toBe(false);
-    expect(cache.get(2)).toBeUndefined();
-    expect(cache.next(10, 0)).toBeNull();
+  it('держит весь фильм, сколько бы кадров в нём ни было', () => {
+    const cache = new FrameCache<string>();
+    cache.fit(doc, 1920, 1080);
+    for (let i = 0; i < 500; i++) cache.put(i, 'кадр');
+    expect(cache.get(499)).toBe('кадр');
+    expect(cache.next(500, 0)).toBeNull();
+    expect(cache.next(501, 0)).toBe(500);
   });
 
-  it('доля готового считается от того, что влезет: два кадра из десяти — уже всё', () => {
-    const cache = new FrameCache<string>(8 * MB);
+  it('доля готового — от всех кадров фильма', () => {
+    const cache = new FrameCache<string>();
     cache.fit(doc, 1280, 720);
     expect(cache.progress(10)).toBe(0);
     cache.put(0, 'a');
-    expect(cache.progress(10)).toBe(0.5);
-    cache.put(1, 'b');
-    expect(cache.progress(10)).toBe(1);
+    expect(cache.progress(10)).toBe(0.1);
   });
 
   it('другой документ или другой размер — всё заново', () => {
-    const cache = new FrameCache<string>(8 * MB);
+    const cache = new FrameCache<string>();
     cache.fit(doc, 100, 100);
     cache.put(0, 'a');
     cache.fit(doc, 100, 100);

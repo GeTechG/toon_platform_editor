@@ -1,24 +1,16 @@
 // The player's frames, rasterized ahead of the clock. A frame of a film is
 // every stroke of every layer drawn again; shown from here it is one copy of
 // pixels. Pure — the player decides what a frame is and how it is drawn.
-
-/**
- * How much the rasterized frames may weigh, bytes. The calibration knob: a
- * film longer than this holds is drawn stroke by stroke past it, as before.
- */
-export const FRAME_CACHE_BYTES = 192 * 1024 * 1024;
+//
+// No ceiling on what it holds (owner, 2026-10-10): the whole film, whatever
+// its length. A device that cannot hold it says so when a frame is taken, and
+// the player draws the rest live.
 
 export class FrameCache<T> {
-  readonly #budget: number;
   readonly #frames = new Map<number, T>();
   #of: object | null = null;
   #width = 0;
   #height = 0;
-  #room = 0;
-
-  constructor(budget = FRAME_CACHE_BYTES) {
-    this.#budget = budget;
-  }
 
   /** What the frames are drawn from and at what size. A change starts it over. */
   fit(of: object, width: number, height: number): void {
@@ -29,30 +21,21 @@ export class FrameCache<T> {
     this.#of = of;
     this.#width = width;
     this.#height = height;
-    this.#room = Math.floor(this.#budget / (width * height * 4));
   }
 
   get(index: number): T | undefined {
     return this.#frames.get(index);
   }
 
-  /** Keeps the frame if there is room for it; says whether it did. */
-  put(index: number, frame: T): boolean {
-    if (!this.#frames.has(index) && this.#frames.size >= this.#room) {
-      return false;
-    }
+  put(index: number, frame: T): void {
     this.#frames.set(index, frame);
-    return true;
   }
 
   /**
    * The frame to rasterize next: the first not held yet, from the one on
-   * screen onwards and round. Null when all are held or there is no room.
+   * screen onwards and round. Null when all are held.
    */
   next(total: number, from: number): number | null {
-    if (this.#frames.size >= this.#room) {
-      return null;
-    }
     for (let step = 0; step < total; step++) {
       const index = (from + step) % total;
       if (!this.#frames.has(index)) {
@@ -62,10 +45,9 @@ export class FrameCache<T> {
     return null;
   }
 
-  /** How much of what it will hold is held, 0…1 — the loading the viewer waits out. */
+  /** How much of the film is held, 0…1 — the loading the viewer waits out. */
   progress(total: number): number {
-    const goal = Math.min(total, this.#room);
-    return goal > 0 ? Math.min(1, this.#frames.size / goal) : 1;
+    return total > 0 ? Math.min(1, this.#frames.size / total) : 1;
   }
 
   clear(): void {

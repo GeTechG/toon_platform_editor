@@ -90,7 +90,7 @@
   /** The frames rasterized ahead of the clock (`warm` below), as pixels. */
   const cache = new FrameCache<ImageData>();
   /**
-   * Whether the film is rasterized — all of it the cache will hold. Until
+   * Whether the film is rasterized — every frame of it. Until
    * then the clock stands and the viewer is shown the wait: a film that
    * starts at once stutters through its first lap, drawing each frame live.
    */
@@ -168,8 +168,7 @@
   // The film is rasterized ahead of its clock, a frame a task from the one on
   // screen onwards, so the show is not every stroke of every layer drawn again
   // on every lap. Pixels read back, not canvases: Safari caps canvas memory,
-  // and a film's worth of them ran into it. What does not fit the cache's
-  // budget stays drawn live.
+  // and a film's worth of them ran into it.
   $effect(() => {
     void view;
     // The bitmap's size and not the raster: that one changes with every pixel
@@ -199,7 +198,14 @@
         return;
       }
       paint(index, ctx as unknown as Canvas2DLike);
-      cache.put(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+      try {
+        cache.put(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+      } catch {
+        // The device has no room for another frame: the film plays with what
+        // is held and draws the rest live, rather than loading for ever.
+        ready = true;
+        return;
+      }
       warmed = cache.progress(total);
       timer = setTimeout(warm, 0);
     };
