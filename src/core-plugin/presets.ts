@@ -109,7 +109,8 @@ export const PRESETS: Readonly<Record<string, PluginPreset>> = {
     //
     // Each line sits where the reference put it. The strip's line holds only
     // what acts on frames — `+` and `×` right beside it. The next line opens
-    // on play, then what the reference had no key for (fullscreen, the gear),
+    // on play, then what the reference had no key for (fullscreen, the gear,
+    // the help — owner, 2026-10-10: the preset a newcomer picks had none),
     // then the send button, and the save note after it (owner, 2026-10-06:
     // the note stood between the gear and the button). The
     // saves, undo, onion and fps stay on the shelf, a gesture away.
@@ -119,7 +120,7 @@ export const PRESETS: Readonly<Record<string, PluginPreset>> = {
       base: {
         rows: [
           ['add-frame', 'delete-frame', 'timeline'],
-          ['transport', 'fullscreen', 'settings', 'publish', 'saved'],
+          ['transport', 'fullscreen', 'settings', 'manual', 'publish', 'saved'],
           [...MULTATOR_KEYS, 'brush-sizes', 'color'],
         ],
       },

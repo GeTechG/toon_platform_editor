@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { presetAbout, presets, presetUx } from './presets';
+import { presetAbout, presetPanels, presets, presetUx } from './presets';
 import { plugins } from '../plugins';
 import { PLUGIN_API } from '../plugins/contract';
 import { createDocument } from '../model/operations';
@@ -60,4 +60,10 @@ describe('первый вход: набор выбирают над холсто
     const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(ask).toContain('<span>{presetAbout(p.id)}</span>');
   });
+});
+
+// Multator — набор для того, кто видит студию впервые (три инструмента), а
+// клавиши «Справка» в нём не было: она лежала на полке (владелец, 2026-10-10).
+it('в Multator «Справка» стоит рядом с шестерёнкой', () => {
+  expect(presetPanels('multator').rows[1]).toEqual(['transport', 'fullscreen', 'settings', 'manual', 'publish', 'saved']);
 });
