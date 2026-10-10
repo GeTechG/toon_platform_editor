@@ -12,6 +12,7 @@
 import { CANVAS_LOGICAL_WIDTH, MAX_BRUSH_SIZE_LOGICAL } from '../format/constants';
 import { NORMAL_BRUSH_TYPE, type BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
+import { FORMER_TOONOP_PANELS } from '../plugins/builtins';
 import { OFFICIAL_CATALOG } from '../plugins/catalog';
 import type { RegisteredPreset } from '../plugins/registry';
 import type { PickSource } from './frame-selection';
@@ -21,6 +22,7 @@ import {
   hidePanelItem,
   normalizePanels,
   panelsFrom,
+  samePanels,
   toolOfItem,
   toolSpec,
   type PanelLayout,
@@ -386,8 +388,12 @@ export function presetBrushType(id: string): BrushType {
  * preset does not offer — including the tools its profile never draws.
  */
 export function presetPanels(id: string): PanelLayout {
-  const preset = presetById(id);
-  let panels = panelsFrom(preset.panels);
+  return startOf(presetById(id));
+}
+
+/** `presetPanels` for a start the preset has, or had: `patch` in place of its own. */
+function startOf(preset: RegisteredPreset, patch = preset.panels): PanelLayout {
+  let panels = panelsFrom(patch);
   const ux = preset.ux;
   for (const item of panelItems()) {
     const tool = toolOfItem(item.id);
@@ -462,6 +468,12 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     ? presetPanels(preset)
     // Read before the installed plugins are: their keys wait for them.
     : normalizePanels(storedPanels, true);
+  // Stored whole while it was the preset's start (until 2026-10-10 a config
+  // always held one): nobody arranged it, so it follows today's start.
+  if (storedPanels !== undefined && preset === DEFAULT_PRESET
+    && FORMER_TOONOP_PANELS.some((former) => samePanels(panels, startOf(presetById(preset), former)))) {
+    panels = presetPanels(preset);
+  }
   if (storedPanels === undefined && typeof features === 'object' && features !== null) {
     for (const [key, id] of Object.entries(FEATURE_ITEM)) {
       if ((features as Record<string, unknown>)[key] === false) {
@@ -702,12 +714,26 @@ export function loadUiConfig(): UiConfig | null {
  * that actually rearranged wins (owner, 16th audit).
  */
 export function saveUiConfig(config: UiConfig, ownLayout = true): void {
-  let out = config;
+  // The preset's own arrangement is not written down (owner, 2026-10-10): a
+  // stored copy of it stayed as it was when the preset's start changed, and
+  // only «Сбросить» brought the new one. Unwritten, it is read back as the
+  // preset's of that day; a rearranged one is the user's and is kept whole.
+  // ponytail: all or nothing — one key moved freezes the whole arrangement;
+  // a three-way merge against the start it was made from is the upgrade.
+  let out: Omit<UiConfig, 'panels'> & { panels?: PanelLayout } = config;
+  try {
+    if (samePanels(config.panels, presetPanels(config.preset))) {
+      out = { ...config, panels: undefined };
+    }
+  } catch {
+    // Not an arrangement the editor can compare: written as it is.
+  }
   if (!ownLayout) {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Record<string, unknown> | null;
-      if (stored && typeof stored === 'object' && stored.panels !== undefined) {
-        out = { ...config, panels: stored.panels as PanelLayout, floatPos: (stored.floatPos ?? {}) as UiConfig['floatPos'] };
+      // A config of this day's shape (it names its windows) with no arrangement holds the preset's.
+      if (stored && typeof stored === 'object' && (stored.panels !== undefined || stored.floatPos !== undefined)) {
+        out = { ...config, panels: stored.panels as PanelLayout | undefined, floatPos: (stored.floatPos ?? {}) as UiConfig['floatPos'] };
       }
     } catch {
       // Nothing readable there: this tab's arrangement is the one to keep.

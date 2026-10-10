@@ -86,6 +86,27 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
   },
 };
 
+/**
+ * What toonop started with before, whole: an arrangement stored while it was
+ * the start is nobody's own, and follows today's (presets.ts `parseUiConfig`).
+ * Until 2026-10-10 a config held the arrangement always, touched or not.
+ */
+export const FORMER_TOONOP_PANELS: readonly NonNullable<PluginPreset['panels']>[] = [
+  // 2026-10-05 – 2026-10-10: the one after Procreate Dreams.
+  {
+    base: {
+      left: ['brush-rail', 'history'],
+      right: [],
+      top: [
+        'publish', 'save', 'export', 'audio', 'onion', 'settings', 'manual', 'fullscreen', 'saved', 'spring',
+        'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso',
+        'color-key',
+      ],
+      rows: [['fps', 'add-frame', 'transport'], ['timeline']],
+    },
+  },
+];
+
 /** The editor's own preset — the only one it holds; the rest come from plugins. */
 const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
