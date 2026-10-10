@@ -25,7 +25,7 @@ describe('первый вход: набор выбирают над холсто
 
   it('первый штрих её гасит, а под хабом и в режиме раскладки её нет', () => {
     expect(editor).toMatch(/if \(!isEmptyDocument\(editor\.doc\)\) editor\.closePresetAsk\(\);/);
-    expect(editor).toMatch(/\{#if editor\.presetAsk && noteDue && !editor\.arranging\}/);
+    expect(editor).toMatch(/\{#if editor\.presetAsk && plateDue && !editor\.arranging\}/);
   });
 
   it('первый вход — сразу на лист 1280×720, мимо выбора листа', () => {

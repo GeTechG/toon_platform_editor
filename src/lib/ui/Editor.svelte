@@ -1581,7 +1581,9 @@
   // count of frames, playing) and says when it has nothing left to say. The
   // studio only keeps the note from under the hub and a phone's «⋯» window.
   // …and not on a preset's desk lying down: the bar has no height for a line of words.
-  const noteDue = $derived(!draftsOpen && !moreOpen && !(deskPhone && !tall));
+  /** The first visit's question stands whichever way the phone is held: gone with the line of words, a press on a preset took the plate away with nothing more to pick (owner, 2026-10-10). */
+  const plateDue = $derived(!draftsOpen && !moreOpen);
+  const noteDue = $derived(plateDue && !(deskPhone && !tall));
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {
@@ -3022,7 +3024,7 @@
     <!-- A first visit: which studio to draw in. Pressed, a preset lays the
          panels out at once — the studio is its own preview. Nothing waits on
          it: the sheet under it draws, and the first line takes it away. -->
-    {#if editor.presetAsk && noteDue && !editor.arranging}
+    {#if editor.presetAsk && plateDue && !editor.arranging}
       <section class="preset-ask" aria-labelledby="preset-ask-title">
         <div class="preset-ask-head">
           <h2 id="preset-ask-title">{t('intro.title')}</h2>
