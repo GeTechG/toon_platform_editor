@@ -422,9 +422,9 @@ test('a config saved before panels existed keeps the buttons it had turned off',
     features: { export: false },
   }));
   expect(parsed?.panels.hidden).toContain('export');
-  // The rest stays where the preset has it — the onion on toonop's top bar.
+  // The rest stays where the preset has it — the onion by toonop's transport.
   expect(parsed?.panels.hidden).not.toContain('onion');
-  expect(parsed?.panels.top).toContain('onion');
+  expect(parsed?.panels.rows[0]).toContain('onion');
 });
 
 test('an old config’s one width for a canvas becomes every brush’s own record', () => {

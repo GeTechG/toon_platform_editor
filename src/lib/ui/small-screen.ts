@@ -128,7 +128,7 @@ export function toolRoom(width: number, rem: number, row: { publish: boolean; ke
 }
 
 /** What the phone's own keys already open: the colour key, a tool's key pressed again, the sidebar. */
-const BEHIND_A_KEY: readonly string[] = ['palette', 'color', 'color-key', 'brush', 'brush-sizes', 'brush-key', 'brush-rail'];
+const BEHIND_A_KEY: readonly string[] = ['palette', 'colours', 'color', 'color-key', 'brush', 'brush-sizes', 'brush-key', 'brush-rail'];
 
 /**
  * The frame keys a phone does not draw (owner, 2026-10-07: «убрать и сделать
@@ -136,6 +136,13 @@ const BEHIND_A_KEY: readonly string[] = ['palette', 'color', 'color-key', 'brush
  * cell, deletes, copies, pastes and merges.
  */
 const ON_THE_STRIP: readonly string[] = ['delete-frame', 'copy', 'paste', 'merge'];
+
+/**
+ * A phone's sidebar, whatever stands down the desktop's left: the thickness,
+ * undo and redo. The desk keeps its tools there (owner, 2026-10-10); a
+ * phone's are in its row.
+ */
+const PHONE_SIDE: readonly string[] = ['brush-rail', 'history'];
 
 /** What «⋯» holds on a phone whatever the arrangement: the toon's own keys. */
 const ALWAYS_BEHIND_MORE: readonly string[] = ['save', 'export', 'drafts'];
@@ -184,17 +191,18 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
   const rest = ranked.slice(inRow.length);
   const lying = keep.tall ? [] : ['history'];
   // By the transport, at the far end: the onion skin and the sound are the strip's.
-  const far = ['onion', 'audio'].filter((id) => placed.includes(id));
+  const strips = ['onion', 'audio'];
+  const far = strips.filter((id) => placed.includes(id));
   const sound = far.length > 0 ? ['spring', ...far] : [];
   // The frame rate's slider took the transport's line on 390 px: behind «⋯».
-  const rows = base.rows.map((row) => (row.includes('transport') ? [...row.filter((id) => id !== 'fps'), ...sound] : row));
+  const rows = base.rows.map((row) => (row.includes('transport') ? [...row.filter((id) => id !== 'fps' && !strips.includes(id)), ...sound] : row));
   // Lying down the height is the canvas's (owner, 2026-10-07): the transport's
   // keys stand in the row over it, which has the width, and the bar is the
   // strip alone — folded, only its fold key.
   // In the middle of the row, a spring on either side (owner: «сделай их по центру»).
   const lifted = keep.tall ? [] : ['spring:lead', ...rows.filter((row) => row.includes('transport')).flat().filter((id) => id !== 'spring')];
   const panels: PanelLayout = {
-    left: base.left.filter((id) => !lying.includes(id)),
+    left: PHONE_SIDE.filter((id) => !lying.includes(id)),
     right: [],
     top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 ? ['tools'] : []), 'color-key'],
     rows: keep.tall ? rows : rows.filter((row) => !row.includes('transport')),
@@ -203,7 +211,7 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
   };
   // Off the panels, as toonop keeps them: a tool's key opens the brush only where no brush control is placed.
   panels.hidden = BEHIND_A_KEY.filter((id) => !panels.top.includes(id) && !panels.left.includes(id));
-  const drawn = [...base.left, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
+  const drawn = [...PHONE_SIDE, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
   // The frame rate is always there: the row it stood in has no room for it.
   // So are saving, export and the drafts, placed or not: a phone has no shelf
   // to fetch a key from and no arranger, and Multator's arrangement — which

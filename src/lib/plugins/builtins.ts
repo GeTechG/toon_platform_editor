@@ -91,31 +91,21 @@ const TOONOP_PRESET: PluginPreset = {
   label: 'Toonop',
   brush: 'toonop-brush',
   ux: TOONOP_UX,
-  // Its own arrangement — the owner's, saved by hand and handed over as the
-  // default (2026-10-05). Beside the canvas, as a sidebar: the brush's
-  // thickness, undo and redo. On the bar over the canvas, at its near end:
-  // send, draft, export, the sound, the onion, the gear, help, full screen
-  // and the save note — plain keys; at its far end what draws: the tools,
-  // then the colours (a tool pressed again opens its brush). Over the strip
-  // only what times the film: the rate, «+» and the transport. No right
-  // column. On the shelf, a key away, what is rarely pressed — the pixel,
-  // the distort, the drafts. The one default arrangement stays the
-  // reference presets'.
+  // Its own arrangement, a desk's (owner, 2026-10-10: the one after
+  // Procreate Dreams was a tablet's): the tools down the left, as desk
+  // programs stand them, with the brush's thickness under them (a tool
+  // pressed again opens its brush); toonop's own colours open on the right,
+  // where a cursor has the room — no window over the sheet. On the bar over
+  // the canvas, at its near end, what the film leaves by — send, draft,
+  // export — then undo, redo and the save note; at its far end the studio's
+  // own: the gear, help, full screen. Over the strip what times the film:
+  // the rate, «+», the transport, the onion, the sound. On the shelf, a key
+  // away, what is rarely pressed — the pixel, the distort, the drafts. A
+  // phone keeps its own cut (small-screen.ts). The one default arrangement
+  // stays the reference presets'.
   panels: {
     base: {
-      left: ['brush-rail', 'history'],
-      right: [],
-      top: [
-        'publish',
-        'save',
-        'export',
-        'audio',
-        'onion',
-        'settings',
-        'manual',
-        'fullscreen',
-        'saved',
-        'spring',
+      left: [
         'tool:pencil',
         'tool:eraser',
         'tool:feather',
@@ -123,9 +113,11 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:pipette',
         'tool:drag',
         'tool:lasso',
-        'color-key',
+        'brush-rail',
       ],
-      rows: [['fps', 'add-frame', 'transport'], ['timeline']],
+      right: ['colours'],
+      top: ['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen'],
+      rows: [['fps', 'add-frame', 'transport', 'onion', 'audio'], ['timeline']],
     },
   },
 };

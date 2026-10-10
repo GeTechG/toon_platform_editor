@@ -16,7 +16,8 @@ describe('the colours window in a low window', () => {
 
   it('the surface is as tall as the room and stands beside the rest', () => {
     expect(low).toContain('var(--room');
-    expect(low).toMatch(/\.colours \{[^}]*display: grid/);
+    // The window's alone: standing open in a column, the panel keeps the column's shape.
+    expect(low).toMatch(/\.colours:not\(\.docked\) \{[^}]*display: grid/);
     expect(low).toMatch(/\.surface \{[^}]*width: var\(--side\)/);
   });
 

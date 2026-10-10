@@ -71,6 +71,7 @@
     align-items: center;
     gap: 0.2rem;
     width: var(--key-h);
+    min-height: 0;
   }
   .now {
     font-size: 0.8rem;
@@ -78,18 +79,24 @@
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
   }
-  /* The room the turned slider stands in: a key wide, nine rem tall. */
+  /* The room the turned slider stands in: a key wide, nine rem tall — less
+     where the sidebar under a desk's tools has less (Editor.svelte), never
+     under three. */
   .well {
     position: relative;
+    flex: 0 1 var(--rail-h);
+    min-height: min(3rem, var(--rail-h));
     width: var(--key-h);
-    height: var(--rail-h);
+    container-type: size;
   }
   /* Turned, not `writing-mode: vertical-lr`: Safari 16 lays that one down. */
   .well input {
     position: absolute;
     left: 50%;
     top: 50%;
+    /* As long as the room is tall, whatever it shrank to. */
     width: var(--rail-h);
+    width: 100cqh;
     height: var(--key-h);
     margin: 0;
     transform: translate(-50%, -50%) rotate(-90deg);
@@ -117,6 +124,7 @@
     /* Fourteen rem where the stage has them, what it has where it has not. */
     flex: 0 1 auto;
     min-width: 4rem;
+    min-height: 0;
     width: 14rem;
     height: var(--key-h);
   }

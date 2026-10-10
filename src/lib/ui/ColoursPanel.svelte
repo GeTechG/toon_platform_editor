@@ -30,7 +30,7 @@
   } from './colour-wheel';
   import { t } from '../i18n';
 
-  let { editor, docked = false }: { editor: EditorState; /** In a small screen's window. */ docked?: boolean } = $props();
+  let { editor, docked = false }: { editor: EditorState; /** Standing open in a column, not in a key's window. */ docked?: boolean } = $props();
 
   const TABS = ['disc', 'classic', 'harmony', 'value', 'palettes'] as const;
   type Tab = (typeof TABS)[number];
@@ -225,7 +225,9 @@
   function onCellKey(e: KeyboardEvent, i: number): void {
     const cells = (e.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLElement>('.cell');
     if (!cells) return;
-    const next = gridStep(i, e.key, cells.length, 10);
+    // As many to a row as the grid draws: ten in the window, fewer standing in a column.
+    const cols = getComputedStyle(cells[0].parentElement!).gridTemplateColumns.split(' ').length;
+    const next = gridStep(i, e.key, cells.length, cols);
     if (next === null || next === i) return;
     e.preventDefault();
     cells[next].focus();
@@ -463,7 +465,7 @@
 
   <div class="tabs" role="group" aria-label={t('colours.ways')}>
     {#each TABS as id (id)}
-      <button class="tab" class:active={tab === id} aria-pressed={tab === id} onclick={() => (tab = id)}>
+      <button class="tab" class:active={tab === id} aria-pressed={tab === id} title={docked ? t(`colours.tab.${id}`) : undefined} onclick={() => (tab = id)}>
         <Icon name={TAB_ICONS[id]} size={20} />
         <span>{t(`colours.tab.${id}`)}</span>
       </button>
@@ -489,12 +491,41 @@
     --white: #fff;
     --black: #000;
   }
-  /* In a small screen's window: no wider than the plate it is drawn for. */
+  /* Standing open in a column (toonop on a desk): the column is its plate
+     and pads it, and is two thirds of the window's width — the cells are as
+     many to a row as have the room, the tabs their icons alone (the word is
+     the key's title and its name). */
   .colours.docked {
     width: 100%;
     max-width: 21rem;
     margin: 0 auto;
-    box-sizing: border-box;
+    padding: 0;
+    /* Closer, and the surface a little under the column's width: on a
+       1440×900 screen the whole panel stands in the column unscrolled. */
+    gap: 0.4rem;
+  }
+  .colours.docked .surface:not(.square) {
+    max-width: 12rem;
+  }
+  .colours.docked .cells {
+    grid-template-columns: repeat(auto-fill, minmax(1.5rem, 1fr));
+  }
+  .colours.docked .tabs {
+    /* Over the column's own padding: the swatches showed under the tabs. */
+    bottom: -0.6rem;
+    margin: 0;
+    padding-inline: 0;
+  }
+  .colours.docked .tab {
+    min-height: var(--key-h);
+  }
+  .colours.docked .tab span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   /* The surface, or what stands for it, and what follows it: one column
      here, two in a low window (below). */
@@ -782,7 +813,7 @@
      ponytail: asked of the window, not of the room — a key on a bottom row of
      a tall window still gets the column; branch on `--room` if that shows. */
   @media (max-height: 36rem) and (min-width: 40rem) {
-    .colours {
+    .colours:not(.docked) {
       /* The plate's two hairlines and the padding over and under the surface. */
       --side: min(17rem, var(--room) - 1.2rem - 2px);
       display: grid;
@@ -792,8 +823,8 @@
       width: auto;
       height: calc(var(--side) + 1.2rem);
     }
-    .stage,
-    .rest {
+    .colours:not(.docked) .stage,
+    .colours:not(.docked) .rest {
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
@@ -801,34 +832,34 @@
       overflow-y: auto;
       overscroll-behavior: contain;
     }
-    .stage {
+    .colours:not(.docked) .stage {
       grid-area: 1 / 1 / -1 / 2;
       /* The width a list in it is drawn for; a surface is its own. */
       min-width: 17rem;
       padding-bottom: 0.6rem;
     }
-    header {
+    .colours:not(.docked) header {
       grid-area: 1 / 2;
     }
-    .rest {
+    .colours:not(.docked) .rest {
       grid-area: 2 / 2;
     }
-    .tabs {
+    .colours:not(.docked) .tabs {
       position: static;
       grid-area: 3 / 2;
       margin: 0 -0.4rem;
     }
-    .surface {
+    .colours:not(.docked) .surface {
       flex: none;
       width: var(--side);
       max-width: none;
     }
     /* Square here: a wider one made the plate wider than its key placed it. */
-    .surface.square {
+    .colours:not(.docked) .surface.square {
       aspect-ratio: 1;
     }
     /* The list of harmonies stands over the wheel, and takes a key of its height. */
-    .surface.wheel {
+    .colours:not(.docked) .surface.wheel {
       width: calc(var(--side) - var(--key-h) - 0.5rem);
     }
   }

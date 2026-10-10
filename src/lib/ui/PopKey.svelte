@@ -5,6 +5,7 @@
    * of the colours and of a tool's brush (toonop) — the sound's plate, made
    * general.
    */
+  import { plateAt, type PlatePlace } from './pop-place';
   import type { Snippet } from 'svelte';
   import { notePopupClosed } from './dismiss-press';
 
@@ -36,7 +37,7 @@
   let open = $state(false);
   let key = $state<HTMLButtonElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
-  let at = $state<{ x: number; top?: number; bottom?: number; max: number } | undefined>();
+  let at = $state<PlatePlace | undefined>();
   /** Bumped by a window resize: the key moves with the layout, the plate follows. */
   let resized = $state(0);
 
@@ -48,16 +49,13 @@
     void resized;
     if (!open || !key || !plate) return;
     const k = key.getBoundingClientRect();
-    const above = k.top - 14;
-    const below = window.innerHeight - k.bottom - 14;
+    // A column standing beside the canvas; lying along its foot it is a row of keys.
+    const column = key.closest('aside:not(.lies)')?.getBoundingClientRect();
+    const view = { w: window.innerWidth, h: window.innerHeight };
     // Told before the box is measured: a box may lay itself out by the room
     // it has (the colours in a low window), and that changes its width.
-    plate.style.setProperty('--room', `${Math.max(above, below)}px`);
-    const width = plate.offsetWidth;
-    const x = Math.max(8, Math.min(k.right - width, window.innerWidth - width - 8));
-    at = below >= above
-      ? { x, top: k.bottom + 6, max: below }
-      : { x, bottom: window.innerHeight - k.top + 6, max: above };
+    plate.style.setProperty('--room', `${column ? view.h - 28 : Math.max(k.top - 14, view.h - k.bottom - 14)}px`);
+    at = plateAt(k, { w: plate.offsetWidth, h: plate.offsetHeight }, view, column);
   });
 
   // A press anywhere else closes it and still does its own work — a key is

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
-import { defaultPanels, movePanelItem, toolItem, toolOpensBrush } from './panels';
+import { defaultPanels, movePanelItem, toolItem, toolOpensBrush, type PanelLayout } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
 import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, toolRoom } from './small-screen';
 
@@ -87,7 +87,7 @@ describe('a phone draws toonop’s desktop', () => {
     const drawn = [...all(cut), ...cut.panels.top, ...cut.panels.rows.flat(), ...cut.tools];
     for (const id of ['merge', 'paste', 'copy', 'delete-frame']) expect(drawn).not.toContain(id);
     expect(cut.more.find((group) => group.id === 'toon')?.items).toEqual(['save', 'export', 'drafts', 'saved']);
-    const bare = phoneLayout({ ...base, top: ['publish', 'settings'] }, base, keep);
+    const bare = phoneLayout({ ...base, top: ['publish', 'settings'], rows: [['fps', 'add-frame', 'transport'], ['timeline']] }, base, keep);
     expect(bare.more.map((group) => group.id)).toEqual(['frames', 'toon', 'studio']);
     // No sound and no onion skin placed, no keys for them.
     expect(bare.panels.rows[0]).toEqual(['add-frame', 'transport']);
@@ -106,7 +106,7 @@ describe('a phone draws toonop’s desktop', () => {
   it('an arrangement with columns is drawn the same way; its boxes are behind the colour key and the tool keys', () => {
     const layout = defaultPanels();
     const cut = phoneLayout(layout, base, keep);
-    expect(cut.panels.left).toEqual(base.left);
+    expect(cut.panels.left).toEqual(['brush-rail', 'history']);
     expect(cut.panels.rows[1]).toEqual(['timeline']);
     expect(cut.panels.top.slice(0, 3)).toEqual(['publish', 'more', 'spring']);
     expect(cut.panels.top.at(-1)).toBe('color-key');
@@ -343,6 +343,18 @@ describe('the studio draws one markup, given the arrangement', () => {
 // line. As Procreate keeps one row: what has no room goes behind a key.
 describe('the desktop’s bar over the canvas stays one row', () => {
   const tools = phoneTools(presetUx(DEFAULT_PRESET));
+  // An arrangement with its tools on the bar, as toonop's was until 2026-10-10: the desk's own keeps them down the left.
+  const base: PanelLayout = {
+    ...presetPanels(DEFAULT_PRESET),
+    left: ['brush-rail', 'history'],
+    right: [],
+    top: [
+      'publish', 'save', 'export', 'audio', 'onion', 'settings', 'manual', 'fullscreen', 'saved', 'spring',
+      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
+      'color-key',
+    ],
+    rows: [['fps', 'add-frame', 'transport'], ['timeline']],
+  };
   const firstTool = base.top.findIndex((id) => id.startsWith('tool:'));
 
   it('with room for it all the arrangement is drawn as it is', () => {

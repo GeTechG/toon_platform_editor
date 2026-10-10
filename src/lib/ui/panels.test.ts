@@ -215,31 +215,24 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    // Beside the canvas: the brush's sliders, then undo and redo — nothing else.
-    expect(studio.left).toEqual(['brush-rail', 'history']);
-    // The owner (2026-10-05): no right column — a top bar with a key for the
-    // brush and a key for the colours, each opening its own window.
-    expect(studio.right).toEqual([]);
-    // …and the tools on that bar too, before the two keys (the same day).
-    // The bar in two halves: the film and the studio on the left, what draws
-    // on the right, a spring between them.
-    expect(studio.top).toEqual([
-      // «Отправить» first (owner, 2026-10-05).
-      // …then the sound and the onion with them, the save note last: the
-      // owner's own arrangement, saved and handed over as the default.
-      'publish', 'save', 'export', 'audio', 'onion', 'settings', 'manual', 'fullscreen', 'saved',
-      'spring',
+    // A desk's (owner, 2026-10-10): the tools down the left, the thickness under them.
+    expect(studio.left).toEqual([
       ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
-      'color-key',
+      'brush-rail',
     ]);
+    // Toonop's own colours, open: no window over the sheet.
+    expect(studio.right).toEqual(['colours']);
+    // The bar in two halves: the film, undo and the save note on the left,
+    // the studio's own keys on the right, a spring between them.
+    expect(studio.top).toEqual(['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen']);
     expect(studio.rows).toEqual([
-      ['fps', 'add-frame', 'transport'],
+      ['fps', 'add-frame', 'transport', 'onion', 'audio'],
       ['timeline'],
     ]);
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key', 'color-key',
     ].sort());
   });
 

@@ -130,6 +130,8 @@ function fixedItems(): readonly PanelItem[] {
   // The plain pair, for whoever wants a key instead of a box.
   { id: 'color', kind: 'widget', label: t('panel.item.color') },
   // A key each, the box behind it: the top bar's form of the two (toonop).
+  // Toonop's colours standing open in a column: the window of `color-key`, with no key before it.
+  { id: 'colours', kind: 'widget', wide: true, label: t('panel.item.colours') },
   { id: 'brush-key', kind: 'widget', label: t('panel.item.brush_key') },
   { id: 'color-key', kind: 'widget', label: t('panel.item.color_key') },
   { id: 'brush-sizes', kind: 'widget', wide: true, label: t('panel.item.brush_sizes') },

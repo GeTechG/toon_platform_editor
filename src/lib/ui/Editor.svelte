@@ -2558,6 +2558,8 @@
       {#snippet face()}<span class="colour-dot" style:--swatch={editor.brushColor} style:--fill={editor.fillColor}></span>{/snippet}
       <ColoursPanel {editor} />
     </PopKey>
+  {:else if id === 'colours'}
+    <ColoursPanel {editor} docked />
   {:else if id === 'brush-sizes'}
     <BrushSizes {editor} />
   {:else if id === 'timeline'}
@@ -3858,6 +3860,21 @@
   .studio .left.sidebar .history {
     grid-template-columns: 1fr;
   }
+  /* A desk's sidebar holds the tools over the thickness (toonop, 2026-10-10):
+     a column whose keys keep their size — on a low screen the slider is what
+     gives way, down to its floor (BrushRail), and only past that the card
+     scrolls. */
+  .studio:not(.compact) .left.sidebar:not(.lies) {
+    display: flex;
+    flex-direction: column;
+  }
+  .studio:not(.compact) .left.sidebar:not(.lies) > :global(*) {
+    flex: none;
+  }
+  .studio:not(.compact) .left.sidebar:not(.lies) > :global(.brush-rail) {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
   /* The widget lying (a screen standing up): across the stage's row, at its
      foot, in the middle — over the canvas like any card, in no column. One
      line: the number, the slider, undo, redo. */
@@ -3873,6 +3890,13 @@
     max-width: calc(100% - 1.2rem);
     margin: 0 0 0.6rem;
     padding: 0.4rem 0.6rem;
+  }
+  /* The tools lying with it keep their width: the slider gives way, not they. */
+  .studio .left.sidebar.lies > :global(:not(.brush-rail)) {
+    flex: none;
+  }
+  .studio .left.sidebar.lies > :global(.key) {
+    width: var(--key-h);
   }
   .studio .left.sidebar.lies .history {
     /* Two keys whole: the slider gives way, not they. */
