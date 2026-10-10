@@ -532,13 +532,10 @@
   .colours.docked .surface:not(.square) {
     max-width: 10.5rem;
   }
-  /* A laptop's column: the surface gives the swatches some of its room, and
-     the history its own — the palette is what stays (a colour drawn with
-     joins it by itself), whole and unscrolled on 1536×864 and 1366×768. */
-  @media (max-height: 55rem) {
-    .colours.docked .surface:not(.square) {
-      max-width: 9rem;
-    }
+  /* A laptop's column has no room for the history: the palette is what
+     stays (a colour drawn with joins it by itself), whole and unscrolled on
+     1366×768 and 1280×720. From 832 px of height up both stand. */
+  @media (max-height: 52rem) {
     .colours.docked .history {
       display: none;
     }

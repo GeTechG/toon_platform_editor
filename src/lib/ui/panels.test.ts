@@ -220,11 +220,11 @@ describe('the default layouts', () => {
     // Toonop's own colours, open: no window over the sheet.
     // …the thickness under them and the key of the brush's box beside it.
     expect(studio.right).toEqual(['colours', 'brush-rail', 'brush-key']);
-    // The bar in two halves: the film, undo and the save note on the left,
-    // the studio's own keys on the right, a spring between them.
-    expect(studio.top).toEqual(['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen']);
+    // No bar over the canvas (owner, 2026-10-10: it stood mostly empty): the
+    // transport's row holds its keys at the far end, «Отправить» last.
+    expect(studio.top).toEqual([]);
     expect(studio.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio'],
+      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
       ['timeline'],
     ]);
     expect(studio.float).toEqual([]);

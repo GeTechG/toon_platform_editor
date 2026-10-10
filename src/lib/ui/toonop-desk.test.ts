@@ -31,12 +31,12 @@ describe('toonop on a desk', () => {
     expect(toolOpensBrush(phoneLayout(base, base, keep).panels, 'pencil')).toBe(true);
   });
 
-  it('over the canvas: the film’s keys and undo at the near end, the studio’s at the far one', () => {
-    expect(base.top).toEqual(['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen']);
-  });
-
-  it('the onion skin and the sound stand with the transport', () => {
-    expect(base.rows).toEqual([['fps', 'add-frame', 'transport', 'onion', 'audio'], ['timeline']]);
+  it('no bar over the canvas (owner: «убрать верхнее меню, всё куда-то разложить» — it was mostly empty): its keys stand at the far end of the transport’s row, «Отправить» last', () => {
+    expect(base.top).toEqual([]);
+    expect(base.rows).toEqual([
+      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+      ['timeline'],
+    ]);
   });
 
   it('a phone is drawn as it was: the thickness and undo beside the canvas, the colours behind their key', () => {

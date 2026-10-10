@@ -58,6 +58,15 @@
     at = plateAt(k, { w: plate.offsetWidth, h: plate.offsetHeight }, view, column);
   });
 
+  // Open, its column stands over the rest of the studio: the plate is in the
+  // column's own layer, and the strip's pinned cells lay over a window that
+  // reached down to the bar (toonop's desk: the brush under the colours).
+  $effect(() => {
+    const column = open ? key?.closest('aside') : null;
+    column?.classList.add('popped');
+    return () => column?.classList.remove('popped');
+  });
+
   // A press anywhere else closes it and still does its own work — a key is
   // pressed, the stroke that follows a colour starts with that press. A tap on
   // the sheet is the one press that only closes (owner, 2026-10-08): it left a

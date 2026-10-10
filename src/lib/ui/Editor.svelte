@@ -3830,6 +3830,11 @@
     position: relative;
     z-index: 1;
   }
+  /* While a key in it holds its window open (PopKey): over the bar and the strip. */
+  .studio .left:global(.popped),
+  .studio .right:global(.popped) {
+    z-index: calc(var(--z-float) + 5);
+  }
   .studio .left:not(.collapsed),
   .studio .right:not(.collapsed) {
     align-self: start;

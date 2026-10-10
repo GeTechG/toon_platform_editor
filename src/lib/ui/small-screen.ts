@@ -143,6 +143,8 @@ const ON_THE_STRIP: readonly string[] = ['delete-frame', 'copy', 'paste', 'merge
  * phone's are in its row.
  */
 const PHONE_SIDE: readonly string[] = ['brush-rail', 'history'];
+/** …and its bar under the canvas: a frame and the transport over the strip — the desk's row holds the studio's keys too. */
+const PHONE_ROWS: readonly (readonly string[])[] = [['add-frame', 'transport'], ['timeline']];
 
 /** What «⋯» holds on a phone whatever the arrangement: the toon's own keys. */
 const ALWAYS_BEHIND_MORE: readonly string[] = ['save', 'export', 'drafts'];
@@ -179,7 +181,8 @@ export interface PhoneLayout {
  * shelf stays there — but for saving, export and the drafts, which a phone
  * always has behind «⋯».
  */
-export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneKeep): PhoneLayout {
+// ponytail: `_base` is no longer read — the phone's sidebar and rows are its own (PHONE_SIDE, PHONE_ROWS); drop the parameter with its callers when they are next touched.
+export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: PhoneKeep): PhoneLayout {
   const placed = allPlaced({ ...layout, hidden: [] });
   const tools = placed.filter((id) => keep.drawn(toolOfItem(id) ?? '') && toolOfItem(id) !== null);
   const essential = (id: string) => keep.tools.includes(toolOfItem(id) ?? '');
@@ -195,7 +198,7 @@ export function phoneLayout(layout: PanelLayout, base: PanelLayout, keep: PhoneK
   const far = strips.filter((id) => placed.includes(id));
   const sound = far.length > 0 ? ['spring', ...far] : [];
   // The frame rate's slider took the transport's line on 390 px: behind «⋯».
-  const rows = base.rows.map((row) => (row.includes('transport') ? [...row.filter((id) => id !== 'fps' && !strips.includes(id)), ...sound] : row));
+  const rows = PHONE_ROWS.map((row) => (row.includes('transport') ? [...row, ...sound] : [...row]));
   // Lying down the height is the canvas's (owner, 2026-10-07): the transport's
   // keys stand in the row over it, which has the width, and the bar is the
   // strip alone — folded, only its fold key.

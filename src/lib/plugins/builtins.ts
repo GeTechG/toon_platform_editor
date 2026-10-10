@@ -97,11 +97,12 @@ const TOONOP_PRESET: PluginPreset = {
   // cursor has the room, toonop's own colours open — no window over the
   // sheet — and under them the brush: its thickness as one line, with the
   // key of the brush box beside it (the box and the colours together were
-  // taller than any laptop's column, and the owner wants no scroll). On the
-  // bar over the canvas, at its near end, what the film leaves by — send,
-  // draft, export — then undo, redo and the save note; at its far end the
-  // studio's own: the gear, help, full screen. Over the strip what times
-  // the film: the rate, «+», the transport, the onion, the sound. On the
+  // taller than any laptop's column, and the owner wants no scroll). No bar
+  // over the canvas: it stood mostly empty and took the sheet's height
+  // (owner, the same day). Over the strip, at the near end, what times the
+  // film: the rate, «+», the transport, the onion, the sound; at the far
+  // end undo, redo and the save note, the draft and export, the studio's
+  // own — the gear, help, full screen — and «Отправить» last. On the
   // shelf, a key away, what is rarely pressed — the pixel, the distort, the
   // drafts. A phone keeps its own cut (small-screen.ts). The one default
   // arrangement stays the reference presets'.
@@ -117,8 +118,11 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:lasso',
       ],
       right: ['colours', 'brush-rail', 'brush-key'],
-      top: ['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen'],
-      rows: [['fps', 'add-frame', 'transport', 'onion', 'audio'], ['timeline']],
+      top: [],
+      rows: [
+        ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+        ['timeline'],
+      ],
     },
   },
 };
