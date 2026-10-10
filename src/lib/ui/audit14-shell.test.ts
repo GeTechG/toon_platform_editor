@@ -186,7 +186,7 @@ describe('черновики на старте', () => {
     // …and it is up from the first frame (owner, 2026-10-05: the studio
     // blinked before the hub came). Nothing can have been begun under it, so
     // the old guard — a stroke under way, a sheet open — has nothing to guard.
-    expect(editorUi).toContain('let draftsOpen = $state(untrack(() => startNew === true || editor.settings.showDraftsOnStart));');
+    expect(editorUi).toContain('let draftsOpen = $state(untrack(() => !editor.presetAsk && (startNew === true || editor.settings.showDraftsOnStart)));');
     expect(mount).not.toMatch(/draftsOpen = /);
     expect(mount).toMatch(/await refreshDrafts\(\);\s*draftsRead = true;/);
   });

@@ -1523,8 +1523,9 @@
   // is loaded only when picked. The sheet for a new drawing is chosen there.
   // Up from the first frame: the studio showed for a blink while the hub
   // waited for the drafts to be read (owner, 2026-10-05). `draftsRead` tells
-  // the hub when it has them.
-  let draftsOpen = $state(untrack(() => startNew === true || editor.settings.showDraftsOnStart));
+  // the hub when it has them. A first visit is not met by it (owner,
+  // 2026-10-10): there is no draft to pick yet, and the sheet is 1280×720.
+  let draftsOpen = $state(untrack(() => !editor.presetAsk && (startNew === true || editor.settings.showDraftsOnStart)));
   // The host's note walks a first visit to its end — a line, a second frame,
   // play — so the host is told how far the toon has come (a line drawn, the
   // count of frames, playing) and says when it has nothing left to say. The
