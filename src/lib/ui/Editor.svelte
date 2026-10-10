@@ -640,7 +640,7 @@
   let tabWindow = $state<HTMLElement | undefined>();
   /** The strip under a phone's transport, folded: lying down, or short (200 % text), until asked for. */
   let stripShut = $state<boolean | null>(null);
-  const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));
+  const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));
   /** A phone lying down with its strip folded: the transport is in the row over the canvas, the bar is its tab alone. */
   const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes('timeline')));
   /** A desk's right column on a phone: behind its tab standing up, open lying down, until asked for. */
@@ -773,7 +773,9 @@
    */
   const folded = (id: SideId): boolean => (deskPhone ? id === 'right' && (sideShut ?? tall) : side(id).collapsed && !compact);
   /** The bottom bar, folded away by the same rule. */
-  const panelFolded = $derived(editor.panelCollapsed && !compact);
+  // A preset's desk on a phone folds its bar whole, as the desk does (owner,
+  // 2026-10-10: «пускай прячет всё») — and opens with it up: its tools are there.
+  const panelFolded = $derived(deskPhone ? (stripShut ?? false) : editor.panelCollapsed && !compact);
   /** What the bar's fold key says: the whole bar on the desktop, the strip on a phone. */
   const barFolded = $derived(panelFolded || stripFolded);
   /**
@@ -3084,7 +3086,7 @@
            its side at the corner of its seam. -->
       <button
         class="fold lying"
-        onclick={() => (compact ? (stripShut = !stripFolded) : editor.togglePanel())}
+        onclick={() => (compact ? (stripShut = !barFolded) : editor.togglePanel())}
         aria-expanded={!barFolded}
         title={barFolded ? t('editor.panel_expand') : t('editor.panel_fold')}
         aria-label={barFolded ? t('editor.bottom_expand') : t('editor.bottom_fold')}
@@ -3119,7 +3121,7 @@
            has to stand there holding a place open. -->
       <div class="toolbar">
         {#each panels.rows as row, i (i)}
-          <!-- A phone folds the strip alone: the transport's row stays. The strip's row goes whole, its keys with it (owner, 2026-10-10: «пускай прячет всё»). -->
+          <!-- Toonop's phone folds the strip alone: the transport's row stays. -->
           {#if !(stripFolded && row.includes('timeline'))}
           <div
             class="row"
