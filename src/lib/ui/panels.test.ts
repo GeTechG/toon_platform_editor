@@ -215,8 +215,8 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    // A desk's (owner, 2026-10-10): the tools down the left, nothing else.
-    expect(studio.left).toEqual(['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem));
+    // A desk's (owner, 2026-10-10): the tools down the left, undo and redo under them.
+    expect(studio.left).toEqual([...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem), 'history']);
     // Toonop's own colours, open: no window over the sheet.
     // …and nothing else: the brush, its thickness too, is behind its tool's key.
     expect(studio.right).toEqual(['colours']);
@@ -224,7 +224,7 @@ describe('the default layouts', () => {
     // transport's row holds its keys at the far end, «Отправить» last.
     expect(studio.top).toEqual([]);
     expect(studio.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
       ['timeline'],
     ]);
     expect(studio.float).toEqual([]);

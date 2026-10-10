@@ -114,7 +114,8 @@ const TOONOP_PRESET: PluginPreset = {
   ux: TOONOP_UX,
   // Its own arrangement, a desk's (owner, 2026-10-10: the one after
   // Procreate Dreams was a tablet's): the tools down the left, as desk
-  // programs stand them, and nothing else there; on the right, where a
+  // programs stand them, undo and redo under them (owner, the same day);
+  // on the right, where a
   // cursor has the room, toonop's own colours open — no window over the
   // sheet — and nothing else. The brush, its thickness too, is behind its
   // tool's key, pressed again or with the right button (owner, the same
@@ -123,7 +124,7 @@ const TOONOP_PRESET: PluginPreset = {
   // over the canvas: it stood mostly empty and took the sheet's height
   // (owner, the same day). Over the strip, at the near end, what times the
   // film: the rate, «+», the transport, the onion, the sound; at the far
-  // end undo, redo and the save note, the draft and export, the studio's
+  // end the save note, the draft and export, the studio's
   // own — the gear, help, full screen — and «Отправить» last. On the
   // shelf, a key away, what is rarely pressed — the pixel, the distort, the
   // drafts. A phone keeps its own cut (small-screen.ts). The one default
@@ -138,11 +139,12 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:pipette',
         'tool:drag',
         'tool:lasso',
+        'history',
       ],
       right: ['colours'],
       top: [],
       rows: [
-        ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+        ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
         ['timeline'],
       ],
     },

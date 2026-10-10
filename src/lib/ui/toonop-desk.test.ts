@@ -12,9 +12,9 @@ void plugins;
 const base = presetPanels(DEFAULT_PRESET);
 
 describe('toonop on a desk', () => {
-  it('the tools stand down the left, alone (owner: «слева толщину нужно убрать из панели») — the ones the bar held, no more', () => {
+  it('the tools stand down the left, no thickness (owner: «слева толщину нужно убрать из панели»), undo and redo under them (owner: «перенеси undo redo в левую панель»)', () => {
     expect(base.left).toEqual([
-      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso',
+      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso', 'history',
     ]);
     expect(base.hidden).toContain('tool:distort');
   });
@@ -38,7 +38,7 @@ describe('toonop on a desk', () => {
   it('no bar over the canvas (owner: «убрать верхнее меню, всё куда-то разложить» — it was mostly empty): its keys stand at the far end of the transport’s row, «Отправить» last', () => {
     expect(base.top).toEqual([]);
     expect(base.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
       ['timeline'],
     ]);
   });
