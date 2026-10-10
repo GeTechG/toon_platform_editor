@@ -2895,8 +2895,8 @@
     style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}>
     <CanvasView {editor} rail={stageRail} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
-         under the hub — and not under a phone's «⋯» window either. Nor under
-         the first visit's presets, which stand in the same place. -->
+         under the hub — and not under a phone's «⋯» window either. Under the
+         first visit's presets it is a line of their card instead. -->
     {#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
@@ -2978,6 +2978,10 @@
         </div>
         <p class="preset-ask-picked">{presetAbout(editor.preset)}</p>
         <p>{t('intro.later')}</p>
+        <!-- The host's note, where its place is the stage (a preset with no
+             bar over the canvas): the card stands there, so it is a line of
+             the card, as it is a line of a bar. -->
+        {#if !noteInPanel && !noteInTop}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
       </section>
     {/if}
     {#if over && moreOpen}
@@ -4572,10 +4576,14 @@
     font-weight: 800;
     text-wrap: balance;
   }
-  .preset-ask p {
+  .preset-ask > p {
     margin: 0 0.25rem;
     font-size: 0.8rem;
     color: var(--text-2);
+  }
+  /* The host with nothing to say leaves no gap for its line. */
+  .preset-ask > .panel-note:empty {
+    display: none;
   }
   .preset-ask-chips {
     display: flex;
@@ -4644,7 +4652,7 @@
     top: 2rem;
     padding: 0.5rem;
   }
-  .studio.compact .preset-ask p,
+  .studio.compact .preset-ask > p,
   .studio.compact .preset-ask-chips span {
     display: none;
   }
