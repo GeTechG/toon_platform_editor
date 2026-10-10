@@ -7,7 +7,8 @@ const player = await Bun.file(new URL('./Player.svelte', import.meta.url)).text(
 
 describe('the player draws at the same capped density as the editor', () => {
   it('goes through renderDensity, not the raw device ratio', () => {
-    expect(player).toContain('renderDensity(window.devicePixelRatio || 1)');
+    expect(player).toContain('window.devicePixelRatio || 1)');
+    expect(player).toContain('renderDensity(');
     expect(player).not.toContain('const dpr = window.devicePixelRatio || 1;');
   });
 });

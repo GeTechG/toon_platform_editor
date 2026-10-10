@@ -4,10 +4,11 @@
   // (single rendering contract) and the drift-free LoopPlayer. No tools, no
   // onion skin, no draft — a pure viewer for the public share page.
   import { untrack } from 'svelte';
-  import { CANVAS_LOGICAL_WIDTH } from '../format/constants';
+  import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
-  import { renderDensity } from '../ui/viewport';
+  import { renderDensity, sheetRaster } from '../ui/viewport';
+  import { FrameCache } from './frame-cache';
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
@@ -86,15 +87,47 @@
   );
   const cssHeight = $derived(cssWidth * (view.height / view.width));
 
+  /** The frames rasterized ahead of the clock (`warm` below), as pixels. */
+  const cache = new FrameCache<ImageData>();
+
+  /**
+   * The bitmap the frames are rasterized into — the sheet's, by the rule the
+   * studio's canvas draws by (`sheetRaster`): a sheet up to 1080p in its own
+   * pixels, a larger one in a whole fraction of them. The canvas is that
+   * bitmap and the page stretches it, so the film is the same pixels for
+   * everyone who watches it, and the ones it was drawn in.
+   */
+  const raster = $derived.by(() => {
+    // Capped like the editor's canvas: 3× on a phone is not visible on line
+    // art and costs 2.25× the pixels of a sheet too large to be drawn whole.
+    // The page is rendered on the server first, where there is no screen.
+    const dpr = renderDensity(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
+    const pxWidth = cssWidth * dpr;
+    return {
+      ...sheetRaster(
+        view,
+        { x: 0, y: 0, scale: (pxWidth * FIXED_POINT_SCALE) / view.width },
+        { width: pxWidth, height: cssHeight * dpr },
+      ),
+      screen: pxWidth,
+    };
+  });
+
+  /** One frame of the show — a frame of the film or a step of the replay. */
+  function paint(index: number, ctx: Canvas2DLike): void {
+    const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1 };
+    if (length.replay) {
+      renderer.render(replayAt(view, index), 0, ctx, viewport);
+    } else {
+      renderer.render(view, index, ctx, viewport);
+    }
+  }
+
   function draw(): void {
     if (!canvasEl) {
       return;
     }
-    // Capped like the editor's canvas: 3× on a phone is not visible on line
-    // art and costs 2.25× the pixels on every frame played.
-    const dpr = renderDensity(window.devicePixelRatio || 1);
-    const pxWidth = Math.max(1, Math.round(cssWidth * dpr));
-    const pxHeight = Math.max(1, Math.round(cssHeight * dpr));
+    const { width: pxWidth, height: pxHeight } = raster;
     if (canvasEl.width !== pxWidth) {
       canvasEl.width = pxWidth;
     }
@@ -110,13 +143,53 @@
     if (!ctx) {
       return;
     }
-    const viewport = { scale: cssWidth / view.width, dpr };
-    if (length.replay) {
-      renderer.render(replayAt(view, current), 0, ctx, viewport);
-    } else {
-      renderer.render(view, current, ctx, viewport);
+    // A frame rasterized already is laid down as it is; one the warming has
+    // not reached yet is drawn stroke by stroke, as every frame used to be.
+    cache.fit(view, pxWidth, pxHeight);
+    const ready = cache.get(current);
+    if (ready) {
+      (ctx as unknown as CanvasRenderingContext2D).putImageData(ready, 0, 0);
+      return;
     }
+    paint(current, ctx);
   }
+
+  // The film is rasterized ahead of its clock, a frame a task from the one on
+  // screen onwards, so the show is not every stroke of every layer drawn again
+  // on every lap. Pixels read back, not canvases: Safari caps canvas memory,
+  // and a film's worth of them ran into it. What does not fit the cache's
+  // budget stays drawn live.
+  $effect(() => {
+    void view;
+    void raster;
+    const scratch = document.createElement('canvas');
+    let timer: ReturnType<typeof setTimeout>;
+    const warm = (): void => {
+      const { width: pxWidth, height: pxHeight } = raster;
+      cache.fit(view, pxWidth, pxHeight);
+      const index = cache.next(total, Math.min(untrack(() => current), total - 1));
+      if (index === null) {
+        return;
+      }
+      if (scratch.width !== pxWidth) scratch.width = pxWidth;
+      if (scratch.height !== pxHeight) scratch.height = pxHeight;
+      // Made for reading back: every frame drawn on it is read once and kept.
+      const ctx = scratch.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        return;
+      }
+      paint(index, ctx as unknown as Canvas2DLike);
+      cache.put(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+      timer = setTimeout(warm, 0);
+    };
+    timer = setTimeout(warm, 0);
+    return () => {
+      clearTimeout(timer);
+      scratch.width = 0;
+      scratch.height = 0;
+      cache.clear();
+    };
+  });
 
   // The soundtrack, when there is one. It is built once per src and its own
   // clock drives the frames while it sounds, so picture and sound cannot drift
@@ -262,6 +335,7 @@
     bind:this={canvasEl}
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
+    style:image-rendering={raster.screen >= raster.width * 2 ? 'pixelated' : null}
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>
