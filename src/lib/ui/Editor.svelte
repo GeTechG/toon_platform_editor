@@ -661,6 +661,15 @@
    */
   let lyingOpen = $state<SideId | 'panel' | 'none' | null>(null);
   const openLying = $derived(lyingOpen ?? (panels.left.length > 0 ? 'left' : 'panel'));
+  /**
+   * Lying down, a desk that keeps everything under the sheet (Multator) stands
+   * its strip beside its rows of keys, not over them (owner, 2026-10-10:
+   * «каша из всего»): the bar is two keys tall, not five. Under 46rem the
+   * strip stands beside the first row alone and the rest run under both —
+   * beside the widest row it had a key's width left.
+   */
+  const stripBeside = $derived(deskPhone && !tall && panels.left.length === 0 && panels.right.length === 0);
+  const stripBesideOne = $derived(stripBeside && boxW < 46 * rem);
   const toggleLying = (id: SideId | 'panel'): void => {
     lyingOpen = openLying === id ? 'none' : id;
   };
@@ -807,7 +816,9 @@
   );
   /** The stage's own thickness rail: not where a panel already draws the slider (panels.ts). */
   const stageRail = $derived(
-    stageRailShown(panels, { left: folded('left'), right: folded('right'), rows: panelFolded }),
+    stageRailShown(panels, { left: folded('left'), right: folded('right'), rows: panelFolded }) &&
+      // A preset's desk on a phone that draws its own thicknesses (Multator's dots): the rail beside them was a second one.
+      !(deskPhone && itemDrawn(panels, 'brush-sizes', { left: folded('left'), right: folded('right'), rows: panelFolded })),
   );
   /** An open column's width as drawn: the stored one, giving way to the canvas; unstored, as measured. */
   const sideWidth = (id: SideId): number => {
@@ -1569,7 +1580,8 @@
   // play — so the host is told how far the toon has come (a line drawn, the
   // count of frames, playing) and says when it has nothing left to say. The
   // studio only keeps the note from under the hub and a phone's «⋯» window.
-  const noteDue = $derived(!draftsOpen && !moreOpen);
+  // …and not on a preset's desk lying down: the bar has no height for a line of words.
+  const noteDue = $derived(!draftsOpen && !moreOpen && !(deskPhone && !tall));
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {
@@ -3095,6 +3107,9 @@
     bind:offsetHeight={panelBoxH}
     class:collapsed={panelFolded}
     class:bare={barBare}
+    class:beside={stripBeside}
+    class:one={stripBesideOne}
+    style:--key-rows={stripBeside ? (stripBesideOne ? 1 : panels.rows.filter((row) => !row.includes('timeline')).length) : undefined}
     class:boxed={boxExtra > 0}
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, panels.rows.length - 1)}` : undefined}
     data-folded={panelFolded && editor.arranging ? '' : undefined}
@@ -4052,6 +4067,22 @@
   }
   .studio.compact.desk:not(.tall) .toolbar > .row.strip-row {
     flex: 1 1 100%;
+  }
+  /* …or stands beside them, down their whole height (`stripBeside`). */
+  .studio.compact.desk .panel.beside .toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.4rem 0.8rem;
+    align-items: start;
+  }
+  /* The rows of keys place themselves down the first column: the strip holds the second. */
+  .studio.compact.desk .panel.beside .toolbar > .row.strip-row {
+    grid-column: 2;
+    grid-row: 1 / span var(--key-rows, 1);
+  }
+  .studio.compact.desk .panel.beside.one .toolbar > .row:not(.strip-row) ~ .row:not(.strip-row) {
+    grid-column: 1 / -1;
+    grid-row: auto;
   }
   /* Its boxes open over the sheet, off the grid: beside it they left the
      pencil a third of the width standing up, and lying down were cut at the
