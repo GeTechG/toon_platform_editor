@@ -73,7 +73,9 @@ describe('a reload is not a plugin coming back', () => {
     expect(saved?.panels.left[1]).toBe(KEY);
     // …and the first write, before they are, keeps it too.
     saveUiConfig(saved!);
-    expect(JSON.parse(storage.getItem('toon-editor:ui')!).panels.left[1]).toBe(KEY);
+    // Written as moves over the preset's start since 2026-10-10: the key is one of them, and is read back in its place.
+    expect(JSON.parse(storage.getItem('toon-editor:ui')!).moves.map((move: { id: string }) => move.id)).toContain(KEY);
+    expect(loadUiConfig()?.panels.left[1]).toBe(KEY);
 
     await install();
     // What refreshPlugins does once loadInstalled is through.

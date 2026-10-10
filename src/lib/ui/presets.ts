@@ -27,6 +27,7 @@ import {
   toolSpec,
   type PanelLayout,
 } from './panels';
+import { movesOf, readMoves, withMoves, type PanelMove } from './panel-moves';
 import type { PickerModel } from './picker-model';
 import { type UxProfile } from './ux-profile';
 import { t } from '../i18n';
@@ -464,8 +465,10 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   // A config written before panels existed carried visibility in flags
   // instead: start from the arrangement and put away what was turned off.
   const storedPanels = (data as Record<string, unknown>).panels;
+  const moves = (data as Record<string, unknown>).moves;
   let panels = storedPanels === undefined
-    ? presetPanels(preset)
+    // Moves over today's start (panel-moves.ts); none stored, the start itself.
+    ? (Array.isArray(moves) ? normalizePanels(withMoves(presetPanels(preset), readMoves(moves)), true) : presetPanels(preset))
     // Read before the installed plugins are: their keys wait for them.
     : normalizePanels(storedPanels, true);
   // Stored whole while it was the preset's start (until 2026-10-10 a config
@@ -714,26 +717,27 @@ export function loadUiConfig(): UiConfig | null {
  * that actually rearranged wins (owner, 16th audit).
  */
 export function saveUiConfig(config: UiConfig, ownLayout = true): void {
-  // The preset's own arrangement is not written down (owner, 2026-10-10): a
-  // stored copy of it stayed as it was when the preset's start changed, and
-  // only «Сбросить» brought the new one. Unwritten, it is read back as the
-  // preset's of that day; a rearranged one is the user's and is kept whole.
-  // ponytail: all or nothing — one key moved freezes the whole arrangement;
-  // a three-way merge against the start it was made from is the upgrade.
-  let out: Omit<UiConfig, 'panels'> & { panels?: PanelLayout } = config;
+  // The arrangement is written as moves over the preset's start (owner,
+  // 2026-10-10: «override»; panel-moves.ts), never whole: a stored copy of
+  // the start stayed as it was when the start changed, and only «Сбросить»
+  // brought the new one. Untouched, it is no moves at all.
+  let out: Omit<UiConfig, 'panels'> & { panels?: PanelLayout; moves?: PanelMove[] } = config;
   try {
-    if (samePanels(config.panels, presetPanels(config.preset))) {
-      out = { ...config, panels: undefined };
-    }
+    out = { ...config, panels: undefined, moves: movesOf(config.panels, presetPanels(config.preset)) };
   } catch {
     // Not an arrangement the editor can compare: written as it is.
   }
   if (!ownLayout) {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Record<string, unknown> | null;
-      // A config of this day's shape (it names its windows) with no arrangement holds the preset's.
-      if (stored && typeof stored === 'object' && (stored.panels !== undefined || stored.floatPos !== undefined)) {
-        out = { ...config, panels: stored.panels as PanelLayout | undefined, floatPos: (stored.floatPos ?? {}) as UiConfig['floatPos'] };
+      // Whatever shape it was stored in — moves, or whole before there were moves — it stays that.
+      if (stored && typeof stored === 'object' && (stored.panels !== undefined || stored.moves !== undefined)) {
+        out = {
+          ...config,
+          panels: stored.panels as PanelLayout | undefined,
+          moves: stored.moves as PanelMove[] | undefined,
+          floatPos: (stored.floatPos ?? {}) as UiConfig['floatPos'],
+        };
       }
     } catch {
       // Nothing readable there: this tab's arrangement is the one to keep.
