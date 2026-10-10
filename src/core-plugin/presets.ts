@@ -84,7 +84,9 @@ const MULTATOR_UX: UxProfile = {
   onionMode: 'neighbors',
   colorGrid: false,
   fpsRange: [PLAYER_FPS_MIN, PLAYER_FPS_MAX],
-  livePipettePreview: false,
+  // The reference shows none; the owner wants the colour under the pipette
+  // seen in every preset (2026-10-10).
+  livePipettePreview: true,
   crossCursor: false,
   tools: MULTATOR_TOOLS,
   // Play alone (owner, 2026-10-06): a frame is a press on the strip.

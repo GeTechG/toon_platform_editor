@@ -67,3 +67,13 @@ describe('первый вход: набор выбирают над холсто
 it('в Multator «Справка» стоит рядом с шестерёнкой', () => {
   expect(presetPanels('multator').rows[1]).toEqual(['transport', 'fullscreen', 'settings', 'manual', 'publish', 'saved']);
 });
+
+// Пипетка показывает цвет, на который смотрит, в любом наборе: в Multator
+// квадратика у курсора не было — эталон его не рисует (владелец, 2026-10-10).
+it('пипетка показывает цвет под курсором во всех наборах', () => {
+  expect(['toonop', 'multator', 'toonio'].map((id) => [id, presetUx(id).livePipettePreview])).toEqual([
+    ['toonop', true],
+    ['multator', true],
+    ['toonio', true],
+  ]);
+});
