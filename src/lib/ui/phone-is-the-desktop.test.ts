@@ -133,7 +133,7 @@ describe('a phone draws toonop’s desktop', () => {
     // In the middle of the row (owner: «сделай их по центру»): a spring on either side.
     expect(editorUi).toContain("{:else if id === 'spring' || id === 'spring:lead'}");
     // The strip folded, nothing is left in the bar but its fold key.
-    expect(editorUi).toContain('const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes(\'timeline\')));');
+    expect(editorUi).toContain('const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.every((id) => id === \'timeline\')));');
     expect(editorUi).toContain('class:bare={barBare}');
     // …and the sheet is fitted to the whole stage: no bar to keep clear of.
     expect(editorUi).toContain('style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ?');
@@ -299,7 +299,7 @@ describe('the studio draws one markup, given the arrangement', () => {
 
   it('a phone folds the strip alone — the transport stays — and lying down starts folded', () => {
     expect(editorUi).toContain('const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));');
-    expect(editorUi).toContain("{#if !(stripFolded && row.includes('timeline'))}");
+    expect(editorUi).toContain("{@const shown = stripFolded ? row.filter((id) => id !== 'timeline') : row}");
     expect(editorUi).toContain('onclick={() => (compact ? (stripShut = !stripFolded) : editor.togglePanel())}');
   });
 

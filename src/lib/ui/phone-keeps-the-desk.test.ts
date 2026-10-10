@@ -32,15 +32,8 @@ describe('a phone keeps the preset’s desk', () => {
     expect(cut.tools).toEqual([]);
   });
 
-  it('Multator lying down: what stood under the sheet stands beside it, in the same order; the strip alone is left under', () => {
-    const cut = deskOnPhone(multator, false);
-    expect(cut.panels.right).toEqual([
-      'add-frame', 'delete-frame',
-      'transport', 'fullscreen', 'settings', 'export', 'manual', 'publish', 'saved',
-      'tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color',
-    ]);
-    expect(cut.panels.rows).toEqual([['timeline']]);
-    expect(cut.panels.left).toEqual([]);
+  it('Multator lying down: under the sheet still (owner: beside it was «странно») — the same rows', () => {
+    expect(deskOnPhone(multator, false).panels).toEqual(deskOnPhone(multator, true).panels);
   });
 
   it('Toonio standing up: the rail is the tools and undo — a key wide, the sheet has the width; the toon’s own keys join the transport’s row', () => {

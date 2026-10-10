@@ -642,13 +642,11 @@
   let stripShut = $state<boolean | null>(null);
   const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));
   /** A phone lying down with its strip folded: the transport is in the row over the canvas, the bar is its tab alone. */
-  const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes('timeline')));
+  const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.every((id) => id === 'timeline')));
   /** A desk's right column on a phone: behind its tab standing up, open lying down, until asked for. */
   let sideShut = $state<boolean | null>(null);
   /** …and open standing up it lies over the sheet: 390 px have no room for a column of boxes beside it. */
   const sideOver = $derived(deskPhone && tall);
-  /** Lying down, a desk with no columns stands its keys in the right one (`deskOnPhone`): lines of keys, not a grid of boxes. */
-  const sideKeys = $derived(deskPhone && !tall && editor.panels.right.length === 0);
   /** A tap past the boxes lying over the sheet — on it, on the bar — only closes them (owner, 2026-10-08). */
   function shutSideOver(e: PointerEvent): void {
     if (!sideOver || folded('right')) return;
@@ -3056,7 +3054,6 @@
       data-over-sheet={folded('right') || sideOver ? undefined : ''}
       class:over={sideOver}
       style:--box-h={sideOver ? `${boxH}px` : undefined}
-      class:keys={sideKeys}
       class:at-left={atLeft('right')}
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
@@ -3122,17 +3119,18 @@
            has to stand there holding a place open. -->
       <div class="toolbar">
         {#each panels.rows as row, i (i)}
-          <!-- A phone folds the strip alone: the transport's row stays. -->
-          {#if !(stripFolded && row.includes('timeline'))}
+          <!-- A phone folds the strip alone: the transport's row stays, and so do the keys beside the strip (Multator's «+» and «×»). -->
+          {@const shown = stripFolded ? row.filter((id) => id !== 'timeline') : row}
+          {#if shown.length > 0}
           <div
             class="row"
             role="group"
             aria-label={t('editor.row_n', { n: i + 1 })}
             data-slot="row:{i}"
-            class:strip-row={row.includes('timeline')}
+            class:strip-row={shown.includes('timeline')}
             bind:contentRect={rowBoxes[i]}
           >
-            {@render slot(row)}
+            {@render slot(shown)}
           </div>
           {/if}
         {/each}
@@ -4019,21 +4017,16 @@
   .studio.compact.desk .side-edge .fold {
     width: 1.75rem;
   }
-  /* Lying down, a desk that stood under the sheet stands beside it (Multator):
-     keys and their groups in lines, five keys wide — not the boxes' grid,
-     where every group took a line of its own and the column outgrew the screen. */
-  .studio.compact.desk .right.keys {
-    --key-h: var(--tap);
-    display: flex;
+  /* Lying down the rows of keys run on in one line, wrapping where the width
+     ends (Multator: three rows under the sheet took its whole height); the
+     strip, unfolded, takes a line of its own. */
+  .studio.compact.desk:not(.tall) .toolbar {
+    flex-direction: row;
     flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 0.4rem;
-    width: calc(5 * var(--tap) + 2.8rem);
-    padding: 0.6rem;
+    column-gap: 0.8rem;
   }
-  .studio.compact.desk .right.keys > :global(.key) {
-    flex: none;
-    width: var(--tap);
+  .studio.compact.desk:not(.tall) .toolbar > .row.strip-row {
+    flex: 1 1 100%;
   }
   /* Standing up its boxes open over the sheet, off the grid: beside it they
      left the pencil a third of the width. */
