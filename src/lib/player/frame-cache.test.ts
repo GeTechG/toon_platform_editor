@@ -78,4 +78,9 @@ describe('плеер показывает готовое', () => {
     expect(source).toContain("t('play.loading'");
     expect(source).toContain('role="status"');
   });
+
+  it('повтор рисунка из одного кадра не растеризуется заранее: шаг на штрих — это сотни битмапов', async () => {
+    const source = await Bun.file(new URL('./Player.svelte', import.meta.url)).text();
+    expect(source).toMatch(/if \(length\.replay\) \{\s*ready = true;\s*return;/);
+  });
 });

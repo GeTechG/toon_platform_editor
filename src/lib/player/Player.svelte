@@ -165,6 +165,14 @@
     void view;
     void bitmapWidth;
     void bitmapHeight;
+    // A drawing replayed stroke by stroke has a step per stroke: rasterized
+    // ahead, five hundred strokes were five hundred whole sheets held and each
+    // of them every stroke before it drawn again. It is drawn live, a step a
+    // tenth of a second.
+    if (length.replay) {
+      ready = true;
+      return;
+    }
     ready = false;
     warmed = 0;
     const scratch = document.createElement('canvas');
