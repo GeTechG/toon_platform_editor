@@ -3,7 +3,8 @@ import { addStroke, createDocument } from '../model/operations';
 import { exportWidths } from '../export/rasterize';
 import { resizeSheet, sheetChoices, sheetOf, sheetOpen, sheetProportions, sheetSizes, sheetValue } from './sheet-size';
 
-// Размер листа выбирается в начале: 720p, 1080p, 2K, 4K, лёжа и стоя. Пока на
+// Размер листа выбирается в начале: 720p или 1080p, лёжа и стоя — крупнее
+// растеризация слишком дорога на любом железе (владелец, 2026-10-10). Пока на
 // листе ничего нет — его можно сменить; после первого штриха он закреплён.
 // EditorState и Editor — на рунах: правило проверяется вызовом, обязанности
 // компонентов — по исходнику.
@@ -15,28 +16,28 @@ const editorUi = await Bun.file(UI + 'Editor.svelte').text();
 const line = { points: [0, 0, 80, 80], width: 40, color: '#000000' };
 
 describe('листы, с которых можно начать', () => {
-  it('16:9 — четыре размера, каждый лёжа и стоя', () => {
+  it('16:9 — два размера, каждый лёжа и стоя', () => {
     expect(sheetChoices().filter((choice) => choice.proportion === '16:9').map((choice) => choice.value)).toEqual([
-      '1280x720', '1920x1080', '2560x1440', '3840x2160',
-      '720x1280', '1080x1920', '1440x2560', '2160x3840',
+      '1280x720', '1920x1080',
+      '720x1280', '1080x1920',
     ]);
   });
 
   // Владелец, 2026-10-05: карточка — пропорции, размер — по длинной стороне.
   it('четыре пропорции; размер — длинная сторона, короткая чётная', () => {
     expect(sheetProportions()).toEqual(['16:9', '4:3', '1:1', '21:9']);
-    expect(sheetSizes()).toEqual(['720p', '1080p', '2K', '4K']);
+    expect(sheetSizes()).toEqual(['720p', '1080p']);
     expect(sheetOf('4:3', '1080p', false).value).toBe('1920x1440');
-    expect(sheetOf('21:9', '4K', false).value).toBe('3840x1646');
+    expect(sheetOf('21:9', '1080p', false).value).toBe('1920x822');
     expect(sheetOf('21:9', '720p', true).value).toBe('548x1280');
     expect(sheetOf('21:9', '720p', true).ratio).toBe('9:21');
   });
 
   it('квадрат один: стоя он тот же лист', () => {
-    expect(sheetOf('1:1', '2K', true)).toEqual(sheetOf('1:1', '2K', false));
+    expect(sheetOf('1:1', '1080p', true)).toEqual(sheetOf('1:1', '1080p', false));
     const values = sheetChoices().map((choice) => choice.value);
     expect(new Set(values).size).toBe(values.length);
-    expect(values.length).toBe(28);
+    expect(values.length).toBe(14);
   });
 
   it('каждый — документ, который формат принимает', () => {
@@ -67,9 +68,9 @@ describe('размер меняется, пока лист пуст', () => {
 
   it('выбор ставит документу логический размер в его единицах', () => {
     const doc = createDocument();
-    resizeSheet(doc, '2160x3840');
-    expect([doc.width, doc.height]).toEqual([17280, 30720]);
-    expect(sheetValue(doc)).toBe('2160x3840');
+    resizeSheet(doc, '1080x1920');
+    expect([doc.width, doc.height]).toEqual([8640, 15360]);
+    expect(sheetValue(doc)).toBe('1080x1920');
   });
 
   it('размера не из списка лист не берёт', () => {

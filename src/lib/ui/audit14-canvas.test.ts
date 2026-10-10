@@ -132,7 +132,7 @@ describe('пипетка сразу после смены вида', () => {
   it('холст читает пиксель листа по куску последнего собранного кадра', () => {
     const pick = handler('pickColor');
     expect(pick).toContain('toDocUnits(e)');
-    expect(pick).toContain('lastRaster.level - lastRaster.x');
+    expect(pick).toContain('* lastRaster.level');
   });
 });
 

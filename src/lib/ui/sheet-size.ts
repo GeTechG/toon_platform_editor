@@ -2,8 +2,8 @@
  * The sheet a drawing starts on. Its size is chosen once, at the start: an
  * empty sheet can be given another, and the first line fixes it.
  *
- * The lines are drawn for the view, sharp at any zoom, so the size is not how
- * crisp the drawing is: it is how much fits on the sheet beside a brush of the
+ * The frame is a bitmap of the sheet (`sheetRaster`), so the size is the pixels
+ * the drawing is made of, how much fits on the sheet beside a brush of the
  * same thickness, the proportions, and the size it exports at.
  */
 
@@ -15,9 +15,9 @@ import { t } from '../i18n';
 /** The long side in logical px; the short one follows the proportion. */
 const SHEET_SIZES = [
   { name: '720p', long: 1280 },
+  // Nothing larger (owner, 2026-10-10): past 1080p a frame costs too much to
+  // rasterize on any device. A drawing made on a larger sheet still opens.
   { name: '1080p', long: 1920 },
-  { name: '2K', long: 2560 },
-  { name: '4K', long: 3840 },
 ] as const;
 
 /** Lying; standing swaps the sides. */

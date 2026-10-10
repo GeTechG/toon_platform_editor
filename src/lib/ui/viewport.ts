@@ -4,10 +4,9 @@
  *
  * The sheet lies on a worktable the size of the stage: the canvas element is
  * the whole workspace, and the view says where the sheet sits on it and how
- * big it is drawn. The frame is a bitmap of the sheet (`sheetRaster`), and only
- * the piece on the table is ever rasterized (a 2 GB phone cannot hold a 4K
- * buffer), so the sheet can be walked around, not just magnified inside its
- * own frame.
+ * big it is drawn. The frame is a bitmap of the sheet (`sheetRaster`) and the
+ * view stretches it, so the sheet can be walked around and magnified without
+ * a buffer of the magnified size.
  */
 
 import { FIXED_POINT_SCALE } from '../format/constants';
@@ -530,71 +529,32 @@ export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x
 }
 
 /**
- * How many canvases' worth of pixels the sheet's bitmap may hold before it
- * gives up a step of sharpness. The calibration knob: higher keeps a
- * half-magnified sheet crisp, lower spares a weak phone's memory.
+ * The longest side of the sheet's bitmap, pixels: 1080p, lying or standing.
+ * Past it a frame costs too much to rasterize on any device (owner,
+ * 2026-10-10) — 76 ms for five layers of a hundred lines without a GPU.
  */
-export const RASTER_BUDGET = 2;
+export const SHEET_LONG_MAX = 1920;
 
-/**
- * The largest sheet, in its own pixels, that is always rasterized whole: 1080p,
- * lying or standing. Up to it the bitmap is the picture on every device — about
- * 8 MB a buffer, which a phone holds. The calibration knob: a larger sheet
- * falls back to fractions and pieces.
- */
-export const WHOLE_SHEET_PIXELS = 1920 * 1080;
-
-/** The piece of the sheet's bitmap a frame is composed into. */
+/** The sheet's bitmap a frame is composed into. */
 export interface SheetRaster {
-  /** Bitmap pixels per logical pixel of the document: 1, ½, ⅓, ¼… */
+  /** Bitmap pixels per logical pixel of the document: 1, or ½, ⅓… of a larger sheet. */
   level: number;
-  /** The piece inside the whole sheet's bitmap at that level, in its pixels. */
-  x: number;
-  y: number;
   width: number;
   height: number;
 }
 
 /**
- * The bitmap the frame is rasterized into. One pixel per logical pixel of the
- * document is the picture itself — the same on every screen, and never drawn
- * finer: a sheet magnified past it shows its pixels. A sheet up to 1080p is
- * always that bitmap, whole. Of a larger one a screen coarser than the sheet
- * takes a whole fraction, so a phone does not rasterize a 4K
- * sheet to show 720 lines; a magnified sheet takes only the piece on the
- * table. `on` is where the sheet lies on the canvas and how many of the
- * canvas's pixels a logical pixel of the document covers.
+ * The bitmap the frame is rasterized into: the whole sheet, a pixel per
+ * logical pixel of the document — the same on every screen and at any zoom,
+ * and never drawn finer: a sheet magnified past it shows its pixels. A sheet
+ * longer than 1080p takes a whole fraction of itself, so its lines stay on the
+ * pixel grid.
  */
-export function sheetRaster(
-  doc: { width: number; height: number },
-  on: { x: number; y: number; scale: number },
-  canvas: { width: number; height: number },
-): SheetRaster {
-  const EPS = 1e-6;
-  const whole = {
-    width: Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE)),
-    height: Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE)),
+export function sheetRaster(doc: { width: number; height: number }): SheetRaster {
+  const n = Math.max(1, Math.ceil(Math.max(doc.width, doc.height) / FIXED_POINT_SCALE / SHEET_LONG_MAX));
+  return {
+    level: 1 / n,
+    width: Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE / n)),
+    height: Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE / n)),
   };
-  if (whole.width * whole.height <= WHOLE_SHEET_PIXELS) {
-    return { level: 1, x: 0, y: 0, ...whole };
-  }
-  const piece = (n: number): SheetRaster => {
-    const level = 1 / n;
-    const k = level / on.scale;
-    const axis = (origin: number, table: number, units: number): [number, number] => {
-      const whole = Math.max(1, Math.ceil(units / FIXED_POINT_SCALE / n - EPS));
-      const from = Math.min(whole - 1, Math.max(0, Math.floor(-origin * k + EPS)));
-      const to = Math.min(whole, Math.max(from + 1, Math.ceil((table - origin) * k - EPS)));
-      return [from, to - from];
-    };
-    const [x, width] = axis(on.x, canvas.width, doc.width);
-    const [y, height] = axis(on.y, canvas.height, doc.height);
-    return { level, x, y, width, height };
-  };
-  let n = Math.max(1, Math.floor(1 / on.scale + EPS));
-  let out = piece(n);
-  while (out.width * out.height > RASTER_BUDGET * canvas.width * canvas.height) {
-    out = piece(++n);
-  }
-  return out;
 }

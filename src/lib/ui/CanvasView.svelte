@@ -300,7 +300,7 @@
   let pickEl: HTMLCanvasElement | null = null;
   /** The sheet's bitmap: the frame is composed into it, and the view stretches it. */
   let sheetEl: HTMLCanvasElement | null = null;
-  /** The piece of the sheet the composer's buffers hold; the pipette reads them by it. */
+  /** The sheet's bitmap the composer's buffers hold; the pipette reads them by it. */
   let lastRaster: SheetRaster | null = null;
   let rafPending = false;
   let rafId = 0;
@@ -585,8 +585,8 @@
     // left it at, the same drawing had a hairline here at one zoom and not at
     // another (owner, 2026-10-10).
     const perPixel = (sheet.w * FIXED_POINT_SCALE) / editor.doc.width;
-    const raster = sheetRaster(editor.doc, { x: sheet.x, y: sheet.y, scale: perPixel }, { width: pxWidth, height: pxHeight });
-    const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1, panX: -raster.x, panY: -raster.y };
+    const raster = sheetRaster(editor.doc);
+    const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1 };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
     // The paper lies flat on the table: white on the table's tone, no shadow
@@ -653,9 +653,9 @@
         // Magnified past its own pixels the sheet shows them, squares and
         // all; anything less is smoothed.
         const stretch = perPixel / raster.level;
-        ctx.setTransform(stretch, 0, 0, stretch, sheet.x + raster.x * stretch, sheet.y + raster.y * stretch);
+        ctx.setTransform(stretch, 0, 0, stretch, sheet.x, sheet.y);
         ctx.imageSmoothingEnabled = stretch < 2;
-        // A whole 1080p sheet on a phone is shrunk several times over: the
+        // A 1080p sheet on a phone is shrunk several times over: the
         // default filter drops lines thinner than the step it samples at.
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(sheetEl, 0, 0);
@@ -1040,12 +1040,12 @@
     if (!layers || !lastRaster) {
       return undefined;
     }
-    // Those buffers hold a piece of the sheet's bitmap, not the screen: the
+    // Those buffers hold the sheet's bitmap, not the screen: the
     // pixel is read where that spot of the sheet lies in them, whatever the
     // view has done since.
     const [ux, uy] = toDocUnits(e);
-    const bx = (ux / FIXED_POINT_SCALE) * lastRaster.level - lastRaster.x;
-    const by = (uy / FIXED_POINT_SCALE) * lastRaster.level - lastRaster.y;
+    const bx = (ux / FIXED_POINT_SCALE) * lastRaster.level;
+    const by = (uy / FIXED_POINT_SCALE) * lastRaster.level;
     // Inside the buffers read, not the canvas: a stage resized in the middle
     // of a gesture has a canvas of the new size over layers of the old.
     const read = layers.active as HTMLCanvasElement;

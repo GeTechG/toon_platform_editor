@@ -100,27 +100,19 @@
 
   /**
    * The bitmap the frames are rasterized into — the sheet's, by the rule the
-   * studio's canvas draws by (`sheetRaster`): a sheet up to 1080p in its own
-   * pixels, a larger one in a whole fraction of them. The canvas is that
-   * bitmap and the page stretches it, so the film is the same pixels for
-   * everyone who watches it, and the ones it was drawn in.
+   * studio's canvas draws by (`sheetRaster`). The canvas is that bitmap and
+   * the page stretches it, so the film is the same pixels for everyone who
+   * watches it, and the ones it was drawn in.
    */
-  const raster = $derived.by(() => {
-    // Capped like the editor's canvas: 3× on a phone is not visible on line
-    // art and costs 2.25× the pixels of a sheet too large to be drawn whole.
-    // The page is rendered on the server first, where there is no screen.
-    const dpr = renderDensity(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
-    const pxWidth = cssWidth * dpr;
-    return {
-      ...sheetRaster(
-        view,
-        { x: 0, y: 0, scale: (pxWidth * FIXED_POINT_SCALE) / view.width },
-        { width: pxWidth, height: cssHeight * dpr },
-      ),
-      screen: pxWidth,
-    };
-  });
-
+  const raster = $derived(sheetRaster(view));
+  /**
+   * Whether the page shows the bitmap at twice its size or more: then its
+   * pixels are shown as they are. The density capped like the editor's; the
+   * page is rendered on the server first, where there is no screen.
+   */
+  const magnified = $derived(
+    cssWidth * renderDensity(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) >= raster.width * 2,
+  );
   const bitmapWidth = $derived(raster.width);
   const bitmapHeight = $derived(raster.height);
 
@@ -171,8 +163,6 @@
   // and a film's worth of them ran into it.
   $effect(() => {
     void view;
-    // The bitmap's size and not the raster: that one changes with every pixel
-    // of a resized window, and a sheet drawn whole is the same bitmap through it.
     void bitmapWidth;
     void bitmapHeight;
     ready = false;
@@ -368,7 +358,7 @@
     bind:this={canvasEl}
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
-    style:image-rendering={raster.screen >= raster.width * 2 ? 'pixelated' : null}
+    style:image-rendering={magnified ? 'pixelated' : null}
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>

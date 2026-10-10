@@ -2,50 +2,31 @@ import { describe, expect, it } from 'bun:test';
 import { sheetRaster } from './viewport';
 
 // Кадр собирается в битмап листа: пиксель на пиксель документа — истина,
-// одинаковая у всех. Экран мельче листа берёт целую долю (½, ⅓, ¼…), а
-// приближение — только видимый кусок. `on` — где лист лежит на канве и сколько
-// её пикселей приходится на пиксель документа.
+// одинаковая у всех, на любом экране и зуме. Битмап не крупнее 1080p: лист
+// больше берёт целую долю — выше растеризация слишком дорога на любом железе.
 
-const UHD = { width: 3840 * 8, height: 2160 * 8 };
-const HD = { width: 1280 * 8, height: 720 * 8 };
+const sheet = (w: number, h: number) => ({ width: w * 8, height: h * 8 });
 
 describe('битмап листа', () => {
-  it('4K на экране 1280×720 при 100 % — треть, а не оригинал', () => {
-    expect(sheetRaster(UHD, { x: 0, y: 0, scale: 1 / 3 }, { width: 1280, height: 720 }))
-      .toEqual({ level: 1 / 3, x: 0, y: 0, width: 1280, height: 720 });
+  it('лист до 1080p — в своих пикселях', () => {
+    expect(sheetRaster(sheet(1280, 720))).toEqual({ level: 1, width: 1280, height: 720 });
+    expect(sheetRaster(sheet(1920, 1080))).toEqual({ level: 1, width: 1920, height: 1080 });
+    expect(sheetRaster(sheet(1080, 1920))).toEqual({ level: 1, width: 1080, height: 1920 });
+    // Размер листа — его длинная сторона: 4:3 и квадрат в 1080p тоже целы.
+    expect(sheetRaster(sheet(1920, 1440))).toEqual({ level: 1, width: 1920, height: 1440 });
+    expect(sheetRaster(sheet(1920, 1920))).toEqual({ level: 1, width: 1920, height: 1920 });
   });
 
-  it('мельче пикселя листа не рисуется: плотный экран растягивает 1280×720', () => {
-    expect(sheetRaster(HD, { x: 0, y: 0, scale: 2 }, { width: 2560, height: 1440 }))
-      .toEqual({ level: 1, x: 0, y: 0, width: 1280, height: 720 });
+  it('4K — половина: 1920×1080', () => {
+    expect(sheetRaster(sheet(3840, 2160))).toEqual({ level: 1 / 2, width: 1920, height: 1080 });
   });
 
-  it('приближенный лист — только видимый кусок, в пикселях листа', () => {
-    expect(sheetRaster(UHD, { x: -1000, y: -500, scale: 1 }, { width: 1280, height: 720 }))
-      .toEqual({ level: 1, x: 1000, y: 500, width: 1280, height: 720 });
+  it('2K — половина: 1280×720, целая доля держит сетку пикселей', () => {
+    expect(sheetRaster(sheet(2560, 1440))).toEqual({ level: 1 / 2, width: 1280, height: 720 });
   });
 
-  it('кусок больше двух экранов уступает ступень', () => {
-    expect(sheetRaster(UHD, { x: -600, y: -300, scale: 0.6 }, { width: 1280, height: 720 }))
-      .toEqual({ level: 1 / 2, x: 500, y: 250, width: 1067, height: 600 });
-  });
-
-  it('лист до 1080p — всегда целиком и в своих пикселях, каким бы мелким ни был экран', () => {
-    const FHD = { width: 1920 * 8, height: 1080 * 8 };
-    expect(sheetRaster(FHD, { x: -300, y: -200, scale: 0.2 }, { width: 384, height: 216 }))
-      .toEqual({ level: 1, x: 0, y: 0, width: 1920, height: 1080 });
-    expect(sheetRaster(HD, { x: -900, y: -500, scale: 3 }, { width: 720, height: 1280 }))
-      .toEqual({ level: 1, x: 0, y: 0, width: 1280, height: 720 });
-  });
-
-  it('стоячий 1080p — тоже целиком', () => {
-    expect(sheetRaster({ width: 1080 * 8, height: 1920 * 8 }, { x: 0, y: 0, scale: 0.25 }, { width: 270, height: 480 }))
-      .toEqual({ level: 1, x: 0, y: 0, width: 1080, height: 1920 });
-  });
-
-  it('лист за краем стола — один пиксель, не пустой холст', () => {
-    const out = sheetRaster(UHD, { x: 5000, y: 0, scale: 1 }, { width: 1280, height: 720 });
-    expect([out.width, out.height]).toEqual([1, 720]);
+  it('документ мельче пикселя — один пиксель, не пустой холст', () => {
+    expect(sheetRaster({ width: 3, height: 20 })).toEqual({ level: 1, width: 1, height: 3 });
   });
 });
 
@@ -56,6 +37,8 @@ describe('холст собирает кадр в битмап листа', () =
     const viewport = draw.match(/const viewport = \{[^}]*\}/)![0];
     expect(viewport).toContain('raster.level / FIXED_POINT_SCALE');
     expect(viewport).not.toContain('zoom');
+    expect(viewport).not.toContain('pan');
+    expect(draw).toContain('sheetRaster(editor.doc)');
     expect(draw).toContain('composer.compose(sheetCtx, raster.width, raster.height');
   });
 });
