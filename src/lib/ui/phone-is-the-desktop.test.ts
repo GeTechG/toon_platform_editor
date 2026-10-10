@@ -199,7 +199,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('a phone’s cut is toonop’s arrangement, and everything is drawn from `panels`', () => {
-    expect(editorUi).toContain('const cut = $derived(\n    deskPhone\n      ? deskOnPhone(editor.panels, tall)\n      : compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
+    expect(editorUi).toContain('const cut = $derived(\n    deskPhone\n      ? deskOnPhone(editor.panels)\n      : compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
     expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     const markup = editorUi.slice(editorUi.indexOf('<div\n  class="editor studio"'), editorUi.indexOf('<style>'));
     expect(markup).not.toContain('editor.panels');

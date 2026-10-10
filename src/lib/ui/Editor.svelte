@@ -258,7 +258,7 @@
   const deskPhone = $derived(compact && !editor.ux.phoneCut);
   const cut = $derived(
     deskPhone
-      ? deskOnPhone(editor.panels, tall)
+      ? deskOnPhone(editor.panels)
       : compact
       ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {
           tools: phoneTools(editor.ux),
@@ -643,15 +643,22 @@
   const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));
   /** A phone lying down with its strip folded: the transport is in the row over the canvas, the bar is its tab alone. */
   const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes('timeline')));
-  /** A desk's right column on a phone: behind its tab standing up, open lying down, until asked for. */
-  let sideShut = $state<boolean | null>(null);
-  /** …and open standing up it lies over the sheet: 390 px have no room for a column of boxes beside it. */
-  const sideOver = $derived(deskPhone && tall);
+  /**
+   * A desk's columns on a phone, each behind its tab (owner, 2026-10-10:
+   * «сворачивание левой нужно»): the rail open, the boxes shut, until asked for.
+   */
+  const sideShut = $state<Record<SideId, boolean | null>>({ left: null, right: null });
+  /**
+   * …and the boxes, open, lie over the sheet whichever way the phone is held:
+   * 390 px have no room for them beside it — not across standing up, not down
+   * lying (owner: «лёжа на телефоне даже цвета не влазят»).
+   */
+  const sideOver = $derived(deskPhone);
   /** A tap past the boxes lying over the sheet — on it, on the bar — only closes them (owner, 2026-10-08). */
   function shutSideOver(e: PointerEvent): void {
     if (!sideOver || folded('right')) return;
     e.stopPropagation();
-    sideShut = true;
+    sideShut.right = true;
   }
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -771,11 +778,13 @@
    * Folded away — but never on a small screen, where there are no columns to
    * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => (deskPhone ? id === 'right' && (sideShut ?? tall) : side(id).collapsed && !compact);
+  const folded = (id: SideId): boolean => (deskPhone ? (sideShut[id] ?? id === 'right') : side(id).collapsed && !compact);
   /** The bottom bar, folded away by the same rule. */
   // A preset's desk on a phone folds its bar whole, as the desk does (owner,
-  // 2026-10-10: «пускай прячет всё») — and opens with it up: its tools are there.
-  const panelFolded = $derived(deskPhone ? (stripShut ?? false) : editor.panelCollapsed && !compact);
+  // 2026-10-10: «пускай прячет всё»). It opens with the bar up — its tools may
+  // be there (Multator) — but for a phone lying down whose tools stand in the
+  // rail (Toonio): there the bar took half the height the sheet had.
+  const panelFolded = $derived(deskPhone ? (stripShut ?? (!tall && panels.left.length > 0)) : editor.panelCollapsed && !compact);
   /** What the bar's fold key says: the whole bar on the desktop, the strip on a phone. */
   const barFolded = $derived(panelFolded || stripFolded);
   /**
@@ -2495,7 +2504,7 @@
     <!-- The arrow points the way the panel is about to travel. -->
     <button
       class="fold"
-      onclick={() => (deskPhone ? (sideShut = !folded(id)) : editor.toggleSide(id))}
+      onclick={() => (deskPhone ? (sideShut[id] = !folded(id)) : editor.toggleSide(id))}
       aria-expanded={!folded(id)}
       title={folded(id) ? t('editor.panel_expand') : t('editor.panel_fold')}
       aria-label={t('editor.panel_toggle', { action: folded(id) ? t('editor.expand') : t('editor.fold'), label })}
@@ -2913,7 +2922,7 @@
         {@render slot(panels.left)}
       {/if}
     </aside>
-    {#if !sideFixed('left')}
+    {#if !sideFixed('left') || deskPhone}
       {@render sideEdge('left', t('editor.tools_side'))}
     {/if}
   {/if}
@@ -3997,7 +4006,7 @@
      2026-10-10). The left column is a rail of keys: one key wide where the
      stage has the height for them, two — as on the desk — where it has not;
      never a column that scrolls its last keys out of sight. */
-  .studio.compact.desk .left.sidebar {
+  .studio.compact.desk .left.sidebar:not(.collapsed) {
     grid-auto-flow: column;
     grid-template-columns: none;
     grid-auto-columns: var(--tap);
@@ -4010,6 +4019,11 @@
   }
   .studio.compact.desk .left.sidebar .history {
     display: contents;
+  }
+  /* Folded, the rail is its tab alone, as a desk's column is. */
+  .studio.compact.desk .left.sidebar.collapsed {
+    width: 0;
+    padding: 0;
   }
   .studio.compact.desk .side-resizer {
     display: none;
@@ -4029,8 +4043,9 @@
   .studio.compact.desk:not(.tall) .toolbar > .row.strip-row {
     flex: 1 1 100%;
   }
-  /* Standing up its boxes open over the sheet, off the grid: beside it they
-     left the pencil a third of the width. */
+  /* Its boxes open over the sheet, off the grid: beside it they left the
+     pencil a third of the width standing up, and lying down were cut at the
+     palette's waist. */
   .studio.compact.desk .right.over:not(.collapsed) {
     position: absolute;
     /* Its containing block is the stage's whole row, not its own empty track. */
@@ -4043,6 +4058,19 @@
        is — and scrolling only past that. */
     max-height: calc(var(--box-h) - 1.2rem);
     z-index: 3;
+  }
+  /* Lying down the boxes stand side by side: one over the other they are
+     twice the screen's height. */
+  .studio.compact.desk:not(.tall) .right.over:not(.collapsed) {
+    display: flex;
+    align-items: flex-start;
+    width: auto;
+    /* 390 px of height hold the brush box whole with this much, and not with more. */
+    padding-block: 0.4rem;
+  }
+  .studio.compact.desk:not(.tall) .right.over > :global(*) {
+    flex: none;
+    width: 14rem;
   }
   .studio.compact.desk .side-edge.edge-right.over:not(.folded) {
     transform: translateX(calc(-1 * (var(--side-w, 0px) + 0.6rem)));

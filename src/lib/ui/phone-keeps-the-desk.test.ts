@@ -17,8 +17,8 @@ describe('a phone keeps the preset’s desk', () => {
     expect(presetUx('toonio').phoneCut).toBeUndefined();
   });
 
-  it('Multator standing: everything under the sheet, as on a desk — and export, which a desk has a key combination for', () => {
-    const cut = deskOnPhone(multator, true);
+  it('Multator: everything under the sheet, as on a desk, whichever way the phone is held (owner: beside it was «странно») — and export, which a desk has a key combination for', () => {
+    const cut = deskOnPhone(multator);
     expect(cut.panels.left).toEqual([]);
     expect(cut.panels.right).toEqual([]);
     expect(cut.panels.top).toEqual([]);
@@ -32,12 +32,8 @@ describe('a phone keeps the preset’s desk', () => {
     expect(cut.tools).toEqual([]);
   });
 
-  it('Multator lying down: under the sheet still (owner: beside it was «странно») — the same rows', () => {
-    expect(deskOnPhone(multator, false).panels).toEqual(deskOnPhone(multator, true).panels);
-  });
-
-  it('Toonio standing up: the rail is the tools and undo — a key wide, the sheet has the width; the toon’s own keys join the transport’s row', () => {
-    const cut = deskOnPhone(toonio, true);
+  it('Toonio: the rail is the tools and undo — the sheet has the room; the toon’s own keys join the transport’s row', () => {
+    const cut = deskOnPhone(toonio);
     expect(cut.panels.left).toEqual([
       'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso', 'tool:distort', 'history',
     ]);
@@ -48,12 +44,8 @@ describe('a phone keeps the preset’s desk', () => {
     ]);
   });
 
-  it('Toonio lying down: its columns and its rows as on a desk — there is the width for them', () => {
-    expect(deskOnPhone(toonio, false).panels).toEqual(toonio);
-  });
-
   it('a rail with no row of keys to give to keeps its keys', () => {
     const lone = { ...toonio, rows: [['timeline']] };
-    expect(deskOnPhone(lone, true).panels.left).toEqual(toonio.left);
+    expect(deskOnPhone(lone).panels.left).toEqual(toonio.left);
   });
 });

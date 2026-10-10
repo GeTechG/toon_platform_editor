@@ -228,20 +228,18 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
  * A phone that keeps the preset's own desk (owner, 2026-10-10: Multator and
  * Toonio on a phone «более похожими на пк версии, но с адаптивом»): the
  * user's arrangement as it stands — the studio draws its left column as a
- * rail and its right one behind a tab. Standing up the rail is the tools and
- * undo alone. Lying down the arrangement is the
- * desk's whole — a desk under the sheet (Multator) stays under it (owner,
- * 2026-10-10: beside the sheet was «странно»); the studio folds the strip
- * and runs the rows of keys on in one line. Export is always there, by the gear: a desk
+ * rail and its right one behind a tab. The rail is the tools and undo alone:
+ * whole, it was two keys wide standing up and five lying down. A desk under
+ * the sheet (Multator) stays under it whichever way the phone is held (owner,
+ * 2026-10-10: beside the sheet was «странно»). Export is always there, by the gear: a desk
  * reaches it by Alt+S, and a phone has no keyboard and no shelf.
  */
 // ponytail: export joins only an arrangement that places the gear; one without it has no export key on a phone.
-export function deskOnPhone(layout: PanelLayout, tall: boolean): PhoneLayout {
+export function deskOnPhone(layout: PanelLayout): PhoneLayout {
   const lacks = !allPlaced({ ...layout, hidden: [] }).includes('export');
   const withExport = (ids: readonly string[]): string[] => ids.flatMap((id) => (lacks && id === 'settings' ? [id, 'export'] : [id]));
-  // Standing up the width is the sheet's: the rail keeps the tools and undo,
-  // one key wide, and what else stood in it joins the first row of keys.
-  const keys = tall ? layout.rows.findIndex((row) => !row.includes('timeline')) : -1;
+  // The rail keeps the tools and undo; what else stood in it joins the first row of keys.
+  const keys = layout.rows.findIndex((row) => !row.includes('timeline'));
   const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null || id === 'history';
   const rows = layout.rows.map((row, i) => withExport(i === keys ? [...row, ...layout.left.filter((id) => !inRail(id))] : row));
   const panels: PanelLayout = {
