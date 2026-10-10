@@ -93,9 +93,9 @@ const TOONOP_PRESET: PluginPreset = {
   ux: TOONOP_UX,
   // Its own arrangement, a desk's (owner, 2026-10-10: the one after
   // Procreate Dreams was a tablet's): the tools down the left, as desk
-  // programs stand them, with the brush's thickness under them (a tool
-  // pressed again opens its brush); toonop's own colours open on the right,
-  // where a cursor has the room — no window over the sheet. On the bar over
+  // programs stand them, with the brush's thickness under them; toonop's
+  // own colours open on the right, where a cursor has the room — no window
+  // over the sheet — and the brush box under them (owner, the same day). On the bar over
   // the canvas, at its near end, what the film leaves by — send, draft,
   // export — then undo, redo and the save note; at its far end the studio's
   // own: the gear, help, full screen. Over the strip what times the film:
@@ -115,7 +115,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:lasso',
         'brush-rail',
       ],
-      right: ['colours'],
+      right: ['colours', 'brush'],
       top: ['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen'],
       rows: [['fps', 'add-frame', 'transport', 'onion', 'audio'], ['timeline']],
     },

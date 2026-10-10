@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
-import { panelItems } from './panels';
+import { panelItems, toolOpensBrush } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
 import { phoneLayout, phoneTools } from './small-screen';
 
@@ -20,10 +20,16 @@ describe('toonop on a desk', () => {
     expect(base.hidden).toContain('tool:distort');
   });
 
-  it('toonop’s own colours stand open on the right; Toonio’s palette box stays on the shelf', () => {
-    expect(base.right).toEqual(['colours']);
+  it('toonop’s own colours stand open on the right, first; Toonio’s palette box stays on the shelf', () => {
+    expect(base.right).toEqual(['colours', 'brush']);
     expect(panelItems().find((item) => item.id === 'colours')?.wide).toBe(true);
-    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'color-key']));
+    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'color-key']));
+  });
+
+  it('the brush stands under the colours (owner: «настройки кисти тоже можно вправо»): a tool pressed again opens no window — on a phone it still does', () => {
+    expect(toolOpensBrush(base, 'pencil')).toBe(false);
+    const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: () => true };
+    expect(toolOpensBrush(phoneLayout(base, base, keep).panels, 'pencil')).toBe(true);
   });
 
   it('over the canvas: the film’s keys and undo at the near end, the studio’s at the far one', () => {

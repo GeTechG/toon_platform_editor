@@ -68,7 +68,15 @@
     class="key icon"
     class:active={editor.tool === tool}
     aria-pressed={editor.tool === tool}
-    onclick={() => editor.selectTool(tool)}
+    onclick={(e) => {
+      // Pressed while in hand where the brush box stands on a panel (toonop's
+      // desk: under the colours, past the column's fold on a laptop): the
+      // column shows it — the press that opens the box elsewhere.
+      if (editor.tool === tool && !spec.help) {
+        e.currentTarget.closest('.editor')?.querySelector('.brush-box')?.scrollIntoView({ block: 'nearest' });
+      }
+      editor.selectTool(tool);
+    }}
     data-key={keys.join(' / ') || undefined}
     data-tool={tool}
     aria-keyshortcuts={keys.join(' ') || undefined}
