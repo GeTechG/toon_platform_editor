@@ -33,7 +33,8 @@
     footOf,
     fitSheet,
     fitView,
-    pickedPixel,
+    sheetRaster,
+    type SheetRaster,
     renderDensity,
     reprojection,
     shotCovers,
@@ -74,6 +75,7 @@
   type ViewCtx = Canvas2DLike &
     BlitTarget & {
       globalAlpha: number;
+      imageSmoothingEnabled: boolean;
       clearRect(x: number, y: number, w: number, h: number): void;
       rect(x: number, y: number, w: number, h: number): void;
       clip(): void;
@@ -185,7 +187,7 @@
     destroyed = true;
     cancelAnimationFrame(rafId);
     composer.dispose();
-    for (const spare of [shotCanvas, pickEl, canvasEl]) {
+    for (const spare of [shotCanvas, sheetEl, pickEl, canvasEl]) {
       if (spare) {
         spare.width = 0;
         spare.height = 0;
@@ -295,6 +297,10 @@
   /** The paper and its shadow, and the shape they were drawn for. */
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
+  /** The sheet's bitmap: the frame is composed into it, and the view stretches it. */
+  let sheetEl: HTMLCanvasElement | null = null;
+  /** The piece of the sheet the composer's buffers hold; the pipette reads them by it. */
+  let lastRaster: SheetRaster | null = null;
   let rafPending = false;
   let rafId = 0;
   /** The canvas was unmounted: nothing is drawn any more. */
@@ -557,12 +563,6 @@
     if (!ctx) {
       return;
     }
-    const viewport = {
-      scale: (sheetWidth / editor.doc.width) * editor.view.zoom,
-      dpr,
-      panX: editor.view.panX,
-      panY: editor.view.panY,
-    };
     const frame = editor.displayedFrame;
     if (!editor.doc.layers[0]?.frames[frame]) {
       return;
@@ -578,6 +578,14 @@
       w: sheetWidth * editor.view.zoom * dpr,
       h: sheetHeight * editor.view.zoom * dpr,
     };
+    // The frame is a bitmap of the sheet, not of the screen: a pixel per pixel
+    // of the document is the picture, the same for everyone who opens it, and
+    // the view only stretches it. Rasterized for whatever zoom the hand had
+    // left it at, the same drawing had a hairline here at one zoom and not at
+    // another (owner, 2026-10-10).
+    const perPixel = (sheet.w * FIXED_POINT_SCALE) / editor.doc.width;
+    const raster = sheetRaster(editor.doc, { x: sheet.x, y: sheet.y, scale: perPixel }, { width: pxWidth, height: pxHeight });
+    const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1, panX: -raster.x, panY: -raster.y };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
     // The paper lies flat on the table: white on the table's tone, no shadow
@@ -614,10 +622,19 @@
       if (shot) {
         const to = reprojection(shot.view, drawn);
         ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
+        ctx.imageSmoothingEnabled = true;
         ctx.drawImage(shot.canvas, 0, 0);
       } else {
+        sheetEl = buffer(sheetEl, raster.width, raster.height);
+        const sheetCtx = sheetEl.getContext('2d') as unknown as ViewCtx | null;
+        if (!sheetCtx) {
+          return;
+        }
+        sheetCtx.setTransform(1, 0, 0, 1, 0, 0);
+        sheetCtx.clearRect(0, 0, raster.width, raster.height);
         lastDrawn = drawn;
-        composer.compose(ctx, pxWidth, pxHeight, {
+        lastRaster = raster;
+        composer.compose(sheetCtx, raster.width, raster.height, {
           doc: editor.doc,
           frame,
           activeLayer: editor.activeLayer,
@@ -632,6 +649,12 @@
           // applies to the whole current frame.
           alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
         });
+        // Magnified past its own pixels the sheet shows them, squares and
+        // all; anything less is smoothed.
+        const stretch = perPixel / raster.level;
+        ctx.setTransform(stretch, 0, 0, stretch, sheet.x + raster.x * stretch, sheet.y + raster.y * stretch);
+        ctx.imageSmoothingEnabled = stretch < 2;
+        ctx.drawImage(sheetEl, 0, 0);
 
         // The grid is a drawing aid, not part of the picture: the preview shows
         // the frames as they will be exported.
@@ -1010,20 +1033,15 @@
     // The frame as it was composed, off the composer's own buffers: no paper
     // under it, no onion over it and no line under the hand.
     const layers = composer.layers;
-    if (!layers || !lastDrawn) {
+    if (!layers || !lastRaster) {
       return undefined;
     }
-    // Those buffers hold the view of the last frame drawn. Right after a zoom
-    // (the redraw waits for the next frame) and all through a pinch, the
-    // screen is already elsewhere: the pixel is read where that spot of the
-    // sheet lies in them, not at the same place on the screen.
-    const rect = canvasEl.getBoundingClientRect();
-    const [bx, by] = pickedPixel(
-      e.clientX - rect.left,
-      e.clientY - rect.top,
-      { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr: lastDrawn.dpr },
-      lastDrawn,
-    );
+    // Those buffers hold a piece of the sheet's bitmap, not the screen: the
+    // pixel is read where that spot of the sheet lies in them, whatever the
+    // view has done since.
+    const [ux, uy] = toDocUnits(e);
+    const bx = (ux / FIXED_POINT_SCALE) * lastRaster.level - lastRaster.x;
+    const by = (uy / FIXED_POINT_SCALE) * lastRaster.level - lastRaster.y;
     // Inside the buffers read, not the canvas: a stage resized in the middle
     // of a gesture has a canvas of the new size over layers of the old.
     const read = layers.active as HTMLCanvasElement;
@@ -1407,6 +1425,7 @@
     composer.dispose();
     navShot = null;
     lastDrawn = null;
+    lastRaster = null;
     scheduleDraw();
   }
 

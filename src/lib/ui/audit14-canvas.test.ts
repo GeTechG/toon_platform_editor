@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { addLayer, addStroke, createDocument } from '../model/operations';
 import { FrameComposer, type ComposeBuffer } from '../render/frame-compose';
 import { BufferRing } from './buffer-ring';
-import { pickedPixel, reprojection, type DrawnView } from './viewport';
 import { nextHint } from './canvas-hint';
 
 const source = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
@@ -128,34 +127,12 @@ describe('холст уходит — память уходит с ним', () =
 });
 
 describe('пипетка сразу после смены вида', () => {
-  // Кадр собран под видом `drawn`; вид уже другой (щипок трекпада, шаг
-  // колеса), а перерисовка — только в следующем кадре анимации.
-  const drawn: DrawnView = { zoom: 1, panX: 100, panY: 50, dpr: 2 };
-  const now: DrawnView = { zoom: 2, panX: -30, panY: 10, dpr: 2 };
-
-  it('берёт пиксель там, где эта точка листа лежит в собранном кадре, а не в новом виде', () => {
-    // Точка листа (40, 30) в CSS-px листа при зуме 1: в новом виде она на экране здесь…
-    const x = now.panX + 40 * now.zoom;
-    const y = now.panY + 30 * now.zoom;
-    // …а в собранном кадре — здесь, в его пикселях.
-    expect(pickedPixel(x, y, now, drawn)).toEqual([(100 + 40) * 2, (50 + 30) * 2]);
-  });
-
-  it('при том же виде — тот же пиксель, что под курсором', () => {
-    expect(pickedPixel(12.5, 7.25, drawn, drawn)).toEqual([25, 14.5]);
-  });
-
-  it('обратна репроекции снимка', () => {
-    const to = reprojection(drawn, now);
-    const [px, py] = pickedPixel(333, 222, now, drawn);
-    expect(px * to.scale + to.x).toBeCloseTo(333 * now.dpr, 6);
-    expect(py * to.scale + to.y).toBeCloseTo(222 * now.dpr, 6);
-  });
-
-  it('холст читает пиксель через это правило и видом последнего собранного кадра', () => {
+  // Буферы сборщика держат кусок битмапа листа, а не экран: точка листа под
+  // курсором лежит в них на том же месте, что бы вид ни сделал после сборки.
+  it('холст читает пиксель листа по куску последнего собранного кадра', () => {
     const pick = handler('pickColor');
-    expect(pick).toContain('pickedPixel(');
-    expect(pick).toContain('lastDrawn');
+    expect(pick).toContain('toDocUnits(e)');
+    expect(pick).toContain('lastRaster.level - lastRaster.x');
   });
 });
 

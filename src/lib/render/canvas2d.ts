@@ -239,12 +239,6 @@ export function renderStrokesLayer(
   }
 }
 
-const UNIT_SQUARE: readonly number[] = [0, 0, 1, 0, 1, 1, 0, 1];
-
-function isUnitSquare(shape: readonly number[]): boolean {
-  return shape.length === UNIT_SQUARE.length && shape.every((value, i) => value === UNIT_SQUARE[i]);
-}
-
 function drawResolvedStroke(
   target: Canvas2DLike,
   points: readonly number[],
@@ -260,26 +254,18 @@ function drawResolvedStroke(
     // polygon; a brush with another outline is the same code and other data,
     // which is why the player can draw a shape it has never heard of.
     //
-    // ponytail: one path per mark, as the reference fills one rect per cell. A
-    // long stroke at a small size is thousands of them — batch them into one
-    // path and a single fill() if a profile ever blames this.
+    // The whole stroke is one path and one fill. Marks filled one by one left
+    // a hairline between neighbours wherever the scale put their shared edge
+    // inside a pixel: each covered its half of it, and the two halves do not
+    // add up to the whole.
     target.fillStyle = color;
-    // The square is the common case by far (it is the pixel tool), and the
-    // reference fills exactly one rect per cell — so it keeps the fast path,
-    // and only a shape that is not the unit square walks a path.
-    const square = isUnitSquare(tool.shape);
+    target.beginPath();
     const stamp = (x: number, y: number): void => {
-      if (square) {
-        target.fillRect(x, y, tool.width, tool.width);
-        return;
-      }
-      target.beginPath();
       target.moveTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
       for (let i = 2; i < tool.shape.length; i += 2) {
         target.lineTo(x + tool.shape[i] * tool.width, y + tool.shape[i + 1] * tool.width);
       }
       target.lineTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
-      target.fill();
     };
     for (let i = 0; i < points.length; i += 2) {
       if (i >= 2) {
@@ -292,6 +278,7 @@ function drawResolvedStroke(
       }
       stamp(points[i], points[i + 1]);
     }
+    target.fill();
     return;
   }
   target.beginPath();

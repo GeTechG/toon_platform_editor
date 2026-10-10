@@ -4,10 +4,13 @@
  *
  * The sheet lies on a worktable the size of the stage: the canvas element is
  * the whole workspace, and the view says where the sheet sits on it and how
- * big it is drawn. Only the visible region is ever rasterized (a 2 GB phone
- * cannot hold a 10× buffer), so the sheet can be walked around, not just
- * magnified inside its own frame.
+ * big it is drawn. The frame is a bitmap of the sheet (`sheetRaster`), and only
+ * the piece on the table is ever rasterized (a 2 GB phone cannot hold a 4K
+ * buffer), so the sheet can be walked around, not just magnified inside its
+ * own frame.
  */
+
+import { FIXED_POINT_SCALE } from '../format/constants';
 
 /** Zoom range: a tenth of the sheet up to the reference's 10× (toonio: 1–10). */
 export const ZOOM_MIN = 0.1;
@@ -492,21 +495,6 @@ export interface DrawnView {
 }
 
 /**
- * The pixel of a picture drawn under `drawn` that lies under the workspace
- * point (x, y), CSS px, of the view on screen `now` — the inverse of
- * `reprojection`. The pipette reads the composed layers, and those are the
- * view's of the last frame drawn: right after a zoom, or all through a
- * pinch, the screen is already elsewhere.
- */
-export function pickedPixel(x: number, y: number, now: DrawnView, drawn: DrawnView): [number, number] {
-  const k = drawn.zoom / now.zoom;
-  return [
-    drawn.dpr * (drawn.panX + (x - now.panX) * k),
-    drawn.dpr * (drawn.panY + (y - now.panY) * k),
-  ];
-}
-
-/**
  * Whether a picture of the whole table drawn under `drawn` still holds all of
  * the sheet the view `now` has on the table. A shot is the table as it was:
  * at 300 % a third of the sheet is on it, and the part a pan or a pinch out
@@ -539,4 +527,58 @@ export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x
     x: to.dpr * (to.panX - k * from.panX),
     y: to.dpr * (to.panY - k * from.panY),
   };
+}
+
+/**
+ * How many canvases' worth of pixels the sheet's bitmap may hold before it
+ * gives up a step of sharpness. The calibration knob: higher keeps a
+ * half-magnified sheet crisp, lower spares a weak phone's memory.
+ */
+export const RASTER_BUDGET = 2;
+
+/** The piece of the sheet's bitmap a frame is composed into. */
+export interface SheetRaster {
+  /** Bitmap pixels per logical pixel of the document: 1, ½, ⅓, ¼… */
+  level: number;
+  /** The piece inside the whole sheet's bitmap at that level, in its pixels. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The bitmap the frame is rasterized into. One pixel per logical pixel of the
+ * document is the picture itself — the same on every screen, and never drawn
+ * finer: a sheet magnified past it shows its pixels. A screen coarser than the
+ * sheet takes a whole fraction of it, so a phone does not rasterize a 4K
+ * sheet to show 720 lines; a magnified sheet takes only the piece on the
+ * table. `on` is where the sheet lies on the canvas and how many of the
+ * canvas's pixels a logical pixel of the document covers.
+ */
+export function sheetRaster(
+  doc: { width: number; height: number },
+  on: { x: number; y: number; scale: number },
+  canvas: { width: number; height: number },
+): SheetRaster {
+  const EPS = 1e-6;
+  const piece = (n: number): SheetRaster => {
+    const level = 1 / n;
+    const k = level / on.scale;
+    const axis = (origin: number, table: number, units: number): [number, number] => {
+      const whole = Math.max(1, Math.ceil(units / FIXED_POINT_SCALE / n - EPS));
+      const from = Math.min(whole - 1, Math.max(0, Math.floor(-origin * k + EPS)));
+      const to = Math.min(whole, Math.max(from + 1, Math.ceil((table - origin) * k - EPS)));
+      return [from, to - from];
+    };
+    const [x, width] = axis(on.x, canvas.width, doc.width);
+    const [y, height] = axis(on.y, canvas.height, doc.height);
+    return { level, x, y, width, height };
+  };
+  let n = Math.max(1, Math.floor(1 / on.scale + EPS));
+  let out = piece(n);
+  while (out.width * out.height > RASTER_BUDGET * canvas.width * canvas.height) {
+    out = piece(++n);
+  }
+  return out;
 }

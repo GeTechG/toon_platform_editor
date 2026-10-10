@@ -630,14 +630,14 @@ describe('Tonio feather and pixel tools', () => {
     );
     // Both endpoints come back from the interpolation and are painted again —
     // the reference repaints them too, and a cell filled twice looks the same.
-    expect(ctx.log.filter((line) => line.startsWith('fillRect')).slice(1)).toEqual([
-      'fillRect(0,0,16,16)',
-      'fillRect(0,0,16,16)',
-      'fillRect(16,0,16,16)',
-      'fillRect(32,0,16,16)',
-      'fillRect(48,0,16,16)',
-      'fillRect(48,0,16,16)',
+    // One path and one fill for the whole stroke: cells filled one by one
+    // left a hairline between neighbours wherever the scale put their shared
+    // edge inside a pixel.
+    expect(ctx.log.filter((line) => line.startsWith('moveTo'))).toEqual([
+      'moveTo(0,0)', 'moveTo(0,0)', 'moveTo(16,0)', 'moveTo(32,0)', 'moveTo(48,0)', 'moveTo(48,0)',
     ]);
+    expect(ctx.log.filter((line) => line === 'fill()')).toHaveLength(1);
+    expect(ctx.log.filter((line) => line.startsWith('fillRect'))).toHaveLength(1);
   });
 
   it('the pixel tool fills a square per cell, no smoothing (tools.js Pixel.Draw)', () => {
@@ -647,15 +647,15 @@ describe('Tonio feather and pixel tools', () => {
       0, ctx, { scale: 1, dpr: 1 },
     );
     const from = ctx.log.indexOf('fillStyle=#0026ff');
+    const cell = (x: number, y: number): string[] => [
+      `moveTo(${x},${y})`, `lineTo(${x + 16},${y})`, `lineTo(${x + 16},${y + 16})`,
+      `lineTo(${x},${y + 16})`, `lineTo(${x},${y})`,
+    ];
     expect(ctx.log.slice(from)).toEqual([
       'fillStyle=#0026ff',
-      'fillRect(0,0,16,16)',
-      'fillRect(0,0,16,16)',
-      'fillRect(16,0,16,16)',
-      'fillRect(16,0,16,16)',
-      'fillRect(16,0,16,16)',
-      'fillRect(16,16,16,16)',
-      'fillRect(16,16,16,16)',
+      'beginPath()',
+      ...cell(0, 0), ...cell(0, 0), ...cell(16, 0), ...cell(16, 0), ...cell(16, 0), ...cell(16, 16), ...cell(16, 16),
+      'fill()',
     ]);
   });
 });
