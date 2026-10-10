@@ -117,7 +117,8 @@
     width: auto;
   }
   .brush-rail.lying .now {
-    min-width: 2ch;
+    /* Three figures: «185» stood on the start of the track. */
+    min-width: 3ch;
     text-align: center;
   }
   .brush-rail.lying .well {

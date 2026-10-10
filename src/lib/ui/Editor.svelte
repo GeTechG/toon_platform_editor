@@ -2544,7 +2544,8 @@
   {:else if id === 'brush'}
     <BrushPanel {editor} />
   {:else if id === 'brush-rail'}
-    <BrushRail {editor} lying={railLies} />
+    <!-- Standing only in the left column; anywhere else it is a line (toonop's desk: under the colours). -->
+    <BrushRail {editor} lying={railLies || !panels.left.includes('brush-rail')} />
   {:else if id === 'spring' || id === 'spring:lead'}
     <!-- Room, not a control: what stands after it stands at the far end. -->
     <span class="spring" aria-hidden="true"></span>
@@ -3027,6 +3028,7 @@
     <aside
       class="right"
       class:collapsed={folded('right')}
+      class:fills={panels.right[0] === 'colours'}
       aria-label={t('editor.palette_side')}
       data-slot="right"
       data-folded={folded('right') ? '' : undefined}
@@ -4070,6 +4072,25 @@
   .studio .left > .arr.wide,
   .studio .right > .arr.wide {
     grid-column: 1 / -1;
+  }
+  /* Toonop's desk: under the colours the thickness and the key of the brush
+     box are one line — the slider gives the key its cell. */
+  @supports selector(:has(+ *)) {
+    .studio .right > :global(.brush-rail.lying:has(+ .pop-key)) {
+      grid-column: 1 / -2;
+    }
+    .studio .right > :global(.brush-rail.lying + .pop-key) {
+      grid-column: -2 / -1;
+    }
+  }
+  /* …and the column does not scroll (owner, 2026-10-10): the colours take
+     what the rest leaves, and only their swatches scroll inside them, where
+     a palette is taller than the screen.
+     ponytail: asks for the colours first in the column (`fills`); a column that puts a
+     box over them scrolls as any other — give the panel's row the 1fr if that shows. */
+  .studio .right.fills {
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
   }
   .studio .left > :global(.key),
   .studio .right > :global(.key) {

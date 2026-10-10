@@ -86,7 +86,8 @@ describe('the rail and the chrome follow the reference studio', () => {
     // Only a wide item's span (in a column, and in a phone's «⋯»), the seams (a row of their own already) and the `.alt` swap
     // claim a column alone.
     // The tenth: «Сохранить на устройстве» takes a row of «⋯» (2026-10-08).
-    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(10);
+    // Two more inside a column (2026-10-10): the thickness and the key of the brush box share a line under toonop's colours.
+    expect(claims.filter((m) => m[1] === undefined)).toHaveLength(12);
   });
 
   it('the presets and the way into arranging sit in the view category', () => {

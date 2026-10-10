@@ -449,7 +449,8 @@ describe('the thickness and undo are a widget of their own, standing or lying by
   });
 
   it('the slider lies with it: a lying range, the number before it, left and right are less and more', async () => {
-    expect(editorUi).toContain('<BrushRail {editor} lying={railLies} />');
+    // …and wherever it is not in the left column: a line under toonop's colours on a desk.
+    expect(editorUi).toContain("<BrushRail {editor} lying={railLies || !panels.left.includes('brush-rail')} />");
     const rail = await railUi;
     expect(rail).toContain('let { editor, lying = false }: { editor: EditorState; lying?: boolean } = $props();');
     expect(rail).toContain("aria-orientation={lying ? 'horizontal' : 'vertical'}");

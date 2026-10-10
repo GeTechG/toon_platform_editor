@@ -443,7 +443,7 @@
     {/if}
 
     {#if tab !== 'palettes'}
-      <section>
+      <section class="history">
         <div class="row">
           <h3>{t('colours.history')}</h3>
           <button class="key" disabled={history.length === 0} onclick={clearHistory}>{t('colours.clear')}</button>
@@ -456,7 +456,7 @@
       </section>
       {#if editor.palette.length > 0}
         <section>
-          <div class="row"><h3>{t('color.grid')}</h3></div>
+          <div class="row name"><h3>{t('color.grid')}</h3></div>
           {@render swatches(editor.palette, t('color.grid'))}
         </section>
       {/if}
@@ -503,16 +503,51 @@
     /* Closer, and the surface a little under the column's width: on a
        1440×900 screen the whole panel stands in the column unscrolled. */
     gap: 0.4rem;
+    /* No taller than the column gives it: what gives way is the swatches,
+       which scroll on their own between the surface and the tabs. */
+    min-height: 0;
+    max-height: 100%;
+  }
+  .colours.docked > :global(*),
+  .colours.docked .stage > :global(*) {
+    flex: none;
+  }
+  .colours.docked .rest {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .colours.docked .rest > :global(*) {
+    flex: none;
+  }
+  /* The palette's name is the group's own (aria-label): under the history
+     the grid reads as what it is, and the line it took is a row of swatches. */
+  .colours.docked .row.name {
+    display: none;
   }
   .colours.docked .surface:not(.square) {
-    max-width: 12rem;
+    max-width: 10.5rem;
+  }
+  /* A laptop's column: the surface gives the swatches some of its room, and
+     the history its own — the palette is what stays (a colour drawn with
+     joins it by itself), whole and unscrolled on 1536×864 and 1366×768. */
+  @media (max-height: 55rem) {
+    .colours.docked .surface:not(.square) {
+      max-width: 9rem;
+    }
+    .colours.docked .history {
+      display: none;
+    }
   }
   .colours.docked .cells {
     grid-template-columns: repeat(auto-fill, minmax(1.5rem, 1fr));
   }
   .colours.docked .tabs {
-    /* Over the column's own padding: the swatches showed under the tabs. */
-    bottom: -0.6rem;
+    position: static;
     margin: 0;
     padding-inline: 0;
   }

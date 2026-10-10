@@ -12,21 +12,20 @@ void plugins;
 const base = presetPanels(DEFAULT_PRESET);
 
 describe('toonop on a desk', () => {
-  it('the tools stand down the left with the thickness under them — the ones the bar held, no more', () => {
+  it('the tools stand down the left, alone (owner: «слева толщину нужно убрать из панели») — the ones the bar held, no more', () => {
     expect(base.left).toEqual([
       'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso',
-      'brush-rail',
     ]);
     expect(base.hidden).toContain('tool:distort');
   });
 
   it('toonop’s own colours stand open on the right, first; Toonio’s palette box stays on the shelf', () => {
-    expect(base.right).toEqual(['colours', 'brush']);
+    expect(base.right).toEqual(['colours', 'brush-rail', 'brush-key']);
     expect(panelItems().find((item) => item.id === 'colours')?.wide).toBe(true);
-    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'color-key']));
+    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'color-key']));
   });
 
-  it('the brush stands under the colours (owner: «настройки кисти тоже можно вправо»): a tool pressed again opens no window — on a phone it still does', () => {
+  it('the brush is on the right too, with no scroll (owner): the thickness under the colours, the rest of it behind the key beside — a tool pressed again opens no window, on a phone it still does', () => {
     expect(toolOpensBrush(base, 'pencil')).toBe(false);
     const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: () => true };
     expect(toolOpensBrush(phoneLayout(base, base, keep).panels, 'pencil')).toBe(true);

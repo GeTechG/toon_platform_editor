@@ -215,13 +215,11 @@ describe('one arrangement for everybody', () => {
 describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
-    // A desk's (owner, 2026-10-10): the tools down the left, the thickness under them.
-    expect(studio.left).toEqual([
-      ...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem),
-      'brush-rail',
-    ]);
+    // A desk's (owner, 2026-10-10): the tools down the left, nothing else.
+    expect(studio.left).toEqual(['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem));
     // Toonop's own colours, open: no window over the sheet.
-    expect(studio.right).toEqual(['colours', 'brush']);
+    // …the thickness under them and the key of the brush's box beside it.
+    expect(studio.right).toEqual(['colours', 'brush-rail', 'brush-key']);
     // The bar in two halves: the film, undo and the save note on the left,
     // the studio's own keys on the right, a spring between them.
     expect(studio.top).toEqual(['publish', 'save', 'export', 'history', 'saved', 'spring', 'settings', 'manual', 'fullscreen']);
@@ -232,13 +230,13 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush-key', 'color-key',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'color-key',
     ].sort());
   });
 
   test('a drawing tool pressed again opens its brush — where no brush control is placed', () => {
     // Toonop's desk keeps the brush box in its right column; without it, as on a phone:
-    const studio = movePanelItem(presets.presetPanels('toonop'), 'brush', 'hidden');
+    const studio = movePanelItem(presets.presetPanels('toonop'), 'brush-key', 'hidden');
     expect(toolOpensBrush(studio, 'pencil')).toBe(true);
     expect(toolOpensBrush(studio, 'eraser')).toBe(true);
     // A help tool has no brush: the hand, the lasso, the pipette.
@@ -251,7 +249,7 @@ describe('the default layouts', () => {
   });
 
   test('the sliders beside the canvas are not the brush box: a tool pressed again still opens it', () => {
-    expect(toolOpensBrush(movePanelItem(presets.presetPanels('toonop'), 'brush', 'hidden'), 'pencil')).toBe(true);
+    expect(toolOpensBrush(movePanelItem(presets.presetPanels('toonop'), 'brush-key', 'hidden'), 'pencil')).toBe(true);
   });
 
   test('a spring draws nothing: a bar holding only it is not drawn, a phone keeps it out of «⋯»', () => {
