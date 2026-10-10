@@ -497,6 +497,8 @@
   // does not change, so the sum cannot chase its own tail.
   /** The bottom bar as drawn: the table runs on under it (`--stage-under`). */
   let panelBoxH = $state(0);
+  /** The host's note in the bar: a bar of a set height grows by it, or the note took the strip's room. */
+  let panelNoteH = $state(0);
   /** The stage as drawn: under 44rem the canvas's hint rises over the zoom window's row. */
   let stageWidth = $state(0);
   let stageHeight = $state(0);
@@ -1539,7 +1541,10 @@
   // A phone's sheet fills its stage, so a note on the stage lay on the paper
   // the first line is meant for (owner, 2026-10-08): there it stands in the
   // bottom bar, over the «+» it speaks of. A bare bar lying down has no room.
-  const noteInPanel = $derived(compact && !panelFolded && !barBare && panels.rows.length > 0);
+  // So it does on a wide screen under a preset with no bar over the canvas
+  // (Multator, Toonio): on the stage it lay where the first visit's presets
+  // stand, and was not drawn (owner, 2026-10-10).
+  const noteInPanel = $derived(!panelFolded && panels.rows.length > 0 && ((compact && !barBare) || !draws(panels.top)));
   // Everywhere else — a phone lying down, a wide screen — the note is a line of
   // the bar over the canvas: no note lies on the sheet any more (owner,
   // 2026-10-08, «пофикси везде»). The stage is left for a layout with no bar.
@@ -2895,8 +2900,8 @@
     style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}>
     <CanvasView {editor} rail={stageRail} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
-         under the hub — and not under a phone's «⋯» window either. Under the
-         first visit's presets it is a line of their card instead. -->
+         under the hub — and not under a phone's «⋯» window either. Nor under
+         the first visit's presets, which stand in the same place. -->
     {#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
@@ -2978,10 +2983,6 @@
         </div>
         <p class="preset-ask-picked">{presetAbout(editor.preset)}</p>
         <p>{t('intro.later')}</p>
-        <!-- The host's note, where its place is the stage (a preset with no
-             bar over the canvas): the card stands there, so it is a line of
-             the card, as it is a line of a bar. -->
-        {#if !noteInPanel && !noteInTop}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
       </section>
     {/if}
     {#if over && moreOpen}
@@ -3051,7 +3052,7 @@
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, panels.rows.length - 1)}` : undefined}
     data-folded={panelFolded && editor.arranging ? '' : undefined}
     class:dragging={resize?.side === 'panel'}
-    style={!panelFolded && !compact && !editor.arranging ? `height: ${panelHeight}px` : undefined}
+    style={!panelFolded && !compact && !editor.arranging ? `height: ${panelHeight + (noteDue && noteInPanel ? panelNoteH : 0)}px` : undefined}
   >
     <!-- The bar folds like the columns do: the same key-shaped tab, lying on
            its side at the corner of its seam. -->
@@ -3084,7 +3085,7 @@
         title={t('editor.bottom_height_title')}
       ></div>
     {/if}
-    {#if noteDue && noteInPanel}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
+    {#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
     {#if !panelFolded}
       <!-- However many rows the arrangement has, top to bottom. A row that
            empties is gone (panels.ts), so no unreachable strip is left; a new
@@ -4580,10 +4581,6 @@
     margin: 0 0.25rem;
     font-size: 0.8rem;
     color: var(--text-2);
-  }
-  /* The host with nothing to say leaves no gap for its line. */
-  .preset-ask > .panel-note:empty {
-    display: none;
   }
   .preset-ask-chips {
     display: flex;

@@ -35,11 +35,12 @@ describe('первый вход: набор выбирают над холсто
     expect([doc.width, doc.height]).toEqual([10240, 5760]);
   });
 
-  it('слово площадки, которому место на сцене, стоит строкой в плашке — в любом наборе', () => {
-    // В наборах без верхней панели (Multator, Toonio) подсказка «Кадр пустой?»
-    // лежит на сцене, там же, где плашка: под плашкой она пропадала.
+  it('слово площадки в наборе без верхней панели стоит в нижней, над «+», а не под плашкой', () => {
+    // В Multator и Toonio панели над холстом нет: подсказка «Кадр пустой?»
+    // лежала на сцене, там же, где плашка (владелец, 2026-10-10).
+    expect(editor).toContain('const noteInPanel = $derived(!panelFolded && panels.rows.length > 0 && ((compact && !barBare) || !draws(panels.top)));');
     const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
-    expect(ask).toContain('{#if !noteInPanel && !noteInTop}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}');
+    expect(ask).not.toContain('stageNote');
   });
 
   it('выбор — тот же, что в «Настройках»', () => {

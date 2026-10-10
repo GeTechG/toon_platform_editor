@@ -273,7 +273,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('a phone’s bar is as tall as its rows: one layer stands whole, many scroll in the strip; no divider to drag', () => {
-    expect(editorUi).toContain('style={!panelFolded && !compact && !editor.arranging ? `height: ${panelHeight}px` : undefined}');
+    expect(editorUi).toContain('style={!panelFolded && !compact && !editor.arranging ? `height: ${panelHeight + (noteDue && noteInPanel ? panelNoteH : 0)}px` : undefined}');
     expect(editorUi).toContain('{#if !barFolded && !compact}');
     expect(editorUi).toMatch(/\.studio\.compact \.panel :global\(\.timeline\),\s*\.studio\.compact \.panel :global\(\.board\) \{\s*height: auto;/);
     expect(editorUi).toMatch(/\.studio\.compact \.panel :global\(\.board\) \{\s*max-height: 34dvh;/);

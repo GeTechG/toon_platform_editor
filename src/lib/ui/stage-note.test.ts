@@ -21,8 +21,8 @@ it('the stage note is drawn until the toon has a line and a second frame, with t
 // line is meant for (owner, 2026-10-08). There it stands in the bottom bar,
 // over the «+» it speaks of; a bare bar lying down keeps it on the stage.
 it('a phone stands the note in its bottom bar, off the sheet', () => {
-  expect(source).toContain('const noteInPanel = $derived(compact && !panelFolded && !barBare && panels.rows.length > 0);');
-  expect(source).toContain('{#if noteDue && noteInPanel}<div class="panel-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}');
+  expect(source).toContain('const noteInPanel = $derived(!panelFolded && panels.rows.length > 0 && ((compact && !barBare) || !draws(panels.top)));');
+  expect(source).toContain('{#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}');
 });
 
 // The host keeps the row's names for its whole walk (owner, 2026-10-08). Where

@@ -165,7 +165,7 @@ describe('bottom panel divider', () => {
     // the grid gains rows and frames instead of the buttons drifting apart.
     // (arrange mode lets the bar size to its contents, hence the second term)
     expect(editorUi).toContain('style={!panelFolded && !compact && !editor.arranging ?');
-    expect(editorUi).toContain('height: ${panelHeight}px');
+    expect(editorUi).toContain('height: ${panelHeight + (noteDue && noteInPanel ? panelNoteH : 0)}px');
     expect(timeline).not.toContain('editor.timelineHeight');
     expect(timeline).toContain('height: 100%');
   });
