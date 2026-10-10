@@ -133,7 +133,7 @@ describe('a phone draws toonop’s desktop', () => {
     // In the middle of the row (owner: «сделай их по центру»): a spring on either side.
     expect(editorUi).toContain("{:else if id === 'spring' || id === 'spring:lead'}");
     // The strip folded, nothing is left in the bar but its fold key.
-    expect(editorUi).toContain('const barBare = $derived(compact && !tall && stripFolded);');
+    expect(editorUi).toContain('const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes(\'timeline\')));');
     expect(editorUi).toContain('class:bare={barBare}');
     // …and the sheet is fitted to the whole stage: no bar to keep clear of.
     expect(editorUi).toContain('style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ?');
@@ -199,7 +199,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('a phone’s cut is toonop’s arrangement, and everything is drawn from `panels`', () => {
-    expect(editorUi).toContain('const cut = $derived(\n    compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
+    expect(editorUi).toContain('const cut = $derived(\n    deskPhone\n      ? deskOnPhone(editor.panels, tall)\n      : compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
     expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     const markup = editorUi.slice(editorUi.indexOf('<div\n  class="editor studio"'), editorUi.indexOf('<style>'));
     expect(markup).not.toContain('editor.panels');
@@ -322,7 +322,7 @@ describe('the studio draws one markup, given the arrangement', () => {
 
   it('on a phone the sheet is fitted under the sidebar and the zoom window: a bigger sheet is worth it (owner, 2026-10-07)', () => {
     // Lying at the stage's foot the widget costs the sheet nothing: there the sheet keeps clear of it, on a phone too.
-    expect(editorUi).toContain("data-over-sheet={folded('left') || (compact && !railLies) ? undefined : ''}");
+    expect(editorUi).toContain("data-over-sheet={folded('left') || (compact && !deskPhone && !railLies) ? undefined : ''}");
     // …and under the zoom window on every screen (owner, 2026-10-07): a corner of the sheet is not worth a third of it.
     expect(editorUi).not.toMatch(/class="scale-window" data-over-sheet=\{compact \? undefined : ''\}/);
   });
@@ -436,7 +436,7 @@ describe('the thickness and undo are a widget of their own, standing or lying by
   });
 
   it('on a screen standing up the widget lies: one line at the foot of the stage, in the middle', () => {
-    expect(editorUi).toContain("const railLies = $derived(sideFixed('left') && !editor.arranging && railLiesFor(");
+    expect(editorUi).toContain("const railLies = $derived(sideFixed('left') && !deskPhone && !editor.arranging && railLiesFor(");
     expect(editorUi).toContain('class:lies={railLies}');
     expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \{[^}]*grid-column: 1 \/ -1;[^}]*align-self: end;[^}]*justify-self: center;[^}]*display: flex;/);
     expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \.history \{[^}]*flex: none;\s*grid-template-columns: repeat\(2, var\(--key-h\)\);/);

@@ -290,6 +290,12 @@ export interface UxProfile {
    * drag and no tab to fold it by. A profile that says nothing keeps both.
    */
   readonly leftFixed?: boolean;
+  /**
+   * A phone draws its own cut of this preset — one row of keys over the
+   * canvas, the rest behind «⋯» — instead of the preset's desk. A profile
+   * that says nothing keeps its desk on a phone too.
+   */
+  readonly phoneCut?: boolean;
 }
 
 /**

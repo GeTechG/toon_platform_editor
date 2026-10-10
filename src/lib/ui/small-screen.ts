@@ -224,6 +224,38 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
   return { panels, more: moreGroups(behind), tools: rest };
 }
 
+/**
+ * A phone that keeps the preset's own desk (owner, 2026-10-10: Multator and
+ * Toonio on a phone «более похожими на пк версии, но с адаптивом»): the
+ * user's arrangement as it stands — the studio draws its left column as a
+ * rail and its right one behind a tab. Standing up the rail is the tools and
+ * undo alone. Lying down a desk with no columns
+ * (Multator: everything under the sheet) stands its keys beside the sheet,
+ * in their order, and leaves the strip alone under it: three rows there took
+ * the sheet's whole height. Export is always there, by the gear: a desk
+ * reaches it by Alt+S, and a phone has no keyboard and no shelf.
+ */
+// ponytail: export joins only an arrangement that places the gear; one without it has no export key on a phone.
+export function deskOnPhone(layout: PanelLayout, tall: boolean): PhoneLayout {
+  const lacks = !allPlaced({ ...layout, hidden: [] }).includes('export');
+  const withExport = (ids: readonly string[]): string[] => ids.flatMap((id) => (lacks && id === 'settings' ? [id, 'export'] : [id]));
+  const aside = !tall && layout.left.length === 0 && layout.right.length === 0;
+  // Standing up the width is the sheet's: the rail keeps the tools and undo,
+  // one key wide, and what else stood in it joins the first row of keys.
+  const keys = tall ? layout.rows.findIndex((row) => !row.includes('timeline')) : -1;
+  const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null || id === 'history';
+  const rows = layout.rows.map((row, i) => withExport(i === keys ? [...row, ...layout.left.filter((id) => !inRail(id))] : row));
+  const panels: PanelLayout = {
+    ...layout,
+    left: withExport(layout.left.filter(inRail)),
+    top: withExport(layout.top),
+    right: aside ? rows.flat().filter((id) => id !== 'timeline') : withExport(layout.right),
+    rows: aside ? rows.filter((row) => row.includes('timeline')).map(() => ['timeline']) : rows,
+    hidden: layout.hidden.filter((id) => id !== 'export'),
+  };
+  return { panels, more: [], tools: [] };
+}
+
 /** «⋯»'s named groups, in the window's own order; no group is empty. */
 function moreGroups(behind: readonly string[]): PhoneLayout['more'] {
   const listed = Object.values(MORE_ORDER).flat();
