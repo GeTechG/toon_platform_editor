@@ -681,6 +681,33 @@
       width: 23rem;
     }
   }
+  /* …and in a phone's boxes lying down, beside the palette (owner,
+     2026-10-10: «чуть-чуть не влазит и появляется скролл»): the same one
+     line a setting, in a box 20rem wide — 224px tall where the column's form
+     was 356, more than a phone lying down has. */
+  :global(.studio.phone.desk:not(.tall) aside.over) .brush-box {
+    grid-template-columns: auto minmax(4rem, 1fr) 3.4rem;
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+  :global(.studio.phone.desk:not(.tall) aside.over) .live {
+    display: none;
+  }
+  :global(.studio.phone.desk:not(.tall) aside.over) .trigger {
+    grid-column: 1 / -1;
+  }
+  :global(.studio.phone.desk:not(.tall) aside.over) .field {
+    grid-column: 1;
+    justify-content: space-between;
+    margin-block: 0;
+    text-align: start;
+    /* A name is one word: broken, «Сглажив-ание» made its line two. */
+    white-space: nowrap;
+  }
+  :global(.studio.phone.desk:not(.tall) aside.over) .note {
+    right: auto;
+    width: 18rem;
+  }
   /* In a side column the box is packed closer (owner, 2026-10-06): under the
      palette it ran 58 px past the column on a 1080p screen and the column
      scrolled for the last slider. No «Тип» over a list that names itself,

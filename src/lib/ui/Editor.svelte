@@ -4075,12 +4075,15 @@
     display: flex;
     align-items: flex-start;
     width: auto;
-    /* 390 px of height hold the brush box whole with this much, and not with more. */
-    padding-block: 0.4rem;
+    padding-block: 0.6rem;
   }
   .studio.compact.desk:not(.tall) .right.over > :global(*) {
     flex: none;
     width: 14rem;
+  }
+  /* The brush box is a line a setting there (BrushPanel): the name, the track, the number. */
+  .studio.compact.desk:not(.tall) .right.over > :global(.brush-box) {
+    width: 20rem;
   }
   .studio.compact.desk .side-edge.edge-right.over:not(.folded) {
     transform: translateX(calc(-1 * (var(--side-w, 0px) + 0.6rem)));
