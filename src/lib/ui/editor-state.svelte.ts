@@ -480,6 +480,11 @@ export class EditorState {
   askText: (message: string, value: string) => string | null | Promise<string | null> = (_message, value) => value;
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
+  /**
+   * A first visit: the stage offers the presets over the empty sheet (owner,
+   * 2026-10-10). Whoever has a config stored has been here and is not asked.
+   */
+  presetAsk = $state(false);
   /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
   original = $state('');
   /** Set by the transport so a write deferred by playback lands on stop. */
@@ -539,6 +544,7 @@ export class EditorState {
       this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
+    this.presetAsk = saved === null;
     this.layoutSeen = this.layoutKey();
     this.workspaces = loadWorkspaces();
     // A plugin that threw is off already; what is left is to drop it from the
@@ -728,6 +734,13 @@ export class EditorState {
     } else {
       this.#write((doc) => setFrameRate(doc, this.ux.defaultFps));
     }
+    this.persistUiConfig();
+  }
+
+  /** The first visit's question is over: the config is written, so it is not asked again. */
+  closePresetAsk(): void {
+    if (!this.presetAsk) return;
+    this.presetAsk = false;
     this.persistUiConfig();
   }
 

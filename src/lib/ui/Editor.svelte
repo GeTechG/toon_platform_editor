@@ -61,7 +61,7 @@
     SIDE_WIDTH_MIN,
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
-  import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
+  import { DEFAULT_PRESET, presetPanels, presets, presetUx, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
@@ -1530,6 +1530,11 @@
   // count of frames, playing) and says when it has nothing left to say. The
   // studio only keeps the note from under the hub and a phone's «⋯» window.
   const noteDue = $derived(!draftsOpen && !moreOpen);
+  // The first visit's presets stand over the empty sheet; the first line — or
+  // a drawing opened — ends the question for good.
+  $effect(() => {
+    if (!isEmptyDocument(editor.doc)) editor.closePresetAsk();
+  });
   // A phone's sheet fills its stage, so a note on the stage lay on the paper
   // the first line is meant for (owner, 2026-10-08): there it stands in the
   // bottom bar, over the «+» it speaks of. A bare bar lying down has no room.
@@ -2889,8 +2894,9 @@
     style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ? `${panelBoxH + 1.2 * rem}px` : undefined}>
     <CanvasView {editor} rail={stageRail} />
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
-         under the hub — and not under a phone's «⋯» window either. -->
-    {#if noteDue && !noteInPanel && !noteInTop && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
+         under the hub — and not under a phone's «⋯» window either. Nor under
+         the first visit's presets, which stand in the same place. -->
+    {#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -2952,6 +2958,26 @@
         <p class="stage-note" class:sr-only={!clipShown}>{clipNote}</p>
       {/if}
     </div>
+    <!-- A first visit: which studio to draw in. Pressed, a preset lays the
+         panels out at once — the studio is its own preview. Nothing waits on
+         it: the sheet under it draws, and the first line takes it away. -->
+    {#if editor.presetAsk && noteDue && !editor.arranging}
+      <section class="preset-ask" aria-labelledby="preset-ask-title">
+        <div class="preset-ask-head">
+          <h2 id="preset-ask-title">{t('intro.title')}</h2>
+          <button class="preset-ask-close" aria-label={t('picker.close')} onclick={() => editor.closePresetAsk()}><Icon name="x" size={16} /></button>
+        </div>
+        <div class="preset-ask-chips">
+          {#each presets() as p (p.id)}
+            <button aria-pressed={editor.preset === p.id} onclick={() => editor.applyPreset(p.id)}>
+              <b>{p.label}</b>
+              <span>{t('intro.tools', { count: presetUx(p.id).tools.length })}</span>
+            </button>
+          {/each}
+        </div>
+        <p>{t('intro.later')}</p>
+      </section>
+    {/if}
     {#if over && moreOpen}
       <!-- What a phone's row of keys has no room for, each key by its name. -->
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -4510,6 +4536,120 @@
     align-items: center;
     gap: 0.4rem;
     pointer-events: none;
+  }
+  /* The first visit's presets: a card on the table like the «⋯» window, told
+     from the sheet by tone, not by a shadow. Under the mode notes, which
+     speak first. */
+  .preset-ask {
+    position: absolute;
+    z-index: var(--z-float);
+    top: 3rem;
+    left: 50%;
+    translate: -50% 0;
+    width: min(100% - 1rem, 26rem);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--sub);
+    border-radius: var(--r-lg);
+    color: var(--text);
+    --pop-from: -4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  .preset-ask-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .preset-ask h2 {
+    margin: 0 0 0 0.25rem;
+    font-size: 1rem;
+    font-weight: 800;
+    text-wrap: balance;
+  }
+  .preset-ask p {
+    margin: 0 0.25rem;
+    font-size: 0.8rem;
+    color: var(--text-2);
+  }
+  .preset-ask-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .preset-ask button {
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+  }
+  .preset-ask-chips button {
+    flex: 1 0 auto;
+    display: grid;
+    gap: 0.1rem;
+    min-height: var(--key-h);
+    padding: 0.4rem 0.6rem;
+    text-align: start;
+    background: color-mix(in oklab, var(--sub), var(--text) 6%);
+  }
+  .preset-ask-chips b {
+    font-weight: 700;
+  }
+  .preset-ask-chips span {
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+  }
+  /* The picked one lies on the sheet's white, as a picked row of a popup does. */
+  .preset-ask-chips button[aria-pressed='true'] {
+    background: var(--canvas);
+    color: var(--accent-ink);
+  }
+  .preset-ask-close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: var(--key-h);
+    height: var(--key-h);
+    margin: -0.4rem -0.4rem -0.4rem 0;
+  }
+  @media (hover: hover) {
+    .preset-ask button:not([aria-pressed='true']):hover {
+      background: color-mix(in oklab, var(--sub), var(--text) 12%);
+    }
+  }
+  .preset-ask button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* A phone's sheet is small and the first line wants it: there the card is
+     its title and one row of presets. Its panels are the same in every
+     preset anyway — the line about them would not be true. */
+  /* Under the names a first visit's row of keys wears, which hang below it. */
+  .studio.compact .preset-ask {
+    top: 2rem;
+    padding: 0.5rem;
+  }
+  .studio.compact .preset-ask-chips span {
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .studio.compact .preset-ask p {
+    display: none;
+  }
+  .studio.compact .preset-ask-chips {
+    flex-wrap: nowrap;
+  }
+  .studio.compact .preset-ask-chips button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 0.4rem;
   }
   .stage-note {
     display: flex;

@@ -13,7 +13,7 @@ it('the stage note is drawn until the toon has a line and a second frame, with t
   // The walk now ends at play (owner, 2026-10-08), so the host is told the
   // count of frames and whether the toon is playing, and ends the note itself.
   expect(source).toContain('const noteDue = $derived(!draftsOpen && !moreOpen);');
-  expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}');
+  expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}');
   expect(source).toContain('stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean]>;');
 });
 
