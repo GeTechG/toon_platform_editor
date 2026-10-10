@@ -536,6 +536,14 @@ export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x
  */
 export const RASTER_BUDGET = 2;
 
+/**
+ * The largest sheet, in its own pixels, that is always rasterized whole: 1080p,
+ * lying or standing. Up to it the bitmap is the picture on every device — about
+ * 8 MB a buffer, which a phone holds. The calibration knob: a larger sheet
+ * falls back to fractions and pieces.
+ */
+export const WHOLE_SHEET_PIXELS = 1920 * 1080;
+
 /** The piece of the sheet's bitmap a frame is composed into. */
 export interface SheetRaster {
   /** Bitmap pixels per logical pixel of the document: 1, ½, ⅓, ¼… */
@@ -550,8 +558,9 @@ export interface SheetRaster {
 /**
  * The bitmap the frame is rasterized into. One pixel per logical pixel of the
  * document is the picture itself — the same on every screen, and never drawn
- * finer: a sheet magnified past it shows its pixels. A screen coarser than the
- * sheet takes a whole fraction of it, so a phone does not rasterize a 4K
+ * finer: a sheet magnified past it shows its pixels. A sheet up to 1080p is
+ * always that bitmap, whole. Of a larger one a screen coarser than the sheet
+ * takes a whole fraction, so a phone does not rasterize a 4K
  * sheet to show 720 lines; a magnified sheet takes only the piece on the
  * table. `on` is where the sheet lies on the canvas and how many of the
  * canvas's pixels a logical pixel of the document covers.
@@ -562,6 +571,13 @@ export function sheetRaster(
   canvas: { width: number; height: number },
 ): SheetRaster {
   const EPS = 1e-6;
+  const whole = {
+    width: Math.max(1, Math.round(doc.width / FIXED_POINT_SCALE)),
+    height: Math.max(1, Math.round(doc.height / FIXED_POINT_SCALE)),
+  };
+  if (whole.width * whole.height <= WHOLE_SHEET_PIXELS) {
+    return { level: 1, x: 0, y: 0, ...whole };
+  }
   const piece = (n: number): SheetRaster => {
     const level = 1 / n;
     const k = level / on.scale;

@@ -76,6 +76,7 @@
     BlitTarget & {
       globalAlpha: number;
       imageSmoothingEnabled: boolean;
+      imageSmoothingQuality: string;
       clearRect(x: number, y: number, w: number, h: number): void;
       rect(x: number, y: number, w: number, h: number): void;
       clip(): void;
@@ -654,6 +655,9 @@
         const stretch = perPixel / raster.level;
         ctx.setTransform(stretch, 0, 0, stretch, sheet.x + raster.x * stretch, sheet.y + raster.y * stretch);
         ctx.imageSmoothingEnabled = stretch < 2;
+        // A whole 1080p sheet on a phone is shrunk several times over: the
+        // default filter drops lines thinner than the step it samples at.
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(sheetEl, 0, 0);
 
         // The grid is a drawing aid, not part of the picture: the preview shows

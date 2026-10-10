@@ -30,8 +30,21 @@ describe('битмап листа', () => {
       .toEqual({ level: 1 / 2, x: 500, y: 250, width: 1067, height: 600 });
   });
 
+  it('лист до 1080p — всегда целиком и в своих пикселях, каким бы мелким ни был экран', () => {
+    const FHD = { width: 1920 * 8, height: 1080 * 8 };
+    expect(sheetRaster(FHD, { x: -300, y: -200, scale: 0.2 }, { width: 384, height: 216 }))
+      .toEqual({ level: 1, x: 0, y: 0, width: 1920, height: 1080 });
+    expect(sheetRaster(HD, { x: -900, y: -500, scale: 3 }, { width: 720, height: 1280 }))
+      .toEqual({ level: 1, x: 0, y: 0, width: 1280, height: 720 });
+  });
+
+  it('стоячий 1080p — тоже целиком', () => {
+    expect(sheetRaster({ width: 1080 * 8, height: 1920 * 8 }, { x: 0, y: 0, scale: 0.25 }, { width: 270, height: 480 }))
+      .toEqual({ level: 1, x: 0, y: 0, width: 1080, height: 1920 });
+  });
+
   it('лист за краем стола — один пиксель, не пустой холст', () => {
-    const out = sheetRaster(HD, { x: 5000, y: 0, scale: 1 }, { width: 1280, height: 720 });
+    const out = sheetRaster(UHD, { x: 5000, y: 0, scale: 1 }, { width: 1280, height: 720 });
     expect([out.width, out.height]).toEqual([1, 720]);
   });
 });
