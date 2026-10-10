@@ -61,7 +61,7 @@
     SIDE_WIDTH_MIN,
   } from './presets';
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
-  import { DEFAULT_PRESET, presetPanels, presets, presetUx, type SideId } from './presets';
+  import { DEFAULT_PRESET, presetAbout, presetPanels, presets, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
@@ -2972,10 +2972,11 @@
           {#each presets() as p (p.id)}
             <button aria-pressed={editor.preset === p.id} onclick={() => editor.applyPreset(p.id)}>
               <b>{p.label}</b>
-              <span>{t('intro.tools', { count: presetUx(p.id).tools.length })}</span>
+              <span>{presetAbout(p.id)}</span>
             </button>
           {/each}
         </div>
+        <p class="preset-ask-picked">{presetAbout(editor.preset)}</p>
         <p>{t('intro.later')}</p>
       </section>
     {/if}
@@ -4547,7 +4548,7 @@
     top: 3rem;
     left: 50%;
     translate: -50% 0;
-    width: min(100% - 1rem, 26rem);
+    width: min(100% - 1rem, 34rem);
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -4593,6 +4594,7 @@
   .preset-ask-chips button {
     flex: 1 0 auto;
     display: grid;
+    align-content: start;
     gap: 0.1rem;
     min-height: var(--key-h);
     padding: 0.4rem 0.6rem;
@@ -4630,19 +4632,24 @@
     outline-offset: 2px;
   }
   /* A phone's sheet is small and the first line wants it: there the card is
-     its title and one row of presets. Its panels are the same in every
-     preset anyway — the line about them would not be true. */
+     its title, the presets by name in one row, and the word about the picked
+     one — three such words abreast did not fit a 360 px screen, and a row
+     each covered the sheet. Its panels are the same in every preset anyway,
+     and the line about the settings is dropped. */
+  .preset-ask .preset-ask-picked {
+    display: none;
+  }
   /* Under the names a first visit's row of keys wears, which hang below it. */
   .studio.compact .preset-ask {
     top: 2rem;
     padding: 0.5rem;
   }
+  .studio.compact .preset-ask p,
   .studio.compact .preset-ask-chips span {
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-  .studio.compact .preset-ask p {
     display: none;
+  }
+  .studio.compact .preset-ask .preset-ask-picked {
+    display: block;
   }
   .studio.compact .preset-ask-chips {
     flex-wrap: nowrap;
@@ -4651,6 +4658,8 @@
     flex: 1 1 0;
     min-width: 0;
     padding-inline: 0.4rem;
+    align-content: center;
+    text-align: center;
   }
   .stage-note {
     display: flex;

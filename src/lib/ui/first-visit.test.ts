@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
-import { t } from '../i18n';
-import { presets, presetUx } from './presets';
+import { presetAbout, presets, presetUx } from './presets';
+import { plugins } from '../plugins';
+import { PLUGIN_API } from '../plugins/contract';
 import { createDocument } from '../model/operations';
 
 // Первый вход в студию: над холстом лежит плашка с наборами. Нажал — панели
@@ -41,11 +42,14 @@ describe('первый вход: набор выбирают над холсто
     expect(ask).toContain('aria-pressed={editor.preset === p.id}');
   });
 
-  it('набор назван числом инструментов — на телефоне панели у всех одни', () => {
-    const count = (id: string) => t('intro.tools', { count: presetUx(id).tools.length });
+  it('под именем набора — пара слов о нём, а у набора из плагина — число инструментов', () => {
     expect(presets().map((p) => p.id)).toEqual(['toonop', 'multator', 'toonio']);
-    expect(count('toonop')).toBe('9 инструментов');
-    expect(count('multator')).toBe('3 инструмента');
-    expect(count('toonio')).toBe('8 инструментов');
+    expect(presetAbout('toonop')).toBe('Сбалансированный');
+    expect(presetAbout('multator')).toBe('Минимализм и классика');
+    expect(presetAbout('toonio')).toBe('Гибкий и понятный');
+    plugins.register({ id: 'first-visit.test', api: PLUGIN_API, presets: { own: { label: 'Свой', brush: 'toonop-brush', ux: { ...presetUx('multator') } } } });
+    expect(presetAbout('own')).toBe('3 инструмента');
+    const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
+    expect(ask).toContain('<span>{presetAbout(p.id)}</span>');
   });
 });

@@ -405,6 +405,16 @@ export function presetUx(id: string): UxProfile {
   return presetById(id).ux;
 }
 
+/**
+ * A word about a preset for whoever picks one first: the editor's own line for
+ * the presets it knows, the count of tools for one a plugin brought.
+ */
+export function presetAbout(id: string): string {
+  const key = `intro.about.${id}`;
+  const own = t(key);
+  return own === key ? t('intro.tools', { count: presetUx(id).tools.length }) : own;
+}
+
 /** Parses a stored config string into a normalized UiConfig, or null if invalid. */
 /**
  * The catalog address of a saved config.
