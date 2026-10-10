@@ -20,12 +20,13 @@ describe('toonop on a desk', () => {
   });
 
   it('toonop’s own colours stand open on the right, first; Toonio’s palette box stays on the shelf', () => {
-    expect(base.right).toEqual(['colours', 'brush-rail']);
+    // The colours alone (owner: the thickness beside them was a leftover once the brush went back behind its key).
+    expect(base.right).toEqual(['colours']);
     expect(panelItems().find((item) => item.id === 'colours')?.wide).toBe(true);
-    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'brush-key', 'color-key']));
+    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'brush-key', 'brush-rail', 'color-key']));
   });
 
-  it('the thickness lies under the colours; the rest of the brush is behind its tool’s key (owner: «настройки кисти вернуть в кнопку») — pressed again, or with the right button', async () => {
+  it('the whole brush, its thickness too, is behind its tool’s key (owner: «настройки кисти вернуть в кнопку») — pressed again, or with the right button', async () => {
     expect(toolOpensBrush(base, 'pencil')).toBe(true);
     const popKey = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
     // The right button opens the window whatever the gate says: it has taken the tool in hand by then.

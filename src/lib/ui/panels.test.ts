@@ -218,8 +218,8 @@ describe('the default layouts', () => {
     // A desk's (owner, 2026-10-10): the tools down the left, nothing else.
     expect(studio.left).toEqual(['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem));
     // Toonop's own colours, open: no window over the sheet.
-    // …the thickness under them; the rest of the brush is behind its tool's key.
-    expect(studio.right).toEqual(['colours', 'brush-rail']);
+    // …and nothing else: the brush, its thickness too, is behind its tool's key.
+    expect(studio.right).toEqual(['colours']);
     // No bar over the canvas (owner, 2026-10-10: it stood mostly empty): the
     // transport's row holds its keys at the far end, «Отправить» last.
     expect(studio.top).toEqual([]);
@@ -230,7 +230,7 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key', 'color-key',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key', 'brush-rail', 'color-key',
     ].sort());
   });
 
