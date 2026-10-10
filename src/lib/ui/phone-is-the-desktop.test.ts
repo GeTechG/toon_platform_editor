@@ -300,7 +300,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('a phone folds the strip alone — the transport stays — and lying down starts folded', () => {
     expect(editorUi).toContain('const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));');
     expect(editorUi).toContain("{#if !(stripFolded && row.includes('timeline'))}");
-    expect(editorUi).toContain('onclick={() => (compact ? (stripShut = !barFolded) : editor.togglePanel())}');
+    expect(editorUi).toContain('onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying(\'panel\') : (stripShut = !barFolded))}');
   });
 
   it('the transport’s row is one line on the narrowest phone: closer keys, less padding, as in the row over the canvas', () => {

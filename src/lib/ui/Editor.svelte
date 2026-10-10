@@ -654,11 +654,22 @@
    * lying (owner: «лёжа на телефоне даже цвета не влазят»).
    */
   const sideOver = $derived(deskPhone);
+  /**
+   * Lying down such a phone has one of the three open at a time — the rail,
+   * the boxes, the bar (owner, 2026-10-10: all three lay on one another) —
+   * and opening one shuts the others. Unasked, the one with the tools.
+   */
+  let lyingOpen = $state<SideId | 'panel' | 'none' | null>(null);
+  const openLying = $derived(lyingOpen ?? (panels.left.length > 0 ? 'left' : 'panel'));
+  const toggleLying = (id: SideId | 'panel'): void => {
+    lyingOpen = openLying === id ? 'none' : id;
+  };
   /** A tap past the boxes lying over the sheet — on it, on the bar — only closes them (owner, 2026-10-08). */
   function shutSideOver(e: PointerEvent): void {
     if (!sideOver || folded('right')) return;
     e.stopPropagation();
-    sideShut.right = true;
+    if (tall) sideShut.right = true;
+    else lyingOpen = 'none';
   }
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -778,13 +789,12 @@
    * Folded away — but never on a small screen, where there are no columns to
    * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => (deskPhone ? (sideShut[id] ?? id === 'right') : side(id).collapsed && !compact);
+  const folded = (id: SideId): boolean => (deskPhone ? (tall ? (sideShut[id] ?? id === 'right') : openLying !== id) : side(id).collapsed && !compact);
   /** The bottom bar, folded away by the same rule. */
   // A preset's desk on a phone folds its bar whole, as the desk does (owner,
-  // 2026-10-10: «пускай прячет всё»). It opens with the bar up — its tools may
-  // be there (Multator) — but for a phone lying down whose tools stand in the
-  // rail (Toonio): there the bar took half the height the sheet had.
-  const panelFolded = $derived(deskPhone ? (stripShut ?? (!tall && panels.left.length > 0)) : editor.panelCollapsed && !compact);
+  // 2026-10-10: «пускай прячет всё»). Standing up it opens with the bar up;
+  // lying down the bar is one of the three that take turns (`openLying`).
+  const panelFolded = $derived(deskPhone ? (tall ? (stripShut ?? false) : openLying !== 'panel') : editor.panelCollapsed && !compact);
   /** What the bar's fold key says: the whole bar on the desktop, the strip on a phone. */
   const barFolded = $derived(panelFolded || stripFolded);
   /**
@@ -2504,7 +2514,7 @@
     <!-- The arrow points the way the panel is about to travel. -->
     <button
       class="fold"
-      onclick={() => (deskPhone ? (sideShut[id] = !folded(id)) : editor.toggleSide(id))}
+      onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? (sideShut[id] = !folded(id)) : toggleLying(id))}
       aria-expanded={!folded(id)}
       title={folded(id) ? t('editor.panel_expand') : t('editor.panel_fold')}
       aria-label={t('editor.panel_toggle', { action: folded(id) ? t('editor.expand') : t('editor.fold'), label })}
@@ -3095,7 +3105,7 @@
            its side at the corner of its seam. -->
       <button
         class="fold lying"
-        onclick={() => (compact ? (stripShut = !barFolded) : editor.togglePanel())}
+        onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying('panel') : (stripShut = !barFolded))}
         aria-expanded={!barFolded}
         title={barFolded ? t('editor.panel_expand') : t('editor.panel_fold')}
         aria-label={barFolded ? t('editor.bottom_expand') : t('editor.bottom_fold')}
