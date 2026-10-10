@@ -62,6 +62,12 @@ export class FrameCache<T> {
     return null;
   }
 
+  /** How much of what it will hold is held, 0…1 — the loading the viewer waits out. */
+  progress(total: number): number {
+    const goal = Math.min(total, this.#room);
+    return goal > 0 ? Math.min(1, this.#frames.size / goal) : 1;
+  }
+
   clear(): void {
     this.#frames.clear();
   }

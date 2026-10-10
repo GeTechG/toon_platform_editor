@@ -38,6 +38,16 @@ describe('кэш кадров плеера', () => {
     expect(cache.next(10, 0)).toBeNull();
   });
 
+  it('доля готового считается от того, что влезет: два кадра из десяти — уже всё', () => {
+    const cache = new FrameCache<string>(8 * MB);
+    cache.fit(doc, 1280, 720);
+    expect(cache.progress(10)).toBe(0);
+    cache.put(0, 'a');
+    expect(cache.progress(10)).toBe(0.5);
+    cache.put(1, 'b');
+    expect(cache.progress(10)).toBe(1);
+  });
+
   it('другой документ или другой размер — всё заново', () => {
     const cache = new FrameCache<string>(8 * MB);
     cache.fit(doc, 100, 100);
@@ -64,5 +74,12 @@ describe('плеер показывает готовое', () => {
     const source = await Bun.file(new URL('./Player.svelte', import.meta.url)).text();
     expect(source).toContain('sheetRaster(');
     expect(source).toContain('scale: raster.level / FIXED_POINT_SCALE, dpr: 1');
+  });
+
+  it('часы не идут, пока кадры не растеризованы, а зритель видит загрузку', async () => {
+    const source = await Bun.file(new URL('./Player.svelte', import.meta.url)).text();
+    expect(source).toMatch(/if \(!playing \|\| !ready\) \{/);
+    expect(source).toContain("t('play.loading'");
+    expect(source).toContain('role="status"');
   });
 });

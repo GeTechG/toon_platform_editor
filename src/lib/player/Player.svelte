@@ -89,6 +89,14 @@
 
   /** The frames rasterized ahead of the clock (`warm` below), as pixels. */
   const cache = new FrameCache<ImageData>();
+  /**
+   * Whether the film is rasterized — all of it the cache will hold. Until
+   * then the clock stands and the viewer is shown the wait: a film that
+   * starts at once stutters through its first lap, drawing each frame live.
+   */
+  let ready = $state(false);
+  let warmed = $state(0);
+  const percent = new Intl.NumberFormat(BASE_LOCALE, { style: 'percent' });
 
   /**
    * The bitmap the frames are rasterized into — the sheet's, by the rule the
@@ -112,6 +120,9 @@
       screen: pxWidth,
     };
   });
+
+  const bitmapWidth = $derived(raster.width);
+  const bitmapHeight = $derived(raster.height);
 
   /** One frame of the show — a frame of the film or a step of the replay. */
   function paint(index: number, ctx: Canvas2DLike): void {
@@ -161,7 +172,12 @@
   // budget stays drawn live.
   $effect(() => {
     void view;
-    void raster;
+    // The bitmap's size and not the raster: that one changes with every pixel
+    // of a resized window, and a sheet drawn whole is the same bitmap through it.
+    void bitmapWidth;
+    void bitmapHeight;
+    ready = false;
+    warmed = 0;
     const scratch = document.createElement('canvas');
     let timer: ReturnType<typeof setTimeout>;
     const warm = (): void => {
@@ -169,6 +185,7 @@
       cache.fit(view, pxWidth, pxHeight);
       const index = cache.next(total, Math.min(untrack(() => current), total - 1));
       if (index === null) {
+        ready = true;
         return;
       }
       if (scratch.width !== pxWidth) scratch.width = pxWidth;
@@ -176,10 +193,14 @@
       // Made for reading back: every frame drawn on it is read once and kept.
       const ctx = scratch.getContext('2d', { willReadFrequently: true });
       if (!ctx) {
+        // No canvas to rasterize on (Safari out of canvas memory): the film
+        // plays drawn live rather than waits for frames that will not come.
+        ready = true;
         return;
       }
       paint(index, ctx as unknown as Canvas2DLike);
       cache.put(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+      warmed = cache.progress(total);
       timer = setTimeout(warm, 0);
     };
     timer = setTimeout(warm, 0);
@@ -218,7 +239,13 @@
   // pressing play builds a new one starting at the frame on the canvas, so
   // nothing jumps. `current` is read untracked — the loop writes it.
   $effect(() => {
-    if (!playing) {
+    if (!playing || !ready) {
+      // Pressed while the film is still loading: the press is the only one
+      // there will be, and iOS lets the track sound later only if it was
+      // unlocked inside it.
+      if (playing && audio) {
+        unlockElement(audio);
+      }
       return;
     }
     // A replayed drawing is played once and rests finished: play on the
@@ -339,6 +366,9 @@
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>
+  {#if !ready}
+    <div class="loading" role="status">{t('play.loading', { percent: percent.format(warmed) })}</div>
+  {/if}
   {#if controls}
     <button
       class="play-key"
@@ -422,6 +452,20 @@
     .play-key:active {
       transform: translateX(-50%);
     }
+  }
+  /* Set apart by tone, not by a shadow: a plate of the table's own colour. */
+  .loading {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 0.5rem 0.9rem;
+    border-radius: var(--r-pill);
+    background: var(--sub);
+    color: var(--ink);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
   }
   canvas {
     display: block;

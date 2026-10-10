@@ -312,7 +312,8 @@
     "stop": "Остановить",
     "title_play": "Проиграть кадры (Space)",
     "title_stop": "Остановить просмотр (Space)",
-    "frame_alt": "Мульт, кадр {{current}} из {{total}}"
+    "frame_alt": "Мульт, кадр {{current}} из {{total}}",
+    "loading": "Загрузка, {{percent}}"
   },
   "sheet": {
     "standing": "Вертикальный",

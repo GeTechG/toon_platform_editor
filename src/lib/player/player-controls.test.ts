@@ -39,7 +39,7 @@ describe('Player controls contract', () => {
 
   it('runs the frame clock only while playing', () => {
     const loop = source.match(/\$effect\(\(\) => \{[^]*?requestAnimationFrame[^]*?\n  \}\);/)?.[0] ?? '';
-    expect(loop).toContain('if (!playing)');
+    expect(loop).toContain('if (!playing || !ready)');
     expect(loop).toContain('cancelAnimationFrame');
   });
 
