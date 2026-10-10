@@ -642,7 +642,7 @@
   let stripShut = $state<boolean | null>(null);
   const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));
   /** A phone lying down with its strip folded: the transport is in the row over the canvas, the bar is its tab alone. */
-  const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.every((id) => id === 'timeline')));
+  const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes('timeline')));
   /** A desk's right column on a phone: behind its tab standing up, open lying down, until asked for. */
   let sideShut = $state<boolean | null>(null);
   /** …and open standing up it lies over the sheet: 390 px have no room for a column of boxes beside it. */
@@ -3119,18 +3119,17 @@
            has to stand there holding a place open. -->
       <div class="toolbar">
         {#each panels.rows as row, i (i)}
-          <!-- A phone folds the strip alone: the transport's row stays, and so do the keys beside the strip (Multator's «+» and «×»). -->
-          {@const shown = stripFolded ? row.filter((id) => id !== 'timeline') : row}
-          {#if shown.length > 0}
+          <!-- A phone folds the strip alone: the transport's row stays. The strip's row goes whole, its keys with it (owner, 2026-10-10: «пускай прячет всё»). -->
+          {#if !(stripFolded && row.includes('timeline'))}
           <div
             class="row"
             role="group"
             aria-label={t('editor.row_n', { n: i + 1 })}
             data-slot="row:{i}"
-            class:strip-row={shown.includes('timeline')}
+            class:strip-row={row.includes('timeline')}
             bind:contentRect={rowBoxes[i]}
           >
-            {@render slot(shown)}
+            {@render slot(row)}
           </div>
           {/if}
         {/each}

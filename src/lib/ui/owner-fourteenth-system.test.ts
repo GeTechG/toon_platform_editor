@@ -217,7 +217,7 @@ const colour = await read('ColorPanel.svelte');
 describe('the rules that used `:has()` keep working without it', () => {
 
   it('the strip’s row is marked by the arrangement, not found by the selector', () => {
-    expect(editorUi).toContain("class:strip-row={shown.includes('timeline')}");
+    expect(editorUi).toContain("class:strip-row={row.includes('timeline')}");
     expect(styleOf('Editor.svelte', editorUi)).toMatch(/\.studio \.row\.strip-row \{[^}]*flex: 1/);
     expect(styleOf('Editor.svelte', editorUi)).toMatch(/\.studio \.row\.strip-row > \.arr\[data-item='timeline'\]/);
   });
