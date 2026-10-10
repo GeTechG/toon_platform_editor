@@ -126,6 +126,11 @@
     onclick={() => {
       if (!gate || gate()) open = !open;
     }}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      gate?.();
+      open = true;
+    }}
     {title}
     aria-label={label}
   >

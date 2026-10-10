@@ -20,15 +20,18 @@ describe('toonop on a desk', () => {
   });
 
   it('toonop’s own colours stand open on the right, first; Toonio’s palette box stays on the shelf', () => {
-    expect(base.right).toEqual(['colours', 'brush-rail', 'brush-key']);
+    expect(base.right).toEqual(['colours', 'brush-rail']);
     expect(panelItems().find((item) => item.id === 'colours')?.wide).toBe(true);
-    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'color-key']));
+    expect(base.hidden).toEqual(expect.arrayContaining(['palette', 'brush', 'brush-key', 'color-key']));
   });
 
-  it('the brush is on the right too, with no scroll (owner): the thickness under the colours, the rest of it behind the key beside — a tool pressed again opens no window, on a phone it still does', () => {
-    expect(toolOpensBrush(base, 'pencil')).toBe(false);
-    const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: () => true };
-    expect(toolOpensBrush(phoneLayout(base, base, keep).panels, 'pencil')).toBe(true);
+  it('the thickness lies under the colours; the rest of the brush is behind its tool’s key (owner: «настройки кисти вернуть в кнопку») — pressed again, or with the right button', async () => {
+    expect(toolOpensBrush(base, 'pencil')).toBe(true);
+    const popKey = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
+    // The right button opens the window whatever the gate says: it has taken the tool in hand by then.
+    expect(popKey).toMatch(/oncontextmenu=\{\(e\) => \{\s+e\.preventDefault\(\);\s+gate\?\.\(\);\s+open = true;/);
+    const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)).text());
+    expect(ru.tool.again_brush).toBe('{{title}}. Ещё одно нажатие или правая кнопка открывает настройки кисти');
   });
 
   it('no bar over the canvas (owner: «убрать верхнее меню, всё куда-то разложить» — it was mostly empty): its keys stand at the far end of the transport’s row, «Отправить» last', () => {

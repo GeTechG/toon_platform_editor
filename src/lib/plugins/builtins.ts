@@ -95,9 +95,11 @@ const TOONOP_PRESET: PluginPreset = {
   // Procreate Dreams was a tablet's): the tools down the left, as desk
   // programs stand them, and nothing else there; on the right, where a
   // cursor has the room, toonop's own colours open — no window over the
-  // sheet — and under them the brush: its thickness as one line, with the
-  // key of the brush box beside it (the box and the colours together were
-  // taller than any laptop's column, and the owner wants no scroll). No bar
+  // sheet — and under them the brush's thickness as one line. The rest of
+  // the brush is behind its tool's key, pressed again or with the right
+  // button (owner, the same day: the box and the colours together were
+  // taller than any laptop's column, and a key for it beside the slider
+  // was one key too many). No bar
   // over the canvas: it stood mostly empty and took the sheet's height
   // (owner, the same day). Over the strip, at the near end, what times the
   // film: the rate, «+», the transport, the onion, the sound; at the far
@@ -117,7 +119,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:drag',
         'tool:lasso',
       ],
-      right: ['colours', 'brush-rail', 'brush-key'],
+      right: ['colours', 'brush-rail'],
       top: [],
       rows: [
         ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'history', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],

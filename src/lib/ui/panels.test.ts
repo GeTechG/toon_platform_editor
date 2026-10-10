@@ -218,8 +218,8 @@ describe('the default layouts', () => {
     // A desk's (owner, 2026-10-10): the tools down the left, nothing else.
     expect(studio.left).toEqual(['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso'].map(toolItem));
     // Toonop's own colours, open: no window over the sheet.
-    // …the thickness under them and the key of the brush's box beside it.
-    expect(studio.right).toEqual(['colours', 'brush-rail', 'brush-key']);
+    // …the thickness under them; the rest of the brush is behind its tool's key.
+    expect(studio.right).toEqual(['colours', 'brush-rail']);
     // No bar over the canvas (owner, 2026-10-10: it stood mostly empty): the
     // transport's row holds its keys at the far end, «Отправить» last.
     expect(studio.top).toEqual([]);
@@ -230,13 +230,13 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'color-key',
+      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key', 'color-key',
     ].sort());
   });
 
   test('a drawing tool pressed again opens its brush — where no brush control is placed', () => {
     // Toonop's desk keeps the brush box in its right column; without it, as on a phone:
-    const studio = movePanelItem(presets.presetPanels('toonop'), 'brush-key', 'hidden');
+    const studio = presets.presetPanels('toonop');
     expect(toolOpensBrush(studio, 'pencil')).toBe(true);
     expect(toolOpensBrush(studio, 'eraser')).toBe(true);
     // A help tool has no brush: the hand, the lasso, the pipette.
@@ -249,7 +249,7 @@ describe('the default layouts', () => {
   });
 
   test('the sliders beside the canvas are not the brush box: a tool pressed again still opens it', () => {
-    expect(toolOpensBrush(movePanelItem(presets.presetPanels('toonop'), 'brush-key', 'hidden'), 'pencil')).toBe(true);
+    expect(toolOpensBrush(presets.presetPanels('toonop'), 'pencil')).toBe(true);
   });
 
   test('a spring draws nothing: a bar holding only it is not drawn, a phone keeps it out of «⋯»', () => {

@@ -35,7 +35,7 @@ describe('the pipette names the screen eyedropper only where it opens', () => {
     expect(ru.tool.pipette.title).not.toContain('ещё раз');
     expect(ru.tool.pipette.title_screen).toContain('Ещё одно нажатие берёт цвет с экрана');
     // 2026-10-08 critique: «— ещё раз: настройки кисти» had no verb and put a second dash after «Мега-ластик (Alt+E) — режет линии целиком».
-    expect(ru.tool.again_brush).toBe('{{title}}. Ещё одно нажатие открывает настройки кисти');
+    expect(ru.tool.again_brush).toBe('{{title}}. Ещё одно нажатие или правая кнопка открывает настройки кисти');
     expect(toolKey).toContain("'EyeDropper' in globalThis");
     expect(toolKey).toContain('editor.settings.browserPipette');
     expect(toolKey).toContain("t('tool.pipette.title_screen')");
