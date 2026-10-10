@@ -212,8 +212,13 @@ export interface EditorSettings {
   penPressure: boolean;
   /** Crosshair on the brush cursor at very thin and very thick widths. */
   crossCursor: boolean;
-  /** Picking the pipette opens the browser's own eyedropper, where there is one. */
-  chromePicker: boolean;
+  /**
+   * Picking the pipette opens the browser's own eyedropper, where there is
+   * one. Off unless asked for (owner, 2026-10-10: it works badly over the
+   * canvas). It was `chromePicker` and on by default; that key is not read,
+   * or everyone's stored default would have kept it on.
+   */
+  browserPipette: boolean;
   /** Reference "paranoid mode": an unfinished transform blocks the editor. */
   lockTransform: boolean;
   /** A picked colour joins the saved grid. */
@@ -310,7 +315,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
   penPressure: true,
   crossCursor: true,
-  chromePicker: true,
+  browserPipette: false,
   lockTransform: false,
   paletteAutoAdd: true,
   paletteLimit: 50,
@@ -494,7 +499,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     mouseMode: flag('mouseMode'),
     penPressure: flag('penPressure'),
     crossCursor: flag('crossCursor'),
-    chromePicker: flag('chromePicker'),
+    browserPipette: flag('browserPipette'),
     lockTransform: flag('lockTransform'),
     paletteAutoAdd: flag('paletteAutoAdd'),
     paletteLimit: snapPaletteLimit(raw.paletteLimit),

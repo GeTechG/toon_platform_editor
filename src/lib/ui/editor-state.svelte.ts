@@ -808,7 +808,7 @@ export class EditorState {
     const eyeDropper = (globalThis as {
       EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
     }).EyeDropper;
-    if (!this.settings.chromePicker || !eyeDropper) {
+    if (!this.settings.browserPipette || !eyeDropper) {
       return;
     }
     // The target is the one armed now, and a colour taken hands the tool

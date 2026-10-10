@@ -219,7 +219,7 @@ describe('the settings sheet', () => {
   it('every option sits in the category that names it', () => {
     const home: Record<string, string[]> = {
       drawing: ['mouseMode', 'penPressure', 'crossCursor', 'lockTransform', 'megaEraserWarning'],
-      palette: ['chromePicker', 'paletteAutoAdd', 'paletteLimit'],
+      palette: ['browserPipette', 'paletteAutoAdd', 'paletteLimit'],
       view: ['altLayout', 'letterKeys'],
       saving: ['autosaveMs', 'showDraftsOnStart'],
       more: ['pluginCatalog'],
@@ -376,7 +376,7 @@ describe('the view options', () => {
 describe('the browser eyedropper option', () => {
   it('is offered only where the browser has the API', () => {
     expect(sheet).toContain("'EyeDropper' in window");
-    expect(sheet).toContain("editor.setSetting('chromePicker'");
+    expect(sheet).toContain("editor.setSetting('browserPipette'");
   });
 });
 

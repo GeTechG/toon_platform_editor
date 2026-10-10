@@ -194,7 +194,7 @@ describe('the browser eyedropper', () => {
   it('opens from the state, so the P key reaches it as well as the button', () => {
     const select = member(state, 'selectTool');
     expect(select).toContain('openBrowserPicker');
-    expect(state).toContain('this.settings.chromePicker');
+    expect(state).toContain('this.settings.browserPipette');
     expect(state).toContain('EyeDropper');
   });
 });

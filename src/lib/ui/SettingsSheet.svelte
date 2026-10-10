@@ -366,8 +366,8 @@
             <input
               type="checkbox"
               role="switch"
-              checked={editor.settings.chromePicker}
-              onchange={(e) => editor.setSetting('chromePicker', e.currentTarget.checked)}
+              checked={editor.settings.browserPipette}
+              onchange={(e) => editor.setSetting('browserPipette', e.currentTarget.checked)}
             />
           </label>
         {/if}

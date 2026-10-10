@@ -37,7 +37,7 @@
   // one and the setting lets it (owner, sixteenth audit): Safari and Firefox
   // have none, and the title promised it there.
   const title = $derived(
-    tool === 'pipette' && 'EyeDropper' in globalThis && editor.settings.chromePicker
+    tool === 'pipette' && 'EyeDropper' in globalThis && editor.settings.browserPipette
       ? t('tool.pipette.title_screen')
       : spec?.title ?? '',
   );

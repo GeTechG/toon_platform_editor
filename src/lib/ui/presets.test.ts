@@ -223,7 +223,7 @@ test('settings round-trip through the stored config', () => {
     mouseMode: true,
     penPressure: false,
     crossCursor: false,
-    chromePicker: false,
+    browserPipette: false,
     lockTransform: true,
     paletteAutoAdd: false,
     paletteLimit: 120,
@@ -339,15 +339,19 @@ test('a tool that draws no line borrows the pencil brush', () => {
   }
 });
 
-test('the browser eyedropper is on by default and a corrupted flag falls back', () => {
-  expect(DEFAULT_SETTINGS.chromePicker).toBe(true);
-  const stored = (chromePicker: unknown) => parseUiConfig(JSON.stringify({
+test('the pipette is the editor\'s own unless the browser\'s is asked for', () => {
+  // Owner, 2026-10-10: the browser's eyedropper works badly over the canvas.
+  // It was on by default under `chromePicker`, so a stored `true` there is
+  // nobody's choice: the setting has a new name, and the old one is not read.
+  expect(DEFAULT_SETTINGS.browserPipette).toBe(false);
+  const stored = (settings: Record<string, unknown>) => parseUiConfig(JSON.stringify({
     preset: 'toonio',
-    settings: { chromePicker },
-  }))?.settings.chromePicker;
+    settings,
+  }))?.settings.browserPipette;
 
-  expect(stored(false)).toBe(false);
-  expect(stored('yes')).toBe(true);
+  expect(stored({ chromePicker: true })).toBe(false);
+  expect(stored({ browserPipette: true })).toBe(true);
+  expect(stored({ browserPipette: 'yes' })).toBe(false);
 });
 
 test('side panel widths are clamped, and an untouched side keeps its natural width', () => {
