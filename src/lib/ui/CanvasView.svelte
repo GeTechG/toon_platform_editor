@@ -2380,8 +2380,10 @@
     position: absolute;
     /* Clear of the side column's fold tab on the stage's edge. The safe
        area is the editor's (its inline padding): counted here as well, the
-       rail stood twice as far in behind a notch. */
-    left: 1.25rem;
+       rail stood twice as far in behind a notch. Past the column the canvas
+       runs on under (`--stage-left`): on a desk under a finger the rail
+       stood under the tools' card (owner, 2026-10-12). */
+    left: calc(var(--stage-left, 0px) + 1.25rem);
     /* Up to 16rem in the middle of the stage; a short landscape stage keeps
        its foot clear of the zoom bar in the corner below (4.5rem). */
     top: max(0.75rem, 50% - 8rem);

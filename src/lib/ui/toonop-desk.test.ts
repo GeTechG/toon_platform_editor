@@ -52,4 +52,17 @@ describe('toonop on a desk', () => {
     expect(cut.panels.rows).toEqual([['add-frame', 'transport', 'spring', 'onion', 'audio'], ['timeline']]);
     expect(cut.more.flatMap((group) => group.items)).not.toContain('colours');
   });
+
+  // The owner, 2026-10-12: «на пк видно левую панель а под ней панель толщины»,
+  // «иконки разного размера» — a desk under a finger (a tablet is a desk).
+  it('a finger’s thickness rail stands beside the left column, not under its card', async () => {
+    const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url).pathname).text();
+    // The canvas runs on under the column by `--stage-left`: the rail counts it.
+    expect(canvas).toMatch(/\n  \.size-rail \{[^}]*left: calc\(var\(--stage-left, 0px\) \+ 1\.25rem\)/);
+  });
+
+  it('on a low desk every tool key keeps its size — the ones that open a window too (PopKey is `display: contents`: its key is the column’s flex item)', async () => {
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathname).text();
+    expect(editorUi).toMatch(/\.left\.sidebar:not\(\.lies\) > :global\(\*\),\s*\.studio:not\(\.compact\) \.left\.sidebar:not\(\.lies\) > :global\(\.pop-key > \*\) \{\s*flex: none;/);
+  });
 });

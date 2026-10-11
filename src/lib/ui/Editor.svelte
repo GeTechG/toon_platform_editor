@@ -3940,7 +3940,10 @@
     display: flex;
     flex-direction: column;
   }
-  .studio:not(.compact) .left.sidebar:not(.lies) > :global(*) {
+  /* A key that opens a window is inside a PopKey, which is `display: contents`:
+     the key itself is the column's item, and shrank where the rest did not. */
+  .studio:not(.compact) .left.sidebar:not(.lies) > :global(*),
+  .studio:not(.compact) .left.sidebar:not(.lies) > :global(.pop-key > *) {
     flex: none;
   }
   .studio:not(.compact) .left.sidebar:not(.lies) > :global(.brush-rail) {
