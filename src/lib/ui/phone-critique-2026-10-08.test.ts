@@ -85,13 +85,24 @@ describe('a step of one frame is not drawn as «play»', () => {
 // A phone's browser keeps its bars, and the site its header, over a sheet with
 // little room as it is (owner, 2026-10-08). The first touch takes the screen.
 describe('a phone goes full screen on the first touch', () => {
+  const body = editorUi.slice(editorUi.indexOf('let wentFull = false;'), editorUi.indexOf('* Alt+L, the reference'));
+
   it('once a visit, for a finger on a phone-size studio, on release', () => {
     expect(editorUi).toContain('onpointerupcapture={fullOnFirstTouch}');
-    const body = editorUi.slice(editorUi.indexOf('function fullOnFirstTouch'), editorUi.indexOf('* A sheet over a full-screen editor'));
     expect(body).toContain("if (wentFull || !compact || e.pointerType !== 'touch') return;");
     expect(body).toContain('wentFull = true;');
     // An iPhone has no full screen: nothing is asked for, nothing throws.
     expect(body).toContain('if (document.fullscreenEnabled && !document.fullscreenElement) void editorEl.requestFullscreen().catch(() => {});');
+  });
+
+  // Full screen lifts the studio over the site's header: asked for at the
+  // release, the key had left the finger by the click, and the click went to
+  // the sheet — the first tap on the brush picked nothing (an iPad, 2026-10-12).
+  it('a tap on a key takes the screen at its click, not before it', () => {
+    expect(body).toContain("if ((e.target as Element).closest?.('button, a, input, label')) fullAtClick = true;");
+    expect(body).toContain('else goFull();');
+    expect(body).toContain('if (fullAtClick && !wentFull) goFull();');
+    expect(editorUi).toMatch(/onclickcapture=\{\(e\) => \{\s*fullAtTheClick\(\);/);
   });
 });
 

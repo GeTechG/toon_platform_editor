@@ -196,13 +196,25 @@
    * — and only for a finger on a phone-size studio: a narrow window under a
    * mouse is not a phone. On release: a touch gives the browser its leave to
    * go full screen as it lifts, not as it lands. Where there is no full screen
-   * (an iPhone) nothing happens.
+   * (an iPhone) nothing happens. A tap on a key waits for its click: full
+   * screen lifts the studio over the site's header, the key had left the
+   * finger by then, and the click went to the sheet — the first tap on the
+   * brush picked nothing (an iPad, 2026-10-12).
    */
   let wentFull = false;
-  function fullOnFirstTouch(e: PointerEvent): void {
-    if (wentFull || !compact || e.pointerType !== 'touch') return;
+  let fullAtClick = false;
+  function goFull(): void {
     wentFull = true;
     if (document.fullscreenEnabled && !document.fullscreenElement) void editorEl.requestFullscreen().catch(() => {});
+  }
+  function fullOnFirstTouch(e: PointerEvent): void {
+    if (wentFull || !compact || e.pointerType !== 'touch') return;
+    if ((e.target as Element).closest?.('button, a, input, label')) fullAtClick = true;
+    else goFull();
+  }
+  function fullAtTheClick(): void {
+    if (fullAtClick && !wentFull) goFull();
+    fullAtClick = false;
   }
 
   /**
@@ -2919,7 +2931,10 @@
   onfocusin={nameKey}
   onfocusout={unnameKey}
   bind:this={editorEl}
-  onclickcapture={passFocusOnDisable}
+  onclickcapture={(e) => {
+    fullAtTheClick();
+    void passFocusOnDisable(e);
+  }}
   onpointerupcapture={fullOnFirstTouch}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}

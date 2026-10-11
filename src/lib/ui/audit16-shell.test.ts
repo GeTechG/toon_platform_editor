@@ -48,7 +48,7 @@ describe('a key that switches itself off as it is pressed', () => {
   });
 
   it('the studio asks it after every press, outside the sheets (they return focus themselves)', () => {
-    expect(editorUi).toMatch(/onclickcapture=\{passFocusOnDisable\}/);
+    expect(editorUi).toMatch(/onclickcapture=\{\(e\) => \{[^}]*passFocusOnDisable\(e\);/);
     const pass = fn('passFocusOnDisable');
     expect(pass).toMatch(/closest\('dialog'\)/);
     expect(pass).toMatch(/await new Promise\(\(done\) => setTimeout\(done\)\)/);
