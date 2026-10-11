@@ -30,11 +30,11 @@ describe('трекпад двигает лист, колесо мыши масш
     expect(trackpadScroll(wheel(0, 3, 1), true)).toBe(false);
   });
 
-  it('холст панорамирует трекпадом на расстояние дельт, а колесо по-прежнему идёт ступенями', () => {
+  it('холст панорамирует трекпадом на расстояние дельт, а колесо зумит мягко под курсором', () => {
     const onWheel = handler('onWheel');
     expect(onWheel).toContain('trackpadScroll(');
     expect(onWheel).toContain('panBy(-e.deltaX, -e.deltaY)');
-    expect(onWheel).toContain('wheelNotch(wheelRest, e.deltaY, e.deltaMode)');
+    expect(onWheel).toContain('WHEEL_SOFT_RATE');
     // Щипок (Ctrl+колесо) решается раньше панорамы.
     expect(onWheel.indexOf('e.ctrlKey')).toBeLessThan(onWheel.indexOf('panBy('));
   });

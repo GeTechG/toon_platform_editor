@@ -14,7 +14,7 @@ import { FIXED_POINT_SCALE } from '../format/constants';
 /** Zoom range: a tenth of the sheet up to the reference's 10× (toonio: 1–10). */
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 10;
-/** The reference's wheel notch, kept from 100% up. */
+/** The reference's notch for the keys and the zoom buttons, kept from 100% up. */
 export const ZOOM_STEP = 0.5;
 /** Below 100% the sheet is small — a 0.5 notch would jump past it. */
 const FINE_STEP = 0.1;
@@ -88,7 +88,7 @@ export function clampZoom(value: number): number {
 }
 
 /**
- * One notch of the wheel, the `+`/`-` keys or the zoom buttons: the way to the
+ * One notch of the `+`/`-` keys or the zoom buttons: the way to the
  * next notch of the ladder (0.1 below 100%, 0.5 above) in that direction. A
  * pinch leaves the zoom between notches, and a flat step from there skipped
  * one — out of 104% landed on 50%.
@@ -104,30 +104,6 @@ export function zoomDelta(zoom: number, direction: number): number {
     : Math.ceil(zoom / step - eps) * step - step;
   // Rounded to the hundredth the snap keeps; every caller snaps what it adds up.
   return Math.round((next - zoom) * 100) / 100;
-}
-
-/**
- * Wheel travel that makes one zoom notch, CSS px. A mouse notch is 100 in
- * Chrome and about 50 in Firefox; a trackpad sends a few px per event, and
- * zooming a whole step per event threw the sheet to 1000% in one swipe.
- * The calibration knob, if a wheel on some system needs two turns.
- */
-export const WHEEL_NOTCH_PX = 40;
-
-/**
- * One wheel event → how many notches it completes (+1 zooms in, -1 out, at
- * most one per event) and the travel left over for the next one. A sideways
- * swipe carries no deltaY and zooms nothing.
- */
-export function wheelNotch(rest: number, deltaY: number, deltaMode: number): { notch: number; rest: number } {
-  // Lines and pages (deltaMode 1, 2) come one notch at a time.
-  const travel = deltaMode === 0 ? deltaY : Math.sign(deltaY) * WHEEL_NOTCH_PX;
-  // A turn of direction starts afresh rather than paying back the other way.
-  const sum = Math.sign(rest) === -Math.sign(travel) ? travel : rest + travel;
-  if (Math.abs(sum) < WHEEL_NOTCH_PX) {
-    return { notch: 0, rest: sum };
-  }
-  return { notch: sum < 0 ? 1 : -1, rest: 0 };
 }
 
 /**
@@ -159,10 +135,30 @@ export function trackpadScroll(
  */
 export const WHEEL_ZOOM_RATE = 0.005;
 
-/** The zoom after one Ctrl+wheel event: continuous, a big delta capped at one notch. */
-export function ctrlWheelZoom(zoom: number, deltaY: number, deltaMode: number): number {
+/**
+ * The plain wheel's zoom per px of travel: a mouse notch is a tenth of the
+ * zoom, seven of them double the sheet (owner, 2026-10-11: a softer zoom than
+ * the reference's 0.5 notch). The calibration knob.
+ */
+export const WHEEL_SOFT_RATE = 0.001;
+
+/** The zoom after one wheel event: continuous, a big delta capped at one notch. */
+export function ctrlWheelZoom(zoom: number, deltaY: number, deltaMode: number, rate = WHEEL_ZOOM_RATE): number {
   const travel = deltaMode === 0 ? Math.max(-100, Math.min(100, deltaY)) : Math.sign(deltaY) * 100;
-  return zoom * Math.exp(-travel * WHEEL_ZOOM_RATE);
+  return zoom * Math.exp(-travel * rate);
+}
+
+/** How fast the wheel's zoom glides to its goal: the time it takes to cover 63% of the way, ms. The calibration knob. */
+export const ZOOM_GLIDE_MS = 45;
+
+/**
+ * The zoom one frame later on its way to `goal` (the plain wheel): an even
+ * share of the ratio left per ms, so a 120 Hz screen and a 60 Hz one glide
+ * alike, landing on the goal once the eye cannot tell them apart.
+ */
+export function easeZoom(zoom: number, goal: number, dtMs: number): number {
+  const left = Math.log(goal / zoom) * Math.exp(-Math.max(0, dtMs) / ZOOM_GLIDE_MS);
+  return Math.abs(left) < 0.002 ? goal : goal / Math.exp(left);
 }
 
 /**
@@ -321,38 +317,6 @@ export function zoomAt(
       zoom: next,
       panX: x - (x - view.panX) * ratio,
       panY: y - (y - view.panY) * ratio,
-    },
-    stage,
-  );
-}
-
-/**
- * Zooms to `zoom` and slides the document point under (x, y) to the middle of
- * the workspace — the reference's `NormalizeCoords`, which recentres on the
- * cursor instead of pinning the point in place the way `zoomAt` does.
- */
-export function zoomCentredOn(
-  view: Viewport2D,
-  zoom: number,
-  x: number,
-  y: number,
-  stage: Stage,
-): Viewport2D {
-  const next = clampZoom(zoom);
-  // The recentring is part of the zoom: at the limit there is none, and every
-  // spare notch of the wheel slid the sheet a cursor-to-middle further, up to
-  // the edge of the table.
-  if (next === view.zoom) {
-    return view;
-  }
-  // Where the point sits along the sheet, 0..1, whatever the current view.
-  const u = (x - view.panX) / (stage.sheetWidth * view.zoom);
-  const v = (y - view.panY) / (stage.sheetHeight * view.zoom);
-  return clampPan(
-    {
-      zoom: next,
-      panX: stage.width / 2 - u * stage.sheetWidth * next,
-      panY: stage.height / 2 - v * stage.sheetHeight * next,
     },
     stage,
   );

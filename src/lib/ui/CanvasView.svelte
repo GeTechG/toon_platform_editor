@@ -42,10 +42,12 @@
     type DrawnView,
     toDocument,
     zoomAt,
-    zoomCentredOn,
-    zoomDelta,
-    wheelNotch,
     ctrlWheelZoom,
+    WHEEL_SOFT_RATE,
+    WHEEL_ZOOM_RATE,
+    easeZoom,
+    ZOOM_MAX,
+    ZOOM_MIN,
     trackpadScroll,
     type Cover,
     type Stage,
@@ -187,6 +189,7 @@
     // must not build them all again on a canvas that is gone.
     destroyed = true;
     cancelAnimationFrame(rafId);
+    cancelAnimationFrame(glideRaf);
     composer.dispose();
     for (const spare of [shotCanvas, sheetEl, pickEl, canvasEl]) {
       if (spare) {
@@ -1263,19 +1266,17 @@
 
   function zoomTo(zoom: number, clientX: number, clientY: number): void {
     const rect = canvasEl.getBoundingClientRect();
-    // Unsnapped: the notches are for keys and the wheel, not for fingers.
+    // Unsnapped: the notches are for the keys, not for fingers or the wheel.
     editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, stage, false);
   }
 
-  /** Wheel travel gathered toward the next notch (`wheelNotch`). */
-  let wheelRest = 0;
   /** When the last trackpad scroll came (`e.timeStamp`), for `trackpadScroll`'s streak. */
   let trackpadAt = -Infinity;
 
   /**
-   * Wheel zooms in the reference's 0.5 steps and recentres the view on the
-   * cursor (`NormalizeCoords`). Ctrl+wheel — a Mac trackpad pinch among
-   * them — zooms the sheet smoothly under the cursor, not the page. Two
+   * Wheel zooms the sheet softly under the cursor, a tenth a notch, gliding
+   * to it (owner, 2026-10-11). Ctrl+wheel — a trackpad or tablet pinch among
+   * them — glides the same at the pinch's rate, and keeps the page from zooming. Two
    * fingers on a trackpad move the sheet (owner, after the fifteenth audit).
    * All of it works while the preview plays too.
    */
@@ -1289,39 +1290,69 @@
     if (drawingBusy()) {
       return;
     }
-    if (e.ctrlKey || e.metaKey) {
-      // A trackpad pinch is a stream of these: it moves the picture it grabbed,
-      // as two fingers on glass do, and composes afresh once the stream stops.
-      takeNavShot();
-      clearTimeout(wheelZoomTimer);
-      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
-      zoomTo(ctrlWheelZoom(editor.view.zoom, e.deltaY, e.deltaMode), e.clientX, e.clientY);
-      editor.flashScaleMenu();
-      return;
-    }
-    if (trackpadScroll(e, e.timeStamp - trackpadAt < WHEEL_ZOOM_IDLE_MS)) {
+    const pinch = e.ctrlKey || e.metaKey;
+    if (!pinch && trackpadScroll(e, e.timeStamp - trackpadAt < WHEEL_ZOOM_IDLE_MS)) {
       trackpadAt = e.timeStamp;
-      // A stream like the pinch's: the grabbed picture slides, composed once it stops.
+      // A stream: the grabbed picture slides, composed once it stops.
       takeNavShot();
       clearTimeout(wheelZoomTimer);
       wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
       panBy(-e.deltaX, -e.deltaY);
       return;
     }
-    const { notch, rest } = wheelNotch(wheelRest, e.deltaY, e.deltaMode);
-    wheelRest = rest;
-    if (notch === 0) {
+    // A stream too, a spin of the wheel or a pinch (which arrives as Ctrl+wheel):
+    // it moves the picture it grabbed and composes afresh once it stops.
+    takeNavShot();
+    clearTimeout(wheelZoomTimer);
+    wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
+    // Notches add up on the goal, not on wherever the glide has got to. The
+    // pinch glides as well: a graphics tablet sends it in a few coarse steps.
+    const from = glideRaf ? glideGoal : editor.view.zoom;
+    const rate = pinch ? WHEEL_ZOOM_RATE : WHEEL_SOFT_RATE;
+    glideTo(ctrlWheelZoom(from, e.deltaY, e.deltaMode, rate), e.clientX, e.clientY);
+    editor.flashScaleMenu();
+  }
+
+  /** Where the wheel's zoom is gliding to, around which point, and the zoom its last frame left. */
+  let glideGoal = 1;
+  let glideX = 0;
+  let glideY = 0;
+  let glideAt = 1;
+  let glideTime = 0;
+  /** The glide's pending frame; 0 when none is running. */
+  let glideRaf = 0;
+
+  /** The wheel's zoom arrives over a few frames instead of a jump — at once for those who asked for less motion. */
+  function glideTo(zoom: number, clientX: number, clientY: number): void {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      zoomTo(zoom, clientX, clientY);
       return;
     }
-    const rect = canvasEl.getBoundingClientRect();
-    editor.view = zoomCentredOn(
-      editor.view,
-      editor.view.zoom + zoomDelta(editor.view.zoom, notch),
-      e.clientX - rect.left,
-      e.clientY - rect.top,
-      stage,
-    );
-    editor.flashScaleMenu();
+    glideGoal = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+    glideX = clientX;
+    glideY = clientY;
+    if (!glideRaf) {
+      glideAt = editor.view.zoom;
+      glideTime = performance.now();
+      glideRaf = requestAnimationFrame(glideFrame);
+    }
+  }
+
+  function glideFrame(now: number): void {
+    glideRaf = 0;
+    // A pinch, a key or a reset took the zoom, or a line began: theirs now.
+    if (destroyed || drawingBusy() || editor.view.zoom !== glideAt) {
+      return;
+    }
+    zoomTo(easeZoom(glideAt, glideGoal, now - glideTime), glideX, glideY);
+    glideAt = editor.view.zoom;
+    glideTime = now;
+    if (glideAt !== glideGoal) {
+      // The grabbed picture is held until the glide is over, not the wheel.
+      clearTimeout(wheelZoomTimer);
+      wheelZoomTimer = setTimeout(endWheelZoom, WHEEL_ZOOM_IDLE_MS) as unknown as number;
+      glideRaf = requestAnimationFrame(glideFrame);
+    }
   }
 
   /** How long a Ctrl+wheel stream may pause before it counts as over, ms. */

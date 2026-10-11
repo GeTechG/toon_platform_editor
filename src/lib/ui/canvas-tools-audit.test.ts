@@ -86,8 +86,8 @@ describe('the canvas', () => {
 });
 
 describe('the wheel over the canvas', () => {
-  it('zooms by notches of travel, so a trackpad swipe or a sideways one does not fling the sheet', () => {
-    expect(canvas).toContain('wheelNotch(wheelRest, e.deltaY, e.deltaMode)');
+  it('zooms by its travel, so a trackpad swipe or a sideways one does not fling the sheet', () => {
+    expect(canvas).toContain('ctrlWheelZoom(from, e.deltaY, e.deltaMode, rate)');
     expect(canvas).not.toContain('e.deltaY < 0 ? 1 : -1');
   });
 });

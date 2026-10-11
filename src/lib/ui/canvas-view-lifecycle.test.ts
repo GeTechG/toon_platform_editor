@@ -299,8 +299,25 @@ describe('the mega eraser', () => {
 });
 
 describe('the wheel zoom', () => {
-  it('recentres the view on the cursor instead of pinning the point', () => {
-    expect(handler('onWheel')).toContain('zoomCentredOn(');
+  it('keeps the point under the cursor in place, a soft step at a time', () => {
+    expect(handler('onWheel')).not.toContain('zoomCentredOn(');
+    expect(handler('onWheel')).toContain('WHEEL_SOFT_RATE');
+  });
+
+  it('glides to the goal frame by frame, and jumps for those who asked for less motion', () => {
+    expect(handler('onWheel')).toContain('glideTo(');
+    expect(handler('glideFrame')).toContain('easeZoom(');
+    expect(handler('glideTo')).toContain('prefers-reduced-motion');
+  });
+
+  it('a pinch arriving as Ctrl+wheel glides too: a tablet sends it in coarse steps', () => {
+    expect(handler('onWheel')).not.toContain('zoomTo(');
+    expect(handler('onWheel')).toContain('pinch ? WHEEL_ZOOM_RATE : WHEEL_SOFT_RATE');
+  });
+
+  it('a glide stops when the studio goes or something else takes the zoom', () => {
+    expect(source).toContain('cancelAnimationFrame(glideRaf)');
+    expect(handler('glideFrame')).toContain('editor.view.zoom !== glideAt');
   });
 
   it('works while the preview runs too (owner, after the fifteenth audit)', () => {

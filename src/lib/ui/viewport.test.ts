@@ -9,13 +9,13 @@ import {
   fitView,
   toDocument,
   zoomAt,
-  zoomCentredOn,
   zoomDelta,
   type Stage,
   renderDensity,
   reprojection,
-  wheelNotch,
-  WHEEL_NOTCH_PX,
+  ctrlWheelZoom,
+  easeZoom,
+  WHEEL_SOFT_RATE,
 } from './viewport';
 
 /** A 200×100 sheet lying on a 400×300 workspace. */
@@ -119,16 +119,6 @@ describe('zoomAt', () => {
   });
 });
 
-describe('zoomCentredOn', () => {
-  it('slides the point under the cursor to the middle of the workspace', () => {
-    const view = zoomCentredOn({ zoom: 2, panX: -100, panY: -50 }, 4, 180, 120, STAGE);
-    const [x, y] = toDocument(STAGE.width / 2, STAGE.height / 2, SHEET, DOC, view);
-    const [wantX, wantY] = toDocument(180, 120, SHEET, DOC, { zoom: 2, panX: -100, panY: -50 });
-    expect(x).toBeCloseTo(wantX, 6);
-    expect(y).toBeCloseTo(wantY, 6);
-  });
-});
-
 describe('toDocument', () => {
   it('maps canvas pixels to document units against the sheet, not the workspace', () => {
     expect(toDocument(0, 0, SHEET, DOC, { zoom: 1, panX: 0, panY: 0 })).toEqual([0, 0]);
@@ -194,32 +184,55 @@ describe('reprojection', () => {
   });
 });
 
-describe('wheelNotch', () => {
-  it('a mouse notch is one step, whichever unit the browser counts it in', () => {
-    expect(wheelNotch(0, -100, 0)).toEqual({ notch: 1, rest: 0 });
-    expect(wheelNotch(0, 100, 0)).toEqual({ notch: -1, rest: 0 });
+describe('the plain wheel', () => {
+  it('a mouse notch is a tenth of the zoom, whichever unit the browser counts it in', () => {
+    expect(ctrlWheelZoom(1, -100, 0, WHEEL_SOFT_RATE)).toBeCloseTo(1.105, 3);
+    expect(ctrlWheelZoom(2, 100, 0, WHEEL_SOFT_RATE)).toBeCloseTo(1.81, 2);
     // Firefox counts lines (deltaMode 1): three of them are one notch.
-    expect(wheelNotch(0, 3, 1).notch).toBe(-1);
+    expect(ctrlWheelZoom(1, 3, 1, WHEEL_SOFT_RATE)).toBeCloseTo(0.905, 3);
   });
 
-  it('a trackpad swipe steps once per notch of travel, not once per event', () => {
-    let rest = 0;
-    let steps = 0;
-    for (let i = 0; i < 30; i++) {
-      const out = wheelNotch(rest, -4, 0);
-      rest = out.rest;
-      steps += out.notch;
+  it('seven notches double the sheet — the old first notch alone was 150%', () => {
+    let zoom = 1;
+    for (let i = 0; i < 7; i++) zoom = ctrlWheelZoom(zoom, -120, 0, WHEEL_SOFT_RATE);
+    expect(zoom).toBeGreaterThan(1.9);
+    expect(zoom).toBeLessThan(2.1);
+  });
+
+  it('a sideways swipe is not a zoom', () => {
+    expect(ctrlWheelZoom(1.3, 0, 0, WHEEL_SOFT_RATE)).toBe(1.3);
+  });
+});
+
+describe('the wheel zoom glides to its goal', () => {
+  it('a frame covers part of the way, never past the goal', () => {
+    const z = easeZoom(1, 1.105, 16);
+    expect(z).toBeGreaterThan(1.01);
+    expect(z).toBeLessThan(1.105);
+    const out = easeZoom(1, 0.905, 16);
+    expect(out).toBeLessThan(0.99);
+    expect(out).toBeGreaterThan(0.905);
+  });
+
+  it('arrives within a fifth of a second and lands on the goal exactly', () => {
+    let zoom = 1;
+    let frames = 0;
+    while (zoom !== 1.105 && frames < 100) {
+      zoom = easeZoom(zoom, 1.105, 16);
+      frames++;
     }
-    // 120 px of swipe; thirty events used to be thirty steps, 100% → 1000%.
-    expect(steps).toBe(Math.trunc(120 / WHEEL_NOTCH_PX));
+    expect(zoom).toBe(1.105);
+    expect(frames * 16).toBeLessThanOrEqual(200);
   });
 
-  it('a sideways swipe is not a zoom out', () => {
-    expect(wheelNotch(0, 0, 0)).toEqual({ notch: 0, rest: 0 });
+  it('goes the same way on a fast screen and a slow one', () => {
+    const twoShort = easeZoom(easeZoom(1, 2, 8), 2, 8);
+    expect(twoShort).toBeCloseTo(easeZoom(1, 2, 16), 6);
   });
 
-  it('a turn of direction drops what the other way had gathered', () => {
-    expect(wheelNotch(-30, 10, 0)).toEqual({ notch: 0, rest: 10 });
+  it('a stalled tab does not overshoot, and no time is no move', () => {
+    expect(easeZoom(1, 2, 5000)).toBe(2);
+    expect(easeZoom(1, 2, 0)).toBe(1);
   });
 });
 

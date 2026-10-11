@@ -37,7 +37,10 @@ describe('колесо и щипок трекпада посреди штрих�
   it('не двигают вид, пока рука ведёт линию, ручку или мега-ластик: иначе линия чертит прямую через лист', () => {
     const wheel = handler('onWheel');
     expect(wheel).toContain('drawingBusy()');
-    expect(wheel.indexOf('drawingBusy()')).toBeLessThan(wheel.indexOf('zoomTo('));
+    expect(wheel.indexOf('drawingBusy()')).toBeLessThan(wheel.indexOf('glideTo('));
+    // Доезд зума тоже уступает начатой линии.
+    const glide = handler('glideFrame');
+    expect(glide.indexOf('drawingBusy()')).toBeLessThan(glide.indexOf('zoomTo('));
     const change = handler('onGestureChange');
     expect(change).toContain('drawingBusy()');
     expect(change.indexOf('drawingBusy()')).toBeLessThan(change.indexOf('zoomTo('));
