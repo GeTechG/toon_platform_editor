@@ -609,7 +609,7 @@
     const top = draws(editor.panels.top) ? 3.75 * rem : 0;
     const full = { w: boxW - fullBase('left') - fullBase('right'), h: boxH - bar - top };
     const view = { w: viewportWidth || boxW, h: viewportHeight || boxH };
-    step = pickStep(was, full, view);
+    step = pickStep(was, full, view, touch && editor.ux.phoneCut);
   });
   /**
    * The zoom window stands under the column on the screen's left, at the

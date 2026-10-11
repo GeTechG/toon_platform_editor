@@ -170,6 +170,12 @@ describe('the step is the desktop or the phone', () => {
     expect(pickStep('full', { w: 891, h: 649 }, { w: 1280, h: 800 })).toBe('full');
   });
 
+  it('a tablet under toonop takes the phone’s cut whatever its room (owner, 2026-10-12: «на всех планшетах» the keys stand over the canvas)', () => {
+    expect(pickStep('full', { w: 700, h: 900 }, view, true)).toBe('phone');
+    expect(pickStep('phone', { w: 891, h: 649 }, { w: 1366, h: 1024 }, true)).toBe('phone');
+    expect(editorUi).toContain('step = pickStep(was, full, view, touch && editor.ux.phoneCut);');
+  });
+
   it('a screen that leaves the canvas no room is the phone — there is no step between', () => {
     // 768×1024 at 200 % text: the columns left the canvas 0 px.
     expect(pickStep('full', { w: 0, h: 627 }, { w: 768, h: 1024 })).toBe('phone');
@@ -194,7 +200,6 @@ describe('the studio draws one markup, given the arrangement', () => {
     expect(editorUi).toContain('bind:clientWidth={boxW}');
     expect(editorUi).toContain('bind:clientHeight={boxH}');
     expect(editorUi).toContain("const full = { w: boxW - fullBase('left') - fullBase('right'), h: boxH - bar - top };");
-    expect(editorUi).toContain('step = pickStep(was, full, view);');
     expect(editorUi).toMatch(/class:compact=\{compact\}/);
   });
 

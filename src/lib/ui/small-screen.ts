@@ -80,9 +80,12 @@ export function boxRow(row: readonly string[]): boolean {
  * The desktop where the canvas keeps its floor, the phone where it does not:
  * there is no step between (owner, 2026-10-07 — a tablet is the desktop).
  * `full` is what the canvas would keep beside the columns and the bar. Back up
- * to the desktop needs the hysteresis too.
+ * to the desktop needs the hysteresis too. `tablet`: a finger is the pointer
+ * and the preset has a cut of its own (toonop) — its keys stand over the
+ * canvas on every tablet, whatever the room (owner, 2026-10-12).
  */
-export function pickStep(current: LayoutStep, full: Room, view: Room): LayoutStep {
+export function pickStep(current: LayoutStep, full: Room, view: Room, tablet = false): LayoutStep {
+  if (tablet) return 'phone';
   const slack = current === 'phone' ? HYSTERESIS : 0;
   const floor = canvasFloor(view);
   return view.w >= FULL_MIN_W && full.w >= floor.w + slack && full.h >= floor.h + slack ? 'full' : 'phone';
