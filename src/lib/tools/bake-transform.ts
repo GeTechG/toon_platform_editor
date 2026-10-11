@@ -1,7 +1,7 @@
 import type { ToonDocument } from '../format/types';
 import type { Box } from '../model/geom';
-import { transformStrokes } from '../model/operations';
-import { sessionMatrix, sessionWidthScale, type TransformSession } from './lasso';
+import { replaceStrokes, transformStrokes } from '../model/operations';
+import { sessionMatrix, sessionWidthScale, type LassoCut, type TransformSession } from './lasso';
 
 /** What of an open transform the drawing needs: which cells, from where, how far. */
 export interface BakedTransform {
@@ -9,6 +9,28 @@ export interface BakedTransform {
   box: Box;
   session: TransformSession;
   widthWithScale: boolean;
+  /**
+   * What a loop took of each of `layers`, in their order: the cell cut at the
+   * loop, and the pieces to move. Absent — the whole cell moves, uncut.
+   */
+  picked?: readonly LassoCut[];
+}
+
+/**
+ * Writes the open transform into one of its cells. A loop's cut lands here
+ * too, with the move and never before it: a selection put back untouched
+ * leaves every line whole.
+ */
+export function writeTransform(doc: ToonDocument, layer: number, frame: number, open: BakedTransform): void {
+  const cut = open.picked?.[open.layers.indexOf(layer)];
+  if (cut) {
+    replaceStrokes(doc, layer, frame, cut.strokes);
+  }
+  transformStrokes(
+    doc, layer, frame, cut?.indices ?? null,
+    sessionMatrix(open.session, open.box),
+    open.widthWithScale ? sessionWidthScale(open.session) : 1,
+  );
 }
 
 /**
@@ -32,10 +54,8 @@ export function bakeTransform(doc: ToonDocument, frame: number, open: BakedTrans
       ? { ...layer, frames: layer.frames.map((cell, at) => (at === frame ? { ...cell, strokes: [...cell.strokes] } : cell)) }
       : layer),
   };
-  const widthScale = open.widthWithScale ? sessionWidthScale(session) : 1;
-  const matrix = sessionMatrix(session, open.box);
   for (const layer of moved) {
-    transformStrokes(copy, layer, frame, null, matrix, widthScale);
+    writeTransform(copy, layer, frame, open);
   }
   return copy;
 }

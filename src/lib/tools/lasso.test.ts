@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import { applyMatrix } from '../model/geom';
+import { addStroke, createDocument } from '../model/operations';
+import { bakeTransform } from './bake-transform';
 import {
   EMPTY_TRANSFORM,
   hitMode,
+  lassoCut,
   movedBy,
   nudged,
   rotatedTo,
@@ -258,5 +261,63 @@ describe('scaleFromField', () => {
 
   test('passes an unfinished field through as NaN, which writes nothing', () => {
     expect(scaleFromField(Number.NaN)).toBeNaN();
+  });
+});
+
+describe('lassoCut', () => {
+  // A square loop over the middle of the sheet: x and y from 40 to 60.
+  const loop = [40, -10, 60, -10, 60, 10, 40, 10];
+
+  test('a line the loop crosses is cut at the loop, and only the piece inside is picked', () => {
+    const cut = lassoCut([{ points: [0, 0, 100, 0], tool_id: 0 }], loop);
+    expect(cut).not.toBeNull();
+    const picked = cut!.indices.map((i) => cut!.strokes[i].points);
+    const left = cut!.strokes.filter((_, i) => !cut!.indices.includes(i)).map((s) => s.points);
+    expect(picked).toEqual([[40, 0, 60, 0]]);
+    expect(left).toEqual([[0, 0, 40, 0], [60, 0, 100, 0]]);
+  });
+
+  test('a loop over empty paper selects nothing', () => {
+    expect(lassoCut([{ points: [0, 50, 100, 50], tool_id: 0 }], loop)).toBeNull();
+    expect(lassoCut([{ points: [45, 0, 55, 0], tool_id: 0 }], [40, -10, 60, -10])).toBeNull();
+  });
+
+  test('a stroke wholly inside is picked whole, and the drawing order is kept — an eraser travels in its place', () => {
+    const cut = lassoCut([
+      { points: [0, 50, 100, 50], tool_id: 0 },
+      { points: [45, 0, 55, 0], tool_id: 0, pressure: [10, 20] },
+      { points: [50, -5, 50, 5], tool_id: 1 },
+      { points: [0, 80, 100, 80], tool_id: 0 },
+    ], loop);
+    expect(cut!.strokes.map((s) => s.tool_id)).toEqual([0, 0, 1, 0]);
+    expect(cut!.indices).toEqual([1, 2]);
+    expect(cut!.strokes[1]).toEqual({ points: [45, 0, 55, 0], tool_id: 0, pressure: [10, 20] });
+  });
+});
+
+describe('a lasso selection applied', () => {
+  test('the cut lands with the move: the piece inside goes, the rest of its line stays', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0, 100, 0], width: 8, color: '#000000' });
+    const cut = lassoCut(doc.layers[0].frames[0].strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
+    const before = JSON.stringify(doc);
+    const baked = bakeTransform(doc, 0, {
+      layers: [0],
+      box: { x: 40, y: 0, width: 20, height: 0 },
+      session: { ...EMPTY_TRANSFORM, dy: 30 },
+      widthWithScale: false,
+      picked: [cut],
+    });
+    expect(baked.layers[0].frames[0].strokes.map((s) => s.points))
+      .toEqual([[0, 0, 40, 0], [60, 0, 100, 0], [40, 30, 60, 30]]);
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  test('a selection that was not moved cuts nothing', () => {
+    const doc = createDocument();
+    addStroke(doc, 0, 0, { points: [0, 0, 100, 0], width: 8, color: '#000000' });
+    const cut = lassoCut(doc.layers[0].frames[0].strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
+    const open = { layers: [0], box: { x: 40, y: 0, width: 20, height: 0 }, session: { ...EMPTY_TRANSFORM }, widthWithScale: false, picked: [cut] };
+    expect(bakeTransform(doc, 0, open)).toBe(doc);
   });
 });

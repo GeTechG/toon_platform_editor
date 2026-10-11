@@ -1130,6 +1130,10 @@
       case 'S':
         editor.selectTool('lasso');
         break;
+      case 'r':
+      case 'R':
+        editor.selectTool('loop');
+        break;
       case '~':
       case '`':
         editor.selectTool('distort');
@@ -2312,6 +2316,7 @@
         // The hand's own keys, before size and steps: the only keyboard zoom.
         has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
         has('lasso') && ['Q / S', t('tool.transform.label')],
+        has('loop') && ['R', t('tool.lasso.label')],
         has('lasso') && ['Q / W', t('key.transform_turn')],
         has('lasso') && ['Enter / Esc', t('key.transform_apply')],
         has('distort') && ['~', t('tool.jitter.label')],

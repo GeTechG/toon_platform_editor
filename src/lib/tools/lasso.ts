@@ -12,6 +12,8 @@
 import type { Box, Matrix } from '../model/geom';
 import { transformMatrix } from '../model/geom';
 import { FIXED_POINT_SCALE } from '../format/constants';
+import type { ToolDescriptor } from '../format/types';
+import { cutStroke, type CutPolicy, type CutRegion, type ErasableStroke } from './mega-eraser';
 
 export interface SelectableStroke {
   points: readonly number[];
@@ -300,4 +302,78 @@ export function nudged(
       return { ...session, scaleX: session.scaleX * factor, scaleY: session.scaleY * factor };
     }
   }
+}
+
+/** A cell as the loop left it: every stroke cut at the loop, and which pieces lie inside. */
+export interface LassoCut {
+  strokes: ErasableStroke[];
+  /** The pieces inside the loop — the ones the transform moves. */
+  indices: number[];
+}
+
+/** How finely a stroke is looked along for the loop's edge: half a sheet pixel. */
+const LOOP_STEP = FIXED_POINT_SCALE;
+
+/** The closed loop `[x0, y0, x1, y1, …]` as a region: even-odd, so a figure of eight has two halves. */
+function loopRegion(loop: readonly number[]): CutRegion {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < loop.length; i += 2) {
+    minX = Math.min(minX, loop[i]);
+    maxX = Math.max(maxX, loop[i]);
+    minY = Math.min(minY, loop[i + 1]);
+    maxY = Math.max(maxY, loop[i + 1]);
+  }
+  return {
+    radius: LOOP_STEP,
+    contains(x, y) {
+      if (x < minX || x > maxX || y < minY || y > maxY) {
+        return false;
+      }
+      let within = false;
+      for (let i = 0, j = loop.length - 2; i < loop.length; j = i, i += 2) {
+        const yi = loop[i + 1];
+        const yj = loop[j + 1];
+        if ((yi > y) !== (yj > y) && x < loop[i] + ((y - yi) * (loop[j] - loop[i])) / (yj - yi)) {
+          within = !within;
+        }
+      }
+      return within;
+    },
+  };
+}
+
+/**
+ * The lasso proper: a loop drawn over a cell cuts every stroke it crosses at
+ * its edge, the way the mega eraser cuts — each primitive by its own rule —
+ * and the pieces inside are the selection. A piece stays where its stroke
+ * was in the drawing order, erasers included, so nothing changes until the
+ * selection is moved. Null when the loop holds nothing.
+ *
+ * ponytail: every stroke of the cell is sampled against the whole loop, twice
+ * (what is outside, what is inside). A release over a very full frame is a
+ * fraction of a second; a grid over the loop's segments if it ever shows.
+ */
+export function lassoCut(
+  strokes: readonly ErasableStroke[],
+  loop: readonly number[],
+  tools?: readonly ToolDescriptor[],
+  cutOf?: (tool: ToolDescriptor) => CutPolicy | undefined,
+): LassoCut | null {
+  if (loop.length < 6) {
+    return null;
+  }
+  const inside = loopRegion(loop);
+  const outside: CutRegion = { radius: LOOP_STEP, contains: (x, y) => !inside.contains(x, y) };
+  const cut: LassoCut = { strokes: [], indices: [] };
+  for (const stroke of strokes) {
+    cut.strokes.push(...cutStroke(stroke, inside, tools, cutOf));
+    for (const piece of cutStroke(stroke, outside, tools, cutOf)) {
+      cut.indices.push(cut.strokes.length);
+      cut.strokes.push(piece);
+    }
+  }
+  return cut.indices.length > 0 ? cut : null;
 }

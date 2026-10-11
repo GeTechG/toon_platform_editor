@@ -23,7 +23,8 @@ describe('the two frame tools say what they do', () => {
     for (const name of ['transform', 'jitter']) {
       expect(icons).toContain(`\n    ${name}:`);
     }
-    expect(icons).not.toContain("lasso:");
+    // The loop is the lasso's own (2026-10-11); the frame grabber never draws it.
+    expect(BUILTIN_PLUGIN.tools?.lasso.icon).not.toBe('lasso');
     expect(icons).not.toContain("distort:");
   });
 });

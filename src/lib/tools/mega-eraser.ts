@@ -109,7 +109,7 @@ function drawnCells(points: readonly number[], width: number): number[] {
  */
 function eraseCells(
   stroke: ErasableStroke,
-  sweep: Sweep,
+  sweep: CutRegion,
   width: number,
 ): ErasableStroke[] {
   const pieces: ErasableStroke[] = [];
@@ -117,12 +117,12 @@ function eraseCells(
   const half = width / 2;
   // A miss gives the stroke back as it was stored, not with every in-between
   // cell written out: that would be a rewrite, and an undo step, of nothing.
-  if (!points.some((v, i) => i % 2 === 0 && inside(v + half, points[i + 1] + half, sweep))) {
+  if (!points.some((v, i) => i % 2 === 0 && sweep.contains(v + half, points[i + 1] + half))) {
     return [stroke];
   }
   let run: number[] = [];
   for (let i = 0; i < points.length; i += 2) {
-    if (inside(points[i] + half, points[i + 1] + half, sweep)) {
+    if (sweep.contains(points[i] + half, points[i + 1] + half)) {
       if (run.length >= 2) {
         pieces.push({ points: run, tool_id: stroke.tool_id });
       }
@@ -154,7 +154,7 @@ function eraseCells(
  */
 function eraseClosed(
   stroke: ErasableStroke,
-  sweep: Sweep,
+  sweep: CutRegion,
 ): ErasableStroke[] {
   const { points } = stroke;
   const ring = { points: [...points, points[0], points[1]], tool_id: stroke.tool_id };
@@ -165,7 +165,7 @@ function eraseClosed(
     && pieces[0].points.length === ring.points.length) {
     return [{ points: points.slice(), tool_id: stroke.tool_id }];
   }
-  const startSurvived = !inside(points[0], points[1], sweep);
+  const startSurvived = !sweep.contains(points[0], points[1]);
   if (startSurvived && pieces.length > 1) {
     // The tail ends where the head begins — on the repeated first point, which
     // the head already carries.
@@ -192,13 +192,22 @@ function segmentDistanceSq(
 }
 
 /**
+ * What strokes are cut by. The cutters ask only whether a point is in it, and
+ * `radius` says how finely to look: a stroke is sampled every half of it. The
+ * eraser's capsule is one; the lasso's loop is another.
+ */
+export interface CutRegion {
+  readonly radius: number;
+  contains(x: number, y: number): boolean;
+}
+
+/**
  * The gesture as the capsule tests it: its segments `[ax, ay, bx, by, …]` (a
  * gesture of one point is one segment of no length) and the box they sweep,
  * grown by the radius.
  */
-interface Sweep {
+interface Sweep extends CutRegion {
   readonly segments: readonly number[];
-  readonly radius: number;
   readonly minX: number;
   readonly minY: number;
   readonly maxX: number;
@@ -227,7 +236,11 @@ function withBox(segments: number[], radius: number): Sweep {
     minY = Math.min(minY, segments[i + 1]);
     maxY = Math.max(maxY, segments[i + 1]);
   }
-  return { segments, radius, minX: minX - radius, minY: minY - radius, maxX: maxX + radius, maxY: maxY + radius };
+  const sweep: Sweep = {
+    segments, radius, minX: minX - radius, minY: minY - radius, maxX: maxX + radius, maxY: maxY + radius,
+    contains: (x, y) => inside(x, y, sweep),
+  };
+  return sweep;
 }
 
 /**
@@ -298,12 +311,12 @@ function inside(x: number, y: number, sweep: Sweep): boolean {
 function crossing(
   x0: number, y0: number, x1: number, y1: number,
   lo: number, hi: number,
-  sweep: Sweep,
+  sweep: CutRegion,
 ): [number, number, number] {
-  const insideLo = inside(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo, sweep);
+  const insideLo = sweep.contains(x0 + (x1 - x0) * lo, y0 + (y1 - y0) * lo);
   for (let step = 0; step < 20; step++) {
     const mid = (lo + hi) / 2;
-    if (inside(x0 + (x1 - x0) * mid, y0 + (y1 - y0) * mid, sweep) === insideLo) {
+    if (sweep.contains(x0 + (x1 - x0) * mid, y0 + (y1 - y0) * mid) === insideLo) {
       lo = mid;
     } else {
       hi = mid;
@@ -318,7 +331,7 @@ function crossing(
  * sampled at half the radius before each crossing is refined, so a capsule
  * the stroke only dips into is still found.
  */
-function eraseStroke(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
+function eraseStroke(stroke: ErasableStroke, sweep: CutRegion): ErasableStroke[] {
   const { radius } = sweep;
   const { points } = stroke;
   // Pressure is cut with the points: every kept point takes its own, and a
@@ -337,7 +350,7 @@ function eraseStroke(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
     currentPressure = [];
   };
 
-  let previousInside = inside(points[0], points[1], sweep);
+  let previousInside = sweep.contains(points[0], points[1]);
   if (!previousInside) {
     current.push(points[0], points[1]);
     if (pressure) currentPressure.push(pressure[0]);
@@ -351,7 +364,7 @@ function eraseStroke(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
     const steps = Math.max(1, Math.ceil((length / Math.max(radius, 1)) * 2));
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
-      const nowInside = inside(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, sweep);
+      const nowInside = sweep.contains(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
       if (nowInside !== previousInside) {
         const [cx, cy, at] = crossing(x0, y0, x1, y1, (s - 1) / steps, t, sweep);
         current.push(cx, cy);
@@ -416,7 +429,7 @@ function bezierSlope(p: readonly number[], t: number): [number, number] {
  * piece is again a start point and whole segments, and a segment the capsule
  * missed keeps its own numbers.
  */
-function eraseCubic(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
+function eraseCubic(stroke: ErasableStroke, sweep: CutRegion): ErasableStroke[] {
   const { points } = stroke;
   if ((points.length - 2) % 6 !== 0) {
     return eraseStroke(stroke, sweep);
@@ -435,7 +448,7 @@ function eraseCubic(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
     currentPressure = [];
   };
 
-  let previousInside = inside(points[0], points[1], sweep);
+  let previousInside = sweep.contains(points[0], points[1]);
   if (!previousInside) {
     current.push(points[0], points[1]);
     if (pressure) currentPressure.push(pressure[0]);
@@ -446,7 +459,7 @@ function eraseCubic(stroke: ErasableStroke, sweep: Sweep): ErasableStroke[] {
     const qAt = (t: number): number => Math.round(q![0] + (q![3] - q![0]) * t);
     const at = (t: number): boolean => {
       const [x, y] = bezierAt(segment, t);
-      return inside(x, y, sweep);
+      return sweep.contains(x, y);
     };
     // The run that is still open in this segment began at `from`.
     let from = 0;
@@ -536,17 +549,38 @@ export function eraseStrokes(
       result.push(policy === 'cells' ? stroke : untouched(stroke, policy));
       continue;
     }
-    if (policy === 'closed') {
-      result.push(...eraseClosed(stroke, sweep));
-      continue;
-    }
-    if (policy === 'cells') {
-      result.push(...eraseCells(stroke, sweep, width));
-      continue;
-    }
-    result.push(...(cubic ? eraseCubic(stroke, sweep) : eraseStroke(stroke, sweep)));
+    result.push(...cutBy(stroke, sweep, policy, width, cubic));
   }
   return result;
+}
+
+function cutBy(
+  stroke: ErasableStroke, region: CutRegion, policy: CutPolicy, width: number, cubic: boolean,
+): ErasableStroke[] {
+  if (policy === 'closed') {
+    return eraseClosed(stroke, region);
+  }
+  if (policy === 'cells') {
+    return eraseCells(stroke, region, width);
+  }
+  return cubic ? eraseCubic(stroke, region) : eraseStroke(stroke, region);
+}
+
+/**
+ * One stroke cut by any region: the pieces of it that lie outside, each cut
+ * the way its primitive is cut.
+ */
+export function cutStroke(
+  stroke: ErasableStroke,
+  region: CutRegion,
+  tools?: readonly ToolDescriptor[],
+  cutOf?: (tool: ToolDescriptor) => CutPolicy | undefined,
+): ErasableStroke[] {
+  if (stroke.points.length < 2) {
+    return [];
+  }
+  const { policy, width, cubic } = policyOf(tools, cutOf, stroke);
+  return cutBy(stroke, region, policy, width, cubic);
 }
 
 /**

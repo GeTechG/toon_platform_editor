@@ -35,5 +35,5 @@ export interface HoldPress {
 export function mayHoldPick(p: HoldPress): boolean {
   return p.pointerType === 'touch' && p.isPrimary && p.fingers === 0 && !p.penBusy
     && !p.playing && !p.transform && !p.ownGesture && p.onSheet
-    && p.tool !== 'pipette' && p.tool !== 'lasso';
+    && p.tool !== 'pipette' && p.tool !== 'lasso' && p.tool !== 'loop';
 }

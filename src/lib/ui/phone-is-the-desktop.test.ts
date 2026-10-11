@@ -23,19 +23,19 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(base, base, keep);
     expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     // The transform among them (owner, 2026-10-07: «трансформацию спрячь в инструменты»).
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
   });
 
   it('the row scales with the screen: a wide one holds every tool and no key for the rest, any other only the essential ones', () => {
     const wide = phoneLayout(base, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'color-key']);
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
     expect(wide.tools).toEqual([]);
     // One short of them all: still only the essential ones, not «whatever came next».
     const near = phoneLayout(base, base, { ...keep, room: 5 });
     expect(near.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     const narrow = phoneLayout(base, base, { ...keep, room: 2 });
     expect(narrow.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tools', 'color-key']);
-    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso']);
+    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
   });
 
   it('how many tools the row has room for is worked out from its width and the text size', () => {
@@ -127,7 +127,7 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(base, base, { ...keep, tall: false, room: 12 });
     expect(cut.panels.top).toEqual(['publish', 'more', 'history', 'spring:lead', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     expect(cut.panels.rows).toEqual([['timeline']]);
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
     // «Добавить кадр», three of the transport, the onion skin and the sound take the row's room with undo and redo.
     expect(editorUi).toContain('keys: tall ? 2 : 10');
     // In the middle of the row (owner: «сделай их по центру»): a spring on either side.

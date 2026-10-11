@@ -473,9 +473,19 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     : normalizePanels(storedPanels, true);
   // Stored whole while it was the preset's start (until 2026-10-10 a config
   // always held one): nobody arranged it, so it follows today's start.
-  if (storedPanels !== undefined && preset === DEFAULT_PRESET
-    && FORMER_TOONOP_PANELS.some((former) => samePanels(panels, startOf(presetById(preset), former)))) {
-    panels = presetPanels(preset);
+  if (storedPanels !== undefined && preset === DEFAULT_PRESET) {
+    // A key younger than the stored arrangement (a tool added since) is in
+    // neither: the former start is read the way the stored one just was, or
+    // every new tool would make an untouched arrangement look arranged.
+    const raw = JSON.stringify(storedPanels);
+    const known = (ids: readonly string[]): string[] => ids.filter((id) => raw.includes(JSON.stringify(id)));
+    const asStored = (start: PanelLayout): PanelLayout => normalizePanels({
+      left: known(start.left), right: known(start.right), top: known(start.top),
+      rows: start.rows.map(known), float: known(start.float), hidden: known(start.hidden),
+    }, true);
+    if (FORMER_TOONOP_PANELS.some((former) => samePanels(panels, asStored(startOf(presetById(preset), former))))) {
+      panels = presetPanels(preset);
+    }
   }
   if (storedPanels === undefined && typeof features === 'object' && features !== null) {
     for (const [key, id] of Object.entries(FEATURE_ITEM)) {

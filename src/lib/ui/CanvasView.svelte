@@ -23,6 +23,8 @@
     movedBy,
     rotatedTo,
     scaledBy,
+    EMPTY_TRANSFORM,
+    sameSession,
     sessionWidthScale,
     type HitMode,
     type TransformSession,
@@ -208,6 +210,8 @@
   let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
+  /** The lasso's loop while it is being drawn, in document units. */
+  let loopGesture = $state<number[] | null>(null);
   /** The cell the sweep began on, pinned like the line's. */
   let megaAt: { layer: Layer | undefined; cell: Frame | undefined } = { layer: undefined, cell: undefined };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
@@ -459,11 +463,14 @@
       : editor.tool === 'drag'
         ? (panning ? 'grabbing' : 'grab')
         : editor.transform
-          ? CURSOR_BY_MODE[hoverMode] || (editor.tool === 'lasso' ? 'default' : '')
+          ? CURSOR_BY_MODE[hoverMode] || (editor.tool === 'lasso' ? 'default' : editor.tool === 'loop' ? 'crosshair' : '')
           // The lasso lays no line: a press takes the frame, so no brush ring.
           : editor.tool === 'lasso'
             ? 'default'
-            : '',
+            // The loop is drawn from a point, not with a brush.
+            : editor.tool === 'loop'
+              ? 'crosshair'
+              : '',
   );
 
   /** Screen pixels per document unit — what the transform hit thresholds scale by. */
@@ -734,8 +741,18 @@
     if (!cell || !open || frame !== editor.activeFrame || !open.layers.includes(layer)) {
       return cell;
     }
+    // A loop's cut shows once the selection has moved, as it is written: until
+    // then every line is whole, and drawn whole.
+    const cut = open.picked?.[open.layers.indexOf(layer)];
+    if (cut && sameSession(open.session, EMPTY_TRANSFORM)) {
+      return cell;
+    }
+    const indices = cut && new Set(cut.indices);
     return {
-      strokes: cell.strokes.map((stroke) => {
+      strokes: (cut?.strokes ?? cell.strokes).map((stroke, index) => {
+        if (indices && !indices.has(index)) {
+          return stroke;
+        }
         // The scaled copies sit right after the real table, at the same offsets.
         // The same placing apply will perform, so the drag shows the real
         // result instead of a smooth version of it that snaps on Enter.
@@ -1222,6 +1239,7 @@
     }
     grab = null;
     megaGesture = null;
+    loopGesture = null;
     releasePluginGrab();
     gesturePointerId = -1;
   }
@@ -1506,7 +1524,7 @@
    * A pan is not in it: it moves the view and lays nothing down.
    */
   function drawingBusy(): boolean {
-    return pointer.session !== null || grab !== null || megaGesture !== null || pluginGrab !== null
+    return pointer.session !== null || grab !== null || megaGesture !== null || loopGesture !== null || pluginGrab !== null
       || sizing !== null;
   }
 
@@ -1621,6 +1639,17 @@
         return;
       }
     }
+    // The lasso proper: a press that took nothing of an open selection begins
+    // the next loop, and that selection is applied first — or, locked, kept.
+    if (editor.tool === 'loop') {
+      if (editor.mayEdit() && editor.leaveTransform()) {
+        const [x, y] = toDocUnits(e);
+        loopGesture = [Math.round(x), Math.round(y)];
+        canvasEl.setPointerCapture(e.pointerId);
+        gesturePointerId = e.pointerId;
+      }
+      return;
+    }
     // The lasso is not a drawing tool, so a press never leaves a stroke. With
     // no session open it takes the frame again: applying or cancelling would
     // otherwise strand the tool in hand with nothing left to edit.
@@ -1704,7 +1733,7 @@
     // gesture here, or the stroke follows the hover and refuses the next press.
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
-      && (pointer.session || grab || megaGesture || pluginGrab || panning || sizing)) {
+      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || panning || sizing)) {
       onPointerUp(e);
       return;
     }
@@ -1756,6 +1785,11 @@
       const [x, y] = toDocUnits(e, rect);
       megaGesture.push(Math.round(x), Math.round(y));
       scheduleDraw();
+      return;
+    }
+    if (loopGesture && e.pointerId === gesturePointerId) {
+      const [x, y] = toDocUnits(e, rect);
+      loopGesture.push(Math.round(x), Math.round(y));
       return;
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
@@ -1885,6 +1919,16 @@
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
       releasePluginGrab();
+      return;
+    }
+    if (loopGesture && e.pointerId === gesturePointerId) {
+      const loop = loopGesture;
+      loopGesture = null;
+      gesturePointerId = -1;
+      // A tap closes no loop, and says nothing of an empty one.
+      if (loop.length >= 6 && !onlyDismissed(e)) {
+        editor.beginLassoTransform(loop);
+      }
       return;
     }
     if (megaGesture && e.pointerId === gesturePointerId) {
@@ -2088,9 +2132,6 @@
   {#if displayedHandles}
     <svg
       class="overlay"
-      width={stage.width}
-      height={stage.height}
-      viewBox="0 0 {stage.width} {stage.height}"
       aria-hidden="true"
     >
       <!-- The side midpoints sit on the sides, so all eight points trace the
@@ -2100,6 +2141,14 @@
         {@const [hx, hy] = toScreen(displayedHandles[handle * 2], displayedHandles[handle * 2 + 1])}
         <rect class="handle" x={hx - 5} y={hy - 5} width="10" height="10" />
       {/each}
+    </svg>
+  {/if}
+  {#if loopGesture}
+    <svg
+      class="overlay"
+      aria-hidden="true"
+    >
+      <polygon class="frame" points={screenPoints(loopGesture)} />
     </svg>
   {/if}
   <!-- Always in the tree: a live region mounted with its words is not
@@ -2243,6 +2292,12 @@
     /* The canvas fills the wrap; the overlay sits exactly on it. */
     left: 0;
     top: 0;
+    /* The wrap's own box, not its measured size: that is a whole number, and
+       over a wrap half a pixel shorter the overlay stuck out of the page —
+       a scrollbar came with the first handle or loop. One unit is one CSS
+       pixel with no viewBox, which is what `toScreen` counts in. */
+    width: 100%;
+    height: 100%;
     pointer-events: none;
   }
   .overlay .frame {

@@ -50,6 +50,7 @@
     | 'save'
     | 'hand'
     | 'transform'
+    | 'lasso'
     | 'jitter'
     | 'note'
     | 'help'
@@ -106,6 +107,9 @@
     hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 12V4.5a1.5 1.5 0 0 1 3 0V12M14 12V6.5a1.5 1.5 0 0 1 3 0V13M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a1.5 1.5 0 0 1 2.6-1.5L8 15',
     // The frame taken in hand: a box with a handle at every corner.
     transform: 'M7 7h10v10H7zM4.5 4.5h.01M19.5 4.5h.01M4.5 19.5h.01M19.5 19.5h.01',
+    // A rope thrown in a loop, its end hanging: what the lasso closes on the sheet.
+    lasso:
+      'M7 22a5 5 0 0 1-2-4M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1M5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
     // Two strokes shaking against each other — what the brush does to a frame.
     jitter:
       'M3 9c1.5-3 3 3 4.5 0s3 3 4.5 0 3 3 4.5 0 3 3 4.5 0M3 15c1.5 3 3-3 4.5 0s3-3 4.5 0 3-3 4.5 0 3-3 4.5 0',

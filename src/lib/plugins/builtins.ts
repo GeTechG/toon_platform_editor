@@ -75,6 +75,9 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
     key: 'Q',
     help: true,
   },
+  // The lasso proper. Its id is `loop`: `lasso` was taken by the transform
+  // before it had a loop to draw, and stored arrangements hold that name.
+  loop: { icon: 'lasso', title: t('tool.lasso.title'), label: t('tool.lasso.label'), key: 'R', help: true },
   distort: distortTool,
   'toonop-brush': {
     icon: 'pencil',
@@ -139,6 +142,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:pipette',
         'tool:drag',
         'tool:lasso',
+        'tool:loop',
         'history',
       ],
       right: ['colours'],

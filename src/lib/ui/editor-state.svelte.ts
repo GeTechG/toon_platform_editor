@@ -39,7 +39,6 @@ import {
   pressureOf,
   mirrorCell,
   markReach,
-  transformStrokes,
   setFrameRate,
   setLayerHidden,
   type CellBuffer,
@@ -91,16 +90,16 @@ import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
-import type { TransformSession } from '../tools/lasso';
+import type { LassoCut, TransformSession } from '../tools/lasso';
 import {
   EMPTY_TRANSFORM,
+  lassoCut,
   nudged,
   sameSession,
   selectionBounds,
   sessionMatrix,
-  sessionWidthScale,
 } from '../tools/lasso';
-import { bakeTransform } from '../tools/bake-transform';
+import { bakeTransform, writeTransform } from '../tools/bake-transform';
 import type { Box } from '../model/geom';
 import { applyMatrix } from '../model/geom';
 import { editCells, makeHost } from '../plugins/host';
@@ -122,6 +121,8 @@ export interface TransformState {
   box: Box;
   session: TransformSession;
   widthWithScale: boolean;
+  /** What a loop took of each of `layers`; absent — their whole cells. */
+  picked?: LassoCut[];
   /** Steps inside the session, oldest first — the window's own undo. */
   past: TransformSession[];
   future: TransformSession[];
@@ -2269,6 +2270,60 @@ export class EditorState {
   }
 
   /**
+   * The lasso proper (R): a loop closed on the canvas takes what it holds on
+   * every selected layer of the frame, a line it crosses cut at its edge.
+   * Nothing is written here — the cut lands with the applied move, and a
+   * selection let go untouched leaves every line whole.
+   */
+  beginLassoTransform(loop: readonly number[]): boolean {
+    if (this.playing || !this.mayEdit() || !this.leaveTransform()) {
+      return false;
+    }
+    const frame = this.activeFrame;
+    const tools = this.doc.tools;
+    const layers: number[] = [];
+    const picked: LassoCut[] = [];
+    for (const layer of this.visibleSelectedLayers) {
+      const cut = lassoCut(this.doc.layers[layer].frames[frame]?.strokes ?? [], loop, tools, (tool) =>
+        plugins.tools().find((entry) => entry.stroke?.kind === tool.kind)?.stroke?.cut);
+      if (cut) {
+        layers.push(layer);
+        picked.push(cut);
+      }
+    }
+    const box = selectionBounds(
+      picked.flatMap((cut) => cut.indices.map((index) => cut.strokes[index])),
+      null,
+      (stroke) => markReach(tools[stroke.tool_id]),
+    );
+    if (!box) {
+      this.canvasHint = { text: t('canvas.nothing_in_loop') };
+      return false;
+    }
+    // Every cut adds its end points and its pieces: a frame at the format's
+    // limit is refused now, not at Enter with the move already made.
+    try {
+      bakeTransform(this.doc, frame, { layers, box, session: { ...EMPTY_TRANSFORM, dx: 1 }, widthWithScale: false, picked });
+    } catch (err) {
+      if (!this.refuseAtLimit(err)) {
+        console.warn('lasso rejected:', err);
+      }
+      return false;
+    }
+    this.selection = { frames: [frame], layers: this.selection.layers };
+    this.transform = {
+      layers,
+      box,
+      session: { ...EMPTY_TRANSFORM },
+      widthWithScale: this.transformWidthWithScale,
+      picked,
+      past: [],
+      future: [],
+    };
+    return true;
+  }
+
+  /**
    * Replaces the accumulated transform — what the fields, the handles and the
    * hotkeys all write, so it is also the one place a session step is recorded.
    * `continuing` is the same gesture going on — a drag's later moves, a number
@@ -2396,10 +2451,7 @@ export class EditorState {
       && session.scaleX === 1 && session.scaleY === 1) {
       return;
     }
-    const widthScale = open.widthWithScale ? sessionWidthScale(session) : 1;
-    const matrix = sessionMatrix(session, open.box);
-    this.applyTransform(open.layers, (doc, layer, frame) =>
-      transformStrokes(doc, layer, frame, null, matrix, widthScale));
+    this.applyTransform(open.layers, (doc, layer, frame) => writeTransform(doc, layer, frame, open));
   }
 
   /**
