@@ -65,4 +65,9 @@ describe('toonop on a desk', () => {
     const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathname).text();
     expect(editorUi).toMatch(/\.left\.sidebar:not\(\.lies\) > :global\(\*\),\s*\.studio:not\(\.compact\) \.left\.sidebar:not\(\.lies\) > :global\(\.pop-key > \*\) \{\s*flex: none;/);
   });
+
+  it('a desk has no thickness rail on the stage, under a finger either (owner, 2026-10-12: «настройку толщины мы вроде убрали с пк») — the thickness is behind the brush’s key', async () => {
+    const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathname).text();
+    expect(editorUi).toMatch(/const stageRail = \$derived\(\s*compact &&/);
+  });
 });

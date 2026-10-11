@@ -814,8 +814,13 @@
   const transportDrawn = $derived(
     itemDrawn(panels, 'transport', { left: folded('left'), right: folded('right'), rows: panelFolded }),
   );
-  /** The stage's own thickness rail: not where a panel already draws the slider (panels.ts). */
+  /**
+   * The stage's own thickness rail: a phone's, not where a panel already draws
+   * the slider (panels.ts). A desk has none, under a finger either — its
+   * thickness is behind the brush's key (owner, 2026-10-12).
+   */
   const stageRail = $derived(
+    compact &&
     stageRailShown(panels, { left: folded('left'), right: folded('right'), rows: panelFolded }) &&
       // A preset's desk on a phone that draws its own thicknesses (Multator's dots): the rail beside them was a second one.
       !(deskPhone && itemDrawn(panels, 'brush-sizes', { left: folded('left'), right: folded('right'), rows: panelFolded })),
