@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
 import { defaultPanels, movePanelItem, toolItem, toolOpensBrush, type PanelLayout } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
-import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, toolRoom } from './small-screen';
+import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, toolRoom } from './small-screen';
 
 // The owner, 2026-10-07: «сделай телефонный/планшетный варианты как у
 // procreate, по сути это нынешний десктоп». A tablet already draws the
@@ -44,8 +44,25 @@ describe('a phone draws toonop’s desktop', () => {
     expect(toolRoom(320, 16, { publish: true, keys: 2 })).toBe(3);
     // Lying down, undo and redo stand in the row too.
     expect(toolRoom(844, 16, { publish: true, keys: 4 })).toBe(12);
-    // Never under two: a tool and the key for the rest.
-    expect(toolRoom(200, 32, { publish: true, keys: 2 })).toBe(2);
+    // Never under three: the brush, the eraser (owner, 2026-10-12: «ластик и кисть всегда видны») and the key for the rest.
+    expect(toolRoom(200, 32, { publish: true, keys: 2 })).toBe(3);
+  });
+
+  it('a row too long for the screen shrinks its keys instead of wrapping (owner, 2026-10-12: «не убиранием, а уменьшением»)', () => {
+    const lying = ['publish', 'more', 'history', 'spring:lead', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key'];
+    // Measured at 100 % text: these thirteen keys stand whole from 708 px.
+    expect(rowKeySize(708, 16, lying, true)).toBe(44);
+    expect(rowKeySize(1194, 16, lying, true)).toBe(44);
+    // 696 px, where the colour key fell to a second line: every key gives a pixel.
+    expect(rowKeySize(696, 16, lying, true)).toBe(43);
+    // An iPhone SE lying down.
+    expect(rowKeySize(568, 16, lying, true)).toBe(33);
+    // Not under 32: past that the row wraps, as it did.
+    expect(rowKeySize(400, 16, lying, true)).toBe(32);
+    expect(editorUi).toContain("style:--key-h={compact && !deskPhone ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined}");
+    expect(editorUi).toMatch(/\.studio\.compact \.top \.history :global\(\.key\) \{\s*min-width: var\(--key-h\);/);
+    // An icon in its padding is 42 px wide whatever the key's size: the row's keys are their icon alone.
+    expect(editorUi).toMatch(/\.studio\.compact:not\(\.desk\) \.top :global\(\.key:not\(\.primary\):not\(\.pop-plate \*\)\) \{\s*padding: 0;/);
   });
 
   it('the sidebar and the bar under the canvas are the desktop’s own', () => {

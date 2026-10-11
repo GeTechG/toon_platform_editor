@@ -122,12 +122,33 @@ const keyPitch = (rem: number): number => 44 + 0.25 * rem;
  * How many tool keys a phone's row has room for: the top bar scales with the
  * screen (owner, 2026-10-07) — what does not fit goes behind one key for the
  * other tools. `keys` is what else stands in the row beside «Отправить»: «⋯»,
- * the colour, undo and redo lying down. Never under two: a tool and that key.
+ * the colour, undo and redo lying down. Never under three: the brush, the
+ * eraser — always in sight (owner, 2026-10-12) — and that key.
  */
 export function toolRoom(width: number, rem: number, row: { publish: boolean; keys: number }): number {
   const pitch = keyPitch(rem);
   const taken = rem + (row.publish ? 3.25 * rem + 0.25 * rem : 0) + row.keys * pitch;
-  return Math.max(2, Math.floor((width - taken) / pitch));
+  return Math.max(3, Math.floor((width - taken) / pitch));
+}
+
+/** The least a key of a phone's row shrinks to, px: past it the row wraps. */
+const ROW_KEY_MIN = 32;
+
+/**
+ * How big the keys of a phone's row are drawn, px: the tap floor where the
+ * row has the width, less where it has not — the row shrinks its keys before
+ * it wraps (owner, 2026-10-12: «не убиранием, а уменьшением»). What does not
+ * shrink: the row's padding, «Отправить», the gaps between its items and
+ * inside undo-redo and the transport (`.history`, `.transport-keys`).
+ */
+export function rowKeySize(width: number, rem: number, top: readonly string[], publish: boolean): number {
+  const keysOf = (id: string): number => (id === 'publish' || id.startsWith('spring') ? 0 : id === 'history' ? 2 : id === 'transport' ? 3 : 1);
+  const items = top.filter((id) => id !== 'publish' || publish);
+  const keys = items.reduce((sum, id) => sum + keysOf(id), 0);
+  const inner = items.reduce((sum, id) => sum + Math.max(0, keysOf(id) - 1), 0);
+  const fixed = rem + (items.includes('publish') ? 3.25 * rem : 0) + (items.length - 1) * 0.25 * rem + inner * 0.4 * rem + 0.025 * rem;
+  if (keys === 0) return 44;
+  return Math.max(ROW_KEY_MIN, Math.min(44, Math.floor((width - fixed) / keys)));
 }
 
 /** What the phone's own keys already open: the colour key, a tool's key pressed again, the sidebar. */

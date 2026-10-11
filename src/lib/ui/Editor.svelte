@@ -63,7 +63,7 @@
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetAbout, presetPanels, presets, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
-  import { boxRow, canvasFloor, deskOnPhone, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
+  import { boxRow, canvasFloor, deskOnPhone, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -2928,7 +2928,7 @@
   {#if draws(panels.top) || editor.arranging}
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
-    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} onpointerdowncapture={() => (rowPressed = true)}>
+    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} style:--key-h={compact && !deskPhone ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined} onpointerdowncapture={() => (rowPressed = true)}>
       <!-- The host's bar is away on a low window (owner, 2026-10-08) and a
            desk has no «⋯»: the way back heads the row. -->
       {#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
@@ -4023,7 +4023,13 @@
     flex: none;
   }
   .studio.compact .top .history :global(.key) {
-    min-width: var(--tap);
+    min-width: var(--key-h);
+  }
+  /* The row shrinks its keys where it is too long (`rowKeySize`): a key's
+     padding around its icon held it 42 px wide whatever its size. Not the
+     keys of a window a row's key opens: those are a name by its icon. */
+  .studio.compact:not(.desk) .top :global(.key:not(.primary):not(.pop-plate *)) {
+    padding: 0;
   }
   .studio.compact .top {
     gap: 0.25rem;

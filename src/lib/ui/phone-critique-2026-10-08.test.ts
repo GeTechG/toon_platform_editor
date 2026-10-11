@@ -48,7 +48,7 @@ describe('undo and redo in a phone’s row over the canvas', () => {
   // keys that could shrink.
   it('stand on the tap floor: the row does not squeeze them', () => {
     expect(editorUi).toMatch(/\.studio\.compact \.top \.history \{\s*flex: none;\s*\}/);
-    expect(editorUi).toMatch(/\.studio\.compact \.top \.history :global\(\.key\) \{\s*min-width: var\(--tap\);/);
+    expect(editorUi).toMatch(/\.studio\.compact \.top \.history :global\(\.key\) \{\s*min-width: var\(--key-h\);/);
   });
 });
 
