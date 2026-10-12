@@ -255,7 +255,9 @@ describe('the studio draws one markup, given the arrangement', () => {
     const popKey = popKeyUi;
     expect(popKey).toMatch(/\$effect\(\(\) => \{\s*void shutOn;\s*open = false;\s*\}\);/);
     expect(editorUi).toMatch(/\{:else if id === 'tools'\}[\s\S]*?<PopKey[^>]*shutOn=\{editor\.tool\}/);
-    expect(editorUi.match(/shutOn=/g)?.length).toBe(1);
+    // The colours stay open while one works in them and shut for one thing:
+    // the pipette, which reads the sheet they lie over (owner, 2026-10-13).
+    expect(editorUi.match(/shutOn=/g)?.length).toBe(2);
   });
 
   it('a finger gets no hand tool: two fingers move the sheet', () => {

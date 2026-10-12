@@ -17,7 +17,6 @@
     active = false,
     gate,
     shutOn,
-    away = false,
     attrs = {},
   }: {
     /** Drawn as pressed though its box is shut: a tool in hand. */
@@ -26,12 +25,6 @@
     gate?: () => boolean;
     /** The box shuts when this changes: a list one picks from, done once the pick is made. */
     shutOn?: unknown;
-    /**
-     * While true an open box stands aside — hidden, not shut — and comes back
-     * as it was left: the pipette picked in the colours reads the sheet the
-     * box lay over.
-     */
-    away?: boolean;
     /** What else the key carries: its hotkey, its pressed state. */
     attrs?: Record<string, unknown>;
     label: string;
@@ -42,8 +35,6 @@
   } = $props();
 
   let open = $state(false);
-  /** Open and in sight. */
-  const shown = $derived(open && !away);
   let key = $state<HTMLButtonElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
   let at = $state<PlatePlace | undefined>();
@@ -56,7 +47,7 @@
    */
   $effect(() => {
     void resized;
-    if (!shown || !key || !plate) return;
+    if (!open || !key || !plate) return;
     const k = key.getBoundingClientRect();
     // A column standing beside the canvas; lying along its foot it is a row of keys.
     const column = key.closest('aside:not(.lies)')?.getBoundingClientRect();
@@ -71,7 +62,7 @@
   // column's own layer, and the strip's pinned cells lay over a window that
   // reached down to the bar (toonop's desk: the brush under the colours).
   $effect(() => {
-    const column = shown ? key?.closest('aside') : null;
+    const column = open ? key?.closest('aside') : null;
     column?.classList.add('popped');
     return () => column?.classList.remove('popped');
   });
@@ -81,16 +72,16 @@
   // the sheet is the one press that only closes (owner, 2026-10-08): it left a
   // dot of the brush nobody meant, and the sheet is told of it (dismiss-press.ts).
   $effect(() => {
-    if (!shown) return;
-    const elsewhere = (e: PointerEvent) => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
       const hit = e.target as Node | null;
       if (hit && !plate?.contains(hit) && !key?.contains(hit)) {
         open = false;
         notePopupClosed(e);
       }
     };
-    window.addEventListener('pointerdown', elsewhere, true);
-    return () => window.removeEventListener('pointerdown', elsewhere, true);
+    window.addEventListener('pointerdown', away, true);
+    return () => window.removeEventListener('pointerdown', away, true);
   });
 
   // A gated key's box belongs to its being active: the tool changed by a
@@ -129,8 +120,8 @@
   <button
     class="key icon"
     {...attrs}
-    class:active={shown || active}
-    aria-expanded={shown}
+    class:active={open || active}
+    aria-expanded={open}
     bind:this={key}
     onclick={() => {
       if (!gate || gate()) open = !open;
@@ -153,7 +144,6 @@
       class:up={at?.bottom !== undefined}
       role="group"
       aria-label={label}
-      hidden={away}
       bind:this={plate}
       style:left={at && `${at.x}px`}
       style:top={at?.top !== undefined ? `${at.top}px` : undefined}
@@ -169,11 +159,6 @@
 <style>
   .pop-key {
     display: contents;
-  }
-  /* Standing aside: the plate sets a display of its own, which outweighs the
-     attribute's. */
-  .pop-plate[hidden] {
-    display: none;
   }
   .pop-plate {
     position: fixed;

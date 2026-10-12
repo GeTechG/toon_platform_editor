@@ -2646,7 +2646,7 @@
       <BrushPanel {editor} />
     </PopKey>
   {:else if id === 'color-key'}
-    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })} away={editor.tool === 'pipette'} attrs={{ 'data-walk': '' }}>
+    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })} shutOn={editor.tool === 'pipette'} attrs={{ 'data-walk': '' }}>
       {#snippet face()}<span class="colour-dot" style:--swatch={editor.brushColor} style:--fill={editor.fillColor}></span>{/snippet}
       <ColoursPanel {editor} />
     </PopKey>
