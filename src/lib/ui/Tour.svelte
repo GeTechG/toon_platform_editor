@@ -105,27 +105,29 @@
 </section>
 
 <style>
-  /* A card on the table like the «⋯» window, told from the sheet by tone, not
-     by a shadow. Under the mode notes, which speak first. */
+  /* A card in the middle of the table, of the «⋯» window's paper: in the
+     table's own tone and under its top edge it ran into everything around
+     (owner, 2026-10-13). Told by tone, not by a shadow. Centred by margins:
+     `translate` is the arrival's. */
   .preset-ask {
     position: absolute;
     z-index: var(--z-float);
-    top: 3rem;
-    left: 50%;
-    translate: -50% 0;
+    inset: 0;
+    margin: auto;
     width: min(100% - 1rem, 30rem);
+    height: fit-content;
     /* A low stage (a phone lying down) scrolls the card, not cuts it. */
-    max-height: calc(100% - 3.5rem);
+    max-height: calc(100% - 1rem);
     overflow-y: auto;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: var(--sub);
+    background: var(--paper);
     border-radius: var(--r-lg);
     color: var(--text);
-    --pop-from: -4px;
+    --pop-from: 0px;
     animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .preset-ask-head {
@@ -166,9 +168,19 @@
   }
   .tour-foot {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
     gap: 0.4rem;
+  }
+  /* A key's words stay in one line: in a 250 px card «Пройти тур» broke in two
+     and ran out of its key (owner, 2026-10-13). */
+  .tour-foot .key {
+    white-space: nowrap;
+  }
+  :global(.studio.compact) .tour-foot .key {
+    padding-inline: 0.75rem;
+    font-size: 0.95rem;
   }
   .tour-at {
     margin: 0 auto 0 0.25rem;
@@ -199,7 +211,7 @@
     min-height: var(--key-h);
     padding: 0.4rem 0.6rem;
     text-align: start;
-    background: var(--hairline-soft);
+    background: var(--sub);
   }
   .preset-ask-chips b {
     font-weight: 700;
@@ -239,9 +251,7 @@
   .preset-ask .preset-ask-picked {
     display: none;
   }
-  /* Under the names a first visit's row of keys wears, which hang below it. */
   :global(.studio.compact) .preset-ask {
-    top: 2rem;
     padding: 0.5rem;
   }
   :global(.studio.compact) .preset-ask-chips ~ p,
@@ -251,13 +261,12 @@
   :global(.studio.compact) .preset-ask .preset-ask-picked {
     display: block;
   }
-  :global(.studio.compact) .preset-ask-chips {
-    flex-wrap: nowrap;
-  }
+  /* By the name's length, not in thirds: under Toonio's column of tools the
+     card is 250 px wide, and a third of it cut «Multator» (owner, 2026-10-13). */
   :global(.studio.compact) .preset-ask-chips button {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 1 1 auto;
     padding-inline: 0.4rem;
+    font-size: 0.9rem;
     align-content: center;
     text-align: center;
   }
@@ -265,30 +274,41 @@
     height: 6.5rem;
   }
 
-  /* The pictures: a white well with a scene of fixed size in it, so a wider
-     card moves nothing. Every moving part is one class and rests where its
+  /* The pictures: a white well with a scene in it that a wider card does not
+     stretch. Every moving part is one class and rests where its
      road ends — that is what stands when motion is turned off. */
   .art {
+    container-type: inline-size;
     display: grid;
     place-items: center;
     background: var(--canvas);
     border-radius: var(--r-md);
     overflow: hidden;
   }
+  /* One share of the well's width, a rem where there is room: under Toonio's
+     rail a phone's card is 250 px, and a scene of 16rem ran out of it (owner,
+     2026-10-13). Every size below is counted in it. */
   .scene {
+    --u: 1rem;
     position: relative;
     flex: none;
-    width: 16rem;
-    height: 8rem;
+    width: calc(16 * var(--u));
+    height: calc(8 * var(--u));
+  }
+
+  @supports (width: 1cqw) {
+    .scene {
+      --u: min(1rem, 100cqw / 16);
+    }
   }
 
   /* .toon dropped on the studio */
   .win {
     position: absolute;
-    left: 1.5rem;
-    top: 1rem;
-    width: 9rem;
-    height: 6rem;
+    left: calc(1.5 * var(--u));
+    top: calc(1 * var(--u));
+    width: calc(9 * var(--u));
+    height: calc(6 * var(--u));
     box-sizing: border-box;
     border: 2px solid var(--ink);
     border-radius: var(--r-sm);
@@ -299,14 +319,14 @@
   }
   .win i {
     display: block;
-    height: 0.7rem;
+    height: calc(0.7 * var(--u));
     border-bottom: 2px solid var(--ink);
   }
   .win svg {
     position: absolute;
-    inset: 1.4rem 0.6rem 0.5rem;
-    width: calc(100% - 1.2rem);
-    height: calc(100% - 1.9rem);
+    inset: calc(1.4 * var(--u)) calc(0.6 * var(--u)) calc(0.5 * var(--u));
+    width: calc(100% - calc(1.2 * var(--u)));
+    height: calc(100% - calc(1.9 * var(--u)));
     background: var(--canvas);
     border-radius: 3px;
   }
@@ -322,22 +342,22 @@
   }
   .file {
     position: absolute;
-    left: 11.2rem;
-    top: 3rem;
-    padding: 0.25rem 0.55rem;
+    left: calc(11.2 * var(--u));
+    top: calc(3 * var(--u));
+    padding: calc(0.25 * var(--u)) calc(0.55 * var(--u));
     border-radius: var(--r-sm);
     background: var(--ink);
     color: var(--canvas);
-    font-size: 0.8rem;
+    font-size: calc(0.8 * var(--u));
     font-weight: 800;
     animation: tour-drop 5s var(--ease-out) infinite;
   }
   /* The pointer that carries it. */
   .file svg {
     position: absolute;
-    right: -0.5rem;
-    bottom: -0.7rem;
-    width: 0.85rem;
+    right: calc(-0.5 * var(--u));
+    bottom: calc(-0.7 * var(--u));
+    width: calc(0.85 * var(--u));
     fill: var(--canvas);
     stroke: var(--ink);
     stroke-width: 1.2;
@@ -345,21 +365,21 @@
   }
   @keyframes tour-drop {
     0% {
-      translate: 2rem -3.5rem;
+      translate: calc(2 * var(--u)) calc(-3.5 * var(--u));
       opacity: 0;
     }
     10% {
-      translate: 2rem -3.5rem;
+      translate: calc(2 * var(--u)) calc(-3.5 * var(--u));
       opacity: 1;
     }
     45% {
-      translate: -6.9rem 0.4rem;
+      translate: calc(-6.9 * var(--u)) calc(0.4 * var(--u));
       opacity: 1;
       scale: 1;
     }
     55%,
     100% {
-      translate: -6.9rem 0.4rem;
+      translate: calc(-6.9 * var(--u)) calc(0.4 * var(--u));
       opacity: 0;
       scale: 0.6;
     }
@@ -392,13 +412,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4rem;
+    gap: calc(0.4 * var(--u));
   }
   .k {
     display: grid;
     place-items: center;
-    width: 2.4rem;
-    height: 2.4rem;
+    width: calc(2.4 * var(--u));
+    height: calc(2.4 * var(--u));
     border-radius: var(--r-sm);
     background: var(--sub);
     color: var(--text);
@@ -411,7 +431,7 @@
   @keyframes tour-key {
     0%,
     15% {
-      translate: 0 -3rem;
+      translate: 0 calc(-3 * var(--u));
       opacity: 0;
     }
     45%,
@@ -428,15 +448,15 @@
   /* frames out to files */
   .strip {
     position: absolute;
-    left: 1rem;
-    top: 2.9rem;
-    width: 9rem;
+    left: calc(1 * var(--u));
+    top: calc(2.9 * var(--u));
+    width: calc(9 * var(--u));
     display: flex;
-    gap: 0.3rem;
+    gap: calc(0.3 * var(--u));
   }
   .strip i {
     flex: 1;
-    height: 2.2rem;
+    height: calc(2.2 * var(--u));
     box-sizing: border-box;
     border: 2px solid var(--ink);
     border-radius: 4px;
@@ -444,26 +464,26 @@
   }
   .head {
     position: absolute;
-    left: 10rem;
-    top: 2.4rem;
+    left: calc(10 * var(--u));
+    top: calc(2.4 * var(--u));
     width: 2px;
-    height: 3.2rem;
+    height: calc(3.2 * var(--u));
     background: var(--accent);
     animation: tour-head 5s linear infinite;
   }
   .out {
     position: absolute;
-    left: 11.4rem;
-    top: 1.3rem;
+    left: calc(11.4 * var(--u));
+    top: calc(1.3 * var(--u));
     display: grid;
-    gap: 0.4rem;
+    gap: calc(0.4 * var(--u));
   }
   .out b {
-    padding: 0.2rem 0.5rem;
+    padding: calc(0.2 * var(--u)) calc(0.5 * var(--u));
     border-radius: var(--r-sm);
     background: var(--ink);
     color: var(--canvas);
-    font-size: 0.75rem;
+    font-size: calc(0.75 * var(--u));
     font-weight: 800;
     text-align: center;
   }
@@ -480,7 +500,7 @@
   }
   @keyframes tour-head {
     0% {
-      translate: -9rem 0;
+      translate: calc(-9 * var(--u)) 0;
     }
     50%,
     100% {
@@ -525,8 +545,8 @@
     position: absolute;
     display: grid;
     place-items: center;
-    width: 3.6rem;
-    height: 2.4rem;
+    width: calc(3.6 * var(--u));
+    height: calc(2.4 * var(--u));
     box-sizing: border-box;
     border: 2px solid var(--ink);
     border-radius: 5px;
@@ -534,21 +554,21 @@
     color: var(--ink);
   }
   .t0 {
-    left: 1.6rem;
-    top: 2.8rem;
+    left: calc(1.6 * var(--u));
+    top: calc(2.8 * var(--u));
   }
   .t1,
   .t2 {
-    left: 8.8rem;
+    left: calc(8.8 * var(--u));
     background: var(--tile);
     color: var(--tile-ink);
   }
   .t1 {
-    top: 0.8rem;
+    top: calc(0.8 * var(--u));
     animation: tour-t1 5s var(--ease-out) infinite;
   }
   .t2 {
-    top: 4.8rem;
+    top: calc(4.8 * var(--u));
     animation: tour-t2 5s var(--ease-out) infinite;
   }
   @keyframes tour-l1 {
@@ -599,10 +619,10 @@
   /* the editor, a copy of it changed, the change sent back */
   .fork {
     position: absolute;
-    top: 1.6rem;
-    left: 1.6rem;
-    width: 5.4rem;
-    height: 4.8rem;
+    top: calc(1.6 * var(--u));
+    left: calc(1.6 * var(--u));
+    width: calc(5.4 * var(--u));
+    height: calc(4.8 * var(--u));
     box-sizing: border-box;
     border: 2px solid var(--ink);
     border-radius: var(--r-sm);
@@ -610,27 +630,27 @@
   }
   .fork i {
     display: block;
-    height: 0.6rem;
+    height: calc(0.6 * var(--u));
     border-bottom: 2px solid var(--ink);
   }
   .fork u {
     position: absolute;
-    inset: 1.2rem 0.4rem 0.4rem 2.1rem;
+    inset: calc(1.2 * var(--u)) calc(0.4 * var(--u)) calc(0.4 * var(--u)) calc(2.1 * var(--u));
     border-radius: 3px;
     background: var(--canvas);
   }
   .b0,
   .b1 {
     position: absolute;
-    left: 0.4rem;
-    top: 1.2rem;
-    width: 1.3rem;
-    height: 1.3rem;
+    left: calc(0.4 * var(--u));
+    top: calc(1.2 * var(--u));
+    width: calc(1.3 * var(--u));
+    height: calc(1.3 * var(--u));
     border-radius: 4px;
     background: var(--accent);
   }
   .f1 {
-    left: 9rem;
+    left: calc(9 * var(--u));
     animation: tour-f1 6s var(--ease-out) infinite;
   }
   .b1 {
@@ -641,10 +661,10 @@
   }
   .patch {
     position: absolute;
-    left: 2.25rem;
-    top: 3.05rem;
-    width: 0.8rem;
-    height: 0.8rem;
+    left: calc(2.25 * var(--u));
+    top: calc(3.05 * var(--u));
+    width: calc(0.8 * var(--u));
+    height: calc(0.8 * var(--u));
     border-radius: 50%;
     background: var(--accent);
     opacity: 0;
@@ -654,7 +674,7 @@
     0%,
     8% {
       opacity: 0;
-      translate: -3rem 0;
+      translate: calc(-3 * var(--u)) 0;
     }
     22%,
     100% {
@@ -675,11 +695,11 @@
   @keyframes tour-patch {
     0%,
     44% {
-      translate: 7.4rem 0;
+      translate: calc(7.4 * var(--u)) 0;
       opacity: 0;
     }
     48% {
-      translate: 7.4rem 0;
+      translate: calc(7.4 * var(--u)) 0;
       opacity: 1;
     }
     66% {

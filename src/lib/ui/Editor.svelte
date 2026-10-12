@@ -3066,7 +3066,11 @@
          Nothing waits on it: the sheet under it draws, and the first line
          takes it away. -->
     {#if editor.presetAsk && plateDue && !editor.arranging}
-      <Tour {editor} {mascot} platform={!!onPublish} />
+      <!-- A phone's boxes, open, lie where the card stands: it steps out till
+           they shut — hidden, not unmounted, so its page is kept. -->
+      <div hidden={sideOver && !folded('right')}>
+        <Tour {editor} {mascot} platform={!!onPublish} />
+      </div>
     {/if}
     {#if over && moreOpen}
       <!-- What a phone's row of keys has no room for, each key by its name. -->
