@@ -368,10 +368,7 @@
        listened to at all, and it is where the line is set up, not in the
        settings sheet. -->
   <label class="toggle">
-    <span>
-      {t('brush.pen_pressure')}
-      <small>{t('brush.pen_pressure_hint')}</small>
-    </span>
+    <span>{t('brush.pen_pressure')}</span>
     <input
       type="checkbox"
       role="switch"
@@ -417,7 +414,7 @@
     /* The box is 225px and narrower on a phone: the switch goes under the
        words before it goes past the edge. */
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
     font-size: 0.86rem;
@@ -428,17 +425,8 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  .toggle small {
-    display: block;
-    margin-top: 0.1rem;
-    font-size: 0.74rem;
-    line-height: 1.3;
-    color: var(--ink-2);
-    text-wrap: pretty;
-  }
   .toggle input {
     flex: none;
-    margin-top: 0.15rem;
   }
   .trigger {
     grid-column: 1 / 3;
