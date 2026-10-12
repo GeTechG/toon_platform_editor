@@ -84,7 +84,7 @@ import {
   withSavedPalette,
   type SavedPalette,
 } from './color-palette';
-import { IDENTITY_VIEW, clampPan, fitView, zoomAt, type Stage, type Viewport2D } from './viewport';
+import { IDENTITY_VIEW, clampPan, fitView, rotateAt, zoomAt, type Stage, type Viewport2D } from './viewport';
 import { resizeSheet, sheetOpen } from './sheet-size';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
@@ -1478,9 +1478,20 @@ export class EditorState {
   /** Slides the view by CSS pixels (the hand's arrow keys), never losing the sheet. */
   panBy(dx: number, dy: number): void {
     this.view = clampPan(
-      { zoom: this.view.zoom, panX: this.view.panX + dx, panY: this.view.panY + dy },
+      { ...this.view, panX: this.view.panX + dx, panY: this.view.panY + dy },
       this.stage,
     );
+  }
+
+  /**
+   * Turns the sheet to `angle` degrees about the middle of the table — what
+   * is looked at stays there, as in every drawing program. Only the view: the
+   * drawing, the export and the film are as upright as they were.
+   */
+  rotateTo(angle: number): void {
+    const { width, height } = this.stage;
+    this.view = rotateAt(this.view, angle, width / 2, height / 2, this.stage);
+    this.flashScaleMenu();
   }
 
   /**

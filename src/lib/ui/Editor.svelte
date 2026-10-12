@@ -33,7 +33,7 @@
   import { frameCount, isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
-  import { keyPan, zoomDelta } from './viewport';
+  import { keyPan, turnStep, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
   import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
   import { focusHeir, twinSelector } from './focus-heir';
@@ -1000,6 +1000,14 @@
     if (panSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey })) {
       e.preventDefault();
       editor.view = keyPan(editor.view, editor.stage, key);
+      return;
+    }
+    // [ and ] turn the sheet a notch of fifteen degrees, whatever the tool
+    // and in a live transform too (Krita's Ctrl+[ and Ctrl+]): the view
+    // turns, not the drawing.
+    if ((key === '[' || key === ']') && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      editor.rotateTo(turnStep(editor.view.angle, key === ']' ? 1 : -1));
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do
@@ -2361,6 +2369,8 @@
         ['↑ / ↓', t('key.layers')],
         ['Shift + ←→↑↓', t('key.extend')],
         ['Ctrl + Shift + ←→↑↓', t('key.pan_sheet')],
+        ['[ / ]', t('key.turn_sheet')],
+        has('drag') && [t('key.turn_drag_keys'), t('key.turn_drag')],
         ['K', t('key.onion')],
         ['X', t('key.swap')],
         ['Space', t('key.preview')],

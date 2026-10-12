@@ -28,6 +28,12 @@ export interface Viewport2D {
   /** Offset of the sheet's top-left corner from the workspace corner, CSS px. */
   panX: number;
   panY: number;
+  /**
+   * How far the sheet is turned about that corner, degrees clockwise on the
+   * screen, within half a turn either way. The drawing is not turned — only
+   * the paper under the hand, as on a desk.
+   */
+  angle: number;
 }
 
 /** The workspace and the sheet lying on it, both in CSS pixels. */
@@ -76,7 +82,70 @@ export function clipCover(cover: Cover, width: number, height: number): Cover {
   };
 }
 
-export const IDENTITY_VIEW: Viewport2D = { zoom: 1, panX: 0, panY: 0 };
+export const IDENTITY_VIEW: Viewport2D = { zoom: 1, panX: 0, panY: 0, angle: 0 };
+
+/** A vector turned by `angle` degrees, clockwise on the screen. */
+function spin(x: number, y: number, angle: number): [number, number] {
+  // The right angles exactly: a sheet stood on its side must not lie a
+  // millionth of a pixel off the grid.
+  const q = ((angle % 360) + 360) % 360;
+  const cos = q === 90 || q === 270 ? 0 : q === 180 ? -1 : Math.cos((q * Math.PI) / 180);
+  const sin = q === 0 || q === 180 ? 0 : q === 90 ? 1 : q === 270 ? -1 : Math.sin((q * Math.PI) / 180);
+  return [x * cos - y * sin, x * sin + y * cos];
+}
+
+/** An angle brought within half a turn either way: (−180, 180]. */
+export function wrapAngle(angle: number): number {
+  if (!Number.isFinite(angle)) {
+    return 0;
+  }
+  const a = ((angle % 360) + 360) % 360;
+  return a > 180 ? a - 360 : a;
+}
+
+/** The magnets a free turn sticks to — every eighth of a turn — and how near it must come, degrees. The calibration knobs. */
+export const TURN_MAGNET = 45;
+export const TURN_PULL = 4;
+/** One press of the turn keys. */
+export const TURN_STEP = 15;
+/** How far two fingers twist before the sheet turns at all: a pinch is never quite straight. The calibration knob. */
+export const TWIST_SLOP = 10;
+
+/** A turn by hand, stuck to the nearest magnet it has come close to. */
+export function snapAngle(angle: number): number {
+  const near = Math.round(angle / TURN_MAGNET) * TURN_MAGNET;
+  return wrapAngle(Math.abs(angle - near) <= TURN_PULL ? near : angle);
+}
+
+/**
+ * The angle one press of a turn key leads to: the next notch of fifteen
+ * degrees in that direction, so a sheet left at 37° by the fingers goes to 45°
+ * or 30°, not to 52°.
+ */
+export function turnStep(angle: number, direction: number): number {
+  const eps = 1e-6;
+  return wrapAngle(
+    direction > 0
+      ? Math.floor(angle / TURN_STEP + eps) * TURN_STEP + TURN_STEP
+      : Math.ceil(angle / TURN_STEP - eps) * TURN_STEP - TURN_STEP,
+  );
+}
+
+/** The box a turned sheet stands in on the table, CSS px. */
+function sheetBox(view: Viewport2D, stage: Stage): { x: number; y: number; width: number; height: number } {
+  const w = stage.sheetWidth * view.zoom;
+  const h = stage.sheetHeight * view.zoom;
+  const [ax, ay] = spin(w, 0, view.angle);
+  const [bx, by] = spin(0, h, view.angle);
+  const x = Math.min(0, ax, bx, ax + bx);
+  const y = Math.min(0, ay, by, ay + by);
+  return {
+    x: view.panX + x,
+    y: view.panY + y,
+    width: Math.max(0, ax, bx, ax + bx) - x,
+    height: Math.max(0, ay, by, ay + by) - y,
+  };
+}
 
 export function clampZoom(value: number): number {
   if (!Number.isFinite(value)) {
@@ -292,7 +361,7 @@ function fittedAt(stage: Stage): { x: number; y: number } {
 /** 100%, with the sheet where the fit laid it (centred, when nothing covers the stage). */
 export function fitView(stage: Stage): Viewport2D {
   const at = fittedAt(stage);
-  return { zoom: 1, panX: at.x, panY: at.y };
+  return { zoom: 1, panX: at.x, panY: at.y, angle: 0 };
 }
 
 /**
@@ -314,12 +383,23 @@ export function zoomAt(
   const ratio = next / view.zoom;
   return clampPan(
     {
+      ...view,
       zoom: next,
       panX: x - (x - view.panX) * ratio,
       panY: y - (y - view.panY) * ratio,
     },
     stage,
   );
+}
+
+/**
+ * Turns the sheet to `angle` about the workspace point (x, y), keeping the
+ * document point under it in place, then clamps the pan.
+ */
+export function rotateAt(view: Viewport2D, angle: number, x: number, y: number, stage: Stage): Viewport2D {
+  const next = wrapAngle(angle);
+  const [dx, dy] = spin(view.panX - x, view.panY - y, next - view.angle);
+  return clampPan({ zoom: view.zoom, panX: x + dx, panY: y + dy, angle: next }, stage);
 }
 
 /**
@@ -333,13 +413,15 @@ export function resizedView(view: Viewport2D, from: Stage, to: Stage): Viewport2
   // of what is left of it — so a sheet nobody moved stays fitted.
   const a = anchorOf(from);
   const b = anchorOf(to);
-  const u = (a.x - view.panX) / (from.sheetWidth * view.zoom);
-  const v = (a.y - view.panY) / (from.sheetHeight * view.zoom);
+  const [sx, sy] = spin(a.x - view.panX, a.y - view.panY, -view.angle);
+  const u = sx / (from.sheetWidth * view.zoom);
+  const v = sy / (from.sheetHeight * view.zoom);
+  const [dx, dy] = spin(u * to.sheetWidth * view.zoom, v * to.sheetHeight * view.zoom, view.angle);
   return clampPan(
     {
-      zoom: view.zoom,
-      panX: b.x - u * to.sheetWidth * view.zoom,
-      panY: b.y - v * to.sheetHeight * view.zoom,
+      ...view,
+      panX: b.x - dx,
+      panY: b.y - dy,
     },
     to,
   );
@@ -352,12 +434,15 @@ function anchorOf(stage: Stage): { x: number; y: number } {
 
 /** Keeps the sheet on the table: it slides freely, an edge always in reach. */
 export function clampPan(view: Viewport2D, stage: Stage): Viewport2D {
+  // A turned sheet is kept by the box it stands in: one of its corners is
+  // always on that box's edge, so an edge of the box in reach is the sheet's.
+  const box = sheetBox(view, stage);
   return {
-    zoom: view.zoom,
-    panX: panAxis(view.panX, stage.width, stage.sheetWidth * view.zoom),
+    ...view,
+    panX: view.panX - box.x + panAxis(box.x, stage.width, box.width),
     // The table runs on under the bottom panel: kept by its whole height, the
     // sheet's last 64 px lay behind the panel, out of sight.
-    panY: panAxis(view.panY, stage.foot ?? stage.height, stage.sheetHeight * view.zoom),
+    panY: view.panY - box.y + panAxis(box.y, stage.foot ?? stage.height, box.height),
   };
 }
 
@@ -396,7 +481,7 @@ export function keyPan(view: Viewport2D, stage: Stage, key: string): Viewport2D 
   }
   return clampPan(
     {
-      zoom: view.zoom,
+      ...view,
       panX: view.panX + dx * Math.round(stage.width * KEY_PAN_SHARE),
       panY: view.panY + dy * Math.round(stage.height * KEY_PAN_SHARE),
     },
@@ -423,10 +508,27 @@ export function toDocument(
   doc: { width: number; height: number },
   view: Viewport2D,
 ): [number, number] {
+  const [sx, sy] = spin(x - view.panX, y - view.panY, -view.angle);
   return [
-    ((x - view.panX) / (sheet.width * view.zoom)) * doc.width,
-    ((y - view.panY) / (sheet.height * view.zoom)) * doc.height,
+    (sx / (sheet.width * view.zoom)) * doc.width,
+    (sy / (sheet.height * view.zoom)) * doc.height,
   ];
+}
+
+/** Document units → the workspace point in CSS pixels they are drawn at: `toDocument` back. */
+export function toWorkspace(
+  x: number,
+  y: number,
+  sheet: { width: number; height: number },
+  doc: { width: number; height: number },
+  view: Viewport2D,
+): [number, number] {
+  const [dx, dy] = spin(
+    (x / doc.width) * sheet.width * view.zoom,
+    (y / doc.height) * sheet.height * view.zoom,
+    view.angle,
+  );
+  return [view.panX + dx, view.panY + dy];
 }
 
 /**
@@ -449,11 +551,8 @@ export function renderDensity(deviceDpr: number): number {
   return Number.isFinite(deviceDpr) && deviceDpr > 0 ? Math.min(2, deviceDpr) : 1;
 }
 
-/** A view as the canvas drew it: zoom and pan in CSS px, and the density. */
-export interface DrawnView {
-  zoom: number;
-  panX: number;
-  panY: number;
+/** A view as the canvas drew it: zoom, pan in CSS px and the turn, and the density. */
+export interface DrawnView extends Viewport2D {
   dpr: number;
 }
 
@@ -465,30 +564,44 @@ export interface DrawnView {
  * fraction of one does not count as uncovered.
  */
 export function shotCovers(drawn: DrawnView, now: DrawnView, stage: Stage): boolean {
+  // Turned since, the shot's table lies askew on this one: the corners of the
+  // sheet it brings in were never on it.
+  if (now.angle !== drawn.angle) {
+    return false;
+  }
   const k = now.zoom / drawn.zoom;
-  const axis = (was: number, pan: number, table: number, sheet: number): boolean => {
+  // A turned sheet by the box it stands in — more than the sheet, never less.
+  const box = sheetBox(now, stage);
+  const axis = (was: number, pan: number, table: number, lo: number, size: number): boolean => {
     // The sheet on the table now, and where the shot's table lands.
-    const from = Math.max(0, pan);
-    const to = Math.min(table, pan + sheet * now.zoom);
+    const from = Math.max(0, lo);
+    const to = Math.min(table, lo + size);
     const shotFrom = pan - k * was;
     return to <= from || (shotFrom <= from + 1 && shotFrom + k * table >= to - 1);
   };
-  return axis(drawn.panX, now.panX, stage.width, stage.sheetWidth)
-    && axis(drawn.panY, now.panY, stage.height, stage.sheetHeight);
+  return axis(drawn.panX, now.panX, stage.width, box.x, box.width)
+    && axis(drawn.panY, now.panY, stage.height, box.y, box.height);
 }
 
 /**
- * Where a picture drawn under `from` lands under `to`: the uniform scale and
- * offset, in `to`'s device pixels, that put every point of it back where the
- * new view would draw it. Pan and pinch show the last composed frame through
+ * Where a picture drawn under `from` lands under `to`: the uniform scale, the
+ * turn in degrees about the picture's own corner, and the offset, in `to`'s
+ * device pixels, that put every point of it back where the new view would
+ * draw it. Pan and pinch show the last composed frame through
  * this and rebuild it once, when the hand lets go.
  */
-export function reprojection(from: DrawnView, to: DrawnView): { scale: number; x: number; y: number } {
+export function reprojection(
+  from: DrawnView,
+  to: DrawnView,
+): { scale: number; x: number; y: number; turn: number } {
   const k = to.zoom / from.zoom;
+  const turn = wrapAngle(to.angle - from.angle);
+  const [px, py] = spin(from.panX, from.panY, turn);
   return {
     scale: (k * to.dpr) / from.dpr,
-    x: to.dpr * (to.panX - k * from.panX),
-    y: to.dpr * (to.panY - k * from.panY),
+    x: to.dpr * (to.panX - k * px),
+    y: to.dpr * (to.panY - k * py),
+    turn,
   };
 }
 

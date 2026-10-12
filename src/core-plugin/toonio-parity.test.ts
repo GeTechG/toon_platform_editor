@@ -171,7 +171,7 @@ describe.skipIf(!available)('Tonio drawing parity with the reference checkout', 
       };
       const rect = { width: cssW, height: cssH };
       const doc = { width: 1280 * FIXED_POINT_SCALE, height: 720 * FIXED_POINT_SCALE };
-      const view = { zoom, panX, panY };
+      const view = { zoom, panX, panY, angle: 0 };
 
       const events: FakeEvent[] = [];
       let x = rand() * cssW;

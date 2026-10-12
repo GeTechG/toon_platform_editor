@@ -76,7 +76,7 @@ describe('the sheet at 100 % lies clear of what stands over the stage', () => {
 
   it('100 % puts the sheet where the fit laid it; a turn keeps a fitted sheet fitted', () => {
     const phone = stageOf(330, 738, [rail, zoom]);
-    expect(fitView(phone)).toEqual({ zoom: 1, panX: phone.sheetX!, panY: phone.sheetY! });
+    expect(fitView(phone)).toEqual({ zoom: 1, panX: phone.sheetX!, panY: phone.sheetY!, angle: 0 });
     const lying = stageOf(680, 304, [{ x: 20, y: 72, width: 44, height: 208 }]);
     const view = resizedView(fitView(phone), phone, lying);
     expect(view.panX).toBeCloseTo(fitView(lying).panX);

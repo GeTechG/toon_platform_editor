@@ -220,6 +220,7 @@ const HELD = new Set([
   '+', '=', '-', '_',
   'z', 'Z', 'y', 'Y',
   'q', 'Q', 'w', 'W',
+  '[', ']',
   'a', 'A', 'F7', 'Delete', 'Backspace',
 ]);
 

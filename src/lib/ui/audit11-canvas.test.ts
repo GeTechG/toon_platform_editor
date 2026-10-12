@@ -28,7 +28,7 @@ describe('the sheet when the workspace changes size', () => {
   it('a magnified view keeps the point that was in the middle of the screen', () => {
     const from = stageOf(1000, 600);
     const to = stageOf(600, 1000);
-    const before = { zoom: 3, panX: -800, panY: -300 };
+    const before = { zoom: 3, panX: -800, panY: -300, angle: 0 };
     const after = resizedView(before, from, to);
     // Where the middle of the old workspace sat along the sheet, 0..1.
     const u = (from.width / 2 - before.panX) / (from.sheetWidth * 3);

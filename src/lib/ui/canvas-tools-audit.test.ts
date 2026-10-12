@@ -113,7 +113,7 @@ describe('the canvas windows follow the reader’s text size', () => {
 describe('a pinch', () => {
   it('zooms without the notches and restarts from the zoom the view took', () => {
     expect(canvas).toContain('stage, false);');
-    expect(canvas).toContain('gesture = { ...next, zoom: editor.view.zoom };');
+    expect(canvas).toContain('gesture = { ...next, zoom: editor.view.zoom, angle: gesture.angle, twisted, slack };');
   });
 });
 

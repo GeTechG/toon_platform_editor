@@ -116,19 +116,19 @@ describe('лист, не влезающий в стол, двигается с �
   });
 
   it('при вписанном листе вид не двигается', () => {
-    const view = { zoom: 1, panX: 80, panY: 120 };
+    const view = { zoom: 1, panX: 80, panY: 120, angle: 0 };
     expect(keyPan(view, stage, 'ArrowLeft')).toBe(view);
   });
 
   it('увеличенный лист сдвигается на десятую часть стола', () => {
-    const view = { zoom: 2, panX: -200, panY: -100 };
+    const view = { zoom: 2, panX: -200, panY: -100, angle: 0 };
     // Стрелка вправо — посмотреть правее, лист уезжает влево.
-    expect(keyPan(view, stage, 'ArrowRight')).toEqual({ zoom: 2, panX: -280, panY: -100 });
-    expect(keyPan(view, stage, 'ArrowUp')).toEqual({ zoom: 2, panX: -200, panY: -40 });
+    expect(keyPan(view, stage, 'ArrowRight')).toEqual({ zoom: 2, panX: -280, panY: -100, angle: 0 });
+    expect(keyPan(view, stage, 'ArrowUp')).toEqual({ zoom: 2, panX: -200, panY: -40, angle: 0 });
   });
 
   it('границы — как у панорамы мышью: лист не теряется со стола', () => {
-    const view = { zoom: 2, panX: 800 - 64, panY: 0 };
+    const view = { zoom: 2, panX: 800 - 64, panY: 0, angle: 0 };
     expect(keyPan(view, stage, 'ArrowLeft').panX).toBe(800 - 64);
   });
 

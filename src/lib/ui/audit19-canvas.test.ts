@@ -16,7 +16,7 @@ function handler(name: string): string {
 
 // Стол 1000×600, лист на 100 % — 800×450, лежит посередине (100, 75).
 const stage: Stage = { width: 1000, height: 600, sheetWidth: 800, sheetHeight: 450, sheetX: 100, sheetY: 75 };
-const view = (zoom: number, panX: number, panY: number): DrawnView => ({ zoom, panX, panY, dpr: 1 });
+const view = (zoom: number, panX: number, panY: number): DrawnView => ({ zoom, panX, panY, angle: 0, dpr: 1 });
 
 // Снимок — это стол, каким он был, когда рука взялась: при 300 % на нём треть
 // листа. Рука тянет лист — и выехавшая на стол часть рисунка была пустой

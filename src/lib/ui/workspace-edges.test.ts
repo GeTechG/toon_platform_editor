@@ -37,8 +37,8 @@ it('keeps an edge of the sheet above a panel lying across the foot of the table'
   // A window in the corner and the shy zoom window are not the table's foot.
   expect(footOf([{ x: 0, y: 250, width: 120, height: 50 }], 400, 300)).toBe(300);
   expect(footOf([{ ...panel, shy: true }], 400, 300)).toBe(300);
-  expect(clampPan({ zoom: 1, panX: 0, panY: 999 }, { ...stage, foot: 220 }).panY).toBe(220 - EDGE_KEEP);
-  expect(clampPan({ zoom: 1, panX: 0, panY: 999 }, stage).panY).toBe(300 - EDGE_KEEP);
+  expect(clampPan({ zoom: 1, panX: 0, panY: 999, angle: 0 }, { ...stage, foot: 220 }).panY).toBe(220 - EDGE_KEEP);
+  expect(clampPan({ zoom: 1, panX: 0, panY: 999, angle: 0 }, stage).panY).toBe(300 - EDGE_KEEP);
   expect(canvas).toMatch(/foot: footOf\(covers,/);
 });
 

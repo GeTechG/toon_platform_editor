@@ -2,7 +2,8 @@
   /**
    * The reference zoom window that comes with the hand tool, kept to one row:
    * a step out, the scale it is at, a step in. The scale is also the way back
-   * — pressing it puts the sheet at 100%, centred.
+   * — pressing it puts the sheet at 100%, centred. A turned sheet adds its
+   * angle to the row, and pressing that lays it upright where it is.
    */
   import type { EditorState } from './editor-state.svelte';
   import { ZOOM_MAX, ZOOM_MIN, zoomDelta } from './viewport';
@@ -18,6 +19,7 @@
   // focus, says it is unavailable, and does nothing.
   const atMin = $derived(editor.view.zoom <= ZOOM_MIN);
   const atMax = $derived(editor.view.zoom >= ZOOM_MAX);
+  const degrees = $derived(Math.round(editor.view.angle));
 </script>
 
 <div
@@ -48,6 +50,14 @@
     title={t('scale.in')}
     aria-label={t('scale.in')}
   ><Icon name="plus" size={16} /></button>
+  {#if editor.view.angle !== 0}
+    <button
+      class="value angle"
+      onclick={() => editor.rotateTo(0)}
+      title={t('scale.upright')}
+      aria-label={t('scale.angle_value', { degrees })}
+    >{t('scale.angle', { degrees })}</button>
+  {/if}
 </div>
 
 <style>

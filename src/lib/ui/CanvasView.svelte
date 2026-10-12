@@ -43,7 +43,12 @@
     resizedView,
     type DrawnView,
     toDocument,
+    toWorkspace,
     zoomAt,
+    rotateAt,
+    snapAngle,
+    wrapAngle,
+    TWIST_SLOP,
     ctrlWheelZoom,
     WHEEL_SOFT_RATE,
     WHEEL_ZOOM_RATE,
@@ -203,12 +208,24 @@
     navShot = null;
   });
   /** Pointer that is panning the canvas (middle button or the hand). */
-  let panning = $state<{ pointerId: number; x: number; y: number } | null>(null);
+  let panning = $state<{ pointerId: number; x: number; y: number; turn?: Twist } | null>(null);
+  /**
+   * A turn of the sheet under way: which way the hand pointed last, the angle
+   * the sheet had when it took hold, and how far the hand has gone round
+   * since — summed, so a magnet lets go once the hand has passed it.
+   */
+  interface Twist {
+    dir: number;
+    angle: number;
+    twisted: number;
+  }
   /** Active touch points, for two-finger pan and pinch. */
   const touches = new Map<number, { x: number; y: number }>();
   /** Pointers the canvas holds captured; the editor keys wait for all of them. */
   const heldPointers = new Set<number>();
-  let gesture: { distance: number; midX: number; midY: number; zoom: number } | null = null;
+  let gesture:
+    | (Twist & { distance: number; midX: number; midY: number; zoom: number; slack: number | null })
+    | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
   /** The lasso's loop while it is being drawn, in document units. */
@@ -547,6 +564,12 @@
     navShot = { canvas: shotCanvas, view: lastDrawn, at: performance.now() };
   }
 
+  /** Sets the canvas to axes turned by `angle` degrees about (x, y), `k` pixels to a unit. */
+  function turned(ctx: ViewCtx, k: number, angle: number, x: number, y: number): void {
+    const a = (angle * Math.PI) / 180;
+    ctx.setTransform(k * Math.cos(a), k * Math.sin(a), -k * Math.sin(a), k * Math.cos(a), x, y);
+  }
+
   function draw(): void {
     if (!canvasEl || destroyed) {
       return;
@@ -602,21 +625,25 @@
     const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1 };
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, pxWidth, pxHeight);
+    // The sheet's own axes, `k` canvas pixels to one of its units: it lies on
+    // the table turned as the view has it, about its top-left corner.
+    const lay = (k: number): void => turned(ctx, k, editor.view.angle, sheet.x, sheet.y);
     // The paper lies flat on the table: white on the table's tone, no shadow
     // and no edge drawn round it (owner, 2026-10-05).
+    lay(1);
     ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(sheet.x, sheet.y, sheet.w, sheet.h);
+    ctx.fillRect(0, 0, sheet.w, sheet.h);
     // Everything drawn stays on the paper — a stroke that runs off the edge
     // is cut by it, the way it is on export.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(sheet.x, sheet.y, sheet.w, sheet.h);
+    ctx.rect(0, 0, sheet.w, sheet.h);
     ctx.clip();
     // Whatever throws below (a buffer Safari refused, a broken stroke), the
     // clip goes with it: left saved, every later frame was cut to the old
     // sheet's rectangle, and the save stack grew by one per frame.
     try {
-      const drawn: DrawnView = { zoom: editor.view.zoom, panX: editor.view.panX, panY: editor.view.panY, dpr };
+      const drawn: DrawnView = { ...editor.view, dpr };
       // While the hand pans or pinches, the picture is the one it grabbed, moved:
       // nothing in it changes until it lets go, and rebuilding every layer and
       // ghost per animation frame was what the gesture stuttered on.
@@ -635,7 +662,7 @@
       }
       if (shot) {
         const to = reprojection(shot.view, drawn);
-        ctx.setTransform(to.scale, 0, 0, to.scale, to.x, to.y);
+        turned(ctx, to.scale, to.turn, to.x, to.y);
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(shot.canvas, 0, 0);
       } else {
@@ -666,7 +693,7 @@
         // Magnified past its own pixels the sheet shows them, squares and
         // all; anything less is smoothed.
         const stretch = perPixel / raster.level;
-        ctx.setTransform(stretch, 0, 0, stretch, sheet.x, sheet.y);
+        lay(stretch);
         ctx.imageSmoothingEnabled = stretch < 2;
         // A 1080p sheet on a phone is shrunk several times over: the
         // default filter drops lines thinner than the step it samples at.
@@ -676,7 +703,8 @@
         // The grid is a drawing aid, not part of the picture: the preview shows
         // the frames as they will be exported.
         if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
-          drawPixelGrid(ctx, pxWidth, pxHeight, dpr);
+          lay(1);
+          drawPixelGrid(ctx, sheet, dpr);
         }
       }
     } finally {
@@ -694,26 +722,31 @@
    * `difference` keeps it visible over both the white page and a black
    * stroke without a colour of its own.
    */
-  function drawPixelGrid(ctx: ViewCtx, pxWidth: number, pxHeight: number, dpr: number): void {
+  function drawPixelGrid(
+    ctx: ViewCtx,
+    sheet: { x: number; y: number; w: number; h: number },
+    dpr: number,
+  ): void {
     const step = cursorDiameter * dpr;
     if (step < 4) {
       // Denser than this the grid is a grey wash, not a guide.
       return;
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // In the sheet's own axes (the caller laid them): the cells turn with it.
     ctx.globalCompositeOperation = 'difference';
     ctx.strokeStyle = '#303030';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    const originX = editor.view.panX * dpr;
-    const originY = editor.view.panY * dpr;
-    for (let x = originX % step; x < pxWidth; x += step) {
-      ctx.moveTo(Math.round(x) + 0.5, 0);
-      ctx.lineTo(Math.round(x) + 0.5, pxHeight);
+    // On a canvas pixel while the sheet lies upright; turned, there is no
+    // pixel row to keep to.
+    const crisp = (at: number, origin: number): number => Math.round(origin + at) + 0.5 - origin;
+    for (let x = 0; x < sheet.w; x += step) {
+      ctx.moveTo(crisp(x, sheet.x), 0);
+      ctx.lineTo(crisp(x, sheet.x), sheet.h);
     }
-    for (let y = originY % step; y < pxHeight; y += step) {
-      ctx.moveTo(0, Math.round(y) + 0.5);
-      ctx.lineTo(pxWidth, Math.round(y) + 0.5);
+    for (let y = 0; y < sheet.h; y += step) {
+      ctx.moveTo(0, crisp(y, sheet.y));
+      ctx.lineTo(sheet.w, crisp(y, sheet.y));
     }
     ctx.stroke();
     ctx.globalCompositeOperation = 'source-over';
@@ -795,10 +828,7 @@
 
   /** Document units → CSS pixels inside the canvas element (the overlay's frame). */
   function toScreen(x: number, y: number): [number, number] {
-    return [
-      editor.view.panX + (x / editor.doc.width) * sheetWidth * editor.view.zoom,
-      editor.view.panY + (y / editor.doc.height) * sheetHeight * editor.view.zoom,
-    ];
+    return toWorkspace(x, y, { width: sheetWidth, height: sheetHeight }, editor.doc, editor.view);
   }
 
   /** Flat document polygon → an SVG `points` string in CSS pixels. */
@@ -1235,7 +1265,16 @@
     // The hand is the tool whose whole job is this gesture (reference `Drag`);
     // once a pen has been used, a finger is always the hand.
     if (e.button === 1 || editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)) {
-      panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      panning = {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        // With Shift the same drag turns the sheet about the middle of the
+        // table instead of sliding it (Krita, Clip Studio). Fingers twist.
+        turn: e.shiftKey && e.pointerType !== 'touch'
+          ? { dir: aroundTable(e), angle: editor.view.angle, twisted: 0 }
+          : undefined,
+      };
       canvasEl.setPointerCapture(e.pointerId);
       takeNavShot();
       return true;
@@ -1289,14 +1328,33 @@
       midX: (a.x + b.x) / 2,
       midY: (a.y + b.y) / 2,
       zoom: editor.view.zoom,
+      dir: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+      angle: editor.view.angle,
+      twisted: 0,
+      // Until the fingers have twisted past the slop the sheet does not turn:
+      // no pinch is quite straight.
+      slack: null as number | null,
     };
   }
 
   function panBy(dx: number, dy: number): void {
     editor.view = clampPan(
-      { zoom: editor.view.zoom, panX: editor.view.panX + dx, panY: editor.view.panY + dy },
+      { ...editor.view, panX: editor.view.panX + dx, panY: editor.view.panY + dy },
       stage,
     );
+    editor.flashScaleMenu();
+  }
+
+  /** Which way the pointer lies from the middle of the table, degrees. */
+  function aroundTable(e: { clientX: number; clientY: number }): number {
+    const rect = canvasRect();
+    return (Math.atan2(e.clientY - rect.top - rect.height / 2, e.clientX - rect.left - rect.width / 2) * 180) / Math.PI;
+  }
+
+  /** Turns the sheet to `angle` about a point of the screen. */
+  function turnTo(angle: number, clientX: number, clientY: number): void {
+    const rect = canvasRect();
+    editor.view = rotateAt(editor.view, angle, clientX - rect.left, clientY - rect.top, stage);
     editor.flashScaleMenu();
   }
 
@@ -1795,6 +1853,14 @@
       editor.lastScalePivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
     if (panning && e.pointerId === panning.pointerId) {
+      const turn = panning.turn;
+      if (turn) {
+        const dir = aroundTable(e);
+        const twisted = turn.twisted + wrapAngle(dir - turn.dir);
+        turnTo(snapAngle(turn.angle + twisted), rect.left + rect.width / 2, rect.top + rect.height / 2);
+        panning = { ...panning, turn: { ...turn, dir, twisted } };
+        return;
+      }
       panBy(e.clientX - panning.x, e.clientY - panning.y);
       panning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
       return;
@@ -1831,10 +1897,17 @@
       if (gesture && touches.size === 2) {
         const next = pinchFrom(touches);
         zoomTo(gesture.zoom * (next.distance / gesture.distance), next.midX, next.midY);
+        // The twist is summed over the whole gesture and measured from the
+        // angle it began at: the slop is taken off once, and a magnet lets go.
+        const twisted = gesture.twisted + wrapAngle(next.dir - gesture.dir);
+        const slack = gesture.slack ?? (Math.abs(twisted) > TWIST_SLOP ? Math.sign(twisted) * TWIST_SLOP : null);
+        if (slack !== null) {
+          turnTo(snapAngle(gesture.angle + twisted - slack), next.midX, next.midY);
+        }
         panBy(next.midX - gesture.midX, next.midY - gesture.midY);
         // What the view took, clamp and all: past 10× the fingers coming back
         // together answer at once instead of unwinding a zoom nobody sees.
-        gesture = { ...next, zoom: editor.view.zoom };
+        gesture = { ...next, zoom: editor.view.zoom, angle: gesture.angle, twisted, slack };
         return;
       }
       if (touches.size > 1) {
@@ -2259,7 +2332,7 @@
       class:cross={cursorParts.cross}
       class:ringless={!cursorParts.ring}
       class:square={toolSpec(editor.brushTool)?.stroke?.grid}
-      style:transform="translate({cursorX}px, {cursorY}px) translate(-50%, -50%)"
+      style:transform="translate({cursorX}px, {cursorY}px) translate(-50%, -50%){toolSpec(editor.brushTool)?.stroke?.grid ? ` rotate(${editor.view.angle}deg)` : ''}"
       style:width="{cursorDiameter}px"
       style:height="{cursorDiameter}px"
       aria-hidden="true"

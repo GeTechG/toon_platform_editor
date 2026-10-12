@@ -381,7 +381,9 @@ describe('the sheet lies on a worktable', () => {
     expect(draw).toContain('ctx.clip()');
     // The paper is a flat fill where the sheet lands — no shadow to buffer.
     expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
-    expect(draw).toContain('fillRect(sheet.x, sheet.y, sheet.w, sheet.h)');
+    // …in the sheet's own axes, turned as the view has it.
+    expect(draw).toContain('lay(1);');
+    expect(draw).toContain('fillRect(0, 0, sheet.w, sheet.h)');
   });
 
   it('reads pointer positions against the sheet, not the workspace', () => {
