@@ -170,7 +170,7 @@ describe('a phone draws toonop’s desktop', () => {
 });
 
 describe('the essentials of a preset', () => {
-  it('Toonop and Toonio: the pencil and the eraser — the pipette sits by the palette', () => {
+  it('Toonop and Toonio: the pencil and the eraser — the pipette is with the other tools or by the palette', () => {
     expect(phoneTools(presetUx('toonop'))).toEqual(['pencil', 'eraser']);
     expect(phoneTools(presetUx('toonio'))).toEqual(['pencil', 'eraser']);
   });

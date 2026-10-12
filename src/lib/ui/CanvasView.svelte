@@ -68,7 +68,7 @@
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
   import { t } from '../i18n';
-  import { HOLD_PICK_MS, mayHoldPick, stillHeld } from './hold-pick';
+  import { HOLD_PICK_MS, colourOfPixel, mayHoldPick, stillHeld } from './hold-pick';
   import { nextHint } from './canvas-hint';
   import { createSideButtonGuard } from './side-buttons';
 
@@ -1113,11 +1113,9 @@
     const [r, g, b, a] = (pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, 1, 1).data;
     // Reference: only a fully opaque pixel carries a colour. The soft rim of
     // a stroke reads as emptiness, so the pipette never picks a washed-out
-    // version of the line it was aimed at.
-    if (a !== 255) {
-      return null;
-    }
-    return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    // version of the line it was aimed at — but a translucent line is a
+    // colour, the one it was drawn with.
+    return colourOfPixel([r, g, b, a], editor.doc.tools);
   }
 
   /**
