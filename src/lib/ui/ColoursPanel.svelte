@@ -318,17 +318,17 @@
         <Icon name="plus" />
       </button>
     {/if}
-    <!-- Into the colour being chosen: these colours have no palette's foot
-         to hold the pipette, as the Toonio box has. -->
+    <!-- Into the colour being chosen. The pipette's only key under Toonop:
+         it left the tools for here (owner, 2026-10-13). -->
     <button
-      class="key icon"
+      class="dropper"
       class:active={editor.tool === 'pipette'}
       aria-pressed={editor.tool === 'pipette'}
       onclick={() => editor.selectTool('pipette', target)}
       title={editor.keyHint(t('tool.pipette.title'))}
       aria-label={t('tool.pipette.label')}
     >
-      <Icon name="pipette" />
+      <Icon name="pipette" size={20} />
     </button>
     <!-- The two colours in hand; the pressed one is the one being chosen. -->
     <div class="pair" role="group" aria-label={t('colours.target')}>
@@ -640,6 +640,31 @@
     outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
+  /* The pipette beside them: a quiet mark, as the ways under the panel are —
+     a studio key here stood louder than the two colours it serves. */
+  .dropper {
+    flex: none;
+    width: var(--key-h);
+    height: var(--key-h);
+    padding: 0;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+  }
+  .dropper.active {
+    color: var(--accent);
+    background: var(--sub);
+  }
+  @media (hover: hover) {
+    .dropper:hover {
+      background: var(--sub);
+    }
+  }
+  .dropper:focus-visible,
   .hand:focus-visible,
   .surface:focus-visible,
   .cell:focus-visible,

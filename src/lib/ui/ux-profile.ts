@@ -50,9 +50,8 @@ export const TOONOP_UX: UxProfile = {
   quickPalette: null,
   whiteIsEraser: false,
   pipetteNeedsPalette: false,
-  // Its own colours hold no pipette, as the Toonio palette's foot did: the
-  // key stands with the tools.
-  pipetteOffRail: false,
+  // The colours panel's heading holds the key (owner, 2026-10-13).
+  pipetteOffRail: true,
   onionSides: 'both',
   activeFrameAlpha: 1,
   afterRemove: 'next',

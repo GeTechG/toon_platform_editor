@@ -94,14 +94,13 @@ export function pickStep(current: LayoutStep, full: Room, view: Room, tablet = f
 /**
  * What a phone's row keeps of a preset's tools (the owner: «оставим только
  * важные»): its first drawing tool and the eraser — the transform is with
- * the other tools (owner, 2026-10-07) — and the pipette only where it is one
- * of a kit of three (Multator); elsewhere it is with the other tools or by
- * the palette, and a held finger does its work.
+ * the other tools (owner, 2026-10-07) — and the pipette only where the preset
+ * draws it as a tool key (Multator); elsewhere it sits by the palette and a
+ * held finger does its work.
  */
 export function phoneTools(ux: { tools: readonly string[]; pipetteOffRail: boolean }): string[] {
   const primary = ux.tools.find((tool) => toolSpec(tool)?.stroke) ?? 'pencil';
-  const inRow = !ux.pipetteOffRail && ux.tools.length <= 3 && ux.tools.includes('pipette');
-  return [primary, 'eraser', ...(inRow ? ['pipette'] : [])];
+  return [primary, 'eraser', ...(ux.pipetteOffRail ? [] : ['pipette'])];
 }
 
 /** A phone's cut: what its row of keys is made from. */

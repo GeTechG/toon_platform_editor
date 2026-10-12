@@ -34,9 +34,9 @@ describe('the editor profile', () => {
     expect(toonop.quickPalette).toBeNull();
     expect(toonop.whiteIsEraser).toBe(false);
     expect(toonop.pipetteNeedsPalette).toBe(false);
-    // Its own colours hold no pipette (the Toonio palette's foot did): the
-    // key stands with the tools.
-    expect(toonop.pipetteOffRail).toBe(false);
+    // The pipette's key is in the colours panel's heading, not with the
+    // tools (owner, 2026-10-13).
+    expect(toonop.pipetteOffRail).toBe(true);
     expect(toonop.onionSides).toBe('both');
     expect(toonop.activeFrameAlpha).toBe(1);
     expect(toonop.afterRemove).toBe('next');

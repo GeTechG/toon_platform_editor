@@ -8,7 +8,7 @@ const header = panel.slice(panel.indexOf('<header>'), panel.indexOf('</header>')
 
 describe('the colours panel has a pipette', () => {
   it('a key in the heading, pressed while the pipette is in hand', () => {
-    expect(header).toMatch(/aria-pressed=\{editor\.tool === 'pipette'\}[^]*?<Icon name="pipette" \/>/);
+    expect(header).toMatch(/aria-pressed=\{editor\.tool === 'pipette'\}[^]*?<Icon name="pipette" size=\{20\} \/>/);
   });
 
   it('takes into the colour being chosen, outline or fill', () => {
