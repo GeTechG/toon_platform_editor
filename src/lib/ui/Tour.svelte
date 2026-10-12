@@ -35,17 +35,13 @@
       </div>
     </div>
   {:else if page === 'plugins'}
-    <!-- The settings' catalog, «install» pressed: one more key comes into
-         the row of tools. -->
+    <!-- One more key comes into the row of tools. -->
     <div class="art" aria-hidden="true">
-      <div class="scene">
-        <div class="cat"><Icon name="gear" size={16} /><u></u><b class="get"><Icon name="download" size={12} /></b></div>
-        <div class="keys">
-          {#each ['pencil', 'eraser', 'pipette', 'lasso'] as const as name (name)}
-            <span class="k"><Icon {name} size={18} /></span>
-          {/each}
-          <span class="k new"><Icon name="feather" size={18} /></span>
-        </div>
+      <div class="scene keys">
+        {#each ['pencil', 'eraser', 'pipette', 'lasso'] as const as name (name)}
+          <span class="k"><Icon {name} size={18} /></span>
+        {/each}
+        <span class="k new"><Icon name="feather" size={18} /></span>
       </div>
     </div>
   {:else if page === 'export'}
@@ -385,44 +381,9 @@
   }
 
   /* a plugin's key joins the row */
-  .cat {
-    position: absolute;
-    left: 4rem;
-    top: 0.6rem;
-    width: 8rem;
-    height: 2.2rem;
-    box-sizing: border-box;
+  .keys {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0 0.4rem 0 0.5rem;
-    border: 2px solid var(--ink);
-    border-radius: var(--r-sm);
-    background: var(--paper);
-    color: var(--ink);
-  }
-  .cat u {
-    flex: 1;
-    height: 0.4rem;
-    border-radius: var(--r-pill);
-    background: var(--sub);
-  }
-  .get {
-    display: grid;
-    place-items: center;
-    width: 1.8rem;
-    height: 1.2rem;
-    border-radius: var(--r-pill);
-    background: var(--accent);
-    color: var(--canvas);
-    animation: tour-get 5s var(--ease-out) infinite;
-  }
-  .keys {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 4.6rem;
-    display: flex;
     justify-content: center;
     gap: 0.4rem;
   }
@@ -438,41 +399,21 @@
   .new {
     background: var(--accent);
     color: var(--canvas);
-    animation: tour-key 5s var(--ease-out) infinite;
+    animation: tour-key 4s var(--ease-out) infinite;
   }
-  @keyframes tour-get {
-    0%,
-    12%,
-    26%,
-    100% {
-      scale: 1;
-    }
-    19% {
-      scale: 0.8;
-    }
-  }
-  /* Out of the pressed key of the catalog, into the row. */
   @keyframes tour-key {
     0%,
-    24% {
-      translate: -2.5rem -4.1rem;
-      scale: 0.4;
+    15% {
+      translate: 0 -3rem;
       opacity: 0;
     }
-    30% {
-      translate: -2.5rem -4.1rem;
-      scale: 0.4;
-      opacity: 1;
-    }
-    55%,
-    92% {
+    45%,
+    90% {
       translate: 0 0;
-      scale: 1;
       opacity: 1;
     }
     100% {
       translate: 0 0;
-      scale: 1;
       opacity: 0;
     }
   }
