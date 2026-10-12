@@ -318,6 +318,18 @@
         <Icon name="plus" />
       </button>
     {/if}
+    <!-- Into the colour being chosen: these colours have no palette's foot
+         to hold the pipette, as the Toonio box has. -->
+    <button
+      class="key icon"
+      class:active={editor.tool === 'pipette'}
+      aria-pressed={editor.tool === 'pipette'}
+      onclick={() => editor.selectTool('pipette', target)}
+      title={editor.keyHint(t('tool.pipette.title'))}
+      aria-label={t('tool.pipette.label')}
+    >
+      <Icon name="pipette" />
+    </button>
     <!-- The two colours in hand; the pressed one is the one being chosen. -->
     <div class="pair" role="group" aria-label={t('colours.target')}>
       {#each [['outline', editor.brushColor, t('color.stroke')], ['fill', editor.fillColor, t('colours.fill')]] as [id, colour, name] (id)}
