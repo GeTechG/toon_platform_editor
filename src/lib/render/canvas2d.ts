@@ -76,13 +76,15 @@ function domScratch(width: number, height: number): ScratchLayer {
 
 /**
  * Renders a frame of the document as the composite of its visible layers,
- * bottom-up. Each layer is rasterized into a transparent scratch buffer, so an
- * eraser only cuts the alpha of its own layer, and blitted onto the target.
- * The renderer owns one scratch buffer, created lazily and reused.
+ * bottom-up, in a transparent buffer laid onto the target once. Layers that
+ * erase nothing are drawn straight into that buffer; a layer that erases above
+ * another is rasterized apart first, so its eraser only cuts its own alpha.
+ * The renderer owns both buffers, created lazily and reused.
  */
 export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
   readonly #createScratch: ScratchFactory;
-  #scratch: ScratchLayer | undefined;
+  /** The frame's buffer, then the one a layer that erases is rasterized in. */
+  #scratch: ScratchLayer[] = [];
   #scratchSize = { width: 0, height: 0 };
 
   constructor(createScratch: ScratchFactory = domScratch) {
@@ -109,21 +111,45 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
       return;
     }
     const { width, height } = target.canvas;
-    const scratch = this.#ensureScratch(width, height);
-    for (const cell of cells) {
-      scratch.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      scratch.ctx.clearRect(0, 0, width, height);
-      renderStrokesLayer(cell, doc.tools, scratch.ctx, viewport);
-      blitLayer(scratch.image, target);
-    }
+    const frame = this.#cleared(0, width, height);
+    renderLayersStacked(cells, doc.tools, frame.ctx, viewport, () => this.#cleared(1, width, height));
+    blitLayer(frame.image, target);
   }
 
-  #ensureScratch(width: number, height: number): ScratchLayer {
-    if (!this.#scratch || this.#scratchSize.width !== width || this.#scratchSize.height !== height) {
-      this.#scratch = this.#createScratch(width, height);
+  #cleared(slot: number, width: number, height: number): ScratchLayer {
+    if (this.#scratchSize.width !== width || this.#scratchSize.height !== height) {
+      this.#scratch = [];
       this.#scratchSize = { width, height };
     }
-    return this.#scratch;
+    const scratch = (this.#scratch[slot] ??= this.#createScratch(width, height));
+    scratch.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    scratch.ctx.clearRect(0, 0, width, height);
+    return scratch;
+  }
+}
+
+/**
+ * Layers bottom-up onto a transparent target that holds nothing yet. A buffer
+ * per layer was a clear and a blit of the whole sheet per layer — a third of a
+ * frame of five layers rendered in software. Only a layer that erases needs
+ * one, so its eraser cuts its own alpha alone, and not the bottom layer:
+ * nothing is under it. `apart` hands that buffer out, cleared.
+ */
+export function renderLayersStacked(
+  cells: readonly Frame[],
+  tools: readonly ToolDescriptor[],
+  target: Canvas2DLike,
+  viewport: Viewport,
+  apart: () => ScratchLayer,
+): void {
+  for (const [index, cell] of cells.entries()) {
+    if (index === 0 || !hasEraser(cell, tools)) {
+      renderStrokesLayer(cell, tools, target, viewport);
+      continue;
+    }
+    const own = apart();
+    renderStrokesLayer(cell, tools, own.ctx, viewport);
+    blitLayer(own.image, target);
   }
 }
 

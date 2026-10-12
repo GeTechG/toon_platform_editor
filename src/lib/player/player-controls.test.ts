@@ -84,3 +84,13 @@ describe('the player takes its colours from the table', () => {
     expect(style.replace(/var\([^()]*\)/g, '').match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
   });
 });
+
+describe('the track sounds as loud as the host says', () => {
+  it('takes a volume and puts it on the track, muting at zero', () => {
+    // iOS does not let a page set an element's volume, only mute it: zero has
+    // to be said both ways or the key that silences does nothing there.
+    expect(source).toMatch(/volume = 1,/);
+    expect(source).toContain('audio.volume = volume;');
+    expect(source).toContain('audio.muted = volume === 0;');
+  });
+});

@@ -9,6 +9,7 @@
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { renderDensity, sheetRaster } from '../ui/viewport';
   import { FrameCache } from './frame-cache';
+  import { canWarmApart, warmApart, warmCrew } from './warm';
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
@@ -40,6 +41,7 @@
     playing = $bindable(!prefersReducedMotion()),
     audioSrc,
     audioSync = true,
+    volume = 1,
     current = $bindable(0),
   }: {
     /** Any published version — the share page serves documents as they were saved. */
@@ -54,6 +56,8 @@
      * keeps its own clock and the track plays underneath.
      */
     audioSync?: boolean;
+    /** How loud the track sounds, 0…1; zero is silence. */
+    volume?: number;
     /**
      * The frame on screen. Bindable so a host can show it and step through it
      * while paused — which is the only way to check a frame against the track.
@@ -157,10 +161,12 @@
     paint(current, ctx);
   }
 
-  // The film is rasterized ahead of its clock, a frame a task from the one on
-  // screen onwards, so the show is not every stroke of every layer drawn again
-  // on every lap. Pixels read back, not canvases: Safari caps canvas memory,
-  // and a film's worth of them ran into it.
+  // The film is rasterized ahead of its clock, so the show is not every stroke
+  // of every layer drawn again on every lap: by a crew of workers where the
+  // browser has them (`warm.ts`), and here, a frame a task from the one on
+  // screen onwards, where it has not or for what they left undone. Pixels read
+  // back, not canvases: Safari caps canvas memory, and a film's worth of them
+  // ran into it.
   $effect(() => {
     void view;
     void bitmapWidth;
@@ -207,8 +213,32 @@
       warmed = cache.progress(total);
       timer = setTimeout(warm, 0);
     };
-    timer = setTimeout(warm, 0);
+    let gone = false;
+    let dismiss = (): void => {};
+    try {
+      if (!canWarmApart()) {
+        throw new Error('no workers here');
+      }
+      cache.fit(view, raster.width, raster.height);
+      dismiss = warmApart(
+        view,
+        warmCrew(navigator.hardwareConcurrency, total),
+        (index, frame) => {
+          // A frame of the film this effect has let go of is nobody's.
+          if (gone) return;
+          cache.put(index, frame);
+          warmed = cache.progress(total);
+        },
+        // Whatever the crew left undone the page draws; with nothing left,
+        // that is the film ready.
+        () => (timer = setTimeout(warm, 0)),
+      );
+    } catch {
+      timer = setTimeout(warm, 0);
+    }
     return () => {
+      gone = true;
+      dismiss();
       clearTimeout(timer);
       scratch.width = 0;
       scratch.height = 0;
@@ -237,6 +267,15 @@
       element.load();
       audio = null;
     };
+  });
+
+  // As loud as the host says. Zero is said both ways: iOS does not let a page
+  // set an element's volume, only mute it.
+  $effect(() => {
+    if (audio) {
+      audio.volume = volume;
+      audio.muted = volume === 0;
+    }
   });
 
   // The frame clock runs only while playing. Pausing tears the loop down;

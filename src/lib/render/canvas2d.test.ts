@@ -393,21 +393,34 @@ describe('layer composition', () => {
     return docOf(tools, [{ strokes: [{ points: wide, tool_id: 1 }] }], [upper]);
   }
 
-  it('draws the background once and blits every visible layer bottom-up', () => {
+  it('draws the background once and lays the frame down in one blit, layers bottom-up', () => {
     const ctx = new RecordingCtx();
     const scratch: string[] = [];
     recordingRenderer(scratch).render(twoLayers({ strokes: [{ points: wide, tool_id: 0 }] }), 0, ctx, viewport);
     expect(ctx.log.slice(0, 3)).toEqual([
       'setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)',
     ]);
-    expect(ctx.log.filter((line) => line.startsWith('drawImage'))).toEqual([
-      'drawImage(scratch,0,0)', 'drawImage(scratch,0,0)',
-    ]);
-    // The scratch is cleared before each layer and never painted with a background.
-    expect(scratch.filter((line) => line.startsWith('clearRect'))).toHaveLength(2);
+    // Layers that erase nothing share the frame's buffer: clearing one and
+    // blitting it per layer was a third of a software-rendered frame.
+    expect(ctx.log.filter((line) => line.startsWith('drawImage'))).toEqual(['drawImage(scratch,0,0)']);
+    expect(scratch.filter((line) => line.startsWith('clearRect'))).toHaveLength(1);
     expect(scratch).not.toContain('fillRect(0,0,1200,600)');
     // Layers are rasterized bottom-up: the red fill before the black line.
     expect(scratch.indexOf('strokeStyle=#ff0000')).toBeLessThan(scratch.indexOf('strokeStyle=#000000'));
+  });
+
+  it('a layer that erases above another is rasterized apart and laid onto the frame', () => {
+    const ctx = new RecordingCtx();
+    const buffers: string[][] = [];
+    new Canvas2DFrameRenderer(() => {
+      const scratch = new RecordingCtx();
+      buffers.push(scratch.log);
+      return { ctx: scratch, image: { id: `scratch${buffers.length}` } as unknown as CanvasImageSource };
+    }).render(twoLayers({ strokes: [{ points: wide, tool_id: 2 }] }), 0, ctx, viewport);
+    expect(buffers).toHaveLength(2);
+    expect(buffers[0]).toContain('drawImage(scratch2,0,0)');
+    expect(buffers[0]).not.toContain('globalCompositeOperation=destination-out');
+    expect(ctx.log.filter((line) => line.startsWith('drawImage'))).toEqual(['drawImage(scratch1,0,0)']);
   });
 
   it('an eraser on the upper layer does not cut the layer below', () => {

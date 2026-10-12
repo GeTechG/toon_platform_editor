@@ -15,7 +15,7 @@
 
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
-import { blitLayer, renderLivePart, renderStrokesLayer, type Canvas2DLike } from './canvas2d';
+import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, type Canvas2DLike } from './canvas2d';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
 
@@ -307,20 +307,14 @@ export class FrameComposer {
     }
     buffer.size(width, height);
     buffer.clear();
-    if (cells.length === 1) {
-      // A single layer cannot bleed into another — rasterize it in place.
-      renderStrokesLayer(cells[0], scene.tools, buffer.ctx, scene.viewport);
-      return true;
-    }
-    for (const cell of cells) {
-      // Each layer rasterizes into its own scratch first, so an eraser cuts
-      // only its own layer — then the scratch lands on the stack buffer.
+    // Layers that erase nothing go straight onto the buffer; one that erases
+    // above another is rasterized apart, so its eraser cuts only its own.
+    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, () => {
       const scratch = (this.#scratch ??= this.#make());
       scratch.size(width, height);
       scratch.clear();
-      renderStrokesLayer(cell, scene.tools, scratch.ctx, scene.viewport);
-      blitLayer(scratch.image, buffer.ctx);
-    }
+      return scratch;
+    });
     return true;
   }
 
