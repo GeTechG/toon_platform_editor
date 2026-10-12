@@ -132,7 +132,7 @@ describe('флаг «тур пройден»', () => {
   });
 
   it('слово площадки и подписи клавиш ждут конца тура', () => {
-    expect(editor).toContain('const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall));');
+    expect(editor).toContain("const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));");
     expect(editor).toContain('class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
   });
 });

@@ -324,7 +324,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('a phone folds the strip alone — the transport stays — and lying down starts folded', () => {
     expect(editorUi).toContain('const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));');
     expect(editorUi).toContain("{#if !(stripFolded && row.includes('timeline'))}");
-    expect(editorUi).toContain('onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying(\'panel\') : (stripShut = !barFolded))}');
+    expect(editorUi).toContain('onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying(\'panel\') : toggleStrip())}');
   });
 
   it('the transport’s row is one line on the narrowest phone: closer keys, less padding, as in the row over the canvas', () => {
@@ -482,3 +482,33 @@ describe('the thickness and undo are a widget of their own, standing or lying by
   });
 });
 
+
+// Владелец, 2026-10-13: «я вроде просил запретить открывать одновременно» —
+// стоя рейка и коробки стола на телефоне сворачивались каждая сама по себе, и
+// открытые коробки ложились рядом с рейкой, язычок к язычку.
+describe('стоя стол на телефоне держит открытой одну боковую колонку', () => {
+  it('пока коробки открыты, рейка свёрнута — и возвращается, когда их закрыли', () => {
+    expect(editorUi).toContain("(id === 'left' ? (sideShut.left ?? false) || !folded('right') : (sideShut.right ?? true))");
+  });
+
+  it('язычок рейки при открытых коробках закрывает их и открывает рейку', () => {
+    const toggle = editorUi.match(/const toggleStanding = [^]*?\n  \};/)?.[0] ?? '';
+    expect(toggle).toContain('const shut = !folded(id);');
+    expect(toggle).toContain('sideShut[id] = shut;');
+    expect(toggle).toContain("if (id === 'left' && !shut) sideShut.right = true;");
+    expect(editorUi).toContain('onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? toggleStanding(id) : toggleLying(id))}');
+  });
+});
+
+// Владелец, 2026-10-13: «нижнюю панель и правую тоже нельзя одновременно».
+describe('стоя открытые коробки стола сворачивают и нижнюю панель', () => {
+  it('пока коробки открыты, бар свёрнут — и возвращается, когда их закрыли', () => {
+    expect(editorUi).toContain("(tall ? (stripShut ?? false) || !folded('right') : openLying !== 'panel')");
+  });
+
+  it('язычок бара при открытых коробках закрывает их и открывает бар', () => {
+    const toggle = editorUi.match(/const toggleStrip = [^]*?\n  \};/)?.[0] ?? '';
+    expect(toggle).toContain('stripShut = !barFolded;');
+    expect(toggle).toContain('if (deskPhone && !stripShut) sideShut.right = true;');
+  });
+});

@@ -689,6 +689,17 @@
   const toggleLying = (id: SideId | 'panel'): void => {
     lyingOpen = openLying === id ? 'none' : id;
   };
+  /**
+   * Standing up the boxes, open, put the rail away, and shut, give it back
+   * (owner, 2026-10-13: the two stood open side by side, tab to tab) —
+   * and the bar with it, by the same word. The
+   * rail's tab pressed under open boxes shuts them and opens the rail.
+   */
+  const toggleStanding = (id: SideId): void => {
+    const shut = !folded(id);
+    sideShut[id] = shut;
+    if (id === 'left' && !shut) sideShut.right = true;
+  };
   /** A tap past the boxes lying over the sheet — on it, on the bar — only closes them (owner, 2026-10-08). */
   function shutSideOver(e: PointerEvent): void {
     if (!sideOver || folded('right')) return;
@@ -814,14 +825,19 @@
    * Folded away — but never on a small screen, where there are no columns to
    * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => (deskPhone ? (tall ? (sideShut[id] ?? id === 'right') : openLying !== id) : side(id).collapsed && !compact);
+  const folded = (id: SideId): boolean => (deskPhone ? (tall ? (id === 'left' ? (sideShut.left ?? false) || !folded('right') : (sideShut.right ?? true)) : openLying !== id) : side(id).collapsed && !compact);
   /** The bottom bar, folded away by the same rule. */
   // A preset's desk on a phone folds its bar whole, as the desk does (owner,
   // 2026-10-10: «пускай прячет всё»). Standing up it opens with the bar up;
   // lying down the bar is one of the three that take turns (`openLying`).
-  const panelFolded = $derived(deskPhone ? (tall ? (stripShut ?? false) : openLying !== 'panel') : editor.panelCollapsed && !compact);
+  const panelFolded = $derived(deskPhone ? (tall ? (stripShut ?? false) || !folded('right') : openLying !== 'panel') : editor.panelCollapsed && !compact);
   /** What the bar's fold key says: the whole bar on the desktop, the strip on a phone. */
   const barFolded = $derived(panelFolded || stripFolded);
+  /** A phone's bar by its tab. Under a desk's open boxes it is folded: the tab shuts them and opens the bar (owner, 2026-10-13). */
+  const toggleStrip = (): void => {
+    stripShut = !barFolded;
+    if (deskPhone && !stripShut) sideShut.right = true;
+  };
   /**
    * The transport's key is on screen.
    * The preview's loop lives in that key: with the bar folded, or the
@@ -1618,7 +1634,8 @@
   // at once, and the keys' names hung under the tour's card.
   /** The first visit's question stands whichever way the phone is held: gone with the line of words, a press on a preset took the plate away with nothing more to pick (owner, 2026-10-10). */
   const plateDue = $derived(!draftsOpen && !moreOpen);
-  const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall));
+  // …nor under a phone's open boxes: the bar is folded there, and the note stood on the stage beneath them.
+  const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {
@@ -2566,7 +2583,7 @@
     <!-- The arrow points the way the panel is about to travel. -->
     <button
       class="fold"
-      onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? (sideShut[id] = !folded(id)) : toggleLying(id))}
+      onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? toggleStanding(id) : toggleLying(id))}
       aria-expanded={!folded(id)}
       title={folded(id) ? t('editor.panel_expand') : t('editor.panel_fold')}
       aria-label={t('editor.panel_toggle', { action: folded(id) ? t('editor.expand') : t('editor.fold'), label })}
@@ -3152,7 +3169,7 @@
            its side at the corner of its seam. -->
       <button
         class="fold lying"
-        onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying('panel') : (stripShut = !barFolded))}
+        onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying('panel') : toggleStrip())}
         aria-expanded={!barFolded}
         title={barFolded ? t('editor.panel_expand') : t('editor.panel_fold')}
         aria-label={barFolded ? t('editor.bottom_expand') : t('editor.bottom_fold')}
