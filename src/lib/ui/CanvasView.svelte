@@ -68,7 +68,7 @@
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
   import { t } from '../i18n';
-  import { HOLD_PICK_MS, colourOfPixel, mayHoldPick, stillHeld } from './hold-pick';
+  import { HOLD_PICK_MS, colourOfPixel, mayHoldPick, opacityOfPixel, stillHeld } from './hold-pick';
   import { nextHint } from './canvas-hint';
   import { createSideButtonGuard } from './side-buttons';
 
@@ -1072,6 +1072,8 @@
    * after a lost context) or no context for the scratch (Safari out of canvas
    * memory). Emptiness arms the eraser; not being able to look must not.
    */
+  /** How strongly the pixel last read was painted: the brush takes it with the colour. */
+  let pickedOpacity = 100;
   function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null | undefined {
     const source = pickSource(editor.pickSource, e.altKey);
     // The frame as it was composed, off the composer's own buffers: no paper
@@ -1115,6 +1117,7 @@
     // a stroke reads as emptiness, so the pipette never picks a washed-out
     // version of the line it was aimed at — but a translucent line is a
     // colour, the one it was drawn with.
+    pickedOpacity = opacityOfPixel(a, editor.doc.tools);
     return colourOfPixel([r, g, b, a], editor.doc.tools);
   }
 
@@ -1134,6 +1137,8 @@
       return null;
     }
     editor.pickColor(picked, toFill ? 'fill' : 'outline');
+    // A line taken is taken as it looks: as faint as it was drawn.
+    editor.takeBrushOpacity(pickedOpacity);
     return picked;
   }
 

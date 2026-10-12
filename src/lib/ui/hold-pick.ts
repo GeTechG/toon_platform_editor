@@ -67,3 +67,15 @@ export function colourOfPixel(
   }
   return hex();
 }
+
+/**
+ * How strongly that pixel was painted, a percent for the brush: 100 for an
+ * opaque one, a translucent tool's own opacity when the pixel is within a
+ * rounding step of it, and what is seen there otherwise.
+ */
+export function opacityOfPixel(alpha: number, tools: readonly ToolDescriptor[]): number {
+  if (alpha === 255) return 100;
+  const seen = Math.min(99, Math.max(1, Math.round(alpha / 2.55)));
+  const own = tools.map((tool) => opacityOf(tool).opacity).find((o) => o !== undefined && Math.abs(o - seen) <= 1);
+  return own ?? seen;
+}

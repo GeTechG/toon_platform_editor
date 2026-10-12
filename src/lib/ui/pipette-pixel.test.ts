@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { ToolDescriptor } from '../format/types';
-import { colourOfPixel } from './hold-pick';
+import { colourOfPixel, opacityOfPixel } from './hold-pick';
 
 const opaque: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
 const faint: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#3366cc', opacity: 40 };
@@ -27,5 +27,33 @@ describe('the colour the pipette reads off a pixel', () => {
 
   it('the rim of a translucent line, fainter than the line itself, is still emptiness', () => {
     expect(colourOfPixel([51, 102, 204, 40], [faint])).toBeNull();
+  });
+});
+
+describe('the opacity the pipette reads off a pixel', () => {
+  it('an opaque pixel is an opaque brush', () => {
+    expect(opacityOfPixel(255, [opaque, faint])).toBe(100);
+  });
+
+  it('a translucent line gives the opacity it was drawn at, not what the rounding left of it', () => {
+    // 40 % is 102 of 255; a canvas may hand back 101 or 103.
+    expect(opacityOfPixel(102, [faint])).toBe(40);
+    expect(opacityOfPixel(104, [faint])).toBe(40);
+  });
+
+  it('two lines over each other give what is seen there', () => {
+    expect(opacityOfPixel(163, [faint])).toBe(64);
+  });
+});
+
+describe('the pipette hands the opacity to the brush', () => {
+  it('with the colour, to the brush that draws next', async () => {
+    const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
+    const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
+    const take = canvas.match(/function takeColour[^]*?\n {2}}/)?.[0] ?? '';
+    expect(take).toMatch(/editor\.pickColor\(picked[^]*editor\.takeBrushOpacity\(/);
+    const method = state.match(/takeBrushOpacity\(value: number\)[^]*?\n {2}}/)?.[0] ?? '';
+    // Not the pipette's own record: the tool the hand goes back to.
+    expect(method).toContain("this.tool === 'pipette' ? toolAfterHelp(this.previousDrawingTool) : this.tool");
   });
 });
