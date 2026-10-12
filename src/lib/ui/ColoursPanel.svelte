@@ -481,6 +481,10 @@
     box-sizing: border-box;
     width: 21rem;
     max-width: 100%;
+    /* One height on every tab (owner, 2026-10-12): the ways stood higher or
+       lower with every press. The tallest — the square with its sliders —
+       or the room under the key (less the plate's two hairlines). */
+    height: min(47.5rem, var(--room) - 2px);
     padding: 0.6rem 0.75rem 0;
     color: var(--text);
     /* The colour space itself, not the studio's ink: the hues the way the
@@ -503,25 +507,32 @@
     /* Closer, and the surface a little under the column's width: on a
        1440×900 screen the whole panel stands in the column unscrolled. */
     gap: 0.4rem;
-    /* No taller than the column gives it: what gives way is the swatches,
-       which scroll on their own between the surface and the tabs. */
+    /* One height here too — the six sliders of «Значения» with the history
+       and a palette of four rows — and no taller than the column gives it. */
+    height: 41rem;
     min-height: 0;
     max-height: 100%;
   }
-  .colours.docked > :global(*),
-  .colours.docked .stage > :global(*) {
+  /* What gives way is the swatches, which scroll on their own between the
+     surface and the tabs — and take what a shorter tab leaves, so the tabs
+     stay at the bottom. */
+  .colours > :global(*),
+  .colours .stage > :global(*) {
     flex: none;
   }
-  .colours.docked .rest {
+  .colours .rest {
     display: flex;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.5rem;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  .colours.docked .rest > :global(*) {
+  .colours.docked .rest {
+    gap: 0.4rem;
+  }
+  .colours .rest > :global(*) {
     flex: none;
   }
   /* The palette's name is the group's own (aria-label): under the history
@@ -559,10 +570,9 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  /* The surface, or what stands for it, and what follows it: one column
-     here, two in a low window (below). */
-  .stage,
-  .rest {
+  /* The surface, or what stands for it, lies in the panel's own column;
+     in a low window (below) it is a column of its own. */
+  .stage {
     display: contents;
   }
   header,
