@@ -35,13 +35,17 @@
       </div>
     </div>
   {:else if page === 'plugins'}
-    <!-- One more key comes into the row of tools. -->
+    <!-- The settings' catalog, «install» pressed: one more key comes into
+         the row of tools. -->
     <div class="art" aria-hidden="true">
-      <div class="scene keys">
-        {#each ['pencil', 'eraser', 'pipette', 'lasso'] as const as name (name)}
-          <span class="k"><Icon {name} size={18} /></span>
-        {/each}
-        <span class="k new"><Icon name="feather" size={18} /></span>
+      <div class="scene">
+        <div class="cat"><Icon name="gear" size={16} /><u></u><b class="get"><Icon name="download" size={12} /></b></div>
+        <div class="keys">
+          {#each ['pencil', 'eraser', 'pipette', 'lasso'] as const as name (name)}
+            <span class="k"><Icon {name} size={18} /></span>
+          {/each}
+          <span class="k new"><Icon name="feather" size={18} /></span>
+        </div>
       </div>
     </div>
   {:else if page === 'export'}
@@ -67,6 +71,15 @@
         <span class="toon t0"><Icon name="play" size={16} /></span>
         <span class="toon t1"><Icon name="pencil" size={16} /></span>
         <span class="toon t2"><Icon name="pencil" size={16} /></span>
+      </div>
+    </div>
+  {:else if page === 'open'}
+    <!-- The editor is copied, the copy is changed, and the change comes home. -->
+    <div class="art" aria-hidden="true">
+      <div class="scene">
+        <div class="fork f0"><i></i><u></u><b class="b0"></b></div>
+        <div class="fork f1"><i></i><u></u><b class="b1"></b></div>
+        <span class="patch"></span>
       </div>
     </div>
   {:else}
@@ -372,9 +385,44 @@
   }
 
   /* a plugin's key joins the row */
-  .keys {
+  .cat {
+    position: absolute;
+    left: 4rem;
+    top: 0.6rem;
+    width: 8rem;
+    height: 2.2rem;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.4rem 0 0.5rem;
+    border: 2px solid var(--ink);
+    border-radius: var(--r-sm);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .cat u {
+    flex: 1;
+    height: 0.4rem;
+    border-radius: var(--r-pill);
+    background: var(--sub);
+  }
+  .get {
+    display: grid;
+    place-items: center;
+    width: 1.8rem;
+    height: 1.2rem;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--canvas);
+    animation: tour-get 5s var(--ease-out) infinite;
+  }
+  .keys {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 4.6rem;
+    display: flex;
     justify-content: center;
     gap: 0.4rem;
   }
@@ -390,21 +438,41 @@
   .new {
     background: var(--accent);
     color: var(--canvas);
-    animation: tour-key 4s var(--ease-out) infinite;
+    animation: tour-key 5s var(--ease-out) infinite;
   }
+  @keyframes tour-get {
+    0%,
+    12%,
+    26%,
+    100% {
+      scale: 1;
+    }
+    19% {
+      scale: 0.8;
+    }
+  }
+  /* Out of the pressed key of the catalog, into the row. */
   @keyframes tour-key {
     0%,
-    15% {
-      translate: 0 -3rem;
+    24% {
+      translate: -2.5rem -4.1rem;
+      scale: 0.4;
       opacity: 0;
     }
-    45%,
-    90% {
+    30% {
+      translate: -2.5rem -4.1rem;
+      scale: 0.4;
+      opacity: 1;
+    }
+    55%,
+    92% {
       translate: 0 0;
+      scale: 1;
       opacity: 1;
     }
     100% {
       translate: 0 0;
+      scale: 1;
       opacity: 0;
     }
   }
@@ -591,6 +659,113 @@
     100% {
       opacity: 1;
       scale: 1;
+    }
+  }
+
+  /* the editor, a copy of it changed, the change sent back */
+  .fork {
+    position: absolute;
+    top: 1.6rem;
+    left: 1.6rem;
+    width: 5.4rem;
+    height: 4.8rem;
+    box-sizing: border-box;
+    border: 2px solid var(--ink);
+    border-radius: var(--r-sm);
+    background: var(--paper);
+  }
+  .fork i {
+    display: block;
+    height: 0.6rem;
+    border-bottom: 2px solid var(--ink);
+  }
+  .fork u {
+    position: absolute;
+    inset: 1.2rem 0.4rem 0.4rem 2.1rem;
+    border-radius: 3px;
+    background: var(--canvas);
+  }
+  .b0,
+  .b1 {
+    position: absolute;
+    left: 0.4rem;
+    top: 1.2rem;
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 4px;
+    background: var(--accent);
+  }
+  .f1 {
+    left: 9rem;
+    animation: tour-f1 6s var(--ease-out) infinite;
+  }
+  .b1 {
+    animation: tour-b1 6s infinite;
+  }
+  .b0 {
+    animation: tour-b0 6s infinite;
+  }
+  .patch {
+    position: absolute;
+    left: 2.25rem;
+    top: 3.05rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0;
+    animation: tour-patch 6s var(--ease-out) infinite;
+  }
+  @keyframes tour-f1 {
+    0%,
+    8% {
+      opacity: 0;
+      translate: -3rem 0;
+    }
+    22%,
+    100% {
+      opacity: 1;
+      translate: 0 0;
+    }
+  }
+  @keyframes tour-b1 {
+    0%,
+    30% {
+      background: var(--text-2);
+    }
+    38%,
+    100% {
+      background: var(--accent);
+    }
+  }
+  @keyframes tour-patch {
+    0%,
+    44% {
+      translate: 7.4rem 0;
+      opacity: 0;
+    }
+    48% {
+      translate: 7.4rem 0;
+      opacity: 1;
+    }
+    66% {
+      translate: 0 0;
+      opacity: 1;
+    }
+    72%,
+    100% {
+      translate: 0 0;
+      opacity: 0;
+    }
+  }
+  @keyframes tour-b0 {
+    0%,
+    66% {
+      background: var(--text-2);
+    }
+    74%,
+    100% {
+      background: var(--accent);
     }
   }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { tourPages } from './tour';
 
 // Тур первого входа (владелец, 2026-10-12): привет с маскотом, .toon из Тунио,
-// плагины, выгрузка и звук, продолжения — и выбор набора последней страницей.
+// плагины, выгрузка и звук, продолжения, открытый код — и выбор набора последней страницей.
 // Клей Svelte проверяется по исходнику, как в first-visit.test.ts.
 const UI = new URL('./', import.meta.url).pathname;
 const tour = await Bun.file(UI + 'Tour.svelte').text();
@@ -11,11 +11,11 @@ const ru = await Bun.file(UI + '../i18n/ru.json').json();
 
 describe('тур первого входа', () => {
   it('начинается с привета и кончается выбором набора', () => {
-    expect(tourPages(true)).toEqual(['welcome', 'toon', 'plugins', 'export', 'continue', 'layout']);
+    expect(tourPages(true)).toEqual(['welcome', 'toon', 'plugins', 'export', 'continue', 'open', 'layout']);
   });
 
   it('без площадки о продолжениях не рассказывает: продолжать нечего', () => {
-    expect(tourPages(false)).toEqual(['welcome', 'toon', 'plugins', 'export', 'layout']);
+    expect(tourPages(false)).toEqual(['welcome', 'toon', 'plugins', 'export', 'open', 'layout']);
   });
 
   it('у каждой страницы рассказа есть заголовок и слова', () => {
@@ -37,7 +37,7 @@ describe('тур первого входа', () => {
   });
 
   it('картинки рассказа — украшение: читалка слышит заголовок и слова', () => {
-    expect(tour.match(/<div class="art[^>]*aria-hidden="true"/g)?.length).toBe(4);
+    expect(tour.match(/<div class="art[^>]*aria-hidden="true"/g)?.length).toBe(5);
   });
 
   it('без движения картинки стоят в конце своего пути', () => {
