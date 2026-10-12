@@ -59,6 +59,7 @@ class Recorder implements Canvas2DLike {
   log: string[] = [];
   canvas = { width: 600, height: 300 };
   globalCompositeOperation: GlobalCompositeOperation = 'source-over';
+  globalAlpha = 1;
   lineWidth = 0;
   strokeStyle = '';
   fillStyle = '';

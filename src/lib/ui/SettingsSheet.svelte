@@ -315,18 +315,6 @@
           />
         </label>
         {/if}
-        <label class="toggle">
-          <span class="toggle-label stacked">
-            {t('settings.pen_pressure')}
-            <small>{t('settings.pen_pressure_hint')}</small>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={editor.settings.penPressure}
-            onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
-          />
-        </label>
         {#if !fingersOnly}
         <label class="toggle">
           <span class="toggle-label">{t('settings.crosshair')}</span>

@@ -4,6 +4,7 @@
  */
 
 import { BACKGROUND_COLOR } from '../format/constants';
+import { opacityOf } from '../format/types';
 import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitGeometry, emitGeometryFrom, type PathSink } from './smoothing';
@@ -27,6 +28,7 @@ import { emitPressuredOutline, flattenPressured } from './pressure';
 export interface Canvas2DLike extends PathSink {
   readonly canvas: { width: number; height: number };
   globalCompositeOperation: GlobalCompositeOperation;
+  globalAlpha: number;
   lineWidth: number;
   strokeStyle: string;
   fillStyle: string;
@@ -256,9 +258,21 @@ export function renderStrokesLayer(
     if (erase) {
       target.globalCompositeOperation = 'destination-out';
     }
+    // A translucent tool paints its stroke in one pass at its alpha: the
+    // line does not darken where it crosses itself, two lines do where they
+    // meet. A ghost's tint changes the colour and leaves the stroke as faint.
+    // ponytail: a feather is two passes, so the inner half of its outline
+    // lies over its fill; a buffer per translucent feather if that shows.
+    const { opacity } = opacityOf(tool);
+    if (opacity !== undefined) {
+      target.globalAlpha = opacity / 100;
+    }
     drawResolvedStroke(
       target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure,
     );
+    if (opacity !== undefined) {
+      target.globalAlpha = 1;
+    }
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }

@@ -125,6 +125,12 @@
         "color": {
           "type": "string",
           "pattern": "^#[0-9a-f]{6}$"
+        },
+        "opacity": {
+          "description": "How strongly the stroke paints, percent. Absent means opaque; 100 is never stored.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
         }
       }
     },
@@ -178,6 +184,12 @@
         "color": {
           "type": "string",
           "pattern": "^#[0-9a-f]{6}$"
+        },
+        "opacity": {
+          "description": "How strongly the stroke paints, percent. Absent means opaque; 100 is never stored.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
         }
       }
     },
@@ -288,6 +300,12 @@
         "fill": {
           "type": "string",
           "pattern": "^#[0-9a-f]{6}$"
+        },
+        "opacity": {
+          "description": "How strongly the stroke paints, percent. Absent means opaque; 100 is never stored.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
         }
       }
     },
@@ -330,6 +348,12 @@
           },
           "minItems": 6,
           "maxItems": 128
+        },
+        "opacity": {
+          "description": "How strongly the stroke paints, percent. Absent means opaque; 100 is never stored.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
         }
       }
     }

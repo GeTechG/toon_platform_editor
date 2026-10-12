@@ -157,7 +157,9 @@
   // with them, and no blur comes for a removed key (nor for one Safari never
   // focused): coming back, the help stood open without a press.
   $effect(() => {
-    if (!editor.brushSmooths && openNote !== t('brush.thickness')) openNote = null;
+    if (!editor.brushSmooths && openNote !== t('brush.thickness') && openNote !== t('brush.opacity')) openNote = null;
+    // And the opacity's with a brush that does not paint.
+    if (!editor.brushPaints && openNote === t('brush.opacity')) openNote = null;
   });
 </script>
 
@@ -357,6 +359,26 @@
     {@render heading(t('brush.simplify'), t('brush.simplify_hint'))}
     {@render slider(t('brush.simplify_slider'), 0, 30, editor.brushMinDistance, (v) => editor.setBrushMinDistance(v), false, true)}
   {/if}
+  <!-- An eraser cuts whole: the number would change nothing under it. -->
+  {#if editor.brushPaints}
+    {@render heading(t('brush.opacity'), t('brush.opacity_hint'))}
+    {@render slider(t('brush.opacity'), 1, 100, editor.brushOpacity, (v) => editor.setBrushOpacity(v))}
+  {/if}
+  <!-- One switch for every brush: it says whether the pen's pressure is
+       listened to at all, and it is where the line is set up, not in the
+       settings sheet. -->
+  <label class="toggle">
+    <span>
+      {t('brush.pen_pressure')}
+      <small>{t('brush.pen_pressure_hint')}</small>
+    </span>
+    <input
+      type="checkbox"
+      role="switch"
+      checked={editor.settings.penPressure}
+      onchange={(e) => editor.setSetting('penPressure', e.currentTarget.checked)}
+    />
+  </label>
 </div>
 <style>
   .box {
@@ -388,6 +410,35 @@
     font-size: 1rem;
     font-weight: 400;
     color: var(--ink-2);
+  }
+  .toggle {
+    grid-column: 1 / 3;
+    display: flex;
+    /* The box is 225px and narrower on a phone: the switch goes under the
+       words before it goes past the edge. */
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+    color: var(--ink);
+  }
+  .toggle > span {
+    flex: 1 1 8rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .toggle small {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.74rem;
+    line-height: 1.3;
+    color: var(--ink-2);
+    text-wrap: pretty;
+  }
+  .toggle input {
+    flex: none;
+    margin-top: 0.15rem;
   }
   .trigger {
     grid-column: 1 / 3;

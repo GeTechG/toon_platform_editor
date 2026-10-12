@@ -22,6 +22,13 @@ class RecordingCtx implements Canvas2DLike {
     this.#props.globalCompositeOperation = v;
     this.log.push(`globalCompositeOperation=${v}`);
   }
+  get globalAlpha(): number {
+    return (this.#props.globalAlpha as number) ?? 1;
+  }
+  set globalAlpha(v: number) {
+    this.#props.globalAlpha = v;
+    this.log.push(`globalAlpha=${v}`);
+  }
   get lineWidth(): number {
     return this.#props.lineWidth as number;
   }
@@ -100,6 +107,7 @@ class RecordingCtx implements Canvas2DLike {
 class RasterCtx implements Canvas2DLike {
   canvas = { width: 600, height: 300 };
   globalCompositeOperation: GlobalCompositeOperation = 'source-over';
+  globalAlpha = 1;
   lineWidth = 1;
   strokeStyle = '#000000';
   fillStyle = '#000000';
@@ -724,5 +732,33 @@ describe('pen pressure', () => {
     renderStrokesLayer({ strokes: [{ points: [0, 0, 100, 0], tool_id: 0 }] }, [pencil], plain, viewport);
     expect(plain.log).toContain('stroke()');
     expect(plain.log).toContain('lineWidth=10');
+  });
+});
+
+describe('tool opacity', () => {
+  const frame: Frame = {
+    strokes: [
+      { points: [0, 0, 100, 100, 200, 200], tool_id: 0 },
+      { points: [0, 0, 50, 50, 100, 0], tool_id: 1 },
+      { points: [0, 0, 50, 50, 100, 0], tool_id: 2 },
+    ],
+  };
+  const tools: ToolDescriptor[] = [
+    { kind: 'pencil', geometry: 'smooth', width: 32, color: '#00aa55', opacity: 40 },
+    { kind: 'pencil', geometry: 'smooth', width: 32, color: '#112233' },
+    { kind: 'eraser', geometry: 'smooth', width: 32 },
+  ];
+
+  it('a translucent stroke is painted at its alpha, and the next one opaque again', () => {
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(frame, tools, ctx, viewport);
+    const alphas = ctx.log.filter((line) => line.startsWith('globalAlpha=') || line === 'stroke()');
+    expect(alphas).toEqual(['globalAlpha=0.4', 'stroke()', 'globalAlpha=1', 'stroke()', 'stroke()']);
+  });
+
+  it('a ghost keeps the stroke as faint as it is: the tint changes the colour only', () => {
+    const ctx = new RecordingCtx();
+    renderStrokesLayer(frame, tools, ctx, viewport, '#ff3b30');
+    expect(ctx.log).toContain('globalAlpha=0.4');
   });
 });

@@ -18,6 +18,11 @@ export interface PencilToolDescriptor {
   readonly geometry: StrokeGeometry;
   readonly width: number;
   readonly color: string;
+  /**
+   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
+   * 100 is never stored, so one look has one descriptor.
+   */
+  readonly opacity?: number;
 }
 
 export interface EraserToolDescriptor {
@@ -35,6 +40,11 @@ export interface ContourToolDescriptor {
   readonly kind: 'contour';
   readonly geometry: StrokeGeometry;
   readonly color: string;
+  /**
+   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
+   * 100 is never stored, so one look has one descriptor.
+   */
+  readonly opacity?: number;
 }
 
 export interface ContourEraserToolDescriptor {
@@ -53,6 +63,11 @@ export interface FeatherToolDescriptor {
   readonly width: number;
   readonly color: string;
   readonly fill: string;
+  /**
+   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
+   * 100 is never stored, so one look has one descriptor.
+   */
+  readonly opacity?: number;
 }
 
 /**
@@ -74,6 +89,11 @@ export interface StampToolDescriptor {
   readonly width: number;
   readonly color: string;
   readonly shape: readonly number[];
+  /**
+   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
+   * 100 is never stored, so one look has one descriptor.
+   */
+  readonly opacity?: number;
 }
 
 /** The unit square — what the pixel-style stamp lays down. */
@@ -94,6 +114,15 @@ export type ToolDescriptor =
   | StampToolDescriptor
   | ContourToolDescriptor
   | ContourEraserToolDescriptor;
+
+/**
+ * A tool's opacity, as a spread — or nothing for an opaque one and for a tool
+ * that paints nothing: 100 is the absent field, in one place.
+ */
+export function opacityOf(tool: ToolDescriptor): { opacity?: number } {
+  const opacity = 'color' in tool ? tool.opacity : undefined;
+  return opacity !== undefined && opacity < 100 ? { opacity } : {};
+}
 
 export interface Stroke {
   /**

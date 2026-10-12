@@ -89,6 +89,21 @@ describe('подсказка ушедшего заголовка не всплы
   // удалении, Safari не фокусирует кнопку по нажатию). Вернулся к карандашу —
   // подсказка уже открыта, хотя её никто не нажимал.
   it('закрывается, когда её заголовок исчез', () => {
-    expect(panel).toMatch(/if \(!editor\.brushSmooths && openNote !== t\('brush\.thickness'\)\) openNote = null;/);
+    expect(panel).toMatch(/if \(!editor\.brushSmooths && openNote !== t\('brush\.thickness'\) && openNote !== t\('brush\.opacity'\)\) openNote = null;/);
+    expect(panel).toMatch(/if \(!editor\.brushPaints && openNote === t\('brush\.opacity'\)\) openNote = null;/);
+  });
+});
+
+describe('the brush record holds its opacity', () => {
+  it('a percent 1–100, whole; an opaque brush writes none down', () => {
+    expect(brushFromStore({ opacity: 40.4 }, FALLBACK_BRUSH).opacity).toBe(40);
+    expect(brushFromStore({ opacity: -3 }, FALLBACK_BRUSH).opacity).toBe(1);
+    expect('opacity' in brushFromStore({ opacity: 250 }, FALLBACK_BRUSH)).toBe(false);
+    expect('opacity' in brushFromStore({}, FALLBACK_BRUSH)).toBe(false);
+  });
+
+  it('what is not a number is what the brush was', () => {
+    expect(brushFromStore({ opacity: 'бледно' }, { ...FALLBACK_BRUSH, opacity: 30 }).opacity).toBe(30);
+    expect(brushFromStore({}, { ...FALLBACK_BRUSH, opacity: 30 }).opacity).toBe(30);
   });
 });

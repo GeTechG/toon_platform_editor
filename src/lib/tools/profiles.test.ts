@@ -510,3 +510,34 @@ describe('pen pressure', () => {
     expect(loadDocument(doc).layers[0].frames[0].strokes[0].pressure).toEqual([20, 90, 90]);
   });
 });
+
+describe('brush opacity', () => {
+  const eraser: ToolDescriptor = { kind: 'eraser', geometry: 'smooth', width: 32 };
+
+  it('a brush below 100 lays a translucent tool down, at 100 the tool as it was', () => {
+    expect(profiles.withOpacity(pencil, 40)).toEqual({ ...pencil, opacity: 40 });
+    expect(profiles.withOpacity(pencil, 100)).toEqual(pencil);
+    expect<ToolDescriptor>(profiles.withOpacity({ ...pencil, opacity: 40 }, 100)).toEqual(pencil);
+  });
+
+  it('an eraser cuts whole whatever the brush says', () => {
+    expect(profiles.withOpacity(eraser, 40)).toEqual(eraser);
+  });
+
+  it('a brush that lands another kind of stroke lands it as faint as it was drawn', () => {
+    const controller = new profiles.PointerStrokeController(() => ({
+      rules: {
+        ...coarse,
+        commit: (points, tool) => ({
+          points: [...points],
+          tool: { kind: 'contour', geometry: 'line', color: (tool as { color: string }).color },
+        }),
+      },
+      descriptor: { kind: 'pencil', geometry: 'smooth', width: 64, color: '#ff0000', opacity: 30 },
+    }));
+    controller.pointerDown(sample(1, 0, 0));
+    controller.pointerMove(sample(1, 800, 0));
+    controller.pointerUp(sample(1, 800, 0));
+    expect(controller.takeCommitted()!.tool).toEqual({ kind: 'contour', geometry: 'line', color: '#ff0000', opacity: 30 });
+  });
+});

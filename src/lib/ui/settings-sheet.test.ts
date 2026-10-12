@@ -219,7 +219,7 @@ describe('the settings sheet', () => {
 
   it('every option sits in the category that names it', () => {
     const home: Record<string, string[]> = {
-      drawing: ['mouseMode', 'penPressure', 'crossCursor', 'lockTransform', 'megaEraserWarning'],
+      drawing: ['mouseMode', 'crossCursor', 'lockTransform', 'megaEraserWarning'],
       palette: ['browserPipette', 'paletteAutoAdd', 'paletteLimit'],
       view: ['altLayout', 'letterKeys'],
       saving: ['autosaveMs', 'showDraftsOnStart'],

@@ -16,7 +16,8 @@
 
 import { MAX_STROKE_COORDS, MAX_STROKE_WIDTH } from '../format/constants';
 import { clampCoord } from '../model/geom';
-import type { LineToolDescriptor, StrokeGeometry } from '../format/types';
+import { opacityOf } from '../format/types';
+import type { LineToolDescriptor, StrokeGeometry, ToolDescriptor } from '../format/types';
 import { DOCUMENT_PRIMITIVES } from '../render/dispatch';
 import { pressureAlong, pressureWidth } from '../render/pressure';
 import { copyTool, pressureOf, type ResolvedStroke } from '../model/operations';
@@ -163,6 +164,17 @@ export function swapStrokeColours(tool: LineToolDescriptor, fill: string): LineT
   return 'color' in tool ? { ...tool, color: fill } : tool;
 }
 
+/**
+ * The descriptor at the brush's opacity, a percent: below 100 a tool that
+ * paints carries it, at 100 it carries none. An eraser, which has no colour,
+ * is left alone — it cuts whole.
+ */
+export function withOpacity<T extends ToolDescriptor>(tool: T, opacity: number): T {
+  if (!('color' in tool)) return tool;
+  const { opacity: _was, ...bare } = tool;
+  return (opacity < 100 ? { ...bare, opacity: Math.max(1, Math.round(opacity)) } : bare) as T;
+}
+
 export function appendStrokeEvent(session: StrokeSession, event: PointerSample): void {
   if (!event.isPrimary || event.pointerId !== session.pointerId) return;
   collect(session, event, session.rules.capture);
@@ -200,7 +212,14 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
   // The brush's own rule, when it has one: it owns the stroke end to end and
   // may hand back a kind other than the one it drew with.
   if (commit) {
-    return withPressure(commit(session.rawPoints, session.descriptor), session);
+    const stroke = commit(session.rawPoints, session.descriptor);
+    // The rule builds its own tool and knows nothing of the opacity the
+    // brush was drawn at: the stroke lands as faint as it was under the hand.
+    const { opacity } = opacityOf(session.descriptor);
+    const faint = opacity !== undefined && typeof stroke?.tool === 'object' && stroke.tool !== null
+      ? { ...stroke, tool: withOpacity(stroke.tool, opacity) }
+      : stroke;
+    return withPressure(faint, session);
   }
   const thinned = prepare
     ? prepare(session.rawPoints, session.descriptor.width, session.zoom)

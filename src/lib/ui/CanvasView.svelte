@@ -56,13 +56,14 @@
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
-  import type { LineToolDescriptor } from '../format/types';
+  import { opacityOf, type LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
     swapStrokeColours,
     previewStrokeSession,
     previewStrokePressure,
     drawsPressure,
+    withOpacity,
     type PointerSample,
   } from '../tools/profiles';
   import type { StrokeRules } from '../plugins/contract';
@@ -254,10 +255,12 @@
    * nothing about which tool is which, nor what it lays down.
    */
   function activeDescriptor(): LineToolDescriptor {
-    return (toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
+    // The opacity is the brush's, not the tool's: whichever tool builds the
+    // descriptor, a brush that paints lays it down as faint as it is set.
+    return withOpacity((toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
       ...editor.pluginBrush,
       width: brushWidthDoc(editor.brushSizeLogical),
-    });
+    }), editor.brushOpacity);
   }
 
   /**
@@ -846,7 +849,9 @@
     const geometry = session.rules.previewGeometry ?? session.descriptor.geometry;
     // A pen's line changes width along it and is redrawn whole, like a feather —
     // where the brush takes the pressure; one that does not grows as under a mouse.
+    // So is a translucent one: added to part by part, it darkened at every join.
     const grows = !drawsPressure(session) && session.descriptor.kind === 'pencil'
+      && opacityOf(session.descriptor).opacity === undefined
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
       return {
@@ -866,7 +871,22 @@
     };
   }
 
+  /** The line under the hand, as faint as the one that lands. */
   function renderSessionPreview(
+    session: NonNullable<typeof pointer.session>,
+    target: Canvas2DLike,
+    viewport: Viewport,
+    color: string,
+  ): void {
+    target.globalAlpha = (opacityOf(session.descriptor).opacity ?? 100) / 100;
+    try {
+      paintSessionPreview(session, target, viewport, color);
+    } finally {
+      target.globalAlpha = 1;
+    }
+  }
+
+  function paintSessionPreview(
     session: NonNullable<typeof pointer.session>,
     target: Canvas2DLike,
     viewport: Viewport,

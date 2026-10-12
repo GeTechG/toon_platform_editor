@@ -6,6 +6,7 @@ import {
   addLayer,
   addStroke,
   copyCells,
+  copyTool,
   createDocument,
   documentWeight,
   frameFits,
@@ -858,5 +859,24 @@ describe('document budget', () => {
     addFrame(doc, 4096);
     expect(frameFits(doc)).toBe(false);
     expect(() => addFrame(doc, 0)).toThrow(RangeError);
+  });
+});
+
+describe('tool opacity', () => {
+  const pencil = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' } as const;
+
+  it('a translucent tool is another tool, and its copy stays translucent', () => {
+    const doc = createDocument();
+    const opaque = internTool(doc, pencil);
+    const half = internTool(doc, { ...pencil, opacity: 50 });
+    expect(half).not.toBe(opaque);
+    expect(internTool(doc, { ...pencil, opacity: 50 })).toBe(half);
+    expect(doc.tools[half]).toEqual({ ...pencil, opacity: 50 });
+    expect(copyTool({ kind: 'contour', geometry: 'line', color: '#ff0000', opacity: 20 }))
+      .toEqual({ kind: 'contour', geometry: 'line', color: '#ff0000', opacity: 20 });
+  });
+
+  it('an opaque tool carries no opacity at all', () => {
+    expect('opacity' in copyTool(pencil)).toBe(false);
   });
 });

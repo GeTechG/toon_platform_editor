@@ -22,6 +22,7 @@ import {
   STROKE_COORD_MAX,
   STROKE_COORD_MIN,
 } from '../format/constants';
+import { opacityOf } from '../format/types';
 import type { Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
 
 /**
@@ -77,7 +78,8 @@ export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): numbe
 }
 
 function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
-  if (left.kind !== right.kind || left.geometry !== right.geometry) {
+  if (left.kind !== right.kind || left.geometry !== right.geometry
+    || opacityOf(left).opacity !== opacityOf(right).opacity) {
     return false;
   }
   switch (left.kind) {
@@ -427,7 +429,7 @@ function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): Frame {
 export function copyTool(tool: ToolDescriptor): ToolDescriptor {
   switch (tool.kind) {
     case 'pencil':
-      return { kind: 'pencil', geometry: tool.geometry, width: tool.width, color: tool.color };
+      return { kind: 'pencil', geometry: tool.geometry, width: tool.width, color: tool.color, ...opacityOf(tool) };
     case 'eraser':
       return { kind: 'eraser', geometry: tool.geometry, width: tool.width };
     case 'feather':
@@ -437,11 +439,12 @@ export function copyTool(tool: ToolDescriptor): ToolDescriptor {
         width: tool.width,
         color: tool.color,
         fill: tool.fill,
+        ...opacityOf(tool),
       };
     case 'stamp':
-      return { kind: 'stamp', geometry: 'line', width: tool.width, color: tool.color, shape: [...tool.shape] };
+      return { kind: 'stamp', geometry: 'line', width: tool.width, color: tool.color, shape: [...tool.shape], ...opacityOf(tool) };
     case 'contour':
-      return { kind: 'contour', geometry: tool.geometry, color: tool.color };
+      return { kind: 'contour', geometry: tool.geometry, color: tool.color, ...opacityOf(tool) };
     case 'contour-eraser':
       return { kind: 'contour-eraser', geometry: tool.geometry };
   }

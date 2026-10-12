@@ -85,6 +85,7 @@ class PathRecorder {
 class ShapeRecorder extends PathRecorder implements Canvas2DLike {
   canvas = { width: 600, height: 300 };
   globalCompositeOperation: GlobalCompositeOperation = 'source-over';
+  globalAlpha = 1;
   lineWidth = 0;
   strokeStyle = '';
   fillStyle = '';

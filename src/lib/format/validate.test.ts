@@ -225,3 +225,29 @@ it('a document with pressure survives the .toonop and draft round-trip (JSON and
   doc.layers[0].frames[0].strokes[0].pressure = [5, 95];
   expect(loadDocument(JSON.parse(JSON.stringify(doc))).layers[0].frames[0].strokes[0].pressure).toEqual([5, 95]);
 });
+
+describe('tool opacity', () => {
+  function withTool(tool: Record<string, unknown>): unknown {
+    return { ...(validDoc() as object), tools: [tool] };
+  }
+  const pencil = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
+
+  it('accepts a whole percent 1–99 on every tool that paints', () => {
+    expect(validateDocument(withTool({ ...pencil, opacity: 1 })).ok).toBe(true);
+    expect(validateDocument(withTool({ ...pencil, kind: 'feather', fill: '#ff0000', opacity: 50 })).ok).toBe(true);
+    expect(validateDocument(withTool({ kind: 'contour', geometry: 'line', color: '#000000', opacity: 99 })).ok).toBe(true);
+    expect(validateDocument(withTool({
+      kind: 'stamp', geometry: 'line', width: 64, color: '#000000', shape: [0, 0, 1, 0, 1, 1, 0, 1], opacity: 40,
+    })).ok).toBe(true);
+  });
+
+  it('rejects 100 (opaque is the absent field), 0 and a fraction', () => {
+    for (const opacity of [100, 0, 12.5]) {
+      expect(validateDocument(withTool({ ...pencil, opacity })).ok).toBe(false);
+    }
+  });
+
+  it('rejects it on an eraser', () => {
+    expect(validateDocument(withTool({ kind: 'eraser', geometry: 'smooth', width: 32, opacity: 50 })).ok).toBe(false);
+  });
+});

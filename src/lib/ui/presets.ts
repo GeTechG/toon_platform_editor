@@ -122,6 +122,8 @@ export interface BrushRecord {
   width: number;
   smooth: number;
   minDistance: number;
+  /** How strongly the brush paints, percent 1–100. Absent — opaque. */
+  opacity?: number;
 }
 
 export interface DrawingUiConfig {
@@ -577,7 +579,7 @@ function normalizeBrushes(
     const brush = record(stored[tool]);
     const pick = (key: keyof BrushRecord) => brush[key] ?? shared[key];
     result[tool] = brushFromStore(
-      { width: pick('width'), smooth: pick('smooth'), minDistance: pick('minDistance') },
+      { width: pick('width'), smooth: pick('smooth'), minDistance: pick('minDistance'), opacity: brush.opacity },
       fallbacks[tool] ?? fallbacks.pencil,
     );
   }
@@ -590,13 +592,15 @@ function normalizeBrushes(
  * is not a number is what the brush was before.
  */
 export function brushFromStore(
-  stored: { width?: unknown; smooth?: unknown; minDistance?: unknown },
+  stored: { width?: unknown; smooth?: unknown; minDistance?: unknown; opacity?: unknown },
   was: BrushRecord,
 ): BrushRecord {
+  const opacity = clampNumber(stored.opacity, 1, 100, was.opacity ?? 100);
   return {
     width: clampNumber(stored.width, 1, MAX_BRUSH_SIZE_LOGICAL, was.width),
     smooth: clampNumber(stored.smooth, 1, 100, was.smooth),
     minDistance: clampNumber(stored.minDistance, 0, 30, was.minDistance),
+    ...(opacity < 100 ? { opacity } : {}),
   };
 }
 

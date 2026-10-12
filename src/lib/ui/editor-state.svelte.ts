@@ -706,6 +706,24 @@ export class EditorState {
     this.editBrush({ minDistance: Math.min(30, Math.max(0, Math.round(value))) });
   }
 
+  /** How strongly the brush in hand paints, a percent; 100 is opaque. */
+  get brushOpacity(): number {
+    return this.brush.opacity ?? 100;
+  }
+
+  setBrushOpacity(value: number): void {
+    this.editBrush({ opacity: Math.min(100, Math.max(1, Math.round(value))) });
+  }
+
+  /**
+   * Whether the brush lays colour down. An eraser cuts whole, so the opacity
+   * would be a number that changes nothing — and the panel leaves it out.
+   */
+  get brushPaints(): boolean {
+    const stroke = plugins.tool(this.brushTool)?.stroke;
+    return !!stroke && 'color' in stroke.descriptor(this.pluginBrush);
+  }
+
   /**
    * Switch to a preset, resetting toolbar visibility, its drawing profile and
    * UX defaults. An untouched document also takes the preset's frame rate;

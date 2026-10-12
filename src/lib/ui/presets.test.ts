@@ -488,3 +488,12 @@ test('single-letter keys are on by default, as in the reference editors', () => 
 test('pen pressure starts on', () => {
   expect(DEFAULT_SETTINGS.penPressure).toBe(true);
 });
+
+test('a brush comes back from the saved config as faint as it was left', () => {
+  const parsed = parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    drawing: { byTool: { pencil: { width: 20, smooth: 3, minDistance: 3, opacity: 35 } } },
+  }));
+  expect(parsed?.drawing.byTool.pencil).toEqual({ width: 20, smooth: 3, minDistance: 3, opacity: 35 });
+  expect(parsed?.drawing.byTool.feather).toEqual({ width: 4, smooth: 3, minDistance: 3 });
+});
