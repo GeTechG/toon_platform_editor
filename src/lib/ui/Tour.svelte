@@ -13,7 +13,6 @@
   const pages = $derived(tourPages(platform));
   let at = $state(0);
   const page = $derived(pages[at]);
-  const WAVE = [30, 60, 45, 90, 55, 35, 75, 100, 50, 70, 40, 85, 60, 30, 65, 45];
 </script>
 
 <section class="preset-ask" aria-labelledby="preset-ask-title">
@@ -45,13 +44,10 @@
       </div>
     </div>
   {:else if page === 'export'}
-    <!-- Frames over a soundtrack, played through, come out as files. -->
+    <!-- The frames, played through, come out as files. -->
     <div class="art" aria-hidden="true">
       <div class="scene">
         <div class="strip"><i></i><i></i><i></i><i></i></div>
-        <div class="wave">
-          {#each WAVE as h, i (i)}<i style:height="{h}%"></i>{/each}
-        </div>
         <span class="head"></span>
         <div class="out"><b class="o1">GIF</b><b class="o2">MP4</b><b class="o3">PNG</b></div>
       </div>
@@ -418,17 +414,14 @@
     }
   }
 
-  /* frames and sound out to files */
-  .strip,
-  .wave {
+  /* frames out to files */
+  .strip {
     position: absolute;
     left: 1rem;
+    top: 2.9rem;
     width: 9rem;
     display: flex;
     gap: 0.3rem;
-  }
-  .strip {
-    top: 1.2rem;
   }
   .strip i {
     flex: 1;
@@ -438,23 +431,12 @@
     border-radius: 4px;
     background: var(--canvas);
   }
-  .wave {
-    top: 4.4rem;
-    height: 2rem;
-    align-items: center;
-    gap: 3px;
-  }
-  .wave i {
-    flex: 1;
-    border-radius: 2px;
-    background: var(--text-2);
-  }
   .head {
     position: absolute;
     left: 10rem;
-    top: 0.8rem;
+    top: 2.4rem;
     width: 2px;
-    height: 6rem;
+    height: 3.2rem;
     background: var(--accent);
     animation: tour-head 5s linear infinite;
   }
