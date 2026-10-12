@@ -716,20 +716,6 @@ export class EditorState {
   }
 
   /**
-   * The pipette's take: the brush that draws next paints as strongly as the
-   * line the colour came from. Under the pipette that is the tool the hand
-   * goes back to, not the record the pipette borrows for its sliders.
-   */
-  takeBrushOpacity(value: number): void {
-    const tool = brushToolOf(this.tool === 'pipette' ? toolAfterHelp(this.previousDrawingTool) : this.tool);
-    const was = this.byTool[tool] ?? defaultBrushOf(tool);
-    const opacity = Math.min(100, Math.max(1, Math.round(value)));
-    if ((was.opacity ?? 100) === opacity) return;
-    this.byTool = { ...this.byTool, [tool]: { ...was, opacity } };
-    this.persistUiConfig();
-  }
-
-  /**
    * Whether the brush lays colour down. An eraser cuts whole, so the opacity
    * would be a number that changes nothing — and the panel leaves it out.
    */

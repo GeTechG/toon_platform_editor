@@ -4,6 +4,7 @@
  * that stays put this long picks; one that travels draws or pans as ever.
  */
 
+import { BACKGROUND_COLOR } from '../format/constants';
 import { opacityOf, type ToolDescriptor } from '../format/types';
 
 /** The timeline's long press: one hold, one length, across the studio. */
@@ -45,37 +46,18 @@ export function mayHoldPick(p: HoldPress): boolean {
  * back, or null for emptiness. Only an opaque pixel carried a colour while
  * every line was opaque: the soft rim of a stroke reads as emptiness. A
  * translucent line is never opaque, so where the drawing holds such tools a
- * pixel at least as strong as the faintest of them is a colour too — the
- * tool's own when the pixel is its colour within what the rounding of a
- * faint pixel costs, and what is seen there otherwise.
+ * pixel at least as strong as the faintest of them is a colour too — the one
+ * it is seen as on the paper, opaque: the brush that takes it paints what
+ * the eye picked, at whatever opacity the brush is set to.
  */
 export function colourOfPixel(
   [r, g, b, a]: readonly number[],
   tools: readonly ToolDescriptor[],
+  paper = BACKGROUND_COLOR,
 ): string | null {
-  const hex = (): string => '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-  if (a === 255) return hex();
-  const faint = tools.filter((tool) => opacityOf(tool).opacity !== undefined);
-  const floor = Math.min(...faint.map((tool) => opacityOf(tool).opacity!)) * 2.55 - 2;
-  if (faint.length === 0 || a < floor) return null;
-  const slack = Math.ceil(255 / a) + 1;
-  for (const tool of faint) {
-    for (const colour of 'fill' in tool ? [tool.color, tool.fill] : 'color' in tool ? [tool.color] : []) {
-      const near = [1, 3, 5].every((at, i) => Math.abs(parseInt(colour.slice(at, at + 2), 16) - [r, g, b][i]) <= slack);
-      if (near) return colour;
-    }
-  }
-  return hex();
-}
-
-/**
- * How strongly that pixel was painted, a percent for the brush: 100 for an
- * opaque one, a translucent tool's own opacity when the pixel is within a
- * rounding step of it, and what is seen there otherwise.
- */
-export function opacityOfPixel(alpha: number, tools: readonly ToolDescriptor[]): number {
-  if (alpha === 255) return 100;
-  const seen = Math.min(99, Math.max(1, Math.round(alpha / 2.55)));
-  const own = tools.map((tool) => opacityOf(tool).opacity).find((o) => o !== undefined && Math.abs(o - seen) <= 1);
-  return own ?? seen;
+  const hex = (rgb: readonly number[]): string => '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
+  if (a === 255) return hex([r, g, b]);
+  const faint = tools.flatMap((tool) => opacityOf(tool).opacity ?? []);
+  if (faint.length === 0 || a < Math.min(...faint) * 2.55 - 2) return null;
+  return hex([r, g, b].map((v, i) => Math.round((v * a + parseInt(paper.slice(1 + 2 * i, 3 + 2 * i), 16) * (255 - a)) / 255)));
 }
