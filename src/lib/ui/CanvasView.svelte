@@ -177,8 +177,9 @@
   /**
    * The pipette a held finger brought (Procreate Dreams' eyedropper): where
    * the finger is, the colour under it, and whether it is off the sheet.
+   * `tool` — the pipette itself was in hand: the lift takes as the tool does.
    */
-  let dropper = $state<{ pointerId: number; x: number; y: number; color: string | null; off: boolean } | null>(null);
+  let dropper = $state<{ pointerId: number; x: number; y: number; color: string | null; off: boolean; tool?: boolean } | null>(null);
   function cancelHold(): void {
     if (hold) {
       clearTimeout(hold.timer);
@@ -1207,6 +1208,23 @@
     dropper = { ...dropper, x: e.clientX, y: e.clientY, off, color: off ? null : pickColor(e) ?? null };
   }
 
+  /**
+   * The finger lifted with the pipette itself in hand: the take is the
+   * tool's own — the fill when armed, the eraser from emptiness, and back to
+   * the brush.
+   */
+  function liftPipette(e: PointerEvent): void {
+    const at = { clientX: e.clientX, clientY: e.clientY, altKey: false };
+    dropper = null;
+    if (offSheet(at)) {
+      return;
+    }
+    const toFill = editor.pipetteTarget === 'fill';
+    if (takeColour(at, toFill) !== null && !toFill) {
+      editor.resetHelpTool();
+    }
+  }
+
   /** The finger lifted: the colour under it goes to the outline, as the pipette takes it. */
   function finishDropper(e: PointerEvent): void {
     const at = { clientX: e.clientX, clientY: e.clientY, altKey: false };
@@ -1758,6 +1776,20 @@
       return;
     }
     if (editor.tool === 'pipette') {
+      // A finger hides the spot it presses: under it the pipette shows what
+      // it would take in the loupe over the finger, follows it, and takes
+      // when the finger lifts (owner, 2026-10-13).
+      if (e.pointerType === 'touch') {
+        try {
+          canvasEl.setPointerCapture(e.pointerId);
+        } catch {
+          // The finger left in the same tick; its pointerup ends nothing.
+        }
+        dropper = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, color: null, off: false, tool: true };
+        aimDropper(e);
+        scheduleDraw();
+        return;
+      }
       // The table beside the sheet holds no colour and no emptiness to erase:
       // a press that missed the sheet takes nothing, and the tool stays.
       if (offSheet(e)) {
@@ -1995,7 +2027,8 @@
       return;
     }
     if (dropper && e.pointerId === dropper.pointerId) {
-      finishDropper(e);
+      if (dropper.tool) liftPipette(e);
+      else finishDropper(e);
       return;
     }
     if (sizing && e.pointerId === sizing.pointerId) {
