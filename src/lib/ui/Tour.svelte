@@ -87,7 +87,7 @@
     </div>
     <p class="preset-ask-picked">{presetAbout(editor.preset)}</p>
   {/if}
-  <p aria-live="polite">{page === 'layout' ? t('intro.later') : t(`tour.${page}.text`)}{#if page === 'open'}{' '}<a href="https://github.com/GeTechG/toon_platform_editor" target="_blank" rel="noopener">{t('tour.open.link')}</a>{/if}</p>
+  <p aria-live="polite">{page === 'layout' ? t('intro.later') : t(`tour.${page}.text`)}{#if page === 'open'}{' '}<a href="https://github.com/GeTechG/toon_platform_editor" target="_blank" rel="noopener">GeTechG/toon_platform_editor</a>{/if}</p>
   <div class="tour-foot">
     {#if at === 0}
       <button class="key" onclick={() => editor.closePresetAsk()}>{t('tour.skip')}</button>

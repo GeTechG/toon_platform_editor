@@ -45,8 +45,7 @@ describe('тур первого входа', () => {
   });
 
   it('страница об открытом коде ведёт к исходникам редактора', () => {
-    expect(tour).toContain("{#if page === 'open'}{' '}<a href=\"https://github.com/GeTechG/toon_platform_editor\" target=\"_blank\" rel=\"noopener\">{t('tour.open.link')}</a>{/if}");
-    expect(ru.tour.open.link).toBe('Исходники на GitHub');
+    expect(tour).toContain("{#if page === 'open'}{' '}<a href=\"https://github.com/GeTechG/toon_platform_editor\" target=\"_blank\" rel=\"noopener\">GeTechG/toon_platform_editor</a>{/if}");
   });
 
   it('маскота даёт площадка, студия рисует тур на месте плашки', () => {
