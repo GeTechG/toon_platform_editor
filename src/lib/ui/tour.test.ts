@@ -53,3 +53,29 @@ describe('тур первого входа', () => {
     expect(editor).toContain('{#if editor.presetAsk && plateDue && !editor.arranging}');
   });
 });
+
+// Пройден ли тур — отдельный флаг в настройках (владелец, 2026-10-12): кто был
+// здесь до тура, тому он засчитан сам, а записанное посреди тура его не кончает.
+describe('флаг «тур пройден»', () => {
+  const { parseUiConfig } = require('./presets') as typeof import('./presets');
+  const state = require('fs').readFileSync(UI + 'editor-state.svelte.ts', 'utf8') as string;
+
+  it('настройки, записанные до тура, считают его пройденным', () => {
+    expect(parseUiConfig(JSON.stringify({ preset: 'toonop' }))?.tourDone).toBe(true);
+  });
+
+  it('набор, выбранный посреди тура, его не кончает', () => {
+    expect(parseUiConfig(JSON.stringify({ preset: 'toonop', tourDone: false }))?.tourDone).toBe(false);
+    expect(parseUiConfig(JSON.stringify({ preset: 'toonop', tourDone: true }))?.tourDone).toBe(true);
+  });
+
+  it('студия спрашивает флаг и пишет его', () => {
+    expect(state).toContain('this.presetAsk = saved === null || !saved.tourDone;');
+    expect(state).toContain('tourDone: !this.presetAsk,');
+  });
+
+  it('слово площадки и подписи клавиш ждут конца тура', () => {
+    expect(editor).toContain('const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall));');
+    expect(editor).toContain('class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
+  });
+});

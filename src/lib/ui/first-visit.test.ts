@@ -15,7 +15,7 @@ const tour = await Bun.file(UI + 'Tour.svelte').text();
 
 describe('первый вход: набор выбирают над холстом', () => {
   it('спрашивают того, у кого настроек ещё нет', () => {
-    expect(state).toMatch(/this\.presetAsk = saved === null;/);
+    expect(state).toContain('this.presetAsk = saved === null || !saved.tourDone;');
   });
 
   it('закрытая плашка записывает настройки — в следующий раз её нет', () => {

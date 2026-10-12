@@ -12,7 +12,7 @@ const source = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathna
 it('the stage note is drawn until the toon has a line and a second frame, with the hub and the «⋯» window down', () => {
   // The walk now ends at play (owner, 2026-10-08), so the host is told the
   // count of frames and whether the toon is playing, and ends the note itself.
-  expect(source).toContain('const noteDue = $derived(plateDue && !(deskPhone && !tall));');
+  expect(source).toContain('const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall));');
   expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}');
   expect(source).toContain('stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean]>;');
 });
@@ -29,7 +29,7 @@ it('a phone stands the note in its bottom bar, off the sheet', () => {
 // the walk has no room to go on — a phone lying down, the bar bare — nothing
 // would ever take them back, so there they go with the first line, as before.
 it('the row wears its names past the first line only where the walk goes on', () => {
-  expect(source).toContain('class:named={named && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
+  expect(source).toContain('class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
 });
 
 // Lying down and on a wide screen the note still lay on the sheet (owner,

@@ -340,6 +340,12 @@ export interface UiConfig {
   floatPos: Record<string, { x: number; y: number }>;
   drawing: DrawingUiConfig;
   settings: EditorSettings;
+  /**
+   * The first visit's tour is over (owner, 2026-10-12). A config written
+   * before there was a tour says nothing: whoever wrote it has been here, and
+   * it counts as taken. Only `false` — written mid-tour — brings it back.
+   */
+  tourDone?: boolean;
 }
 
 
@@ -500,6 +506,7 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
     floatPos: normalizeFloatPos((data as Record<string, unknown>).floatPos),
     drawing: normalizeDrawingConfig(drawing, presetDefaultBrush(preset), presetBrushType(preset)),
     settings: normalizeSettings((data as Record<string, unknown>).settings),
+    tourDone: (data as Record<string, unknown>).tourDone !== false,
   };
 }
 

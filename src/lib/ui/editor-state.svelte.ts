@@ -482,8 +482,9 @@ export class EditorState {
   /** Set once the user changes the document — gates autosave and draft restore. */
   touched = $state(false);
   /**
-   * A first visit: the stage offers the presets over the empty sheet (owner,
-   * 2026-10-10). Whoever has a config stored has been here and is not asked.
+   * A first visit: the tour stands over the empty sheet, the presets on its
+   * last page (owner, 2026-10-10, 2026-10-12). Whoever has a config stored
+   * with the tour not left open has been here and is not asked.
    */
   presetAsk = $state(false);
   /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
@@ -545,7 +546,7 @@ export class EditorState {
       this.panelCollapsed = saved.drawing.panelCollapsed;
       this.settings = saved.settings;
     }
-    this.presetAsk = saved === null;
+    this.presetAsk = saved === null || !saved.tourDone;
     this.layoutSeen = this.layoutKey();
     this.workspaces = loadWorkspaces();
     // A plugin that threw is off already; what is left is to drop it from the
@@ -2779,6 +2780,7 @@ export class EditorState {
         panelCollapsed: this.panelCollapsed,
       },
       settings: this.settings,
+      tourDone: !this.presetAsk,
     }, own);
   }
 }

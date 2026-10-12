@@ -1606,9 +1606,11 @@
   // count of frames, playing) and says when it has nothing left to say. The
   // studio only keeps the note from under the hub and a phone's «⋯» window.
   // …and not on a preset's desk lying down: the bar has no height for a line of words.
+  // The host's walk waits for the tour to end (owner, 2026-10-12): two voices
+  // at once, and the keys' names hung under the tour's card.
   /** The first visit's question stands whichever way the phone is held: gone with the line of words, a press on a preset took the plate away with nothing more to pick (owner, 2026-10-10). */
   const plateDue = $derived(!draftsOpen && !moreOpen);
-  const noteDue = $derived(plateDue && !(deskPhone && !tall));
+  const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall));
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {
@@ -2927,7 +2929,7 @@
   class:tall
   class:fingers={noHover}
   class:low={sheetScrollsWhole(viewportHeight, rootFont)}
-  class:named={named && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}
+  class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}
   data-float-root
   onpointerover={nameKey}
   onpointerout={unnameKey}

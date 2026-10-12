@@ -107,6 +107,7 @@ test('parseUiConfig round-trips a valid stored config', () => {
       panelCollapsed: false,
     },
     settings: { ...DEFAULT_SETTINGS },
+    tourDone: true,
   };
   expect(parseUiConfig(JSON.stringify(config))).toEqual(config);
 });

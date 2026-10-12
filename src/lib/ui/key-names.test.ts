@@ -29,7 +29,7 @@ describe('a key says its name', () => {
   it('on a phone the first visit names the row of keys, until the first stroke', () => {
     // …or until a key of the row is pressed: «⋯» and the colours open where
     // the names hang, and lay half over them.
-    expect(shell).toContain('class:named={named && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
+    expect(shell).toContain('class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
     expect(shell).toContain('onpointerdowncapture={() => (rowPressed = true)}');
     const rule = shell.slice(shell.indexOf('.studio.compact.named .top :global(.key)::after,'));
     expect(rule.slice(0, rule.indexOf('}'))).toContain('content: attr(aria-label);');
