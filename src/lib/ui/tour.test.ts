@@ -44,6 +44,11 @@ describe('тур первого входа', () => {
     expect(tour).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.art \* \{\s*animation: none;/);
   });
 
+  it('страница об открытом коде ведёт к исходникам редактора', () => {
+    expect(tour).toContain("{#if page === 'open'}{' '}<a href=\"https://github.com/GeTechG/toon_platform_editor\" target=\"_blank\" rel=\"noopener\">{t('tour.open.link')}</a>{/if}");
+    expect(ru.tour.open.link).toBe('Исходники на GitHub');
+  });
+
   it('маскота даёт площадка, студия рисует тур на месте плашки', () => {
     expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} />');
     expect(editor).toContain('{#if editor.presetAsk && plateDue && !editor.arranging}');
