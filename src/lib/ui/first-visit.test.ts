@@ -11,6 +11,7 @@ import { createDocument } from '../model/operations';
 const UI = new URL('./', import.meta.url).pathname;
 const state = await Bun.file(UI + 'editor-state.svelte.ts').text();
 const editor = await Bun.file(UI + 'Editor.svelte').text();
+const tour = await Bun.file(UI + 'Tour.svelte').text();
 
 describe('первый вход: набор выбирают над холстом', () => {
   it('спрашивают того, у кого настроек ещё нет', () => {
@@ -39,12 +40,12 @@ describe('первый вход: набор выбирают над холсто
     // В Multator и Toonio панели над холстом нет: подсказка «Кадр пустой?»
     // лежала на сцене, там же, где плашка (владелец, 2026-10-10).
     expect(editor).toContain('const noteInPanel = $derived(!panelFolded && panels.rows.length > 0 && ((compact && !barBare) || !draws(panels.top)));');
-    const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const ask = tour.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(ask).not.toContain('stageNote');
   });
 
   it('выбор — тот же, что в «Настройках»', () => {
-    const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const ask = tour.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(ask).toContain('{#each presets() as p (p.id)}');
     expect(ask).toContain('onclick={() => editor.applyPreset(p.id)}');
     expect(ask).toContain('aria-pressed={editor.preset === p.id}');
@@ -57,7 +58,7 @@ describe('первый вход: набор выбирают над холсто
     expect(presetAbout('toonio')).toBe('Гибкий и понятный');
     plugins.register({ id: 'first-visit.test', api: PLUGIN_API, presets: { own: { label: 'Свой', brush: 'toonop-brush', ux: { ...presetUx('multator') } } } });
     expect(presetAbout('own')).toBe('3 инструмента');
-    const ask = editor.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
+    const ask = tour.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(ask).toContain('<span>{presetAbout(p.id)}</span>');
   });
 });
