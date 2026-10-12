@@ -299,7 +299,9 @@
     stroke: var(--ink);
     stroke-width: 3;
     stroke-linecap: round;
-    stroke-dasharray: 1;
+    /* The gap is longer than the line and the start is past its end: at
+       exactly 1 the round cap of an empty dash stood as a dot. */
+    stroke-dasharray: 1 2;
     animation: tour-draw 5s infinite;
   }
   .file {
@@ -361,7 +363,7 @@
   @keyframes tour-draw {
     0%,
     55% {
-      stroke-dashoffset: 1;
+      stroke-dashoffset: 1.1;
     }
     80%,
     100% {
@@ -509,7 +511,7 @@
     stroke: var(--ink);
     stroke-width: 2;
     stroke-linecap: round;
-    stroke-dasharray: 1;
+    stroke-dasharray: 1 2;
   }
   .l1 {
     animation: tour-l1 5s infinite;
@@ -550,7 +552,7 @@
   @keyframes tour-l1 {
     0%,
     10% {
-      stroke-dashoffset: 1;
+      stroke-dashoffset: 1.1;
     }
     30%,
     100% {
@@ -572,7 +574,7 @@
   @keyframes tour-l2 {
     0%,
     42% {
-      stroke-dashoffset: 1;
+      stroke-dashoffset: 1.1;
     }
     62%,
     100% {
