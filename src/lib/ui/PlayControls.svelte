@@ -90,6 +90,7 @@
     lapped = false;
     editor.audio.playFrom(startFrame, editor.doc.frame_rate);
     editor.playing = true;
+    editor.stopPreview = stop;
     rafId = requestAnimationFrame(tick);
   }
 

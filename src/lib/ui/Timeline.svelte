@@ -740,7 +740,7 @@
       <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canAddFrame} onclick={() => run(() => editor.duplicateActiveFrame())}>
-      <Icon name="copy" size={16} /><span>{t('panel.item.duplicate_frame')}</span>{@render key('duplicate')}
+      <Icon name="duplicate" size={16} /><span>{t('panel.item.duplicate_frame')}</span>{@render key('duplicate')}
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
       <Icon name="trash" size={16} /><span>{span.from === span.to ? t('panel.item.delete_frame') : t('panel.item.delete_frames', span)}</span>{@render key('delete')}

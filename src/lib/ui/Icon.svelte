@@ -43,6 +43,7 @@
     | 'palette'
     | 'edit'
     | 'copy'
+    | 'duplicate'
     | 'paste'
     | 'merge'
     | 'expand'
@@ -165,6 +166,8 @@
     // Pencil crossed with a ruler: edit the palette itself.
     edit: 'M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13M8 6l2-2M18 16l2-2M17 11l4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17M15 5l4 4M3 21l1-4 11-11 3 3-11 11z',
     copy: 'M9 9h11v11H9zM5 15V4h11',
+    // The copy with a plus in it: one more of the same, right here.
+    duplicate: 'M9 9h11v11H9zM5 15V4h11M14.5 12v5M12 14.5h5',
     paste: 'M8 4h8v3H8zM6 6H5a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1',
     // Two stacked sheets folding into one — the merge of buffer over cell.
     merge: 'M4 5h9v9H4zM11 10h9v9h-9zM13 5v5h-2v4h4v-4',

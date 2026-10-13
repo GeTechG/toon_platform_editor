@@ -487,10 +487,14 @@ export class EditorState {
    * with the tour not left open has been here and is not asked.
    */
   presetAsk = $state(false);
+  /** The tour asked for again from help: shown over whatever is drawn, and written nowhere. */
+  tourReplay = $state(false);
   /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
   original = $state('');
   /** Set by the transport so a write deferred by playback lands on stop. */
   onStop: (() => void) | null = null;
+  /** Stops the running preview: set by the transport that started it, for the sheet to call. */
+  stopPreview: (() => void) | null = null;
 
   /** Active UI preset id (persisted). */
   preset = $state(DEFAULT_PRESET);
@@ -759,6 +763,7 @@ export class EditorState {
 
   /** The first visit's question is over: the config is written, so it is not asked again. */
   closePresetAsk(): void {
+    this.tourReplay = false;
     if (!this.presetAsk) return;
     this.presetAsk = false;
     this.persistUiConfig();
@@ -1668,12 +1673,15 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
+    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
+    const before = this.takeStructure();
     this.activeFrame = this.#write((doc) => addFrame(doc, this.activeFrame));
     // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
     // the frame it came from goes into the onion history like any other move.
     // Without this the fresh cell showed no ghost of the drawing it follows.
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
+    this.pushStructure(before);
     this.touched = true;
   }
 
@@ -1683,9 +1691,12 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
+    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
+    const before = this.takeStructure();
     this.activeFrame = this.#write((doc) => duplicateFrame(doc, this.activeFrame));
     this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
     this.collapseSelection();
+    this.pushStructure(before);
     this.touched = true;
   }
 
@@ -1695,6 +1706,8 @@ export class EditorState {
       return;
     }
     const left = this.activeFrame;
+    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
+    const before = this.takeStructure();
     this.activeFrame = this.#write((doc) => insertFrameBefore(doc, this.activeFrame));
     // `AddHistory(prev, ctrl)`: the frame left goes in first, then every entry
     // shifts, because the insert pushed those cells one to the right. The cell
@@ -1702,6 +1715,7 @@ export class EditorState {
     const recorded = pushVisited(this.visitedFrames, left);
     this.visitedFrames = shiftVisited(recorded, this.activeFrame);
     this.collapseSelection();
+    this.pushStructure(before);
     this.touched = true;
   }
 

@@ -559,6 +559,15 @@
   .colours.docked .surface:not(.square) {
     max-width: 10.5rem;
   }
+  /* In a low column the square is what gives way, before the palette scrolls
+     (owner, 2026-10-13): with a second layer in the strip, 1280×800 showed 27
+     swatches of 30. It keeps 6rem of height; past that the palette scrolls. */
+  .colours.docked .surface.square {
+    flex: 0 1000 auto;
+    aspect-ratio: auto;
+    height: 10.5rem;
+    min-height: 6rem;
+  }
   /* A laptop's column has no room for the history: the palette is what
      stays (a colour drawn with joins it by itself), whole and unscrolled on
      1366×768 and 1280×720. From 832 px of height up both stand. */

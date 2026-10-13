@@ -13,12 +13,14 @@ const read = (name: string) => Bun.file(UI + name).text();
 describe('a phone that keeps a desk without undo', () => {
   it('Multator: the step back joins the drawing row — a finger has no Z and no shelf to fetch the key from', () => {
     const rows = deskOnPhone(presetPanels('multator')).panels.rows;
-    expect(rows.at(-1)).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history']);
+    expect(rows.at(-1)).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history', 'add-frame', 'delete-frame']);
   });
 
   it('Toonio, which places it, gets no second one', () => {
     const cut = deskOnPhone(presetPanels('toonio')).panels;
     expect([...cut.left, ...cut.rows.flat()].filter((id) => id === 'history')).toEqual(['history']);
+    // …and it stands with the keys, not in the rail (owner, 2026-10-13).
+    expect(cut.left).not.toContain('history');
   });
 });
 
@@ -79,5 +81,85 @@ describe('the windows of the desk', () => {
   it('the transform’s thickness switch folds with the numbers, clear of the keys that end the mode', async () => {
     const menu = await read('TransformMenu.svelte');
     expect(menu.indexOf('transform.width_with_scale')).toBeLessThan(menu.indexOf('</details>'));
+  });
+});
+
+// The owner's answers the same day.
+describe('a frame added is taken back by Z (owner, 2026-10-13)', () => {
+  it('an added, a duplicated and an inserted frame are each filed as one undo step, like a delete', async () => {
+    // The state is runes and does not stand up under bun: held to the source,
+    // as the audits hold it; the live run presses «+» and Z.
+    const state = await read('editor-state.svelte.ts');
+    for (const add of ['addFrameAfterActive', 'duplicateActiveFrame', 'addFrameBeforeActive']) {
+      const body = state.slice(state.indexOf(`  ${add}(): void {`), state.indexOf('\n  }\n', state.indexOf(`  ${add}(): void {`)));
+      expect(body.indexOf('const before = this.takeStructure();')).toBeGreaterThan(-1);
+      expect(body.indexOf('this.pushStructure(before);')).toBeGreaterThan(body.indexOf('this.#write('));
+    }
+  });
+});
+
+describe('a press on the sheet while the preview runs (owner, 2026-10-13)', () => {
+  it('stops the preview and draws nothing — a finger on its lift, so two fingers still move the sheet under a running film', async () => {
+    const canvas = await read('CanvasView.svelte');
+    expect(canvas).toMatch(/if \(editor\.playing && e\.isPrimary\) \{[^}]*if \(e\.pointerType === 'touch'\) stopOnLift = e\.pointerId;\s*else editor\.stopPreview\?\.\(\);\s*return;/);
+    expect(canvas).toMatch(/if \(!e\.isPrimary\) stopOnLift = null;/);
+    expect(canvas).toMatch(/if \(stopOnLift === e\.pointerId\) \{\s*stopOnLift = null;\s*editor\.stopPreview\?\.\(\);/);
+    expect(await read('PlayControls.svelte')).toContain('editor.stopPreview = stop;');
+  });
+});
+
+describe('the tour once more (owner, 2026-10-13)', () => {
+  it('help brings it back over whatever is drawn, and the first-visit flag is not touched', async () => {
+    const editor = await read('Editor.svelte');
+    expect(editor).toContain("editor.tourReplay = true; }}>{t('editor.tour_again')}</button>");
+    expect(editor).toContain('{#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}');
+    expect(await read('editor-state.svelte.ts')).toMatch(/closePresetAsk\(\): void \{\s*this\.tourReplay = false;/);
+    expect(ru.tour.export.text).toBe('Экспортируй мульт в GIF или видео, а один кадр — в PNG.');
+  });
+});
+
+describe('a tool that arrives stands with the tools (owner, 2026-10-13)', () => {
+  it('comes into the column after the last tool, not after undo and what follows it', async () => {
+    const { normalizePanels } = await import('./panels');
+    const left = normalizePanels({ left: ['tool:pencil', 'history', 'manual'], right: [], top: [], rows: [['timeline']], float: [], hidden: [] }).left;
+    expect(left.slice(0, 2)).toEqual(['tool:pencil', 'tool:eraser']);
+    expect(left.indexOf('history')).toBeGreaterThan(left.findIndex((id) => !id.startsWith('tool:')) - 1);
+    expect(left.slice(left.indexOf('history')).filter((id) => id.startsWith('tool:'))).toEqual([]);
+  });
+});
+
+describe('a column of tools taller than the screen (owner, 2026-10-13)', () => {
+  const layout = { left: ['tool:pencil', 'tool:eraser', 'tool:pipette', 'tool:drag', 'brush-rail', 'history'], right: [], top: [], rows: [['timeline']], float: [], hidden: [] };
+
+  it('keeps its first tools and puts the last behind «Другие инструменты», where the first of them stood', async () => {
+    const { foldColumn } = await import('./small-screen');
+    const cut = foldColumn(null, layout, 1)!;
+    // One key too many: two tools go, their one key comes.
+    expect(cut.panels.left).toEqual(['tool:pencil', 'tool:eraser', 'tools', 'brush-rail', 'history']);
+    expect(cut.tools).toEqual(['tool:pipette', 'tool:drag']);
+  });
+
+  it('with room for all it is the layout as it stood', async () => {
+    const { foldColumn } = await import('./small-screen');
+    expect(foldColumn(null, layout, 0)).toBeNull();
+  });
+
+  it('joins the key the bar over the canvas already has, without a second one', async () => {
+    const { foldColumn } = await import('./small-screen');
+    const base = { panels: { ...layout, top: ['tools'] }, more: [], tools: ['tool:lasso'] };
+    const cut = foldColumn(base, base.panels, 1)!;
+    expect(cut.panels.left).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-rail', 'history']);
+    expect(cut.tools).toEqual(['tool:lasso', 'tool:drag']);
+  });
+});
+
+describe('small things of the same run', () => {
+  it('«Дублировать кадр» has a sign of its own, not «Копировать»’s', async () => {
+    expect(await read('Timeline.svelte')).toContain(`<Icon name="duplicate" size={16} /><span>{t('panel.item.duplicate_frame')}</span>`);
+    expect(await read('Icon.svelte')).toContain("duplicate: 'M9 9h11v11H9zM5 15V4h11M14.5 12v5M12 14.5h5',");
+  });
+
+  it('an answered question does not leave the keyboard on <body>', async () => {
+    expect(await read('Editor.svelte')).toMatch(/asked\?\.done\(yes\);[\s\S]{0,260}document\.activeElement === document\.body[\s\S]{0,120}\.cell\[tabindex="0"\]/);
   });
 });

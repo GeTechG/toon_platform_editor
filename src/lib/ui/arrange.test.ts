@@ -254,7 +254,7 @@ describe('a host can put a note on the stage', () => {
     const stage = editorUi.slice(editorUi.indexOf('<div class="stage" data-slot="float"'));
     // The tag itself grew: what the canvas runs on under (`--stage-left` and its two kin).
     // …and is told whether a line is drawn (stage-note.test.ts).
-    expect(stage.slice(0, 1200)).toContain('{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}');
+    expect(stage.slice(0, 1200)).toContain('{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}');
   });
 });
 

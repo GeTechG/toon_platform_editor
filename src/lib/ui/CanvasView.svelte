@@ -1651,7 +1651,11 @@
     };
   });
 
+  /** The finger that touched a running preview: lifted alone, it stops it. */
+  let stopOnLift: number | null = null;
   function onPointerDown(e: PointerEvent): void {
+    // A second finger makes it a gesture: the film runs on under a moved sheet.
+    if (!e.isPrimary) stopOnLift = null;
     sideButtons.press(e.button);
     if (e.isPrimary) {
       press = { event: e, far: false };
@@ -1708,6 +1712,14 @@
     // A press right after a trackpad pinch draws on the picture as it is now,
     // not on the moved shot of it.
     endWheelZoom();
+    // A press on a running preview stops it and draws nothing (owner,
+    // 2026-10-13: the stroke was dropped without a word) — as a tap that
+    // closes a window only closes it.
+    if (editor.playing && e.isPrimary) {
+      if (e.pointerType === 'touch') stopOnLift = e.pointerId;
+      else editor.stopPreview?.();
+      return;
+    }
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
@@ -2018,6 +2030,10 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (stopOnLift === e.pointerId) {
+      stopOnLift = null;
+      editor.stopPreview?.();
+    }
     // Once whatever this ends has let go of the sheet.
     queueMicrotask(settleCovers);
     if (hold?.pointerId === e.pointerId) {
@@ -2138,6 +2154,7 @@
   }
 
   function onPointerCancel(e: PointerEvent): void {
+    stopOnLift = null;
     queueMicrotask(settleCovers);
     // Also the lost capture every gesture ends with: the keys come back once
     // no other pointer still holds one.

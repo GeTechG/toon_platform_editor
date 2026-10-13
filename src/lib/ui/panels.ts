@@ -403,7 +403,17 @@ export function normalizePanels(value: unknown, waiting = false): PanelLayout {
       into.push(id);
     }
   };
-  for (const id of fallback.left) restore(id, next.left);
+  // A tool that was not there (a plugin's, just installed) stands with the
+  // tools: pushed to the column's end it came after undo and the file keys.
+  for (const id of fallback.left) {
+    const lastTool = next.left.map((placed) => toolOfItem(placed) !== null).lastIndexOf(true);
+    if (!seen.has(id) && toolOfItem(id) !== null && lastTool >= 0) {
+      seen.add(id);
+      next.left.splice(lastTool + 1, 0, id);
+    } else {
+      restore(id, next.left);
+    }
+  }
   for (const id of fallback.right) restore(id, next.right);
   fallback.rows.forEach((row, i) => {
     for (const id of row) {

@@ -64,7 +64,7 @@
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
-  import { boxRow, canvasFloor, deskOnPhone, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
+  import { boxRow, canvasFloor, deskOnPhone, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -99,7 +99,7 @@
     open,
   }: {
     onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null, sent?: () => Promise<void>) => void;
-    stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean]>;
+    stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;
     /** The host's mascot, a picture's address: it greets a first visit on the tour's first page. */
     mascot?: string;
     /** A first visit: a phone's row of keys wears its names until the host takes this back. */
@@ -162,6 +162,13 @@
     typed = asked?.value ?? '';
     question = null;
     asked?.done(yes);
+    // What had the focus may be what the yes took (a frame deleted): the
+    // keyboard is not left on <body> — the frame in hand takes it.
+    void tick().then(() => {
+      if (!document.activeElement || document.activeElement === document.body) {
+        document.querySelector<HTMLElement>('.studio .cell[tabindex="0"]')?.focus();
+      }
+    });
   }
   // `final`: the yes cannot be taken back (drafts, palettes, the track, a
   // plugin) — the sheet then opens on «Отмена», as the plugin warning does: a
@@ -308,7 +315,11 @@
     if (e.key === 'Enter' || e.key === 'Escape') (e.currentTarget as HTMLElement).blur();
   }
   /** What is cut out of the arrangement: a phone's, or the desktop's one row. */
-  const over = $derived(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }));
+  // The desk's column of tools, where the screen is too low for it: how many
+  // keys too many it is (measured below), folded behind «Другие инструменты».
+  let leftSpill = $state(0);
+  let leftEl = $state<HTMLElement>();
+  const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, compact || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
   // Another arrangement, another text size: both rows are measured anew.
   const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
@@ -507,6 +518,25 @@
   const sideFixed = (id: SideId): boolean => id === 'left' && (compact || !!editor.ux.leftFixed);
   /** How tall each column's card is: its seam is no taller. */
   const sideH = $state({ left: 0, right: 0 });
+  // A key is `--key-h` and the column's gap: 2.75rem + 0.4rem.
+  const COLUMN_PITCH = 3.15;
+  /** The stage height at which the column last had to fold: no taller, it is not unfolded again — the two would take turns. */
+  let foldedAt = 0;
+  $effect(() => {
+    void sideH.left;
+    void editor.pluginsVersion;
+    const [el, height] = [leftEl, stageHeight];
+    if (!el || compact || editor.arranging) return;
+    const spare = el.scrollHeight - el.clientHeight;
+    untrack(() => {
+      if (spare > 1) {
+        leftSpill += Math.ceil(spare / (COLUMN_PITCH * rem));
+        foldedAt = height;
+      } else if (leftSpill > 0 && height > foldedAt && height - el.offsetHeight >= 1.5 * COLUMN_PITCH * rem) {
+        leftSpill -= 1;
+      }
+    });
+  });
   /** Keyboard step for a column divider, in px (WCAG 2.2 AA 2.5.7). */
   const SIDE_STEP = 16;
   /** Whether the column is the one on the screen's left, after the alt swap. */
@@ -2782,6 +2812,9 @@
         aria-disabled={editor.playing || undefined}
         aria-label={t('editor.fps')}
       />
+      <!-- The slider wore no word (owner, 2026-10-13): a bare «12» beside it
+           read as a thickness. -->
+      <span class="unit" aria-hidden="true">{t('editor.fps_unit')}</span>
     </label>
   {:else if id === 'audio'}
     <!-- The soundtrack lives behind its own key, beside layers and export:
@@ -2982,7 +3015,7 @@
            desk has no «⋯»: the way back heads the row. -->
       {#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
       {@render slot(panels.top)}
-      {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
+      {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}
     </div>
   {/if}
   {#if sideDraws('left') || editor.arranging}
@@ -3000,6 +3033,7 @@
       style:--stage-h={compact ? `${stageHeight}px` : undefined}
       bind:clientWidth={sidePx.left}
       bind:clientHeight={sideH.left}
+      bind:this={leftEl}
     >
       {#if !folded('left')}
         {@render slot(panels.left)}
@@ -3018,7 +3052,7 @@
     <!-- The host's note speaks of an empty sheet: not over a drawing, not
          under the hub — and not under a phone's «⋯» window either. Nor under
          the first visit's presets, which stand in the same place. -->
-    {#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}
+    {#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}{/if}
     <!-- The reference's two floating tool windows: the transform fields while
          a selection is live, the zoom window while the hand is up. They sit
          over the canvas, not in the tool rail, which is only 8.4rem wide. -->
@@ -3083,7 +3117,7 @@
     <!-- A first visit: the tour, the choice of a preset on its last page.
          Nothing waits on it: the sheet under it draws, and the first line
          takes it away. -->
-    {#if editor.presetAsk && plateDue && !editor.arranging}
+    {#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}
       <!-- A phone's boxes, open, lie where the card stands: it steps out till
            they shut — hidden, not unmounted, so its page is kept. -->
       <div hidden={sideOver && !folded('right')}>
@@ -3197,7 +3231,7 @@
         title={t('editor.bottom_height_title')}
       ></div>
     {/if}
-    {#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}
+    {#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}
     {#if !panelFolded}
       <!-- However many rows the arrangement has, top to bottom. A row that
            empties is gone (panels.ts), so no unreachable strip is left; a new
@@ -3372,6 +3406,8 @@
       </div>
 
       <footer class="sheet-foot">
+        <!-- The tour once more (owner, 2026-10-13): skipped on the first visit, it was gone for good. -->
+        <button class="key" onclick={() => { manualDialog?.close(); editor.tourReplay = true; }}>{t('editor.tour_again')}</button>
         <button class="key primary" onclick={() => manualDialog?.close()}>{t('editor.done')}</button>
       </footer>
     </dialog>
@@ -4538,6 +4574,22 @@
     opacity: 0.45;
     cursor: default;
   }
+  /* On a phone's desk the slider takes what its row has left, so the rate
+     stands beside the last keys instead of on a row of its own. */
+  .studio.desk .fps-inline {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+  .studio.desk .fps-inline input[type='range'] {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 3rem;
+  }
+  .fps-inline .unit {
+    color: var(--ink-2);
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
   .fps-inline input[type='number'] {
     width: 3.2rem;
     height: var(--key-h);
@@ -5220,6 +5272,19 @@
     translate: -50% 0;
     pointer-events: none;
   }
+  /* A phone's desk says it the same way, over its bottom panel (owner,
+     2026-10-13): as a line of the keys' row it took a row of a small screen. */
+  .studio.desk .toolbar .row > :global(.saved) {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    left: 50%;
+    z-index: var(--z-float);
+    padding: 0;
+    translate: -50% 0;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .studio.desk .toolbar .row > :global(.saved > .saved-note),
   .studio .top > :global(.saved > .saved-note) {
     display: flex;
     align-items: center;
@@ -5230,6 +5295,7 @@
     color: var(--ink);
     font-weight: 500;
   }
+  .studio.desk .toolbar .row > :global(.saved[role='status'] > .saved-note),
   .studio .top > :global(.saved[role='status'] > .saved-note) {
     animation: saved-note 4s ease forwards;
   }

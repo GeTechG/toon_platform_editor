@@ -23,9 +23,9 @@ describe('a phone keeps the preset’s desk', () => {
     expect(cut.panels.right).toEqual([]);
     expect(cut.panels.top).toEqual([]);
     expect(cut.panels.rows).toEqual([
-      ['add-frame', 'delete-frame', 'timeline'],
+      ['timeline'],
       ['transport', 'fullscreen', 'settings', 'export', 'manual', 'publish', 'saved'],
-      ['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history'],
+      ['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history', 'add-frame', 'delete-frame'],
     ]);
     expect(cut.panels.hidden).not.toContain('export');
     expect(cut.more).toEqual([]);
@@ -35,11 +35,11 @@ describe('a phone keeps the preset’s desk', () => {
   it('Toonio: the rail is the tools and undo — the sheet has the room; the toon’s own keys join the transport’s row', () => {
     const cut = deskOnPhone(toonio);
     expect(cut.panels.left).toEqual([
-      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso', 'tool:distort', 'history',
+      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso', 'tool:distort',
     ]);
     expect(cut.panels.right).toEqual(['palette', 'brush']);
     expect(cut.panels.rows).toEqual([
-      ['fps', 'transport', 'add-frame', 'onion', 'audio', 'settings', 'drafts', 'saved', 'save', 'export', 'publish', 'fullscreen', 'manual'],
+      ['transport', 'add-frame', 'onion', 'audio', 'settings', 'drafts', 'saved', 'save', 'export', 'publish', 'history', 'fullscreen', 'manual', 'fps'],
       ['timeline'],
     ]);
   });

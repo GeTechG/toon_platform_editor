@@ -252,8 +252,13 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
  * A phone that keeps the preset's own desk (owner, 2026-10-10: Multator and
  * Toonio on a phone «более похожими на пк версии, но с адаптивом»): the
  * user's arrangement as it stands — the studio draws its left column as a
- * rail and its right one behind a tab. The rail is the tools and undo alone:
- * whole, it was two keys wide standing up and five lying down. A desk under
+ * rail and its right one behind a tab. The rail is the tools alone (owner,
+ * 2026-10-13: with undo in it «Вернуть» stood in a second column and the
+ * sheet was 171 px wide); the steps join the keys' row. The strip's row is the
+ * strip alone — the keys beside it («+» and the bin under Multator) end the
+ * last row of keys, and the strip has the phone's width (at the head of the
+ * transport's row they pushed «Отправить» onto a row of its own). The frame rate, a slider and
+ * a box, ends its row, where it fits beside the last keys. A desk under
  * the sheet (Multator) stays under it whichever way the phone is held (owner,
  * 2026-10-10: beside the sheet was «странно»). Export is always there, by the gear: a desk
  * reaches it by Alt+S, and a phone has no keyboard and no shelf.
@@ -262,13 +267,19 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
 export function deskOnPhone(layout: PanelLayout): PhoneLayout {
   const lacks = !allPlaced({ ...layout, hidden: [] }).includes('export');
   const withExport = (ids: readonly string[]): string[] => ids.flatMap((id) => (lacks && id === 'settings' ? [id, 'export'] : [id]));
-  // The rail keeps the tools and undo; what else stood in it joins the first row of keys.
+  // The rail keeps the tools; what else stood in it joins the first row of keys.
   const keys = layout.rows.findIndex((row) => !row.includes('timeline'));
-  const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null || id === 'history';
+  const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null;
+  const besideStrip = keys < 0 ? [] : layout.rows.flatMap((row) => (row.includes('timeline') ? row.filter((id) => id !== 'timeline') : []));
   // Nor Z: a desk that places no step back (Multator keeps it on the shelf)
   // gets it at the end of its last row of keys — the drawing row there.
-  const stepBack = allPlaced({ ...layout, hidden: [] }).includes('history') ? -1 : layout.rows.map((row) => !row.includes('timeline')).lastIndexOf(true);
-  const rows = layout.rows.map((row, i) => withExport([...row, ...(i === keys ? layout.left.filter((id) => !inRail(id)) : []), ...(i === stepBack ? ['history'] : [])]));
+  const last = layout.rows.map((row) => !row.includes('timeline')).lastIndexOf(true);
+  const stepBack = allPlaced({ ...layout, hidden: [] }).includes('history') ? -1 : last;
+  const rows = layout.rows.map((row, i) => {
+    if (row.includes('timeline')) return keys < 0 ? [...row] : ['timeline'];
+    const own = [...row, ...(i === keys ? layout.left.filter((id) => !inRail(id)) : []), ...(i === stepBack ? ['history'] : []), ...(i === last ? besideStrip : [])];
+    return withExport([...own.filter((id) => id !== 'fps'), ...own.filter((id) => id === 'fps')]);
+  });
   const panels: PanelLayout = {
     ...layout,
     left: withExport(layout.left.filter(inRail)),
@@ -297,6 +308,25 @@ export type TopCut = 0 | 1 | 2;
 
 /** What stays in the desktop's row at any cut: «Отправить», the room, the keys of the colour and the brush. */
 const STAYS_IN_ROW: readonly string[] = ['publish', 'spring', ...BEHIND_A_KEY];
+
+/**
+ * A desk's column of tools taller than the screen (owner, 2026-10-13: on a
+ * 1366×768 laptop the last keys — a plugin's tool among them — lay under the
+ * column's edge with nothing to say so): `spill` keys too many, and that many
+ * of its last tools go behind «Другие инструменты» — one more, for the key
+ * itself, which stands where the first of them stood. A bar over the canvas
+ * that already holds that key takes them and no second one is drawn. `base` is
+ * what the screen's cut already made of `layout`, if anything.
+ */
+export function foldColumn(base: PhoneLayout | null, layout: PanelLayout, spill: number): PhoneLayout | null {
+  const panels = base?.panels ?? layout;
+  const tools = panels.left.filter((id) => toolOfItem(id) !== null);
+  const keyed = allPlaced({ ...panels, hidden: [] }).includes('tools');
+  const gone = tools.slice(-Math.min(tools.length, spill + (keyed ? 0 : 1)));
+  if (spill <= 0 || gone.length < (keyed ? 1 : 2)) return base;
+  const left = panels.left.flatMap((id) => (id === gone[0] && !keyed ? ['tools'] : gone.includes(id) ? [] : [id]));
+  return { panels: { ...panels, left }, more: base?.more ?? [], tools: [...(base?.tools ?? []), ...gone] };
+}
 
 /**
  * The desktop's arrangement with its bar over the canvas cut to one row

@@ -107,7 +107,7 @@ describe('тур первого входа', () => {
 
   it('маскота даёт площадка, студия рисует тур на месте плашки', () => {
     expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} />');
-    expect(editor).toContain('{#if editor.presetAsk && plateDue && !editor.arranging}');
+    expect(editor).toContain('{#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}');
   });
 });
 

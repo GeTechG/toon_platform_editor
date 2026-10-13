@@ -14,8 +14,8 @@ it('the stage note is drawn until the toon has a line and a second frame, with t
   // count of frames and whether the toon is playing, and ends the note itself.
   // Under a phone's open boxes the bar is folded, and the note stood on the stage beneath them (owner, 2026-10-13).
   expect(source).toContain("const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));");
-  expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}{/if}');
-  expect(source).toContain('stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean]>;');
+  expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}{/if}');
+  expect(source).toContain('stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;');
 });
 
 // On a phone the sheet fills the stage, so the note lay on the paper the first
@@ -23,7 +23,7 @@ it('the stage note is drawn until the toon has a line and a second frame, with t
 // over the «+» it speaks of; a bare bar lying down keeps it on the stage.
 it('a phone stands the note in its bottom bar, off the sheet', () => {
   expect(source).toContain('const noteInPanel = $derived(!panelFolded && panels.rows.length > 0 && ((compact && !barBare) || !draws(panels.top)));');
-  expect(source).toContain('{#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}');
+  expect(source).toContain('{#if noteDue && noteInPanel}<div class="panel-note" bind:offsetHeight={panelNoteH}>{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}');
 });
 
 // The host keeps the row's names for its whole walk (owner, 2026-10-08). Where
@@ -38,7 +38,7 @@ it('the row wears its names past the first line only where the walk goes on', ()
 // line of the bar over the canvas; the stage is left for a layout with no bar.
 it('with no room in the bottom bar the note is a line of the top bar, never on the sheet', () => {
   expect(source).toContain('const noteInTop = $derived(!noteInPanel && draws(panels.top) && !editor.arranging);');
-  expect(source).toContain('{#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing)}</div>{/if}');
+  expect(source).toContain('{#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}');
   expect(source).toMatch(/\.studio \.top > \.top-note \{\s*flex: 0 0 100%;/);
 });
 
