@@ -163,3 +163,17 @@ describe('small things of the same run', () => {
     expect(await read('Editor.svelte')).toMatch(/asked\?\.done\(yes\);[\s\S]{0,260}document\.activeElement === document\.body[\s\S]{0,120}\.cell\[tabindex="0"\]/);
   });
 });
+
+describe('a small phone under a desk (owner, 2026-10-13, an iPhone SE under Toonio)', () => {
+  it('the tour’s mascot gives way before the card’s keys go under its edge', async () => {
+    expect(await read('Tour.svelte')).toMatch(/\.mascot \{[^}]*min-height: 3rem;/);
+  });
+
+  it('the strip under three rows of keys shows fewer layers, so the sheet keeps the screen', async () => {
+    expect(await read('Editor.svelte')).toMatch(/\.studio\.compact\.desk\.tall \.panel :global\(\.board\) \{\s*max-height: 22dvh;/);
+  });
+
+  it('the save note stands clear of the fold tab over the panel', async () => {
+    expect(await read('Editor.svelte')).toMatch(/\.studio\.desk \.toolbar \.row > :global\(\.saved\) \{[^}]*bottom: calc\(100% \+ 1\.75rem\);/);
+  });
+});

@@ -4160,6 +4160,12 @@
     flex-wrap: wrap;
     column-gap: 0.8rem;
   }
+  /* A desk standing on a phone has rows of keys over its strip: the strip
+     shows fewer layers and scrolls (owner, 2026-10-13: six layers on an
+     iPhone SE left the sheet a sixth of the screen). */
+  .studio.compact.desk.tall .panel :global(.board) {
+    max-height: 22dvh;
+  }
   .studio.compact.desk:not(.tall) .toolbar > .row.strip-row {
     flex: 1 1 100%;
   }
@@ -5276,7 +5282,8 @@
      2026-10-13): as a line of the keys' row it took a row of a small screen. */
   .studio.desk .toolbar .row > :global(.saved) {
     position: absolute;
-    bottom: calc(100% + 0.5rem);
+    /* Over the fold tab on the panel's edge, not behind it. */
+    bottom: calc(100% + 1.75rem);
     left: 50%;
     z-index: var(--z-float);
     padding: 0;

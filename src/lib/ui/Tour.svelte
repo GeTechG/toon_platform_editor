@@ -161,6 +161,9 @@
   }
   .mascot {
     align-self: center;
+    /* On a stage lower than the card it is the picture that gives way (owner,
+       2026-10-13, an iPhone SE under Toonio: «Пройти тур» lay under the edge). */
+    min-height: 3rem;
     height: 9rem;
     width: auto;
     max-width: 100%;
