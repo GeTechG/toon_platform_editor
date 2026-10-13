@@ -11,9 +11,12 @@ const UI = new URL('./', import.meta.url).pathname;
 const read = (name: string) => Bun.file(UI + name).text();
 
 describe('a phone that keeps a desk without undo', () => {
-  it('Multator: the step back joins the drawing row — a finger has no Z and no shelf to fetch the key from', () => {
+  it('Multator: the step back stands by the transport — a finger has no Z and no shelf to fetch the key from', () => {
     const rows = deskOnPhone(presetPanels('multator')).panels.rows;
-    expect(rows.at(-1)).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history', 'add-frame', 'delete-frame']);
+    // «+» and the bin stand by the strip with play, the steps after it in
+    // place of the gear and export (owner, the same day).
+    expect(rows[1]).toEqual(['add-frame', 'delete-frame', 'transport', 'history', 'publish', 'saved']);
+    expect(rows.at(-1)).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'fullscreen', 'settings', 'export', 'manual']);
   });
 
   it('Toonio, which places it, gets no second one', () => {

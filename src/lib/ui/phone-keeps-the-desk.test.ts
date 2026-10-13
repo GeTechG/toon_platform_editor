@@ -24,8 +24,8 @@ describe('a phone keeps the preset’s desk', () => {
     expect(cut.panels.top).toEqual([]);
     expect(cut.panels.rows).toEqual([
       ['timeline'],
-      ['transport', 'fullscreen', 'settings', 'export', 'manual', 'publish', 'saved'],
-      ['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'history', 'add-frame', 'delete-frame'],
+      ['add-frame', 'delete-frame', 'transport', 'history', 'publish', 'saved'],
+      ['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'fullscreen', 'settings', 'export', 'manual'],
     ]);
     expect(cut.panels.hidden).not.toContain('export');
     expect(cut.more).toEqual([]);
