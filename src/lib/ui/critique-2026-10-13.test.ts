@@ -177,3 +177,34 @@ describe('a small phone under a desk (owner, 2026-10-13, an iPhone SE under Toon
     expect(await read('Editor.svelte')).toMatch(/\.studio\.desk \.toolbar \.row > :global\(\.saved\) \{[^}]*bottom: calc\(100% \+ 1\.75rem\);/);
   });
 });
+
+describe('the rail of a desk standing on a phone stays one key wide (owner, 2026-10-13)', () => {
+  it('folds what its first column has no room for behind «Другие инструменты», measured by where the keys stand', async () => {
+    const editor = await read('Editor.svelte');
+    expect(editor).toContain('(compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));');
+    expect(editor).toMatch(/if \(deskPhone\) \{[\s\S]{0,700}if \(first < lefts\.length\) leftSpill = lefts\.length - first;/);
+  });
+});
+
+describe('the sheet beside the finger’s thickness rail (owner, 2026-10-13: «холст очень маленький»)', () => {
+  it('is fitted beside the rail, not under its foot: the rail is a side’s, however near the top it starts', async () => {
+    const { fitSheet } = await import('./viewport');
+    // An iPhone SE under Toonio: the tools' column, the rail, the bottom panel
+    // the table runs on under.
+    const covers = [
+      { x: 0, y: 0, width: 73, height: 666 },
+      { x: 93, y: 17, width: 44, height: 201, side: true },
+      { x: 0, y: 306, width: 375, height: 360 },
+    ];
+    const sheet = fitSheet(375, 666, { width: 16, height: 9 }, covers);
+    expect(sheet.x).toBeGreaterThanOrEqual(137);
+    expect(Math.round(sheet.width)).toBe(206);
+    expect(sheet.y + sheet.height).toBeLessThanOrEqual(306);
+  });
+
+  it('the rail says so to the fit', async () => {
+    const canvas = await read('CanvasView.svelte');
+    expect(canvas).toMatch(/class="size-rail"\s*data-over-sheet="side"/);
+    expect(canvas).toContain("side: el.dataset.overSheet === 'side' || undefined");
+  });
+});

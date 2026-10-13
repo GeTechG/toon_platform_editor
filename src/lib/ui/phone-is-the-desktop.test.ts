@@ -430,7 +430,7 @@ describe('the desktop’s bar over the canvas stays one row', () => {
   it('the studio measures what each row needs and picks the cut by the width — no wrap to detect, no flicker on the way back', () => {
     expect(editorUi).toContain('const topCut = $derived<TopCut>(compact || editor.arranging || boxW >= topNeed[0] ? 0 : boxW >= topNeed[1] ? 1 : 2);');
     // …and the column of tools folds by its height the same way (critique 2026-10-13).
-    expect(editorUi).toContain('const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, compact || editor.arranging ? 0 : leftSpill));');
+    expect(editorUi).toContain('const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));');
     expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     expect(editorUi).toContain('{#if over && moreOpen}');
   });

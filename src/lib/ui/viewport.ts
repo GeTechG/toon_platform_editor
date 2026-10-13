@@ -62,6 +62,8 @@ export interface Cover {
   height: number;
   /** Takes nothing off the sheet: the sheet only steps aside from it, where the stage has room (the zoom window). */
   shy?: boolean;
+  /** Stands along a side whatever its place (the finger's thickness rail): the sheet is fitted beside it, never above or below. */
+  side?: boolean;
 }
 
 /**
@@ -260,6 +262,11 @@ export function fitSheet(
   );
   const on = over.filter((c) => !c.shy);
   const cuts = on.map((c): Cut[] => {
+    // The rail starts near the top of a low stage, and by the nearest edge it
+    // was the head's: the sheet went under its foot, a strip 50 px tall on an
+    // iPhone SE (owner, 2026-10-13). The stage's height here runs on under the
+    // bottom panel, so «more than half of it» did not catch the rail either.
+    if (c.side) return [null, c.x + c.width / 2 < width / 2 ? 'left' : 'right'];
     const gaps: [Cut, number][] = [
       ['left', c.x],
       ['right', width - c.x - c.width],

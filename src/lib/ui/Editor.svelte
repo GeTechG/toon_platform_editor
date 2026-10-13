@@ -319,7 +319,7 @@
   // keys too many it is (measured below), folded behind «Другие инструменты».
   let leftSpill = $state(0);
   let leftEl = $state<HTMLElement>();
-  const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, compact || editor.arranging ? 0 : leftSpill));
+  const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
   // Another arrangement, another text size: both rows are measured anew.
   const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
@@ -522,11 +522,33 @@
   const COLUMN_PITCH = 3.15;
   /** The stage height at which the column last had to fold: no taller, it is not unfolded again — the two would take turns. */
   let foldedAt = 0;
+  /** The stage height the phone's rail was last measured at. */
+  let railMeasuredAt = 0;
   $effect(() => {
     void sideH.left;
     void editor.pluginsVersion;
+    void sidePx.left;
     const [el, height] = [leftEl, stageHeight];
-    if (!el || compact || editor.arranging) return;
+    if (!el || editor.arranging || (compact && !(deskPhone && tall))) return;
+    // A desk standing on a phone wraps its rail into a second column instead
+    // of scrolling, and the sheet beside it was a third of the screen wide
+    // (owner, 2026-10-13, an iPhone SE): the rail stays one key wide — what
+    // the first column has no room for goes behind the same key. Measured
+    // afresh when the stage's height changes.
+    if (deskPhone) {
+      untrack(() => {
+        const turned = Math.abs(height - railMeasuredAt) > 1;
+        railMeasuredAt = height;
+        if (turned && leftSpill > 0) {
+          leftSpill = 0;
+          return;
+        }
+        const lefts = [...el.querySelectorAll<HTMLElement>('[data-tool]')].map((key) => Math.round(key.getBoundingClientRect().left));
+        const first = lefts.filter((x) => x === Math.min(...lefts)).length;
+        if (first < lefts.length) leftSpill = lefts.length - first;
+      });
+      return;
+    }
     const spare = el.scrollHeight - el.clientHeight;
     untrack(() => {
       if (spare > 1) {

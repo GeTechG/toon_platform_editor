@@ -383,7 +383,7 @@
       const r = el.getBoundingClientRect();
       return clipCover(
         // The zoom window (`beside`): the sheet lies under it, and steps aside where it can.
-        { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height), shy: el.dataset.overSheet === 'beside' },
+        { x: Math.round(r.left - box.left), y: Math.round(r.top - box.top), width: Math.round(r.width), height: Math.round(r.height), shy: el.dataset.overSheet === 'beside', side: el.dataset.overSheet === 'side' || undefined },
         Math.round(box.width),
         Math.round(box.height),
       );
@@ -2347,7 +2347,7 @@
   {#if rail}
   <div
     class="size-rail"
-    data-over-sheet
+    data-over-sheet="side"
     class:touched={touchSeen}
     role="slider"
     tabindex="0"
