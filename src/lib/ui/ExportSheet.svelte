@@ -455,10 +455,11 @@
         <progress max="100" value={progress} aria-label={stage}></progress>
         <button bind:this={cancelEl} class="key wide" onclick={cancel}>{t('export.cancel')}</button>
       {:else if stage}
+        <!-- The word first: under the picture a low window cut it off. -->
+        <p class="made" aria-hidden="true">{stage}{#if result}{' · '}{formatFileSize(result.bytes)}{/if}</p>
         {#if result?.url}
           <img class="result" src={result.url} alt={t('export.result_alt')} />
         {/if}
-        <p class="made" aria-hidden="true">{stage}{#if result}{' · '}{formatFileSize(result.bytes)}{/if}</p>
       {/if}
       {#if error}
         <p class="note" role="alert">{error}</p>

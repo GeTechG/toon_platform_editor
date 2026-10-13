@@ -146,6 +146,14 @@
       <label for="tf-scale-y">{t('transform.scale_y')}</label>
       <input id="tf-scale-y" type="number" step="10" value={percent(session.scaleY)} oninput={(e) => set('scaleY', scaleFromField(e.currentTarget.valueAsNumber))} />
     </div>
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={editor.transformWidthWithScale}
+        onchange={(e) => editor.setTransformWidthWithScale(e.currentTarget.checked)}
+      />
+      {t('transform.width_with_scale')}
+    </label>
     </details>
 
     <div class="row">
@@ -161,15 +169,6 @@
       <button class="key" onclick={() => editor.resetView()} aria-label={t('scale.value', { percent: formatPercent(editor.view.zoom) })} title={t('scale.reset')}>{formatPercent(editor.view.zoom)}</button>
       <button class="key icon" aria-disabled={editor.view.zoom >= ZOOM_MAX} onclick={() => editor.view.zoom >= ZOOM_MAX || editor.zoomBy(zoomDelta(editor.view.zoom, 1))} aria-label={t('scale.in')} title={t('scale.in')}><Icon name="plus" /></button>
     </div>
-
-    <label class="check">
-      <input
-        type="checkbox"
-        checked={editor.transformWidthWithScale}
-        onchange={(e) => editor.setTransformWidthWithScale(e.currentTarget.checked)}
-      />
-      {t('transform.width_with_scale')}
-    </label>
 
     <div class="row end">
       <button class="key primary" onclick={() => editor.commitTransform()} aria-label={t('transform.apply_label')}>{t('transform.apply')}</button>

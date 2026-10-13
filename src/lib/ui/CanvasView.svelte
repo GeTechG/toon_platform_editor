@@ -2510,8 +2510,11 @@
     left: calc(var(--stage-left, 0px) + 1.25rem);
     /* Up to 16rem in the middle of the stage; a short landscape stage keeps
        its foot clear of the zoom bar in the corner below (4.5rem). */
-    top: max(0.75rem, 50% - 8rem);
-    bottom: max(4.5rem, 50% - 8rem);
+    /* Of the stage that shows: the wrap runs on under the bottom panel
+       (`--stage-under`), and counted whole the rail's foot stood under a
+       phone's desk (Toonio, 390×844). */
+    top: max(0.75rem, (100% - var(--stage-under, 0px)) / 2 - 8rem);
+    bottom: calc(var(--stage-under, 0px) + max(4.5rem, (100% - var(--stage-under, 0px)) / 2 - 8rem));
     display: none;
     /* A finger wide, not a key: grown with the text it took 88 px of a
        240 px phone stage at 200 % (owner, after the sixteenth audit). */

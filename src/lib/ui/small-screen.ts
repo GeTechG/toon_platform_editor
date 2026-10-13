@@ -265,14 +265,17 @@ export function deskOnPhone(layout: PanelLayout): PhoneLayout {
   // The rail keeps the tools and undo; what else stood in it joins the first row of keys.
   const keys = layout.rows.findIndex((row) => !row.includes('timeline'));
   const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null || id === 'history';
-  const rows = layout.rows.map((row, i) => withExport(i === keys ? [...row, ...layout.left.filter((id) => !inRail(id))] : row));
+  // Nor Z: a desk that places no step back (Multator keeps it on the shelf)
+  // gets it at the end of its last row of keys — the drawing row there.
+  const stepBack = allPlaced({ ...layout, hidden: [] }).includes('history') ? -1 : layout.rows.map((row) => !row.includes('timeline')).lastIndexOf(true);
+  const rows = layout.rows.map((row, i) => withExport([...row, ...(i === keys ? layout.left.filter((id) => !inRail(id)) : []), ...(i === stepBack ? ['history'] : [])]));
   const panels: PanelLayout = {
     ...layout,
     left: withExport(layout.left.filter(inRail)),
     top: withExport(layout.top),
     right: withExport(layout.right),
     rows,
-    hidden: layout.hidden.filter((id) => id !== 'export'),
+    hidden: layout.hidden.filter((id) => id !== 'export' && (stepBack < 0 || id !== 'history')),
   };
   return { panels, more: [], tools: [] };
 }

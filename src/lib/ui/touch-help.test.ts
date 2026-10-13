@@ -6,8 +6,8 @@ import ru from '../i18n/ru.json';
 // on a frame, on a layer — were written nowhere.
 const studio = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathname).text();
 
-it('the manual names the four gestures a finger has', () => {
-  expect(Object.keys(ru.gesture).sort()).toEqual(['hold_frame', 'hold_layer', 'hold_sheet', 'two_fingers']);
+it('the manual names the gestures a finger has — and the repeat press on a tool (critique 2026-10-13)', () => {
+  expect(Object.keys(ru.gesture).sort()).toEqual(['hold_frame', 'hold_layer', 'hold_sheet', 'tool_again', 'two_fingers']);
 });
 
 it('under a finger the gestures come before the keys', () => {

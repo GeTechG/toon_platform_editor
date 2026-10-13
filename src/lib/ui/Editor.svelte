@@ -2341,7 +2341,7 @@
   let manualOpen = $state(false);
   // What a finger does that no key on screen says: under one, these lead the
   // manual; under a cursor the keys do.
-  const GESTURES = ['two_fingers', 'hold_sheet', 'hold_frame', 'hold_layer'] as const;
+  const GESTURES = $derived([...(toolOpensBrush(panels, editor.tool) ? (['tool_again'] as const) : []), 'two_fingers', 'hold_sheet', 'hold_frame', 'hold_layer'] as const);
   const touchFirst = $derived(manualOpen && matchMedia('(hover: none)').matches);
   // Nothing that hovers at all — no mouse, so no keyboard to speak of: the
   // manual is the gestures alone, not thirty keys the phone does not have.
@@ -2380,6 +2380,7 @@
         (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
         // F7 is the frame's key with the letters off: the row went with «A».
         ['A, F7', t('key.add_frame')],
+        ['G', t('panel.item.duplicate_frame')],
         ['Del / Backspace', t('key.delete_frame')],
         ['J / L', t('key.ends')],
         ['← / →', t('key.steps')],

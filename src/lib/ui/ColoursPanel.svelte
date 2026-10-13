@@ -298,6 +298,13 @@
   <section>
     <div class="row">
       <h3>{t('colours.current')}</h3>
+      <!-- Saving it stands by it: in the header the key left «Палитры» one
+           letter of room, and was a second «+» over this row's own. -->
+      {#if tab === 'palettes'}
+        <button class="key icon" onclick={savePalette} title={t('palette.save_title')} aria-label={t('palette.save_title')}>
+          <Icon name="save" />
+        </button>
+      {/if}
       <button class="key icon" onclick={() => editor.addColorToPalette(current)} title={t('color.add')} aria-label={t('color.add')}>
         <Icon name="plus" />
       </button>
@@ -312,12 +319,9 @@
 
 <div class="colours" class:docked>
   <header>
-    <h2>{tab === 'palettes' ? t('colours.palettes') : t('colours.title')}</h2>
-    {#if tab === 'palettes'}
-      <button class="key icon" onclick={savePalette} title={t('palette.save_title')} aria-label={t('palette.save_title')}>
-        <Icon name="plus" />
-      </button>
-    {/if}
+    <!-- One name in every mode: «Палитры» did not fit beside the pipette and
+         the two colours, and the mode is named by its tab below. -->
+    <h2>{t('colours.title')}</h2>
     <!-- Into the colour being chosen. The pipette's only key under Toonop:
          it left the tools for here (owner, 2026-10-13). -->
     <button

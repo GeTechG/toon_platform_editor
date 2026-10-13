@@ -658,15 +658,17 @@
   .hub-head > a.key + .key {
     margin-inline-start: 0;
   }
+  .hub-head a.key {
+    white-space: nowrap;
+  }
   .hub-wipe {
     margin-inline-start: 1rem;
   }
   /* The screen's name: the Card step of the scale (DESIGN §3). */
   .hub-head h2 {
-    /* At 200 % text on a phone the name breaks rather than running under
-       the keys. */
-    min-width: 0;
-    overflow-wrap: anywhere;
+    /* Between words only: allowed anywhere, the keys beside it squeezed
+       «Черновики» into «Чернови/ки» on a phone; the keys wrap instead. */
+    overflow-wrap: break-word;
     margin: 0;
     font-size: 1.6rem;
     font-weight: 800;
@@ -1029,6 +1031,11 @@
   .draft:focus-within .draft-pick,
   .drafts.choosing .draft-pick {
     visibility: visible;
+  }
+  /* Under a finger the box is the choosing's alone: «Готово» hands the focus
+     to a card, and its box stayed as if the choosing went on. */
+  .hub.touch .drafts:not(.choosing) .draft-pick {
+    visibility: hidden;
   }
   @media (hover: hover) {
     .draft:hover .draft-pick {
