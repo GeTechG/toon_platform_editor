@@ -1653,7 +1653,12 @@
 
   /** The finger that touched a running preview: lifted alone, it stops it. */
   let stopOnLift: number | null = null;
+  /** The first move of the pen with no buttons in a gesture still open — where it left, if it did. */
+  let penLift: PointerEvent | null = null;
   function onPointerDown(e: PointerEvent): void {
+    // The pen pressed again: its release was lost after all, and the gesture
+    // ends where the buttons went, not across the sheet at the new press.
+    if (penLift) onPointerUp(penLift);
     // A second finger makes it a gesture: the film runs on under a moved sheet.
     if (!e.isPrimary) stopOnLift = null;
     sideButtons.press(e.button);
@@ -1854,9 +1859,17 @@
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
       && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || panning || sizing)) {
+      // Firefox on Windows sends a Wacom pen's light line one move with no
+      // buttons while the tip stays down: the line goes on. Whether the pen
+      // really left is told by its next press (onPointerDown).
+      if (e.pointerType === 'pen') {
+        penLift ??= e;
+        return;
+      }
       onPointerUp(e);
       return;
     }
+    if (e.pointerType === 'pen') penLift = null;
     if (dropper && e.pointerId === dropper.pointerId) {
       const now = performance.now();
       if (now - lastPickPreview >= PIPETTE_THROTTLE_MS) {
@@ -2030,6 +2043,7 @@
   }
 
   function onPointerUp(e: PointerEvent): void {
+    penLift = null;
     if (stopOnLift === e.pointerId) {
       stopOnLift = null;
       editor.stopPreview?.();
@@ -2155,6 +2169,7 @@
 
   function onPointerCancel(e: PointerEvent): void {
     stopOnLift = null;
+    penLift = null;
     queueMicrotask(settleCovers);
     // Also the lost capture every gesture ends with: the keys come back once
     // no other pointer still holds one.

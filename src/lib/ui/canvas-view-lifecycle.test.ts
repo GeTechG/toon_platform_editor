@@ -480,6 +480,18 @@ describe('the canvas after the tenth audit', () => {
     expect(move).toContain("e.pointerType !== 'touch' && e.buttons === 0");
   });
 
+  it('a pen with no buttons for one move mid-line goes on drawing', () => {
+    // Firefox on Windows with a Wacom: a light line sends one move with
+    // buttons 0 while the pen stays down — it ended the stroke on a dot.
+    const move = handler('onPointerMove');
+    expect(move).toContain("if (e.pointerType === 'pen') {");
+    expect(move.indexOf('penLift ??= e')).toBeLessThan(move.indexOf('onPointerUp(e)'));
+    expect(move).toContain('penLift = null');
+    // A release truly lost shows as the next press: the old line ends where
+    // the buttons went, not across the sheet at the new press.
+    expect(handler('onPointerDown')).toContain('if (penLift) onPointerUp(penLift);');
+  });
+
   it("the pen's eraser end erases, and flipping it back gives the tool back", () => {
     // Button 5 is the eraser end; it read as "not the left button" and drew
     // with the fill colour.
