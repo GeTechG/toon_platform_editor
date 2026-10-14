@@ -13,6 +13,8 @@
  * containing block of a fixed child and the window jumps off the screen.
  */
 
+import { createLostRelease } from './lost-release';
+
 /** CSS pixels of travel that turn a press into a drag. */
 const DRAG_THRESHOLD = 4;
 /** A finger is never that still: a tap on «+» that trembled 5px was a drag, and the key lost it. */
@@ -74,6 +76,7 @@ const remembered = new Map<string, { left: number; top: number; minWidth: string
 
 export function draggable(node: HTMLElement, remember?: string): { destroy(): void } {
   let grab: Grab | null = null;
+  const lostRelease = createLostRelease();
   /**
    * Where the hand left it. A smaller screen draws it pushed inside, and a
    * bigger one again brings it back here: clamped in place, a phone turned
@@ -87,6 +90,7 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
     if (grab || e.button !== 0 || !handle || !node.contains(handle)) {
       return;
     }
+    lostRelease.reset();
     const rect = node.getBoundingClientRect();
     grab = {
       x: e.clientX,
@@ -150,7 +154,7 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
     // A mouse or pen moving with nothing pressed let go where its release
     // never came from (Ctrl+click on a Mac opens the menu, which swallows
     // it): the window then rode the bare hover.
-    if (e.pointerType !== 'touch' && e.buttons === 0) {
+    if (lostRelease(e)) {
       release();
       return;
     }

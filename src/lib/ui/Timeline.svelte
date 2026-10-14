@@ -20,6 +20,7 @@
   import LayerRows from './LayerRows.svelte';
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
+  import { createLostRelease, mainUp } from './lost-release';
   import { t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
 
@@ -215,6 +216,7 @@
   // (`bundle:9111-9150`). Touch is left alone: a finger on the grid scrolls
   // the strip, which is the only way to reach a frame off screen on a phone.
   let dragging = $state(false);
+  const lostCell = createLostRelease();
 
   // --- Picking a block by finger ---------------------------------------------
   // A finger has no Shift, and a drag on the strip scrolls it. «Выделить
@@ -258,6 +260,7 @@
     if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
       return;
     }
+    lostCell.reset();
     dragging = true;
     // The anchor is the cell pressed: `selectCell` moves the active cell
     // there, and every later 'range' spans from it.
@@ -270,7 +273,7 @@
     }
     // A release outside the window (Alt+Tab mid-drag) sends no pointerup:
     // hovering after it stretched the block with no button held.
-    if (!(e.buttons & 1)) {
+    if (lostCell(e, mainUp)) {
       dragging = false;
       return;
     }
@@ -516,6 +519,7 @@
   let colPx = $state(0);
   let colWidth = $state<number | null>(null);
   let colDrag: { pointerId: number; startX: number; startWidth: number } | null = null;
+  const lostCol = createLostRelease();
 
   function setCol(px: number): void {
     colWidth = Math.min(COL_MAX, Math.max(COL_MIN, Math.round(px)));
@@ -524,6 +528,7 @@
   function onColDown(e: PointerEvent): void {
     // The main button only: a right press is a context menu, not a drag.
     if (!e.isPrimary || e.button !== 0) return;
+    lostCol.reset();
     colDrag = { pointerId: e.pointerId, startX: e.clientX, startWidth: colPx };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
@@ -532,7 +537,7 @@
     if (!colDrag || e.pointerId !== colDrag.pointerId) return;
     // A release outside the window sends no pointerup: hovering the band
     // after it went on resizing the column with no button held.
-    if (!(e.buttons & 1)) {
+    if (lostCol(e, mainUp)) {
       colDrag = null;
       return;
     }

@@ -7,6 +7,7 @@
   import ColoursPanel from './ColoursPanel.svelte';
   import PopKey from './PopKey.svelte';
   import { notePopupClosed } from './dismiss-press';
+  import { createLostRelease } from './lost-release';
   import { sideAsDrawn, transportKeys } from './ux-profile';
   import BrushRail from './BrushRail.svelte';
   import BrushSizes from './BrushSizes.svelte';
@@ -451,6 +452,7 @@
       }
     | null
   >(null);
+  const lostRelease = createLostRelease();
 
   function startResize(
     e: PointerEvent,
@@ -464,13 +466,14 @@
     // Only the main button: a right press opened the context menu, which
     // swallowed the release, and the column followed the bare hover.
     if (!e.isPrimary || e.button !== 0) return;
+    lostRelease.reset();
     resize = { pointerId: e.pointerId, from: axis === 'y' ? e.clientY : e.clientX, size, sign, axis, side, apply, max };
   }
 
   function onDividerMove(e: PointerEvent): void {
     if (!resize || e.pointerId !== resize.pointerId) return;
     // A mouse or pen moving with nothing pressed let go where its release never came.
-    if (e.pointerType !== 'touch' && e.buttons === 0) {
+    if (lostRelease(e)) {
       onDividerUp(e);
       return;
     }

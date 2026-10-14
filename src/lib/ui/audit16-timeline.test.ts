@@ -29,14 +29,14 @@ describe('шестнадцатый аудит: протяжка кончаетс
     // Отпустили за окном (Alt+Tab посреди переноса): pointerup не пришёл, и
     // каждое движение мыши потом двигало слой по списку.
     const body = fn(rows, 'onHandleMove');
-    expect(body).toMatch(/e\.buttons & 1/);
-    expect(body.indexOf('e.buttons')).toBeLessThan(body.indexOf('updateTarget'));
+    expect(body.indexOf('lostRelease(e, mainUp)')).toBeGreaterThan(-1);
+    expect(body.indexOf('lostRelease(e, mainUp)')).toBeLessThan(body.indexOf('updateTarget'));
   });
 
   it('разделитель колонки без зажатой кнопки не тянет ширину наведением', () => {
     const body = fn(timeline, 'onColMove');
-    expect(body).toMatch(/e\.buttons & 1/);
-    expect(body.indexOf('e.buttons')).toBeLessThan(body.indexOf('setCol'));
+    expect(body.indexOf('lostCol(e, mainUp)')).toBeGreaterThan(-1);
+    expect(body.indexOf('lostCol(e, mainUp)')).toBeLessThan(body.indexOf('setCol'));
   });
 });
 

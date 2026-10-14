@@ -124,7 +124,7 @@ describe('край панели тянет только основная кно�
   });
 
   test('мышь или перо без нажатой кнопки отпускают край', () => {
-    expect(fn(editorUi, 'onDividerMove')).toContain("e.pointerType !== 'touch' && e.buttons === 0");
+    expect(fn(editorUi, 'onDividerMove')).toContain('lostRelease(e)');
   });
 });
 

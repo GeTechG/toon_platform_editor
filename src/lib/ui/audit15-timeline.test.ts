@@ -51,7 +51,7 @@ describe('пятнадцатый аудит: выделение мышью ко�
     // Кнопку отпустили за окном (Alt+Tab посреди протяжки): pointerup не
     // пришёл, и каждое наведение потом растягивало выделение.
     const body = fn(timeline, 'onCellEnter');
-    expect(body).toMatch(/e\.buttons & 1/);
+    expect(body).toContain('lostCell(e, mainUp)');
   });
 });
 

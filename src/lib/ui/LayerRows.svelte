@@ -14,6 +14,7 @@
   import { dragTargetIndex, layerGridStep } from './frame-selection';
   import { rowHeight, rowHeightCss } from './thumb-size';
   import Icon from './Icon.svelte';
+  import { createLostRelease, mainUp } from './lost-release';
   import { t } from '../i18n';
 
   // No thumbnail per row: the timeline beside it already shows every cell.
@@ -336,6 +337,7 @@
     fromLayer: number;
   };
   let drag = $state<Drag | null>(null);
+  const lostRelease = createLostRelease();
   let autoscroll = 0;
   let autoscrollDirection: -1 | 0 | 1 = 0;
 
@@ -351,6 +353,7 @@
       return;
     }
     const row = editor.doc.layers.length - 1 - layerIndex;
+    lostRelease.reset();
     drag = {
       pointerId: e.pointerId,
       startY: e.clientY,
@@ -372,7 +375,7 @@
     }
     // A release outside the window (Alt+Tab mid-drag) sends no pointerup:
     // every move after it carried the layer on with no button held.
-    if (!(e.buttons & 1)) {
+    if (lostRelease(e, mainUp)) {
       endDrag(e);
       return;
     }

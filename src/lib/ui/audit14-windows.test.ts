@@ -183,7 +183,7 @@ describe('список раскладок показывает то, что се
 describe('потерянный отпуск пера бросает перенос, как у мыши', () => {
   test('проверка не только для мыши', () => {
     const move = fn(arranger, 'onPointerMove');
-    expect(move).toContain("e.pointerType !== 'touch' && e.buttons === 0");
+    expect(move).toContain('lostRelease(e)');
   });
 });
 

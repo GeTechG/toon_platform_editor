@@ -26,6 +26,7 @@
   } from './workspaces';
   import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
   import { composing } from './key-owner';
+  import { createLostRelease } from './lost-release';
   import { t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
@@ -105,6 +106,7 @@
   }
 
   let drag = $state<Drag | null>(null);
+  const lostRelease = createLostRelease();
   let target = $state<Target | null>(null);
 
   const dragLabel = $derived(drag ? panelItem(drag.id)?.label ?? drag.id : '');
@@ -126,6 +128,7 @@
     if (!handle || !id) {
       return;
     }
+    lostRelease.reset();
     const rect = handle.getBoundingClientRect();
     drag = {
       pointerId: e.pointerId,
@@ -149,7 +152,7 @@
     // A mouse moving with nothing pressed let go somewhere its release never
     // came from (a menu, another window): nothing is dropped.
     // A pen hovers too, and loses its release the same way.
-    if (e.pointerType !== 'touch' && e.buttons === 0) {
+    if (lostRelease(e)) {
       drag = null;
       target = null;
       return;
