@@ -205,6 +205,10 @@ export function latinKey(e: { key: string; code: string; shiftKey?: boolean }): 
   if (e.code === 'Backquote') {
     return upper ? '~' : '`';
   }
+  // «х» and «ъ» stand where the brackets do: they turn the sheet.
+  if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
+    return e.code === 'BracketLeft' ? '[' : ']';
+  }
   return e.key;
 }
 

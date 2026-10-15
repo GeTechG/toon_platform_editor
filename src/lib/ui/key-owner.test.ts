@@ -117,6 +117,11 @@ describe('the hotkeys do not depend on the keyboard layout', () => {
     expect(latinKey({ key: 'Ё', code: 'Backquote' })).toBe('~');
   });
 
+  it('«х» and «ъ» are the brackets that turn the sheet (a tablet ring sends them too)', () => {
+    expect(latinKey({ key: 'х', code: 'BracketLeft', shiftKey: false })).toBe('[');
+    expect(latinKey({ key: 'Ъ', code: 'BracketRight', shiftKey: true })).toBe(']');
+  });
+
   it('a Latin letter, a sign and a named key stay as they are', () => {
     expect(latinKey({ key: 'b', code: 'KeyB' })).toBe('b');
     expect(latinKey({ key: 'H', code: 'KeyH' })).toBe('H');
