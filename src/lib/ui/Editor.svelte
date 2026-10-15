@@ -2815,6 +2815,23 @@
     >
       <Icon name="onion" />
     </button>
+  {:else if id === 'fps' && editor.ux.fpsKey && !over?.more.some((group) => group.items.includes('fps'))}
+    <!-- Toonop's bar holds the rate as a word; the slider comes up under it
+         (owner, 2026-10-15). Behind «⋯» the row has room for the pair. -->
+    <PopKey label={t('editor.fps')}>
+      {#snippet face()}<span class="fps-face">{editor.doc.frame_rate}&nbsp;{t('editor.fps_unit')}</span>{/snippet}
+      <div class="fps-pop">
+        <input
+          type="range"
+          min={editor.ux.fpsRange[0]}
+          max={editor.ux.fpsRange[1]}
+          value={editor.doc.frame_rate}
+          oninput={onFpsChange}
+          aria-disabled={editor.playing || undefined}
+          aria-label={t('editor.fps')}
+        />
+      </div>
+    </PopKey>
   {:else if id === 'fps'}
     <!-- The reference keeps fps on the bar itself: a slider and a box. -->
     <label class="fps-inline" title={t('editor.fps')}>
@@ -4615,6 +4632,28 @@
     flex: 1 1 0;
     width: auto;
     min-width: 3rem;
+  }
+  /* The rate as a word is wider than an icon: the key grows round it, and
+     an icon key has no padding of its own. */
+  .fps-face {
+    padding-inline: 0.7rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* Room round the slider for its focus ring: the plate clips. */
+  .fps-pop {
+    display: flex;
+    padding: 0.4rem 0.75rem;
+  }
+  .fps-pop input[type='range'] {
+    width: 12rem;
+    margin: 0;
+  }
+  .fps-pop input[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: default;
   }
   .fps-inline .unit {
     color: var(--ink-2);

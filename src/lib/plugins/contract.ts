@@ -296,6 +296,12 @@ export interface UxProfile {
    * that says nothing keeps its desk on a phone too.
    */
   readonly phoneCut?: boolean;
+  /**
+   * The frame rate on a bar is its value as a word — «12 к/с» — and the
+   * slider comes up under it on a press. A profile that says nothing keeps
+   * the reference's slider and box on the bar.
+   */
+  readonly fpsKey?: boolean;
 }
 
 /**

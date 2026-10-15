@@ -76,6 +76,8 @@ export const TOONOP_UX: UxProfile = {
   leftFixed: true,
   // Its phone is its own, after Procreate Pocket (owner, 2026-10-07); the reference presets keep their desks.
   phoneCut: true,
+  // The rate is a word on the bar, the slider pops up under it (owner, 2026-10-15).
+  fpsKey: true,
 };
 
 /** Which keys stand beside Play: the two ends, the two steps. */
