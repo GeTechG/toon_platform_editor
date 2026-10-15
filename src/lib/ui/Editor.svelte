@@ -36,7 +36,7 @@
   import { saveFile } from './save-file';
   import { keyPan, turnStep, zoomDelta } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
-  import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText } from './key-owner';
+  import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText, zoomSheetKey } from './key-owner';
   import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -1079,6 +1079,13 @@
     if ((key === '[' || key === ']') && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       editor.rotateTo(turnStep(editor.view.angle, key === ']' ? 1 : -1));
+      return;
+    }
+    // Ctrl+plus or minus zooms the sheet whatever the tool, a live transform
+    // included, instead of the browser zooming the page (key-owner.ts).
+    if (zoomSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey })) {
+      e.preventDefault();
+      editor.zoomBy(zoomDelta(editor.view.zoom, key === '+' || key === '=' ? 1 : -1));
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do

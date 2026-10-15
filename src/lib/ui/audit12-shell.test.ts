@@ -84,12 +84,13 @@ describe('a chord the browser owns', () => {
   const press = (key: string) =>
     keyOwner({ key, target: body, defaultPrevented: false, ctrlKey: true, metaKey: false, modalOpen: false, letterKeys: true });
 
-  it('stays the browser’s: Ctrl +/− zoom the page, Ctrl+L, P, F, D, H, J, O are not tools', () => {
-    // Every Ctrl chord went down the hotkey table and was prevented: Ctrl+=
-    // thickened the brush instead of zooming the page (WCAG 1.4.4), Ctrl+P
+  it('stays the browser’s: Ctrl+L, P, F, D, H, J, O are not tools', () => {
+    // Every Ctrl chord went down the hotkey table and was prevented: Ctrl+P
     // picked the pipette instead of printing, Ctrl+L took the address bar.
-    // Ctrl+X is the studio's cut since the owner's twelfth answers.
-    for (const key of ['=', '+', '-', '_', 'l', 'p', 'f', 'd', 'h', 'j', 'o', 'b', 'k', 'e', ' ']) {
+    // Ctrl+X is the studio's cut since the owner's twelfth answers. Ctrl +/−
+    // zoom the sheet since 2026-10-15 (owner): the page's zoom stays in the
+    // browser's menu and in a text field (key-owner.test.ts).
+    for (const key of ['l', 'p', 'f', 'd', 'h', 'j', 'o', 'b', 'k', 'e', ' ']) {
       expect(press(key)).toBe('control');
     }
   });

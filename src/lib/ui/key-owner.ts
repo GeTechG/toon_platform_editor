@@ -94,6 +94,18 @@ export function panSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean
   return (e.ctrlKey || e.metaKey) && e.shiftKey === true && PAN_ARROWS.has(e.key);
 }
 
+/** The keys that zoom: `=` is `+` without Shift, `_` is `-` with it. */
+const ZOOM_KEYS = new Set(['+', '=', '-', '_']);
+
+/**
+ * Ctrl+plus or minus (Cmd on a Mac) zooms the sheet whatever the tool, as in
+ * Photoshop (owner, 2026-10-15): the browser zoomed the whole page with it.
+ * A text field still leaves it to the browser (the field check below).
+ */
+export function zoomSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean }): boolean {
+  return (e.ctrlKey || e.metaKey) && ZOOM_KEYS.has(e.key);
+}
+
 /**
  * An input method is composing: its Enter picks a character, its Esc drops
  * the composition. Safari sends the Enter that commits it with `isComposing`
@@ -147,7 +159,7 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
     return 'control';
   }
   const chord = e.ctrlKey || e.metaKey;
-  if (chord && !CHORDS.has(e.key) && !panSheetKey(e)) {
+  if (chord && !CHORDS.has(e.key) && !panSheetKey(e) && !zoomSheetKey(e)) {
     return 'control';
   }
   if (!e.letterKeys && !chord && e.key.length === 1 && e.key !== ' ') {

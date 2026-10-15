@@ -217,3 +217,23 @@ describe('2026-10-08 critique: Esc stops the preview', () => {
     expect(handler).toMatch(/case 'Escape':\s*(?:\/\/[^\n]*\s*)*if \(editor\.playing\) \{\s*playControls\?\.toggle\(\);\s*\} else \{\s*handled = false;\s*\}\s*break;/);
   });
 });
+
+describe('Ctrl and plus or minus zoom the sheet, not the page (owner, 2026-10-15)', () => {
+  it('the chord reaches the studio whatever the tool', () => {
+    for (const key of ['+', '=', '-', '_']) {
+      expect(keyOwner(press(key, null, { ctrlKey: true }))).toBe('editor');
+      expect(keyOwner(press(key, el('canvas'), { metaKey: true }))).toBe('editor');
+    }
+  });
+
+  it('a text field leaves it to the browser', () => {
+    expect(keyOwner(press('=', el('input', { type: 'text' }), { ctrlKey: true }))).toBe('control');
+  });
+
+  it('the studio zooms on it before the hand and the brush size look', () => {
+    const editorUi = require('node:fs').readFileSync(new URL('./Editor.svelte', import.meta.url), 'utf8') as string;
+    const zoom = editorUi.indexOf('zoomSheetKey(');
+    expect(zoom).toBeGreaterThan(0);
+    expect(zoom).toBeLessThan(editorUi.indexOf("if (editor.tool === 'drag' && !editor.transform)"));
+  });
+});
