@@ -10,6 +10,7 @@ import {
   toDocument,
   zoomAt,
   zoomDelta,
+  zoomNotch,
   type Stage,
   renderDensity,
   reprojection,
@@ -382,5 +383,25 @@ describe('the grabbed picture under a turn', () => {
     // Stood on its side, the sheet reaches 200 px down from its corner.
     expect(shotCovers(at(1, 250, 50, 90), at(1, 260, 60, 90), STAGE)).toBe(true);
     expect(shotCovers(at(1, 250, 250, 90), at(1, 250, 150, 90), STAGE)).toBe(false);
+  });
+});
+
+describe('zoomNotch: Ctrl and plus or minus go a finer ladder (owner, 2026-10-15)', () => {
+  it('from 100% a tenth or so either way, not half', () => {
+    expect(zoomNotch(1, 1)).toBe(1.1);
+    expect(zoomNotch(1.1, 1)).toBe(1.25);
+    expect(zoomNotch(1.5, 1)).toBe(1.75);
+    expect(zoomNotch(1, -1)).toBe(0.9);
+    expect(zoomNotch(2, -1)).toBe(1.75);
+  });
+
+  it('from between the notches it goes to the next one, not past it', () => {
+    expect(zoomNotch(1.3, 1)).toBe(1.5);
+    expect(zoomNotch(1.3, -1)).toBe(1.25);
+  });
+
+  it('stays inside the range', () => {
+    expect(zoomNotch(10, 1)).toBe(10);
+    expect(zoomNotch(0.1, -1)).toBe(0.1);
   });
 });

@@ -177,6 +177,20 @@ export function zoomDelta(zoom: number, direction: number): number {
   return Math.round((next - zoom) * 100) / 100;
 }
 
+/** Ctrl and plus or minus: finer notches than the reference's half (owner, 2026-10-15). */
+const FINE_LADDER = [
+  0.1, 0.125, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+  1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 9, 10,
+];
+
+/** The next notch of the finer ladder from `zoom` in that direction; the end of the range stays. */
+export function zoomNotch(zoom: number, direction: number): number {
+  const eps = 1e-6;
+  return direction > 0
+    ? FINE_LADDER.find((z) => z > zoom + eps) ?? ZOOM_MAX
+    : [...FINE_LADDER].reverse().find((z) => z < zoom - eps) ?? ZOOM_MIN;
+}
+
 /**
  * The smallest pixel step a mouse notch comes in (Chrome 100, 120 and
  * up; Firefox 3 lines). A trackpad scrolls a few px at a time.

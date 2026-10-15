@@ -34,7 +34,7 @@
   import { frameCount, isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
-  import { keyPan, turnStep, zoomDelta } from './viewport';
+  import { keyPan, turnStep, zoomDelta, zoomNotch } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
   import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText, zoomSheetKey } from './key-owner';
   import { focusHeir, twinSelector } from './focus-heir';
@@ -1085,7 +1085,7 @@
     // included, instead of the browser zooming the page (key-owner.ts).
     if (zoomSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey })) {
       e.preventDefault();
-      editor.zoomBy(zoomDelta(editor.view.zoom, key === '+' || key === '=' ? 1 : -1));
+      editor.zoomBy(zoomNotch(editor.view.zoom, key === '+' || key === '=' ? 1 : -1) - editor.view.zoom, false);
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do

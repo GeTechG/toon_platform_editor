@@ -1474,10 +1474,11 @@ export class EditorState {
   }
 
   /** Zoom around the last cursor position, falling back to the canvas centre. */
-  zoomBy(delta: number): void {
+  /** `snap` false keeps a finer notch the 0.5 snap would round off (Ctrl and plus or minus). */
+  zoomBy(delta: number, snap = true): void {
     const { width, height } = this.stage;
     const pivot = this.lastScalePivot ?? { x: width / 2, y: height / 2 };
-    this.view = zoomAt(this.view, this.view.zoom + delta, pivot.x, pivot.y, this.stage);
+    this.view = zoomAt(this.view, this.view.zoom + delta, pivot.x, pivot.y, this.stage, snap);
   }
 
   /** Slides the view by CSS pixels (the hand's arrow keys), never losing the sheet. */
