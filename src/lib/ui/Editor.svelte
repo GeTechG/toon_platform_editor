@@ -3170,7 +3170,7 @@
       <!-- A phone's boxes, open, lie where the card stands: it steps out till
            they shut — hidden, not unmounted, so its page is kept. -->
       <div hidden={sideOver && !folded('right')}>
-        <Tour {editor} {mascot} platform={!!onPublish} />
+        <Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />
       </div>
     {/if}
     {#if over && moreOpen}

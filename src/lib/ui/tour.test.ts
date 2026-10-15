@@ -11,15 +11,22 @@ const ru = await Bun.file(UI + '../i18n/ru.json').json();
 
 describe('тур первого входа', () => {
   it('начинается с привета и кончается выбором набора', () => {
-    expect(tourPages(true)).toEqual(['welcome', 'toon', 'plugins', 'export', 'continue', 'open', 'layout']);
+    expect(tourPages(true, true)).toEqual(['welcome', 'toon', 'plugins', 'panels', 'export', 'continue', 'open', 'layout']);
+  });
+
+  // Владелец, 2026-10-15: на десктопе панели расставляют под себя — на телефоне
+  // расстановки нет, и страницы о ней тоже.
+  it('о панелях рассказывает только десктоп', () => {
+    expect(tourPages(true, false)).toEqual(['welcome', 'toon', 'plugins', 'export', 'continue', 'open', 'layout']);
+    expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />');
   });
 
   it('без площадки о продолжениях не рассказывает: продолжать нечего', () => {
-    expect(tourPages(false)).toEqual(['welcome', 'toon', 'plugins', 'export', 'open', 'layout']);
+    expect(tourPages(false, true)).toEqual(['welcome', 'toon', 'plugins', 'panels', 'export', 'open', 'layout']);
   });
 
   it('у каждой страницы рассказа есть заголовок и слова', () => {
-    for (const page of tourPages(true).slice(0, -1)) {
+    for (const page of tourPages(true, true).slice(0, -1)) {
       expect(ru.tour[page].title).toBeString();
       expect(ru.tour[page].text).toBeString();
     }
@@ -37,7 +44,7 @@ describe('тур первого входа', () => {
   });
 
   it('картинки рассказа — украшение: читалка слышит заголовок и слова', () => {
-    expect(tour.match(/<div class="art[^>]*aria-hidden="true"/g)?.length).toBe(5);
+    expect(tour.match(/<div class="art[^>]*aria-hidden="true"/g)?.length).toBe(6);
   });
 
   it('без движения картинки стоят в конце своего пути', () => {
@@ -91,7 +98,7 @@ describe('тур первого входа', () => {
   // карточкой тура, одно на другом. Карточка уходит, пока они открыты, и
   // возвращается на той же странице: она спрятана, а не снята.
   it('под открытыми коробками на телефоне тура не видно, страница его цела', () => {
-    expect(editor).toContain("<div hidden={sideOver && !folded('right')}>\n        <Tour {editor} {mascot} platform={!!onPublish} />\n      </div>");
+    expect(editor).toContain("<div hidden={sideOver && !folded('right')}>\n        <Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />\n      </div>");
   });
 
   // Владелец, 2026-10-13: «проблема анимаций что они не влезают» — сцена была
@@ -106,7 +113,7 @@ describe('тур первого входа', () => {
   });
 
   it('маскота даёт площадка, студия рисует тур на месте плашки', () => {
-    expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} />');
+    expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />');
     expect(editor).toContain('{#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}');
   });
 });

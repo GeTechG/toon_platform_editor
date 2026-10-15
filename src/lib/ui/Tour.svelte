@@ -9,10 +9,11 @@
   import { tourPages } from './tour';
   import type { EditorState } from './editor-state.svelte';
 
-  let { editor, mascot, platform }: { editor: EditorState; mascot?: string; platform: boolean } = $props();
-  const pages = $derived(tourPages(platform));
+  let { editor, mascot, platform, desk }: { editor: EditorState; mascot?: string; platform: boolean; desk: boolean } = $props();
+  const pages = $derived(tourPages(platform, desk));
   let at = $state(0);
-  const page = $derived(pages[at]);
+  // The window narrowed to a phone mid-tour: the panels' page goes, the count stays in range.
+  const page = $derived(pages[Math.min(at, pages.length - 1)]);
 </script>
 
 <section class="preset-ask" aria-labelledby="preset-ask-title">
@@ -41,6 +42,13 @@
           <span class="k"><Icon {name} size={18} /></span>
         {/each}
         <span class="k new"><Icon name="feather" size={18} /></span>
+      </div>
+    </div>
+  {:else if page === 'panels'}
+    <!-- The panels stand; a key is carried from one of them to the other. -->
+    <div class="art" aria-hidden="true">
+      <div class="scene">
+        <div class="desk"><i class="leaf"></i><i class="pan"></i><i class="pan r"></i><i class="move"></i></div>
       </div>
     </div>
   {:else if page === 'export'}
@@ -723,6 +731,95 @@
     74%,
     100% {
       background: var(--accent);
+    }
+  }
+
+  /* A key moved from one panel to another */
+  .desk {
+    position: absolute;
+    left: calc(1.5 * var(--u));
+    top: calc(1 * var(--u));
+    width: calc(13 * var(--u));
+    height: calc(6 * var(--u));
+    box-sizing: border-box;
+    border: 2px solid var(--ink);
+    border-radius: var(--r-sm);
+    background: var(--sub);
+  }
+  .leaf {
+    position: absolute;
+    left: calc(3.6 * var(--u));
+    top: calc(0.6 * var(--u));
+    width: calc(5.4 * var(--u));
+    bottom: calc(0.6 * var(--u));
+    background: var(--canvas);
+    border-radius: 3px;
+  }
+  .pan {
+    position: absolute;
+    left: calc(0.5 * var(--u));
+    top: calc(0.6 * var(--u));
+    width: calc(2.5 * var(--u));
+    bottom: calc(0.6 * var(--u));
+    box-sizing: border-box;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    background: var(--paper);
+  }
+  .pan.r {
+    left: calc(9.5 * var(--u));
+  }
+  /* A key that stays in each panel, and the one carried between them. */
+  .pan::before,
+  .move {
+    content: '';
+    position: absolute;
+    left: calc(0.5 * var(--u));
+    top: calc(0.4 * var(--u));
+    width: calc(1.2 * var(--u));
+    height: calc(1.2 * var(--u));
+    border-radius: 3px;
+    background: var(--ink);
+  }
+  .move {
+    left: calc(1.15 * var(--u));
+    top: calc(2.6 * var(--u));
+    background: var(--accent);
+    outline: 3px dashed transparent;
+    outline-offset: 2px;
+    animation: tour-move 5s var(--ease-out) infinite;
+  }
+  @keyframes tour-move {
+    0%,
+    15% {
+      translate: 0 0;
+      outline-color: transparent;
+    }
+    20% {
+      translate: 0 0;
+      outline-color: var(--accent);
+    }
+    40% {
+      translate: calc(9 * var(--u)) 0;
+      outline-color: var(--accent);
+    }
+    45%,
+    65% {
+      translate: calc(9 * var(--u)) 0;
+      outline-color: transparent;
+    }
+    70% {
+      translate: calc(9 * var(--u)) 0;
+      outline-color: var(--accent);
+    }
+    90% {
+      translate: 0 0;
+      outline-color: var(--accent);
+    }
+    95%,
+    100% {
+      translate: 0 0;
+      outline-color: transparent;
     }
   }
 
