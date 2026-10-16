@@ -24,7 +24,7 @@ const SPECK = 16;
 
 type Alpha = Uint8Array | Uint8ClampedArray;
 
-/** What `fillSlot` reads of a stroke. */
+/** What `fillPlace` reads of a stroke. */
 interface SlotStroke {
   readonly points: readonly number[];
   readonly tool_id: number;
@@ -285,47 +285,69 @@ function walk(has: (p: number) => boolean, start: number, w: number, h: number):
 }
 
 /**
- * Where in the layer's strokes the fill of `area` goes: under the lowest line
- * that touches the area or lies inside it — the line is the fill's border,
- * and whatever the fill covers must stay on top of it. With no such line, at
- * the bottom. A filled shape (`contour`, what the bucket lays down) is not a
- * border: a new fill over an old one goes on top of it, or the old colour hid
- * the new. An eraser that crossed the area cuts every stroke under it, so the
- * fill is kept over the last such eraser too, or it came out with a hole along
- * the old erasure.
+ * Where the fill of `area` goes among the layer's strokes, and which old
+ * fills it replaces.
  *
- * `scale`: raster pixels per document unit. The points are read as the
- * polyline through them, which is near enough the curve a `smooth` or `cubic`
- * geometry draws for a test of a pixel or two.
+ * An old fill (`contour`, what the bucket lays down) lying wholly in the area
+ * is the same area poured again: it goes, wherever it lay — a refill is a new
+ * colour, not one more layer of paint, and one that had landed over the lines
+ * is mended with it.
+ *
+ * The new one goes under the lowest line that touches the area or lies inside
+ * it — the line is its border, and the border is never covered (owner,
+ * 2026-10-16). Old fills under that line stay under the new one by the same
+ * token; one that lies over it covers the new fill where they meet, and an
+ * eraser over it cuts it. With no line at all, it goes over every eraser and
+ * fill it meets, or at the bottom.
+ *
+ * `slot` counts in the strokes left after the replaced ones are taken out.
+ * `scale`: raster pixels per document unit.
  */
-export function fillSlot(
+export function fillPlace(
   area: Uint8Array,
   w: number,
   h: number,
   strokes: readonly SlotStroke[],
   tools: readonly ToolDescriptor[],
   scale: number,
-): number {
+): { slot: number; replaced: number[] } {
   const toArea = distanceField(w, h, (p) => area[p] === 1);
+  // The same area traced again comes out a pixel or two off: a ring's
+  // corners lie on pixel edges, and straightening moves them (a refill
+  // measured on the owner's file reached 1.2 px past the new one).
+  const within = (x: number, y: number) => {
+    const px = Math.min(w - 1, Math.max(0, Math.floor(x * scale)));
+    const py = Math.min(h - 1, Math.max(0, Math.floor(y * scale)));
+    return toArea[py * w + px] <= 3;
+  };
+  const replaced: number[] = [];
+  const rest: SlotStroke[] = [];
+  strokes.forEach((stroke, index) => {
+    const tool = tools[stroke.tool_id];
+    const path = tool?.kind === 'contour' ? flatten(stroke.points, tool.geometry, true) : [];
+    if (path.length > 0 && path.every((v, i) => i % 2 === 1 || within(v, path[i + 1]))) {
+      replaced.push(index);
+    } else {
+      rest.push(stroke);
+    }
+  });
   // One pixel of the area: a shape whose outline never comes near the area
   // holds all of it or none, and this pixel says which.
   const inArea = area.indexOf(1);
   const probe = { x: (inArea % w) + 0.5, y: Math.floor(inArea / w) + 0.5 };
-  let line = -1;
   let over = 0;
-  strokes.forEach((stroke, index) => {
+  for (let index = 0; index < rest.length; index++) {
+    const stroke = rest[index];
     const tool = tools[stroke.tool_id];
-    if (!tool) return;
+    if (!tool) continue;
     const under = tool.kind === 'eraser' || tool.kind === 'contour-eraser' || tool.kind === 'contour';
-    // The lowest line is all it needs; what it must lie over is looked at to the top.
-    if (!under && line >= 0) return;
     const hits = touches(stroke.points, tool, toArea, w, h, scale)
       || (tool.kind === 'contour' && inArea >= 0 && inside(stroke.points, probe.x / scale, probe.y / scale));
-    if (!hits) return;
-    if (under) over = index + 1;
-    else line = index;
-  });
-  return Math.max(line < 0 ? 0 : line, over);
+    if (!hits) continue;
+    if (!under) return { slot: index, replaced };
+    over = index + 1;
+  }
+  return { slot: over, replaced };
 }
 
 /** Whether (x, y) is inside the ring `points` (even–odd). */

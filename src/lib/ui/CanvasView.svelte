@@ -61,7 +61,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { fillRegion, fillSlot, keyhole, traceRings } from '../tools/fill';
+  import { fillPlace, fillRegion, keyhole, traceRings } from '../tools/fill';
   import { simplifyLang } from '../tools/simplify';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
@@ -1178,7 +1178,8 @@
    * The bucket's press: the borders are looked for in the active cell drawn
    * onto the sheet's bitmap without its fills — an old fill is no border, and
    * a press on one pours over it — and the area found goes into the layer as
-   * a contour under the lines and over the fills (tools/fill.ts). It pours the
+   * a contour under the lines, in place of the old fills it pours over
+   * (tools/fill.ts). It pours the
    * outline's colour, and the fill's from the right button, as a line is drawn.
    */
   function pour(e: PointerEvent): void {
@@ -1215,9 +1216,9 @@
     }
     const ring = keyhole([outer, ...holes.filter((hole) => hole.length >= 6)]);
     const toDoc = FIXED_POINT_SCALE / level;
-    const slot = fillSlot(area, w, h, cell.strokes, editor.doc.tools, 1 / toDoc);
+    const { slot, replaced } = fillPlace(area, w, h, cell.strokes, editor.doc.tools, 1 / toDoc);
     const colour = e.button === 2 ? editor.fillColor : editor.brushColor;
-    editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot);
+    editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot, replaced);
   }
 
   /**

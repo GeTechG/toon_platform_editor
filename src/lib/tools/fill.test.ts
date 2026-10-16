@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { fillRegion, fillSlot, keyhole, traceOutline, traceRings } from './fill';
+import { fillPlace, fillRegion, keyhole, traceOutline, traceRings } from './fill';
 import type { ToolDescriptor } from '../format/types';
 
 /** A sheet of `w`×`h` alpha, with the given pixels opaque. */
@@ -106,7 +106,7 @@ describe('traceOutline', () => {
   });
 });
 
-describe('fillSlot', () => {
+describe('fillPlace', () => {
   const tools: ToolDescriptor[] = [
     { kind: 'pencil', geometry: 'line', width: 2, color: '#000000' },
     { kind: 'eraser', geometry: 'line', width: 2 },
@@ -116,10 +116,11 @@ describe('fillSlot', () => {
   const line = (...points: number[]) => ({ points, tool_id: 0 });
   const erase = (...points: number[]) => ({ points, tool_id: 1 });
   const fill = (...points: number[]) => ({ points, tool_id: 2 });
-  // The area: the block 5..9 × 5..9 of a 20×20 sheet.
+  // The area: the block 5..9 × 5..9 of a 20×20 sheet; its outline runs 5..10.
   const area = new Uint8Array(400);
   for (let y = 5; y < 10; y++) for (let x = 5; x < 10; x++) area[y * 20 + x] = 1;
-  const slot = (strokes: { points: number[]; tool_id: number }[]) => fillSlot(area, 20, 20, strokes, tools, 1);
+  const place = (strokes: { points: number[]; tool_id: number }[]) => fillPlace(area, 20, 20, strokes, tools, 1);
+  const slot = (strokes: { points: number[]; tool_id: number }[]) => place(strokes).slot;
 
   it('goes under the lowest line touching the area', () => {
     expect(slot([line(0, 0, 0, 19), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
@@ -133,20 +134,30 @@ describe('fillSlot', () => {
     expect(slot([line(0, 0, 0, 19), line(19, 0, 19, 19)])).toBe(0);
   });
 
-  it('stays above an eraser that crossed the area, which would cut it', () => {
-    expect(slot([line(4, 0, 4, 19), erase(6, 6, 8, 8), line(10, 0, 10, 19)])).toBe(2);
-    expect(slot([line(4, 0, 4, 19), erase(15, 15, 18, 18)])).toBe(0);
+  it('keeps under its lines whatever lies over them', () => {
+    // An eraser or a fill over the border line would cover or cut the new
+    // fill; the line covering it would be worse (owner, 2026-10-16).
+    expect(slot([line(4, 0, 4, 19), erase(6, 6, 8, 8)])).toBe(0);
+    expect(slot([line(4, 0, 4, 19), fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(0);
   });
 
-  it('takes no old fill for a border, and goes over the one it covers', () => {
-    // An old fill around the area's edge, then the lines; the new one goes
-    // over the old fill and under the lines.
-    expect(slot([fill(4, 4, 11, 4, 11, 11, 4, 11), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
+  it('with no line, stays above an eraser or a fill it meets', () => {
+    expect(slot([erase(6, 6, 8, 8), line(19, 0, 19, 19)])).toBe(1);
+    expect(slot([fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(1);
   });
 
-  it('goes over an old fill the whole area lies in', () => {
-    expect(slot([line(4, 0, 4, 19), fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(2);
-    expect(slot([line(4, 0, 4, 19), fill(14, 14, 18, 14, 18, 18, 14, 18)])).toBe(0);
+  it('takes no old fill for a border, and goes over one under its lines', () => {
+    expect(slot([fill(2, 2, 14, 2, 14, 14, 2, 14), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
+  });
+
+  it('replaces an old fill of the same area, wherever it lay', () => {
+    expect(place([fill(5, 5, 10, 5, 10, 10, 5, 10), line(4, 0, 4, 19)])).toEqual({ slot: 0, replaced: [0] });
+    expect(place([line(4, 0, 4, 19), fill(5, 5, 10, 5, 10, 10, 5, 10)])).toEqual({ slot: 0, replaced: [1] });
+  });
+
+  it('replaces an old fill traced a pixel or two wider, and keeps one that reaches beyond', () => {
+    expect(place([fill(4, 3, 11, 4, 11, 11, 4, 11)]).replaced).toEqual([0]);
+    expect(place([fill(5, 5, 15, 5, 15, 10, 5, 10)]).replaced).toEqual([]);
   });
 
   it('reads a curve where it is drawn, not along the points that shape it', () => {

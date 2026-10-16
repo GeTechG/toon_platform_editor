@@ -2237,10 +2237,18 @@ export class EditorState {
   /**
    * The bucket: lays `ring` (document units) down as a contour filled with
    * `color` at `slot` of the cell's strokes — under the lines that border it
-   * (tools/fill.ts). One step of undo; a frame at the format's limit refuses
-   * it, as it refuses a line.
+   * — and takes out the old fills it `replaces` (tools/fill.ts); `slot`
+   * counts without them. One step of undo; a frame at the format's limit
+   * refuses it, as it refuses a line.
    */
-  applyFill(ring: readonly number[], color: string, slot: number, layer = this.activeLayer, frame = this.activeFrame): void {
+  applyFill(
+    ring: readonly number[],
+    color: string,
+    slot: number,
+    replaces: readonly number[] = [],
+    layer = this.activeLayer,
+    frame = this.activeFrame,
+  ): void {
     const cell = this.doc.layers[layer]?.frames[frame];
     if (this.playing || !cell || !this.mayEdit([layer])) {
       return;
@@ -2249,7 +2257,8 @@ export class EditorState {
     try {
       this.#write((doc) => {
         const fill = { points: [...ring], tool_id: internTool(doc, { kind: 'contour', geometry: 'line', color }) };
-        replaceStrokes(doc, layer, frame, [...cell.strokes.slice(0, slot), fill, ...cell.strokes.slice(slot)]);
+        const kept = cell.strokes.filter((_, i) => !replaces.includes(i));
+        replaceStrokes(doc, layer, frame, [...kept.slice(0, slot), fill, ...kept.slice(slot)]);
       });
     } catch (err) {
       console.warn('fill rejected:', err);
