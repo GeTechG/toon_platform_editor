@@ -111,6 +111,7 @@ describe('fillSlot', () => {
     { kind: 'pencil', geometry: 'line', width: 2, color: '#000000' },
     { kind: 'eraser', geometry: 'line', width: 2 },
     { kind: 'contour', geometry: 'line', color: '#ff0000' },
+    { kind: 'pencil', geometry: 'smooth', width: 6, color: '#000000' },
   ];
   const line = (...points: number[]) => ({ points, tool_id: 0 });
   const erase = (...points: number[]) => ({ points, tool_id: 1 });
@@ -146,6 +147,13 @@ describe('fillSlot', () => {
   it('goes over an old fill the whole area lies in', () => {
     expect(slot([line(4, 0, 4, 19), fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(2);
     expect(slot([line(4, 0, 4, 19), fill(14, 14, 18, 14, 18, 18, 14, 18)])).toBe(0);
+  });
+
+  it('reads a curve where it is drawn, not along the points that shape it', () => {
+    // A quick stroke: three points far from the area, the curve they shape
+    // passing three pixels over it.
+    const curve = { points: [-30, 30, 7, -26, 44, 30], tool_id: 3 };
+    expect(slot([line(19, 0, 19, 19), curve])).toBe(1);
   });
 });
 

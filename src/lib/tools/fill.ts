@@ -9,6 +9,10 @@
  */
 
 import type { ToolDescriptor } from '../format/types';
+import { emitGeometry, type StrokeGeometry } from '../render/smoothing';
+
+/** Pieces a curve command is cut into; each is then walked a pixel at a time. */
+const CURVE_STEPS = 8;
 
 /** Pixels at least this opaque stop the flood; fainter ones are the line's soft rim. */
 const WALL_ALPHA = 64;
@@ -355,14 +359,15 @@ function touches(
     return px >= 0 && py >= 0 && px < w && py < h && toArea[py * w + px] <= reach;
   };
   const closed = tool.kind === 'contour' || tool.kind === 'contour-eraser';
-  const count = points.length / 2;
-  if (count === 1) return near(points[0] * scale, points[1] * scale);
-  for (let i = 0; i < (closed ? count : count - 1); i++) {
-    const j = (i + 1) % count;
-    const ax = points[2 * i] * scale;
-    const ay = points[2 * i + 1] * scale;
-    const bx = points[2 * j] * scale;
-    const by = points[2 * j + 1] * scale;
+  // Where the ink is: the curve the renderer reads out of the points, not the
+  // points themselves — a quick stroke's few points lie well off its curve.
+  const path = flatten(points, tool.geometry, closed);
+  if (path.length === 2) return near(path[0] * scale, path[1] * scale);
+  for (let i = 0; i + 3 < path.length; i += 2) {
+    const ax = path[i] * scale;
+    const ay = path[i + 1] * scale;
+    const bx = path[i + 2] * scale;
+    const by = path[i + 3] * scale;
     const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
     for (let k = 0; k <= steps; k++) {
       if (near(ax + ((bx - ax) * k) / steps, ay + ((by - ay) * k) / steps)) return true;
@@ -370,3 +375,41 @@ function touches(
   }
   return false;
 }
+
+/** The stroke's path as a polyline [x0, y0, …], every curve cut into `CURVE_STEPS` pieces. */
+function flatten(points: readonly number[], geometry: StrokeGeometry, closed: boolean): number[] {
+  const out: number[] = [];
+  let px = 0;
+  let py = 0;
+  const to = (x: number, y: number) => {
+    out.push(x, y);
+    px = x;
+    py = y;
+  };
+  emitGeometry(points, geometry, closed, {
+    moveTo: to,
+    lineTo: to,
+    quadraticCurveTo(cx, cy, x, y) {
+      const [sx, sy] = [px, py];
+      for (let k = 1; k <= CURVE_STEPS; k++) {
+        const t = k / CURVE_STEPS;
+        const u = 1 - t;
+        to(u * u * sx + 2 * u * t * cx + t * t * x, u * u * sy + 2 * u * t * cy + t * t * y);
+      }
+    },
+    bezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
+      const [sx, sy] = [px, py];
+      for (let k = 1; k <= CURVE_STEPS; k++) {
+        const t = k / CURVE_STEPS;
+        const u = 1 - t;
+        to(
+          u * u * u * sx + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * x,
+          u * u * u * sy + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * y,
+        );
+      }
+    },
+  });
+  if (closed && out.length > 2) out.push(out[0], out[1]);
+  return out;
+}
+
