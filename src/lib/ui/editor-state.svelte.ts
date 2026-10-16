@@ -440,8 +440,7 @@ export class EditorState {
   /**
    * Which swatch the pipette fills. A plain pick arms the outline; the right
    * button on the palette's pipette arms the fill (`bundle:7009-7016`), and
-   * the right button on the canvas still overrides it for one click. The
-   * bucket, the other key of the colours' heading, pours this one too.
+   * the right button on the canvas still overrides it for one click.
    */
   pipetteTarget = $state<'outline' | 'fill'>('outline');
   /** Where the pipette reads from; Alt overrides it for one click. */
@@ -802,10 +801,8 @@ export class EditorState {
       this.previousDrawingTool = this.tool;
     }
     this.hold(resolved);
-    if (resolved === 'pipette' || resolved === 'bucket') {
-      this.pipetteTarget = pipetteTarget;
-    }
     if (resolved === 'pipette') {
+      this.pipetteTarget = pipetteTarget;
       this.openBrowserPicker();
     }
   }

@@ -334,19 +334,6 @@
     >
       <Icon name="pipette" size={20} />
     </button>
-    <!-- The bucket beside it, pouring the colour being chosen (owner, 2026-10-16). -->
-    {#if editor.availableTools.includes('bucket')}
-      <button
-        class="dropper"
-        class:active={editor.tool === 'bucket'}
-        aria-pressed={editor.tool === 'bucket'}
-        onclick={() => editor.selectTool('bucket', target)}
-        title={editor.keyHint(t('tool.bucket.title'))}
-        aria-label={t('tool.bucket.label')}
-      >
-        <Icon name="bucket" size={20} />
-      </button>
-    {/if}
     <!-- The two colours in hand; the pressed one is the one being chosen. -->
     <div class="pair" role="group" aria-label={t('colours.target')}>
       {#each [['outline', editor.brushColor, t('color.stroke')], ['fill', editor.fillColor, t('colours.fill')]] as [id, colour, name] (id)}
@@ -355,7 +342,7 @@
           class:active={target === id}
           aria-pressed={target === id}
           style:--swatch={colour}
-          onclick={() => (target = editor.pipetteTarget = id as 'outline' | 'fill')}
+          onclick={() => (target = id as 'outline' | 'fill')}
           title={name}
           aria-label={`${name} ${colour}`}
         ></button>
@@ -628,17 +615,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* With the bucket beside the pipette the keys outgrow a narrow column:
-     they go down a row rather than cut the heading to «Ц…». */
-  header {
-    flex-wrap: wrap;
-  }
   h2 {
-    flex-basis: max-content;
     font-size: 1.05rem;
-  }
-  .pair {
-    margin-inline-start: auto;
   }
   h3 {
     font-size: 0.82rem;

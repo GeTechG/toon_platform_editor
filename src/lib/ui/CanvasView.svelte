@@ -1176,8 +1176,8 @@
   /**
    * The bucket's press: the borders are looked for in the active layer's
    * bitmap as the composer last drew it, and the area found goes into the
-   * layer as a contour under them (tools/fill.ts). The right button pours the
-   * other colour, as it draws with it.
+   * layer as a contour under them (tools/fill.ts). It pours the outline's
+   * colour, and the fill's from the right button, as a line is drawn.
    */
   function pour(e: PointerEvent): void {
     const layers = composer.layers;
@@ -1215,8 +1215,7 @@
     const toDoc = FIXED_POINT_SCALE / level;
     const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
     const slot = fillSlot(area, w, h, cell?.strokes ?? [], editor.doc.tools, 1 / toDoc);
-    const fillTarget = editor.pipetteTarget === 'fill';
-    const colour = (e.button === 2) !== fillTarget ? editor.fillColor : editor.brushColor;
+    const colour = e.button === 2 ? editor.fillColor : editor.brushColor;
     editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot);
   }
 

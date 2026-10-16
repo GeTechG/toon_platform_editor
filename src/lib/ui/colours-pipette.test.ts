@@ -23,7 +23,7 @@ describe('the colours panel has a pipette', () => {
 describe('the colours plate shuts when the pipette is picked', () => {
   it('the key shuts its box as the pipette comes into hand, and does not open it again', async () => {
     const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
-    expect(editorUi).toMatch(/<PopKey label=\{t\('colours\.key'\)\}[^>]*shutOn=\{PIPETTE_LIKE\.includes\(editor\.tool\)\}/);
+    expect(editorUi).toMatch(/<PopKey label=\{t\('colours\.key'\)\}[^>]*shutOn=\{editor\.tool === 'pipette'\}/);
     const pop = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
     expect(pop).not.toContain('away?: boolean');
   });

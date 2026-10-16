@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
-import { defaultPanels, movePanelItem, PIPETTE_LIKE, toolItem, toolOpensBrush, type PanelLayout } from './panels';
+import { defaultPanels, movePanelItem, toolItem, toolOpensBrush, type PanelLayout } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
 import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, toolRoom } from './small-screen';
 
@@ -16,26 +16,26 @@ const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)
 /** Everything behind «⋯», whatever its group. */
 const all = (cut: ReturnType<typeof phoneLayout>) => cut.more.flatMap((group) => group.items);
 // toonop draws no pipette key: a held finger does its work.
-const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: (tool: string) => !PIPETTE_LIKE.includes(tool) };
+const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: (tool: string) => tool !== 'pipette' };
 
 describe('a phone draws toonop’s desktop', () => {
   it('the top bar is one row: publish, «⋯», the essential tools, a key for the other tools, the colour', () => {
     const cut = phoneLayout(base, base, keep);
     expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     // The transform among them (owner, 2026-10-07: «трансформацию спрячь в инструменты»).
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:bucket', 'tool:drag', 'tool:lasso', 'tool:loop']);
   });
 
   it('the row scales with the screen: a wide one holds every tool and no key for the rest, any other only the essential ones', () => {
     const wide = phoneLayout(base, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:bucket', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
     expect(wide.tools).toEqual([]);
     // One short of them all: still only the essential ones, not «whatever came next».
     const near = phoneLayout(base, base, { ...keep, room: 5 });
     expect(near.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     const narrow = phoneLayout(base, base, { ...keep, room: 2 });
     expect(narrow.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tools', 'color-key']);
-    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:bucket', 'tool:drag', 'tool:lasso', 'tool:loop']);
   });
 
   it('how many tools the row has room for is worked out from its width and the text size', () => {
@@ -144,7 +144,7 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(base, base, { ...keep, tall: false, room: 12 });
     expect(cut.panels.top).toEqual(['publish', 'more', 'history', 'spring:lead', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     expect(cut.panels.rows).toEqual([['timeline']]);
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:bucket', 'tool:drag', 'tool:lasso', 'tool:loop']);
     // «Добавить кадр», three of the transport, the onion skin and the sound take the row's room with undo and redo.
     expect(editorUi).toContain('keys: tall ? 2 : 10');
     // In the middle of the row (owner: «сделай их по центру»): a spring on either side.
@@ -263,7 +263,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('a finger gets no hand tool: two fingers move the sheet', () => {
     expect(editorUi).toContain("const touch = matchMedia('(pointer: coarse)').matches;");
     expect(editorUi).toContain("&& !(tool === 'drag' && touch)");
-    const cut = phoneLayout(base, base, { ...keep, drawn: (tool) => !PIPETTE_LIKE.includes(tool) && tool !== 'drag' });
+    const cut = phoneLayout(base, base, { ...keep, drawn: (tool) => tool !== 'pipette' && tool !== 'drag' });
     expect([...cut.panels.top, ...cut.tools, ...all(cut)]).not.toContain('tool:drag');
   });
 
