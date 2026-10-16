@@ -4805,11 +4805,23 @@
     font-size: 0.95rem;
     font-weight: 700;
   }
-  /* Not one more tool: an empty place for one — no fill, a dashed edge. */
-  .editor :global(.key[data-add]:not(.active)) {
-    border: 1.5px dashed var(--edge);
+  /* Not one more tool: a small plus at the panel's foot, faint until the
+     hand comes near (owner, 2026-10-16). */
+  .editor :global(.key[data-add]) {
+    width: 1.75rem;
+    min-width: 0;
+    height: 1.75rem;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+    border: none;
     background: transparent;
     color: var(--ink-2);
+    opacity: 0.4;
+    transition: opacity var(--dur-enter) var(--ease-out);
+  }
+  .editor :global(.key[data-add]:is(:hover, :focus-visible, .active)) {
+    opacity: 1;
   }
   .add-list {
     display: flex;
