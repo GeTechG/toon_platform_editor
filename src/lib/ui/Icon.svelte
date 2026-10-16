@@ -69,6 +69,7 @@
     | 'github'
     | 'search'
     | 'home'
+    | 'gallery'
     | 'user'
     | 'bell';
 
@@ -91,6 +92,8 @@
     search: 'M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0zM20 20l-4-4',
     // A house: the site's feed, on a phone's tab bar.
     home: 'M3 10.5 12 3l9 7.5M5 9v11h5v-6h4v6h5V9',
+    // A shelf of four cards: the feed of new toons.
+    gallery: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
     // A head and shoulders: an account not signed in yet.
     user: 'M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4 21a8 8 0 0 1 16 0',
     // A bell: the site's notifications.
