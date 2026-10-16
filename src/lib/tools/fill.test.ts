@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { fillRegion, fillSlot, traceOutline } from './fill';
+import { fillRegion, fillSlot, keyhole, traceOutline, traceRings } from './fill';
 import type { ToolDescriptor } from '../format/types';
 
 /** A sheet of `w`×`h` alpha, with the given pixels opaque. */
@@ -61,11 +61,21 @@ describe('fillRegion', () => {
     expect(at(thin, 1, 7)).toBe(0);
   });
 
-  it('takes an island inside the area with it', () => {
-    const ring = box(1);
-    ring[7 * 20 + 7] = 255;
-    const mask = fillRegion(ring, 20, 20, 4, 4, 0, 0)!;
-    expect(at(mask, 7, 7)).toBe(1);
+  /** A 30×30 sheet: a ring 2..27 and inside it a square ring `lo`..`hi`. */
+  const nested = (lo: number, hi: number) => sheet(30, 30, (x, y) => {
+    const ring = (a: number, b: number) => x >= a && x <= b && y >= a && y <= b && (x === a || x === b || y === a || y === b);
+    return ring(2, 27) || ring(lo, hi);
+  });
+
+  it('leaves what a line encloses inside the area out of it', () => {
+    const mask = fillRegion(nested(8, 20), 30, 30, 4, 4, 0, 0)!;
+    expect(mask[4 * 30 + 4]).toBe(1);
+    expect(mask[14 * 30 + 14]).toBe(0);
+  });
+
+  it('takes a speck the lines enclose with it', () => {
+    const mask = fillRegion(nested(8, 10), 30, 30, 4, 4, 0, 0)!;
+    expect(mask[9 * 30 + 9]).toBe(1);
   });
 });
 
@@ -100,9 +110,11 @@ describe('fillSlot', () => {
   const tools: ToolDescriptor[] = [
     { kind: 'pencil', geometry: 'line', width: 2, color: '#000000' },
     { kind: 'eraser', geometry: 'line', width: 2 },
+    { kind: 'contour', geometry: 'line', color: '#ff0000' },
   ];
   const line = (...points: number[]) => ({ points, tool_id: 0 });
   const erase = (...points: number[]) => ({ points, tool_id: 1 });
+  const fill = (...points: number[]) => ({ points, tool_id: 2 });
   // The area: the block 5..9 × 5..9 of a 20×20 sheet.
   const area = new Uint8Array(400);
   for (let y = 5; y < 10; y++) for (let x = 5; x < 10; x++) area[y * 20 + x] = 1;
@@ -123,5 +135,36 @@ describe('fillSlot', () => {
   it('stays above an eraser that crossed the area, which would cut it', () => {
     expect(slot([line(4, 0, 4, 19), erase(6, 6, 8, 8), line(10, 0, 10, 19)])).toBe(2);
     expect(slot([line(4, 0, 4, 19), erase(15, 15, 18, 18)])).toBe(0);
+  });
+
+  it('takes no old fill for a border, and goes over the one it covers', () => {
+    // An old fill around the area's edge, then the lines; the new one goes
+    // over the old fill and under the lines.
+    expect(slot([fill(4, 4, 11, 4, 11, 11, 4, 11), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
+  });
+
+  it('goes over an old fill the whole area lies in', () => {
+    expect(slot([line(4, 0, 4, 19), fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(2);
+    expect(slot([line(4, 0, 4, 19), fill(14, 14, 18, 14, 18, 18, 14, 18)])).toBe(0);
+  });
+});
+
+describe('traceRings', () => {
+  it('walks the outline clockwise and a hole the other way', () => {
+    const m = new Uint8Array(100);
+    for (let y = 1; y <= 6; y++) for (let x = 1; x <= 6; x++) m[y * 10 + x] = 1;
+    m[3 * 10 + 3] = 0;
+    expect(traceRings(m, 10, 10)).toEqual([[1, 1, 7, 1, 7, 7, 1, 7], [3, 3, 3, 4, 4, 4, 4, 3]]);
+  });
+});
+
+describe('keyhole', () => {
+  it('joins the holes to the outline there and back from its first corner', () => {
+    expect(keyhole([[0, 0, 9, 0, 9, 9], [3, 3, 3, 4, 4, 4], [6, 6, 6, 7, 7, 7]]))
+      .toEqual([0, 0, 9, 0, 9, 9, 0, 0, 3, 3, 3, 4, 4, 4, 3, 3, 0, 0, 6, 6, 6, 7, 7, 7, 6, 6]);
+  });
+
+  it('leaves a lone outline as it is', () => {
+    expect(keyhole([[0, 0, 9, 0, 9, 9]])).toEqual([0, 0, 9, 0, 9, 9]);
   });
 });

@@ -12,6 +12,11 @@ import type { ToolDescriptor } from '../format/types';
 
 /** Pixels at least this opaque stop the flood; fainter ones are the line's soft rim. */
 const WALL_ALPHA = 64;
+/**
+ * A pocket the lines enclose inside the area smaller than this many pixels is
+ * filled with it: a speck between crossing lines is not worth a ring of its own.
+ */
+const SPECK = 16;
 
 type Alpha = Uint8Array | Uint8ClampedArray;
 
@@ -30,7 +35,8 @@ interface SlotStroke {
  * area then grows back by as much over empty pixels into the corners the
  * swelling took. `grow`: how far the area reaches in under the line, over its
  * inked pixels only, so no rim of paper shows between the fill and the line
- * and a thin line is never crossed. Islands inside the area are its own.
+ * and a thin line is never crossed. What a line encloses inside the area stays
+ * out of it — a hole — unless it is a speck.
  */
 export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: number, gap: number, grow: number): Uint8Array | null {
   const seed = y * w + x;
@@ -56,7 +62,11 @@ export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: num
   if (grow > 0) {
     spread(mask, w, h, edgeOf(mask, w, h), (p) => alpha[p] > 0, grow, true);
   }
-  fillHoles(mask, w, h);
+  for (const hole of holesOf(mask, w, h)) {
+    if (hole.length < SPECK) {
+      for (const p of hole) mask[p] = 1;
+    }
+  }
   return mask;
 }
 
@@ -111,22 +121,42 @@ function edgeOf(mask: Uint8Array, w: number, h: number): number[] {
   return edge;
 }
 
-/** Whatever the outside cannot reach without crossing the area becomes the area. */
-function fillHoles(mask: Uint8Array, w: number, h: number): void {
-  const outside = new Uint8Array(w * h);
+/**
+ * The pockets inside the area: pixels outside it that the sheet's edge cannot
+ * reach without crossing it, each pocket as its pixels, the first one its
+ * topmost-leftmost.
+ */
+function holesOf(mask: Uint8Array, w: number, h: number): number[][] {
+  const seen = new Uint8Array(w * h);
   const border: number[] = [];
   for (let p = 0; p < w * h; p++) {
     const px = p % w;
     const onBorder = px === 0 || px === w - 1 || p < w || p >= w * (h - 1);
     if (onBorder && !mask[p]) {
-      outside[p] = 1;
+      seen[p] = 1;
       border.push(p);
     }
   }
-  spread(outside, w, h, border, (p) => !mask[p], Infinity, false);
+  spread(seen, w, h, border, (p) => !mask[p], Infinity, false);
+  const holes: number[][] = [];
   for (let p = 0; p < w * h; p++) {
-    if (!outside[p]) mask[p] = 1;
+    if (mask[p] || seen[p]) continue;
+    // Its pixels as they are found: the first is where the scan met it.
+    const hole = [p];
+    seen[p] = 1;
+    for (let i = 0; i < hole.length; i++) {
+      const q = hole[i];
+      const qx = q % w;
+      for (const r of [qx > 0 ? q - 1 : -1, qx < w - 1 ? q + 1 : -1, q - w, q + w]) {
+        if (r >= 0 && r < w * h && !seen[r] && !mask[r]) {
+          seen[r] = 1;
+          hole.push(r);
+        }
+      }
+    }
+    holes.push(hole);
   }
+  return holes;
 }
 
 /**
@@ -170,14 +200,50 @@ export function distanceField(w: number, h: number, source: (p: number) => boole
  * The outer outline of `mask`, as a ring of pixel corners [x0, y0, x1, y1, …]
  * walked clockwise from the top-left corner of its topmost pixel, one point
  * per turn. Pixels joined only by a corner stay one shape; holes are not
- * walked (an area here has none).
+ * walked (`traceRings` walks them).
  */
 export function traceOutline(mask: Uint8Array, w: number, h: number): number[] {
   const start = mask.indexOf(1);
-  if (start < 0) {
-    return [];
+  return start < 0 ? [] : walk((p) => mask[p] === 1, start, w, h);
+}
+
+/**
+ * The outline of the area and of each hole in it: the outline clockwise, as
+ * `traceOutline` walks it, then every hole the other way round — so a fill
+ * of the joined path (`keyhole`) leaves the holes empty.
+ */
+export function traceRings(mask: Uint8Array, w: number, h: number): number[][] {
+  const rings = [traceOutline(mask, w, h)];
+  for (const hole of holesOf(mask, w, h)) {
+    const pixels = new Set(hole);
+    const ring = walk((p) => pixels.has(p), hole[0], w, h);
+    const back = [ring[0], ring[1]];
+    for (let i = ring.length - 2; i >= 2; i -= 2) back.push(ring[i], ring[i + 1]);
+    rings.push(back);
   }
-  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && mask[y * w + x] === 1;
+  return rings;
+}
+
+/**
+ * One path out of an outline and its holes: from the outline's first corner
+ * to each hole, round it and back the same way. A stretch walked there and
+ * back adds nothing to what a fill covers, so the path fills as the outline
+ * with holes in it — the one closed shape a `contour` stroke can hold.
+ */
+export function keyhole(rings: readonly (readonly number[])[]): number[] {
+  const [outer, ...holes] = rings;
+  const path = [...outer];
+  holes.forEach((hole, i) => {
+    if (i === 0) path.push(outer[0], outer[1]);
+    path.push(...hole, hole[0], hole[1]);
+    if (i < holes.length - 1) path.push(outer[0], outer[1]);
+  });
+  return path;
+}
+
+/** The clockwise walk round the shape `has` names, from its topmost-leftmost pixel `start`. */
+function walk(has: (p: number) => boolean, start: number, w: number, h: number): number[] {
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && has(y * w + x);
   // The pixel in quadrant (sx, sy) of corner (cx, cy).
   const quadrant = (cx: number, cy: number, sx: number, sy: number) => inside(sx < 0 ? cx - 1 : cx, sy < 0 ? cy - 1 : cy);
   const sx0 = start % w;
@@ -185,7 +251,7 @@ export function traceOutline(mask: Uint8Array, w: number, h: number): number[] {
   const ring = [sx0, sy0];
   let cx = sx0;
   let cy = sy0;
-  // Heading east with the area on the right; screen y grows down, so the
+  // Heading east with the shape on the right; screen y grows down, so the
   // right of (dx, dy) is (-dy, dx).
   let dx = 1;
   let dy = 0;
@@ -218,8 +284,10 @@ export function traceOutline(mask: Uint8Array, w: number, h: number): number[] {
  * Where in the layer's strokes the fill of `area` goes: under the lowest line
  * that touches the area or lies inside it — the line is the fill's border,
  * and whatever the fill covers must stay on top of it. With no such line, at
- * the bottom. An eraser that crossed the area cuts every stroke under it, so
- * the fill is kept over the last such eraser, or it came out with a hole along
+ * the bottom. A filled shape (`contour`, what the bucket lays down) is not a
+ * border: a new fill over an old one goes on top of it, or the old colour hid
+ * the new. An eraser that crossed the area cuts every stroke under it, so the
+ * fill is kept over the last such eraser too, or it came out with a hole along
  * the old erasure.
  *
  * `scale`: raster pixels per document unit. The points are read as the
@@ -235,18 +303,38 @@ export function fillSlot(
   scale: number,
 ): number {
   const toArea = distanceField(w, h, (p) => area[p] === 1);
-  let slot = -1;
-  let afterEraser = 0;
+  // One pixel of the area: a shape whose outline never comes near the area
+  // holds all of it or none, and this pixel says which.
+  const inArea = area.indexOf(1);
+  const probe = { x: (inArea % w) + 0.5, y: Math.floor(inArea / w) + 0.5 };
+  let line = -1;
+  let over = 0;
   strokes.forEach((stroke, index) => {
     const tool = tools[stroke.tool_id];
     if (!tool) return;
-    const erases = tool.kind === 'eraser' || tool.kind === 'contour-eraser';
-    // The lowest line is all it needs; erasers are looked at to the top.
-    if ((!erases && slot >= 0) || !touches(stroke.points, tool, toArea, w, h, scale)) return;
-    if (erases) afterEraser = index + 1;
-    else slot = index;
+    const under = tool.kind === 'eraser' || tool.kind === 'contour-eraser' || tool.kind === 'contour';
+    // The lowest line is all it needs; what it must lie over is looked at to the top.
+    if (!under && line >= 0) return;
+    const hits = touches(stroke.points, tool, toArea, w, h, scale)
+      || (tool.kind === 'contour' && inArea >= 0 && inside(stroke.points, probe.x / scale, probe.y / scale));
+    if (!hits) return;
+    if (under) over = index + 1;
+    else line = index;
   });
-  return Math.max(slot < 0 ? 0 : slot, afterEraser);
+  return Math.max(line < 0 ? 0 : line, over);
+}
+
+/** Whether (x, y) is inside the ring `points` (even–odd). */
+function inside(points: readonly number[], x: number, y: number): boolean {
+  let odd = false;
+  for (let i = 0, j = points.length - 2; i < points.length; j = i, i += 2) {
+    const yi = points[i + 1];
+    const yj = points[j + 1];
+    if ((yi > y) !== (yj > y) && x < ((points[j] - points[i]) * (y - yi)) / (yj - yi) + points[i]) {
+      odd = !odd;
+    }
+  }
+  return odd;
 }
 
 /** Whether a stroke's ink reaches within a pixel of the area. */

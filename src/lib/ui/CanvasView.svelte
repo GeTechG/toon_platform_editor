@@ -12,6 +12,7 @@
   import {
     renderRawPolyline,
     renderResolvedPreview,
+    renderStrokesLayer,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
@@ -60,7 +61,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { fillRegion, fillSlot, traceOutline } from '../tools/fill';
+  import { fillRegion, fillSlot, keyhole, traceRings } from '../tools/fill';
   import { simplifyLang } from '../tools/simplify';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
@@ -1174,29 +1175,28 @@
   }
 
   /**
-   * The bucket's press: the borders are looked for in the active layer's
-   * bitmap as the composer last drew it, and the area found goes into the
-   * layer as a contour under them (tools/fill.ts). It pours the outline's
-   * colour, and the fill's from the right button, as a line is drawn.
+   * The bucket's press: the borders are looked for in the active cell drawn
+   * onto the sheet's bitmap without its fills — an old fill is no border, and
+   * a press on one pours over it — and the area found goes into the layer as
+   * a contour under the lines and over the fills (tools/fill.ts). It pours the
+   * outline's colour, and the fill's from the right button, as a line is drawn.
    */
   function pour(e: PointerEvent): void {
-    const layers = composer.layers;
-    if (!layers || !lastRaster) {
+    const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
+    if (!cell || !lastRaster) {
       return;
     }
-    const level = lastRaster.level;
-    const source = layers.active as HTMLCanvasElement;
-    const w = source.width;
-    const h = source.height;
+    const { level, width: w, height: h } = lastRaster;
     fillEl = buffer(fillEl, w, h);
-    const ctx = fillEl.getContext('2d', { willReadFrequently: true });
+    const ctx = fillEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx | null;
     if (!ctx) {
       return;
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(source, 0, 0);
-    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const lines = cell.strokes.filter((stroke) => editor.doc.tools[stroke.tool_id]?.kind !== 'contour');
+    renderStrokesLayer({ strokes: lines }, editor.doc.tools, ctx, { scale: level / FIXED_POINT_SCALE, dpr: 1 });
+    const rgba = (ctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, w, h).data;
     const alpha = new Uint8Array(w * h);
     for (let p = 0; p < alpha.length; p++) alpha[p] = rgba[p * 4 + 3];
     const [ux, uy] = toDocUnits(e);
@@ -1207,14 +1207,15 @@
     if (!area) {
       return;
     }
-    // The staircase of pixel edges, straightened within ¾ of a pixel.
-    const ring = simplifyLang(traceOutline(area, w, h), 16, 0.75);
-    if (ring.length < 6) {
+    // The staircase of pixel edges, straightened within ¾ of a pixel; a hole
+    // straightened down to a line is no hole.
+    const [outer, ...holes] = traceRings(area, w, h).map((r) => simplifyLang(r, 16, 0.75));
+    if (outer.length < 6) {
       return;
     }
+    const ring = keyhole([outer, ...holes.filter((hole) => hole.length >= 6)]);
     const toDoc = FIXED_POINT_SCALE / level;
-    const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
-    const slot = fillSlot(area, w, h, cell?.strokes ?? [], editor.doc.tools, 1 / toDoc);
+    const slot = fillSlot(area, w, h, cell.strokes, editor.doc.tools, 1 / toDoc);
     const colour = e.button === 2 ? editor.fillColor : editor.brushColor;
     editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot);
   }
