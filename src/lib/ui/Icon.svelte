@@ -66,7 +66,8 @@
     | 'harmony'
     | 'sliders'
     | 'tools'
-    | 'github';
+    | 'github'
+    | 'search';
 
   const PATHS: Record<IconName, string> = {
     // An artist's brush — a round handle and a loaded tip — for the drawing
@@ -83,6 +84,8 @@
       'M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4M9 18c-4.51 2-5-2-7-2',
     // Four of a kind: the tools a phone's row had no room for.
     tools: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+    // A loupe: the site's search.
+    search: 'M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0zM20 20l-4-4',
     plus: 'M12 3v18M3 12h18',
     minus: 'M3 12h18',
     // Two arrows passing each other: outline and fill trade places.
