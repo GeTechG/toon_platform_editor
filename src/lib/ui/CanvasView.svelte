@@ -1214,7 +1214,7 @@
     const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
     const y = Math.min(h - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * level)));
     // Two bitmap pixels in under the line: past its soft rim, short of crossing it.
-    const area = fillRegion(alpha, w, h, x, y, editor.settings.fillGap * level, 2, editor.settings.fillThrough);
+    const area = fillRegion(alpha, w, h, x, y, editor.settings.fillGap * level, 2);
     if (!area) {
       // The press landed on a line: hatching inside the borders is a border
       // too, and the bucket says so rather than doing nothing.

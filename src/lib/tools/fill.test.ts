@@ -91,45 +91,6 @@ describe('fillRegion', () => {
   });
 });
 
-describe('fillRegion through hatching', () => {
-  /** The box of `box()` with vertical hatching across it at x = 5, 7, 9. */
-  const hatched = (gap = 0) => {
-    const alpha = box(1, gap);
-    for (const x of [5, 7, 9]) for (let y = 3; y <= 11; y++) alpha[y * 20 + x] = 255;
-    return alpha;
-  };
-
-  it('stops at a stroke of hatching when not asked through', () => {
-    expect(at(fillRegion(hatched(), 20, 20, 6, 6, 0, 0)!, 8, 6)).toBe(0);
-  });
-
-  it('takes the whole outline, hatching and all, when asked through', () => {
-    const mask = fillRegion(hatched(), 20, 20, 6, 6, 0, 0, true)!;
-    expect(at(mask, 8, 6)).toBe(1);
-    expect(at(mask, 3, 3)).toBe(1);
-    expect(at(mask, 7, 6)).toBe(1);
-    expect(at(mask, 0, 0)).toBe(0);
-    expect(at(mask, 15, 15)).toBe(0);
-  });
-
-  it('reaches no further out than the outline, a gap in it held', () => {
-    const mask = fillRegion(hatched(2), 20, 20, 6, 6, 4, 0, true)!;
-    expect(at(mask, 0, 0)).toBe(0);
-    expect(at(mask, 1, 7)).toBe(0);
-    expect(at(mask, 8, 6)).toBe(1);
-  });
-
-  it('refuses a press on a line here too', () => {
-    expect(fillRegion(hatched(), 20, 20, 7, 6, 0, 0, true)).toBeNull();
-  });
-
-  it('pours as ever where the press is outside every outline', () => {
-    const mask = fillRegion(hatched(), 20, 20, 16, 16, 0, 0, true)!;
-    expect(at(mask, 0, 0)).toBe(1);
-    expect(at(mask, 6, 6)).toBe(0);
-  });
-});
-
 describe('traceOutline', () => {
   /** A 10×10 mask with the given pixels in it. */
   const mask = (...pixels: [number, number][]) => {
