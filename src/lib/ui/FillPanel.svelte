@@ -60,8 +60,9 @@
     }}
   />
   <p class="hint">{t('settings.fill_gap_hint')}</p>
-  <!-- Every line is a border: hatching inside an outline splits it into as
-       many areas as the strokes leave (owner, 2026-10-16). -->
+  <!-- Every line is a border, and a place painted over with a thick brush is
+       all lines: an outline drawn on top of it has nothing empty inside to
+       pour into (owner, 2026-10-16). -->
   <p class="warn">{t('fill.lines_warning')}</p>
 </div>
 
