@@ -90,7 +90,9 @@ describe('the mega-eraser warning can be muted for good', () => {
   it('is a dialog with «Больше не показывать», not alert()', () => {
     expect(editorUi).not.toContain('alert(MEGA_ERASER_WARNING)');
     expect(editorUi).toContain("t('editor.dont_show_again')");
-    expect(editorUi).toContain("setSetting('megaEraserWarning'");
+    // One dialog for a tool's first pick: the mega-eraser's setting is picked by the tool.
+    expect(editorUi).toContain("mega ? 'megaEraserWarning' : 'fillWarning'");
+    expect(editorUi).toContain('editor.setSetting(setting,');
     expect(ru.editor.dont_show_again).toBe('Больше не показывать');
   });
 

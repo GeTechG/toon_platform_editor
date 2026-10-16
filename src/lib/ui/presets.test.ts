@@ -242,6 +242,7 @@ test('settings round-trip through the stored config', () => {
     megaEraserWarning: false,
     fillGap: 9,
     fillSource: 'canvas' as const,
+    fillWarning: false,
     pluginCatalog: 'https://plugins.example/',
   };
   const parsed = parseUiConfig(JSON.stringify({

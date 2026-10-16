@@ -265,6 +265,8 @@ export class EditorState {
    * not a setting: the reference warns again in the next tab.
    */
   megaEraserWarned = $state(false);
+  /** The bucket's warning came up this session (or was due and is muted). */
+  fillWarned = $state(false);
   /** The open lasso/distort session; null when nothing is selected. */
   transform = $state<TransformState | null>(null);
   /**

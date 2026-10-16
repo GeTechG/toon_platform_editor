@@ -24,8 +24,6 @@
 </script>
 
 <div class="fill-box" role="group" aria-label={t('fill.box')}>
-  <!-- Still being shaped (owner, 2026-10-16): it says so where it is set up. -->
-  <p class="beta">{t('fill.experimental')}</p>
   <h2 id="fill-source">{t('fill.source')}</h2>
   <div class="choice" role="group" aria-labelledby="fill-source">
     {#each SOURCES as [id, label] (id)}
@@ -60,10 +58,6 @@
     }}
   />
   <p class="hint">{t('settings.fill_gap_hint')}</p>
-  <!-- Every line is a border, and a place painted over with a thick brush is
-       all lines: an outline drawn on top of it has nothing empty inside to
-       pour into (owner, 2026-10-16). -->
-  <p class="warn">{t('fill.lines_warning')}</p>
 </div>
 
 <style>
@@ -84,9 +78,7 @@
   }
   h2,
   .choice,
-  .hint,
-  .warn,
-  .beta {
+  .hint {
     grid-column: 1 / 3;
     margin: 0;
   }
@@ -126,18 +118,6 @@
   .hint {
     font-size: 0.8rem;
     color: var(--ink-2);
-  }
-  .beta {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--accent);
-  }
-  .warn {
-    padding: 8px;
-    border-radius: var(--r-sm);
-    background: var(--sub);
-    font-size: 0.8rem;
-    color: var(--ink);
   }
   /* The brush box's track and number, a finger deep (DESIGN §5). */
   input[type='range'] {

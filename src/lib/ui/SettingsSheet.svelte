@@ -349,6 +349,15 @@
           />
         </label>
         {#if editor.availableTools.includes('bucket')}
+          <label class="toggle">
+            <span class="toggle-label">{t('settings.fill_warning')}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={editor.settings.fillWarning}
+              onchange={(e) => editor.setSetting('fillWarning', e.currentTarget.checked)}
+            />
+          </label>
           <label class="row">
             <span class="row-label" title={t('settings.fill_gap_hint')}>{t('settings.fill_gap')}</span>
             <span class="slider">

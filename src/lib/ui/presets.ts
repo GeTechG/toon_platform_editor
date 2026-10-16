@@ -252,6 +252,8 @@ export interface EditorSettings {
   fillGap: number;
   /** Where the bucket looks for its borders: the active layer, or every visible one. */
   fillSource: FillSource;
+  /** The bucket warns on its first pick of a session, until «Больше не показывать». */
+  fillWarning: boolean;
   /**
    * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
    * there is no catalog: nothing can be installed from one and not a single
@@ -343,6 +345,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   megaEraserWarning: true,
   fillGap: 4,
   fillSource: 'layer',
+  fillWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
 };
 
@@ -564,6 +567,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     fillGap: typeof raw.fillGap === 'number' && Number.isFinite(raw.fillGap)
       ? Math.min(FILL_GAP_MAX, Math.max(0, Math.round(raw.fillGap)))
       : DEFAULT_SETTINGS.fillGap,
+    fillWarning: flag('fillWarning'),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),
   };

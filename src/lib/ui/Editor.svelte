@@ -178,9 +178,10 @@
   const tell = async (message: string): Promise<void> => void (await put('tell', message, t('ask.ok')));
   const askText = async (message: string, value: string): Promise<string | null> =>
     (await put('text', message, t('ask.save'), value)) ? typed : null;
-  // The mega-eraser warning: a dialog, not alert(), so it can carry
-  // «Больше не показывать» — a reload used to bring the alert back for good.
-  let megaWarnOpen = $state(false);
+  // A tool's warning on its first pick (the mega-eraser, the bucket): a
+  // dialog, not alert(), so it can carry «Больше не показывать» — a reload
+  // used to bring the alert back for good.
+  let toolWarn = $state<'mega-eraser' | 'bucket' | null>(null);
   let megaWarnDialog = $state<HTMLDialogElement | undefined>();
   /** The draft written as the tool was picked actually reached storage. */
   let megaDraftSaved = $state(false);
@@ -2038,10 +2039,23 @@
     }
     editor.megaEraserWarned = true;
     if (editor.settings.megaEraserWarning) {
-      megaWarnOpen = true;
+      toolWarn = 'mega-eraser';
     }
     // «Сохранён» only once it is: the write may fail, or reach no storage.
     saveNow().then((ok) => (megaDraftSaved = ok && !storageBlocked));
+  });
+
+  // The bucket's one warning, on its first pick of the session (owner,
+  // 2026-10-16: «один раз при выборе и одно»): it is experimental, and pours
+  // only where the sheet is empty.
+  $effect(() => {
+    if (editor.tool !== 'bucket' || editor.fillWarned) {
+      return;
+    }
+    editor.fillWarned = true;
+    if (editor.settings.fillWarning) {
+      toolWarn = 'bucket';
+    }
   });
 
   let fileInput = $state<HTMLInputElement | undefined>();
@@ -3497,27 +3511,29 @@
     </dialog>
   {/if}
 
-  {#if megaWarnOpen}
+  {#if toolWarn}
+    {@const mega = toolWarn === 'mega-eraser'}
+    {@const setting = mega ? 'megaEraserWarning' : 'fillWarning'}
     <dialog
       bind:this={megaWarnDialog}
       class="sheet sheet-dialog"
       aria-labelledby="mega-warn-title"
       aria-describedby="mega-warn-text"
-      onclose={() => (megaWarnOpen = false)}
+      onclose={() => (toolWarn = null)}
     >
       <header class="sheet-head">
-        <h2 id="mega-warn-title">{t('editor.mega_eraser_title')}</h2>
+        <h2 id="mega-warn-title">{mega ? t('editor.mega_eraser_title') : t('tool.bucket.label')}</h2>
         <button class="key icon" onclick={() => megaWarnDialog?.close()} aria-label={t('editor.close')}>
           <Icon name="x" />
         </button>
       </header>
       <div class="sheet-body">
-        <p id="mega-warn-text">{MEGA_ERASER_WARNING}{#if megaDraftSaved}{' '}{t('editor.mega_eraser_saved')}{/if}</p>
+        <p id="mega-warn-text">{#if mega}{MEGA_ERASER_WARNING}{#if megaDraftSaved}{' '}{t('editor.mega_eraser_saved')}{/if}{:else}{t('editor.fill_warning')}{/if}</p>
         <label class="mute-warning">
           <input
             type="checkbox"
-            checked={!editor.settings.megaEraserWarning}
-            onchange={(e) => editor.setSetting('megaEraserWarning', !e.currentTarget.checked)}
+            checked={!editor.settings[setting]}
+            onchange={(e) => editor.setSetting(setting, !e.currentTarget.checked)}
           />
           {t('editor.dont_show_again')}
         </label>
