@@ -21,6 +21,8 @@ const WALL_ALPHA = 64;
  * filled with it: a speck between crossing lines is not worth a ring of its own.
  */
 const SPECK = 16;
+/** Through the hatching, how much of the outline's outer side the fill leaves to the line, px. */
+const OUTLINE_KEPT = 2;
 
 type Alpha = Uint8Array | Uint8ClampedArray;
 
@@ -42,26 +44,35 @@ interface SlotStroke {
  * a thin line is never crossed and its soft rim on the far side is left be. What a line encloses inside the area stays
  * out of it — a hole — unless it is a speck.
  */
-export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: number, gap: number, grow: number): Uint8Array | null {
+export function fillRegion(
+  alpha: Alpha,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  gap: number,
+  grow: number,
+  through = false,
+): Uint8Array | null {
   const seed = y * w + x;
   const wall = (p: number) => alpha[p] >= WALL_ALPHA;
+  const reach = gap / 2;
+  const toWall = reach > 0 ? distanceField(w, h, wall) : null;
+  const swollen = (p: number) => (toWall ? toWall[p] <= reach : wall(p));
   if (wall(seed)) {
     return null;
   }
-  const reach = gap / 2;
-  let blocked = (p: number) => wall(p);
-  if (reach > 0) {
-    const toWall = distanceField(w, h, wall);
-    // A press into a corner narrower than the swelling still fills what it pressed.
-    if (toWall[seed] > reach) {
-      blocked = (p) => toWall[p] <= reach;
-    }
+  if (through) {
+    const inside = outlined(w, h, wall, swollen, toWall, reach, seed);
+    if (inside) return inside;
   }
+  // A press into a corner narrower than the gap still fills what it pressed.
+  const blocked = toWall && !swollen(seed) ? swollen : wall;
   const mask = new Uint8Array(w * h);
   mask[seed] = 1;
   spread(mask, w, h, [seed], (p) => !blocked(p), Infinity, false);
-  if (reach > 0) {
-    spread(mask, w, h, edgeOf(mask, w, h), (p) => !wall(p), Math.ceil(reach) + 1, true);
+  if (toWall) {
+    regrow(mask, w, h, wall, toWall, reach);
   }
   if (grow > 0) {
     spread(mask, w, h, edgeOf(mask, w, h), wall, grow, true);
@@ -70,6 +81,70 @@ export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: num
     if (hole.length < SPECK) {
       for (const p of hole) mask[p] = 1;
     }
+  }
+  return mask;
+}
+
+/**
+ * The area grown back into what the swelling of the lines took: the corners,
+ * a few pixels deep — not deeper, or it went out through the very break the
+ * swelling shut — and the strip between a line and the sheet's edge, all
+ * along: that one is no break, the edge is no line.
+ */
+function regrow(mask: Uint8Array, w: number, h: number, wall: (p: number) => boolean, toWall: Float32Array, reach: number): void {
+  // The strip: nearer the sheet's edge than any line. A break in a line is
+  // nearer its two ends, wherever it lies.
+  const byEdge = (p: number) => {
+    const x = p % w;
+    const y = (p - x) / w;
+    return !wall(p) && Math.min(x, y, w - 1 - x, h - 1 - y) < toWall[p];
+  };
+  spread(mask, w, h, edgeOf(mask, w, h).filter(byEdge), byEdge, Infinity, false);
+  spread(mask, w, h, edgeOf(mask, w, h), (p) => !wall(p), Math.ceil(reach) + 1, true);
+}
+
+/**
+ * Through the hatching (the bucket's box): the whole shape an outline closes
+ * round the press, the lines inside it and all — or null when the press is
+ * outside every outline, and the bucket pours as ever.
+ *
+ * Outside is what the sheet's edge reaches without crossing a line (swollen
+ * by the gap, then grown back as `fillRegion` grows); inside is the rest. The
+ * outline's own solid pixels within a couple of the outside are left out, so
+ * the fill keeps off the line's outer edge and never tints its soft rim.
+ */
+function outlined(
+  w: number,
+  h: number,
+  wall: (p: number) => boolean,
+  swollen: (p: number) => boolean,
+  toWall: Float32Array | null,
+  reach: number,
+  seed: number,
+): Uint8Array | null {
+  const outside = new Uint8Array(w * h);
+  const border: number[] = [];
+  for (let p = 0; p < w * h; p++) {
+    const px = p % w;
+    const onBorder = px === 0 || px === w - 1 || p < w || p >= w * (h - 1);
+    if (onBorder && !swollen(p)) {
+      outside[p] = 1;
+      border.push(p);
+    }
+  }
+  spread(outside, w, h, border, (p) => !swollen(p), Infinity, false);
+  if (toWall) {
+    regrow(outside, w, h, wall, toWall, reach);
+  }
+  if (outside[seed]) {
+    return null;
+  }
+  const mask = new Uint8Array(w * h);
+  mask[seed] = 1;
+  spread(mask, w, h, [seed], (p) => !outside[p], Infinity, false);
+  const toOutside = distanceField(w, h, (p) => outside[p] === 1);
+  for (let p = 0; p < w * h; p++) {
+    if (mask[p] && wall(p) && toOutside[p] <= OUTLINE_KEPT) mask[p] = 0;
   }
   return mask;
 }

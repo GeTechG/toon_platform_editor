@@ -23,7 +23,7 @@
   }
 </script>
 
-<div class="box" role="group" aria-label={t('fill.box')}>
+<div class="fill-box" role="group" aria-label={t('fill.box')}>
   <h2 id="fill-source">{t('fill.source')}</h2>
   <div class="choice" role="group" aria-labelledby="fill-source">
     {#each SOURCES as [id, label] (id)}
@@ -58,11 +58,25 @@
     }}
   />
   <p class="hint">{t('settings.fill_gap_hint')}</p>
+  <!-- Hatching inside an outline splits it into as many areas as the strokes
+       leave; through it, the outline alone is the border (owner, 2026-10-16). -->
+  <label class="toggle">
+    <span>{t('fill.through')}</span>
+    <input
+      type="checkbox"
+      role="switch"
+      checked={editor.settings.fillThrough}
+      onchange={(e) => editor.setSetting('fillThrough', e.currentTarget.checked)}
+    />
+  </label>
+  <p class="warn">{editor.settings.fillThrough ? t('fill.through_warning') : t('fill.lines_warning')}</p>
 </div>
 
 <style>
-  /* The brush box's frame (BrushPanel): the same width, the same grid. */
-  .box {
+  /* The brush box's frame (BrushPanel): the same width, the same grid. Not
+     `.box`: a column stretches those to its width (Editor.svelte), and in a
+     pop the long warning then widened the plate across the studio. */
+  .fill-box {
     width: 225px;
     max-width: 100%;
     display: grid;
@@ -76,7 +90,9 @@
   }
   h2,
   .choice,
-  .hint {
+  .hint,
+  .warn,
+  .toggle {
     grid-column: 1 / 3;
     margin: 0;
   }
@@ -116,6 +132,26 @@
   .hint {
     font-size: 0.8rem;
     color: var(--ink-2);
+  }
+  .toggle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.86rem;
+    color: var(--ink);
+  }
+  .toggle > span {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+  .warn {
+    padding: 8px;
+    border-radius: var(--r-sm);
+    background: var(--sub);
+    font-size: 0.8rem;
+    color: var(--ink);
   }
   /* The brush box's track and number, a finger deep (DESIGN §5). */
   input[type='range'] {

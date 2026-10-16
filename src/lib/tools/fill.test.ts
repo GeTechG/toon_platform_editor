@@ -52,6 +52,14 @@ describe('fillRegion', () => {
     expect(at(mask, 11, 11)).toBe(1);
   });
 
+  it('fills the strip between a line and the sheet\'s edge, the gap held', () => {
+    // The box stands two pixels off the edge, as near as the swelling reaches.
+    const mask = fillRegion(box(1), 20, 20, 16, 16, 4, 0)!;
+    expect(at(mask, 0, 7)).toBe(1);
+    expect(at(mask, 1, 7)).toBe(1);
+    expect(at(mask, 7, 7)).toBe(0);
+  });
+
   it('grows under the line by its inked pixels, never past a thin line', () => {
     const thick = fillRegion(box(3), 20, 20, 7, 7, 0, 2)!;
     expect(at(thick, 3, 7)).toBe(1);
@@ -80,6 +88,45 @@ describe('fillRegion', () => {
   it('takes a speck the lines enclose with it', () => {
     const mask = fillRegion(nested(8, 10), 30, 30, 4, 4, 0, 0)!;
     expect(mask[9 * 30 + 9]).toBe(1);
+  });
+});
+
+describe('fillRegion through hatching', () => {
+  /** The box of `box()` with vertical hatching across it at x = 5, 7, 9. */
+  const hatched = (gap = 0) => {
+    const alpha = box(1, gap);
+    for (const x of [5, 7, 9]) for (let y = 3; y <= 11; y++) alpha[y * 20 + x] = 255;
+    return alpha;
+  };
+
+  it('stops at a stroke of hatching when not asked through', () => {
+    expect(at(fillRegion(hatched(), 20, 20, 6, 6, 0, 0)!, 8, 6)).toBe(0);
+  });
+
+  it('takes the whole outline, hatching and all, when asked through', () => {
+    const mask = fillRegion(hatched(), 20, 20, 6, 6, 0, 0, true)!;
+    expect(at(mask, 8, 6)).toBe(1);
+    expect(at(mask, 3, 3)).toBe(1);
+    expect(at(mask, 7, 6)).toBe(1);
+    expect(at(mask, 0, 0)).toBe(0);
+    expect(at(mask, 15, 15)).toBe(0);
+  });
+
+  it('reaches no further out than the outline, a gap in it held', () => {
+    const mask = fillRegion(hatched(2), 20, 20, 6, 6, 4, 0, true)!;
+    expect(at(mask, 0, 0)).toBe(0);
+    expect(at(mask, 1, 7)).toBe(0);
+    expect(at(mask, 8, 6)).toBe(1);
+  });
+
+  it('refuses a press on a line here too', () => {
+    expect(fillRegion(hatched(), 20, 20, 7, 6, 0, 0, true)).toBeNull();
+  });
+
+  it('pours as ever where the press is outside every outline', () => {
+    const mask = fillRegion(hatched(), 20, 20, 16, 16, 0, 0, true)!;
+    expect(at(mask, 0, 0)).toBe(1);
+    expect(at(mask, 6, 6)).toBe(0);
   });
 });
 
