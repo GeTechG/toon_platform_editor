@@ -149,6 +149,7 @@ import {
 } from './workspaces';
 import {
   anyToolVisible,
+  addPanelItem,
   hidePanelItem,
   movePanelItem,
   normalizePanels,
@@ -1122,6 +1123,14 @@ export class EditorState {
   showPanelItem(id: string): void {
     this.panels = showPanelItem(this.panels, id, presetPanels(this.preset));
     this.unfoldAt(id);
+    this.persistUiConfig();
+  }
+
+  /** Off the shelf by the «+» beside the tools. */
+  addPanelItem(id: string): void {
+    this.panels = addPanelItem(this.panels, id, presetPanels(this.preset));
+    this.unfoldAt(id);
+    this.ensureActiveLayerVisible();
     this.persistUiConfig();
   }
 

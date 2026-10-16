@@ -62,7 +62,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
+  import { columnDraws, itemDrawn, kindLabel, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSlot, toolSpec, type PanelItemKind, type PanelSlot } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, deskOnPhone, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
@@ -323,6 +323,12 @@
   let leftEl = $state<HTMLElement>();
   const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
+  /** Where the «+» stands: after the tools, on a desk, outside arranging. */
+  const addAt = $derived<PanelSlot | null>(compact || editor.arranging ? null : toolSlot(panels));
+  /** The shelf for the «+», by kind, tools first. */
+  const shelf = $derived((['tool', 'action', 'widget'] as PanelItemKind[])
+    .map((kind) => ({ kind, items: editor.panels.hidden.map((id) => panelItemSpec(id)).filter((item) => item?.kind === kind) }))
+    .filter((group) => group.items.length > 0));
   // Another arrangement, another text size: both rows are measured anew.
   const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
   $effect(() => {
@@ -3022,7 +3028,7 @@
 
 <!-- In arrange mode every item wears a handle: the wrapper takes the pointer
      (its contents stop taking clicks) and carries the id the arranger drags. -->
-{#snippet slot(items: string[])}
+{#snippet slot(items: string[], at?: PanelSlot)}
   {#each items as id (id)}
     {#if editor.arranging}
       <div
@@ -3042,6 +3048,35 @@
   {#if editor.arranging && items.length === 0}
     <span class="slot-empty">{t('editor.slot_empty')}</span>
   {/if}
+  {#if at && at === addAt}{@render addKey()}{/if}
+{/snippet}
+
+<!-- The way to the shelf where the tools are, so a hand sees the panels can
+     take more (owner, 2026-10-16). One press puts an item on; the arranging
+     itself is a press further. -->
+{#snippet addKey()}
+  <PopKey label={t('editor.add_items')} attrs={{ 'data-name': t('editor.add_items') }}>
+    {#snippet face()}<Icon name="plus" />{/snippet}
+    <div class="add-items">
+      <h2 class="add-title">{t('editor.add_items')}</h2>
+      {#each shelf as group (group.kind)}
+        <h3 class="add-group">{kindLabel(group.kind)}</h3>
+        <div class="add-list">
+          {#each group.items as item (item?.id)}
+            {@const tool = item ? toolOfItem(item.id) : null}
+            <button class="key add-item" onclick={() => item && editor.addPanelItem(item.id)}>
+              {#if tool}<Icon name={toolSpec(tool)?.icon ?? 'tools'} />{/if}{item?.label}
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <p class="add-empty">{t('editor.add_items_empty')}</p>
+      {/each}
+      <button class="key add-arrange" onclick={() => (editor.arranging = true)}>
+        {t('editor.add_items_arrange')}<Icon name="chevron-right" />
+      </button>
+    </div>
+  </PopKey>
 {/snippet}
 
 
@@ -3083,7 +3118,7 @@
       <!-- The host's bar is away on a low window (owner, 2026-10-08) and a
            desk has no «⋯»: the way back heads the row. -->
       {#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
-      {@render slot(panels.top)}
+      {@render slot(panels.top, 'top')}
       {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}
     </div>
   {/if}
@@ -3105,7 +3140,7 @@
       bind:this={leftEl}
     >
       {#if !folded('left')}
-        {@render slot(panels.left)}
+        {@render slot(panels.left, 'left')}
       {/if}
     </aside>
     {#if !sideFixed('left') || deskPhone}
@@ -3246,7 +3281,7 @@
       bind:clientHeight={sideH.right}
     >
       {#if !folded('right')}
-        {@render slot(panels.right)}
+        {@render slot(panels.right, 'right')}
       {/if}
     </aside>
     {@render sideEdge('right', t('editor.palette_side'))}
@@ -3318,7 +3353,7 @@
             class:strip-row={row.includes('timeline')}
             bind:contentRect={rowBoxes[i]}
           >
-            {@render slot(row)}
+            {@render slot(row, `row:${i}`)}
           </div>
           {/if}
         {/each}
@@ -4761,6 +4796,47 @@
   .more-window:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: -3px;
+  }
+  /* The «+» window: the shelf by kind, a key per item at its own width. */
+  .add-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 20rem;
+    padding: 0.75rem;
+  }
+  .add-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+  .add-group {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--ink-2);
+  }
+  .add-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .add-items .add-item {
+    width: auto;
+    gap: 0.35rem;
+    padding: 0 0.7rem;
+    font-size: 0.85rem;
+  }
+  .add-empty {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--ink-2);
+  }
+  .add-items .add-arrange {
+    width: 100%;
+    justify-content: space-between;
+    margin-top: 0.4rem;
+    padding: 0 0.7rem;
   }
   .more-title {
     margin: 1rem 0 0.4rem 0.25rem;

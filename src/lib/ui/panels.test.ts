@@ -21,6 +21,8 @@ import {
   normalizePanels,
   panelItem,
   showPanelItem,
+  addPanelItem,
+  toolSlot,
   samePanels,
   itemDrawn,
   toolOpensBrush,
@@ -467,8 +469,8 @@ describe('the editor is arranged from the config', () => {
   test('every panel draws the items the config puts in it', () => {
     expect(editorUi).toContain('{#snippet slot(');
     expect(editorUi).toContain('{#snippet panelItem(');
-    expect(editorUi).toContain('{@render slot(panels.left)');
-    expect(editorUi).toContain('{@render slot(panels.right)');
+    expect(editorUi).toContain('{@render slot(panels.left');
+    expect(editorUi).toContain('{@render slot(panels.right');
     // The bottom panel is as many rows as the arrangement has.
     expect(editorUi).toContain('{#each panels.rows as row, i (i)}');
     expect(editorUi).toContain('data-slot="row:{i}"');
@@ -478,5 +480,33 @@ describe('the editor is arranged from the config', () => {
     expect(sheet).toContain('Расположение');
     expect(sheet).toContain('editor.arranging = true');
     expect(sheet).not.toContain('editor.movePanelItem');
+  });
+});
+
+describe('the «+» by the tools', () => {
+  const layout = {
+    left: [toolItem('pencil'), toolItem('eraser'), 'history'],
+    right: [],
+    top: [],
+    rows: [['fps']],
+    float: [],
+    hidden: [toolItem('feather'), 'copy'],
+  };
+
+  test('the tools live in the panel of the first one placed', () => {
+    expect(toolSlot(layout)).toBe('left');
+    expect(toolSlot({ ...layout, left: ['history'], top: [toolItem('eraser')] })).toBe('top');
+    expect(toolSlot({ ...layout, left: ['history'] })).toBeNull();
+  });
+
+  test('a tool comes off the shelf right after the last tool, before the rest', () => {
+    const next = addPanelItem(layout, toolItem('feather'));
+    expect(next.left).toEqual([toolItem('pencil'), toolItem('eraser'), toolItem('feather'), 'history']);
+    expect(next.hidden).toEqual(['copy']);
+  });
+
+  test('anything else goes where the preset keeps it', () => {
+    const preset = { ...layout, hidden: [], rows: [['fps', 'copy']] };
+    expect(addPanelItem(layout, 'copy', preset).rows).toEqual([['fps', 'copy']]);
   });
 });

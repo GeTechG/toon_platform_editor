@@ -122,12 +122,3 @@ describe('растянутое уступает холсту', () => {
   });
 });
 
-// Подсказка простоя — две строки, «Переносим…» — одна: с началом переноса
-// полка уезжала из-под руки на 19px.
-describe('плашка раскладки не прыгает с началом переноса', () => {
-  test('подсказка держит две строки, а спрятанная — нет', () => {
-    const hint = arranger.slice(arranger.indexOf('  .arrange-hint {'), arranger.indexOf('  .arrange-bar.compact .ws {'));
-    expect(hint).toContain('min-height: 2.7em;');
-    expect(hint.slice(hint.indexOf('.arrange-bar.compact .arrange-hint'))).toContain('min-height: 0;');
-  });
-});

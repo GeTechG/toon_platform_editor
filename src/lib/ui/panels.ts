@@ -488,6 +488,31 @@ export function showPanelItem(layout: PanelLayout, id: string, preset?: PanelLay
   return movePanelItem(layout, id, rowSlot(at));
 }
 
+/** The panel the tools stand in: the one holding the first tool placed, or null with none placed. */
+export function toolSlot(layout: PanelLayout): PanelSlot | null {
+  const first = allPlaced(layout).find((id) => toolOfItem(id) !== null);
+  const at = first ? slotOf(layout, first) : null;
+  return at && at.slot !== 'hidden' && at.slot !== 'float' ? at.slot : null;
+}
+
+/**
+ * Off the shelf by the «+»: a tool stands right after the last tool of the
+ * tools' panel, so it lands with its kind and not past undo; the rest goes
+ * where the layout keeps it.
+ */
+export function addPanelItem(layout: PanelLayout, id: string, preset?: PanelLayout): PanelLayout {
+  const slot = toolOfItem(id) ? toolSlot(layout) : null;
+  if (!slot) {
+    return showPanelItem(layout, id, preset);
+  }
+  const items = itemsOf(layout, slot);
+  let after = 0;
+  items.forEach((other, i) => {
+    if (toolOfItem(other) !== null) after = i + 1;
+  });
+  return movePanelItem(layout, id, slot, after);
+}
+
 export function hidePanelItem(layout: PanelLayout, id: string): PanelLayout {
   return panelItem(id)?.keep ? layout : movePanelItem(layout, id, 'hidden');
 }

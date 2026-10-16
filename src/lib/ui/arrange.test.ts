@@ -276,13 +276,10 @@ describe('eighth audit: the arrange bar', () => {
 });
 
 describe('ninth audit: the arrange bar leaves the panels in reach on a phone', () => {
-  test('the workspace keys fold away on a narrow screen', () => {
-    // At 320×640 the bar stood 487px tall over the very panels it rearranges:
-    // the tool rail and the palette could not be picked up at all.
-    expect(arranger).toMatch(/<details class="ws"[^>]*open=\{wide\}/);
-    expect(arranger).toContain("matchMedia('(min-width: 40rem) and (min-height: 32rem)')");
-    expect(arranger).toContain('@media (min-width: 40rem)');
-    expect(t('arrange.workspaces')).not.toBe('arrange.workspaces');
+  test('the workspace keys fold away, on any screen', () => {
+    // At 320×640 the bar stood 487px tall over the very panels it rearranges;
+    // since 2026-10-16 they fold on a desk too (used far less than the shelf).
+    expect(arranger).toContain('<details class="ws">');
   });
 });
 
@@ -331,10 +328,6 @@ describe('tenth audit: the arrange bar lies on the canvas, not over the panels',
     expect(arranger).toContain("'[data-slot=\"float\"]'");
     // «Готово» stays in view while the bar scrolls inside itself.
     expect(arranger).toMatch(/\.arrange-keys \{[^}]*position: sticky/);
-  });
-
-  test('a phone lying down folds the workspace keys too', () => {
-    expect(arranger).toContain('(min-height: 32rem)');
   });
 });
 

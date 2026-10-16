@@ -24,7 +24,8 @@
     pickedWorkspace,
     workspaceName,
   } from './workspaces';
-  import { newRowSlot, panelItem, slotLabel, slotRow, type PanelSlot } from './panels';
+  import Icon from './Icon.svelte';
+  import { kindLabel, newRowSlot, panelItem, slotLabel, slotRow, toolOfItem, toolSpec, type PanelItemKind, type PanelSlot } from './panels';
   import { composing } from './key-owner';
   import { createLostRelease } from './lost-release';
   import { t } from '../i18n';
@@ -319,26 +320,20 @@
     editor.arranging = false;
   }
 
-  const hidden = $derived(editor.panels.hidden.map((id) => ({ id, label: panelItem(id)?.label ?? id })));
+  /** The shelf by kind, tools first; an empty kind draws nothing. */
+  const shelf = $derived((['tool', 'action', 'widget'] as PanelItemKind[])
+    .map((kind) => ({
+      kind,
+      items: editor.panels.hidden
+        .map((id) => ({ id, item: panelItem(id), tool: toolOfItem(id) }))
+        .filter(({ item }) => item?.kind === kind),
+    }))
+    .filter((group) => group.items.length > 0));
 
   /** The workspace picked in the list; '' while none is. */
   let picked = $state('');
   /** The pick, while the panels are still laid out as it is (workspaces.ts). */
   const shownPick = $derived(pickedWorkspace(picked, editor.workspaces, editor.panels, editor.floatPos));
-
-  /**
-   * On a phone the bar stood 487px over the panels it rearranges; the named
-   * arrangements fold away there, the drag itself needs only the hint, the
-   * shelf and «Готово».
-   */
-  const wideQuery =
-    typeof matchMedia === 'function' ? matchMedia('(min-width: 40rem) and (min-height: 32rem)') : null;
-  let wide = $state(wideQuery?.matches ?? true);
-  $effect(() => {
-    const follow = (e: MediaQueryListEvent) => (wide = e.matches);
-    wideQuery?.addEventListener('change', follow);
-    return () => wideQuery?.removeEventListener('change', follow);
-  });
 
   /**
    * The bar lies on the canvas, clear of the panels it rearranges: fixed
@@ -474,17 +469,23 @@
 
   <!-- The shelf: everything put away, and a place to drop things onto. -->
   <div class="tray" role="group" data-slot="hidden" aria-label={slotLabel('hidden')}>
-    <span class="tray-name">{slotLabel('hidden')}</span>
-    {#each hidden as item (item.id)}
-      <span class="chip" data-item={item.id}>{item.label}</span>
-    {/each}
-    {#if hidden.length === 0}
+    {#each shelf as group (group.kind)}
+      <div class="tray-group">
+        <span class="tray-name">{kindLabel(group.kind)}</span>
+        {#each group.items as { id, item, tool } (id)}
+          <span class="chip" data-item={id}>
+            {#if tool}<Icon name={toolSpec(tool)?.icon ?? 'tools'} />{/if}{item?.label ?? id}
+          </span>
+        {/each}
+      </div>
+    {:else}
       <span class="tray-empty">{t('arrange.tray_empty')}</span>
-    {/if}
+    {/each}
   </div>
 
   <div class="arrange-keys">
-    <details class="ws" open={wide}>
+    <!-- Used far less than the shelf: folded behind one key (owner, 2026-10-16). -->
+    <details class="ws">
       <summary class="key">{t('arrange.workspaces')}</summary>
       <div class="ws-keys">
         <!-- Named arrangements: «Планшет», «Стол», whatever the hand wants back. -->
@@ -625,10 +626,9 @@
   }
   .arrange-hint {
     margin: 0;
-    /* Two lines kept: the idle hint is two, «Переносим…» one, and the shelf
-       jumped 19px up from under the hand as a drag began. In em: Safari 16
-       has no line-height unit. */
-    min-height: 2.7em;
+    /* A line kept: the shelf jumped up from under the hand as a drag began
+       and the hint changed. In em: Safari 16 has no line-height unit. */
+    min-height: 1.35em;
     font-size: 0.88rem;
     color: var(--ink-2);
   }
@@ -648,15 +648,22 @@
   }
   .tray {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.35rem;
     min-height: 2.6rem;
     padding: 0.35rem;
     border: 1px dashed var(--hairline);
     border-radius: var(--r-sm);
   }
+  .tray-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+  }
   .tray-name {
+    min-width: 6.5rem;
     font-size: 0.8rem;
     font-weight: 650;
     color: var(--ink-2);
@@ -670,6 +677,7 @@
        other thing it presses in the studio. */
     display: inline-flex;
     align-items: center;
+    gap: 0.35rem;
     min-height: var(--key-h, 2.75rem);
     padding: 0.2rem 0.6rem;
     border: none;
@@ -697,10 +705,8 @@
   .ws {
     margin-right: auto;
   }
-  @media (max-width: 39.99rem), (max-height: 31.99rem) {
-    .ws[open] {
-      flex-basis: 100%;
-    }
+  .ws[open] {
+    flex-basis: 100%;
   }
   .ws-keys {
     display: flex;
@@ -720,18 +726,6 @@
   }
   .ws > summary::-webkit-details-marker {
     display: none;
-  }
-  /* A wide screen has the room: the keys stand open with no fold key. */
-  @media (min-width: 40rem) and (min-height: 32rem) {
-    .arrange-bar .ws > summary {
-      display: none;
-    }
-    .ws {
-      flex: 1;
-    }
-    .ws[open] .ws-keys {
-      margin-top: 0;
-    }
   }
   .ws-name {
     min-height: var(--key-h);
