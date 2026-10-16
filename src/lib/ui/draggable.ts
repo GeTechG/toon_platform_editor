@@ -8,9 +8,10 @@
  * pointer has travelled `DRAG_THRESHOLD`, and from then on the pointer
  * capture keeps the press from landing on the key as a click.
  *
- * The window goes `position: fixed` while dragged, so no ancestor of it may
- * carry a `filter`, `transform` or `perspective`: any of those becomes the
- * containing block of a fixed child and the window jumps off the screen.
+ * Dragged, the window leaves the flow as `position: absolute` and is kept
+ * inside the editor (`[data-float-root]`), not the screen: `fixed`, it stayed
+ * where the screen had it while the page under the studio scrolled, and could
+ * be dropped over the site's bar or footer (owner, 2026-10-17).
  */
 
 import { createLostRelease } from './lost-release';
@@ -30,27 +31,46 @@ export interface Size {
   height: number;
 }
 
-/** Keeps a window inside the page; one larger than the page sits in the corner. */
+/** What a window is kept inside: a size, and where it starts when that is
+ * not the origin the window's `left`/`top` count from. */
+export interface Bounds extends Size {
+  left?: number;
+  top?: number;
+}
+
+/** Keeps a window inside its bounds; one larger than them sits in the corner. */
 export function clampWindowPosition(
   left: number,
   top: number,
   size: Size,
-  bounds: Size,
+  bounds: Bounds,
 ): { left: number; top: number } {
+  const x = bounds.left ?? 0;
+  const y = bounds.top ?? 0;
   return {
-    left: Math.max(0, Math.min(left, bounds.width - size.width)),
-    top: Math.max(0, Math.min(top, bounds.height - size.height)),
+    left: Math.max(x, Math.min(left, x + bounds.width - size.width)),
+    top: Math.max(y, Math.min(top, y + bounds.height - size.height)),
   };
 }
 
-/**
- * What a `fixed` window is kept inside: the screen, scrollbars excluded. The
- * body it used to be is the page's height — longer than the screen where the
- * page under the studio scrolls, and a window went below the bottom edge.
- */
-function screenBounds(): Size {
-  const view = document.documentElement ?? document.body;
-  return { width: view.clientWidth, height: view.clientHeight };
+/** Where an `absolute` window's `left`/`top` count from: the padding box of
+ * the positioned block it stands in, on the screen. */
+function origin(node: HTMLElement): { left: number; top: number } {
+  const block = (node.offsetParent as HTMLElement | null) ?? document.documentElement;
+  const r = block.getBoundingClientRect();
+  return { left: r.left + block.clientLeft, top: r.top + block.clientTop };
+}
+
+/** The editor the window is kept inside, counted from its `origin`. */
+function editorBounds(node: HTMLElement, from: { left: number; top: number }): Bounds {
+  const root = node.closest<HTMLElement>('[data-float-root]') ?? document.documentElement;
+  const r = root.getBoundingClientRect();
+  return {
+    left: r.left + root.clientLeft - from.left,
+    top: r.top + root.clientTop - from.top,
+    width: root.clientWidth,
+    height: root.clientHeight,
+  };
 }
 
 interface Grab {
@@ -64,7 +84,7 @@ interface Grab {
   moving: boolean;
   /** Read once, when the window leaves the flow; neither changes during a drag. */
   size: Size;
-  bounds: Size;
+  bounds: Bounds;
 }
 
 /**
@@ -136,13 +156,17 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
     // the zoom window still grows with «1 000 %». Nothing takes the window
     // back into the flow, so nothing has to lift it.
     node.style.minWidth = `${grab.size.width}px`;
-    node.style.position = 'fixed';
+    node.style.position = 'absolute';
     node.style.margin = '0';
+    // Counted from the block it now stands in: the place it had stays.
+    const from = origin(node);
+    grab.left -= from.left;
+    grab.top -= from.top;
     node.style.left = `${grab.left}px`;
     node.style.top = `${grab.top}px`;
     const rect = node.getBoundingClientRect();
     grab.size = { width: rect.width, height: rect.height };
-    grab.bounds = screenBounds();
+    grab.bounds = editorBounds(node, from);
     grab.handle.setPointerCapture(grab.pointerId);
     grab.moving = true;
   }
@@ -187,12 +211,12 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
   }
 
   /**
-   * A window dragged once stays `fixed` where it was left; turning the phone
-   * could put that place past the new screen edge, out of reach. Drawn inside,
-   * never stored: the hand's place stays what it was.
+   * A window dragged once stays where it was left; turning the phone or a
+   * smaller editor could put that place past its edge, out of reach. Drawn
+   * inside, never stored: the hand's place stays what it was.
    */
   function onResize(): void {
-    if (node.style.position !== 'fixed' || !placed) {
+    if (node.style.position !== 'absolute' || !placed) {
       return;
     }
     const rect = node.getBoundingClientRect();
@@ -205,7 +229,7 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
       placed.left,
       placed.top,
       { width: rect.width, height: rect.height },
-      screenBounds(),
+      editorBounds(node, origin(node)),
     );
     node.style.left = `${left}px`;
     node.style.top = `${top}px`;
@@ -215,7 +239,7 @@ export function draggable(node: HTMLElement, remember?: string): { destroy(): vo
   if (was) {
     placed = { left: was.left, top: was.top };
     node.style.minWidth = was.minWidth;
-    node.style.position = 'fixed';
+    node.style.position = 'absolute';
     node.style.margin = '0';
     node.style.left = `${was.left}px`;
     node.style.top = `${was.top}px`;

@@ -154,10 +154,13 @@ describe('палец, чуть дрогнувший на клавише окна
     win = new EventTarget();
     (globalThis as Record<string, unknown>).window = win;
     (globalThis as Record<string, unknown>).document = { documentElement: { clientWidth: 1000, clientHeight: 800 } };
+    // The editor the window is kept in (`[data-float-root]`), and the block it stands in.
+    const editorRoot = { getBoundingClientRect: () => ({ left: 0, top: 0 }), clientLeft: 0, clientTop: 0, clientWidth: 1000, clientHeight: 800 };
     const target = new EventTarget() as EventTarget & Record<string, unknown>;
     Object.assign(target, {
       style: {},
-      closest: () => target,
+      closest: (selector: string) => (selector === '[data-float-root]' ? editorRoot : target),
+      offsetParent: editorRoot,
       contains: () => true,
       setPointerCapture: () => {},
       getBoundingClientRect: () => ({ left: 100, top: 100, width: 100, height: 50 }),
@@ -183,7 +186,7 @@ describe('палец, чуть дрогнувший на клавише окна
     const drag = draggable(node);
     node.dispatchEvent(pointer('pointerdown', 110, 110, 'mouse'));
     win.dispatchEvent(pointer('pointermove', 117, 110, 'mouse'));
-    expect(node.style.position).toBe('fixed');
+    expect(node.style.position).toBe('absolute');
     win.dispatchEvent(pointer('pointerup', 117, 110, 'mouse'));
     drag.destroy();
   });

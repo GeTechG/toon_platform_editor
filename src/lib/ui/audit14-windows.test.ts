@@ -66,11 +66,14 @@ describe('окно зума, спрятанное или повёрнутое, �
       body: { clientWidth: 1000, clientHeight: 3000 },
       documentElement: view,
     };
+    // The editor the window is kept in, as tall as the screen here.
+    const editorRoot = { getBoundingClientRect: () => ({ left: 0, top: 0 }), clientLeft: 0, clientTop: 0, get clientWidth() { return view.clientWidth; }, get clientHeight() { return view.clientHeight; } };
     const target = new EventTarget() as EventTarget & Record<string, unknown>;
     const style: Record<string, string> = {};
     Object.assign(target, {
       style,
-      closest: () => target,
+      closest: (selector: string) => (selector === '[data-float-root]' ? editorRoot : target),
+      offsetParent: editorRoot,
       contains: () => true,
       setPointerCapture: () => {},
       getBoundingClientRect: () => hidden
@@ -96,7 +99,7 @@ describe('окно зума, спрятанное или повёрнутое, �
     win2.dispatchEvent(pointer('pointerup', 1, x, y));
   }
 
-  test('окно держится в видимом экране, а не в длинном теле страницы', () => {
+  test('окно держится в редакторе, а не в длинном теле страницы', () => {
     const drag = draggable(node);
     dragTo(110, 2000);
     expect(node.style.top).toBe('750px');

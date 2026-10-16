@@ -20,6 +20,14 @@ describe('clampWindowPosition', () => {
     expect(clampWindowPosition(-40, -40, size, bounds)).toEqual({ left: 0, top: 0 });
   });
 
+  // A dragged zoom or transform window is kept in the editor, counted from
+  // the box it stands in (the stage): the editor's edges lie at an offset.
+  it('keeps a window inside a frame that starts away from its own origin', () => {
+    const editor = { left: -73, top: -57, width: 1280, height: 743 };
+    expect(clampWindowPosition(-200, 10, size, editor)).toEqual({ left: -73, top: 10 });
+    expect(clampWindowPosition(5000, 5000, size, editor)).toEqual({ left: 1007, top: 586 });
+  });
+
   it('pins a window larger than the page to the corner rather than off it', () => {
     expect(clampWindowPosition(50, 50, { width: 1200, height: 800 }, bounds))
       .toEqual({ left: 0, top: 0 });
@@ -58,7 +66,7 @@ describe('a drag measures once, then only writes', () => {
   });
 
   it('measures once, where the window leaves the flow', () => {
-    // The size has to be read after the switch to `fixed`, not before it: out
+    // The size has to be read after the window leaves the flow, not before: out
     // of the flow the window may size itself differently, and the clamp is
     // about the box that is actually on screen. Once is enough — neither the
     // window nor the page changes shape while a pointer is down.
@@ -67,9 +75,11 @@ describe('a drag measures once, then only writes', () => {
       dragSource.indexOf('function onPointerMove'),
     );
     expect(begin).toContain('getBoundingClientRect');
-    // The screen's bounds, read through `screenBounds` (audit14-windows).
-    expect(begin).toContain('screenBounds()');
-    expect(dragSource).toMatch(/function screenBounds[^]*?clientWidth/);
+    // The editor's bounds, not the screen's (owner, 2026-10-17): a window
+    // kept on the screen stayed there while the page under the studio
+    // scrolled, and could be left over the site's bar or footer.
+    expect(begin).toContain('editorBounds(node, from)');
+    expect(dragSource).toMatch(/function editorBounds[^]*?data-float-root[^]*?clientWidth/);
   });
 });
 
@@ -146,9 +156,9 @@ describe('a window keeps its width when it leaves the flow', () => {
     dragSource.indexOf('function onPointerMove'),
   );
 
-  it('holds it to no less than the width it had before going fixed', () => {
+  it('holds it to no less than the width it had before leaving the flow', () => {
     const pin = begin.indexOf('node.style.minWidth = `${grab.size.width}px`');
     expect(pin).toBeGreaterThan(-1);
-    expect(pin).toBeLessThan(begin.indexOf("node.style.position = 'fixed'"));
+    expect(pin).toBeLessThan(begin.indexOf("node.style.position = 'absolute'"));
   });
 });

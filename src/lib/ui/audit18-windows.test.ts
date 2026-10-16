@@ -112,11 +112,14 @@ describe('потерянное отпускание бросает перено�
     win2 = new EventTarget();
     (globalThis as Record<string, unknown>).window = win2;
     (globalThis as Record<string, unknown>).document = { body: { clientWidth: 1000, clientHeight: 800 } };
+    // The editor the window is kept in (`[data-float-root]`), and the block it stands in.
+    const editorRoot = { getBoundingClientRect: () => ({ left: 0, top: 0 }), clientLeft: 0, clientTop: 0, clientWidth: 1000, clientHeight: 800 };
     const target = new EventTarget() as EventTarget & Record<string, unknown>;
     const style: Record<string, string> = {};
     Object.assign(target, {
       style,
-      closest: () => target,
+      closest: (selector: string) => (selector === '[data-float-root]' ? editorRoot : target),
+      offsetParent: editorRoot,
       contains: () => true,
       setPointerCapture: () => {},
       getBoundingClientRect: () => ({
