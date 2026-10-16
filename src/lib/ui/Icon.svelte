@@ -69,7 +69,8 @@
     | 'github'
     | 'search'
     | 'home'
-    | 'user';
+    | 'user'
+    | 'bell';
 
   const PATHS: Record<IconName, string> = {
     // An artist's brush — a round handle and a loaded tip — for the drawing
@@ -92,6 +93,8 @@
     home: 'M3 10.5 12 3l9 7.5M5 9v11h5v-6h4v6h5V9',
     // A head and shoulders: an account not signed in yet.
     user: 'M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4 21a8 8 0 0 1 16 0',
+    // A bell: the site's notifications.
+    bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
     plus: 'M12 3v18M3 12h18',
     minus: 'M3 12h18',
     // Two arrows passing each other: outline and fill trade places.
