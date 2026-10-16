@@ -557,6 +557,13 @@ export function stageRailShown(
 }
 
 /**
+ * Tools whose keys go where the pipette's goes: under a preset that keeps the
+ * pipette off the rail (Toonop: the colours' heading), the bucket is there
+ * beside it (owner, 2026-10-16).
+ */
+export const PIPETTE_LIKE: readonly string[] = ['pipette', 'bucket'];
+
+/**
  * Whether a column has anything to draw. Some items draw nothing where they
  * lie — the pipette's key under a preset that keeps it elsewhere, «Отправить»
  * off the site — and a column holding only those stood as an empty strip
@@ -569,7 +576,7 @@ export function columnDraws(
 ): boolean {
   return ids.some((id) => {
     const tool = toolOfItem(id);
-    if (tool) return tool !== 'pipette' || has.pipette;
+    if (tool) return !PIPETTE_LIKE.includes(tool) || has.pipette;
     if (id === 'publish') return has.publish;
     if (id === 'fullscreen') return has.fullscreen;
     if (id === 'spring') return false;

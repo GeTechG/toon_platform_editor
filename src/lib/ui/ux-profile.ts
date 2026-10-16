@@ -25,6 +25,7 @@ const TOONOP_TOOLS: readonly string[] = [
   'feather',
   'mega-eraser',
   'pipette',
+  'bucket',
   'drag',
   'lasso',
   'loop',

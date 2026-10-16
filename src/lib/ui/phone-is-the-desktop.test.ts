@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { plugins } from '../plugins';
-import { defaultPanels, movePanelItem, toolItem, toolOpensBrush, type PanelLayout } from './panels';
+import { defaultPanels, movePanelItem, PIPETTE_LIKE, toolItem, toolOpensBrush, type PanelLayout } from './panels';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
 import { HYSTERESIS, oneRowTop, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, toolRoom } from './small-screen';
 
@@ -16,7 +16,7 @@ const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)
 /** Everything behind «⋯», whatever its group. */
 const all = (cut: ReturnType<typeof phoneLayout>) => cut.more.flatMap((group) => group.items);
 // toonop draws no pipette key: a held finger does its work.
-const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: (tool: string) => tool !== 'pipette' };
+const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: (tool: string) => !PIPETTE_LIKE.includes(tool) };
 
 describe('a phone draws toonop’s desktop', () => {
   it('the top bar is one row: publish, «⋯», the essential tools, a key for the other tools, the colour', () => {
@@ -263,7 +263,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   it('a finger gets no hand tool: two fingers move the sheet', () => {
     expect(editorUi).toContain("const touch = matchMedia('(pointer: coarse)').matches;");
     expect(editorUi).toContain("&& !(tool === 'drag' && touch)");
-    const cut = phoneLayout(base, base, { ...keep, drawn: (tool) => tool !== 'pipette' && tool !== 'drag' });
+    const cut = phoneLayout(base, base, { ...keep, drawn: (tool) => !PIPETTE_LIKE.includes(tool) && tool !== 'drag' });
     expect([...cut.panels.top, ...cut.tools, ...all(cut)]).not.toContain('tool:drag');
   });
 

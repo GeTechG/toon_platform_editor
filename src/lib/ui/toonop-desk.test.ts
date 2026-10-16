@@ -14,7 +14,7 @@ const base = presetPanels(DEFAULT_PRESET);
 describe('toonop on a desk', () => {
   it('the tools stand down the left, no thickness (owner: «слева толщину нужно убрать из панели»), undo and redo under them (owner: «перенеси undo redo в левую панель»)', () => {
     expect(base.left).toEqual([
-      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:drag', 'tool:lasso', 'tool:loop', 'history',
+      'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:pipette', 'tool:bucket', 'tool:drag', 'tool:lasso', 'tool:loop', 'history',
     ]);
     expect(base.hidden).toContain('tool:distort');
   });

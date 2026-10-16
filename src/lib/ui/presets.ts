@@ -248,6 +248,8 @@ export interface EditorSettings {
   /** The mega-eraser warns on its first pick of a session, until «Больше не показывать». */
   megaEraserWarning: boolean;
   removerTipShown: boolean;
+  /** The bucket's tolerance: a break in a line this many logical pixels wide holds it, 0..`FILL_GAP_MAX`. */
+  fillGap: number;
   /**
    * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
    * there is no catalog: nothing can be installed from one and not a single
@@ -316,6 +318,9 @@ export const PALETTE_LIMIT_MIN = 30;
 export const PALETTE_LIMIT_MAX = 300;
 export const PALETTE_LIMIT_STEP = 10;
 
+/** The widest break in a line the bucket can be told to hold at, logical px. */
+export const FILL_GAP_MAX = 20;
+
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
   penPressure: true,
@@ -331,6 +336,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   letterKeys: true,
   removerTipShown: false,
   megaEraserWarning: true,
+  fillGap: 4,
   pluginCatalog: PLUGIN_CATALOG,
 };
 
@@ -549,6 +555,9 @@ function normalizeSettings(value: unknown): EditorSettings {
     letterKeys: flag('letterKeys'),
     removerTipShown: flag('removerTipShown'),
     megaEraserWarning: flag('megaEraserWarning'),
+    fillGap: typeof raw.fillGap === 'number' && Number.isFinite(raw.fillGap)
+      ? Math.min(FILL_GAP_MAX, Math.max(0, Math.round(raw.fillGap)))
+      : DEFAULT_SETTINGS.fillGap,
     pluginCatalog: readCatalogAddress(raw),
   };
 }

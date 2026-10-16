@@ -4,7 +4,7 @@
    * however many of these the config put in a panel — not a fixed group.
    */
   import type { EditorState } from './editor-state.svelte';
-  import { toolKeyList, toolSpec } from './panels';
+  import { PIPETTE_LIKE, toolKeyList, toolSpec } from './panels';
   import Icon from './Icon.svelte';
   import BrushPanel from './BrushPanel.svelte';
   import PopKey from './PopKey.svelte';
@@ -31,8 +31,8 @@
   // where it started. The pipette is the one exception the references make of
   // themselves: it exists only once the palette is enabled (ToolPanel.hx), and
   // under Toonio it is not a rail button at all — the palette's foot holds it
-  // (reference `E:205-208`).
-  const offered = $derived(tool !== 'pipette' || editor.pipetteOffered);
+  // (reference `E:205-208`). The bucket goes with it.
+  const offered = $derived(!PIPETTE_LIKE.includes(tool) || editor.pipetteOffered);
   // A second press opens the browser's own eyedropper — only where there is
   // one and the setting lets it (owner, sixteenth audit): Safari and Firefox
   // have none, and the title promised it there.

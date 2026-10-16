@@ -15,6 +15,7 @@
     | 'pencil'
     | 'eraser'
     | 'pipette'
+    | 'bucket'
     | 'feather'
     | 'pixel'
     | 'mega-eraser'
@@ -103,6 +104,9 @@
       'M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21M5.082 11.09l8.828 8.828',
     pipette:
       'M2 22l1-1h3l9-9M3 21v-3l9-9M15 6l3.4-3.4a2.1 2.1 0 0 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4z',
+    // A tipped paint bucket with a drop running off its lip (Lucide's paint-bucket).
+    bucket:
+      'M19 11l-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11zM5 2l5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4z',
     // A quill: the outline tool that also fills what it encloses.
     feather:
       'M20.5 3.5c-8 1-13 5-15 11l-1.5 5.5M4 20l6-6M20.5 3.5c1 6-1.5 10.5-6 12.5-2.6 1.1-5 1-6.5.5',

@@ -60,6 +60,9 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
+  import { fillRegion, fillSlot, traceOutline } from '../tools/fill';
+  import { simplifyLang } from '../tools/simplify';
+  import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
   import {
@@ -326,6 +329,8 @@
   /** The paper and its shadow, and the shape they were drawn for. */
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
+  /** Scratch the bucket reads the active layer back from. */
+  let fillEl: HTMLCanvasElement | null = null;
   /** The sheet's bitmap: the frame is composed into it, and the view stretches it. */
   let sheetEl: HTMLCanvasElement | null = null;
   /** The sheet's bitmap the composer's buffers hold; the pipette reads them by it. */
@@ -1169,6 +1174,53 @@
   }
 
   /**
+   * The bucket's press: the borders are looked for in the active layer's
+   * bitmap as the composer last drew it, and the area found goes into the
+   * layer as a contour under them (tools/fill.ts). The right button pours the
+   * other colour, as it draws with it.
+   */
+  function pour(e: PointerEvent): void {
+    const layers = composer.layers;
+    if (!layers || !lastRaster) {
+      return;
+    }
+    const level = lastRaster.level;
+    const source = layers.active as HTMLCanvasElement;
+    const w = source.width;
+    const h = source.height;
+    fillEl = buffer(fillEl, w, h);
+    const ctx = fillEl.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      return;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(source, 0, 0);
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const alpha = new Uint8Array(w * h);
+    for (let p = 0; p < alpha.length; p++) alpha[p] = rgba[p * 4 + 3];
+    const [ux, uy] = toDocUnits(e);
+    const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
+    const y = Math.min(h - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * level)));
+    // Two bitmap pixels in under the line: past its soft rim, short of crossing it.
+    const area = fillRegion(alpha, w, h, x, y, editor.settings.fillGap * level, 2);
+    if (!area) {
+      return;
+    }
+    // The staircase of pixel edges, straightened within ¾ of a pixel.
+    const ring = simplifyLang(traceOutline(area, w, h), 16, 0.75);
+    if (ring.length < 6) {
+      return;
+    }
+    const toDoc = FIXED_POINT_SCALE / level;
+    const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
+    const slot = fillSlot(area, w, h, cell?.strokes ?? [], editor.doc.tools, 1 / toDoc);
+    const fillTarget = editor.pipetteTarget === 'fill';
+    const colour = (e.button === 2) !== fillTarget ? editor.fillColor : editor.brushColor;
+    editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot);
+  }
+
+  /**
    * The finger stayed put: whatever it began while waiting goes, unrecorded —
    * the line (no step to undo), the pan, the mega eraser's sweep — and the
    * pipette with its loupe takes the finger.
@@ -1790,6 +1842,13 @@
       pluginGrab = { pointerId: e.pointerId, spec };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
+      return;
+    }
+    if (editor.tool === 'bucket') {
+      // The table beside the sheet is nobody's area.
+      if (!offSheet(e) && editor.mayEdit()) {
+        pour(e);
+      }
       return;
     }
     if (editor.tool === 'pipette') {

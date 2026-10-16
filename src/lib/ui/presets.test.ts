@@ -235,6 +235,7 @@ test('settings round-trip through the stored config', () => {
     letterKeys: false,
     removerTipShown: true,
     megaEraserWarning: false,
+    fillGap: 9,
     pluginCatalog: 'https://plugins.example/',
   };
   const parsed = parseUiConfig(JSON.stringify({

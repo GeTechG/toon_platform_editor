@@ -67,6 +67,8 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
     key: 'P',
     help: true,
   },
+  // The colours' heading holds its key, beside the pipette's (owner, 2026-10-16).
+  bucket: { icon: 'bucket', title: t('tool.bucket.title'), label: t('tool.bucket.label'), key: 'N', cursor: 'crosshair' },
   drag: { icon: 'hand', title: t('tool.hand.title'), label: t('tool.hand.label'), key: 'D', help: true },
   lasso: {
     icon: 'transform',
@@ -140,6 +142,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:feather',
         'tool:mega-eraser',
         'tool:pipette',
+        'tool:bucket',
         'tool:drag',
         'tool:lasso',
         'tool:loop',

@@ -28,6 +28,7 @@
     autosaveLabel,
     PALETTE_LIMIT_MAX,
     PALETTE_LIMIT_MIN,
+    FILL_GAP_MAX,
     PALETTE_LIMIT_STEP,
     presets,
     stepTab,
@@ -347,6 +348,22 @@
             onchange={(e) => editor.setSetting('megaEraserWarning', e.currentTarget.checked)}
           />
         </label>
+        {#if editor.availableTools.includes('bucket')}
+          <label class="row">
+            <span class="row-label" title={t('settings.fill_gap_hint')}>{t('settings.fill_gap')}</span>
+            <span class="slider">
+              <input
+                type="range"
+                min="0"
+                max={FILL_GAP_MAX}
+                step="1"
+                value={editor.settings.fillGap}
+                oninput={(e) => editor.setSetting('fillGap', Number(e.currentTarget.value))}
+              />
+              <output>{t('settings.fill_gap_value', { n: editor.settings.fillGap })}</output>
+            </span>
+          </label>
+        {/if}
       {:else if tab === 'palette'}
         {#if hasEyeDropper}
           <label class="toggle">

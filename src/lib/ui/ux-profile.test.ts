@@ -62,7 +62,7 @@ describe('the editor profile', () => {
 
   it('offers its whole toolset, the pixel of the shipped plugin included', () => {
     expect(toonop.tools).toEqual([
-      'pencil', 'eraser', 'feather', 'mega-eraser', 'pipette',
+      'pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'bucket',
       'drag', 'lasso', 'loop', 'distort', 'pixel',
     ]);
   });

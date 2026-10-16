@@ -62,7 +62,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
+  import { columnDraws, itemDrawn, PIPETTE_LIKE, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSpec } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, deskOnPhone, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
@@ -291,7 +291,7 @@
           // transport's six too: a frame, back, play, on, the onion skin, the sound.
           room: toolRoom(boxW, rootFont, { publish: !!onPublish, keys: tall ? 2 : 10 }),
           // The hand is a cursor's tool: two fingers move the sheet (owner, 2026-10-07).
-          drawn: (tool) => (tool !== 'pipette' || editor.pipetteOffered) && !(tool === 'drag' && touch),
+          drawn: (tool) => (!PIPETTE_LIKE.includes(tool) || editor.pipetteOffered) && !(tool === 'drag' && touch),
         })
       : null,
   );
@@ -1221,6 +1221,11 @@
       case 'p':
       case 'P':
         editor.selectTool('pipette');
+        break;
+      // The bucket: G, as in Photoshop, already duplicates the frame here.
+      case 'n':
+      case 'N':
+        editor.selectTool('bucket');
         break;
       // Reference transform tools: D or O is the hand, Q or S the lasso,
       // `~` the distort. Unavailable under a preset that has no such button —
@@ -2422,6 +2427,7 @@
         hasMegaEraser && ['Alt + E', t('tool.mega_eraser.label')],
         ['P', t('key.pipette')],
         ['Shift + Enter', t('key.pick_fill')],
+        has('bucket') && ['N', t('tool.bucket.label')],
         has('drag') && ['D / O', t('tool.hand.label')],
         // The hand's own keys, before size and steps: the only keyboard zoom.
         has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
@@ -2726,7 +2732,7 @@
       <BrushPanel {editor} />
     </PopKey>
   {:else if id === 'color-key'}
-    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })} shutOn={editor.tool === 'pipette'} attrs={{ 'data-walk': '' }}>
+    <PopKey label={t('colours.key')} title={t('colours.key_title', { stroke: editor.brushColor, fill: editor.fillColor })} shutOn={PIPETTE_LIKE.includes(editor.tool)} attrs={{ 'data-walk': '' }}>
       {#snippet face()}<span class="colour-dot" style:--swatch={editor.brushColor} style:--fill={editor.fillColor}></span>{/snippet}
       <ColoursPanel {editor} />
     </PopKey>

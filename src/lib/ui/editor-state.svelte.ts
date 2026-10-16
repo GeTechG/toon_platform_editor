@@ -36,6 +36,7 @@ import {
   removeLayer,
   replaceCells,
   replaceStrokes,
+  internTool,
   pressureOf,
   mirrorCell,
   markReach,
@@ -439,7 +440,8 @@ export class EditorState {
   /**
    * Which swatch the pipette fills. A plain pick arms the outline; the right
    * button on the palette's pipette arms the fill (`bundle:7009-7016`), and
-   * the right button on the canvas still overrides it for one click.
+   * the right button on the canvas still overrides it for one click. The
+   * bucket, the other key of the colours' heading, pours this one too.
    */
   pipetteTarget = $state<'outline' | 'fill'>('outline');
   /** Where the pipette reads from; Alt overrides it for one click. */
@@ -800,8 +802,10 @@ export class EditorState {
       this.previousDrawingTool = this.tool;
     }
     this.hold(resolved);
-    if (resolved === 'pipette') {
+    if (resolved === 'pipette' || resolved === 'bucket') {
       this.pipetteTarget = pipetteTarget;
+    }
+    if (resolved === 'pipette') {
       this.openBrowserPicker();
     }
   }
@@ -2227,6 +2231,31 @@ export class EditorState {
       this.#write((doc) => replaceStrokes(doc, layer, frame, after));
     } catch (err) {
       console.warn('erase rejected:', err);
+      this.refuseAtLimit(err);
+      return;
+    }
+    this.pushEdit(snapshots);
+  }
+
+  /**
+   * The bucket: lays `ring` (document units) down as a contour filled with
+   * `color` at `slot` of the cell's strokes — under the lines that border it
+   * (tools/fill.ts). One step of undo; a frame at the format's limit refuses
+   * it, as it refuses a line.
+   */
+  applyFill(ring: readonly number[], color: string, slot: number, layer = this.activeLayer, frame = this.activeFrame): void {
+    const cell = this.doc.layers[layer]?.frames[frame];
+    if (this.playing || !cell || !this.mayEdit([layer])) {
+      return;
+    }
+    const snapshots = this.snapshotCells({ frames: [frame], layers: [layer] });
+    try {
+      this.#write((doc) => {
+        const fill = { points: [...ring], tool_id: internTool(doc, { kind: 'contour', geometry: 'line', color }) };
+        replaceStrokes(doc, layer, frame, [...cell.strokes.slice(0, slot), fill, ...cell.strokes.slice(slot)]);
+      });
+    } catch (err) {
+      console.warn('fill rejected:', err);
       this.refuseAtLimit(err);
       return;
     }
