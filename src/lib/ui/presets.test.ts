@@ -189,6 +189,11 @@ test('the pipette source is part of the drawing config and defaults to the canva
   expect(parsed?.drawing.pickSource).toBe('layer');
 });
 
+test('an unknown bucket source falls back to the layer', () => {
+  const parsed = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { fillSource: 'nonsense' } }));
+  expect(parsed?.settings.fillSource).toBe('layer');
+});
+
 test('an unknown pipette source falls back to the canvas', () => {
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonop',
@@ -236,6 +241,7 @@ test('settings round-trip through the stored config', () => {
     removerTipShown: true,
     megaEraserWarning: false,
     fillGap: 9,
+    fillSource: 'canvas' as const,
     pluginCatalog: 'https://plugins.example/',
   };
   const parsed = parseUiConfig(JSON.stringify({

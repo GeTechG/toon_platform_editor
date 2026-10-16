@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { fillPlace, fillRegion, keyhole, traceOutline, traceRings } from './fill';
+import { fillPlace, fillRegion, keyhole, simplifyRing, traceOutline, traceRings } from './fill';
 import type { ToolDescriptor } from '../format/types';
 
 /** A sheet of `w`×`h` alpha, with the given pixels opaque. */
@@ -59,6 +59,10 @@ describe('fillRegion', () => {
     const thin = fillRegion(box(1), 20, 20, 7, 7, 0, 2)!;
     expect(at(thin, 2, 7)).toBe(1);
     expect(at(thin, 1, 7)).toBe(0);
+    // The soft rim on the far side of a line is not reached either.
+    const rimmed = box(1);
+    rimmed[7 * 20 + 1] = 30;
+    expect(at(fillRegion(rimmed, 20, 20, 7, 7, 0, 2)!, 1, 7)).toBe(0);
   });
 
   /** A 30×30 sheet: a ring 2..27 and inside it a square ring `lo`..`hi`. */
@@ -185,5 +189,19 @@ describe('keyhole', () => {
 
   it('leaves a lone outline as it is', () => {
     expect(keyhole([[0, 0, 9, 0, 9, 9]])).toEqual([0, 0, 9, 0, 9, 9]);
+  });
+});
+
+describe('simplifyRing', () => {
+  it('keeps every corner of a square, the one the ring closes on too', () => {
+    expect(simplifyRing([0, 0, 10, 0, 10, 10, 0, 10])).toHaveLength(8);
+  });
+
+  it('straightens a staircase of pixel edges to its few true turns', () => {
+    // A 45° edge walked pixel by pixel, closed into a triangle.
+    const ring: number[] = [];
+    for (let i = 0; i < 40; i++) ring.push(i, i, i + 1, i);
+    ring.push(40, 40, 0, 40);
+    expect(simplifyRing(ring).length / 2).toBeLessThanOrEqual(4);
   });
 });

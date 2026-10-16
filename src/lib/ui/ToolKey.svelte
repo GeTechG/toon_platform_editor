@@ -7,6 +7,7 @@
   import { toolKeyList, toolSpec } from './panels';
   import Icon from './Icon.svelte';
   import BrushPanel from './BrushPanel.svelte';
+  import FillPanel from './FillPanel.svelte';
   import PopKey from './PopKey.svelte';
   import { t } from '../i18n';
 
@@ -46,7 +47,7 @@
 {#if offered && spec && brush}
   <PopKey
     label={spec.label}
-    title={t('tool.again_brush', { title: editor.keyHint(title) })}
+    title={t(tool === 'bucket' ? 'tool.again_fill' : 'tool.again_brush', { title: editor.keyHint(title) })}
     active={editor.tool === tool}
     gate={() => {
       if (editor.tool === tool) return true;
@@ -61,7 +62,12 @@
     }}
   >
     {#snippet face()}<Icon name={spec.icon} />{/snippet}
-    <BrushPanel {editor} />
+    <!-- The bucket draws no line: its key opens its own box. -->
+    {#if tool === 'bucket'}
+      <FillPanel {editor} />
+    {:else}
+      <BrushPanel {editor} />
+    {/if}
   </PopKey>
 {:else if offered && spec}
   <button

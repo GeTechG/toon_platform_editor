@@ -12,7 +12,7 @@
   import {
     renderRawPolyline,
     renderResolvedPreview,
-    renderStrokesLayer,
+    renderLayersStacked,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
@@ -61,8 +61,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { fillPlace, fillRegion, keyhole, traceRings } from '../tools/fill';
-  import { simplifyLang } from '../tools/simplify';
+  import { fillPlace, fillRegion, keyhole, simplifyRing, traceRings } from '../tools/fill';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
@@ -1175,8 +1174,9 @@
   }
 
   /**
-   * The bucket's press: the borders are looked for in the active cell drawn
-   * onto the sheet's bitmap without its fills — an old fill is no border, and
+   * The bucket's press: the borders are looked for in the active cell (or the
+   * whole frame, by the bucket's box) drawn onto the sheet's bitmap without
+   * its fills — an old fill is no border, and
    * a press on one pours over it — and the area found goes into the layer as
    * a contour under the lines, in place of the old fills it pours over
    * (tools/fill.ts). It pours the
@@ -1195,8 +1195,18 @@
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const lines = cell.strokes.filter((stroke) => editor.doc.tools[stroke.tool_id]?.kind !== 'contour');
-    renderStrokesLayer({ strokes: lines }, editor.doc.tools, ctx, { scale: level / FIXED_POINT_SCALE, dpr: 1 });
+    // The lines of the active layer, or of every visible one (the bucket's
+    // box, «по всему холсту»): the fill goes into the active layer either way.
+    const { tools } = editor.doc;
+    const lines = (frame: Frame): Frame => ({ strokes: frame.strokes.filter((s) => tools[s.tool_id]?.kind !== 'contour') });
+    const cells = editor.settings.fillSource === 'canvas'
+      ? editor.doc.layers.filter((layer) => !layer.hidden).map((layer) => lines(layer.frames[editor.activeFrame]))
+      : [lines(cell)];
+    // A layer that erases is drawn apart, so its eraser cuts its own lines alone.
+    renderLayersStacked(cells, tools, ctx, { scale: level / FIXED_POINT_SCALE, dpr: 1 }, () => {
+      const own = buffer(null, w, h);
+      return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
+    });
     const rgba = (ctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, w, h).data;
     const alpha = new Uint8Array(w * h);
     for (let p = 0; p < alpha.length; p++) alpha[p] = rgba[p * 4 + 3];
@@ -1208,9 +1218,9 @@
     if (!area) {
       return;
     }
-    // The staircase of pixel edges, straightened within ¾ of a pixel; a hole
-    // straightened down to a line is no hole.
-    const [outer, ...holes] = traceRings(area, w, h).map((r) => simplifyLang(r, 16, 0.75));
+    // The staircase of pixel edges straightened; a hole straightened down to
+    // a line is no hole.
+    const [outer, ...holes] = traceRings(area, w, h).map((r) => simplifyRing(r));
     if (outer.length < 6) {
       return;
     }

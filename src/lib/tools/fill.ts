@@ -38,8 +38,8 @@ interface SlotStroke {
  * the line is swollen by half of it while the area is looked for, and the
  * area then grows back by as much over empty pixels into the corners the
  * swelling took. `grow`: how far the area reaches in under the line, over its
- * inked pixels only, so no rim of paper shows between the fill and the line
- * and a thin line is never crossed. What a line encloses inside the area stays
+ * solid pixels only, so no rim of paper shows between the fill and the line,
+ * a thin line is never crossed and its soft rim on the far side is left be. What a line encloses inside the area stays
  * out of it — a hole — unless it is a speck.
  */
 export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: number, gap: number, grow: number): Uint8Array | null {
@@ -64,7 +64,7 @@ export function fillRegion(alpha: Alpha, w: number, h: number, x: number, y: num
     spread(mask, w, h, edgeOf(mask, w, h), (p) => !wall(p), Math.ceil(reach) + 1, true);
   }
   if (grow > 0) {
-    spread(mask, w, h, edgeOf(mask, w, h), (p) => alpha[p] > 0, grow, true);
+    spread(mask, w, h, edgeOf(mask, w, h), wall, grow, true);
   }
   for (const hole of holesOf(mask, w, h)) {
     if (hole.length < SPECK) {
@@ -435,3 +435,51 @@ function flatten(points: readonly number[], geometry: StrokeGeometry, closed: bo
   return out;
 }
 
+
+/**
+ * A ring straightened: the staircase of pixel edges comes down to its true
+ * turns, no point moving more than `tolerance` pixels off the outline. A pixel edge stands up
+ * to a pixel off the line it steps along, so a tolerance under one keeps most
+ * of the staircase — five times the points for a circle, and the fill's edge
+ * lies under the line either way.
+ */
+export function simplifyRing(ring: readonly number[], tolerance = 1): number[] {
+  const n = ring.length / 2;
+  if (n < 4) return [...ring];
+  // Douglas–Peucker on the two halves between the first point and the one
+  // farthest from it: on a ring the chord of one end to itself is no line.
+  let far = 0;
+  for (let i = 1; i < n; i++) {
+    if (Math.hypot(ring[2 * i] - ring[0], ring[2 * i + 1] - ring[1]) > Math.hypot(ring[2 * far] - ring[0], ring[2 * far + 1] - ring[1])) far = i;
+  }
+  const keep = new Uint8Array(n);
+  keep[0] = 1;
+  keep[far] = 1;
+  const stack: [number, number][] = [[0, far], [far, n]];
+  while (stack.length > 0) {
+    const [a, b] = stack.pop()!;
+    const ax = ring[2 * a];
+    const ay = ring[2 * a + 1];
+    const bx = ring[2 * (b % n)];
+    const by = ring[2 * (b % n) + 1];
+    const len = Math.hypot(bx - ax, by - ay);
+    let worst = -1;
+    let worstAt = -1;
+    for (let i = a + 1; i < b; i++) {
+      const px = ring[2 * i] - ax;
+      const py = ring[2 * i + 1] - ay;
+      const d = len === 0 ? Math.hypot(px, py) : Math.abs(px * (by - ay) - py * (bx - ax)) / len;
+      if (d > worst) {
+        worst = d;
+        worstAt = i;
+      }
+    }
+    if (worst > tolerance) {
+      keep[worstAt] = 1;
+      stack.push([a, worstAt], [worstAt, b]);
+    }
+  }
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) if (keep[i]) out.push(ring[2 * i], ring[2 * i + 1]);
+  return out;
+}
