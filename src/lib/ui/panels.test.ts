@@ -218,7 +218,7 @@ describe('the default layouts', () => {
   test('the studio opens with the arrangement the owner set for toonop', () => {
     const studio = presets.presetPanels('toonop');
     // A desk's (owner, 2026-10-10): the tools down the left, undo and redo under them.
-    expect(studio.left).toEqual([...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'bucket', 'drag', 'lasso', 'loop'].map(toolItem), 'history']);
+    expect(studio.left).toEqual([...['pencil', 'eraser', 'feather', 'mega-eraser', 'pipette', 'drag', 'lasso', 'loop'].map(toolItem), 'history']);
     // Toonop's own colours, open: no window over the sheet.
     // …and nothing else: the brush, its thickness too, is behind its tool's key.
     expect(studio.right).toEqual(['colours']);
@@ -232,7 +232,7 @@ describe('the default layouts', () => {
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), 'drafts', 'palette', 'brush', 'brush-key', 'brush-rail', 'color-key',
+      toolItem('pixel'), toolItem('distort'), toolItem('bucket'), 'drafts', 'palette', 'brush', 'brush-key', 'brush-rail', 'color-key',
     ].sort());
   });
 

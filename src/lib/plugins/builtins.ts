@@ -67,7 +67,7 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
     key: 'P',
     help: true,
   },
-  // On the rail with the other tools (owner, 2026-10-16).
+  // On the shelf in toonop's start, behind the «+» (owner, 2026-10-16).
   bucket: { icon: 'bucket', title: t('tool.bucket.title'), label: t('tool.bucket.label'), key: 'N', cursor: 'crosshair' },
   drag: { icon: 'hand', title: t('tool.hand.title'), label: t('tool.hand.label'), key: 'D', help: true },
   lasso: {
@@ -142,7 +142,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:feather',
         'tool:mega-eraser',
         'tool:pipette',
-        'tool:bucket',
+        // The bucket waits on the shelf, behind the «+» (owner, 2026-10-16).
         'tool:drag',
         'tool:lasso',
         'tool:loop',
