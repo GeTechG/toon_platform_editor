@@ -24,6 +24,8 @@
 </script>
 
 <div class="fill-box" role="group" aria-label={t('fill.box')}>
+  <!-- Still being shaped (owner, 2026-10-16): it says so where it is set up. -->
+  <p class="beta">{t('fill.experimental')}</p>
   <h2 id="fill-source">{t('fill.source')}</h2>
   <div class="choice" role="group" aria-labelledby="fill-source">
     {#each SOURCES as [id, label] (id)}
@@ -82,7 +84,8 @@
   h2,
   .choice,
   .hint,
-  .warn {
+  .warn,
+  .beta {
     grid-column: 1 / 3;
     margin: 0;
   }
@@ -122,6 +125,11 @@
   .hint {
     font-size: 0.8rem;
     color: var(--ink-2);
+  }
+  .beta {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--accent);
   }
   .warn {
     padding: 8px;
