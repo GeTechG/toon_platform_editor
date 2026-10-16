@@ -808,8 +808,8 @@
     "pasted": "Вставлено",
     "more": "Ещё",
     "tools_more": "Другие инструменты",
-    "add_items": "Добавить в панель",
-    "add_items_empty": "Всё уже на панелях",
+    "add_items": "Добавить инструмент",
+    "add_items_empty": "Все инструменты уже на панели",
     "add_items_arrange": "Переставить панели...",
     "tools_short": "Другие",
     "more_group": {

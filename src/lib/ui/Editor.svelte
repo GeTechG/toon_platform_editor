@@ -62,7 +62,7 @@
     SIDE_WIDTH_MAX,
     SIDE_WIDTH_MIN,
   } from './presets';
-  import { columnDraws, itemDrawn, kindLabel, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSlot, toolSpec, type PanelItemKind, type PanelSlot } from './panels';
+  import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSlot, toolSpec, type PanelSlot } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, deskOnPhone, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
@@ -325,10 +325,8 @@
   const panels = $derived(over?.panels ?? editor.panels);
   /** Where the «+» stands: after the tools, on a desk, outside arranging. */
   const addAt = $derived<PanelSlot | null>(compact || editor.arranging ? null : toolSlot(panels));
-  /** The shelf for the «+», by kind, tools first. */
-  const shelf = $derived((['tool', 'action', 'widget'] as PanelItemKind[])
-    .map((kind) => ({ kind, items: editor.panels.hidden.map((id) => panelItemSpec(id)).filter((item) => item?.kind === kind) }))
-    .filter((group) => group.items.length > 0));
+  /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16). */
+  const shelfTools = $derived(editor.panels.hidden.filter((id) => toolOfItem(id) !== null));
   // Another arrangement, another text size: both rows are measured anew.
   const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
   $effect(() => {
@@ -3055,23 +3053,20 @@
      take more (owner, 2026-10-16). One press puts an item on; the arranging
      itself is a press further. -->
 {#snippet addKey()}
-  <PopKey label={t('editor.add_items')} attrs={{ 'data-name': t('editor.add_items') }}>
+  <PopKey label={t('editor.add_items')} attrs={{ 'data-name': t('editor.add_items'), 'data-add': '' }}>
     {#snippet face()}<Icon name="plus" />{/snippet}
     <div class="add-items">
       <h2 class="add-title">{t('editor.add_items')}</h2>
-      {#each shelf as group (group.kind)}
-        <h3 class="add-group">{kindLabel(group.kind)}</h3>
-        <div class="add-list">
-          {#each group.items as item (item?.id)}
-            {@const tool = item ? toolOfItem(item.id) : null}
-            <button class="key add-item" onclick={() => item && editor.addPanelItem(item.id)}>
-              {#if tool}<Icon name={toolSpec(tool)?.icon ?? 'tools'} />{/if}{item?.label}
-            </button>
-          {/each}
-        </div>
-      {:else}
-        <p class="add-empty">{t('editor.add_items_empty')}</p>
-      {/each}
+      <div class="add-list">
+        {#each shelfTools as id (id)}
+          {@const tool = toolOfItem(id)}
+          <button class="key add-item" onclick={() => editor.addPanelItem(id)}>
+            <Icon name={(tool && toolSpec(tool)?.icon) || 'tools'} />{panelItemSpec(id)?.label ?? id}
+          </button>
+        {:else}
+          <p class="add-empty">{t('editor.add_items_empty')}</p>
+        {/each}
+      </div>
       <button class="key add-arrange" onclick={() => (editor.arranging = true)}>
         {t('editor.add_items_arrange')}<Icon name="chevron-right" />
       </button>
@@ -4810,10 +4805,10 @@
     font-size: 0.95rem;
     font-weight: 700;
   }
-  .add-group {
-    margin: 0.4rem 0 0;
-    font-size: 0.75rem;
-    font-weight: 700;
+  /* Not one more tool: an empty place for one — no fill, a dashed edge. */
+  .editor :global(.key[data-add]:not(.active)) {
+    border: 1.5px dashed var(--edge);
+    background: transparent;
     color: var(--ink-2);
   }
   .add-list {
