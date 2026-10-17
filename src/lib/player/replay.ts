@@ -1,5 +1,5 @@
-// A one-frame publication replayed the way it was drawn: stroke by stroke,
-// the bottom layer first. Pure — the player asks how long the show is and
+// A one-frame, one-layer publication replayed the way it was drawn: stroke by
+// stroke. Pure — the player asks how long the show is and
 // what stands on the sheet at a step, and draws that as it draws any frame.
 import type { ToonDocument } from '../format/types';
 
@@ -20,7 +20,9 @@ function visibleStrokes(doc: ToonDocument): number {
  *  drawing being replayed. */
 export function playLength(doc: ToonDocument): { frames: number; fps: number; replay: boolean } {
   const frames = doc.layers[0].frames.length;
-  const strokes = frames === 1 ? visibleStrokes(doc) : 0;
+  // Layers lose the order strokes were drawn in: only a one-layer drawing
+  // replays the way it was made (the owner, 2026-10-17).
+  const strokes = frames === 1 && doc.layers.length === 1 ? visibleStrokes(doc) : 0;
   if (strokes < 2) {
     return { frames, fps: doc.frame_rate, replay: false };
   }

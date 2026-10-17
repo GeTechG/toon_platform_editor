@@ -24,14 +24,16 @@ describe('how long a publication plays', () => {
   });
 
   it('a one-frame drawing plays a step per stroke at ten a second', () => {
-    const d = doc([{ frames: [[1, 2]] }, { frames: [[3]] }]);
+    const d = doc([{ frames: [[1, 2, 3]] }]);
     expect(REPLAY_FPS).toBe(10);
     expect(playLength(d)).toEqual({ frames: 3, fps: 10, replay: true });
   });
 
-  it('a hidden layer takes no time: nothing of it is ever seen', () => {
-    const d = doc([{ frames: [[1, 2]] }, { hidden: true, frames: [[3, 4, 5]] }]);
-    expect(playLength(d).frames).toBe(2);
+  // The owner, 2026-10-17: with layers the order strokes were drawn in is
+  // lost, and the replay no longer shows how the drawing was made.
+  it('a one-frame drawing of several layers stands as it is', () => {
+    expect(playLength(doc([{ frames: [[1, 2]] }, { frames: [[3]] }]))).toEqual({ frames: 1, fps: 12, replay: false });
+    expect(playLength(doc([{ frames: [[1, 2]] }, { hidden: true, frames: [[3]] }])).replay).toBe(false);
   });
 
   it('one stroke is not a replay', () => {
@@ -50,7 +52,7 @@ describe('the drawing at a step', () => {
   });
 
   it('is whole on its last step', () => {
-    expect(shown(replayAt(d, playLength(d).frames - 1))).toEqual([[1, 2], [9], [3, 4]]);
+    expect(shown(replayAt(d, 3))).toEqual([[1, 2], [9], [3, 4]]);
   });
 
   it('leaves the document it was given alone', () => {
