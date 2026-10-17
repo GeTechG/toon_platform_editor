@@ -74,7 +74,28 @@ export interface OnionLayer {
   index: number;
   /** Opacity for this layer (fainter the further from the active frame). */
   alpha: number;
+  /** A colour every line of the ghost is painted in, keeping its alpha. */
+  tint?: string;
 }
+
+/** One side of Toonop's onion, as its window sets it (Procreate Dreams' Onions). */
+export interface OnionSide {
+  /** How many frames that way, 0..`ONION_SIDE_MAX_FRAMES`. */
+  frames: number;
+  /** The nearest frame's opacity, percent; the rest fade towards the far end. */
+  opacity: number;
+  tint: boolean;
+  colour: string;
+}
+
+export interface OnionSettings {
+  back: OnionSide;
+  ahead: OnionSide;
+  /** The current frame is drawn half through, over the ghosts. */
+  blend: boolean;
+}
+
+export const ONION_SIDE_MAX_FRAMES = 5;
 
 /**
  * Onion-skin layers for the active frame: up to `alphas.length` previous and
@@ -98,6 +119,26 @@ export function onionLayers(
     }
     if (sides === 'both' && next < frameCount) {
       layers.push({ index: next, alpha });
+    }
+  }
+  return layers;
+}
+
+/**
+ * Toonop's onion: each side its own depth, opacity and tint. The frame `d` of
+ * `n` away shows at `opacity · (n − d + 1) / n`, so the nearest one is what
+ * the window says and the farthest a step above nothing. Farthest first.
+ */
+export function onionSideLayers(active: number, frameCount: number, onion: OnionSettings): OnionLayer[] {
+  const layers: OnionLayer[] = [];
+  const reach = Math.max(onion.back.frames, onion.ahead.frames);
+  for (let distance = reach; distance >= 1; distance--) {
+    for (const [side, index] of [[onion.back, active - distance], [onion.ahead, active + distance]] as const) {
+      if (distance > side.frames || index < 0 || index >= frameCount) {
+        continue;
+      }
+      const alpha = (side.opacity / 100) * (side.frames - distance + 1) / side.frames;
+      layers.push(side.tint ? { index, alpha, tint: side.colour } : { index, alpha });
     }
   }
   return layers;

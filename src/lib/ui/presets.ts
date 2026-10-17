@@ -15,7 +15,7 @@ import { plugins } from '../plugins';
 import { FORMER_TOONOP_PANELS } from '../plugins/builtins';
 import { OFFICIAL_CATALOG } from '../plugins/catalog';
 import type { RegisteredPreset } from '../plugins/registry';
-import type { PickSource } from './frame-selection';
+import { ONION_SIDE_MAX_FRAMES, type OnionSettings, type OnionSide, type PickSource } from './frame-selection';
 import {
   FEATURE_ITEM,
   panelItems,
@@ -261,6 +261,8 @@ export interface EditorSettings {
    * cache either way.
    */
   pluginCatalog: string;
+  /** Toonop's onion window: each side's depth, opacity and tint, and the blend. */
+  onion: OnionSettings;
 }
 
 const PICKER_MODELS: readonly PickerModel[] = ['hsv', 'rgb', 'wheel'];
@@ -347,7 +349,16 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   fillSource: 'layer',
   fillWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
+  // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
+  onion: {
+    back: { frames: 2, opacity: 30, tint: false, colour: '#1b5cff' },
+    ahead: { frames: 2, opacity: 30, tint: false, colour: '#1f9d55' },
+    blend: false,
+  },
 };
+
+/** The nearest ghost is never set fainter than this, or the side looks switched off. */
+export const ONION_MIN_OPACITY = 5;
 
 export interface UiConfig {
   preset: string;
@@ -570,6 +581,32 @@ function normalizeSettings(value: unknown): EditorSettings {
     fillWarning: flag('fillWarning'),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),
+    onion: normalizeOnion(raw.onion),
+  };
+}
+
+function normalizeOnion(value: unknown): OnionSettings {
+  const raw = record(value);
+  const fallback = DEFAULT_SETTINGS.onion;
+  return {
+    back: normalizeOnionSide(raw.back, fallback.back),
+    ahead: normalizeOnionSide(raw.ahead, fallback.ahead),
+    blend: typeof raw.blend === 'boolean' ? raw.blend : fallback.blend,
+  };
+}
+
+function normalizeOnionSide(value: unknown, fallback: OnionSide): OnionSide {
+  if (typeof value !== 'object' || value === null) {
+    return { ...fallback };
+  }
+  const raw = value as Record<string, unknown>;
+  const clamp = (n: unknown, min: number, max: number, or: number) =>
+    typeof n === 'number' && Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : or;
+  return {
+    frames: clamp(raw.frames, 0, ONION_SIDE_MAX_FRAMES, fallback.frames),
+    opacity: clamp(raw.opacity, ONION_MIN_OPACITY, 100, fallback.opacity),
+    tint: typeof raw.tint === 'boolean' ? raw.tint : fallback.tint,
+    colour: typeof raw.colour === 'string' && /^#[0-9a-f]{6}$/i.test(raw.colour) ? raw.colour : fallback.colour,
   };
 }
 

@@ -65,7 +65,8 @@ export const TOONOP_UX: UxProfile = {
   adaptiveBrushStep: 'ladder',
   canvasDensity: 'device',
   projectFile: false,
-  onionMode: 'neighbors',
+  // Each side by the onion window (owner, 2026-10-18: Procreate Dreams' Onions).
+  onionMode: 'sides',
   colorGrid: true,
   fpsRange: [1, 30],
   livePipettePreview: true,

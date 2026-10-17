@@ -244,12 +244,32 @@ test('settings round-trip through the stored config', () => {
     fillSource: 'canvas' as const,
     fillWarning: false,
     pluginCatalog: 'https://plugins.example/',
+    onion: {
+      back: { frames: 4, opacity: 45, tint: true, colour: '#ff0000' },
+      ahead: { frames: 0, opacity: 100, tint: false, colour: '#00aa00' },
+      blend: true,
+    },
   };
   const parsed = parseUiConfig(JSON.stringify({
     preset: 'toonio',
     settings,
   }));
   expect(parsed?.settings).toEqual(settings);
+});
+
+test('a broken onion side falls back to the default, a wild one is held to the window', () => {
+  const stored = (onion: unknown) => parseUiConfig(JSON.stringify({
+    preset: 'toonop',
+    settings: { onion },
+  }))?.settings.onion;
+
+  expect(stored(undefined)).toEqual(DEFAULT_SETTINGS.onion);
+  const held = stored({ back: { frames: 99, opacity: 0, tint: 'yes', colour: 'red' }, ahead: 7, blend: 1 });
+  expect(held).toEqual({
+    back: { frames: 5, opacity: 5, tint: DEFAULT_SETTINGS.onion.back.tint, colour: DEFAULT_SETTINGS.onion.back.colour },
+    ahead: DEFAULT_SETTINGS.onion.ahead,
+    blend: false,
+  });
 });
 
 test('the picker model is one of the three, or the reference default', () => {

@@ -46,7 +46,7 @@ describe('the editor profile', () => {
     expect(toonop.defaultFps).toBe(12);
     expect(toonop.brushSizeMax).toBe(500);
     expect(toonop.adaptiveBrushStep).toBe('ladder');
-    expect(toonop.onionMode).toBe('neighbors');
+    expect(toonop.onionMode).toBe('sides');
     expect(toonop.colorGrid).toBe(true);
     expect(toonop.fpsRange).toEqual([1, 30]);
     expect(toonop.livePipettePreview).toBe(true);

@@ -53,6 +53,7 @@ import {
   clampPlayerFps,
   onionHistoryLayers,
   onionLayers,
+  onionSideLayers,
   onionSkinVisible,
   scaleMenuVisible,
   SCALE_MENU_MS,
@@ -68,6 +69,8 @@ import {
   toggleLayerInSelection,
   type CellSelection,
   type OnionLayer,
+  type OnionSettings,
+  type OnionSide,
   type PickSource,
 } from './frame-selection';
 import {
@@ -1455,6 +1458,9 @@ export class EditorState {
 
   /** Onion layers for the canvas: fading neighbors, or Tonio's visited frames. */
   get onionSkinLayers(): OnionLayer[] {
+    if (this.ux.onionMode === 'sides') {
+      return onionSideLayers(this.activeFrame, frameCount(this.doc), this.settings.onion);
+    }
     return this.ux.onionMode === 'history'
       ? onionHistoryLayers(this.visitedFrames, this.activeFrame, frameCount(this.doc))
       : onionLayers(this.activeFrame, frameCount(this.doc), ONION_SKIN_ALPHAS, this.ux.onionSides);
@@ -1467,6 +1473,22 @@ export class EditorState {
    */
   get onionHistoryLayerIndices(): number[] {
     return this.ux.onionMode === 'history' ? [...this.selection.layers] : [this.activeLayer];
+  }
+
+  /** Toonop's onion window lays the current frame half through over the ghosts. */
+  get onionBlends(): boolean {
+    return this.showOnionSkin && this.ux.onionMode === 'sides' && this.settings.onion.blend;
+  }
+
+  /** One side of the onion window, or the blend, changed and kept. */
+  setOnion(patch: Partial<Omit<OnionSettings, 'back' | 'ahead'>> & { back?: Partial<OnionSide>; ahead?: Partial<OnionSide> }): void {
+    const onion = this.settings.onion;
+    this.setSetting('onion', {
+      ...onion,
+      ...patch,
+      back: { ...onion.back, ...patch.back },
+      ahead: { ...onion.ahead, ...patch.ahead },
+    });
   }
 
   toggleOnionSkin(): void {

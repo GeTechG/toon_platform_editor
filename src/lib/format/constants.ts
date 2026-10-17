@@ -54,6 +54,9 @@ export const BACKGROUND_COLOR = '#ffffff';
  */
 export const ONION_SKIN_ALPHAS = [0.3, 0.1] as const;
 
+/** Toonop's onion window, «blend the current frame»: what that frame is drawn at. */
+export const ONION_BLEND_ALPHA = 0.5;
+
 /** Tonio's onion: ladder over the last visited frames, topping out here. */
 export const ONION_HISTORY_MAX_ALPHA = 0.15;
 /** How many visited frames Tonio keeps in that history. */

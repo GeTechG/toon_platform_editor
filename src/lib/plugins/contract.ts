@@ -234,8 +234,11 @@ export interface UxProfile {
   readonly pipetteOffRail: boolean;
   /** Which neighbors the onion skin shows (only read in the 'neighbors' mode). */
   readonly onionSides: 'both' | 'previous';
-  /** Onion model: fading neighbors, or Tonio's last visited frames. */
-  readonly onionMode: 'neighbors' | 'history';
+  /**
+   * Onion model: fading neighbors, Tonio's last visited frames, or each side
+   * as the user's onion window sets it (toonop, after Procreate Dreams).
+   */
+  readonly onionMode: 'neighbors' | 'history' | 'sides';
   /** A persistent grid of saved colors next to the picker (Tonio). */
   readonly colorGrid: boolean;
   /** Allowed player fps range. */

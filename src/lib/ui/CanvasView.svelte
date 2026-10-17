@@ -5,7 +5,7 @@
   import { dismissedOnly } from './dismiss-press';
   import { PENCIL } from '../plugins';
   import type { EditorState, Tool } from './editor-state.svelte';
-  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
+  import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_BLEND_ALPHA } from '../format/constants';
   import type { Frame, Layer } from '../format/types';
   import { frameCount, placeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
@@ -693,8 +693,10 @@
             : undefined,
           live: liveLine(viewport),
           // The profile's active alpha (Multator: 0.8, its containerSprite)
-          // applies to the whole current frame.
-          alpha: editor.playing ? 1 : editor.ux.activeFrameAlpha,
+          // applies to the whole current frame; toonop's onion window can
+          // blend it half through over its ghosts.
+          alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
+          blend: editor.onionBlends,
         });
         // Magnified past its own pixels the sheet shows them, squares and
         // all; anything less is smoothed.
@@ -1012,6 +1014,7 @@
     void editor.activeLayer;
     void editor.showOnionSkin;
     void editor.onionHistoryLayerIndices.length;
+    void editor.settings.onion;
     void editor.ux;
     void editor.view;
     void editor.transform;
@@ -1033,6 +1036,7 @@
     void editor.activeLayer;
     void editor.showOnionSkin;
     void editor.onionHistoryLayerIndices.length;
+    void editor.settings.onion;
     void editor.ux;
     void editor.transform;
     void editor.tool;

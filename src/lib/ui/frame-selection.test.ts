@@ -12,6 +12,7 @@ import {
   pickSource,
   onionHistoryLayers,
   onionLayers,
+  onionSideLayers,
   onionSkinVisible,
   playbackRange,
   pushVisited,
@@ -102,6 +103,24 @@ describe('onionLayers', () => {
       { index: 0, alpha: 0.3 },
       { index: 2, alpha: 0.3 },
     ]);
+  });
+});
+
+describe('onionSideLayers', () => {
+  const side = (frames: number, opacity: number, tint = false, colour = '#00ff00') => ({ frames, opacity, tint, colour });
+
+  it('fades each side by its own settings and tints only the tinted side, farthest first', () => {
+    const layers = onionSideLayers(5, 10, { back: side(2, 30), ahead: side(1, 60, true), blend: false });
+    expect(layers).toEqual([
+      { index: 3, alpha: 0.15 },
+      { index: 4, alpha: 0.3 },
+      { index: 6, alpha: 0.6, tint: '#00ff00' },
+    ]);
+  });
+
+  it('shows nothing of a side set to zero frames, nor frames past the ends', () => {
+    expect(onionSideLayers(1, 3, { back: side(3, 50), ahead: side(0, 50), blend: false }))
+      .toEqual([{ index: 0, alpha: 0.5 }]);
   });
 });
 

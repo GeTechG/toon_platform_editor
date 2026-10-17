@@ -6,6 +6,7 @@
   import BrushPanel from './BrushPanel.svelte';
   import ColoursPanel from './ColoursPanel.svelte';
   import PopKey from './PopKey.svelte';
+  import OnionPanel from './OnionPanel.svelte';
   import { notePopupClosed } from './dismiss-press';
   import { createLostRelease } from './lost-release';
   import { sideAsDrawn, transportKeys } from './ux-profile';
@@ -2835,6 +2836,27 @@
     >
       <Icon name="trash" />
     </button>
+  {:else if id === 'onion' && editor.ux.onionMode === 'sides'}
+    <!-- Toonop's onion is a tool key (owner, 2026-10-18): off, a press turns
+         it on; on, a press opens its window, the way Dreams keeps the onions. -->
+    <PopKey
+      label={t('editor.onion')}
+      title={editor.keyHint(editor.onionSkin ? t('onion.key_on') : t('editor.onion_off'))}
+      active={editor.onionSkin}
+      gate={() => {
+        if (editor.onionSkin) return true;
+        editor.toggleOnionSkin();
+        return false;
+      }}
+      attrs={{
+        'aria-pressed': editor.onionSkin,
+        'data-key': editor.keyHint('K') || undefined,
+        'aria-keyshortcuts': editor.settings.letterKeys ? 'K' : undefined,
+      }}
+    >
+      {#snippet face()}<Icon name="onion" />{/snippet}
+      <OnionPanel {editor} />
+    </PopKey>
   {:else if id === 'onion'}
     <button
       class="key"

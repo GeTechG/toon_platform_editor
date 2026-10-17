@@ -32,7 +32,7 @@ class Recorder implements ComposeBuffer {
   }
   clear(): void { this.log.push('clear'); }
   setTransform(): void {}
-  fillRect(): void {}
+  fillRect(): void { this.log.push(`fillRect ${this.globalCompositeOperation} ${this.fillStyle}`); }
   clearRect(): void { this.log.push('clear'); }
   beginPath(): void {}
   moveTo(): void {}
@@ -143,6 +143,33 @@ describe('the composer stacks a frame', () => {
     // One blit onto the visible target, at the alpha; the stack went into the
     // composite buffer before it.
     expect(target.log).toEqual(['blit b3 @0.8']);
+  });
+
+  it('paints a tinted ghost in its tint over its own lines only', () => {
+    const built = doc(1);
+    addFrame(built, 0);
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3, tint: '#00ff00' }], layers: [0] },
+    });
+    const ghostName = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
+    const ghost = made.find((buffer) => buffer.name === ghostName)!;
+    expect(ghost.log.at(-1)).toBe('fillRect source-in #00ff00');
+  });
+
+  it('lays the blended frame over the ghosts, at its alpha', () => {
+    const built = doc(1);
+    addFrame(built, 0);
+    addStroke(built, 0, 1, line(300));
+    const { instance } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] }, alpha: 0.5, blend: true,
+    });
+    expect(target.log).toEqual(['blit b4 @0.3', 'blit b3 @0.5']);
   });
 
   it('paints nothing again while the strokes of the frame are what they were', () => {

@@ -35,10 +35,12 @@ export interface ComposeBuffer {
 
 export type BufferFactory = () => ComposeBuffer;
 
-/** A ghost frame: which frame, and how strongly it shows. */
+/** A ghost frame: which frame, how strongly it shows, and the colour it is painted in. */
 export interface GhostFrame {
   readonly index: number;
   readonly alpha: number;
+  /** Every line of the ghost in this colour, its alpha kept. */
+  readonly tint?: string;
 }
 
 /**
@@ -80,10 +82,20 @@ export interface FrameScene {
   readonly live?: LiveLine | null;
   /** What the whole frame is blitted at; a profile dims the frame being drawn. */
   readonly alpha?: number;
+  /**
+   * The ghosts go under the whole frame instead of into its stack, so a frame
+   * filled solid, blitted at `alpha`, lets them show through.
+   */
+  readonly blend?: boolean;
 }
 
-/** At most the onion depth on each side, so a handful of cells. */
-const GHOST_BUFFERS = 4;
+/**
+ * At most the onion depth on each side (`ONION_SIDE_MAX_FRAMES`), so a handful
+ * of cells. Made only when asked for: two ghosts take two buffers.
+ */
+// ponytail: ten stage-sized buffers at the deepest onion, ~37 MB at density 2;
+// a ghost the size of the sheet if a phone reloads under it.
+const GHOST_BUFFERS = 10;
 
 function domBuffer(): ComposeBuffer {
   const canvas = document.createElement('canvas');
@@ -207,7 +219,8 @@ export class FrameComposer {
       composite.clear();
       const cctx = composite.ctx as ComposeTarget;
       if (this.#belowInk) blitLayer(this.#below!.image, cctx);
-      this.#drawGhosts(cctx, scene, width, height);
+      if (scene.blend) this.#drawGhosts(target, scene, width, height);
+      else this.#drawGhosts(cctx, scene, width, height);
       blitLayer(active.image, cctx);
       this.#paintLiveTail(cctx, scene);
       if (this.#aboveInk) blitLayer(this.#above!.image, cctx);
@@ -412,7 +425,7 @@ export class FrameComposer {
       return;
     }
     for (const ghost of ghosts.frames) {
-      const buffer = this.#ghost(scene, ghost.index, ghosts.layers, width, height);
+      const buffer = this.#ghost(scene, ghost, ghosts.layers, width, height);
       if (!buffer) {
         continue;
       }
@@ -430,7 +443,7 @@ export class FrameComposer {
    */
   #ghost(
     scene: FrameScene,
-    frame: number,
+    { index: frame, tint }: GhostFrame,
     layers: readonly number[],
     width: number,
     height: number,
@@ -454,7 +467,7 @@ export class FrameComposer {
     }
     const { viewport } = scene;
     const key = keys.join('|')
-      + `:${width}x${height}@${viewport.scale}:${viewport.panX}:${viewport.panY}`;
+      + `:${width}x${height}@${viewport.scale}:${viewport.panX}:${viewport.panY}:${tint ?? ''}`;
     const { buffer, fresh } = this.#ghosts.take(key);
     if (!fresh) {
       return buffer;
@@ -462,6 +475,15 @@ export class FrameComposer {
     // Layer by layer through the scratch, as the stack is: an eraser on one
     // layer must not cut the line of the layer under it in the ghost either.
     this.#paint(buffer, cells, { ...scene, tools: scene.doc.tools }, width, height, true);
+    if (tint) {
+      // Over what is there only: the lines take the colour and keep their alpha.
+      const ctx = buffer.ctx;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-in';
+      ctx.fillStyle = tint;
+      ctx.fillRect(0, 0, width, height);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     return buffer;
   }
 }
