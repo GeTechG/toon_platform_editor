@@ -2980,7 +2980,8 @@
          one in hand, as a group of tools does. -->
     {@const held = over?.tools.map(toolOfItem).find((tool) => tool === editor.tool)}
     <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held} shutOn={editor.tool} attrs={{ 'data-name': t('editor.tools_short') }}>
-      {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} />{/snippet}
+      <!-- The corner says it is a choice: wearing the tool in hand it looked like that tool's own key (owner, 2026-10-18). -->
+      {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} /><span class="group-mark" aria-hidden="true"></span>{/snippet}
       <div class="more-keys tool-list">{@render slot(over?.tools ?? [])}</div>
     </PopKey>
   {:else if id === 'more'}
@@ -4843,6 +4844,17 @@
     .editor :global(.key[data-add]:hover) {
       opacity: 1;
     }
+  }
+  /* A group of tools, as in a drawing program: a small triangle in the key's lower right corner. */
+  .group-mark {
+    position: absolute;
+    right: 0.25rem;
+    bottom: 0.25rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: currentColor;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    pointer-events: none;
   }
   .add-list {
     display: flex;
