@@ -13,6 +13,7 @@
 import validateSchema from './schema/toon-v7.validate.js';
 import { SCHEMA_VERSION, wellFormed } from './constants';
 import type { ToolDescriptor, ToonDocument } from './types';
+import { FormatError } from './format-error';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -28,16 +29,8 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
-/** Document load error; carries the list of validation issues. */
-export class FormatError extends Error {
-  readonly issues: ValidationIssue[];
-
-  constructor(issues: ValidationIssue[]) {
-    super(issues.map((issue) => `${issue.path || '<document>'}: ${issue.message}`).join('; '));
-    this.name = 'FormatError';
-    this.issues = issues;
-  }
-}
+// Its own module, so the player's unpacking does not carry the validator.
+export { FormatError } from './format-error';
 
 export function validateDocument(data: unknown): ValidationResult {
   // 1. Schema version — before interpreting any content.
