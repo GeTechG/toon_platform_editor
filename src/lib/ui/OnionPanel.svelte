@@ -133,6 +133,9 @@
     padding: 10px;
     border-radius: var(--r-md);
     background: var(--canvas);
+    /* A phone lying down has less room under the key than the box is tall:
+       it scrolls inside the room the key tells (PopKey `--room`). */
+    max-height: calc(var(--room, 100dvh) - 2px);
     overflow: auto;
   }
   h2,
@@ -181,13 +184,17 @@
     outline: 3px solid var(--accent);
     outline-offset: 2px;
   }
+  /* The words wrap, the switch stays at the end of their row: under a long
+     name («Смешивать текущий кадр») it hung alone on a line of its own. */
   .toggle {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
     font-size: 0.86rem;
+  }
+  .toggle input {
+    flex: none;
   }
   .swatch {
     height: var(--key-h, 2.75rem);
