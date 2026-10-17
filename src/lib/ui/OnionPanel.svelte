@@ -39,7 +39,7 @@
 </script>
 
 <div class="onion-box" role="group" aria-label={t('onion.box')}>
-  <label class="toggle">
+  <label class="switch-row">
     <span>{t('editor.onion')}</span>
     <input
       type="checkbox"
@@ -58,46 +58,51 @@
       >{label}</button>
     {/each}
   </div>
-  <h2>{t('onion.frames')}</h2>
-  <input
-    type="range"
-    min="0"
-    max={ONION_SIDE_MAX_FRAMES}
-    value={side.frames}
-    aria-label={t('onion.frames')}
-    oninput={(e) => editor.setOnion({ [sideId]: { frames: e.currentTarget.valueAsNumber } })}
-  />
-  <output>{side.frames}</output>
-  <h2>{t('onion.opacity')}</h2>
-  <input
-    type="range"
-    min={ONION_MIN_OPACITY}
-    max="100"
-    value={side.opacity}
-    aria-label={t('onion.opacity')}
-    aria-valuetext="{side.opacity}%"
-    oninput={(e) => editor.setOnion({ [sideId]: { opacity: e.currentTarget.valueAsNumber } })}
-  />
-  <output>{side.opacity}%</output>
-  <label class="toggle">
-    <span>{t('onion.tint')}</span>
+  <!-- The name, the track and the number on one row: the window stood over
+       the whole sheet on a phone, and the sheet is what it is set by. -->
+  <label class="slide">
+    <span>{t('onion.frames')}</span>
+    <input
+      type="range"
+      min="0"
+      max={ONION_SIDE_MAX_FRAMES}
+      value={side.frames}
+      oninput={(e) => editor.setOnion({ [sideId]: { frames: e.currentTarget.valueAsNumber } })}
+    />
+    <output>{side.frames}</output>
+  </label>
+  <label class="slide">
+    <span>{t('onion.opacity')}</span>
+    <input
+      type="range"
+      min={ONION_MIN_OPACITY}
+      max="100"
+      value={side.opacity}
+      aria-valuetext="{side.opacity}%"
+      oninput={(e) => editor.setOnion({ [sideId]: { opacity: e.currentTarget.valueAsNumber } })}
+    />
+    <output>{side.opacity}%</output>
+  </label>
+  <div class="switch-row">
+    <span id="onion-tint">{t('onion.tint')}</span>
+    {#if side.tint}
+      <button
+        type="button"
+        class="swatch"
+        style:background={side.colour}
+        aria-label={t('onion.tint_colour')}
+        onclick={openPicker}
+      ></button>
+    {/if}
     <input
       type="checkbox"
       role="switch"
+      aria-labelledby="onion-tint"
       checked={side.tint}
       onchange={(e) => editor.setOnion({ [sideId]: { tint: e.currentTarget.checked } })}
     />
-  </label>
-  {#if side.tint}
-    <button
-      type="button"
-      class="swatch"
-      style:background={side.colour}
-      aria-label={t('onion.tint_colour')}
-      onclick={openPicker}
-    ></button>
-  {/if}
-  <label class="toggle">
+  </div>
+  <label class="switch-row">
     <span>{t('onion.blend')}</span>
     <input
       type="checkbox"
@@ -122,13 +127,14 @@
 {/if}
 
 <style>
-  /* The bucket's box (FillPanel): the same width, the same grid. */
+  /* The bucket's box (FillPanel) in its tones, packed tighter: a row per
+     setting, so on a phone it leaves the sheet in sight. */
   .onion-box {
-    width: 225px;
+    width: 16.5rem;
     max-width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(44px, 1fr);
-    gap: 10px;
+    grid-template-columns: auto minmax(0, 1fr) 2.6rem;
+    gap: 8px 10px;
     align-items: center;
     padding: 10px;
     border-radius: var(--r-md);
@@ -137,24 +143,18 @@
        it scrolls inside the room the key tells (PopKey `--room`). */
     max-height: calc(var(--room, 100dvh) - 2px);
     overflow: auto;
+    font-size: 0.86rem;
   }
-  h2,
   .choice,
-  .toggle,
-  .swatch {
-    grid-column: 1 / 3;
-    margin: 0;
+  .switch-row {
+    grid-column: 1 / 4;
   }
-  h2 {
-    text-align: center;
-    font-size: 1rem;
-    font-weight: 400;
-    color: var(--ink-2);
+  .slide {
+    display: contents;
   }
   output {
-    font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
-    text-align: center;
+    text-align: end;
   }
   .choice {
     display: grid;
@@ -165,14 +165,13 @@
     background: var(--sub);
   }
   .choice button {
-    min-height: var(--key-h, 2.75rem);
+    min-height: 2.25rem;
     padding: 0 6px;
     border: none;
     border-radius: var(--r-sm);
     background: transparent;
     color: var(--ink);
     font: inherit;
-    font-size: 0.86rem;
     cursor: pointer;
   }
   .choice button.active {
@@ -186,18 +185,21 @@
   }
   /* The words wrap, the switch stays at the end of their row: under a long
      name («Смешивать текущий кадр») it hung alone on a line of its own. */
-  .toggle {
+  .switch-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem;
-    font-size: 0.86rem;
   }
-  .toggle input {
+  .switch-row span {
+    flex: 1;
+  }
+  .switch-row input,
+  .swatch {
     flex: none;
   }
   .swatch {
-    height: var(--key-h, 2.75rem);
+    width: 2rem;
+    height: 1.75rem;
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);
     cursor: pointer;
