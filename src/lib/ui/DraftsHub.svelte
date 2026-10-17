@@ -830,10 +830,8 @@
     height: var(--key-h, 2.75rem);
     transform: translateY(-50%);
   }
-  /* Its menu: the chip opened out. No shadow and no ring (owner, 2026-10-05:
-     «у нас минимализм») — it is told from the white card and from the paper
-     by tone alone, the chip's own, a step under both; the size chosen is
-     lifted to the canvas, as the picked half of a segmented control is.
+  /* Its menu: every drop in the studio wears one look (owner, 2026-10-18) —
+     white, lifted by the menu shadow; the size chosen lies in the chip's tone.
      Global and heavier: the hub's column rule would stretch and centre both. */
   .hub > .size-scrim {
     position: absolute;
@@ -851,7 +849,8 @@
     margin: 0;
     padding: 4px;
     border-radius: var(--r-md);
-    background: var(--sub);
+    background: var(--canvas);
+    box-shadow: var(--shadow-menu);
     /* Over or under its chip, as the room lets: a fade, no travel. */
     --pop-from: 0px;
     animation: studio-pop var(--dur-enter) var(--ease-out);
@@ -878,12 +877,12 @@
     color: var(--text-2);
   }
   .size-menu button[aria-checked='true'] {
-    background: var(--canvas);
+    background: var(--sub);
     color: var(--accent-ink);
   }
   @media (hover: hover) {
     .size-menu button:hover:not([aria-checked='true']) {
-      background: var(--paper);
+      background: var(--hairline-soft);
     }
   }
   .size-menu button:focus-visible {

@@ -870,6 +870,11 @@
     background: var(--paper);
     border-top: 1px solid var(--hairline);
   }
+  /* A key's plate is white: a paper strip stood in it as a second card cut by
+     the plate's corner. */
+  :global(.pop-plate) .tabs {
+    background: var(--canvas);
+  }
   .tab {
     display: flex;
     flex-direction: column;

@@ -147,9 +147,15 @@ describe('a draft row gives its words the room', () => {
 
 describe('nothing that lies in the studio casts a soft shadow', () => {
   // As on the site, only what drops over the work keeps its shadow: menus, the
-  // popover note, the panel being dragged, the modal sheets. Plates, windows,
-  // the zoom window and the paper itself are told apart by tone.
+  // windows keys open, the popover note, the panel being dragged, the modal
+  // sheets (owner, 2026-10-18). The tool windows over the stage, the zoom
+  // window and the paper itself are told apart by tone.
   const FLOATS = new Set([
+    'Dropdown.svelte .list',
+    'PopKey.svelte .pop-plate',
+    'DraftsHub.svelte .hub > .size-menu',
+    'Editor.svelte .more-window',
+    'Editor.svelte .updating',
     'BrushPanel.svelte .types',
     'BrushPanel.svelte .note',
     'ColourPicker.svelte .picker',

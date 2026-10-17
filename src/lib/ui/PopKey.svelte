@@ -175,11 +175,11 @@
     --room: 100dvh;
     overflow-y: auto;
     overscroll-behavior: contain;
-    /* Over the stage by tone, as the scale window: white read as the sheet. */
-    background: var(--paper);
-    /* A hair of an edge: over the bars it lies paper on paper. */
-    border: 1px solid var(--hairline);
+    /* A drop, as every menu in the studio (owner, 2026-10-18): white, lifted
+       off the sheet and the bars by the menu shadow. */
+    background: var(--canvas);
     border-radius: var(--r-md);
+    box-shadow: var(--shadow-menu);
     /* It comes out of its key (controls.css); shut, it is simply gone. The
        side is named, not left to the default: a window it stands in fades
        in place, and its `0px` would be inherited here. */
@@ -190,8 +190,7 @@
   .pop-plate.up {
     --pop-from: 4px;
   }
-  /* The box in it lies on the plate's paper: white, it read as a piece of
-     the sheet under it. */
+  /* The box in it lies on the plate: a plate of its own would double the edge. */
   .pop-plate :global(.box) {
     background: transparent;
   }

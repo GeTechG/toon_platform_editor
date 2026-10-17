@@ -91,11 +91,4 @@ describe('every drop-down in the studio is the studio\'s own', () => {
     expect(dropdown).toMatch(/\{:else\}\s*<select/);
     expect(dropdown).toContain("'popover' in HTMLElement.prototype");
   });
-
-  it('separates the list by tone, not by a shadow', () => {
-    const style = dropdown.slice(dropdown.indexOf('<style>'));
-    expect(style).not.toContain('box-shadow');
-    expect(style).toMatch(/\.list \{[^}]*background: var\(--sub\)/);
-    expect(style).toMatch(/\.option\[aria-selected='true'\] \{[^}]*background: var\(--canvas\)/);
-  });
 });

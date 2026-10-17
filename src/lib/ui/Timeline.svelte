@@ -1019,11 +1019,12 @@
     overflow-y: auto;
     padding: 4px;
     border-radius: var(--r-md);
-    background: var(--paper);
+    background: var(--canvas);
     box-shadow: var(--shadow-menu);
     /* Up into place: it opens over the press. Only the look — the items take
        the press and the focus from the first frame. */
-    animation: menu-in var(--dur-enter) var(--ease-out);
+    --pop-from: 4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .frame-menu button {
     display: flex;
@@ -1179,16 +1180,9 @@
       opacity: 0;
     }
   }
-  @keyframes menu-in {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-  }
   /* What came still says so by its tone; it does not travel. */
   @media (prefers-reduced-motion: reduce) {
-    .cell.arrived,
-    .frame-menu {
+    .cell.arrived {
       animation-name: fade-in;
     }
   }

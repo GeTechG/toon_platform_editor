@@ -497,20 +497,10 @@ describe('a standing sheet on a phone lying down', () => {
 describe('the hub is dressed in the studio’s own surfaces', () => {
   const hubCss = shell.slice(shell.indexOf('<style>'));
 
-  it('ink is nobody’s ground here: the chip and its menu are paper and tone', () => {
+  it('ink is nobody’s ground here: the chip is tone', () => {
     // DESIGN §2: ink works as a ground on the Stage only.
     expect(hubCss).not.toMatch(/background:[^;]*var\(--ink\)/);
     expect(rule('.reel-size')).toMatch(/background:\s*var\(--sub\)/);
-    // Owner, 2026-10-05: no soft shadow — «у нас минимализм». The menu is
-    // told from the card and from the paper by tone alone: the chip's own
-    // tone, a step under both, with the size chosen lifted to the canvas.
-    const menu = rule('.hub > .size-menu');
-    expect(menu).toMatch(/background:\s*var\(--sub\)/);
-    expect(menu).not.toMatch(/box-shadow|border:/);
-    expect(menu).toMatch(/border-radius:\s*var\(--r-md\)/);
-    const chosen = rule(".size-menu button[aria-checked='true']");
-    expect(chosen).toMatch(/background:\s*var\(--canvas\)/);
-    expect(chosen).toMatch(/color:\s*var\(--accent-ink\)/);
   });
 
   it('mixes no colour from a token: Safari 16.0 computes that to nothing', () => {

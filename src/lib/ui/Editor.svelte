@@ -4810,8 +4810,10 @@
     padding: 0.75rem;
     overflow: auto;
     overscroll-behavior: contain;
-    background: var(--paper);
-    border-radius: var(--r-lg);
+    /* A drop, as every window a key opens (owner, 2026-10-18). */
+    background: var(--canvas);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-menu);
     /* Down from the bar its key stands on (controls.css). */
     --pop-from: -4px;
     animation: studio-pop var(--dur-enter) var(--ease-out);
@@ -5123,7 +5125,8 @@
     padding: 1rem 1.4rem;
     border: none;
     border-radius: var(--r-md);
-    background: var(--paper);
+    background: var(--canvas);
+    box-shadow: var(--shadow-plate);
     color: var(--ink);
     font: inherit;
     font-weight: 650;

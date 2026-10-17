@@ -215,10 +215,11 @@
     padding: 4px;
     border: none;
     border-radius: var(--r-md);
-    /* Tone, not a shadow (owner, 2026-10-05): the list is a step darker than
-       the sheet, the picked option lies on the canvas. */
-    background: var(--sub);
+    /* Every drop in the studio wears one look (owner, 2026-10-18): white,
+       lifted by the menu shadow; the picked option lies in the tab tone. */
+    background: var(--canvas);
     color: var(--ink);
+    box-shadow: var(--shadow-menu);
   }
   /* A closed popover is hidden by the browser's own `display: none`, which
      any layout declared on `.list` would quietly override. */
@@ -248,12 +249,12 @@
   }
   @media (hover: hover) {
     .option:hover {
-      /* A token, not a mix: a hair of ink over the list's tone. */
+      /* A token, not a mix: a hair of ink over the list's white. */
       background: var(--hairline-soft);
     }
   }
   .option[aria-selected='true'] {
-    background: var(--canvas);
+    background: var(--sub);
     color: var(--accent-ink);
     font-weight: 650;
   }
