@@ -22,7 +22,7 @@ const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4,
 
 describe('a phone draws toonop’s desktop', () => {
   it('the top bar is one row: publish, «⋯», the essential tools, a key for the other tools, the colour', () => {
-    const cut = phoneLayout(base, base, keep);
+    const cut = phoneLayout(bareShelf, base, keep);
     expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     // The transform among them (owner, 2026-10-07: «трансформацию спрячь в инструменты»).
     expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
@@ -33,22 +33,22 @@ describe('a phone draws toonop’s desktop', () => {
     expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
     expect(wide.tools).toEqual([]);
     // One short of them all: still only the essential ones, not «whatever came next».
-    const near = phoneLayout(base, base, { ...keep, room: 5 });
+    const near = phoneLayout(bareShelf, base, { ...keep, room: 5 });
     expect(near.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
-    const narrow = phoneLayout(base, base, { ...keep, room: 2 });
+    const narrow = phoneLayout(bareShelf, base, { ...keep, room: 2 });
     expect(narrow.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tools', 'color-key']);
     expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
   });
 
-  // A phone has no «+» by its tools: a tool put on the shelf (on a desk, by
-  // the arranger) came back only on a computer.
-  it('a tool on the shelf is fetched from behind the key for the other tools, even where every placed tool fits the row', () => {
+  // A phone has no shelf and no arranger (owner, 2026-10-18: «давай тогда уже
+  // показывать все инструменты как есть»): every tool is in hand.
+  it('a tool on the shelf is a tool like any other: behind the key for the other tools, or in the row where it fits', () => {
     // toonop's own shelf: the bucket, the distortion, the pixel brush.
+    expect(phoneLayout(base, base, keep).tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:bucket', 'tool:distort', 'tool:pixel']);
     const wide = phoneLayout(base, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tools', 'color-key']);
-    expect(wide.tools).toEqual([]);
-    // One the profile does not draw is not a reason for the key.
-    expect(phoneLayout(movePanelItem(bareShelf, 'tool:pipette', 'hidden'), base, { ...keep, room: 12 }).panels.top).not.toContain('tools');
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:bucket', 'tool:distort', 'tool:pixel', 'color-key']);
+    // One the profile does not draw stays out.
+    expect(phoneLayout(movePanelItem(bareShelf, 'tool:pipette', 'hidden'), base, keep).tools).not.toContain('tool:pipette');
   });
 
   it('how many tools the row has room for is worked out from its width and the text size', () => {
@@ -154,7 +154,7 @@ describe('a phone draws toonop’s desktop', () => {
 
   it('lying down the height is the canvas’s: the transport, the onion skin and the sound stand in the row, the bar is the strip alone', () => {
     // Owner, 2026-10-07: «кнопки будут сверху, место позволяет, а инструменты объединены в один».
-    const cut = phoneLayout(base, base, { ...keep, tall: false, room: 12 });
+    const cut = phoneLayout(bareShelf, base, { ...keep, tall: false, room: 12 });
     expect(cut.panels.top).toEqual(['publish', 'more', 'history', 'spring:lead', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     expect(cut.panels.rows).toEqual([['timeline']]);
     expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
@@ -169,11 +169,11 @@ describe('a phone draws toonop’s desktop', () => {
     expect(editorUi).toContain('style:--stage-under={!panelFolded && !barBare && panels.rows.length > 0 ?');
   });
 
-  it('what is on the shelf stays there — but for saving, export and the drafts', () => {
+  it('what is on the shelf stays there — but for saving, export, the drafts and the tools', () => {
     const layout = movePanelItem(base, 'manual', 'hidden');
     const cut = phoneLayout(movePanelItem(layout, toolItem('eraser'), 'hidden'), base, keep);
     expect(all(cut)).not.toContain('manual');
-    expect(cut.panels.top).not.toContain('tool:eraser');
+    expect(cut.panels.top).toContain('tool:eraser');
   });
 
   it('with no publish placed the row starts at «⋯»', () => {

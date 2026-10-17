@@ -155,6 +155,7 @@ import {
   normalizePanels,
   toolSpec,
   visibleTools,
+  toolOrder,
   panelItemVisible,
   showPanelItem,
   samePanels,
@@ -535,8 +536,11 @@ export class EditorState {
    * editor has, hotkeys included.
    */
   get availableTools(): Tool[] {
-    return visibleTools(this.panels);
+    return this.noShelf ? toolOrder() : visibleTools(this.panels);
   }
+
+  /** A phone's own cut (toonop): it has no shelf and no arranger, every tool is in hand (owner, 2026-10-18). */
+  noShelf = $state(false);
 
   constructor() {
     const saved = loadUiConfig();

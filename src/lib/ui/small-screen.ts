@@ -208,15 +208,15 @@ export interface PhoneLayout {
 // ponytail: `_base` is no longer read — the phone's sidebar and rows are its own (PHONE_SIDE, PHONE_ROWS); drop the parameter with its callers when they are next touched.
 export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: PhoneKeep): PhoneLayout {
   const placed = allPlaced({ ...layout, hidden: [] });
-  const tools = placed.filter((id) => keep.drawn(toolOfItem(id) ?? '') && toolOfItem(id) !== null);
+  // The shelf's tools too: a phone has no shelf and no arranger to fetch them
+  // from (owner, 2026-10-18: «показывать все инструменты как есть»).
+  const tools = [...placed, ...layout.hidden].filter((id) => keep.drawn(toolOfItem(id) ?? '') && toolOfItem(id) !== null);
   const essential = (id: string) => keep.tools.includes(toolOfItem(id) ?? '');
   const ranked = [...tools.filter(essential), ...tools.filter((id) => !essential(id))];
   // All of them, or the essential ones and a key for the rest: a row that
   // took «whatever came next» showed a different third tool at every width.
   // Lying down the row holds the transport too: the other tools are behind their key whatever the width.
-  // A tool on the shelf is fetched from behind that key: a phone has no «+» of its own.
-  const shelved = layout.hidden.some((id) => toolOfItem(id) !== null && keep.drawn(toolOfItem(id) ?? ''));
-  const inRow = keep.tall && ranked.length + (shelved ? 1 : 0) <= keep.room ? ranked : ranked.filter(essential).slice(0, keep.room - 1);
+  const inRow = keep.tall && ranked.length <= keep.room ? ranked : ranked.filter(essential).slice(0, keep.room - 1);
   const rest = ranked.slice(inRow.length);
   const lying = keep.tall ? [] : ['history'];
   // By the transport, at the far end: the onion skin and the sound are the strip's.
@@ -233,7 +233,7 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
   const panels: PanelLayout = {
     left: PHONE_SIDE.filter((id) => !lying.includes(id)),
     right: [],
-    top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 || shelved ? ['tools'] : []), 'color-key'],
+    top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 ? ['tools'] : []), 'color-key'],
     rows: keep.tall ? rows : rows.filter((row) => !row.includes('transport')),
     float: [],
     hidden: [],
