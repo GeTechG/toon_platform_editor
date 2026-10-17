@@ -16,6 +16,8 @@ const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)
 /** Everything behind «⋯», whatever its group. */
 const all = (cut: ReturnType<typeof phoneLayout>) => cut.more.flatMap((group) => group.items);
 // toonop draws no pipette key: a held finger does its work.
+/** toonop's arrangement with no tool left on the shelf. */
+const bareShelf: PanelLayout = { ...base, hidden: base.hidden.filter((id) => !id.startsWith('tool:')) };
 const keep = { tools: phoneTools(presetUx(DEFAULT_PRESET)), tall: true, room: 4, drawn: (tool: string) => tool !== 'pipette' };
 
 describe('a phone draws toonop’s desktop', () => {
@@ -27,7 +29,7 @@ describe('a phone draws toonop’s desktop', () => {
   });
 
   it('the row scales with the screen: a wide one holds every tool and no key for the rest, any other only the essential ones', () => {
-    const wide = phoneLayout(base, base, { ...keep, room: 12 });
+    const wide = phoneLayout(bareShelf, base, { ...keep, room: 12 });
     expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
     expect(wide.tools).toEqual([]);
     // One short of them all: still only the essential ones, not «whatever came next».
@@ -36,6 +38,17 @@ describe('a phone draws toonop’s desktop', () => {
     const narrow = phoneLayout(base, base, { ...keep, room: 2 });
     expect(narrow.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tools', 'color-key']);
     expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+  });
+
+  // A phone has no «+» by its tools: a tool put on the shelf (on a desk, by
+  // the arranger) came back only on a computer.
+  it('a tool on the shelf is fetched from behind the key for the other tools, even where every placed tool fits the row', () => {
+    // toonop's own shelf: the bucket, the distortion, the pixel brush.
+    const wide = phoneLayout(base, base, { ...keep, room: 12 });
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tools', 'color-key']);
+    expect(wide.tools).toEqual([]);
+    // One the profile does not draw is not a reason for the key.
+    expect(phoneLayout(movePanelItem(bareShelf, 'tool:pipette', 'hidden'), base, { ...keep, room: 12 }).panels.top).not.toContain('tools');
   });
 
   it('how many tools the row has room for is worked out from its width and the text size', () => {

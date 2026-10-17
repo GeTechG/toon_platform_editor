@@ -281,6 +281,8 @@
   const compact = $derived(step !== 'full');
   /** A phone that keeps the preset's own desk (Multator, Toonio — owner, 2026-10-10); toonop's phone is its own cut. */
   const deskPhone = $derived(compact && !editor.ux.phoneCut);
+  /** Whether a phone draws the tool's key: the hand is a cursor's tool — two fingers move the sheet (owner, 2026-10-07). */
+  const toolDrawn = (tool: string): boolean => (tool !== 'pipette' || editor.pipetteOffered) && !(tool === 'drag' && touch);
   const cut = $derived(
     deskPhone
       ? deskOnPhone(editor.panels)
@@ -291,8 +293,7 @@
           // «Отправить», «⋯» and the colour; lying down, undo and redo and the
           // transport's six too: a frame, back, play, on, the onion skin, the sound.
           room: toolRoom(boxW, rootFont, { publish: !!onPublish, keys: tall ? 2 : 10 }),
-          // The hand is a cursor's tool: two fingers move the sheet (owner, 2026-10-07).
-          drawn: (tool) => (tool !== 'pipette' || editor.pipetteOffered) && !(tool === 'drag' && touch),
+          drawn: toolDrawn,
         })
       : null,
   );
@@ -323,10 +324,10 @@
   let leftEl = $state<HTMLElement>();
   const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
-  /** Where the «+» stands: after the tools, on a desk, outside arranging. */
-  const addAt = $derived<PanelSlot | null>(compact || editor.arranging ? null : toolSlot(panels));
-  /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16). */
-  const shelfTools = $derived(editor.panels.hidden.filter((id) => toolOfItem(id) !== null));
+  /** Where the «+» stands: after the tools, on a desk — a phone's too — outside arranging. toonop's phone has the shelf behind «Другие инструменты». */
+  const addAt = $derived<PanelSlot | null>((compact && !deskPhone) || editor.arranging ? null : toolSlot(panels));
+  /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16), and on a phone only those it draws. */
+  const shelfTools = $derived(editor.panels.hidden.filter((id) => toolOfItem(id) !== null && (!compact || toolDrawn(toolOfItem(id) ?? ''))));
   // Another arrangement, another text size: both rows are measured anew.
   const topKey = $derived(`${editor.panels.top.join()}|${rootFont}|${!!onPublish}`);
   $effect(() => {
@@ -2980,6 +2981,7 @@
     <PopKey label={t('editor.tools_more')} title={t('editor.tools_more')} active={!!held} shutOn={editor.tool} attrs={{ 'data-name': t('editor.tools_short') }}>
       {#snippet face()}<Icon name={held ? (toolSpec(held)?.icon ?? 'tools') : 'tools'} />{/snippet}
       <div class="more-keys tool-list">{@render slot(over?.tools ?? [])}</div>
+      {#if compact && !deskPhone && shelfTools.length > 0}{@render addList()}{/if}
     </PopKey>
   {:else if id === 'more'}
     <!-- A phone's one row of keys has room for a few: the rest are here. -->
@@ -3055,23 +3057,30 @@
 {#snippet addKey()}
   <PopKey label={t('editor.add_items')} attrs={{ 'data-name': t('editor.add_items'), 'data-add': '' }}>
     {#snippet face()}<Icon name="plus" />{/snippet}
-    <div class="add-items">
-      <h2 class="add-title">{t('editor.add_items')}</h2>
-      <div class="add-list">
-        {#each shelfTools as id (id)}
-          {@const tool = toolOfItem(id)}
-          <button class="key add-item" onclick={() => editor.addPanelItem(id)}>
-            <Icon name={(tool && toolSpec(tool)?.icon) || 'tools'} />{panelItemSpec(id)?.label ?? id}
-          </button>
-        {:else}
-          <p class="add-empty">{t('editor.add_items_empty')}</p>
-        {/each}
-      </div>
+    {@render addList()}
+  </PopKey>
+{/snippet}
+
+<!-- The shelf's tools, one press each onto the panels; a phone has no arranger to go on to. -->
+{#snippet addList()}
+  <div class="add-items">
+    <h2 class="add-title">{t('editor.add_items')}</h2>
+    <div class="add-list">
+      {#each shelfTools as id (id)}
+        {@const tool = toolOfItem(id)}
+        <button class="key add-item" onclick={() => editor.addPanelItem(id)}>
+          <Icon name={(tool && toolSpec(tool)?.icon) || 'tools'} />{panelItemSpec(id)?.label ?? id}
+        </button>
+      {:else}
+        <p class="add-empty">{t('editor.add_items_empty')}</p>
+      {/each}
+    </div>
+    {#if !compact}
       <button class="key add-arrange" onclick={() => (editor.arranging = true)}>
         {t('editor.add_items_arrange')}<Icon name="chevron-right" />
       </button>
-    </div>
-  </PopKey>
+    {/if}
+  </div>
 {/snippet}
 
 
@@ -4817,11 +4826,27 @@
     border: none;
     background: transparent;
     color: var(--ink-2);
+    position: relative;
     opacity: 0.4;
     transition: opacity var(--dur-enter) var(--ease-out);
   }
-  .editor :global(.key[data-add]:is(:hover, :focus-visible, .active)) {
+  /* Small to the eye, a finger's to press: a desk on a phone draws it too. */
+  .editor :global(.key[data-add])::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .editor :global(.key[data-add]:is(:focus-visible, .active)) {
     opacity: 1;
+  }
+  @media (hover: hover) {
+    .editor :global(.key[data-add]:hover) {
+      opacity: 1;
+    }
   }
   .add-list {
     display: flex;
