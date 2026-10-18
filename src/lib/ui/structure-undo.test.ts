@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { addFrame, addLayer, addStroke, createDocument, removeFrame, removeLayer } from '../model/operations';
+import { addFrame, addLayer, addStroke, createDocument, removeFrame, removeLayer, renameLayer } from '../model/operations';
 import { restoreStructure, structureIntact, takeStructure } from './structure-undo';
 
 // Владелец после одиннадцатого аудита: удаление кадров и слоёв отменяется.
@@ -50,6 +50,18 @@ describe('отмена удаления', () => {
     expect(xs(d, 1)).toEqual([0, 1]);
   });
 
+  it('убирает добавленный слой — с именем, что ему дали следом', () => {
+    const d = doc(2, 2);
+    const snap = takeStructure(d);
+    addLayer(d, 1);
+    renameLayer(d, 1, 'Слой 3');
+    snap.seal(d);
+    expect(structureIntact(d, snap)).toBe(true);
+    restoreStructure(d, snap);
+    expect(d.layers).toHaveLength(2);
+    expect(xs(d, 1)).toEqual([0, 1]);
+  });
+
   it('штрих поверх удаления ждёт своей отмены первым', () => {
     const d = doc(4);
     const snap = takeStructure(d);
@@ -77,6 +89,11 @@ describe('редактор', () => {
   it('удаление кадров и слоя кладёт снимок в историю', () => {
     expect(state).toMatch(/removeActiveFrame\(\)[^]*?takeStructure\([^]*?pushStructure\(/);
     expect(state).toMatch(/removeActiveLayer\(\)[^]*?takeStructure\([^]*?pushStructure\(/);
+  });
+
+  it('добавленный слой отменяется одним шагом, как новый кадр (критика 2026-10-18)', () => {
+    const add = state.slice(state.indexOf('  addLayerAtActive('), state.indexOf('\n  }\n', state.indexOf('  addLayerAtActive(')));
+    expect(add).toMatch(/takeStructure\([^]*?addLayer\([^]*?renameLayer\([^]*?pushStructure\(/);
   });
 
   it('отмена сначала смотрит на снимок структуры', () => {

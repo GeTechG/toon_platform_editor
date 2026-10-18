@@ -496,11 +496,10 @@
         <!-- The key goes with the choosing: the focus went to <body>, where
              Esc no longer closed the hub. A card takes it. -->
         <button class="key active" onclick={() => { selecting = false; picked = []; void refocus(0); }}>{t('editor.done')}</button>
-        <!-- Last and apart, with the count: it stood a hair from the bin of
-             the picked ones at the same weight, and takes every drawing. -->
-        <button class="key hub-wipe" onclick={removeAllDrafts}>{t('editor.drafts_wipe', { count: drafts.length })}</button>
       {:else}
-        {#if home}<a class="key" href={home.href}>{home.label}</a>{/if}
+        <!-- Under a finger the way back is a key's icon: in words it wrapped the
+             head to three rows on a phone. -->
+        {#if home}<a class="key" class:icon={touchHub} href={home.href} title={touchHub ? home.label : undefined} aria-label={touchHub ? home.label : undefined}>{#if touchHub}<Icon name="chevron-left" />{:else}{home.label}{/if}</a>{/if}
         {#if drafts.length > 0}
           <button class="key hub-select" onclick={() => (selecting = true)}>{t('editor.drafts_select')}</button>
         {/if}
@@ -593,6 +592,12 @@
           </li>
         {/each}
       </ul>
+      <!-- After the list, apart and with the count: by the bin of the picked
+           ones it took every drawing at the same weight, and in the head it
+           grew the head a row, so the cards jumped as the choosing began. -->
+      {#if choosing}
+        <button class="key hub-wipe" onclick={removeAllDrafts}>{t('editor.drafts_wipe', { count: drafts.length })}</button>
+      {/if}
   </div>
   {/if}
 </dialog>
@@ -662,7 +667,7 @@
     white-space: nowrap;
   }
   .hub-wipe {
-    margin-inline-start: 1rem;
+    margin-top: 1.5rem;
   }
   /* The screen's name: the Card step of the scale (DESIGN §3). */
   .hub-head h2 {

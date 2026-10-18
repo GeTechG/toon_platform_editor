@@ -23,7 +23,7 @@ describe('журнал ошибок из «Настроек»', () => {
     // сохранение, он под своим заголовком в последнем.
     const more = settingsUi.slice(settingsUi.indexOf("tab === 'more'}"));
     expect(more).toContain("t('settings.errors')");
-    expect(more).toContain("t('settings.download_errors')");
+    expect(more).toContain("'settings.download_errors'");
     expect(ru.settings.errors).toBe('Журнал ошибок');
     expect(settingsUi).toMatch(/onDownloadErrors\?: \(\) => void/);
     expect(editorUi).toMatch(/onDownloadErrors=\{downloadErrorLog\}/);

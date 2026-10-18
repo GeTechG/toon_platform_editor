@@ -125,8 +125,9 @@
     // A quill: the outline tool that also fills what it encloses.
     feather:
       'M20.5 3.5c-8 1-13 5-15 11l-1.5 5.5M4 20l6-6M20.5 3.5c1 6-1.5 10.5-6 12.5-2.6 1.1-5 1-6.5.5',
-    // A 2×2 of cells: the grid the pixel tool snaps to.
-    pixel: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    // A stair of cells — a diagonal as the pixel tool lays it, snapped to
+    // the grid. Not four squares: that is «tools», the phone's group key.
+    pixel: 'M4 4h5v5h5v5h5v5H4zM4 9h5M4 14h10M9 9v10M14 14v5',
     // The eraser silhouette cutting a line in two.
     'mega-eraser': 'M3 12h4M17 12h4M8.5 5.5h7v13h-7z',
     // An open hand: the tool that drags the canvas about.

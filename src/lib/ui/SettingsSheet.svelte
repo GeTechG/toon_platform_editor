@@ -430,6 +430,8 @@
           {/each}
         </div>
         <p class="said">{t('settings.preset_hint')}</p>
+        <!-- It swaps the columns: a set with none (Multator) has nothing to swap. -->
+        {#if editor.panels.left.length > 0 || editor.panels.right.length > 0}
         <label class="toggle">
           <span class="toggle-label">{t('settings.mirror_layout')}</span>
           <input
@@ -439,6 +441,7 @@
             onchange={(e) => editor.setSetting('altLayout', e.currentTarget.checked)}
           />
         </label>
+        {/if}
         {#if !fingersOnly}
         <label class="toggle">
           <span class="toggle-label">{t('settings.letter_keys')}</span>
@@ -556,7 +559,7 @@
         </details>
         {#if onDownloadErrors}
           <h3 class="sheet-hint">{t('settings.errors')}</h3>
-          {@render act(t('settings.download_errors'), 'download', onDownloadErrors)}
+          {@render act(t(fingersOnly ? 'settings.download_errors_touch' : 'settings.download_errors'), 'download', onDownloadErrors)}
         {/if}
       {/if}
     </div>
@@ -566,8 +569,9 @@
        are up in a panel, where a line at its bottom went unseen.
        Mounted before its words, or a reader may not announce them. -->
   <footer class="sheet-foot">
-    <button class="key primary" onclick={() => dialogEl?.close()}>{t('settings.done')}</button>
     <p class="report" role="status">{report}</p>
+    <!-- Last, as in the manual and the export: «Готово» ends the foot. -->
+    <button class="key primary" onclick={() => dialogEl?.close()}>{t('settings.done')}</button>
   </footer>
 </dialog>
 
@@ -668,6 +672,14 @@
     scroll-padding-inline: 1rem;
     scrollbar-width: none;
     border-bottom: 1px solid var(--hairline-soft);
+  }
+  /* Standing up on a phone the strip hid «Ещё» past the edge with nothing
+     to say it was there: two rows instead. */
+  @media (max-width: 40rem) {
+    .settings-tabs {
+      flex-wrap: wrap;
+      overflow-x: visible;
+    }
   }
   .tab {
     flex: none;

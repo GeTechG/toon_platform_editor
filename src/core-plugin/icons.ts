@@ -17,4 +17,5 @@ export const ERASER_ICON = path(
   'M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21M5.082 11.09l8.828 8.828',
 );
 
-export const PIXEL_ICON = path('M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z');
+// A stair of cells, as in Icon.svelte: four squares are «tools», the phone's group key.
+export const PIXEL_ICON = path('M4 4h5v5h5v5h5v5H4zM4 9h5M4 14h10M9 9v10M14 14v5');

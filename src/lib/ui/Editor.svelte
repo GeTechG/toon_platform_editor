@@ -325,6 +325,8 @@
   let leftEl = $state<HTMLElement>();
   const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
+  /** The way back to the site heads the bar over the canvas on a desk and stands in «⋯» on toonop's phone; with neither — no bar, a low window, a desk on a phone — it stands by the settings key, which is never hidden (owner, 2026-10-08b: «путь «На сайт» тогда в студии»). */
+  const homeBySettings = $derived(!!home && !(draws(panels.top) && !compact) && !over?.more.some((group) => group.id === 'studio'));
   /** Where the «+» stands: after the tools, on a desk — a phone's too — outside arranging. toonop's phone has no shelf: every tool is in hand. */
   const addAt = $derived<PanelSlot | null>((compact && !deskPhone) || editor.arranging ? null : toolSlot(panels));
   /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16), and on a phone only those it draws. */
@@ -743,12 +745,13 @@
   /**
    * Lying down, a desk that keeps everything under the sheet (Multator) stands
    * its strip beside its rows of keys, not over them (owner, 2026-10-10:
-   * «каша из всего»): the bar is two keys tall, not five. Under 46rem the
-   * strip stands beside the first row alone and the rest run under both —
-   * beside the widest row it had a key's width left.
+   * «каша из всего»): the bar is two keys tall, not five. Only where the
+   * widest row leaves the strip room: under 60rem — every phone lying down,
+   * 812 to 932 — beside the first row it had one cell, and the strip goes
+   * back to its own line, the whole width (owner, 2026-10-13: «лента во всю
+   * ширину»).
    */
-  const stripBeside = $derived(deskPhone && !tall && panels.left.length === 0 && panels.right.length === 0);
-  const stripBesideOne = $derived(stripBeside && boxW < 46 * rem);
+  const stripBeside = $derived(deskPhone && !tall && panels.left.length === 0 && panels.right.length === 0 && boxW >= 60 * rem);
   const toggleLying = (id: SideId | 'panel'): void => {
     lyingOpen = openLying === id ? 'none' : id;
   };
@@ -2248,7 +2251,10 @@
     // A finger has no hover: the plate would stick after the tap.
     if ('pointerType' in e ? e.pointerType !== 'mouse' : !(e.target as Element).matches(':focus-visible')) return;
     const key = (e.target as Element).closest('.key');
-    if (key === namedKey) return;
+    // A key just pressed stays unnamed while the hand is on it: crossing its
+    // own icon named it again, over the window it had opened.
+    if (key !== pressedKey) pressedKey = null;
+    if (key === namedKey || (key && key === pressedKey)) return;
     unnameKey();
     const text = key?.matches(':disabled') ? null : key?.getAttribute('title') ?? key?.getAttribute('aria-label');
     if (!key || !text || key.textContent?.trim() === text) return;
@@ -2260,6 +2266,11 @@
       key.removeAttribute('title');
     }
     keyName = { text, x: box.left + box.width / 2, y: over ? box.top : box.bottom, over };
+  }
+  let pressedKey: Element | null = null;
+  function pressKey(e: PointerEvent): void {
+    pressedKey = (e.target as Element).closest('.key');
+    unnameKey();
   }
   function unnameKey(): void {
     const title = namedKey?.getAttribute('data-title');
@@ -2440,9 +2451,16 @@
   // whose meaning the preset decides says this studio's meaning, and a tool key
   // shows only where the tool is on the panel.
   const has = (tool: string): boolean => editor.availableTools.includes(tool);
-  const SHORTCUTS: [string, string][] = $derived(
-    (
+  // Under headings (owner's critique, 2026-10-18): thirty keys in one column
+  // read as a wall. A heading is a word in the list, its keys follow it; one
+  // left with no keys here (no lasso: no transform) is not drawn.
+  type KeyGroup = 'tools' | 'frames' | 'sheet' | 'transform' | 'file';
+  const SHORTCUTS: [KeyGroup, [string, string][]][] = $derived.by(() => {
+    // With single-letter keys off their letters are not offered at all.
+    const hint = (keys: string): string => editor.keyHint(keys);
+    const rows = (
       [
+        'tools',
         ['B', t('key.pencil')],
         ['E', t('key.eraser')],
         hasMegaEraser && ['Alt + E', t('tool.mega_eraser.label')],
@@ -2450,23 +2468,23 @@
         ['Shift + Enter', t('key.pick_fill')],
         has('bucket') && ['N', t('tool.bucket.label')],
         has('drag') && ['D / O', t('tool.hand.label')],
-        // The hand's own keys, before size and steps: the only keyboard zoom.
-        has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
-        has('lasso') && ['Q / S', t('tool.transform.label')],
         has('loop') && ['R', t('tool.lasso.label')],
-        has('lasso') && ['Q / W', t('key.transform_turn')],
-        has('lasso') && ['Enter / Esc', t('key.transform_apply')],
         has('distort') && ['~', t('tool.jitter.label')],
-        ['H / Shift + H', t('key.mirror')],
+        hasFeather && ['F', t('tool.feather.label')],
         ['+ / −', t('key.brush_size')],
+        ['X', t('key.swap')],
         ['M, Ctrl + M', quickPalette ? t('key.palette') : t('key.merge')],
+        // A plugin's tool answers to its manifest's key (the default branch
+        // of the handler): on the panel, it is in the sheet too.
+        ...plugins
+          .tools()
+          .map((tool) => !tool.builtin && tool.key && has(tool.id) && ([tool.key.toUpperCase(), tool.label] as [string, string])),
+        'frames',
         ['Z, Ctrl + Z', t('key.undo')],
         ['Y, Ctrl+Shift+Z', t('key.redo')],
         ['C, Ctrl + C', t('key.copy')],
         ['V, Ctrl + V', t('key.paste')],
         ['Ctrl + X', t('key.cut')],
-        // Without a fullscreen here (an iPhone) the key and its button are not there either.
-        (hasFeather || document.fullscreenEnabled) && ['F', hasFeather ? t('tool.feather.label') : t('key.fullscreen')],
         // F7 is the frame's key with the letters off: the row went with «A».
         ['A, F7', t('key.add_frame')],
         ['G', t('panel.item.duplicate_frame')],
@@ -2475,27 +2493,36 @@
         ['← / →', t('key.steps')],
         ['↑ / ↓', t('key.layers')],
         ['Shift + ←→↑↓', t('key.extend')],
+        ['H / Shift + H', t('key.mirror')],
+        ['K', t('key.onion')],
+        ['Space', t('key.preview')],
+        'sheet',
+        // The hand's own keys: the only keyboard zoom.
+        has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
         ['Ctrl + Shift + ←→↑↓', t('key.pan_sheet')],
         ['[ / ]', t('key.turn_sheet')],
         has('drag') && [t('key.turn_drag_keys'), t('key.turn_drag')],
-        ['K', t('key.onion')],
-        ['X', t('key.swap')],
-        ['Space', t('key.preview')],
+        // Without a fullscreen here (an iPhone) the key and its button are not there either.
+        !hasFeather && document.fullscreenEnabled && ['F', t('key.fullscreen')],
+        'transform',
+        has('lasso') && ['Q / S', t('tool.transform.label')],
+        has('lasso') && ['Q / W', t('key.transform_turn')],
+        has('lasso') && ['Enter / Esc', t('key.transform_apply')],
+        'file',
         ['Ctrl + S', t('key.save')],
         ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
         ['Alt + L', t('key.error_log')],
-        // A plugin's tool answers to its manifest's key (the default branch
-        // of the handler): on the panel, it is in the sheet too.
-        ...plugins
-          .tools()
-          .map((tool) => !tool.builtin && tool.key && has(tool.id) && ([tool.key.toUpperCase(), tool.label] as [string, string])),
-      ] as ([string, string] | false | '')[]
-    )
-      .filter((row): row is [string, string] => Array.isArray(row))
-      // With single-letter keys off their letters are not offered at all.
-      .map(([keys, what]): [string, string] => [editor.keyHint(keys), what])
-      .filter(([keys]) => keys !== ''),
-  );
+      ] as (KeyGroup | [string, string] | false | '')[]
+    );
+    const groups: [KeyGroup, [string, string][]][] = [];
+    for (const row of rows) {
+      if (typeof row === 'string' && row !== '') groups.push([row, []]);
+      else if (Array.isArray(row) && hint(row[0]) !== '') groups.at(-1)![1].push([hint(row[0]), row[1]]);
+    }
+    return groups.filter(([, list]) => list.length > 0);
+  });
+  /** What a mouse does that no key says (owner's critique, 2026-10-18): under a cursor these stand where a finger's gestures stand on a phone. */
+  const MOUSE = $derived([...(toolOpensBrush(panels, editor.tool) ? (['tool_again'] as const) : []), 'frame_menu', 'shift_drag', 'middle', 'wheel', 'trackpad', 'layer_name'] as const);
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
   // (fadeSprite). Skipped under reduced motion — where the words stand in for
@@ -2997,6 +3024,7 @@
     >
       <Icon name="gear" />
     </button>
+    {#if homeBySettings && home}<a class="key icon" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
   {:else if id === 'tools'}
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->
@@ -3121,7 +3149,7 @@
   data-float-root
   onpointerover={nameKey}
   onpointerout={unnameKey}
-  onpointerdown={unnameKey}
+  onpointerdown={pressKey}
   onfocusin={nameKey}
   onfocusout={unnameKey}
   bind:this={editorEl}
@@ -3170,7 +3198,7 @@
       {@render sideEdge('left', t('editor.tools_side'))}
     {/if}
   {/if}
-  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={(compact && !scaleUnder) || railLies} onpointerdowncapture={shutSideOver}
+  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={(compact && !scaleUnder) || railLies} class:by-tab={deskPhone && sideDraws('right')} onpointerdowncapture={shutSideOver}
     style:--scale-left={scaleUnder ? `${-sidePx[scaleUnder]}px` : undefined}
     style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
     style:--stage-right={sideTrack(sideAt(false)) ? `${sideTrack(sideAt(false))}px` : undefined}
@@ -3319,8 +3347,7 @@
     class:collapsed={panelFolded}
     class:bare={barBare}
     class:beside={stripBeside}
-    class:one={stripBesideOne}
-    style:--key-rows={stripBeside ? (stripBesideOne ? 1 : panels.rows.filter((row) => !row.includes('timeline')).length) : undefined}
+    style:--key-rows={stripBeside ? panels.rows.filter((row) => !row.includes('timeline')).length : undefined}
     class:boxed={boxExtra > 0}
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, panels.rows.length - 1)}` : undefined}
     data-folded={panelFolded && editor.arranging ? '' : undefined}
@@ -3488,7 +3515,7 @@
   {#if manualOpen}
     <dialog
       bind:this={manualDialog}
-      class="sheet sheet-dialog"
+      class="sheet sheet-dialog manual"
       aria-label={t('editor.manual')}
       onclose={() => (manualOpen = false)}
     >
@@ -3508,11 +3535,29 @@
              the editor had any. Behind the sheet, so the toolbar stays quiet. -->
         {#snippet keyList()}
           <p class="sheet-hint">{t('editor.shortcuts')}</p>
-          <dl class="keylist">
-            {#each SHORTCUTS as [combo, what] (combo)}
+          <div class="keygroups">
+            {#each SHORTCUTS as [group, rows] (group)}
+              <section class="keygroup">
+                <h3 class="keygroup-title">{t(`editor.key_group.${group}`)}</h3>
+                <dl class="keylist">
+                  {#each rows as [combo, what] (combo)}
+                    <div class="keyrow">
+                      <dt><kbd>{combo}</kbd></dt>
+                      <dd>{what}</dd>
+                    </div>
+                  {/each}
+                </dl>
+              </section>
+            {/each}
+          </div>
+        {/snippet}
+        {#snippet mouseList()}
+          <p class="sheet-hint">{t('editor.mouse')}</p>
+          <dl class="keylist gestures">
+            {#each MOUSE as id (id)}
               <div class="keyrow">
-                <dt><kbd>{combo}</kbd></dt>
-                <dd>{what}</dd>
+                <dt>{t(`mouse.${id}`)}</dt>
+                <dd>{t(`mouse_does.${id}`)}</dd>
               </div>
             {/each}
           </dl>
@@ -3528,8 +3573,15 @@
             {/each}
           </dl>
         {/snippet}
-        {@render (touchFirst ? gestureList : keyList)()}
-        {#if !fingersOnly}{@render (touchFirst ? keyList : gestureList)()}{/if}
+        <!-- A finger's gestures lead under a finger; under a cursor the keys
+             lead and the mouse's own moves follow, not a finger's. -->
+        {#if touchFirst}
+          {@render gestureList()}
+          {#if !fingersOnly}{@render keyList()}{/if}
+        {:else}
+          {@render keyList()}
+          {@render mouseList()}
+        {/if}
       </div>
 
       <footer class="sheet-foot">
@@ -3586,7 +3638,7 @@
         </button>
       </header>
       <div class="sheet-body">
-        <p id="mega-warn-text">{#if mega}{MEGA_ERASER_WARNING}{#if megaDraftSaved}{' '}{t('editor.mega_eraser_saved')}{/if}{:else}{t('editor.fill_warning')}{/if}</p>
+        <p id="mega-warn-text">{#if mega}{MEGA_ERASER_WARNING}{#if megaDraftSaved}{' '}{t('editor.mega_eraser_saved')}{/if}{:else}{t(matchMedia('(any-hover: none)').matches ? 'editor.fill_warning_touch' : 'editor.fill_warning')}{/if}</p>
         <label class="mute-warning">
           <input
             type="checkbox"
@@ -3732,6 +3784,12 @@
     inset: var(--zoom-inset) var(--zoom-inset) auto auto;
     max-width: calc(100% - 2 * var(--zoom-inset));
   }
+  /* A desk on a phone keeps its right boxes' fold tab at the screen's edge,
+     in the same corner: it lay over «Приблизить» (Toonio). The window
+     stands clear of it, the tab's width (`.fold`, 1.75rem) in. */
+  .stage.zoom-corner.by-tab > .scale-window {
+    inset-inline-end: calc(var(--zoom-inset) + 1.75rem);
+  }
   .stage.zoom-corner > .scale-window :global(.value) {
     min-width: 0;
   }
@@ -3794,6 +3852,13 @@
     max-height: 75dvh;
     overflow: clip;
     overflow-clip-margin: 1.3125rem;
+  }
+  /* On a desk the save note stands over the panel's edge too (below): the
+     clip leaves room for it — 1.75rem over the edge and a pill 2.1rem tall at
+     100 % text. The panel's own rows scroll inside it, so nothing else of
+     its gets painted there. */
+  .studio:not(.compact) .panel {
+    overflow-clip-margin: 4rem;
   }
   /* Reference #resizer: a 16px band straddling the panel's top edge, so the
      grab target is not the 1px border. (`.divider` is taken — it is the hair
@@ -4310,10 +4375,6 @@
     grid-column: 2;
     grid-row: 1 / span var(--key-rows, 1);
   }
-  .studio.compact.desk .panel.beside.one .toolbar > .row:not(.strip-row) ~ .row:not(.strip-row) {
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
   /* Its boxes open over the sheet, off the grid: beside it they left the
      pencil a third of the width standing up, and lying down were cut at the
      palette's waist. */
@@ -4714,11 +4775,14 @@
   .studio.desk .fps-inline {
     flex: 1 1 8rem;
     min-width: 0;
+    /* …up to a slider's length: lying down it ran 640px (Toonio). */
+    max-width: 17rem;
   }
   .studio.desk .fps-inline input[type='range'] {
     flex: 1 1 0;
     width: auto;
     min-width: 3rem;
+    max-width: 12rem;
   }
   /* The rate as a word is wider than an icon: the key grows round it, and
      an icon key has no padding of its own. */
@@ -4842,14 +4906,20 @@
     min-width: 0;
     height: 1.75rem;
     min-height: 0;
-    margin: 0 auto;
+    margin: 0;
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--ink-2);
+    /* Faint by its ink, not by the opacity of the whole key: the ring of its
+       focus and its tone under the cursor stay whole (40 % ink). */
+    color: var(--ink-faint);
     position: relative;
-    opacity: 0.4;
-    transition: opacity var(--dur-enter) var(--ease-out);
+    transition: color var(--dur-enter) var(--ease-out);
+  }
+  /* At the foot of a column it stands in the middle; in a row it follows the
+     last key — centred there it floated mid-row (Multator). */
+  .studio > aside:not(.lies) :global(.key[data-add]) {
+    margin-inline: auto;
   }
   /* Small to the eye, a finger's to press: a desk on a phone draws it too. */
   .editor :global(.key[data-add])::after {
@@ -4862,11 +4932,11 @@
     transform: translate(-50%, -50%);
   }
   .editor :global(.key[data-add]:is(:focus-visible, .active)) {
-    opacity: 1;
+    color: var(--ink-2);
   }
   @media (hover: hover) {
     .editor :global(.key[data-add]:hover) {
-      opacity: 1;
+      color: var(--ink-2);
     }
   }
   /* A group of tools, as in a drawing program: a small triangle in the key's lower right corner. */
@@ -5336,6 +5406,27 @@
     font-size: 0.9rem;
     color: var(--ink-2);
   }
+  /* The keys under their headings, in two columns where the sheet is wide:
+     a desk's manual is read beside the keyboard, not on a phone. */
+  .keygroups {
+    columns: 2 18rem;
+    column-gap: 1.75rem;
+  }
+  .keygroup {
+    break-inside: avoid;
+    padding-bottom: 0.6rem;
+  }
+  .keygroup-title {
+    margin: 0 0 0.15rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  @media (hover: hover) and (min-width: 52rem) {
+    .editor :global(.sheet.manual) {
+      width: min(44rem, calc(100% - 2rem));
+    }
+  }
   /* A gesture is a phrase, not a key cap: in ink, at the reading size. */
   .keylist.gestures dt {
     font-size: 0.9rem;
@@ -5376,6 +5467,10 @@
     padding: 0.7rem 1rem;
     padding-bottom: max(0.7rem, env(safe-area-inset-bottom));
     border-top: 1px solid var(--hairline);
+  }
+  /* «Готово» ends the foot, at the right, alone or not. */
+  .editor :global(.sheet-foot > :last-child) {
+    margin-inline-start: auto;
   }
 
   /* ---- Shared button vocabulary (global so child components inherit it) ---- */
@@ -5512,9 +5607,11 @@
     translate: -50% 0;
     pointer-events: none;
   }
-  /* A phone's desk says it the same way, over its bottom panel (owner,
-     2026-10-13): as a line of the keys' row it took a row of a small screen. */
-  .studio.desk .toolbar .row > :global(.saved) {
+  /* The bottom panel says it the same way, over its edge — a phone's desk
+     (owner, 2026-10-13: as a line of the keys' row it took a row of a small
+     screen) and toonop's desktop alike, where it stood in the transport row
+     for good (owner, 2026-10-07: a note that goes by itself). */
+  .studio .toolbar .row > :global(.saved) {
     position: absolute;
     /* Over the fold tab on the panel's edge, not behind it. */
     bottom: calc(100% + 1.75rem);
@@ -5525,7 +5622,7 @@
     pointer-events: none;
     white-space: nowrap;
   }
-  .studio.desk .toolbar .row > :global(.saved > .saved-note),
+  .studio .toolbar .row > :global(.saved > .saved-note),
   .studio .top > :global(.saved > .saved-note) {
     display: flex;
     align-items: center;
@@ -5536,7 +5633,7 @@
     color: var(--ink);
     font-weight: 500;
   }
-  .studio.desk .toolbar .row > :global(.saved[role='status'] > .saved-note),
+  .studio .toolbar .row > :global(.saved[role='status'] > .saved-note),
   .studio .top > :global(.saved[role='status'] > .saved-note) {
     animation: saved-note 4s ease forwards;
   }

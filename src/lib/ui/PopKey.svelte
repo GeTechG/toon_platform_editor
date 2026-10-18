@@ -178,6 +178,15 @@
     /* A drop, as every menu in the studio (owner, 2026-10-18): white, lifted
        off the sheet and the bars by the menu shadow. */
     background: var(--canvas);
+    /* Scrolled, it says so: a shade at an edge with more past it, covered by
+       the white that rides with the content once that end is reached (the
+       boxes in it lie transparent on it). */
+    background:
+      linear-gradient(var(--canvas) 30%, transparent) center top / 100% 2.5rem no-repeat local,
+      linear-gradient(transparent, var(--canvas) 70%) center bottom / 100% 2.5rem no-repeat local,
+      radial-gradient(farthest-side at 50% 0, var(--hairline), transparent) center top / 100% 0.75rem no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, var(--hairline), transparent) center bottom / 100% 0.75rem no-repeat scroll,
+      var(--canvas);
     border-radius: var(--r-md);
     box-shadow: var(--shadow-menu);
     /* It comes out of its key (controls.css); shut, it is simply gone. The

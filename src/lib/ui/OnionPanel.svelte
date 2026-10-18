@@ -9,7 +9,7 @@
   import { ONION_SIDE_MAX_FRAMES } from './frame-selection';
   import { ONION_MIN_OPACITY } from './presets';
   import ColourPicker from './ColourPicker.svelte';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
 
   let { editor }: { editor: EditorState } = $props();
 
@@ -78,12 +78,14 @@
       min={ONION_MIN_OPACITY}
       max="100"
       value={side.opacity}
-      aria-valuetext="{side.opacity}%"
+      aria-valuetext={formatPercent(side.opacity / 100)}
       oninput={(e) => editor.setOnion({ [sideId]: { opacity: e.currentTarget.valueAsNumber } })}
     />
-    <output>{side.opacity}%</output>
+    <output>{formatPercent(side.opacity / 100)}</output>
   </label>
-  <div class="switch-row">
+  <!-- The whole row is the switch's, as in the rows around it; the swatch
+       is a control inside it, and a click on it stays its own. -->
+  <label class="switch-row" for="onion-tint-switch">
     <span id="onion-tint">{t('onion.tint')}</span>
     {#if side.tint}
       <button
@@ -97,11 +99,12 @@
     <input
       type="checkbox"
       role="switch"
+      id="onion-tint-switch"
       aria-labelledby="onion-tint"
       checked={side.tint}
       onchange={(e) => editor.setOnion({ [sideId]: { tint: e.currentTarget.checked } })}
     />
-  </div>
+  </label>
   <label class="switch-row">
     <span>{t('onion.blend')}</span>
     <input
@@ -165,7 +168,7 @@
     background: var(--sub);
   }
   .choice button {
-    min-height: 2.25rem;
+    min-height: var(--key-h, 2.75rem);
     padding: 0 6px;
     border: none;
     border-radius: var(--r-sm);
@@ -200,7 +203,8 @@
   .swatch {
     width: 2rem;
     height: 1.75rem;
-    border: 1px solid var(--hairline);
+    /* A control's edge, not the divider: 3:1 on the white box (WCAG 1.4.11). */
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     cursor: pointer;
   }

@@ -279,6 +279,7 @@
     {#each colours as colour, i (colour)}
       <button
         class="cell"
+        class:pale={colour.toLowerCase() === '#ffffff'}
         class:active={colour === current}
         aria-pressed={colour === current}
         style:--swatch={colour}
@@ -842,6 +843,10 @@
     background: var(--swatch);
     cursor: pointer;
   }
+  /* White on the white window had no edge at all: a control's ring. */
+  .cell.pale {
+    box-shadow: inset 0 0 0 1px var(--edge);
+  }
   /* The colour in hand: a ring in the ink that reads on it. */
   .cell.active {
     box-shadow: inset 0 0 0 2px currentColor;
@@ -940,6 +945,12 @@
     }
     .colours:not(.docked) .rest {
       grid-area: 2 / 2;
+      /* Its foot fades out, so the palette cut by the bottom edge reads as
+         going on under it; the padding is what the fade lies over once it
+         is scrolled to its end. */
+      padding-bottom: 1.25rem;
+      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
+      mask-image: linear-gradient(to bottom, #000 calc(100% - 1.25rem), transparent);
     }
     .colours:not(.docked) .tabs {
       position: static;

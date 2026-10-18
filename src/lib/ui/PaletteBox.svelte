@@ -387,6 +387,7 @@
           class="cell"
           in:fade={{ duration: 150 }}
           data-color={color}
+          class:pale={color.toLowerCase() === '#ffffff'}
           style:--swatch={color}
           style:color={contrastInk(color)}
           onpointerdown={(e) => (pointerKind = e.pointerType)}
@@ -750,6 +751,10 @@
     .grid {
       max-height: calc(3.75 * var(--key-h, 2.75rem));
     }
+  }
+  /* White on the white window had no edge at all: a control's ring. */
+  .cell.pale {
+    box-shadow: inset 0 0 0 1px var(--edge);
   }
   .cell:focus-visible {
     outline: 3px solid currentColor;

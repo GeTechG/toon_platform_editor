@@ -177,7 +177,7 @@ describe('a small phone under a desk (owner, 2026-10-13, an iPhone SE under Toon
   });
 
   it('the save note stands clear of the fold tab over the panel', async () => {
-    expect(await read('Editor.svelte')).toMatch(/\.studio\.desk \.toolbar \.row > :global\(\.saved\) \{[^}]*bottom: calc\(100% \+ 1\.75rem\);/);
+    expect(await read('Editor.svelte')).toMatch(/\.studio \.toolbar \.row > :global\(\.saved\) \{[^}]*bottom: calc\(100% \+ 1\.75rem\);/);
   });
 });
 

@@ -403,7 +403,8 @@
   .brush-box h2 {
     grid-column: 1 / 3;
     margin: 0;
-    text-align: center;
+    /* At the slider's own start: centred, the name hung over its middle. */
+    text-align: start;
     font-size: 1rem;
     font-weight: 400;
     color: var(--ink-2);
@@ -550,7 +551,7 @@
     position: relative;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
   }
   .field-title {
     min-width: 0;
@@ -697,7 +698,9 @@
      The edges are the colours window's (ColoursPanel). */
   @media (max-height: 36rem) and (min-width: 40rem) {
     :global(.pop-plate) .brush-box {
-      grid-template-columns: auto minmax(9rem, 1fr) 4rem;
+      /* The track gives way to a whole name: at 9rem «Непрозрачность» on one
+         line pushed the numbers 16px past the box. */
+      grid-template-columns: auto minmax(7rem, 1fr) 4rem;
       gap: 6px 10px;
       width: 25rem;
       padding: 8px 10px;
@@ -713,6 +716,8 @@
       grid-column: 1;
       justify-content: space-between;
       text-align: start;
+      /* A name is one word: «Непрозрачнос-ть» broke its line in two. */
+      white-space: nowrap;
     }
     /* The words of the «i» are as wide as the box, not as its name. */
     :global(.pop-plate) .note {

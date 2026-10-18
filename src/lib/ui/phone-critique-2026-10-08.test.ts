@@ -135,5 +135,7 @@ it('lying down «⋯» holds the host\'s way home', () => {
 it('lying down the hub and the new-toon screen hold the way home too', async () => {
   const hub = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
   expect(editorUi).toContain('      {home}\n');
-  expect(hub.match(/\{#if home\}<a class="key" href=\{home\.href\}>\{home\.label\}<\/a>\{\/if\}/g)?.length).toBe(2);
+  expect(hub).toContain('{#if home}<a class="key" href={home.href}>{home.label}</a>{/if}');
+  // The hub's head: an icon under a finger, named for a reader (critique 2026-10-18).
+  expect(hub).toMatch(/\{#if home\}<a class="key" class:icon=\{touchHub\} href=\{home\.href\}[^>]*aria-label=\{touchHub \? home\.label : undefined\}>/);
 });

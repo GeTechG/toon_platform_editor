@@ -75,6 +75,7 @@
   --hairline: #0b0c1024; /* 14% ink — dividers, structure without shadow */
   --edge: #0b0c107a; /* 48% ink — the boundary of an interactive control */
   --hairline-soft: #0b0c1012; /* 7% ink */
+  --ink-faint: #0b0c1066; /* 40% ink — a glyph that steps back (the plugin «+») */
   --ghost-2: #1b5cff1a; /* onion-skin's far step (0.1) */
 
   /* Elevation (DESIGN §4). The system is flat by default: structure is a

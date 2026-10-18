@@ -337,9 +337,6 @@
       <div class="actions">
         <button class="key" onclick={() => bundleFile?.click()}>{t('plugins.install_file')}</button>
       </div>
-      {#if installed.length === 0}
-        <p class="empty">{t('plugins.empty')}</p>
-      {/if}
       {#if listed.length > 0}
         <ul class="plugins">
           {#each listed as plugin (plugin.id)}
@@ -352,7 +349,7 @@
                 {#if plugin.source === 'bundled'}<Icon name={plugin.icon} />{:else if plugin.icon}<img src={iconUrl(plugin.icon)} alt="" width="48" height="48" />{/if}
               </span>
               <span class="about">
-                <span class="name">{plugin.name} <span class="saved">{plugin.version}</span></span>
+                <span class="name">{plugin.name} <span class="version">{plugin.version}</span></span>
                 <small>
                   {plugin.source === 'bundled'
                     ? t('plugins.source_bundled')
@@ -377,6 +374,11 @@
           {/each}
         </ul>
       {/if}
+      <!-- Under the list: over it, «none of your own» stood right above the
+           built-in one listed. -->
+      {#if installed.length === 0}
+        <p class="empty">{t('plugins.empty')}</p>
+      {/if}
     {:else if catalogLoading}
       <p class="empty">{t('plugins.catalog_loading')}</p>
     {:else if catalogError}
@@ -396,13 +398,13 @@
               {#if entry.icon}<img src={iconUrl(entry.icon)} alt="" width="48" height="48" />{/if}
             </span>
             <span class="about">
-              <span class="name">{entry.name} <span class="saved">{entry.version}</span></span>
+              <span class="name">{entry.name} <span class="version">{entry.version}</span></span>
               <small>{entry.description}</small>
             </span>
             {#if offer(entry) === 'installed'}
-              <span class="saved">{t('plugins.installed')}</span>
+              <span class="plugin-state">{t('plugins.installed')}</span>
             {:else if offer(entry) === 'local'}
-              <span class="saved">{t('plugins.local')}</span>
+              <span class="plugin-state">{t('plugins.local')}</span>
             {:else}
               <!-- One download at a time: two left `busy` to the one that ended
                    first, and the other's key came back mid-download. -->
@@ -419,8 +421,8 @@
   <!-- What the last install or removal did, in the foot where it is seen
        whatever the list's scroll, and mounted before its words. -->
   <footer class="sheet-foot">
-    <button class="key primary" onclick={() => dialogEl?.close()}>{t('plugins.done')}</button>
     <p class="report" role="status">{report}</p>
+    <button class="key primary" onclick={() => dialogEl?.close()}>{t('plugins.done')}</button>
   </footer>
 
   <!-- Inside the window, so the window stays open under it. Esc is «Отмена». -->
@@ -536,6 +538,17 @@
   }
   .name {
     font-weight: 650;
+  }
+  /* Their own words, not the save status's: `.saved` is the studio's. */
+  .version,
+  .plugin-state {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .plugin-state {
+    flex: none;
   }
   .about small {
     font-size: 0.8rem;

@@ -199,7 +199,7 @@ describe('черновики на старте', () => {
 describe('мануал', () => {
   it('не обещает F — во весь экран там, где его нет (iPhone): кнопки тоже нет', () => {
     const rows = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf('.filter((row)'));
-    expect(rows).toMatch(/\(hasFeather \|\| document\.fullscreenEnabled\) && \['F'/);
+    expect(rows).toMatch(/!hasFeather && document\.fullscreenEnabled && \['F'/);
   });
 });
 

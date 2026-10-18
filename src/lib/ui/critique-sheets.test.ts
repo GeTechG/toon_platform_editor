@@ -145,7 +145,7 @@ describe('settings', () => {
 
   it('«Справка» there is the gestures alone', async () => {
     const editor = await read('Editor.svelte');
-    expect(editor).toContain('{#if !fingersOnly}{@render (touchFirst ? keyList : gestureList)()}{/if}');
+    expect(editor).toMatch(/\{@render gestureList\(\)\}\s*\{#if !fingersOnly\}\{@render keyList\(\)\}\{\/if\}/);
   });
 });
 

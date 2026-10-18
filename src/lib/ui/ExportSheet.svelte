@@ -467,7 +467,6 @@
     </div>
 
     <footer class="sheet-foot">
-      <button class="key" onclick={close}>{t('export.done')}</button>
       <!-- The way on, in the foot: under the picture of the file it was below
            the fold on a phone, and the session ended on «Готово». -->
       {#if onPublish && !busy && stage}
@@ -479,6 +478,8 @@
           {t('export.publish')}
         </button>
       {/if}
+      <!-- Last, as in the manual and the settings. -->
+      <button class="key" onclick={close}>{t('export.done')}</button>
     </footer>
   </dialog>
 {/if}

@@ -11,7 +11,11 @@ it('the manual names the gestures a finger has — and the repeat press on a too
 });
 
 it('under a finger the gestures come before the keys', () => {
-  expect(studio).toMatch(/\{@render \(touchFirst \? gestureList : keyList\)\(\)\}\s*\{#if !fingersOnly\}\{@render \(touchFirst \? keyList : gestureList\)\(\)\}\{\/if\}/);
+  expect(studio).toMatch(/\{#if touchFirst\}\s*\{@render gestureList\(\)\}\s*\{#if !fingersOnly\}\{@render keyList\(\)\}\{\/if\}/);
+});
+
+it('under a cursor the mouse follows the keys, not a finger (critique 2026-10-18)', () => {
+  expect(studio).toMatch(/\{:else\}\s*\{@render keyList\(\)\}\s*\{@render mouseList\(\)\}/);
 });
 
 // The hover no longer covers any key's glyph — the playing one included: the

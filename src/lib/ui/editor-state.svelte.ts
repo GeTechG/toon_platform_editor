@@ -1307,6 +1307,8 @@ export class EditorState {
       return;
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
+    // One undo step, as a new frame is (critique, 2026-10-18): Z takes it back.
+    const before = this.takeStructure();
     this.activeLayer = this.#write((doc) => addLayer(doc, at));
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerCounter++;
@@ -1314,7 +1316,7 @@ export class EditorState {
     // The selection holds layer numbers, and every one from `at` up has just
     // shifted: left alone, the lasso and H took the layer under the old number.
     this.collapseSelection();
-    this.touched = true;
+    this.pushStructure(before);
   }
 
   /** What the panel calls a layer: its stored name, or its position. */

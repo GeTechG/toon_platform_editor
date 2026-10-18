@@ -14,7 +14,8 @@ describe('the manual says what each key does in this studio', () => {
   });
 
   it('F reads as the pen where the pen is on the panel, fullscreen elsewhere', () => {
-    expect(table).toMatch(/\['F', hasFeather \? t\('tool\.feather\.label'\) : t\('key\.fullscreen'\)\]/);
+    expect(table).toContain("hasFeather && ['F', t('tool.feather.label')]");
+    expect(table).toContain("!hasFeather && document.fullscreenEnabled && ['F', t('key.fullscreen')]");
   });
 
   it('M reads as the palette or the merge, as the preset decides', () => {
