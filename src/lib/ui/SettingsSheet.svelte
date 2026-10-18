@@ -673,7 +673,7 @@
     scrollbar-width: none;
     border-bottom: 1px solid var(--hairline-soft);
   }
-  /* Standing up on a phone the strip hid «Ещё» past the edge with nothing
+  /* Standing up on a phone the strip hid «Плагины» past the edge with nothing
      to say it was there: two rows instead. */
   @media (max-width: 40rem) {
     .settings-tabs {

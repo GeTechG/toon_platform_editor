@@ -87,7 +87,7 @@
        is a control inside it, and a click on it stays its own. -->
   <label class="switch-row" for="onion-tint-switch">
     <span id="onion-tint">{t('onion.tint')}</span>
-    {#if side.tint}
+    {#if side.tinted}
       <button
         type="button"
         class="swatch"
@@ -101,8 +101,8 @@
       role="switch"
       id="onion-tint-switch"
       aria-labelledby="onion-tint"
-      checked={side.tint}
-      onchange={(e) => editor.setOnion({ [sideId]: { tint: e.currentTarget.checked } })}
+      checked={side.tinted}
+      onchange={(e) => editor.setOnion({ [sideId]: { tinted: e.currentTarget.checked } })}
     />
   </label>
   <label class="switch-row">

@@ -167,7 +167,7 @@ describe('the settings sheet', () => {
       expect(sheet).toContain(`t('settings.${id}')`);
       return t(`settings.${id}`);
     });
-    expect(names).toEqual(['Рисование', 'Палитра', 'Вид', 'Сохранение', 'Ещё']);
+    expect(names).toEqual(['Рисование', 'Палитра', 'Вид', 'Сохранение', 'Плагины']);
     for (const id of SETTINGS_TABS) {
       expect(pane(id).length).toBeGreaterThan(0);
     }

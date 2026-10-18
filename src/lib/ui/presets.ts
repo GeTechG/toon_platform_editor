@@ -350,9 +350,10 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   fillWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
   // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
+  // Tinted from the start, blue behind and green ahead (owner, 2026-10-18).
   onion: {
-    back: { frames: 2, opacity: 30, tint: false, colour: '#1b5cff' },
-    ahead: { frames: 2, opacity: 30, tint: false, colour: '#1f9d55' },
+    back: { frames: 2, opacity: 30, tinted: true, colour: '#1b5cff' },
+    ahead: { frames: 2, opacity: 30, tinted: true, colour: '#1f9d55' },
     blend: false,
   },
 };
@@ -605,7 +606,9 @@ function normalizeOnionSide(value: unknown, fallback: OnionSide): OnionSide {
   return {
     frames: clamp(raw.frames, 0, ONION_SIDE_MAX_FRAMES, fallback.frames),
     opacity: clamp(raw.opacity, ONION_MIN_OPACITY, 100, fallback.opacity),
-    tint: typeof raw.tint === 'boolean' ? raw.tint : fallback.tint,
+    // `tinted` is a choice (since 2026-10-18). The `tint` stored before then
+    // was the default of its day unless switched on, so only «on» is kept.
+    tinted: typeof raw.tinted === 'boolean' ? raw.tinted : raw.tint === true || fallback.tinted,
     colour: typeof raw.colour === 'string' && /^#[0-9a-f]{6}$/i.test(raw.colour) ? raw.colour : fallback.colour,
   };
 }

@@ -107,7 +107,7 @@ describe('onionLayers', () => {
 });
 
 describe('onionSideLayers', () => {
-  const side = (frames: number, opacity: number, tint = false, colour = '#00ff00') => ({ frames, opacity, tint, colour });
+  const side = (frames: number, opacity: number, tinted = false, colour = '#00ff00') => ({ frames, opacity, tinted, colour });
 
   it('fades each side by its own settings and tints only the tinted side, farthest first', () => {
     const layers = onionSideLayers(5, 10, { back: side(2, 30), ahead: side(1, 60, true), blend: false });

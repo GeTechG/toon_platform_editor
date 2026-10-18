@@ -10,19 +10,20 @@ const editor = await Bun.file(UI + 'Editor.svelte').text();
 const ru = await Bun.file(UI + '../i18n/ru.json').json();
 
 describe('тур первого входа', () => {
-  it('начинается с привета и кончается выбором набора', () => {
-    expect(tourPages(true, true)).toEqual(['welcome', 'toon', 'plugins', 'panels', 'export', 'continue', 'open', 'layout']);
+  // Владелец, 2026-10-18: рассказ открывается открытостью, совместимость с Тунио — после.
+  it('начинается с привета, рассказ — с открытости, кончается выбором набора', () => {
+    expect(tourPages(true, true)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'continue', 'layout']);
   });
 
   // Владелец, 2026-10-15: на десктопе панели расставляют под себя — на телефоне
   // расстановки нет, и страницы о ней тоже.
   it('о панелях рассказывает только десктоп', () => {
-    expect(tourPages(true, false)).toEqual(['welcome', 'toon', 'plugins', 'export', 'continue', 'open', 'layout']);
+    expect(tourPages(true, false)).toEqual(['welcome', 'open', 'toon', 'plugins', 'export', 'continue', 'layout']);
     expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />');
   });
 
   it('без площадки о продолжениях не рассказывает: продолжать нечего', () => {
-    expect(tourPages(false, true)).toEqual(['welcome', 'toon', 'plugins', 'panels', 'export', 'open', 'layout']);
+    expect(tourPages(false, true)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'layout']);
   });
 
   it('у каждой страницы рассказа есть заголовок и слова', () => {

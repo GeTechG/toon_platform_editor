@@ -8,7 +8,7 @@
   import type { Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
-  import { scrollToFrame, stripTabStop, stripTail, stripWindow } from './strip-window';
+  import { scrollToFrame, stripTabStop, stripTail, stripWindow, wheelOnStrip } from './strip-window';
   import {
     frameMenuKey,
     frameMenuTop,
@@ -51,15 +51,16 @@
 
   let strip = $state<HTMLDivElement | undefined>();
   /**
-   * A mouse has one wheel and the frames run sideways: with no layers to
-   * scroll through, the plain wheel walks the frames, as Shift+wheel does.
+   * The wheel over the names or the cells moves the strip (the names follow
+   * it), and never the page under the studio — at either end as well
+   * (owner, 2026-10-18). Ctrl+wheel stays the browser's zoom.
    */
   function wheelAlong(e: WheelEvent): void {
-    if (!strip || e.ctrlKey || e.shiftKey || e.deltaX !== 0 || strip.scrollHeight > strip.clientHeight) return;
-    const before = strip.scrollLeft;
-    strip.scrollLeft += e.deltaY;
-    // At either end the wheel is the page's again.
-    if (strip.scrollLeft !== before) e.preventDefault();
+    if (!strip || e.ctrlKey) return;
+    e.preventDefault();
+    const by = wheelOnStrip(e, strip.scrollHeight > strip.clientHeight, strip.clientWidth);
+    strip.scrollLeft += by.x;
+    strip.scrollTop += by.y;
   }
   let body = $state<HTMLDivElement | undefined>();
 
@@ -609,7 +610,7 @@
   <!-- The names and the cells are two scrollers side by side; a scroll in one
        is a scroll in the other, or the rows stop meaning the same layer.
        Scroll does not bubble, so this listens in the capture phase. -->
-  <div class="body" bind:this={body} onscrollcapture={syncRowScroll}>
+  <div class="body" bind:this={body} onscrollcapture={syncRowScroll} onwheel={wheelAlong}>
     <div
       class="layer-col"
       class:single={editor.doc.layers.length === 1}
@@ -649,7 +650,6 @@
       aria-label={t('timeline.grid')}
       bind:this={strip}
       bind:clientWidth={stripWidth}
-      onwheel={wheelAlong}
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
       onanimationend={() => (arrived = null)}

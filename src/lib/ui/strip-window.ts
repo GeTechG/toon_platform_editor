@@ -124,3 +124,21 @@ export function stripTail(
   }
   return Math.max(0, box.scrollHeight - rowsEnd) + box.offsetHeight - box.clientHeight;
 }
+
+/**
+ * How far a wheel over the timeline moves the strip, in pixels (owner,
+ * 2026-10-18: the wheel over the frames scrolls the frames, never the page).
+ * A mouse has one wheel and the frames run sideways: with no rows to scroll
+ * through (`rows` false), or with Shift, the plain wheel walks the frames.
+ * `page` is what one page of a page-counted wheel is.
+ */
+export function wheelOnStrip(
+  e: { deltaX: number; deltaY: number; deltaMode: number; shiftKey: boolean },
+  rows: boolean,
+  page: number,
+): { x: number; y: number } {
+  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? page : 1;
+  const x = e.deltaX * unit;
+  const y = e.deltaY * unit;
+  return x === 0 && (!rows || e.shiftKey) ? { x: y, y: 0 } : { x, y };
+}

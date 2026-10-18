@@ -84,7 +84,7 @@ export interface OnionSide {
   frames: number;
   /** The nearest frame's opacity, percent; the rest fade towards the far end. */
   opacity: number;
-  tint: boolean;
+  tinted: boolean;
   colour: string;
 }
 
@@ -138,7 +138,7 @@ export function onionSideLayers(active: number, frameCount: number, onion: Onion
         continue;
       }
       const alpha = (side.opacity / 100) * (side.frames - distance + 1) / side.frames;
-      layers.push(side.tint ? { index, alpha, tint: side.colour } : { index, alpha });
+      layers.push(side.tinted ? { index, alpha, tint: side.colour } : { index, alpha });
     }
   }
   return layers;

@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import {
   BRUSH_TOOLS,
   brushToolOf,
@@ -245,8 +245,8 @@ test('settings round-trip through the stored config', () => {
     fillWarning: false,
     pluginCatalog: 'https://plugins.example/',
     onion: {
-      back: { frames: 4, opacity: 45, tint: true, colour: '#ff0000' },
-      ahead: { frames: 0, opacity: 100, tint: false, colour: '#00aa00' },
+      back: { frames: 4, opacity: 45, tinted: true, colour: '#ff0000' },
+      ahead: { frames: 0, opacity: 100, tinted: false, colour: '#00aa00' },
       blend: true,
     },
   };
@@ -266,7 +266,7 @@ test('a broken onion side falls back to the default, a wild one is held to the w
   expect(stored(undefined)).toEqual(DEFAULT_SETTINGS.onion);
   const held = stored({ back: { frames: 99, opacity: 0, tint: 'yes', colour: 'red' }, ahead: 7, blend: 1 });
   expect(held).toEqual({
-    back: { frames: 5, opacity: 5, tint: DEFAULT_SETTINGS.onion.back.tint, colour: DEFAULT_SETTINGS.onion.back.colour },
+    back: { frames: 5, opacity: 5, tinted: DEFAULT_SETTINGS.onion.back.tinted, colour: DEFAULT_SETTINGS.onion.back.colour },
     ahead: DEFAULT_SETTINGS.onion.ahead,
     blend: false,
   });
@@ -524,4 +524,33 @@ test('a brush comes back from the saved config as faint as it was left', () => {
   }));
   expect(parsed?.drawing.byTool.pencil).toEqual({ width: 20, smooth: 3, minDistance: 3, opacity: 35 });
   expect(parsed?.drawing.byTool.feather).toEqual({ width: 4, smooth: 3, minDistance: 3 });
+});
+
+// Owner, 2026-10-18: the onion is tinted by default — blue behind, green ahead.
+// Before that day a stored `tint: false` was only the default of then, never
+// a choice, so it reads as untouched; the choice is kept from that day on.
+describe('the onion tint follows the default until it is chosen', () => {
+  const read = (onion: unknown) => parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { onion } }))!.settings.onion;
+  const side = { frames: 2, opacity: 30, colour: '#1b5cff' };
+
+  test('a fresh studio tints both sides', () => {
+    expect(parseUiConfig(JSON.stringify({ preset: 'toonop' }))!.settings.onion.back.tinted).toBe(true);
+    expect(parseUiConfig(JSON.stringify({ preset: 'toonop' }))!.settings.onion.ahead.tinted).toBe(true);
+  });
+
+  test('a «tint: false» stored before the change gets the new default', () => {
+    expect(read({ back: { ...side, tint: false }, ahead: { ...side, tint: false } }).back.tinted).toBe(true);
+  });
+
+  test('a choice made since stays, off as well as on', () => {
+    const chosen = read({ back: { ...side, tinted: false }, ahead: { ...side, tinted: true } });
+    expect(chosen.back.tinted).toBe(false);
+    expect(chosen.ahead.tinted).toBe(true);
+  });
+
+  test('what is saved reads back as it was', () => {
+    const config = parseUiConfig(JSON.stringify({ preset: 'toonop' }))!;
+    config.settings.onion.back.tinted = false;
+    expect(parseUiConfig(JSON.stringify(config))!.settings.onion.back.tinted).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { scrollToFrame, stripWindow } from './strip-window';
+import { scrollToFrame, stripWindow, wheelOnStrip } from './strip-window';
 
 const CELL = 46;
 const GAP = 2;
@@ -110,5 +110,30 @@ describe('tenth audit: the strip padding counts', () => {
 
   it('a frame already clear of both edges stays put', () => {
     expect(scrollToFrame(15, CELL, GAP, 10 * PITCH, view, PAD)).toBeNull();
+  });
+});
+
+// Owner, 2026-10-18: the wheel over the frames scrolls the frames, not the page.
+describe('where a wheel over the timeline scrolls the strip', () => {
+  const wheel = (deltaX: number, deltaY: number, more: { deltaMode?: number; shiftKey?: boolean } = {}) =>
+    ({ deltaX, deltaY, deltaMode: 0, shiftKey: false, ...more });
+
+  it('one layer: the plain wheel walks the frames sideways', () => {
+    expect(wheelOnStrip(wheel(0, 100), false, 300)).toEqual({ x: 100, y: 0 });
+  });
+
+  it('rows to scroll through: the plain wheel scrolls them, Shift walks the frames', () => {
+    expect(wheelOnStrip(wheel(0, 100), true, 300)).toEqual({ x: 0, y: 100 });
+    expect(wheelOnStrip(wheel(0, 100, { shiftKey: true }), true, 300)).toEqual({ x: 100, y: 0 });
+  });
+
+  it('a trackpad goes both ways as it moved', () => {
+    expect(wheelOnStrip(wheel(30, -20), true, 300)).toEqual({ x: 30, y: -20 });
+    expect(wheelOnStrip(wheel(30, -20), false, 300)).toEqual({ x: 30, y: -20 });
+  });
+
+  it('a wheel counted in lines or pages is turned into pixels', () => {
+    expect(wheelOnStrip(wheel(0, 3, { deltaMode: 1 }), false, 300)).toEqual({ x: 48, y: 0 });
+    expect(wheelOnStrip(wheel(0, 1, { deltaMode: 2 }), false, 300)).toEqual({ x: 300, y: 0 });
   });
 });
