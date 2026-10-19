@@ -14,7 +14,6 @@ import { t } from '../i18n';
 const source = (name: string) => Bun.file(new URL(name, import.meta.url)).text();
 const exportSheet = await source('./ExportSheet.svelte');
 const editorState = await source('./editor-state.svelte.ts');
-const previewWebp = await source('../export/preview-webp.ts');
 
 afterEach(() => {
   delete (globalThis as { indexedDB?: unknown }).indexedDB;
@@ -143,10 +142,6 @@ describe('каталог: битая запись и ответ сервера',
 });
 
 describe('превью для галереи', () => {
-  it('браузер без WebP-кодировщика (Safari отдаёт PNG) — превью не собирается из PNG-байтов', () => {
-    expect(previewWebp).toMatch(/blob\.type !== 'image\/webp'/);
-  });
-
   it('большой кадр не роняет сборку переполнением стека', () => {
     const payload = 1_000_000;
     const u32le = (n: number) => [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];

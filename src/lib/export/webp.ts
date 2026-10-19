@@ -1,7 +1,8 @@
 /**
  * Pure animated-WebP container assembler: DOM-free, so it runs under bun test
- * and could run in a worker. It does NOT encode pixels — the browser does that
- * natively (`canvas.toBlob('image/webp')`), producing one WebP still per frame.
+ * and could run in a worker. Pixels are encoded by the browser natively
+ * (`canvas.toBlob('image/webp')`), one WebP still per frame — or, where it
+ * cannot (Safari hands back a PNG), by libwebp in WASM (`webpStill`).
  * Here we lift each still's image bitstream and stitch the stills into a single
  * animated WebP (RIFF/`WEBP` = VP8X + ANIM + one ANMF per frame), which loops in
  * a plain `<img>`. Also holds the pure preview-sizing math.
@@ -9,6 +10,8 @@
  * Container layout per the WebP spec:
  *   https://developers.google.com/speed/webp/docs/riff_container
  */
+
+import encodeWebp from '@jsquash/webp/encode';
 
 /** One encoded WebP still (a whole RIFF/`WEBP` file) plus its pixel size. */
 export interface WebpStill {
@@ -25,6 +28,23 @@ export interface AnimateOptions {
 
 /** Image sub-chunks a still may carry that belong inside an ANMF frame. */
 const FRAME_CHUNKS = new Set(['VP8 ', 'VP8L', 'ALPH']);
+
+/**
+ * The bytes of one WebP still: the browser's own `toBlob('image/webp')`
+ * result when it is one, else `pixels` encoded by libwebp at the same
+ * `quality` (1 is lossless, as `toBlob` takes it).
+ */
+export async function webpStill(
+  native: Blob | null,
+  pixels: () => Pick<ImageData, 'data' | 'width' | 'height'>,
+  quality: number,
+): Promise<Uint8Array> {
+  if (native?.type === 'image/webp') {
+    return new Uint8Array(await native.arrayBuffer());
+  }
+  const options = quality >= 1 ? { lossless: 1 } : { quality: quality * 100 };
+  return new Uint8Array(await encodeWebp(pixels() as ImageData, options));
+}
 
 /**
  * Stitch per-frame WebP stills into one looping animated WebP. All frames are

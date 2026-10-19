@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assembleAnimatedWebp, downscaleSize, firstThatFits, PREVIEW_RUNGS, previewFrameBudget, type WebpStill } from './webp';
+import { assembleAnimatedWebp, webpStill, downscaleSize, firstThatFits, PREVIEW_RUNGS, previewFrameBudget, type WebpStill } from './webp';
 
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
   String.fromCharCode(...bytes.subarray(from, to));
@@ -129,5 +129,29 @@ describe('PREVIEW_RUNGS', () => {
       expect(here.side <= above.side && here.quality <= above.quality).toBe(true);
       expect(here.side < above.side || here.quality < above.quality).toBe(true);
     }
+  });
+});
+
+describe('webpStill', () => {
+  // 2×2 opaque red: what a canvas hands over as its pixels.
+  const pixels = () => ({ data: new Uint8ClampedArray([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]), width: 2, height: 2 });
+
+  test('a browser that made a WebP keeps its bytes', async () => {
+    const native = fakeStill(2, 2, [1, 2, 3]).data;
+    const still = await webpStill(new Blob([native as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), pixels, 1);
+    expect(still).toEqual(native);
+  });
+
+  test('a browser that made a PNG instead (Safari) still gets a WebP', async () => {
+    const png = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' });
+    const still = await webpStill(png, pixels, 1);
+    expect(ascii(still, 0, 4)).toBe('RIFF');
+    expect(ascii(still, 8, 12)).toBe('WEBP');
+    expect(ascii(still, 12, 16)).toBe('VP8L'); // quality 1 is lossless, as natively
+  });
+
+  test('lossy quality stays lossy', async () => {
+    const still = await webpStill(null, pixels, 0.75);
+    expect(ascii(still, 12, 16)).toBe('VP8 ');
   });
 });

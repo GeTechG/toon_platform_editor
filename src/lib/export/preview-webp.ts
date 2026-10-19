@@ -2,7 +2,8 @@
  * Gallery preview: render a document's first frames through the same
  * Canvas2DFrameRenderer the player uses (so the preview matches what a viewer
  * sees), downscaled and frame-capped, encode each frame to a WebP still with the
- * browser's native `canvas.toBlob('image/webp')`, and stitch the stills into one
+ * browser's native `canvas.toBlob('image/webp')` (libwebp in WASM where the
+ * browser has none, see `webpStill`), and stitch the stills into one
  * looping animated WebP (see ./webp). It is made as good as its weight allows:
  * lossless first, stepping down only when the whole thing is too heavy.
  * DOM-bound, so it lives beside export-gif and isn't unit-tested here — its
@@ -23,6 +24,7 @@ import {
   previewFrameBudget,
   type PreviewRung,
   type WebpStill,
+  webpStill,
 } from './webp';
 
 /**
@@ -33,11 +35,11 @@ import {
 export function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
   const count = Math.min(previewFrameBudget(doc.frame_rate), frameCount(doc));
   return firstThatFits(PREVIEW_RUNGS, PREVIEW_BUDGET_BYTES, async (rung) => {
-    const { canvas, ctx, renderer, viewport, width, height } = previewTarget(doc, rung);
+    const { canvas, ctx, renderer, viewport, width, height, raw } = previewTarget(doc, rung);
     const stills: WebpStill[] = [];
     for (let i = 0; i < count; i++) {
       renderer.render(doc, i, ctx, viewport);
-      stills.push({ data: await encodeStill(canvas, rung.quality), width, height });
+      stills.push({ data: await encodeStill(canvas, raw, rung.quality), width, height });
     }
     return assembleAnimatedWebp(stills, { fps: doc.frame_rate });
   });
@@ -58,6 +60,7 @@ function previewTarget(doc: ToonDocument, rung: PreviewRung) {
   }
   return {
     canvas,
+    raw: ctx,
     ctx: ctx as unknown as Canvas2DLike,
     renderer: new Canvas2DFrameRenderer(),
     // Player's doc-units→px mapping (1 / FIXED_POINT_SCALE) times the downscale.
@@ -85,21 +88,10 @@ export function renderScreenshot(doc: ToonDocument): Promise<Blob> {
   });
 }
 
-/** Native WebP still-encode of the canvas's current pixels. */
-function encodeStill(canvas: HTMLCanvasElement, quality: number): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        // A browser that cannot encode WebP (Safari) hands back a PNG rather
-        // than nothing: its bytes stitched in as frames made a broken preview.
-        if (!blob || blob.type !== 'image/webp') {
-          reject(new Error('webp encoding unsupported'));
-          return;
-        }
-        blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)), reject);
-      },
-      'image/webp',
-      quality,
-    );
-  });
+/** WebP still of the canvas's current pixels: native where the browser can,
+ * libwebp where it hands back a PNG instead (Safari). */
+function encodeStill(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, quality: number): Promise<Uint8Array> {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality)).then((native) =>
+    webpStill(native, () => ctx.getImageData(0, 0, canvas.width, canvas.height), quality),
+  );
 }
