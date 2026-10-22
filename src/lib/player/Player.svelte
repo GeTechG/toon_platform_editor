@@ -141,7 +141,10 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    if (current >= total) {
+    // Until the film is rasterized the canvas stays blank under the wait:
+    // the viewer is shown the loading and then the film, not a frame drawn
+    // live in the meantime (the owner, 2026-10-22).
+    if (current >= total || !ready) {
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike | null;
@@ -153,9 +156,9 @@
     // A frame rasterized already is laid down as it is; one the warming has
     // not reached yet is drawn stroke by stroke, as every frame used to be.
     cache.fit(view, pxWidth, pxHeight);
-    const ready = cache.get(current);
-    if (ready) {
-      (ctx as unknown as CanvasRenderingContext2D).putImageData(ready, 0, 0);
+    const held = cache.get(current);
+    if (held) {
+      (ctx as unknown as CanvasRenderingContext2D).putImageData(held, 0, 0);
       return;
     }
     paint(current, ctx);
@@ -393,6 +396,7 @@
     void current;
     void cssWidth;
     void view;
+    void ready;
     draw();
   });
 </script>
@@ -406,6 +410,7 @@
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     style:image-rendering={magnified ? 'pixelated' : null}
+    style:visibility={ready ? null : 'hidden'}
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>

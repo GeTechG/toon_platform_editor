@@ -62,7 +62,7 @@ describe('плеер показывает готовое', () => {
   it('кадр из кэша выкладывается пикселями, а не рисуется заново', async () => {
     const source = await Bun.file(new URL('./Player.svelte', import.meta.url)).text();
     const draw = source.match(/function draw\(\)[^]*?\n  }\n/)![0];
-    expect(draw.indexOf('putImageData(ready')).toBeGreaterThan(-1);
+    expect(draw.indexOf('putImageData(held')).toBeGreaterThan(-1);
     expect(draw.indexOf('putImageData(ready')).toBeLessThan(draw.indexOf('paint(current'));
   });
 
