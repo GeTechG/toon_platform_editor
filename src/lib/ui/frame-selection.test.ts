@@ -5,7 +5,11 @@ import {
   activeLayerAfterMove,
   activeLayerAfterRemove,
   clampPlayerFps,
+  carryTarget,
+  columnSelection,
   dragTargetIndex,
+  frameAfterMove,
+  framesToCarry,
   keepsSelection,
   newLayerIndex,
   pasteTargetFromSelection,
@@ -627,5 +631,66 @@ describe('frameMenuKey', () => {
 describe('selectionSpan', () => {
   it('reads the block as 1-based first and last frame and a layer count', () => {
     expect(selectionSpan({ frames: [4, 2, 3], layers: [0, 1] })).toEqual({ from: 3, to: 5, layers: 2 });
+  });
+});
+
+describe('перестановка кадров', () => {
+  it('кадр внутри выделенного блока везёт весь блок', () => {
+    expect(framesToCarry({ frames: [2, 3, 4], layers: [0] }, 3)).toEqual({ from: 2, count: 3 });
+  });
+
+  it('кадр вне выделения едет один', () => {
+    expect(framesToCarry({ frames: [2, 3, 4], layers: [0] }, 6)).toEqual({ from: 6, count: 1 });
+  });
+
+  it('кадр блока встаёт со своим блоком, перепрыгнутые сдвигаются на его ширину', () => {
+    // Блок 1–2 из шести кадров уехал на место 3: 0 3 4 1 2 5.
+    expect([0, 1, 2, 3, 4, 5].map((i) => frameAfterMove(i, 1, 2, 3))).toEqual([0, 3, 4, 1, 2, 5]);
+    // Тот же блок назад, на место 0: 1 2 0 3 4 5.
+    expect([0, 1, 2, 3, 4, 5].map((i) => frameAfterMove(i, 1, 2, 0))).toEqual([2, 0, 1, 3, 4, 5]);
+  });
+
+});
+
+describe('клик по номеру кадра', () => {
+  it('выделяет кадр во всех слоях', () => {
+    expect(columnSelection(1, 4, 3, false)).toEqual({ frames: [4], layers: [0, 1, 2] });
+  });
+
+  it('с Shift тянет кадры от текущего в любую сторону', () => {
+    expect(columnSelection(1, 3, 2, true)).toEqual({ frames: [1, 2, 3], layers: [0, 1] });
+    expect(columnSelection(3, 1, 2, true)).toEqual({ frames: [1, 2, 3], layers: [0, 1] });
+  });
+});
+
+describe('цель переноса при кадрах разной ширины', () => {
+  // Кадр 0 длится 3 такта (такты 0–2), кадр 1 — один (такт 3).
+  const holds = [3, 1];
+
+  it('узкий кадр не прыгает туда-обратно над растянутым', () => {
+    // Указатель на такте 2 — над хвостом растянутого кадра. Встань узкий на
+    // место 0, он занял бы такт 0, а под указателем снова оказался бы
+    // растянутый: узкий вернулся бы назад, и так каждое движение.
+    expect(carryTarget(holds, 1, 1, 0, 2, 1, false)).toBe(1);
+    // Дошёл до такта 0 — узкий встаёт первым.
+    expect(carryTarget(holds, 1, 1, 0, 0, 1, false)).toBe(0);
+  });
+
+  it('и обратно — только когда кадр встанет под указатель', () => {
+    // Порядок [узкий, растянутый]: узкий на такте 0, растянутый на 1–3.
+    const back = [1, 3];
+    expect(carryTarget(back, 0, 1, 0, 1, 1, false)).toBe(0);
+    expect(carryTarget(back, 0, 1, 0, 3, 1, false)).toBe(1);
+  });
+
+  it('кадры одной ширины едут по шагу указателя', () => {
+    const even = [1, 1, 1, 1];
+    expect(carryTarget(even, 0, 1, 0, 2, 3, false)).toBe(2);
+    expect(carryTarget(even, 2, 2, 1, 1, 2, false)).toBe(0);
+  });
+
+  it('копия встаёт и за последний кадр', () => {
+    // Копии ещё нет: блок из одного кадра вставляется; указатель за концом.
+    expect(carryTarget([1, 1], 0, 1, 0, 9, 2, true)).toBe(2);
   });
 });

@@ -12,7 +12,9 @@ export interface StructureSnapshot {
   layers: Layer[];
   frames: Frame[][];
   firstStrokes: Stroke[][];
-  after: { layers: Layer[]; frames: Frame[][]; counts: number[][] } | null;
+  /** The frames' holds, copied: a hold changes in place. */
+  holds: number[] | undefined;
+  after: { layers: Layer[]; frames: Frame[][]; counts: number[][]; holds: string } | null;
   /** Records the shape the delete left; call it right after the write. */
   seal(doc: ToonDocument): void;
 }
@@ -23,6 +25,7 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
     layers: [...doc.layers],
     frames: doc.layers.map((l) => [...l.frames]),
     firstStrokes: doc.layers.map((l) => [...(l.frames[0]?.strokes ?? [])]),
+    holds: doc.holds ? [...doc.holds] : undefined,
     after: null,
     seal(d) {
       // Only a delete that took every frame empties the first cells. Kept for
@@ -33,6 +36,7 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
         layers: [...d.layers],
         frames: d.layers.map((l) => [...l.frames]),
         counts: d.layers.map((l) => l.frames.map((f) => f.strokes.length)),
+        holds: String(d.holds ?? ''),
       };
     },
   };
@@ -42,7 +46,7 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
 // keep a version counter on the document if canUndo ever shows in a profile.
 export function structureIntact(doc: ToonDocument, snap: StructureSnapshot): boolean {
   const after = snap.after;
-  if (!after || doc.layers.length !== after.layers.length) {
+  if (!after || doc.layers.length !== after.layers.length || String(doc.holds ?? '') !== after.holds) {
     return false;
   }
   return doc.layers.every((layer, l) =>
@@ -224,6 +228,11 @@ export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { wa
 
 export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): void {
   doc.layers = [...snap.layers];
+  if (snap.holds) {
+    doc.holds = [...snap.holds];
+  } else {
+    delete doc.holds;
+  }
   snap.layers.forEach((layer, l) => {
     layer.frames = [...snap.frames[l]];
     const first = layer.frames[0];

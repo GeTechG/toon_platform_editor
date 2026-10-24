@@ -33,7 +33,7 @@ import {
  * `PREVIEW_BUDGET_BYTES`.
  */
 export function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
-  const count = Math.min(previewFrameBudget(doc.frame_rate), frameCount(doc));
+  const count = Math.min(previewFrameBudget(doc.frame_rate, { holds: doc.holds }), frameCount(doc));
   return firstThatFits(PREVIEW_RUNGS, PREVIEW_BUDGET_BYTES, async (rung) => {
     const { canvas, ctx, renderer, viewport, width, height, raw } = previewTarget(doc, rung);
     const stills: WebpStill[] = [];
@@ -41,7 +41,7 @@ export function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>
       renderer.render(doc, i, ctx, viewport);
       stills.push({ data: await encodeStill(canvas, raw, rung.quality), width, height });
     }
-    return assembleAnimatedWebp(stills, { fps: doc.frame_rate });
+    return assembleAnimatedWebp(stills, { fps: doc.frame_rate, holds: doc.holds });
   });
 }
 

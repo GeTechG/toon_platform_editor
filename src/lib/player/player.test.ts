@@ -114,3 +114,21 @@ describe('LoopPlayer over a frame range', () => {
     expect(() => makePlayer({ frameCount: 3, startFrame: 0, loopStart: 0, loopEnd: 9 })).toThrow(RangeError);
   });
 });
+
+describe('LoopPlayer с длительностями кадров', () => {
+  it('держит кадр столько тактов, сколько он длится', () => {
+    const { player, shown } = makePlayer({ holds: [1, 3, 1] });
+    for (let t = 0; t <= 500; t += 100) player.tick(t);
+    expect(shown).toEqual([1, 1, 1, 2, 0]);
+  });
+
+  it('петля выделения считает такты своих кадров', () => {
+    // Петля 1–2: кадр 1 два такта, кадр 2 один, начало с кадра 2.
+    const { player, shown } = makePlayer({ holds: [1, 2, 1], loopStart: 1, loopEnd: 2, startFrame: 2 });
+    let lapped = 0;
+    const p = new LoopPlayer({ frameCount: 3, fps: 10, holds: [1, 2, 1], loopStart: 1, loopEnd: 2, startFrame: 2, onFrame: (_, l) => { if (l) lapped++; } });
+    for (let t = 0; t <= 400; t += 100) { player.tick(t); p.tick(t); }
+    expect(shown).toEqual([1, 1, 2, 1]);
+    expect(lapped).toBe(2);
+  });
+});

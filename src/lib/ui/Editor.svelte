@@ -86,9 +86,10 @@
   // note is placed against it rather than against the whole editor. It is told
   // whether a line is drawn, and is drawn until the toon has a second frame:
   // the hint's «then add a frame» left with the first stroke, when it was next.
-  // `startNew` is the host asking for a new drawing outright (the site's
-  // «Новый мульт» tile): the studio opens on the choice of a sheet, past the
-  // drafts and whatever the start-up setting says.
+  // `startNew` is the host asking for a new drawing (the site's «Нарисовать»):
+  // the studio opens on the hub whatever the start-up setting says — on the
+  // drafts when there are any, so a drawing left by the way back is met
+  // first (owner, 2026-10-24), on the sheets when there are none.
   // `open` is the host handing over a drawing to continue (a draft kept on
   // the account): the studio starts on it, as on a file just opened.
   let {
@@ -96,7 +97,6 @@
     stageNote,
     mascot,
     named,
-    home,
     startNew,
     open,
   }: {
@@ -106,13 +106,9 @@
     mascot?: string;
     /** A first visit: a phone's row of keys wears its names until the host takes this back. */
     named?: boolean;
-    /** The host's way back to its own pages, for where it has put its header away (a phone lying down): a key behind «⋯». */
-    home?: { href: string; label: string };
     startNew?: boolean;
     open?: { doc: ToonDocument; audio?: AudioTrackData | null };
   } = $props();
-  /** Once: the hub opened by hand later starts on the drafts as ever. */
-  let createOnOpen = $state(untrack(() => startNew === true));
 
   const editor = new EditorState();
   // The session being autosaved. Minted when the editor opens and kept for as
@@ -325,8 +321,6 @@
   let leftEl = $state<HTMLElement>();
   const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
-  /** The way back to the site heads the bar over the canvas on a desk and stands in «⋯» on toonop's phone; with neither — no bar, a low window, a desk on a phone — it stands by the settings key, which is never hidden (owner, 2026-10-08b: «путь «На сайт» тогда в студии»). */
-  const homeBySettings = $derived(!!home && !(draws(panels.top) && !compact) && !over?.more.some((group) => group.id === 'studio'));
   /** Where the «+» stands: after the tools, on a desk — a phone's too — outside arranging. toonop's phone has no shelf: every tool is in hand. */
   const addAt = $derived<PanelSlot | null>((compact && !deskPhone) || editor.arranging ? null : toolSlot(panels));
   /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16), and on a phone only those it draws. */
@@ -1182,6 +1176,28 @@
           break;
         case 'H':
           editor.mirrorTransform('vertical');
+          break;
+        // The selection's own clipboard: C copies what it holds, V floats the
+        // copy over the frame, Ctrl+X and Delete take it away.
+        case 'c':
+        case 'C':
+          editor.copySelected();
+          break;
+        case 'v':
+        case 'V':
+          editor.pasteSelection();
+          break;
+        case 'x':
+        case 'X':
+          if (e.ctrlKey || e.metaKey) {
+            editor.cutSelected();
+          } else {
+            taken = false;
+          }
+          break;
+        case 'Delete':
+        case 'Backspace':
+          editor.deleteSelected();
           break;
         // Z and Y walk the session's own steps. With none left they are
         // swallowed rather than falling through to the document's undo,
@@ -2535,8 +2551,9 @@
   let clipSeen: unknown = null;
   $effect(() => {
     if (editor.flashTick === 0) return;
-    const copied = untrack(() => editor.copiedCells !== null && editor.copiedCells !== clipSeen);
-    clipSeen = untrack(() => editor.copiedCells);
+    const buffer = untrack(() => editor.copiedCells ?? editor.copiedPart);
+    const copied = buffer !== null && buffer !== clipSeen;
+    clipSeen = buffer;
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const word = t(copied ? 'editor.copied' : 'editor.pasted');
     // Emptied first, so the same word twice is announced twice.
@@ -3024,7 +3041,6 @@
     >
       <Icon name="gear" />
     </button>
-    {#if homeBySettings && home}<a class="key icon" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
   {:else if id === 'tools'}
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->
@@ -3166,9 +3182,6 @@
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
     <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} style:--key-h={compact && !deskPhone ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined} onpointerdowncapture={() => (rowPressed = true)}>
-      <!-- The host's bar is away on a low window (owner, 2026-10-08) and a
-           desk has no «⋯»: the way back heads the row. -->
-      {#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
       {@render slot(panels.top, 'top')}
       {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}
     </div>
@@ -3295,9 +3308,6 @@
           <h2 class="more-title">{t(`editor.more_group.${group.id}`)}</h2>
           <div class="more-keys" role="group" aria-label={t(`editor.more_group.${group.id}`)}>
             {@render slot(group.items)}
-            <!-- Lying down the host has put its header away to give the sheet
-                 the height (owner, 2026-10-08): its way back stands here. -->
-            {#if group.id === 'studio' && home}<a class="key" href={home.href} aria-label={home.label}><Icon name="chevron-left" /></a>{/if}
           </div>
         {/each}
       </section>
@@ -3444,8 +3454,6 @@
       {thumbUrls}
       {storageUsed}
       {draftId}
-      {home}
-      create={createOnOpen}
       ready={draftsRead}
       onOpen={openDraft}
       onCopy={copyDrafts}
@@ -3455,7 +3463,6 @@
       onSheet={startSheet}
       onClose={() => {
         draftsOpen = false;
-        createOnOpen = false;
         hubFromStudio = false;
         // Esc and a card opened both left the focus on <body>: it goes back
         // to the key the hub was called from, once the studio is live again.

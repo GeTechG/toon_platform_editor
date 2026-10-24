@@ -10,7 +10,7 @@
  */
 
 import type { ToonDocument } from '../format/types';
-import { frameCount } from '../model/operations';
+import { frameCount, frameHold } from '../model/operations';
 import {
   exportSize,
   logicalSize,
@@ -112,7 +112,7 @@ export async function exportGif(
       if (settled) {
         break;
       }
-      send({ type: 'frame', frame }, [frame.data]);
+      send({ type: 'frame', frame, hold: frameHold(doc, sent) }, [frame.data]);
       await caughtUp(++sent);
     }
     throwIfAborted(signal);

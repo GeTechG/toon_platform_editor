@@ -4,6 +4,8 @@
  * last = now − delta % interval.
  */
 
+import { filmTiming, type FilmTiming } from '../model/timing';
+
 export interface LoopPlayerOptions {
   frameCount: number;
   /** Frames per second (≥ 1). */
@@ -17,6 +19,8 @@ export interface LoopPlayerOptions {
    */
   loopStart?: number;
   loopEnd?: number;
+  /** Ticks each frame stays on screen (the document's `holds`); one each without. */
+  holds?: readonly number[];
   /**
    * `lapped`: the step went past the loop's end. The frame number alone does
    * not say so — a hitch of a whole lap lands on the frame it left.
@@ -25,8 +29,11 @@ export interface LoopPlayerOptions {
 }
 
 export class LoopPlayer {
+  /** The loop in ticks, not frames: a held frame is several steps of the clock. */
+  readonly #timing: FilmTiming;
   readonly #loopStart: number;
   readonly #loopLength: number;
+  #tick: number;
   readonly #intervalMs: number;
   readonly #startFrame: number;
   readonly #onFrame: (frameIndex: number, lapped: boolean) => void;
@@ -62,8 +69,10 @@ export class LoopPlayer {
         `loop range ${loopStart}..${loopEnd} is not a stretch of 0..${options.frameCount - 1} holding ${options.startFrame}`,
       );
     }
-    this.#loopStart = loopStart;
-    this.#loopLength = loopEnd - loopStart + 1;
+    this.#timing = filmTiming(options.holds, options.frameCount);
+    this.#loopStart = this.#timing.start(loopStart);
+    this.#loopLength = this.#timing.start(loopEnd + 1) - this.#loopStart;
+    this.#tick = this.#timing.start(options.startFrame);
     this.#intervalMs = 1000 / options.fps;
     this.#startFrame = options.startFrame;
     this.#current = options.startFrame;
@@ -85,8 +94,9 @@ export class LoopPlayer {
       return;
     }
     const steps = Math.floor(delta / this.#intervalMs);
-    const reach = this.#current - this.#loopStart + steps;
-    this.#current = this.#loopStart + (reach % this.#loopLength);
+    const reach = this.#tick - this.#loopStart + steps;
+    this.#tick = this.#loopStart + (reach % this.#loopLength);
+    this.#current = this.#timing.frameAt(this.#tick);
     this.#last = nowMs - (delta % this.#intervalMs);
     this.#onFrame(this.#current, reach >= this.#loopLength);
   }

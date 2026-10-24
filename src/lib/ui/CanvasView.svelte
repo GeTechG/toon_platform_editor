@@ -786,9 +786,9 @@
       return cell;
     }
     // A loop's cut shows once the selection has moved, as it is written: until
-    // then every line is whole, and drawn whole.
+    // then every line is whole, and drawn whole. A paste shows at once.
     const cut = open.picked?.[open.layers.indexOf(layer)];
-    if (cut && sameSession(open.session, EMPTY_TRANSFORM)) {
+    if (cut && !open.pasted && sameSession(open.session, EMPTY_TRANSFORM)) {
       return cell;
     }
     const indices = cut && new Set(cut.indices);

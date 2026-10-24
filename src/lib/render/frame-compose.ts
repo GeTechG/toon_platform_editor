@@ -129,6 +129,11 @@ export class FrameComposer {
   #live: ComposeBuffer | undefined;
   /** The whole frame, when it is blitted at an alpha below one. */
   #composite: ComposeBuffer | undefined;
+  /** The ghosts flattened at their alphas, over the layers below when the stack takes them in. */
+  #under: ComposeBuffer | undefined;
+  #underSeed = '';
+  /** Bumped by every repaint of the layers below, so the flattened ghosts know to start over. */
+  #belowSerial = 0;
   readonly #ghosts: BufferRing<ComposeBuffer>;
 
   // ponytail: every buffer is the whole stage, table included — about ten of
@@ -175,11 +180,12 @@ export class FrameComposer {
    */
   dispose(): void {
     const buffers = [this.#below, this.#active, this.#above, this.#scratch, this.#live, this.#composite,
-      ...this.#ghosts.drain()];
+      this.#under, ...this.#ghosts.drain()];
     for (const buffer of buffers) {
       buffer?.size(0, 0);
     }
-    this.#below = this.#active = this.#above = this.#scratch = this.#live = this.#composite = undefined;
+    this.#below = this.#active = this.#above = this.#scratch = this.#live = this.#composite = this.#under = undefined;
+    this.#underSeed = '';
     this.#stale = true;
     this.#width = 0;
     this.#height = 0;
@@ -211,6 +217,9 @@ export class FrameComposer {
     }
     const active = this.#withLive(scene, width, height);
     const alpha = scene.alpha ?? 1;
+    // Blended, the ghosts lie under the whole frame and the layers below stay
+    // in it; otherwise they lie over those layers, and the two are one blit.
+    const under = this.#flatten(scene, width, height, !scene.blend);
     if (alpha < 1) {
       // The profile's alpha applies to the whole frame, so the stack has to be
       // composited before it is blitted rather than layer by layer.
@@ -218,9 +227,14 @@ export class FrameComposer {
       composite.size(width, height);
       composite.clear();
       const cctx = composite.ctx as ComposeTarget;
-      if (this.#belowInk) blitLayer(this.#below!.image, cctx);
-      if (scene.blend) this.#drawGhosts(target, scene, width, height);
-      else this.#drawGhosts(cctx, scene, width, height);
+      if (scene.blend) {
+        if (under) blitLayer(under.image, target);
+        if (this.#belowInk) blitLayer(this.#below!.image, cctx);
+      } else if (under) {
+        blitLayer(under.image, cctx);
+      } else if (this.#belowInk) {
+        blitLayer(this.#below!.image, cctx);
+      }
       blitLayer(active.image, cctx);
       this.#paintLiveTail(cctx, scene);
       if (this.#aboveInk) blitLayer(this.#above!.image, cctx);
@@ -229,8 +243,8 @@ export class FrameComposer {
       target.globalAlpha = 1;
       return;
     }
-    if (this.#belowInk) blitLayer(this.#below!.image, target);
-    this.#drawGhosts(target, scene, width, height);
+    if (under) blitLayer(under.image, target);
+    else if (this.#belowInk) blitLayer(this.#below!.image, target);
     blitLayer(active.image, target);
     this.#paintLiveTail(target, scene);
     if (this.#aboveInk) blitLayer(this.#above!.image, target);
@@ -251,7 +265,9 @@ export class FrameComposer {
     this.#below ??= this.#make();
     this.#active ??= this.#make();
     this.#above ??= this.#make();
-    this.#paint(this.#below, below, scene, width, height);
+    if (this.#paint(this.#below, below, scene, width, height)) {
+      this.#belowSerial += 1;
+    }
     this.#paint(this.#above, above, scene, width, height);
     const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.strokes.length > 0);
     this.#belowInk = inked(below);
@@ -415,25 +431,56 @@ export class FrameComposer {
   }
 
   /**
-   * Blits the ghosts. They sit where the active layer sits in the stack — over
-   * the layers below it, under the active one and everything above — so a
-   * ghost never covers the line being drawn.
+   * The ghosts, flattened into one buffer at their alphas — over the layers
+   * below the active one when `withBelow`. They sit where the active layer sits
+   * in the stack, so a ghost never covers the line being drawn. Null when no
+   * ghost has a line to show.
+   *
+   * Laid over the sheet one by one on every frame, the ghosts made a frame of
+   * a stroke dearer on a layer whose neighbouring frames are drawn than on one
+   * whose are empty, and under the same brush the line trailed the hand on the
+   * first and not on the second. Flattened, they are repainted only when they
+   * or the layers below change, and a frame of a stroke costs the same blits
+   * with them as without.
    */
-  #drawGhosts(target: ComposeTarget, scene: FrameScene, width: number, height: number): void {
+  #flatten(scene: FrameScene, width: number, height: number, withBelow: boolean): ComposeBuffer | null {
     const ghosts = scene.ghosts;
     if (!ghosts || ghosts.frames.length === 0) {
-      return;
+      return null;
     }
+    const shown: { buffer: ComposeBuffer; alpha: number }[] = [];
+    const keys: string[] = [];
     for (const ghost of ghosts.frames) {
-      const buffer = this.#ghost(scene, ghost, ghosts.layers, width, height);
-      if (!buffer) {
-        continue;
+      const taken = this.#ghost(scene, ghost, ghosts.layers, width, height);
+      if (taken) {
+        shown.push({ buffer: taken.buffer, alpha: ghost.alpha });
+        keys.push(`${taken.key}@${ghost.alpha}`);
       }
-      target.setTransform(1, 0, 0, 1, 0, 0);
-      target.globalAlpha = ghost.alpha;
-      target.drawImage(buffer.image, 0, 0);
     }
-    target.globalAlpha = 1;
+    if (shown.length === 0) {
+      return null;
+    }
+    const below = withBelow && this.#belowInk;
+    const seed = `${below ? this.#belowSerial : '-'}:${width}x${height}|${keys.join('|')}`;
+    const under = (this.#under ??= this.#make());
+    if (seed === this.#underSeed) {
+      return under;
+    }
+    // Not until it is painted: a ghost that throws half-way leaves a buffer
+    // that holds neither what it had nor what it was asked for.
+    this.#underSeed = '';
+    under.size(width, height);
+    under.clear();
+    const ctx = under.ctx as ComposeTarget;
+    if (below) blitLayer(this.#below!.image, ctx);
+    for (const { buffer, alpha } of shown) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(buffer.image, 0, 0);
+    }
+    ctx.globalAlpha = 1;
+    this.#underSeed = seed;
+    return under;
   }
 
   /**
@@ -447,7 +494,7 @@ export class FrameComposer {
     layers: readonly number[],
     width: number,
     height: number,
-  ): ComposeBuffer | null {
+  ): { buffer: ComposeBuffer; key: string } | null {
     const cells: Frame[] = [];
     const keys: string[] = [];
     for (const index of layers) {
@@ -470,7 +517,7 @@ export class FrameComposer {
       + `:${width}x${height}@${viewport.scale}:${viewport.panX}:${viewport.panY}:${tint ?? ''}`;
     const { buffer, fresh } = this.#ghosts.take(key);
     if (!fresh) {
-      return buffer;
+      return { buffer, key };
     }
     // Layer by layer through the scratch, as the stack is: an eraser on one
     // layer must not cut the line of the layer under it in the ghost either.
@@ -484,7 +531,7 @@ export class FrameComposer {
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = 'source-over';
     }
-    return buffer;
+    return { buffer, key };
   }
 }
 

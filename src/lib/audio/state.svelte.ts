@@ -282,16 +282,17 @@ export class AudioTrackState {
   }
 
   /**
-   * Starts the sound. Tied to the frames it begins where frame `frame` sits
+   * Starts the sound. Tied to the frames it begins where tick `tick` — the
+   * start of the frame on screen, the frame itself when none is held — sits
    * inside the track — and stays silent past the track's end, since no frame
    * out there has any sound of its own. Untied it begins at the top of the
    * track, which is what "just play this underneath" means.
    */
-  playFrom(frame: number, fps: number): void {
+  playFrom(tick: number, fps: number): void {
     if (!this.#element) {
       return;
     }
-    const at = this.sync ? trackTimeFor(frame, fps, this.duration) : 0;
+    const at = this.sync ? trackTimeFor(tick, fps, this.duration) : 0;
     if (at === null) {
       // Past the end of a tied track: quiet until the animation comes round —
       // but this press is the gesture iOS wants for the lap that sounds.
@@ -332,11 +333,11 @@ export class AudioTrackState {
    * the element's clock drifts — inaudible at these lengths. Reseek per frame
    * if it ever is not.
    */
-  reseekAtLoop(frame: number, fps: number): boolean {
+  reseekAtLoop(tick: number, fps: number): boolean {
     if (!this.sync || !this.#element) {
       return false;
     }
-    this.playFrom(frame, fps);
+    this.playFrom(tick, fps);
     return true;
   }
 
@@ -348,9 +349,9 @@ export class AudioTrackState {
    * Back from a hidden tab, where the sound was paused: tied, the track stands
    * where the frame does; untied, it goes on from where the pause left it.
    */
-  resume(frame: number, fps: number): void {
+  resume(tick: number, fps: number): void {
     if (this.sync) {
-      this.playFrom(frame, fps);
+      this.playFrom(tick, fps);
       return;
     }
     // A refusal here was already said at the press that started the preview.

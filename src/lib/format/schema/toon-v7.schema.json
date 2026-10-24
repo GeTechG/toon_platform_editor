@@ -31,6 +31,16 @@
       "minimum": 1,
       "maximum": 60
     },
+    "holds": {
+      "description": "Ticks each frame stays on screen (1 tick = 1/frame_rate s), one per frame; absent means one tick each.",
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 99
+      }
+    },
     "tools": {
       "type": "array",
       "maxItems": 65536,

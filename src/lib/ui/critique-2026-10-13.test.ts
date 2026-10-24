@@ -37,12 +37,11 @@ describe('the thickness rail under a finger', () => {
 });
 
 describe('the drafts hub on a phone', () => {
-  it('breaks its title between words, and «На сайт» not at all', async () => {
+  it('breaks its title between words', async () => {
     const hub = await read('DraftsHub.svelte');
     const h2 = hub.slice(hub.indexOf('\n  .hub-head h2 {'), hub.indexOf('}', hub.indexOf('\n  .hub-head h2 {')));
     expect(h2).toContain('overflow-wrap: break-word;');
     expect(h2).not.toContain('min-width: 0;');
-    expect(hub).toMatch(/\.hub-head a\.key \{\s*white-space: nowrap;/);
   });
 
   it('shows no box on a card once the choosing is over', async () => {
@@ -158,7 +157,7 @@ describe('a column of tools taller than the screen (owner, 2026-10-13)', () => {
 
 describe('small things of the same run', () => {
   it('«Дублировать кадр» has a sign of its own, not «Копировать»’s', async () => {
-    expect(await read('Timeline.svelte')).toContain(`<Icon name="duplicate" size={16} /><span>{t('panel.item.duplicate_frame')}</span>`);
+    expect(await read('Timeline.svelte')).toContain(`<Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame')`);
     expect(await read('Icon.svelte')).toContain("duplicate: 'M9 9h11v11H9zM5 15V4h11M14.5 12v5M12 14.5h5',");
   });
 

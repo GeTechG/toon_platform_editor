@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { SQUARE_STAMP } from '../format/types';
+import { MAX_FRAMES } from '../format/constants';
 import { validateDocument } from '../format/validate';
 import {
   addFrame,
@@ -15,6 +16,11 @@ import {
   insertFrameBefore,
   internTool,
   isEmptyDocument,
+  copyFrames,
+  frameHold,
+  duplicateFrame,
+  setFrameHolds,
+  moveFrames,
   moveLayer,
   removeFrame,
   removeLastStroke,
@@ -98,6 +104,125 @@ describe('addFrame / removeFrame', () => {
     const doc = createDocument();
     expect(() => addFrame(doc, 1)).toThrow(RangeError);
     expect(() => removeFrame(doc, -1)).toThrow(RangeError);
+  });
+});
+
+describe('moveFrames', () => {
+  // Frames 0..n-1, each layer's cell carrying its frame number as x.
+  function numbered(frames: number, layers = 1) {
+    const doc = createDocument();
+    for (let i = 1; i < frames; i++) addFrame(doc, i - 1);
+    for (let l = 1; l < layers; l++) addLayer(doc, l);
+    for (let l = 0; l < layers; l++) {
+      for (let i = 0; i < frames; i++) addStroke(doc, l, i, { points: [i, l], width: 8, color: '#000000' });
+    }
+    return doc;
+  }
+  const xs = (doc: ReturnType<typeof numbered>, l = 0) => doc.layers[l].frames.map((f) => f.strokes[0].points[0]);
+
+  it('carries a frame right, in every layer', () => {
+    const doc = numbered(4, 2);
+    moveFrames(doc, 0, 1, 3);
+    expect(xs(doc)).toEqual([1, 2, 3, 0]);
+    expect(xs(doc, 1)).toEqual([1, 2, 3, 0]);
+  });
+
+  it('carries a block left, `to` being where its first frame lands', () => {
+    const doc = numbered(5);
+    moveFrames(doc, 2, 2, 0);
+    expect(xs(doc)).toEqual([2, 3, 0, 1, 4]);
+    moveFrames(doc, 0, 2, 3);
+    expect(xs(doc)).toEqual([0, 1, 4, 2, 3]);
+  });
+
+  it('keeps the cells themselves, so marks and undo know them', () => {
+    const doc = numbered(3);
+    const cell = doc.layers[0].frames[0];
+    moveFrames(doc, 0, 1, 2);
+    expect(doc.layers[0].frames[2]).toBe(cell);
+  });
+
+  it('copyFrames puts copies of a block at `to`, the originals stay', () => {
+    const doc = numbered(4, 2);
+    copyFrames(doc, 0, 2, 3);
+    expect(xs(doc)).toEqual([0, 1, 2, 0, 1, 3]);
+    expect(xs(doc, 1)).toEqual([0, 1, 2, 0, 1, 3]);
+    expect(doc.layers[0].frames[3]).not.toBe(doc.layers[0].frames[0]);
+    copyFrames(doc, 5, 1, 6);
+    expect(xs(doc)).toEqual([0, 1, 2, 0, 1, 3, 3]);
+  });
+
+  it('copyFrames refuses past the frame limit, leaving the strip as it was', () => {
+    const doc = numbered(2);
+    doc.layers[0].frames.push(...Array.from({ length: MAX_FRAMES - 3 }, () => ({ strokes: [] })));
+    // Room for one more frame, not for a block of two.
+    expect(() => copyFrames(doc, 0, 2, 0)).toThrow(RangeError);
+    expect(doc.layers[0].frames).toHaveLength(MAX_FRAMES - 1);
+  });
+
+  it('refuses a block or a place off the strip', () => {
+    const doc = numbered(4);
+    expect(() => copyFrames(doc, 0, 1, 5)).toThrow(RangeError);
+    expect(() => moveFrames(doc, 3, 2, 0)).toThrow(RangeError);
+    expect(() => moveFrames(doc, 0, 2, 3)).toThrow(RangeError);
+    expect(() => moveFrames(doc, 0, 1, -1)).toThrow(RangeError);
+    expect(xs(doc)).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('frame holds', () => {
+  function held(frames: number, holds?: number[]) {
+    const doc = createDocument();
+    for (let i = 1; i < frames; i++) addFrame(doc, i - 1);
+    if (holds) doc.holds = holds;
+    return doc;
+  }
+  const holdsOf = (doc: ReturnType<typeof held>) => Array.from({ length: doc.layers[0].frames.length }, (_, i) => frameHold(doc, i));
+
+  it('a frame is one tick until told otherwise', () => {
+    const doc = held(3);
+    expect(holdsOf(doc)).toEqual([1, 1, 1]);
+    expect(doc.holds).toBeUndefined();
+  });
+
+  it('setFrameHolds sets a block, clamped to 1–99, and drops the list when all are one tick', () => {
+    const doc = held(4);
+    setFrameHolds(doc, 1, 2, 3);
+    expect(doc.holds).toEqual([1, 3, 3, 1]);
+    setFrameHolds(doc, 0, 1, 500);
+    expect(frameHold(doc, 0)).toBe(99);
+    setFrameHolds(doc, 0, 4, 1);
+    expect(doc.holds).toBeUndefined();
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('a frame added, removed, moved, copied or duplicated keeps its hold beside it', () => {
+    const doc = held(3, [2, 3, 4]);
+    addFrame(doc, 0);
+    expect(doc.holds).toEqual([2, 1, 3, 4]);
+    insertFrameBefore(doc, 0);
+    expect(doc.holds).toEqual([1, 2, 1, 3, 4]);
+    removeFrame(doc, 0, 2);
+    expect(doc.holds).toEqual([1, 3, 4]);
+    moveFrames(doc, 1, 2, 0);
+    expect(doc.holds).toEqual([3, 4, 1]);
+    copyFrames(doc, 0, 1, 3);
+    expect(doc.holds).toEqual([3, 4, 1, 3]);
+    duplicateFrame(doc, 1);
+    expect(doc.holds).toEqual([3, 4, 4, 1, 3]);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('taking every frame leaves one frame of one tick', () => {
+    const doc = held(2, [5, 6]);
+    removeFrame(doc, 0, 2);
+    expect(doc.holds).toBeUndefined();
+  });
+
+  it('removing the only long frame drops the list', () => {
+    const doc = held(3, [1, 4, 1]);
+    removeFrame(doc, 1);
+    expect(doc.holds).toBeUndefined();
   });
 });
 

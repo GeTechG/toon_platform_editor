@@ -12,7 +12,7 @@ Mapping for the supported first importer slice:
 
 The table also holds `feather` (`{ w, c, f }` → `{ kind: 'feather', geometry: 'smooth', width: w * 8, color, fill }`) and the stamp (`{ w, c }` → `{ kind: 'stamp', geometry: 'line', shape: <unit square>, … }`); imported pixel lines keep the reference's sparse cells, because the renderer fills the gaps with the same Bresenham walk the reference applies at draw time. Mega-eraser strokes never appear in a file — the reference does not store them.
 
-Tool descriptors are structurally interned in first-use order. Each imported line keeps its prepared endpoint representation and references the mapped descriptor. Layers, shared cels/exposures, holds, and unsupported Tonio tools require a later format version; they wrap or reference the same v2 stroke/tool core rather than changing its renderer contract.
+Tool descriptors are structurally interned in first-use order. Each imported line keeps its prepared endpoint representation and references the mapped descriptor. Shared cels/exposures and unsupported Tonio tools require a later format version; they wrap or reference the same v2 stroke/tool core rather than changing its renderer contract.
 
 
 ## What the decoder does (v5 and legacy 1–4)
@@ -23,5 +23,5 @@ Decisions worth knowing:
 
 - **The canvas is not in the file.** Tonio's is fixed 1280×720, so an imported document keeps that size (×8 fixed point) rather than being squeezed into the editor's 600×300 — rescaling would change the drawing.
 - **Layer order is reversed.** The reference draws `layers[0]` last, so its first layer is the topmost; ours renders bottom-up.
-- **Clone frames become copies.** The reference shares one frame object between a hold and its predecessor; our cells are independent, so editing one may not change the other.
+- **Clone frames become copies.** The reference shares one frame object between a hold and its predecessor; our cells are independent, so editing one may not change the other. The document's `holds` hold a whole frame across every layer, and a Tonio clone is one layer's cell, so it is not one of them.
 - **Nothing is substituted.** A mega-eraser or unknown tool in the table, a coordinate that will not fit int16 after ×8, a truncated stream, or a tail left over after the drawing all reject the file with a message. Version 1 files carry no signature at all, so "the stream ends exactly where the drawing does" is what tells a `.toon` from any other blob.

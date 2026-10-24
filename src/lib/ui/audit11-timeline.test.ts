@@ -23,19 +23,19 @@ describe('eleventh audit: picking a block of frames', () => {
     // Over the transport it hid Калька, Звук, Настройки and Черновики at every
     // width under ~1200 px — for the pointer and for Tab (WCAG 2.4.11). The
     // panels are arranged by hand, so what lies above is anyone's guess.
-    const chip = style.match(/\.pick-bar\.picking \{[^}]*position: absolute;[^}]*\}/)?.[0] ?? '';
+    const chip = style.match(/\.pick-bar\.shown \{[^}]*position: absolute;[^}]*\}/)?.[0] ?? '';
     expect(chip).not.toContain('bottom: calc(100%');
     expect(chip).toMatch(/top: 0;/);
   });
 
   it('on a phone the chip is a row of its own: the panel grows to take it', () => {
-    expect(phone).toMatch(/\.pick-bar\.picking \{[^}]*position: static;/);
-    expect(phone).toMatch(/\.pick-bar\.picking \{[^}]*box-shadow: none;/);
+    expect(phone).toMatch(/\.pick-bar\.shown \{[^}]*position: static;/);
+    expect(phone).toMatch(/\.pick-bar\.shown \{[^}]*box-shadow: none;/);
   });
 
   it('the chip keeps an edge in forced colours, where its shadow is dropped', () => {
     const forced = style.match(/@media \(forced-colors: active\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
-    expect(forced).toMatch(/\.pick-bar\.picking \{[^}]*outline: 1px solid CanvasText/);
+    expect(forced).toMatch(/\.pick-bar\.shown \{[^}]*outline: 1px solid CanvasText/);
   });
 
   it('a finger scrolling from the empty strip does not collapse the block', () => {

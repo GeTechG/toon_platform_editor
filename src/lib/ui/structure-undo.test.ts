@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { addFrame, addLayer, addStroke, createDocument, removeFrame, removeLayer, renameLayer } from '../model/operations';
+import { addFrame, addLayer, addStroke, copyFrames, createDocument, moveFrames, setFrameHolds, removeFrame, removeLayer, renameLayer } from '../model/operations';
 import { restoreStructure, structureIntact, takeStructure } from './structure-undo';
 
 // Владелец после одиннадцатого аудита: удаление кадров и слоёв отменяется.
@@ -18,6 +18,50 @@ function doc(frames: number, layers = 1) {
 const xs = (d: ReturnType<typeof doc>, l = 0) => d.layers[l].frames.map((f) => f.strokes[0]?.points[0]);
 
 describe('отмена удаления', () => {
+  it('возвращает длительности кадров вместе с кадрами', () => {
+    const d = doc(3);
+    setFrameHolds(d, 0, 1, 4);
+    const snap = takeStructure(d);
+    moveFrames(d, 0, 1, 2);
+    snap.seal(d);
+    restoreStructure(d, snap);
+    expect(d.holds).toEqual([4, 1, 1]);
+  });
+
+  it('длительность, изменённая после шага, закрывает его отмену', () => {
+    const d = doc(3);
+    const snap = takeStructure(d);
+    setFrameHolds(d, 1, 1, 3);
+    snap.seal(d);
+    expect(structureIntact(d, snap)).toBe(true);
+    setFrameHolds(d, 1, 1, 5);
+    expect(structureIntact(d, snap)).toBe(false);
+    restoreStructure(d, snap);
+    expect(d.holds).toBeUndefined();
+  });
+
+  it('убирает копии, вставленные протяжкой с Ctrl', () => {
+    const d = doc(3, 2);
+    const snap = takeStructure(d);
+    copyFrames(d, 0, 2, 3);
+    snap.seal(d);
+    expect(structureIntact(d, snap)).toBe(true);
+    restoreStructure(d, snap);
+    expect(xs(d)).toEqual([0, 1, 2]);
+    expect(xs(d, 1)).toEqual([0, 1, 2]);
+  });
+
+  it('ставит переставленные кадры обратно, во всех слоях', () => {
+    const d = doc(5, 2);
+    const snap = takeStructure(d);
+    moveFrames(d, 0, 2, 3);
+    snap.seal(d);
+    expect(structureIntact(d, snap)).toBe(true);
+    restoreStructure(d, snap);
+    expect(xs(d)).toEqual([0, 1, 2, 3, 4]);
+    expect(xs(d, 1)).toEqual([0, 1, 2, 3, 4]);
+  });
+
   it('возвращает удалённый блок кадров на место', () => {
     const d = doc(6, 2);
     const snap = takeStructure(d);

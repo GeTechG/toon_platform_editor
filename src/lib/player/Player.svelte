@@ -12,6 +12,7 @@
   import { canWarmApart, warmApart, warmCrew } from './warm';
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
+  import { filmTiming } from '../model/timing';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
@@ -72,6 +73,10 @@
   const length = $derived(playLength(view));
   const total = $derived(length.frames);
   const fps = $derived(length.fps);
+  // Time is ticks: a held frame stays on screen its ticks, and the track
+  // goes by them. A replay's strokes are a tick each.
+  const holds = $derived(length.replay ? undefined : view.holds);
+  const timing = $derived(filmTiming(holds, total));
 
   const renderer = new Canvas2DFrameRenderer();
   let canvasEl: HTMLCanvasElement;
@@ -304,6 +309,7 @@
       frameCount: total,
       fps,
       startFrame: Math.min(untrack(() => current), total - 1),
+      holds,
       onFrame: (index) => {
         if (once && replayEnded(current, index, total)) {
           current = total - 1;
@@ -324,7 +330,7 @@
       // lap below): set there, `play()` rewound the ended track to 0, and the
       // frames, read off its clock, jumped back to the first.
       const at = audioSync
-        ? trackTimeFor(untrack(() => current) % total, fps, sound.duration)
+        ? trackTimeFor(timing.start(untrack(() => current) % total), fps, sound.duration)
         : sound.currentTime;
       if (at !== null) {
         sound.currentTime = at;
@@ -349,10 +355,10 @@
         if (trackKeepsTime(sound)) {
           // Tied, the track is pinned to the first frame and comes back round
           // with the animation instead of running on past it.
-          if (trackShouldRestart(sound.currentTime, total, fps)) {
+          if (trackShouldRestart(sound.currentTime, timing.total, fps)) {
             sound.currentTime = 0;
           }
-          current = frameForTime(sound.currentTime, fps) % total;
+          current = timing.frameAt(frameForTime(sound.currentTime, fps) % timing.total);
         } else if (current < lastFrame) {
           // A track shorter than the animation starts again with it.
           sound.currentTime = 0;
@@ -377,7 +383,7 @@
     }
     untrack(() => {
       if (audio) {
-        audio.currentTime = (frame % total) / fps;
+        audio.currentTime = timing.start(frame % total) / fps;
       }
     });
   });

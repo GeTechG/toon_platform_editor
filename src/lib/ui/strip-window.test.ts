@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { filmTiming } from '../model/timing';
 import { scrollToFrame, stripWindow, wheelOnStrip } from './strip-window';
 
 const CELL = 46;
@@ -135,5 +136,24 @@ describe('where a wheel over the timeline scrolls the strip', () => {
   it('a wheel counted in lines or pages is turned into pixels', () => {
     expect(wheelOnStrip(wheel(0, 3, { deltaMode: 1 }), false, 300)).toEqual({ x: 48, y: 0 });
     expect(wheelOnStrip(wheel(0, 1, { deltaMode: 2 }), false, 300)).toEqual({ x: 300, y: 0 });
+  });
+});
+
+describe('лента с длительностями кадров', () => {
+  // Ячейка 40 + зазор 2: такт — 42 px. Кадры по 1, 5, 1, 1 тактов.
+  const timing = filmTiming([1, 5, 1, 1], 4);
+
+  it('кадр начинается после тактов предыдущих', () => {
+    // Окно на всю ленту, промежутков нет.
+    expect(stripWindow(4, 40, 2, 0, 1000, timing)).toEqual({ first: 0, count: 4, before: 0, after: 0 });
+    // Узкое окно (190–220 px с полями) внутри длинного кадра 1 (такты 1–5, 42–250 px).
+    expect(stripWindow(4, 40, 2, 200, 10, timing)).toEqual({ first: 1, count: 1, before: 40, after: 2 * 42 - 2 });
+  });
+
+  it('прокрутка к кадру считает его место и ширину в тактах', () => {
+    // Кадр 2 стоит на такте 6: 252 px, шириной в одну ячейку.
+    expect(scrollToFrame(2, 40, 2, 0, 100, 0, timing)).toBe(252 + 40 - 100);
+    // Кадр 1 шириной 5 тактов: 5·42 − 2 = 208.
+    expect(scrollToFrame(1, 40, 2, 0, 100, 0, timing)).toBe(42 + 208 - 100);
   });
 });

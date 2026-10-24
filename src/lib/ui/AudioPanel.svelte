@@ -113,7 +113,7 @@
     }
   }
 
-  const filmSeconds = $derived(editor.doc.layers[0].frames.length / editor.doc.frame_rate);
+  const filmSeconds = $derived(editor.timing.total / editor.doc.frame_rate);
   // One bar per frame means the strip only ever shows the part of the track the
   // animation is long enough to reach. Naming both lengths is what keeps a
   // short wave from reading as a broken one.

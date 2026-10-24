@@ -54,6 +54,13 @@ describe('assembleAnimatedWebp', () => {
     expect(chunkOffsets(out, 'ANMF').length).toBe(3);
   });
 
+  test('a held frame lasts its ticks', () => {
+    const out = assembleAnimatedWebp([fakeStill(4, 4, [1, 2, 3]), fakeStill(4, 4, [4, 5, 6])], { fps: 10, holds: [4, 1] });
+    // ANMF payload: x, y, w−1, h−1 (3 bytes each), then the duration, u24 LE.
+    const duration = (at: number) => out[at + 8 + 12] | (out[at + 8 + 13] << 8) | (out[at + 8 + 14] << 16);
+    expect(chunkOffsets(out, 'ANMF').map(duration)).toEqual([400, 100]);
+  });
+
   test('VP8X advertises animation and ANIM loops forever', () => {
     const out = assembleAnimatedWebp([fakeStill(4, 4, [1, 2, 3])], { fps: 12 });
 
@@ -73,6 +80,11 @@ describe('assembleAnimatedWebp', () => {
 describe('previewFrameBudget', () => {
   test('caps at 50 frames', () => {
     expect(previewFrameBudget(12, { maxFrames: 50, maxSeconds: 10 })).toBe(50);
+  });
+
+  test('held frames spend the time cap by their ticks', () => {
+    // 2 s at 10 fps = 20 ticks: frames of 8, 8, 8 ticks — the third starts at 16, inside.
+    expect(previewFrameBudget(10, { maxFrames: 50, maxSeconds: 2, holds: [8, 8, 8, 8] })).toBe(3);
   });
 
   test('time cap can bind below the frame cap', () => {

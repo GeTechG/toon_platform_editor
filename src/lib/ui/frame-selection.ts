@@ -312,6 +312,76 @@ export function dragTargetIndex(
 }
 
 /**
+ * A press on a frame's number: that frame in every layer (Aseprite, Krita).
+ * `extend` (Shift) spans the frames from the active one to it.
+ */
+export function columnSelection(active: number, frame: number, layers: number, extend: boolean): CellSelection {
+  const from = extend ? Math.min(active, frame) : frame;
+  const to = extend ? Math.max(active, frame) : frame;
+  return {
+    frames: Array.from({ length: to - from + 1 }, (_, i) => from + i),
+    layers: Array.from({ length: layers }, (_, i) => i),
+  };
+}
+
+/** What a frame drag carries: the selected block when the frame is in it, else the frame alone. */
+export function framesToCarry(selection: CellSelection, frame: number): { from: number; count: number } {
+  if (!selection.frames.includes(frame)) {
+    return { from: frame, count: 1 };
+  }
+  const from = Math.min(...selection.frames);
+  return { from, count: Math.max(...selection.frames) - from + 1 };
+}
+
+/**
+ * Where a carried block goes for a pointer over `tick`: the frame under the
+ * pointer, less the frame of the block it was taken by (`grab`), kept to
+ * 0..`last` — but only if, once there, the block lies under the pointer. A
+ * narrow frame carried over a long one would otherwise land in front of it,
+ * find the long one under the pointer again and go back: back and forth on
+ * every move, a flicker. `holds` are the strip as it stands, one per frame;
+ * `insert` — the block is copies not yet put down, which lengthen it.
+ */
+export function carryTarget(
+  holds: readonly number[],
+  at: number,
+  count: number,
+  grab: number,
+  tick: number,
+  last: number,
+  insert: boolean,
+): number {
+  const starts = [0];
+  for (const hold of holds) starts.push(starts[starts.length - 1] + hold);
+  const total = starts[holds.length];
+  let pointed = holds.length;
+  if (tick < total) {
+    pointed = 0;
+    while (pointed < holds.length - 1 && starts[pointed + 1] <= Math.max(0, tick)) pointed++;
+  }
+  const to = Math.min(last, Math.max(0, pointed - grab));
+  if (to === at && !insert) return at;
+  // The strip as it would stand: the block taken out (or not, for copies) and put at `to`.
+  const block = holds.slice(at, at + count);
+  const rest = insert ? [...holds] : [...holds.slice(0, at), ...holds.slice(at + count)];
+  const before = rest.slice(0, to).reduce((sum, hold) => sum + hold, 0);
+  const after = before + block.reduce((sum, hold) => sum + hold, 0);
+  // The strip's new length: what stays and the block, wherever it went.
+  const end = rest.reduce((sum, hold) => sum + hold, 0) + (after - before);
+  const under = Math.min(Math.max(0, tick), end - 1);
+  return under >= before && under < after ? to : at;
+}
+
+/** Where frame `index` stands once the `count` frames from `from` have moved to start at `to`. */
+export function frameAfterMove(index: number, from: number, count: number, to: number): number {
+  if (index >= from && index < from + count) {
+    return index - from + to;
+  }
+  const rest = index > from ? index - count : index;
+  return rest >= to ? rest + count : rest;
+}
+
+/**
  * The layer list's arrows (WAI-ARIA APG layout grid): ↑/↓ a row, ←/→ a
  * control within it, Home/End the top and the bottom layer. Rows are counted
  * top-down; `cols` is how many controls a row can take focus on. No wrapping:

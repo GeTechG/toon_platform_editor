@@ -509,7 +509,7 @@ describe('tenth audit: the strip keeps what is active in view', () => {
   const effect = timeline.match(/Keep the active frame in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
 
   it('the last frame is scrolled in with the row padding, ring and all', () => {
-    expect(effect).toMatch(/scrollToFrame\(index, thumbWidth, GRID_GAP, strip\.scrollLeft, strip\.clientWidth, GRID_GAP\)/);
+    expect(effect).toMatch(/scrollToFrame\(index, thumbWidth, GRID_GAP, strip\.scrollLeft, strip\.clientWidth, GRID_GAP, timing\)/);
   });
 
   it('the active row is scrolled in under the sticky frame numbers', () => {
@@ -559,10 +559,11 @@ describe('tenth audit: the frame menu on a touch screen', () => {
 describe('tenth audit: menu items are named without their key letter', () => {
   it('the key is a shortcut property, not part of the name', () => {
     // «Добавить кадрA» was the accessible name: the kbd text ran into it.
-    const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+    const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
-    expect(items.length).toBe(6);
-    for (const item of items) {
+    expect(items.length).toBe(10);
+    // «Сдвинуть» has no key: Alt+←/→ is the browser's «back»; nor has the hold's − and +.
+    for (const item of items.filter((i) => !i.includes('shiftFrames') && !i.includes('nudgeHolds'))) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
       expect(item).toContain('{@render key(');
     }
@@ -577,7 +578,7 @@ describe('tenth audit: a frame added at the end stays in view', () => {
     // frame just added sat several cells past the right edge.
     const head = timeline.match(/<div\s+class="head"[\s\S]*?>/)?.[0] ?? '';
     expect(head).toMatch(/style:min-width=\{`\$\{stripExtent\}px`\}/);
-    expect(timeline).toMatch(/const stripExtent = \$derived\(frameTotal \* \(thumbWidth \+ GRID_GAP\) \+ GRID_GAP\)/);
+    expect(timeline).toMatch(/const stripExtent = \$derived\(timing\.total \* \(thumbWidth \+ GRID_GAP\) \+ GRID_GAP\)/);
   });
 });
 
@@ -596,7 +597,7 @@ describe('tenth audit: the strip under forced colours', () => {
 });
 
 describe('owner answers: the frame menu honours the letter-keys setting', () => {
-  const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+  const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
   it('no item promises a bare letter the setting has turned off', () => {
     // With the letter keys off, «C» next to «Копировать» was a key that did nothing.
     expect(menu).not.toMatch(/aria-keyshortcuts="[A-Z]"/);
@@ -610,7 +611,7 @@ describe('owner answers: picking a block of frames by finger', () => {
   const keys = timeline.match(/function onStripKey[\s\S]*?\n  }/)?.[0] ?? '';
 
   it('the frame menu turns picking on and off', () => {
-    const menu = timeline.match(/class="frame-menu"[\s\S]*?<\/div>/)?.[0] ?? '';
+    const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     expect(menu).toMatch(/role="menuitemcheckbox"[^>]*aria-checked=\{picking\}/);
     expect(t('timeline.pick')).toBe('Выделить кадры');
   });

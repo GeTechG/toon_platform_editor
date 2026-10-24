@@ -174,8 +174,8 @@ describe('the studio does not blink before the hub', () => {
     expect(shell).toMatch(/ready: boolean;/);
   });
 
-  it('until then neither view is shown, unless a new drawing was asked for', () => {
-    expect(shell).toContain('let settled = $state(untrack(() => create));');
+  it('until then neither view is shown', () => {
+    expect(shell).toContain('let settled = $state(false);');
     expect(shell).toMatch(/\{#if creating\}[^]*?\n  \{:else if settled\}\n/);
   });
 
@@ -183,19 +183,6 @@ describe('the studio does not blink before the hub', () => {
     // A card, not the first button: «Выбрать» is not drawn under a cursor,
     // and the focus fell to the page.
     expect(shell).toMatch(/settled = true;[^]*?await tick\(\);[^]*?querySelector<HTMLElement>\('\.draft-open, \.hub-new'\)\?\.focus\(\)/);
-  });
-});
-
-describe('a host can ask for a new drawing outright', () => {
-  // Owner, 2026-10-05: the site's «Новый мульт» tile goes past the drafts.
-  it('the editor takes `startNew` and opens the hub on the sheets, once', () => {
-    expect(studio).toMatch(/startNew\?: boolean;/);
-    expect(studio).toContain('let createOnOpen = $state(untrack(() => startNew === true));');
-    expect(studio).toMatch(/create=\{createOnOpen\}[^]*?onClose=\{\(\) => \{\s*draftsOpen = false;\s*createOnOpen = false;/);
-  });
-
-  it('the hub starts on the sheets when asked, drafts or none', () => {
-    expect(shell).toContain('let creating = $state(untrack(() => create));');
   });
 });
 

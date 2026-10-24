@@ -163,6 +163,13 @@
       <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
     </div>
 
+    <!-- The selection's own clipboard, for a hand with no keyboard. -->
+    <div class="row">
+      <button class="key icon" onclick={() => editor.copySelected()} aria-keyshortcuts="Control+C" aria-label={t('transform.copy')} title={t('transform.copy')}><Icon name="copy" /></button>
+      <button class="key icon" onclick={() => editor.pasteSelection()} disabled={!editor.copiedPart} aria-keyshortcuts="Control+V" aria-label={t('transform.paste')} title={t('transform.paste')}><Icon name="paste" /></button>
+      <button class="key icon" onclick={() => editor.deleteSelected()} aria-keyshortcuts="Delete Backspace" aria-label={t('transform.delete')} title={t('transform.delete')}><Icon name="trash" /></button>
+    </div>
+
     <!-- On a phone the zoom window gives this one its row; its keys come along. -->
     <div class="row zoom" role="group" aria-label={t('scale.group')}>
       <button class="key icon" aria-disabled={editor.view.zoom <= ZOOM_MIN} onclick={() => editor.view.zoom <= ZOOM_MIN || editor.zoomBy(zoomDelta(editor.view.zoom, -1))} aria-label={t('scale.out')} title={t('scale.out')}><Icon name="minus" /></button>

@@ -166,12 +166,16 @@ export function playRefusal(err: unknown): 'blocked' | 'unplayable' | null {
   return name === 'NotAllowedError' ? 'blocked' : name === 'AbortError' ? null : 'unplayable';
 }
 
-/** When frame `index` is shown, in seconds from the start of the track. */
+/**
+ * When tick `index` comes, in seconds from the start of the track. A tick is
+ * 1/fps s: without held frames it is the frame of that number, with them the
+ * caller passes the tick a frame starts on (`FilmTiming.start`).
+ */
 export function timeForFrame(index: number, fps: number): number {
   return index / fps;
 }
 
-/** How long one pass of the animation lasts, in seconds. */
+/** How long one pass of the animation lasts, in seconds; `frames` counts ticks. */
 export function loopSeconds(frames: number, fps: number): number {
   return frames / fps;
 }
@@ -203,7 +207,7 @@ export function trackTimeFor(index: number, fps: number, duration: number): numb
   return duration > 0 && at >= duration ? null : at;
 }
 
-/** The frame holding second `time`. */
+/** The tick holding second `time` (`FilmTiming.frameAt` names its frame). */
 export function frameForTime(time: number, fps: number): number {
   return Math.floor(time * fps);
 }

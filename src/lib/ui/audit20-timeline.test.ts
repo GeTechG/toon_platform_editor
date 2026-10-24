@@ -34,6 +34,6 @@ describe('двадцатый аудит: после скрытой вкладк�
 
   it('транспорт даёт часам отдохнуть, прежде чем вернуть звук', () => {
     const handler = transport.match(/function onVisibility\(\)[^]*?\n  }/)?.[0] ?? '';
-    expect(handler).toMatch(/player\.rest\(\);\s+editor\.audio\.resume\(editor\.playbackFrame, editor\.doc\.frame_rate\)/);
+    expect(handler).toMatch(/player\.rest\(\);\s+editor\.audio\.resume\(editor\.timing\.start\(editor\.playbackFrame\), editor\.doc\.frame_rate\)/);
   });
 });

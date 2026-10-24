@@ -122,20 +122,3 @@ it('with no cursor to hover with, the wide row names send, brush, eraser and col
   expect(editorUi).toContain("attrs={{ 'data-walk': '' }}");
 });
 
-// Lying down the site puts its header away — 56 px of a 360 px screen go to
-// the sheet (owner, 2026-10-08). The way back to the site is a key behind «⋯».
-it('lying down «⋯» holds the host\'s way home', () => {
-  expect(editorUi).toContain('home?: { href: string; label: string };');
-  expect(editorUi).toContain("{#if group.id === 'studio' && home}<a class=\"key\" href={home.href} aria-label={home.label}>");
-});
-
-// The hub and «Новый мульт» stand in place of the studio, over its «⋯» too:
-// with the host's header put away there was no way out of them (owner,
-// 2026-10-08). Both heads hold the same way home.
-it('lying down the hub and the new-toon screen hold the way home too', async () => {
-  const hub = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
-  expect(editorUi).toContain('      {home}\n');
-  expect(hub).toContain('{#if home}<a class="key" href={home.href}>{home.label}</a>{/if}');
-  // The hub's head: an icon under a finger, named for a reader (critique 2026-10-18).
-  expect(hub).toMatch(/\{#if home\}<a class="key" class:icon=\{touchHub\} href=\{home\.href\}[^>]*aria-label=\{touchHub \? home\.label : undefined\}>/);
-});

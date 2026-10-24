@@ -22,12 +22,15 @@ const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url
  */
 const READ_ONLY = new Set([
   'frameCount',
+  'frameHold',
   'frameFits',
   'documentWeight',
   'isEmptyDocument',
   // Whether the sheet may still be resized: it looks, and writes nothing.
   'sheetOpen',
   'copyCells',
+  // The selection's part, copied out of a baked copy: the document is not touched.
+  'copyPart',
   'pasteNeedsConfirm',
   'onionLayers',
   'onionHistoryLayers',

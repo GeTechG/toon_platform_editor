@@ -59,6 +59,17 @@ function composer() {
   return { instance, made };
 }
 
+/** The buffer a ghost was painted into: the one blitted at the ghost's alpha. */
+function ghostIn(made: readonly Recorder[], alpha = 0.3): Recorder {
+  const entry = made.flatMap((buffer) => buffer.log).find((logged) => logged.endsWith(`@${alpha}`))!;
+  return made.find((buffer) => buffer.name === entry.split(' ')[1])!;
+}
+
+/** The buffer that blitted `source` into itself. */
+function holderOf(made: readonly Recorder[], source: Recorder): Recorder {
+  return made.find((buffer) => buffer.log.some((logged) => logged.startsWith(`blit ${source.name}`)))!;
+}
+
 const line = (x: number) => ({ points: [x, 0, x, 400, x + 10, 800], width: 40, color: '#000000' });
 
 function doc(layers: number): ToonDocument {
@@ -88,15 +99,19 @@ describe('the composer stacks a frame', () => {
     const built = doc(3);
     addFrame(built, 0);
     for (let l = 0; l < 3; l++) addStroke(built, l, 1, line(500 + l));
-    const { instance } = composer();
+    const { instance, made } = composer();
     const target = new Recorder('target');
     instance.compose(target.ctx, 100, 50, {
       doc: built, frame: 1, activeLayer: 1, viewport, tools: built.tools,
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [1] },
     });
     // The ghost lands over the layers below and under the active one, so it
-    // never covers the line being drawn.
-    expect(target.log).toEqual(['blit b0', 'blit b3 @0.3', 'blit b1', 'blit b2']);
+    // never covers the line being drawn — flattened with those layers into
+    // one buffer, which goes under the active one.
+    const ghost = ghostIn(made);
+    const under = holderOf(made, ghost);
+    expect(under.log).toEqual(['clear', 'blit b0', `blit ${ghost.name} @0.3`]);
+    expect(target.log).toEqual([`blit ${under.name}`, 'blit b1', 'blit b2']);
   });
 
   it('flattens layers that erase nothing straight into their buffer', () => {
@@ -108,8 +123,7 @@ describe('the composer stacks a frame', () => {
       doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0, 1] },
     });
-    const ghostName = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
-    const ghost = made.find((buffer) => buffer.name === ghostName)!;
+    const ghost = ghostIn(made);
     // A buffer per layer was a clear and a blit of the whole sheet per layer.
     expect(ghost.log.filter((entry) => entry.startsWith('stroke'))).toHaveLength(2);
     expect(ghost.log.filter((entry) => entry.startsWith('blit'))).toEqual([]);
@@ -128,8 +142,7 @@ describe('the composer stacks a frame', () => {
       doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0, 1] },
     });
-    const ghostName = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
-    const ghost = made.find((buffer) => buffer.name === ghostName)!;
+    const ghost = ghostIn(made);
     expect(ghost.log.filter((entry) => entry.startsWith('stroke'))).toHaveLength(1);
     expect(ghost.log.filter((entry) => entry.startsWith('blit'))).toHaveLength(1);
   });
@@ -154,8 +167,7 @@ describe('the composer stacks a frame', () => {
       doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
       ghosts: { frames: [{ index: 0, alpha: 0.3, tint: '#00ff00' }], layers: [0] },
     });
-    const ghostName = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
-    const ghost = made.find((buffer) => buffer.name === ghostName)!;
+    const ghost = ghostIn(made);
     expect(ghost.log.at(-1)).toBe('fillRect source-in #00ff00');
   });
 
@@ -163,13 +175,19 @@ describe('the composer stacks a frame', () => {
     const built = doc(1);
     addFrame(built, 0);
     addStroke(built, 0, 1, line(300));
-    const { instance } = composer();
+    const { instance, made } = composer();
     const target = new Recorder('target');
     instance.compose(target.ctx, 100, 50, {
       doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools,
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] }, alpha: 0.5, blend: true,
     });
-    expect(target.log).toEqual(['blit b4 @0.3', 'blit b3 @0.5']);
+    // The ghosts go under the whole frame, not into it: the layers below
+    // stay in the frame and take its alpha.
+    const under = holderOf(made, ghostIn(made));
+    expect(under.log.filter((logged) => logged.startsWith('blit'))).toHaveLength(1);
+    expect(target.log).toHaveLength(2);
+    expect(target.log[0]).toBe(`blit ${under.name}`);
+    expect(target.log[1]).toEndWith(' @0.5');
   });
 
   it('paints nothing again while the strokes of the frame are what they were', () => {
@@ -264,6 +282,40 @@ describe('the line under the hand', () => {
     instance.compose(target.ctx, 100, 50, scene(live));
     instance.compose(target.ctx, 100, 50, scene(live));
     expect(painted).toBe(2);
+  });
+
+  it('costs a frame as many blits with the ghosts shown as without them', () => {
+    // A layer whose neighbouring frames are drawn shows their ghosts, the one
+    // beside it with empty neighbours none. Laid over the sheet one by one on
+    // every frame of the stroke, they slowed the line on the first layer
+    // alone, and under the same brush it trailed the hand there and not here.
+    const built = doc(3);
+    addFrame(built, 0);
+    addFrame(built, 1);
+    for (let l = 0; l < 3; l++) {
+      addStroke(built, l, 1, line(300 + l));
+      addStroke(built, l, 2, line(500 + l));
+    }
+    const ghosts = { frames: [{ index: 0, alpha: 0.3 }, { index: 2, alpha: 0.3 }], layers: [1] };
+    const blitsPerFrame = (shown: boolean) => {
+      const { instance, made } = composer();
+      const target = new Recorder('target');
+      const points: number[] = [0, 0];
+      const blits: number[] = [];
+      for (let i = 1; i <= 6; i++) {
+        points.push(i * 80, i * 40);
+        instance.compose(target.ctx, 100, 50, {
+          doc: built, frame: 1, activeLayer: 1, viewport, tools: built.tools,
+          ghosts: shown ? ghosts : undefined,
+          live: { id: 1, points, geometry: 'smooth', width: 40, color: '#000000' },
+        });
+        const all = [...made.flatMap((b) => b.log), ...target.log];
+        blits.push(all.filter((entry) => entry.startsWith('blit')).length);
+      }
+      // Every frame after the first, counted apart.
+      return blits.slice(1).map((total, i) => total - blits[i]);
+    };
+    expect(blitsPerFrame(true)).toEqual(blitsPerFrame(false));
   });
 
   it('never asks a line to paint itself when it gave points to add', () => {

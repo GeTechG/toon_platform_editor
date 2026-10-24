@@ -22,6 +22,8 @@ export interface GifStreamOptions {
 
 export interface EncodeGifOptions {
   fps: number;
+  /** Ticks each frame stays on screen (the document's `holds`); one each without. */
+  holds?: readonly number[];
   /** Called after each encoded frame. */
   onProgress?: (done: number, total: number) => void;
 }
@@ -30,12 +32,14 @@ export interface EncodeGifOptions {
 const PALETTE_SAMPLE_MAX_PIXELS = 65536;
 
 /**
- * Frame duration in ms, truncated like the reference (`toon.js:616`). GIF
+ * How long a frame of `hold` ticks stays, in ms, truncated like the reference
+ * (`toon.js:616`) — once over the whole hold, so a pause does not lose a
+ * millisecond per tick it spans. GIF
  * itself stores hundredths of a second, so the encoder rounds this to
  * centiseconds — that last step is the format's own, and the only tempo drift.
  */
-export function gifDelayMs(fps: number): number {
-  return Math.max(1, Math.trunc(1000 / fps));
+export function gifDelayMs(fps: number, hold = 1): number {
+  return Math.max(1, Math.trunc((1000 * hold) / fps));
 }
 
 /**
@@ -54,7 +58,7 @@ export function gifDelayMs(fps: number): number {
  * if the second draw ever shows up in a measurement.
  */
 export class GifStream {
-  readonly #delayMs: number;
+  readonly #fps: number;
   readonly #stride: number;
   #sample: number[] = [];
   readonly #gif = GIFEncoder();
@@ -62,7 +66,7 @@ export class GifStream {
   #written = 0;
 
   constructor({ fps, totalPixels }: GifStreamOptions) {
-    this.#delayMs = gifDelayMs(fps);
+    this.#fps = fps;
     this.#stride = sampleStride(totalPixels);
   }
 
@@ -109,19 +113,20 @@ export class GifStream {
     this.#sample = [];
   }
 
-  /** Pass two: encodes one frame and keeps nothing of it. */
-  write(frame: RgbaFrame): void {
+  /** Pass two: encodes one frame, on screen for `hold` ticks, and keeps nothing of it. */
+  write(frame: RgbaFrame, hold = 1): void {
     const palette = this.#palette;
     if (!palette) {
       throw new Error('GifStream: begin() must run before the first frame');
     }
     const index = applyPalette(frame.data, palette);
+    const delay = gifDelayMs(this.#fps, hold);
     this.#gif.writeFrame(
       index,
       frame.width,
       frame.height,
       // Palette on the first frame only: it becomes the global color table.
-      this.#written === 0 ? { palette, delay: this.#delayMs, repeat: 0 } : { delay: this.#delayMs },
+      this.#written === 0 ? { palette, delay, repeat: 0 } : { delay },
     );
     this.#written++;
   }
@@ -133,7 +138,7 @@ export class GifStream {
 }
 
 /** The whole animation in memory at once — the shape bun tests reach for. */
-export function encodeGif(frames: RgbaFrame[], { fps, onProgress }: EncodeGifOptions): Uint8Array {
+export function encodeGif(frames: RgbaFrame[], { fps, holds, onProgress }: EncodeGifOptions): Uint8Array {
   const stream = new GifStream({
     fps,
     totalPixels: frames.reduce((n, f) => n + f.data.length / 4, 0),
@@ -143,7 +148,7 @@ export function encodeGif(frames: RgbaFrame[], { fps, onProgress }: EncodeGifOpt
   }
   stream.begin();
   frames.forEach((frame, i) => {
-    stream.write(frame);
+    stream.write(frame, holds?.[i]);
     onProgress?.(i + 1, frames.length);
   });
   return stream.finish();

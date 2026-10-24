@@ -85,6 +85,7 @@
      while these lived only in the site's sheet. */
   --shadow-plate: 24px 32px 60px -30px rgba(15, 23, 60, 0.35); /* floats */
   --shadow-menu: 12px 18px 40px -20px rgba(15, 23, 60, 0.35); /* drops */
+  --shadow-lift: 3px 6px 14px -4px rgba(15, 23, 60, 0.45); /* a small thing in the hand: a carried frame */
   /* A sheet rises from the bottom edge, where a downward shadow falls off the
      screen. Same ink, turned over. */
   --shadow-sheet: 0 -12px 32px -12px rgba(15, 23, 60, 0.4);

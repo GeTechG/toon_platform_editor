@@ -318,6 +318,9 @@
       "transport": "Управление воспроизведением",
       "add_frame": "Добавить кадр",
       "duplicate_frame": "Дублировать кадр",
+      "duplicate_frames": "Дублировать кадры {{from}}–{{to}}",
+      "shift_left": "Сдвинуть влево",
+      "shift_right": "Сдвинуть вправо",
       "delete_frame": "Удалить кадр",
       "delete_frames": "Удалить кадры {{from}}–{{to}}",
       "onion": "Калька",
@@ -515,7 +518,10 @@
     "apply": "Применить",
     "apply_label": "Применить (Enter)",
     "cancel": "Отмена",
-    "cancel_label": "Отмена (Esc)"
+    "cancel_label": "Отмена (Esc)",
+    "copy": "Копировать выделенное (Ctrl+C)",
+    "paste": "Вставить копию в кадр (Ctrl+V)",
+    "delete": "Удалить выделенное (Delete)"
   },
   "timeline": {
     "col_width": "Ширина колонки слоёв",
@@ -529,6 +535,11 @@
     "menu": "Действия с кадром",
     "pick": "Выделить кадры",
     "pick_hint": "Нажми на кадр — выделение дотянется",
+    "clear_selection": "Снять выделение",
+    "hold": "Длительность",
+    "hold_shorter": "Короче на такт",
+    "hold_longer": "Длиннее на такт",
+    "hold_grip": "Тяни, чтобы кадр держался дольше",
     "pick_done": "Готово",
     "picked": "Кадры {{from}}–{{to}}",
     "picked_one": "Кадр {{from}}",

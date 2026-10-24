@@ -335,11 +335,6 @@ describe('onion position in the layer stack (Toonio parity)', () => {
     // Asserted for real against a recording target in frame-compose.test.ts;
     // here only that the canvas still asks for them.
     expect(handler('draw')).toContain('ghosts: editor.showOnionSkin');
-    const below = compose.indexOf('blitLayer(this.#below!.image, target)');
-    const ghosts = compose.indexOf('this.#drawGhosts(target', below);
-    const active = compose.indexOf('blitLayer(active.image, target)', below);
-    expect(ghosts).toBeGreaterThan(below);
-    expect(active).toBeGreaterThan(ghosts);
   });
 
   it('a ghost flattens every layer the selection covers', () => {

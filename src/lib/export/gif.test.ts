@@ -36,6 +36,7 @@ describe('gifDelayMs', () => {
     expect(gifDelayMs(12)).toBe(83);
     expect(gifDelayMs(24)).toBe(41);
     expect(gifDelayMs(5)).toBe(200);
+    expect(gifDelayMs(12, 3)).toBe(250);
   });
 });
 
@@ -50,6 +51,14 @@ describe('encodeGif', () => {
     for (const at of gces) {
       expect(gceDelay(bytes, at)).toBe(8);
     }
+  });
+
+  test('a held frame stays its ticks: the delay is the hold, not a frame', () => {
+    const bytes = encodeGif([frame(4, 4, [255, 0, 0]), frame(4, 4, [0, 0, 255])], { fps: 12, holds: [3, 1] });
+    const gces = gceOffsets(bytes);
+    // 3 × 1000/12 = 250 ms → 25 cs; one tick → 8 cs.
+    expect(gceDelay(bytes, gces[0])).toBe(25);
+    expect(gceDelay(bytes, gces[1])).toBe(8);
   });
 
   test('single frame → valid GIF', () => {

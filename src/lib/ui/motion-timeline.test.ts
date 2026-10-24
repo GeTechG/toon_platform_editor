@@ -67,7 +67,7 @@ describe('motion in the strip, the layers and the player', () => {
 
   it('opens the frame menu, the picking chip and the sound plate from where they were called', () => {
     expect(rule(style(files.timeline), '.frame-menu')).toContain('var(--dur-enter) var(--ease-out)');
-    expect(rule(style(files.timeline), '.pick-bar.picking')).toContain('var(--dur-enter) var(--ease-out)');
+    expect(rule(style(files.timeline), '.pick-bar.shown')).toContain('var(--dur-enter) var(--ease-out)');
     expect(rule(style(files.audio), '.audio-plate')).toContain('var(--dur-enter) var(--ease-out)');
     // In a small screen's window the window arrives, not its body.
     expect(rule(style(files.audio), '.audio-plate.docked')).toContain('animation: none');

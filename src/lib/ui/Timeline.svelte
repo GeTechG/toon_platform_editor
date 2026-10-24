@@ -5,12 +5,14 @@
   // it. One shape for every preset — a preset patches where the strip sits,
   // not what it is.
   import { tick, untrack } from 'svelte';
-  import type { Layer } from '../format/types';
+  import type { Frame, Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
   import { scrollToFrame, stripTabStop, stripTail, stripWindow, wheelOnStrip } from './strip-window';
   import {
+    carryTarget,
     frameMenuKey,
+    framesToCarry,
     frameMenuTop,
     onScrollbar,
     selectionSpan,
@@ -21,33 +23,78 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { createLostRelease, mainUp } from './lost-release';
+  import { MAX_HOLD } from '../format/constants';
   import { t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
 
   let { editor }: { editor: EditorState } = $props();
 
-  // The one frame or layer that has just come: it fades in so the eye finds
-  // where it landed. Found by the count growing by one, not by a node being
+  // The frames or the layer that have just come: they fade in so the eye
+  // finds where they landed. Found by the counts growing, not by a node being
   // built — the strip builds cells as it scrolls, and those must stand still.
   // Never under a preview: there the strip only shows which frame is up.
-  // Raw: a proxy of the layer would never equal the layer it stands for.
-  let arrived = $state.raw<{ frame?: number; layer?: Layer } | null>(null);
+  // Raw: a proxy of a cell or a layer would never equal the one it stands for.
+  let arrived = $state.raw<{ frames?: ReadonlySet<Frame>; layer?: Layer } | null>(null);
   let counted: { frames: number; layers: number } | null = null;
+  // Where each frame stood at the last layout, by its bottom cell — a move
+  // keeps the cells and renumbers them. A frame that changes place slides
+  // from where it stood instead of jumping there: the neighbours of a carried
+  // frame make way (Procreate Dreams, Krita), and so they do for «Сдвинуть»,
+  // a delete, a duplicate, a hold that grew, an undo.
+  let placed = new Map<Frame, number>();
+  let placedPitch = 0;
   $effect(() => {
     const now = editor.cellBounds;
+    const frames = editor.doc.layers[0].frames;
+    const pitch = thumbWidth + GRID_GAP;
+    const at = timing;
     const was = counted;
+    const before = placed;
+    const samePitch = pitch === placedPitch;
     counted = now;
+    placed = new Map(frames.map((cell, i) => [cell, at.start(i) * pitch]));
+    placedPitch = pitch;
     if (editor.playing) {
       arrived = null;
       return;
     }
     if (!was) return;
-    if (now.frames === was.frames + 1 && now.layers === was.layers) {
-      arrived = { frame: untrack(() => editor.activeFrame) };
-    } else if (now.layers === was.layers + 1 && now.frames === was.frames) {
+    if (now.layers === was.layers + 1 && now.frames === was.frames) {
       arrived = { layer: untrack(() => editor.doc.layers[editor.activeLayer]) };
+      return;
     }
+    // A stroke rebuilds a cell and moves nothing, and a layer moved under
+    // the others is all new cells in the same count: neither is a move.
+    const fresh = frames.filter((cell) => !before.has(cell));
+    if (fresh.length > 0 && now.frames <= was.frames) return;
+    if (fresh.length > 0) arrived = { frames: new Set(fresh) };
+    if (samePitch) untrack(() => slide(before));
   });
+
+  /** A slide covers a few cells at most: a frame sent across the strip arrives, it does not streak. */
+  const SLIDE_REACH = 4;
+
+  function slide(before: ReadonlyMap<Frame, number>): void {
+    if (!strip || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const look = getComputedStyle(strip);
+    const duration = parseFloat(look.getPropertyValue('--dur')) * 1000 || 150;
+    const easing = look.getPropertyValue('--ease-out').trim() || 'ease-out';
+    const frames = editor.doc.layers[0].frames;
+    const pitch = thumbWidth + GRID_GAP;
+    for (const i of built) {
+      // The carried block is under the hand: it is where the hand is.
+      if (carry && i >= carry.at && i < carry.at + carry.count) continue;
+      const was = before.get(frames[i]);
+      if (was === undefined) continue;
+      const dx = was - timing.start(i) * pitch;
+      if (dx === 0) continue;
+      const from = Math.sign(dx) * Math.min(Math.abs(dx), SLIDE_REACH * pitch);
+      for (const el of strip.querySelectorAll(`[data-frame="${i}"], [data-col="${i}"]`)) {
+        for (const running of el.getAnimations()) if (running.id === 'slide') running.cancel();
+        el.animate([{ translate: `${from}px 0` }, { translate: '0 0' }], { duration, easing, id: 'slide' });
+      }
+    }
+  }
 
   let strip = $state<HTMLDivElement | undefined>();
   /**
@@ -116,7 +163,7 @@
     stripScroll = strip.scrollLeft;
     // Where the frame sits is arithmetic: its cell may not be built.
     // The row's padding is the gap, so the last frame comes in ring and all.
-    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP);
+    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
     if (to !== null) {
       strip.scrollLeft = to;
       stripScroll = to;
@@ -203,8 +250,9 @@
   function onCellClick(e: MouseEvent, frame: number, layer: number): void {
     // The long press that opened the menu ends in a click: it must not
     // collapse the block the menu is about to act on.
-    if (longPressed) {
+    if (longPressed || carried) {
       longPressed = false;
+      carried = false;
       return;
     }
     // Picking spans from the active cell, like Shift does: a finger has no Shift.
@@ -240,13 +288,22 @@
     strip?.querySelector<HTMLElement>('.cell.active')?.focus();
   }
 
+  /** The bar's «Дублировать»: the frames it repeats, and the key, as the frame menu names them. */
+  const duplicateTitle = $derived.by(() => {
+    const text = span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span);
+    const key = menuKey('duplicate');
+    return key ? `${text} (${key.label})` : text;
+  });
+
   /** Said on every change of a block wider than one cell — Shift+arrows included. */
   const spanned = $derived(editor.selection.frames.length > 1 || editor.selection.layers.length > 1);
 
   function onCellDown(e: PointerEvent, frame: number, layer: number): void {
     // Android follows its own long press with a contextmenu, not a click:
-    // what the last press left must not swallow this one.
+    // what the last press left must not swallow this one. Nor must a carry
+    // by the number, which ends in no click on a cell.
     longPressed = false;
+    carried = false;
     if (e.pointerType === 'touch' && e.isPrimary) {
       startLongPress(e, frame, layer);
       return;
@@ -258,7 +315,18 @@
     }
     // The right button is the frame menu's: it must not collapse the block,
     // and while picking a press is a tap that spans it.
-    if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) {
+    if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey) {
+      return;
+    }
+    // A selected cell is a handle, as in Krita: it carries its frames, and
+    // with Ctrl it carries copies. A press elsewhere still spans a block, as
+    // the reference does; Ctrl there toggles a layer on the click.
+    const copy = e.ctrlKey || e.metaKey;
+    if (isSelected(frame, layer)) {
+      startCarry(e, frame, copy);
+      return;
+    }
+    if (copy) {
       return;
     }
     lostCell.reset();
@@ -284,6 +352,17 @@
 
   function endCellDrag(): void {
     dragging = false;
+  }
+
+  function onWindowUp(e: PointerEvent): void {
+    endCellDrag();
+    endCarry(e);
+    endGrip(e);
+  }
+
+  function onWindowMove(e: PointerEvent): void {
+    onCarryMove(e);
+    onGripMove(e);
   }
 
   /**
@@ -370,11 +449,15 @@
     cancelLongPress();
     const cell = e.currentTarget as HTMLElement;
     const at = { x: e.clientX, y: e.clientY, above: e.clientY };
+    const { pointerId, pointerType } = e;
     longPress = window.setTimeout(() => {
       longPress = 0;
       if (menu || editor.playing) return;
       longPressed = true;
       showMenu(cell, frame, layer, at, true);
+      // Procreate Dreams' hold: the finger that opened the menu and moves on
+      // without lifting picks the frame up instead.
+      if (pointerType === 'touch') held = { pointerId, x: at.x, y: at.y, frame, startX: at.x };
     }, LONG_PRESS_MS);
   }
 
@@ -382,6 +465,264 @@
     clearTimeout(longPress);
     longPress = 0;
   }
+
+  // --- Carrying frames --------------------------------------------------------
+  // A frame moves whole, in every layer, and a frame of the selected block
+  // carries the block (owner, 2026-10-24). The mouse and the pen take it by
+  // its number or by a selected cell; a finger holds a cell or a number, the
+  // menu comes up, and a move without lifting puts the menu away and carries.
+  // The strip reorders for real on every step, as a layer drag does: the
+  // neighbours make way, and Escape takes everything back.
+  /** How far a held finger travels before the hold becomes a carry, in px. */
+  const CARRY_SLOP = 8;
+  const CARRY_EDGE = 32;
+  let held: { pointerId: number; x: number; y: number; frame: number; startX: number } | null = null;
+  let carry = $state<{
+    pointerId: number;
+    lastX: number;
+    /** Where the block's first frame stood when the carry began, and stands now. */
+    from: number;
+    at: number;
+    count: number;
+    /** Which frame of the block the pointer took it by. */
+    grab: number;
+    /** Ctrl: the carry puts copies down, and whether it has put them yet. */
+    copy: boolean;
+    copied: boolean;
+  } | null>(null);
+  /** The click that ends a carry must not collapse the block it carried. */
+  let carried = $state(false);
+  const lostCarry = createLostRelease();
+  let carryScroll = 0;
+  let carryDirection: -1 | 0 | 1 = 0;
+
+  function startCarry(e: { pointerId: number; clientX: number }, frame: number, copy = false): void {
+    if (editor.playing || carry || !strip) return;
+    const { from, count } = framesToCarry(editor.selection, frame);
+    lostCarry.reset();
+    carry = {
+      pointerId: e.pointerId,
+      lastX: e.clientX,
+      from,
+      at: from,
+      count,
+      grab: frame - from,
+      copy,
+      copied: false,
+    };
+    carried = false;
+    // The studio's keys wait, as they do for a layer drag: Z mid-carry
+    // changed the strip the carry counts in.
+    editor.gestureHeld = true;
+  }
+
+  /** Mouse and pen: the number in the head picks its frame up. */
+  function onNumDown(e: PointerEvent, frame: number): void {
+    longPressed = false;
+    carried = false;
+    if (editor.playing || !e.isPrimary || e.button !== 0) return;
+    if (e.pointerType === 'touch') {
+      if (!editor.selection.frames.includes(frame)) editor.selectColumn(frame);
+      startLongPress(e, frame, editor.activeLayer);
+      return;
+    }
+    e.preventDefault();
+    // Shift spans the frames from the active one, on the click.
+    if (e.shiftKey) return;
+    // The frame is taken in every layer, as the click will select it.
+    if (!editor.selection.frames.includes(frame)) {
+      editor.selectColumn(frame);
+      if (editor.activeFrame !== frame) return; // refused: a transform under the lock
+    }
+    startCarry(e, frame, e.ctrlKey || e.metaKey);
+  }
+
+  /**
+   * A click on a frame's number selects that frame in every layer, Shift the
+   * frames from the active one (Aseprite, Krita). A carry or a finger's hold
+   * that came before it has said what it had to.
+   */
+  function onNumClick(e: MouseEvent, frame: number): void {
+    if (longPressed || carried) {
+      longPressed = false;
+      carried = false;
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) return;
+    editor.selectColumn(frame, e.shiftKey);
+  }
+
+  function onCarryMove(e: PointerEvent): void {
+    if (held && e.pointerId === held.pointerId && !carry) {
+      if (Math.hypot(e.clientX - held.x, e.clientY - held.y) < CARRY_SLOP) return;
+      const { frame, startX } = held;
+      held = null;
+      closeMenu();
+      startCarry({ pointerId: e.pointerId, clientX: startX }, frame);
+    }
+    if (!carry || e.pointerId !== carry.pointerId) return;
+    if (lostCarry(e, mainUp)) {
+      endCarry(e);
+      return;
+    }
+    carry.lastX = e.clientX;
+    carryEdge(e.clientX);
+    stepCarry();
+  }
+
+  /** The tick under the pointer: frames are as wide as they are held. */
+  function pointedTick(clientX: number): number {
+    if (!strip) return 0;
+    const box = strip.getBoundingClientRect();
+    const x = clientX - box.left - strip.clientLeft + strip.scrollLeft - GRID_GAP;
+    return Math.floor(x / (thumbWidth + GRID_GAP));
+  }
+
+  /**
+   * The block goes where the pointer is, held by the frame it was taken by.
+   * Read off the strip as it now stands, not off the travel: a long frame
+   * passed over takes as much of the hand as it takes of the strip.
+   */
+  function stepCarry(): void {
+    if (!carry || !strip) return;
+    const total = editor.cellBounds.frames;
+    // Copies not yet put down will lengthen the strip: they may land past its end.
+    const putting = carry.copy && !carry.copied;
+    const holds = Array.from({ length: total }, (_, i) => timing.start(i + 1) - timing.start(i));
+    const to = carryTarget(holds, carry.at, carry.count, carry.grab, pointedTick(carry.lastX), putting ? total : total - carry.count, putting);
+    if (to === carry.at) return;
+    if (carry.copy && !carry.copied) {
+      editor.copyFramesTo(carry.from, carry.count, to);
+      if (editor.cellBounds.frames !== total + carry.count) return; // refused: no room, or a transform
+      carry.copied = true;
+    } else if (carry.copy && to === carry.from) {
+      // Back where it began: the copies right before their originals would be
+      // a copy nobody aimed — it goes, as Krita drops a frame onto itself.
+      editor.withdrawFrames();
+      carry.copied = false;
+      carry.at = carry.from;
+      return;
+    } else {
+      const cell = editor.doc.layers[0].frames[carry.at];
+      editor.moveFramesTo(carry.at, carry.count, to, carry.copy || carry.at !== carry.from);
+      if (editor.doc.layers[0].frames[to] !== cell) return; // refused: the frames stand where they were
+    }
+    carry.at = to;
+    carried = true;
+    // A pen held still opened the menu before it moved: the frames go, the menu too.
+    cancelLongPress();
+    if (menu) closeMenu();
+  }
+
+  function carryEdge(clientX: number): void {
+    if (!strip) return;
+    const box = strip.getBoundingClientRect();
+    const direction: -1 | 0 | 1 =
+      clientX - box.left < CARRY_EDGE ? -1 : box.right - clientX < CARRY_EDGE ? 1 : 0;
+    if (direction === carryDirection) return;
+    stopCarryScroll();
+    if (direction === 0) return;
+    carryDirection = direction;
+    carryScroll = window.setInterval(() => {
+      strip?.scrollBy({ left: (direction * (thumbWidth + GRID_GAP)) / 2 });
+      // The pointer may stand still at the edge: the place is counted here too.
+      stepCarry();
+    }, 80);
+  }
+
+  function stopCarryScroll(): void {
+    clearInterval(carryScroll);
+    carryScroll = 0;
+    carryDirection = 0;
+  }
+
+  function endCarry(e?: PointerEvent): void {
+    if (held && (!e || e.pointerId === held.pointerId)) held = null;
+    if (!carry || (e && e.pointerId !== carry.pointerId)) return;
+    stopCarryScroll();
+    carry = null;
+    editor.gestureHeld = false;
+  }
+
+  // --- Holding a frame -------------------------------------------------------
+  // The right edge of a frame's number is its handle (Procreate Dreams' frame
+  // hold): dragged, the frame grows or shrinks by whole ticks, and a pause is
+  // one long frame rather than copies of it. Escape takes the hold back.
+  let grip = $state<{ pointerId: number; frame: number; startX: number; hold: number; changed: boolean } | null>(null);
+  const lostGrip = createLostRelease();
+
+  function onGripDown(e: PointerEvent, frame: number): void {
+    // The number under it is a carry and a column: neither starts here.
+    e.stopPropagation();
+    if (editor.playing || !e.isPrimary || e.button !== 0 || grip || carry) return;
+    e.preventDefault();
+    lostGrip.reset();
+    grip = { pointerId: e.pointerId, frame, startX: e.clientX, hold: timing.start(frame + 1) - timing.start(frame), changed: false };
+    editor.gestureHeld = true;
+  }
+
+  function onGripMove(e: PointerEvent): void {
+    if (!grip || e.pointerId !== grip.pointerId) return;
+    if (lostGrip(e, mainUp)) {
+      endGrip(e);
+      return;
+    }
+    const hold = Math.min(MAX_HOLD, Math.max(1, grip.hold + Math.round((e.clientX - grip.startX) / (thumbWidth + GRID_GAP))));
+    if (hold === timing.start(grip.frame + 1) - timing.start(grip.frame)) return;
+    editor.holdFrames(grip.frame, 1, hold, grip.changed);
+    grip.changed = true;
+    // The click that ends the drag lands on the number: it must not pick a column.
+    carried = true;
+  }
+
+  function endGrip(e?: PointerEvent): void {
+    if (!grip || (e && e.pointerId !== grip.pointerId)) return;
+    grip = null;
+    editor.gestureHeld = false;
+  }
+
+  /** Escape: the frames go back where the carry found them. */
+  function cancelCarry(): void {
+    if (!carry) return;
+    if (carry.copy) {
+      if (carry.copied) editor.withdrawFrames();
+    } else {
+      editor.moveFramesTo(carry.at, carry.count, carry.from, true);
+    }
+    carried = false;
+    endCarry();
+  }
+
+  function onCarryKey(e: KeyboardEvent): void {
+    if (grip && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (grip.changed) editor.holdFrames(grip.frame, 1, grip.hold, true);
+      carried = false;
+      endGrip();
+      return;
+    }
+    if (carry && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelCarry();
+    }
+  }
+
+  // The finger that holds or carries must not scroll the strip under it. The
+  // strip pans by touch, and only a cancelled touchmove stops a pan that the
+  // browser has not begun yet — pointer events have no say in it.
+  $effect(() => {
+    const still = (e: TouchEvent) => {
+      if (held || carry) e.preventDefault();
+    };
+    document.addEventListener('touchmove', still, { passive: false });
+    return () => {
+      document.removeEventListener('touchmove', still);
+      stopCarryScroll();
+      if (carry) editor.gestureHeld = false;
+    };
+  });
 
   /** How far a finger-opened menu keeps from the fingertip, in px. */
   const FINGER_GAP = 16;
@@ -480,15 +821,19 @@
   const cell = $derived(cellSize(editor.doc.width, editor.doc.height));
   const row = $derived(rowHeight(editor.doc));
   const thumbWidth = $derived(cell.w + 2);
+  /** Where each frame starts in ticks: a held frame is as wide as its ticks. */
+  const timing = $derived(editor.timing);
+  /** A frame's width on the strip: a cell a tick, and the gaps between them. */
+  const spanWidth = (frame: number) => (timing.start(frame + 1) - timing.start(frame)) * (thumbWidth + GRID_GAP) - GRID_GAP;
   /** The frames built right now — the ones in view, plus a screen either side. */
-  const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
+  const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth, timing));
   // Numbers, so a scroll that keeps the window's edges rebuilds no list:
   // every scroll event made a new `view`, and every row diffed its cells.
   const firstBuilt = $derived(view.first);
   const countBuilt = $derived(view.count);
   const built = $derived(Array.from({ length: countBuilt }, (_, k) => firstBuilt + k));
   /** The frame of the strip's one Tab stop: the active cell, or the first in view when the scroll unbuilt it. */
-  const tabFrame = $derived(stripTabStop(editor.displayedFrame, frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth));
+  const tabFrame = $derived(stripTabStop(editor.displayedFrame, frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth, timing));
   /**
    * The wave's bars, for the track, the rate and the cell's width. Read in the
    * markup it was a pass over the whole track on every stroke: a write
@@ -505,7 +850,7 @@
    * the end sat cells past the right edge. The header holds the width, so the
    * scroll extent is arithmetic too.
    */
-  const stripExtent = $derived(frameTotal * (thumbWidth + GRID_GAP) + GRID_GAP);
+  const stripExtent = $derived(timing.total * (thumbWidth + GRID_GAP) + GRID_GAP);
 
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the
@@ -578,9 +923,10 @@
         <span class="gap" style:width="{view.before}px"></span>
       {/if}
       {#each built as i (i)}
-        <span class="bar" style:width="{cellWidth}px">
-          {#each { length: per } as _, k (k)}
-            <span style:height="{Math.max(6, Math.round((bars[i * per + k] ?? 0) * 100))}%"></span>
+        {@const from = timing.start(i) * per}
+        <span class="bar" style:width="{spanWidth(i)}px">
+          {#each { length: (timing.start(i + 1) - timing.start(i)) * per } as _, k (k)}
+            <span style:height="{Math.max(6, Math.round((bars[from + k] ?? 0) * 100))}%"></span>
           {/each}
         </span>
       {/each}
@@ -594,17 +940,39 @@
 
 <!-- The release may land anywhere — outside the grid, outside the window —
      so the drag always ends on the window rather than on a cell. -->
-<svelte:window onpointerup={endCellDrag} onpointercancel={endCellDrag} onpointerdown={onWindowDown} onblur={() => closeMenu()} onresize={() => closeMenu(true, true)} />
+<svelte:window onpointerup={onWindowUp} onpointercancel={onWindowUp} onpointermove={onWindowMove} onkeydowncapture={onCarryKey} onpointerdown={onWindowDown} onblur={() => closeMenu()} onresize={() => closeMenu(true, true)} />
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
   <!-- Read out whenever the block is wider than one cell; shown as a bar,
        with the way out, only while picking. -->
-  <div class="pick-bar" class:picking style:--col="{colPx}px">
+  <!-- A block wider than one cell says what it is and what can be done to
+       it (Procreate Dreams, FlipaClip): the frame menu's actions, in reach. -->
+  <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px">
     <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
     {#if picking}
       <span class="pick-hint">{t('timeline.pick_hint')}</span>
+    {/if}
+    {#if spanned && !editor.playing}
+      <button class="key icon" title={duplicateTitle} aria-label={duplicateTitle} disabled={!editor.canDuplicateFrames} onclick={() => editor.duplicateActiveFrame()}>
+        <Icon name="duplicate" size={16} />
+      </button>
+      <button class="key icon" title={t('panel.item.copy')} aria-label={t('panel.item.copy')} onclick={() => editor.copySelection()}>
+        <Icon name="copy" size={16} />
+      </button>
+      <button class="key icon" title={t('panel.item.paste')} aria-label={t('panel.item.paste')} disabled={!editor.canPasteCells} onclick={() => editor.pasteSelection()}>
+        <Icon name="paste" size={16} />
+      </button>
+      <button class="key icon" title={t('panel.item.delete_frames', span)} aria-label={t('panel.item.delete_frames', span)} disabled={!editor.canRemoveFrame} onclick={() => editor.removeActiveFrame()}>
+        <Icon name="trash" size={16} />
+      </button>
+    {/if}
+    {#if picking}
       <button class="key primary" onclick={endPicking}>{t('timeline.pick_done')}</button>
+    {:else if spanned && !editor.playing}
+      <button class="key icon" title={t('timeline.clear_selection')} aria-label={t('timeline.clear_selection')} onclick={() => editor.collapseSelection()}>
+        <Icon name="x" size={16} />
+      </button>
     {/if}
   </div>
   <!-- The names and the cells are two scrollers side by side; a scroll in one
@@ -646,6 +1014,9 @@
          through the container, so it stays a labelled group. -->
     <div
       class="grid"
+      class:carrying={carry !== null}
+      class:copying={carry?.copy === true}
+      class:holding={grip !== null}
       role="group"
       aria-label={t('timeline.grid')}
       bind:this={strip}
@@ -659,33 +1030,53 @@
           <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
         {/if}
         {#each built as i (i)}
+          <!-- A handle for the pointer only: the keyboard moves frames by
+               «Сдвинуть» in the frame menu. -->
+          {@const hold = timing.start(i + 1) - timing.start(i)}
+          <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
           <span
             class="num"
-            style:width="{cell.w + 2}px"
+            class:held={hold > 1}
+            class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
+            class:gripping={grip?.frame === i}
+            data-col={i}
+            style:width="{spanWidth(i)}px"
             class:onion={onionFrames.includes(i)}
             class:copied={editor.isCopiedFrame(i)}
+            class:now={i === editor.displayedFrame}
+            class:picked={editor.selection.frames.includes(i)}
+            onpointerdown={(e) => onNumDown(e, i)}
+            onclick={(e) => onNumClick(e, i)}
+            onpointerup={cancelLongPress}
+            onpointercancel={cancelLongPress}
+            onpointerleave={cancelLongPress}
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
-          >{i + 1}</span>
+          >{i + 1}{#if hold > 1}<span class="ticks">×{hold}</span>{/if}<!-- The hold's handle, for the pointer: the frame menu's hold row is its keyboard and its non-drag way. -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <span class="grip" title={t('timeline.hold_grip')} onpointerdown={(e) => onGripDown(e, i)}></span></span>
         {/each}
         {#if view.after > 0}
           <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
         {/if}
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-        <div class="cells" style:height={rowHeightCss(editor.doc)} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
+        <div class="cells" style:height={rowHeightCss(editor.doc)} class:current={layerIndex === editor.activeLayer} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
           {#if view.before > 0}
             <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
           {/if}
           {#each built as i (i)}
             <button
               class="cell"
-              style:width="{cell.w + 2}px"
+              style:width="{spanWidth(i)}px"
               style:height="{cell.h + 2}px"
               class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
+              class:now={i === editor.displayedFrame}
+              class:held={timing.start(i + 1) - timing.start(i) > 1}
               class:selected={isSelected(i, layerIndex)}
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
-              class:arrived={arrived?.frame === i}
+              class:arrived={arrived?.frames?.has(editor.doc.layers[0].frames[i]) ?? false}
+              class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
               data-frame={i}
               tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
               aria-disabled={editor.playing}
@@ -744,8 +1135,27 @@
     <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={!editor.canAddFrame} onclick={() => run(() => editor.addFrameAfterActive())}>
       <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
-    <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canAddFrame} onclick={() => run(() => editor.duplicateActiveFrame())}>
-      <Icon name="duplicate" size={16} /><span>{t('panel.item.duplicate_frame')}</span>{@render key('duplicate')}
+    <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canDuplicateFrames} onclick={() => run(() => editor.duplicateActiveFrame())}>
+      <Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span)}</span>{@render key('duplicate')}
+    </button>
+    <!-- The hold of the frame, or of every frame of the block, a tick at a
+         time: the handle's way without a drag (WCAG 2.5.7). The menu stays
+         open, so a long pause is a few presses. -->
+    <div class="hold-row" role="group" aria-label={t('timeline.hold')}>
+      <Icon name="timeline" size={16} /><span>{t('timeline.hold')}</span>
+      <button role="menuitem" aria-label={t('timeline.hold_shorter')} title={t('timeline.hold_shorter')} disabled={!editor.canNudgeHolds(-1)} onclick={() => editor.nudgeHolds(-1)}>
+        <Icon name="minus" size={16} />
+      </button>
+      <output aria-live="polite">×{editor.activeHold}</output>
+      <button role="menuitem" aria-label={t('timeline.hold_longer')} title={t('timeline.hold_longer')} disabled={!editor.canNudgeHolds(1)} onclick={() => editor.nudgeHolds(1)}>
+        <Icon name="plus" size={16} />
+      </button>
+    </div>
+    <button role="menuitem" disabled={!editor.canShiftFrames(-1)} onclick={() => run(() => editor.shiftFrames(-1))}>
+      <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_left')}</span>
+    </button>
+    <button role="menuitem" disabled={!editor.canShiftFrames(1)} onclick={() => run(() => editor.shiftFrames(1))}>
+      <Icon name="chevron-right" size={16} /><span>{t('panel.item.shift_right')}</span>
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
       <Icon name="trash" size={16} /><span>{span.from === span.to ? t('panel.item.delete_frame') : t('panel.item.delete_frames', span)}</span>{@render key('delete')}
@@ -858,6 +1268,141 @@
     line-height: 2rem;
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
+    /* The number is the frame's handle: it is taken, not selected as text. */
+    cursor: grab;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* The cross of the frame on screen (Animate, Krita, Aseprite): its number
+     a red plate in the head, a band down its column through every layer,
+     and the active layer's row washed as its name is. The selected frames
+     are named in the head too, so a block reads from above as from inside. */
+  /* Pills inside the head's 2rem, not blocks filling it: the padding keeps
+     the plate off the edges and the cell's width stays the column's pitch. */
+  .num:is(.picked, .now) {
+    box-sizing: border-box;
+    padding: 0.3rem 3px;
+    line-height: 1.4rem;
+    border-radius: var(--r-pill);
+    font-weight: 700;
+  }
+  .num.picked {
+    background: var(--accent-wash) content-box;
+    background: color-mix(in srgb, var(--accent) 14%, transparent) content-box;
+    color: var(--accent-ink);
+  }
+  /* A frame joining the selection takes its tone in; the frame on screen
+     jumps (the Answering-Motion Rule), so `.now` carries no transition. */
+  .num.picked:not(.now) {
+    transition: background-color var(--dur) var(--ease-out);
+  }
+  .num.now {
+    background: var(--accent) content-box;
+    color: var(--canvas);
+    text-decoration: none;
+  }
+  .cells.current {
+    background: var(--accent-tint);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  /* The band is a ring round each cell of the column, wide as the gaps, so
+     the cells of one frame join into a column without a box drawn over the
+     strip — which scrolls, and builds only the frames in view. */
+  .cell.now {
+    box-shadow: 0 0 0 2px var(--accent-wash);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .cell.now.active {
+    box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px var(--accent-wash);
+    box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  /* A held frame says how long it stays, beside its number. */
+  .num .ticks {
+    margin-left: 0.25em;
+    font-size: 0.85em;
+    font-weight: 400;
+    opacity: 0.8;
+  }
+  .num {
+    position: relative;
+  }
+  /* The hold's handle: the number's right edge, a line on hover. Under a
+     finger it is wider than it looks, and it takes the drag from the strip. */
+  .num .grip {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    width: 8px;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+  .num .grip::after {
+    content: '';
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    left: 3px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--edge);
+    opacity: 0;
+  }
+  .num.held .grip::after {
+    opacity: 1;
+  }
+  @media (hover: hover) {
+    .num:hover .grip::after {
+      opacity: 1;
+    }
+  }
+  :global(:where(.studio.phone)) .num .grip {
+    right: -8px;
+    width: 16px;
+  }
+  /* The carried block is picked up, as in Procreate Dreams: a touch larger
+     and over the strip, with the shadow of what is lifted off it. It settles
+     back when let go. Only the scale moves — a cell has no other transition,
+     so nothing of it smears under a preview. */
+  .cell,
+  .num {
+    transition: scale var(--dur-fast) var(--ease-out);
+  }
+  .cell.lifted {
+    position: relative;
+    z-index: 2;
+    scale: 1.06;
+    box-shadow: var(--shadow-lift);
+  }
+  /* Over the column's band and the active ring alike: the lift is the one
+     shadow a cell casts, and the active ring stays inside it. */
+  .cell.lifted.now {
+    box-shadow: var(--shadow-lift);
+  }
+  .cell.lifted.active,
+  .cell.lifted.now.active {
+    box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-lift);
+  }
+  .num.lifted {
+    scale: 1.08;
+  }
+  /* The hold's handle in hand: its line in the accent, the cursor on the whole strip. */
+  .num.gripping .grip::after {
+    opacity: 1;
+    background: var(--accent);
+  }
+  .grid.holding,
+  .grid.holding :is(.num, .cell) {
+    cursor: ew-resize;
+  }
+  .grid.carrying,
+  .grid.carrying :is(.num, .cell) {
+    cursor: grabbing;
+  }
+  .grid.copying,
+  .grid.copying :is(.num, .cell) {
+    cursor: copy;
   }
   /* Onion and copied frames are named in the header, not only tinted. */
   .num.onion {
@@ -892,6 +1437,12 @@
   }
   /* The drawing fades, not the button: faded whole, the active ring and the
      focus ring on a hidden layer were red at 35 % — 1.6:1 on white. */
+  /* A held frame's drawing stands at its start, as a cel does in Clip Studio;
+     the rest of the cell is the time it stays. */
+  .cell.held {
+    justify-items: start;
+    padding-left: 1px;
+  }
   .cell.dim > :global(canvas) {
     opacity: 0.35;
   }
@@ -943,7 +1494,7 @@
       text-decoration-thickness: 2px;
     }
     /* Told from the numbers under it by its shadow alone. */
-    .pick-bar.picking {
+    .pick-bar.shown {
       outline: 1px solid CanvasText;
     }
     /* The splitter's line is a background, which this mode paints as Canvas. */
@@ -954,7 +1505,7 @@
   }
   /* --- Picking bar ------------------------------------------------------- */
   /* Out of sight but read out when not picking; a row over the strip when it is. */
-  .pick-bar:not(.picking) {
+  .pick-bar:not(.shown) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -968,7 +1519,7 @@
      2.4.11), and what lies above is whatever the panels were arranged into.
      Its own header's height, so the cells stay clear, and short of the layer
      column. A drop, so it takes the menu shadow. */
-  .pick-bar.picking {
+  .pick-bar.shown {
     /* The Dense-Timeline Rule: a key in the strip is 24 px and up. */
     --key-h: 28px;
     position: absolute;
@@ -984,7 +1535,9 @@
     border-radius: var(--r-pill);
     background: var(--paper);
     box-shadow: var(--shadow-menu);
-    animation: fade-in var(--dur-enter) var(--ease-out);
+    /* Up from the cells it names, as a menu comes from its key. */
+    --pop-from: 4px;
+    animation: studio-pop var(--dur-enter) var(--ease-out);
   }
   .pick-bar p {
     margin: 0;
@@ -1069,6 +1622,27 @@
     outline: 3px solid var(--accent);
     outline-offset: -3px;
   }
+  .hold-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 10px;
+  }
+  .hold-row > :global(svg) {
+    margin-right: 4px;
+  }
+  .frame-menu .hold-row button {
+    flex: none;
+    justify-content: center;
+    width: var(--key-h, 2.75rem);
+    padding: 0;
+  }
+  .hold-row output {
+    min-width: 2.2em;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
   .frame-menu button:disabled {
     opacity: 0.4;
     cursor: default;
@@ -1140,7 +1714,7 @@
   }
   /* The phone panel grows to its contents, so here the chip is a row of
      its own, a finger's keys and the hint in full. */
-  :global(:where(.studio.phone)) .pick-bar.picking {
+  :global(:where(.studio.phone)) .pick-bar.shown {
     --key-h: 2.75rem;
     position: static;
     max-width: none;
@@ -1180,10 +1754,15 @@
       opacity: 0;
     }
   }
-  /* What came still says so by its tone; it does not travel. */
+  /* What came still says so by its tone; it does not travel, and what is
+     carried is shown by its shadow, not by growing. */
   @media (prefers-reduced-motion: reduce) {
     .cell.arrived {
       animation-name: fade-in;
+    }
+    .cell.lifted,
+    .num.lifted {
+      scale: none;
     }
   }
 </style>

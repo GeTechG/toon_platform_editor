@@ -277,7 +277,7 @@ describe('Alt+L: журнал ошибок', () => {
 
 describe('экспорт', () => {
   it('GIF: второй проход ждёт воркер, а не копит все кадры в его очереди', () => {
-    expect(exportGif).toMatch(/send\(\{ type: 'frame', frame \}, \[frame\.data\]\);\s*await caughtUp\(/);
+    expect(exportGif).toMatch(/send\(\{ type: 'frame', frame, hold: frameHold\(doc, sent\) \}, \[frame\.data\]\);\s*await caughtUp\(/);
   });
 
   it('видео не скачивается по плану для прежнего разрешения', () => {

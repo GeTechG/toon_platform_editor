@@ -30,7 +30,6 @@
     thumbUrls,
     storageUsed,
     draftId,
-    create = false,
     ready,
     onOpen,
     onCopy,
@@ -39,7 +38,6 @@
     onRemoveAll,
     onSheet,
     onClose,
-    home,
   }: {
     editor: EditorState;
     /** The studio is on a small screen's layout. */
@@ -50,8 +48,6 @@
     storageUsed: number;
     /** The draft behind the drawing on the canvas. */
     draftId: string;
-    /** Open on the choice of a sheet, past the drafts. */
-    create?: boolean;
     /** The drafts have been read: until then the hub cannot know its view. */
     ready: boolean;
     onOpen: (entry: DraftEntry) => void;
@@ -63,8 +59,6 @@
     /** Says whether the sheet was started; the hub closes on a yes. */
     onSheet: (value: string, fps: number) => Promise<boolean>;
     onClose: () => void;
-    /** The host's way back to its pages, where it has put its header away: the hub stands over the studio's «⋯» too. */
-    home?: { href: string; label: string };
   } = $props();
 
   let dialogEl = $state<HTMLDialogElement | undefined>();
@@ -100,12 +94,12 @@
   const choosing = $derived(selecting || picked.length > 0);
   // The hub left over a clean sheet: it shows the sheets a drawing can start
   // on — a proportion, a size and the side it lies on.
-  // The host asked for a new drawing: the sheets, from the first frame.
-  let creating = $state(untrack(() => create));
-  // Otherwise the view waits for the drafts to be read — the paper only, not
-  // a view it may have to take back. With none there is nothing to show but
-  // the sheets (owner, 2026-10-05); with some, the drafts.
-  let settled = $state(untrack(() => create));
+  let creating = $state(false);
+  // The view waits for the drafts to be read — the paper only, not a view it
+  // may have to take back. With none there is nothing to show but the sheets
+  // (owner, 2026-10-05); with some, the drafts, whichever key on the site
+  // opened the studio (owner, 2026-10-24).
+  let settled = $state(false);
   $effect(() => {
     if (ready && !settled) {
       settled = true;
@@ -138,10 +132,6 @@
   let coarse = $state(false);
   onMount(() => {
     coarse = matchMedia('(hover: none)').matches;
-    // The sheet the drawing has, and the focus, as «Новый мульт» takes them.
-    if (creating) {
-      void showCreate(true);
-    }
   });
   const touchHub = $derived(compact || coarse);
   let reelEl = $state<HTMLDivElement | undefined>();
@@ -351,7 +341,6 @@
         {/if}
         <h2>{t('editor.new_sheet')}</h2>
       </span>
-      {#if home}<a class="key" href={home.href}>{home.label}</a>{/if}
       {#if touchHub}
         <button class="key" onclick={() => showCreate(false)}>{t('transform.cancel')}</button>
       {/if}
@@ -497,9 +486,6 @@
              Esc no longer closed the hub. A card takes it. -->
         <button class="key active" onclick={() => { selecting = false; picked = []; void refocus(0); }}>{t('editor.done')}</button>
       {:else}
-        <!-- Under a finger the way back is a key's icon: in words it wrapped the
-             head to three rows on a phone. -->
-        {#if home}<a class="key" class:icon={touchHub} href={home.href} title={touchHub ? home.label : undefined} aria-label={touchHub ? home.label : undefined}>{#if touchHub}<Icon name="chevron-left" />{:else}{home.label}{/if}</a>{/if}
         {#if drafts.length > 0}
           <button class="key hub-select" onclick={() => (selecting = true)}>{t('editor.drafts_select')}</button>
         {/if}
@@ -655,16 +641,6 @@
     /* As tall with the title alone as with the keys beside it: ticking a
        card brought the keys in and pushed the cards from under the cursor. */
     min-height: calc(var(--key-h, 2.75rem) + 1.5rem);
-  }
-  /* The way home on «Новый мульт» stands by «Отмена», not adrift in the middle. */
-  .hub-head > a.key {
-    margin-inline-start: auto;
-  }
-  .hub-head > a.key + .key {
-    margin-inline-start: 0;
-  }
-  .hub-head a.key {
-    white-space: nowrap;
   }
   .hub-wipe {
     margin-top: 1.5rem;

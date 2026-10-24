@@ -96,7 +96,7 @@ describe('the synchronisation flag', () => {
   });
 
   it('untied, the track starts at its own beginning rather than at the frame', () => {
-    expect(state).toContain('this.sync ? trackTimeFor(frame, fps, this.duration) : 0');
+    expect(state).toContain('this.sync ? trackTimeFor(tick, fps, this.duration) : 0');
   });
 
   it('a freshly attached track is untied, so a song plays under the frames', () => {
@@ -120,7 +120,7 @@ describe('the synchronisation flag', () => {
     // the next turn of the animation starts the track again.
     expect(playControls).toContain('editor.audio.reseekAtLoop(');
     expect(player).toContain('trackShouldRestart(sound.currentTime');
-    expect(state).toContain('trackTimeFor(frame, fps, this.duration)');
+    expect(state).toContain('trackTimeFor(tick, fps, this.duration)');
   });
 
   it('the frames keep their own clock in both modes', () => {
@@ -139,7 +139,7 @@ describe('the synchronisation flag', () => {
 
   it('the player can be stepped a frame at a time, and the track follows', () => {
     expect(player).toContain('current = $bindable(0)');
-    expect(player).toContain('audio.currentTime = (frame % total)');
+    expect(player).toContain('audio.currentTime = timing.start(frame % total) / fps');
   });
 
   it('rides the light write, never the file', () => {

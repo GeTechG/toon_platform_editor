@@ -155,7 +155,7 @@
     editor.audio.hasTrack && !editor.audio.sync ? editor.audio.duration : undefined,
   );
   const videoSeconds = $derived(
-    exportFrameCount(frameCount(editor.doc), editor.doc.frame_rate, trackSeconds) /
+    exportFrameCount(editor.timing.total, editor.doc.frame_rate, trackSeconds) /
       editor.doc.frame_rate,
   );
   const clock = (seconds: number) =>

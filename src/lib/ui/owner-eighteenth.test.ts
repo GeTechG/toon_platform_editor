@@ -55,13 +55,13 @@ describe('вкладка в фоне: звук просмотра на пауз�
     const handler = controls.match(/function onVisibility\(\)[^]*?\n  }/)?.[0] ?? '';
     expect(handler).toMatch(/!editor\.playing \|\| !player/);
     expect(handler).toMatch(/document\.hidden[^]*editor\.audio\.stop\(\)/);
-    expect(handler).toMatch(/editor\.audio\.resume\(editor\.playbackFrame, editor\.doc\.frame_rate\)/);
+    expect(handler).toMatch(/editor\.audio\.resume\(editor\.timing\.start\(editor\.playbackFrame\), editor\.doc\.frame_rate\)/);
   });
 
   it('непривязанный трек продолжает с места паузы, привязанный встаёт на свой кадр', async () => {
     const audio = await Bun.file(new URL('../audio/state.svelte.ts', import.meta.url)).text();
-    const resume = audio.match(/\n  resume\(frame: number, fps: number\): void \{[^]*?\n  }/)?.[0] ?? '';
-    expect(resume).toMatch(/if \(this\.sync\)[^]*this\.playFrom\(frame, fps\)/);
+    const resume = audio.match(/\n  resume\(tick: number, fps: number\): void \{[^]*?\n  }/)?.[0] ?? '';
+    expect(resume).toMatch(/if \(this\.sync\)[^]*this\.playFrom\(tick, fps\)/);
     expect(resume).toMatch(/this\.#element\?\.play\(\)/);
   });
 });

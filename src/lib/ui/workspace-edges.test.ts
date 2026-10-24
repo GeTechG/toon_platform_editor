@@ -122,5 +122,4 @@ it('draws the way to the site wherever the host hands it over', () => {
   // shape, and a desk — which has no «⋯» — gets the key at the head of its row.
   expect(editor.includes('home && !tall')).toBe(false);
   expect(editor.includes('tall ? undefined : home')).toBe(false);
-  expect(editor).toContain('{#if home && !compact}<a class="key" href={home.href} title={home.label} aria-label={home.label}>');
 });

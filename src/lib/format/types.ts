@@ -161,6 +161,12 @@ export interface ToonDocument {
   height: number;
   /** Playback rate, frames per second (integer). */
   frame_rate: number;
+  /**
+   * How many ticks (1/`frame_rate` s) each frame stays on screen, one per
+   * frame, 1–`MAX_HOLD`. Absent — one tick each, as before the field
+   * existed; never stored when every frame is one tick (one canonical form).
+   */
+  holds?: number[];
   tools: ToolDescriptor[];
   /** Layers bottom-up: layers[0] renders first, the last one on top. */
   layers: Layer[];

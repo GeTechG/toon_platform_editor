@@ -25,7 +25,7 @@ export type ExportRequest =
   | { type: 'open'; fps: number; totalPixels: number; total: number }
   | { type: 'sample'; frame: FrameBuffer }
   | { type: 'begin' }
-  | { type: 'frame'; frame: FrameBuffer }
+  | { type: 'frame'; frame: FrameBuffer; hold: number }
   | { type: 'finish' };
 
 export type ExportResponse =
@@ -62,7 +62,7 @@ self.onmessage = (e: MessageEvent<ExportRequest>) => {
         stream?.begin();
         break;
       case 'frame':
-        stream?.write(rgba(msg.frame));
+        stream?.write(rgba(msg.frame), msg.hold);
         post({ type: 'progress', done: ++written, total });
         break;
       case 'finish': {

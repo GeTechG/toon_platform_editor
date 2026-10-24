@@ -14,6 +14,11 @@ export interface BakedTransform {
    * loop, and the pieces to move. Absent — the whole cell moves, uncut.
    */
   picked?: readonly LassoCut[];
+  /**
+   * The picked pieces were pasted, not cut: they are not in the document yet,
+   * so the selection is written even where it was not moved.
+   */
+  pasted?: boolean;
 }
 
 /**
@@ -38,14 +43,20 @@ export function writeTransform(doc: ToonDocument, layer: number, frame: number, 
  * applying it. The draft written when the tab goes to the background takes
  * this, and the live selection stays in the hand. The document itself is not
  * touched: only the moved cells, their layers and the tool list are copied,
- * everything else is shared. An unmoved selection gives the document back.
+ * everything else is shared. An unmoved selection gives the document back,
+ * unless it was pasted.
  */
 export function bakeTransform(doc: ToonDocument, frame: number, open: BakedTransform): ToonDocument {
   const { session } = open;
-  if (session.dx === 0 && session.dy === 0 && session.rotate === 0
+  if (!open.pasted && session.dx === 0 && session.dy === 0 && session.rotate === 0
     && session.scaleX === 1 && session.scaleY === 1) {
     return doc;
   }
+  return bakeCopy(doc, frame, open);
+}
+
+/** The same, moved or not: a copy of the document with the transform written in. */
+export function bakeCopy(doc: ToonDocument, frame: number, open: BakedTransform): ToonDocument {
   const moved = new Set(open.layers);
   const copy: ToonDocument = {
     ...doc,

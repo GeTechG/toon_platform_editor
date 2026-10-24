@@ -161,7 +161,10 @@ describe('nothing that lies in the studio casts a soft shadow', () => {
     'ColourPicker.svelte .picker',
     'PanelArranger.svelte .ghost',
     'Timeline.svelte .frame-menu',
-    'Timeline.svelte .pick-bar.picking',
+    'Timeline.svelte .pick-bar.shown',
+    // A carried frame is lifted off the strip while the hand holds it.
+    'Timeline.svelte .cell.lifted',
+    'Timeline.svelte .cell.lifted.now',
     'Editor.svelte .editor :global(.sheet)',
   ]);
 

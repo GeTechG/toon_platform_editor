@@ -95,6 +95,8 @@ export const STROKE_COORD_MAX = 32767;
 /** Layers per document (v3); the Toonio reference caps at the same number. */
 /** Frames per layer: the schema's ceiling, not a limit anyone draws up to. */
 export const MAX_FRAMES = 100_000;
+/** Ticks a frame may stay on screen: a pause, not a film of its own. */
+export const MAX_HOLD = 99;
 export const MAX_LAYERS = 20;
 export const MAX_STROKES_PER_FRAME = 16384;
 /** Layer name length (v5); the reference's `MAX_LAYER_NAME`. */

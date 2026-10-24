@@ -24,6 +24,8 @@ export interface AnimateOptions {
   fps: number;
   /** Loop count; 0 (default) means forever. */
   loop?: number;
+  /** Ticks each frame stays on screen (the document's `holds`); one each without. */
+  holds?: readonly number[];
 }
 
 /** Image sub-chunks a still may carry that belong inside an ANMF frame. */
@@ -49,17 +51,17 @@ export async function webpStill(
 /**
  * Stitch per-frame WebP stills into one looping animated WebP. All frames are
  * assumed the same size (the caller renders them so); the first frame's size is
- * the canvas size. Frame duration is derived from `fps`.
+ * the canvas size. Frame duration is derived from `fps` and the frame's hold.
  */
 export function assembleAnimatedWebp(
   frames: WebpStill[],
-  { fps, loop = 0 }: AnimateOptions,
+  { fps, loop = 0, holds }: AnimateOptions,
 ): Uint8Array<ArrayBuffer> {
   if (frames.length === 0) {
     throw new Error('animated webp needs at least one frame');
   }
   const { width, height } = frames[0];
-  const durationMs = Math.max(1, Math.round(1000 / fps));
+  const durationMs = (hold = 1) => Math.max(1, Math.round((1000 * hold) / fps));
 
   const vp8x = chunk('VP8X', [
     0x02, // flags: Animation bit set (opaque frames → no alpha/ICC/EXIF/XMP)
@@ -68,7 +70,7 @@ export function assembleAnimatedWebp(
     ...u24le(height - 1),
   ]);
   const anim = chunk('ANIM', [0, 0, 0, 0, ...u16le(loop)]); // bg color (unused) + loop count
-  const anmfs = frames.map((f) => anmf(f, durationMs));
+  const anmfs = frames.map((f, i) => anmf(f, durationMs(holds?.[i])));
 
   const body = concat([vp8x, anim, ...anmfs]);
   return concat([
@@ -111,12 +113,24 @@ function imageChunks(still: Uint8Array): Uint8Array {
   return concat(out);
 }
 
-/** Frame count for a preview: at most `maxFrames`, and at most `maxSeconds` worth. */
+/**
+ * Frame count for a preview: at most `maxFrames`, and at most `maxSeconds`
+ * worth — counted in ticks, so a held frame spends its whole pause.
+ */
 export function previewFrameBudget(
   fps: number,
-  { maxFrames = 50, maxSeconds = 6 }: { maxFrames?: number; maxSeconds?: number } = {},
+  { maxFrames = 50, maxSeconds = 6, holds }: { maxFrames?: number; maxSeconds?: number; holds?: readonly number[] } = {},
 ): number {
-  return Math.min(maxFrames, Math.ceil(maxSeconds * fps));
+  const ticks = Math.ceil(maxSeconds * fps);
+  if (!holds) {
+    return Math.min(maxFrames, ticks);
+  }
+  // The frames that start inside the time cap.
+  let count = 0;
+  for (let start = 0; count < Math.min(maxFrames, holds.length) && start < ticks; count++) {
+    start += holds[count];
+  }
+  return count;
 }
 
 /** Shrink `width`×`height` so its long side is ≤ `maxLongSide`, keeping aspect. */

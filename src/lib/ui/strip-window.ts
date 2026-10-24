@@ -13,6 +13,8 @@
  * makes it up.
  */
 
+import { filmTiming, type FilmTiming } from '../model/timing';
+
 export interface StripWindow {
   /** First frame built. */
   readonly first: number;
@@ -27,19 +29,24 @@ export interface StripWindow {
 /** A screen of margin either side, the same the thumbnails are drawn ahead by. */
 const MARGIN_SCREENS = 1;
 
+/**
+ * `timing` places frames by their ticks: a frame held three ticks is three
+ * cells wide (and the gaps between them), so the strip is laid out in time.
+ */
 export function stripWindow(
   total: number,
   cellWidth: number,
   gap: number,
   scrollLeft: number,
   viewWidth: number,
+  timing: FilmTiming = filmTiming(undefined, total),
 ): StripWindow {
   const pitch = cellWidth + gap;
   const whole = (first: number, count: number): StripWindow => ({
     first,
     count,
-    before: first > 0 ? first * pitch - gap : 0,
-    after: first + count < total ? (total - first - count) * pitch - gap : 0,
+    before: first > 0 ? timing.start(first) * pitch - gap : 0,
+    after: first + count < total ? (timing.total - timing.start(first + count)) * pitch - gap : 0,
   });
   // Before the first layout the strip has no size of its own. Building it
   // whole for one frame beats showing an empty strip.
@@ -47,10 +54,10 @@ export function stripWindow(
     return whole(0, Math.max(0, total));
   }
   const margin = viewWidth * MARGIN_SCREENS;
-  const first = Math.max(0, Math.floor((scrollLeft - margin) / pitch));
+  const first = timing.frameAt(Math.floor((scrollLeft - margin) / pitch));
   // The last frame that starts before the far edge of the margin: a frame
   // whose left edge is exactly on it is already past the window.
-  const last = Math.min(total - 1, Math.ceil((scrollLeft + viewWidth + margin) / pitch) - 1);
+  const last = timing.frameAt(Math.ceil((scrollLeft + viewWidth + margin) / pitch) - 1);
   return whole(first, Math.max(0, last - first + 1));
 }
 
@@ -67,14 +74,15 @@ export function stripTabStop(
   gap: number,
   scrollLeft: number,
   viewWidth: number,
+  timing: FilmTiming = filmTiming(undefined, total),
 ): number {
-  const win = stripWindow(total, cellWidth, gap, scrollLeft, viewWidth);
+  const win = stripWindow(total, cellWidth, gap, scrollLeft, viewWidth, timing);
   // Before the first layout the window is the whole strip: out of it is only
   // a strip with no frames.
   if (total <= 0 || (active >= win.first && active < win.first + win.count)) {
     return active;
   }
-  return Math.min(total - 1, Math.max(0, Math.ceil(scrollLeft / (cellWidth + gap))));
+  return timing.frameAt(Math.ceil(scrollLeft / (cellWidth + gap)));
 }
 
 /**
@@ -91,13 +99,16 @@ export function scrollToFrame(
   scrollLeft: number,
   viewWidth: number,
   pad = 0,
+  timing?: FilmTiming,
 ): number | null {
   const pitch = cellWidth + gap;
   if (pitch <= 0 || viewWidth <= 0) {
     return null;
   }
-  const left = frame * pitch;
-  const right = left + cellWidth + 2 * pad;
+  const at = timing ? timing.start(frame) : frame;
+  const ticks = timing ? timing.start(frame + 1) - at : 1;
+  const left = at * pitch;
+  const right = left + ticks * pitch - gap + 2 * pad;
   if (left < scrollLeft) {
     return left;
   }

@@ -16,6 +16,7 @@ import {
   MAX_STROKES_PER_FRAME,
   MAX_DOCUMENT_WEIGHT,
   MAX_FRAMES,
+  MAX_HOLD,
   STROKE_WEIGHT,
   CELL_WEIGHT,
   SCHEMA_VERSION,
@@ -164,6 +165,7 @@ export function duplicateFrame(doc: ToonDocument, index: number): number {
   for (const layer of doc.layers) {
     layer.frames[at] = structuredClone(layer.frames[index]);
   }
+  spliceHolds(doc, at, 1, [frameHold(doc, index)]);
   return at;
 }
 
@@ -180,7 +182,39 @@ function insertEmptyFrame(doc: ToonDocument, at: number): number {
   for (const layer of doc.layers) {
     layer.frames.splice(at, 0, emptyFrame());
   }
+  spliceHolds(doc, at, 0, [1]);
   return at;
+}
+
+/** How many ticks frame `index` stays on screen. */
+export function frameHold(doc: ToonDocument, index: number): number {
+  return doc.holds?.[index] ?? 1;
+}
+
+/** Holds `count` frames from `from` on for `hold` ticks each, kept to 1–`MAX_HOLD`. */
+export function setFrameHolds(doc: ToonDocument, from: number, count: number, hold: number): void {
+  assertFrameIndex(doc, from);
+  assertFrameIndex(doc, from + count - 1);
+  const ticks = Math.min(MAX_HOLD, Math.max(1, Math.round(hold)));
+  spliceHolds(doc, from, count, Array.from({ length: count }, () => ticks));
+}
+
+/**
+ * The holds' side of a frame splice: `remove` entries from `at` give way to
+ * `insert`. The list is kept only while some frame is longer than a tick —
+ * the one canonical form the format asks for.
+ */
+function spliceHolds(doc: ToonDocument, at: number, remove: number, insert: readonly number[]): void {
+  if (!doc.holds && insert.every((hold) => hold === 1)) {
+    return;
+  }
+  const holds = doc.holds ?? Array.from({ length: frameCount(doc) - insert.length + remove }, () => 1);
+  holds.splice(at, remove, ...insert);
+  if (holds.every((hold) => hold === 1)) {
+    delete doc.holds;
+  } else {
+    doc.holds = holds;
+  }
 }
 
 /**
@@ -198,6 +232,49 @@ export function removeFrame(doc: ToonDocument, index: number, count = 1): void {
       layer.frames[0].strokes.length = 0;
     }
   }
+  if (all) {
+    delete doc.holds;
+  } else {
+    spliceHolds(doc, index, count, []);
+  }
+}
+
+/**
+ * Carries `count` frames from `from` on, in every layer, so the first of them
+ * lands at `to`; the frames in between shift over. The cells keep their
+ * identity — copied marks and the undo history know them by it.
+ */
+export function moveFrames(doc: ToonDocument, from: number, count: number, to: number): void {
+  assertFrameIndex(doc, from);
+  assertFrameIndex(doc, from + count - 1);
+  assertFrameIndex(doc, to);
+  assertFrameIndex(doc, to + count - 1);
+  for (const layer of doc.layers) {
+    layer.frames.splice(to, 0, ...layer.frames.splice(from, count));
+  }
+  if (doc.holds) {
+    doc.holds.splice(to, 0, ...doc.holds.splice(from, count));
+  }
+}
+
+/**
+ * Puts copies of `count` frames from `from` on, in every layer, at `to` — from
+ * the first frame (0) to past the last; the originals stay (Ctrl+drag).
+ */
+export function copyFrames(doc: ToonDocument, from: number, count: number, to: number): void {
+  assertFrameIndex(doc, from);
+  assertFrameIndex(doc, from + count - 1);
+  if (!Number.isInteger(to) || to < 0 || to > frameCount(doc)) {
+    throw new RangeError(`frame index ${to} is out of range 0..${frameCount(doc)}`);
+  }
+  if (frameCount(doc) + count > MAX_FRAMES) {
+    throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
+  }
+  const holds = Array.from({ length: count }, (_, i) => frameHold(doc, from + i));
+  for (const layer of doc.layers) {
+    layer.frames.splice(to, 0, ...structuredClone(layer.frames.slice(from, from + count)));
+  }
+  spliceHolds(doc, to, 0, holds);
 }
 
 /**

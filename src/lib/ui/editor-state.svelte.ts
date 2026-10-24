@@ -10,6 +10,8 @@ import type { Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
+  MAX_FRAMES,
+  MAX_HOLD,
   MAX_LAYERS,
   MAX_DOCUMENT_WEIGHT,
   CANVAS_LOGICAL_HEIGHT,
@@ -18,7 +20,6 @@ import {
 } from '../format/constants';
 import {
   addFrame,
-  duplicateFrame,
   addLayer,
   pasteNeedsConfirm,
   renameLayer,
@@ -30,6 +31,10 @@ import {
   documentWeight,
   insertFrameBefore,
   mergeCells,
+  copyFrames,
+  frameHold,
+  setFrameHolds,
+  moveFrames,
   moveLayer,
   removeFrame,
   removeLastStroke,
@@ -49,6 +54,9 @@ import {
 import {
   activeFrameAfterRemove,
   activeLayerAfterMove,
+  columnSelection,
+  frameAfterMove,
+  framesToCarry,
   activeLayerAfterRemove,
   clampPlayerFps,
   onionHistoryLayers,
@@ -92,9 +100,11 @@ import { IDENTITY_VIEW, clampPan, fitView, rotateAt, zoomAt, type Stage, type Vi
 import { resizeSheet, sheetOpen } from './sheet-size';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
+import { filmTiming, type FilmTiming } from '../model/timing';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import type { LassoCut, TransformSession } from '../tools/lasso';
+import { copyPart, eraseSelected, pastePart, type CopiedPart } from '../tools/selection-clipboard';
 import {
   EMPTY_TRANSFORM,
   lassoCut,
@@ -127,6 +137,8 @@ export interface TransformState {
   widthWithScale: boolean;
   /** What a loop took of each of `layers`; absent — their whole cells. */
   picked?: LassoCut[];
+  /** The picked pieces are a paste, not in the document yet: Enter writes them unmoved too. */
+  pasted?: boolean;
   /** Steps inside the session, oldest first — the window's own undo. */
   past: TransformSession[];
   future: TransformSession[];
@@ -249,6 +261,12 @@ interface StructureEdit {
   activeLayer: number;
   /** A layer move: where the layer stood and where it went (the reader is told). */
   moved?: { from: number; to: number };
+  /** A frame move or a Ctrl+drag copy: one drag's steps fold into it. */
+  framesMoved?: true;
+  /** A change of holds: one drag of the handle folds into it. */
+  framesHeld?: true;
+  /** The block that was selected, for a carry taken back unfiled. */
+  selection?: CellSelection;
   /** What redo puts back after undo — a move only splices, so its shape is enough. */
   redo?: StructureEdit;
 }
@@ -415,6 +433,11 @@ export class EditorState {
   selection = $state<CellSelection>({ frames: [0], layers: [0] });
   /** Clipboard for the timeline block copy/paste, deep-copied on copy. */
   copiedCells = $state.raw<CellBuffer | null>(null);
+  /**
+   * The other thing the clipboard may hold: a part of a frame copied out of an
+   * open selection. One clipboard — a copy of either empties the other.
+   */
+  copiedPart = $state.raw<CopiedPart | null>(null);
   /**
    * The cells the buffer was taken from, by identity, so the mark follows
    * them through inserts, deletes and layer moves; a cell drawn into leaves.
@@ -1682,6 +1705,7 @@ export class EditorState {
     this.selection = { frames: [0], layers: [0] };
     this.copiedCells = null;
     this.copiedMarks = new Set();
+    this.copiedPart = null;
   }
 
   selectFrame(index: number): void {
@@ -1696,12 +1720,37 @@ export class EditorState {
   }
 
   /**
+   * A press on a frame's number: that frame in every layer, and the active
+   * one. Shift spans from the active frame instead, which stays the anchor.
+   */
+  selectColumn(frame: number, extend = false): void {
+    if (this.playing || frame < 0 || frame >= frameCount(this.doc) || !this.leaveTransform()) {
+      return;
+    }
+    if (!extend) {
+      this.visitedFrames = pushVisited(this.visitedFrames, this.activeFrame, frame);
+      this.activeFrame = frame;
+    }
+    this.selection = columnSelection(this.activeFrame, frame, this.doc.layers.length, extend);
+  }
+
+  /**
    * Back to the single active cell. A block left over the frame you have just
    * left would still be what V pastes into, so every frame and layer operation ends here.
    */
   collapseSelection(): void {
     // A layer moved while the preview runs keeps the block being played.
     this.selection = { frames: this.playing ? this.selection.frames : [this.activeFrame], layers: [this.activeLayer] };
+  }
+
+  /** The film's time in ticks: where each frame starts, how long the whole runs. */
+  get timing(): FilmTiming {
+    return filmTiming(this.doc.holds, frameCount(this.doc));
+  }
+
+  /** Whether «Дублировать» has room for the copies of the frame or the block. */
+  get canDuplicateFrames(): boolean {
+    return !this.playing && frameCount(this.doc) + this.framesToShift.count <= MAX_FRAMES;
   }
 
   /** Whether the schema has room for one more frame. */
@@ -1726,17 +1775,26 @@ export class EditorState {
     this.touched = true;
   }
 
-  /** The frame once more, right after itself: the next drawing begins from this one (owner, 2026-10-08). */
+  /**
+   * The frame, or the selected block, once more right after itself: the next
+   * drawing begins from this one (owner, 2026-10-08), and a cycle repeats in
+   * one press instead of frame by frame (owner, 2026-10-24). The copies
+   * become the block, so a second press repeats them again.
+   */
   duplicateActiveFrame(): void {
-    if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
+    if (this.playing || !this.canDuplicateFrames || !this.leaveTransform()) {
       return;
     }
+    const { from, count } = this.framesToShift;
+    const at = from + count;
     const left = this.activeFrame;
-    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
+    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frames back.
     const before = this.takeStructure();
-    this.activeFrame = this.#write((doc) => duplicateFrame(doc, this.activeFrame));
-    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
-    this.collapseSelection();
+    this.#write((doc) => copyFrames(doc, from, count, at));
+    this.activeFrame = at + Math.min(count - 1, Math.max(0, left - from));
+    // The frames past the block moved along by its width, and their ghosts with them.
+    this.visitedFrames = pushVisited(this.visitedFrames.map((i) => (i >= at ? i + count : i)), left, this.activeFrame);
+    this.selection = { frames: Array.from({ length: count }, (_, i) => at + i), layers: this.selection.layers };
     this.pushStructure(before);
     this.touched = true;
   }
@@ -1805,6 +1863,154 @@ export class EditorState {
     }, t('ask.delete'));
   }
 
+  /**
+   * Carries `count` frames from `from`, in every layer, so the first lands at
+   * `to` (owner, 2026-10-24). The active frame and the block ride along. One
+   * undo step with its redo, as a layer move: `merge` folds the steps of one
+   * drag into it, and a drag brought back to where it began leaves none.
+   */
+  moveFramesTo(from: number, count: number, to: number, merge = false): void {
+    if (this.playing || from === to || to < 0 || to + count > frameCount(this.doc) || !this.leaveTransform()) {
+      return;
+    }
+    const top = this.edits[this.edits.length - 1];
+    const folded = merge && top && !Array.isArray(top) && top.framesMoved && structureIntact(this.doc, top.snap)
+      ? top
+      : undefined;
+    const before = folded ?? this.takeStructure();
+    this.#write((doc) => moveFrames(doc, from, count, to));
+    const after = (i: number) => frameAfterMove(i, from, count, to);
+    this.activeFrame = after(this.activeFrame);
+    this.selection = { frames: this.selection.frames.map(after), layers: this.selection.layers };
+    this.visitedFrames = this.visitedFrames.map(after);
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      // The length too: copies put past the last frame leave every old cell in place.
+      if (folded.snap.frames.every((frames, l) => frames.length === this.doc.layers[l].frames.length
+        && frames.every((cell, i) => cell === this.doc.layers[l].frames[i]))) {
+        this.touched = true;
+        return;
+      }
+    }
+    before.framesMoved = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+  }
+
+  /**
+   * Ctrl+drag: copies of `count` frames from `from`, in every layer, put at
+   * `to`; the originals stay and the copies become the block, which the
+   * carry then moves (`moveFramesTo` with `merge` folds into this step).
+   */
+  copyFramesTo(from: number, count: number, to: number): void {
+    if (this.playing || frameCount(this.doc) + count > MAX_FRAMES || !this.leaveTransform()) {
+      return;
+    }
+    const before = this.takeStructure();
+    this.#write((doc) => copyFrames(doc, from, count, to));
+    const inBlock = Math.min(count - 1, Math.max(0, this.activeFrame - from));
+    this.activeFrame = to + inBlock;
+    this.selection = { frames: Array.from({ length: count }, (_, i) => to + i), layers: this.selection.layers };
+    this.visitedFrames = this.visitedFrames.map((i) => (i >= to ? i + count : i));
+    before.framesMoved = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+  }
+
+  /**
+   * Takes the frame step on top back, unfiled and with no redo: a Ctrl+drag
+   * brought back to where it began, or put away by Escape, made no copy.
+   */
+  withdrawFrames(): void {
+    const top = this.restorableStructure;
+    if (!top?.framesMoved) {
+      return;
+    }
+    this.edits = this.edits.slice(0, -1);
+    this.#write((doc) => restoreStructure(doc, top.snap));
+    this.activeFrame = top.activeFrame;
+    this.activeLayer = top.activeLayer;
+    if (top.selection) this.selection = top.selection;
+    this.touched = true;
+  }
+
+  /** How many ticks the active frame stays on screen. */
+  get activeHold(): number {
+    return frameHold(this.doc, this.activeFrame);
+  }
+
+  /**
+   * Holds `count` frames from `from` for `hold` ticks: a pause is a held
+   * frame, not copies of it (owner, 2026-10-24). `merge` folds the steps of
+   * one drag of the handle into one undo step.
+   */
+  holdFrames(from: number, count: number, hold: number, merge = false): void {
+    this.#writeHolds((doc) => setFrameHolds(doc, from, count, hold), merge);
+  }
+
+  /** Whether − (or +) would change any frame of the block. */
+  canNudgeHolds(step: -1 | 1): boolean {
+    const { from, count } = this.framesToShift;
+    if (this.playing) return false;
+    for (let i = from; i < from + count; i++) {
+      const hold = frameHold(this.doc, i);
+      if (step < 0 ? hold > 1 : hold < MAX_HOLD) return true;
+    }
+    return false;
+  }
+
+  /** «Длительность» − and +: every frame of the block one tick shorter or longer. */
+  nudgeHolds(step: -1 | 1): void {
+    const { from, count } = this.framesToShift;
+    this.#writeHolds((doc) => {
+      for (let i = from; i < from + count; i++) setFrameHolds(doc, i, 1, frameHold(doc, i) + step);
+    });
+  }
+
+  /** A change of holds as one undo step with its redo; a change that changed nothing files none. */
+  #writeHolds(change: (doc: ToonDocument) => void, merge = false): void {
+    if (this.playing || !this.leaveTransform()) {
+      return;
+    }
+    const top = this.edits[this.edits.length - 1];
+    const folded = merge && top && !Array.isArray(top) && top.framesHeld && structureIntact(this.doc, top.snap)
+      ? top
+      : undefined;
+    const was = String(this.doc.holds ?? '');
+    const before = folded ?? this.takeStructure();
+    this.#write(change);
+    const now = String(this.doc.holds ?? '');
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      if (String(folded.snap.holds ?? '') === now) {
+        this.touched = true;
+        return;
+      }
+    } else if (was === now) {
+      return;
+    }
+    before.framesHeld = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+  }
+
+  /** What «Сдвинуть» carries: the selected block, or the active frame alone. */
+  get framesToShift(): { from: number; count: number } {
+    return framesToCarry(this.selection, this.activeFrame);
+  }
+
+  /** Whether the frame or the block has room one place to the left (-1) or the right (1). */
+  canShiftFrames(step: -1 | 1): boolean {
+    const { from, count } = this.framesToShift;
+    return !this.playing && (step < 0 ? from > 0 : from + count < frameCount(this.doc));
+  }
+
+  /** «Сдвинуть влево/вправо»: the move a drag makes, without the drag (WCAG 2.5.7). */
+  shiftFrames(step: -1 | 1): void {
+    const { from, count } = this.framesToShift;
+    this.moveFramesTo(from, count, from + step);
+  }
+
   setFps(value: number): void {
     // The preview's clock took the old rate and a tied track the new one; the
     // field stays focusable while it runs, so the refusal is here.
@@ -1822,6 +2028,7 @@ export class EditorState {
   copySelection(): void {
     this.copiedCells = copyCells(this.docWithTransform(), this.selection);
     this.copiedMarks = copiedMarks(this.doc, this.selection);
+    this.copiedPart = null;
     this.flashTick++;
   }
 
@@ -1841,12 +2048,16 @@ export class EditorState {
   }
 
   get canPasteCells(): boolean {
-    return !this.playing && this.copiedCells !== null;
+    return !this.playing && (this.copiedCells !== null || this.copiedPart !== null);
   }
 
-  /** V: the buffer replaces the cells it lands on. */
+  /** V: the buffer replaces the cells it lands on — or, holding a part of a frame, floats it over the frame. */
   pasteSelection(): void {
-    this.applyCopiedCells(replaceCells);
+    if (this.copiedPart) {
+      this.pastePart();
+    } else {
+      this.applyCopiedCells(replaceCells);
+    }
   }
 
   /** M: the buffer's strokes land on top of what the cells already hold. */
@@ -1866,6 +2077,9 @@ export class EditorState {
 
   private applyCopiedCells(write: typeof replaceCells): void {
     const buffer = this.copiedCells;
+    if (!buffer) {
+      return;
+    }
     if (!this.canPasteCells || !buffer || !this.leaveTransform()) {
       return;
     }
@@ -1996,6 +2210,7 @@ export class EditorState {
       layerColors: this.layerColors.slice(),
       activeFrame: this.activeFrame,
       activeLayer: this.activeLayer,
+      selection: { frames: [...this.selection.frames], layers: [...this.selection.layers] },
     };
   }
 
@@ -2566,11 +2781,95 @@ export class EditorState {
     }
     this.transform = null;
     const { session } = open;
-    if (session.dx === 0 && session.dy === 0 && session.rotate === 0
+    if (!open.pasted && session.dx === 0 && session.dy === 0 && session.rotate === 0
       && session.scaleX === 1 && session.scaleY === 1) {
       return;
     }
     this.applyTransform(open.layers, (doc, layer, frame) => writeTransform(doc, layer, frame, open));
+  }
+
+  /** Ctrl+C over an open selection: what it holds, as the canvas shows it, to the clipboard. */
+  copySelected(): void {
+    const open = this.transform;
+    if (!open || this.playing) {
+      return;
+    }
+    this.copiedPart = copyPart(this.doc, this.activeFrame, open);
+    this.copiedCells = null;
+    this.copiedMarks = new Set();
+    this.flashTick++;
+  }
+
+  /** Ctrl+X over an open selection: copied, then taken away. */
+  cutSelected(): void {
+    if (this.transform && !this.playing) {
+      this.copySelected();
+      this.deleteSelected();
+    }
+  }
+
+  /**
+   * Delete over an open selection: the pieces it holds leave the frame, one
+   * undo step across its cells, and the selection closes. A paste not yet
+   * applied is simply let go.
+   */
+  deleteSelected(): void {
+    const open = this.transform;
+    if (!open || this.playing) {
+      return;
+    }
+    this.transform = null;
+    if (!open.pasted) {
+      this.applyTransform(open.layers, (doc, layer, frame) => eraseSelected(doc, layer, frame, open));
+    }
+  }
+
+  /**
+   * V with a part in the clipboard: the open selection is applied, and the
+   * part floats over the active frame on the layers it came from — the active
+   * one where such a layer is gone or hidden — under handles of its own.
+   * Nothing lands until it is applied, moved or not; Esc leaves no trace.
+   */
+  private pastePart(): void {
+    const part = this.copiedPart;
+    if (this.playing || !part || !this.leaveTransform()) {
+      return;
+    }
+    const layerFor = (layer: number) =>
+      this.doc.layers[layer] && !this.doc.layers[layer].hidden ? layer : this.activeLayer;
+    if (!this.mayEdit(part.map(({ layer }) => layerFor(layer)))) {
+      return;
+    }
+    const frame = this.activeFrame;
+    const tools = this.doc.tools;
+    const pasted = this.#write((doc) => pastePart(doc, frame, part, layerFor));
+    const box = selectionBounds(
+      pasted.picked.flatMap((cut) => cut.indices.map((index) => cut.strokes[index])),
+      null,
+      (stroke) => markReach(tools[stroke.tool_id]),
+    );
+    if (!box) {
+      return;
+    }
+    // The frame may have no room for the copy: refused now, not at Enter.
+    try {
+      bakeTransform(this.doc, frame, { ...pasted, box, session: { ...EMPTY_TRANSFORM }, widthWithScale: false });
+    } catch (err) {
+      if (!this.refuseAtLimit(err)) {
+        console.warn('paste rejected:', err);
+      }
+      return;
+    }
+    this.selection = { frames: [frame], layers: this.selection.layers };
+    this.transform = {
+      ...pasted,
+      box,
+      session: { ...EMPTY_TRANSFORM },
+      widthWithScale: this.transformWidthWithScale,
+      past: [],
+      future: [],
+    };
+    this.flashTick++;
   }
 
   /**

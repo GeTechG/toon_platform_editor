@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"holds\":[1,4,99],\"layers\":[{\"frames\":[{\"strokes\":[]},{\"strokes\":[]},{\"strokes\":[]}],\"hidden\":false},{\"frames\":[{\"strokes\":[]},{\"strokes\":[]},{\"strokes\":[]}],\"hidden\":false}],\"schema_version\":7,\"tools\":[],\"width\":4800}",
+  "sha256": "e4b9f7356692daae4bc44674330ef47d55dd715af695649b769b791825233e2e"
+}

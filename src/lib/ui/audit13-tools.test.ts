@@ -211,7 +211,10 @@ describe('the onion ghost of a cell follows an edit that keeps its stroke count'
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
     });
     composer.compose(target.ctx, 100, 50, scene());
-    const name = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
+    // Flattened with the others into one buffer, the ghost is found by its alpha.
+    const blitAt = () => [...made.flatMap((buffer) => buffer.log), ...target.log]
+      .filter((entry) => entry.includes('@0.3')).at(-1)!.split(' ')[1];
+    const name = blitAt();
     const ghost = made.find((buffer) => buffer.name === name)!;
     const drawn = ghost.log.length;
     edit(doc);
@@ -219,7 +222,7 @@ describe('the onion ghost of a cell follows an edit that keeps its stroke count'
     target.log.length = 0;
     composer.compose(target.ctx, 100, 50, scene());
     // Redrawn either into the same buffer or into a fresh one of the ring.
-    const again = target.log.find((entry) => entry.includes('@0.3'))!.split(' ')[1];
+    const again = blitAt();
     return again !== name || ghost.log.length > drawn;
   }
 

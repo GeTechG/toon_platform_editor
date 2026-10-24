@@ -12,6 +12,7 @@
 
 import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
+import { filmTiming } from '../model/timing';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 import {
   FrameRasterizer,
@@ -95,8 +96,8 @@ export function supportedVideoFormats(
 }
 
 /**
- * How many frames the recording runs for. Without a tied track that is the
- * animation, once. With one, the track sets the length of the work and the
+ * How many ticks (1/fps s) the recording runs for — frames, when no frame is
+ * held. Without a tied track that is the animation, once. With one, the track sets the length of the work and the
  * animation loops to fill it — a five-frame loop under a three-minute song is
  * a three-minute video, not half a second of it. A track shorter than the
  * animation never cuts the animation short.
@@ -309,8 +310,11 @@ async function encodeFrames(
     await import('mediabunny');
 
   const fps = doc.frame_rate;
-  const frames = frameCount(doc);
-  const total = exportFrameCount(frames, fps, trackSeconds);
+  // The video goes tick by tick: a held frame is the same picture for its
+  // ticks, drawn once and given to the encoder again.
+  const timing = filmTiming(doc.holds, frameCount(doc));
+  const ticks = timing.total;
+  const total = exportFrameCount(ticks, fps, trackSeconds);
   const rasterizer = new FrameRasterizer(doc, raster);
   const buffer = new BufferTarget();
   const output = new Output({
@@ -344,9 +348,14 @@ async function encodeFrames(
       await sound.add(track);
       sound.close();
     }
+    let drawn = -1;
     for (let index = 0; index < total; index++) {
       throwIfAborted(signal);
-      rasterizer.draw(index % frames);
+      const frame = timing.frameAt(index % ticks);
+      if (frame !== drawn) {
+        rasterizer.draw(frame);
+        drawn = frame;
+      }
       await video.add(index / fps, 1 / fps);
       onProgress?.(index + 1, total, 'encode');
       await nextTask();
@@ -496,8 +505,9 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   });
   recorded.catch(() => {});
 
-  const frames = frameCount(doc);
-  const total = exportFrameCount(frames, fps, trackSeconds);
+  const timing = filmTiming(doc.holds, frameCount(doc));
+  const ticks = timing.total;
+  const total = exportFrameCount(ticks, fps, trackSeconds);
   const deadlines = frameDeadlines(total, fps);
   const viewport = rasterViewport(doc, targetWidth);
   const scale = targetWidth / logicalSize(doc).width;
@@ -512,7 +522,7 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
         throw broke;
       }
       await sleep(started + deadlines[index] - performance.now());
-      renderer.render(doc, index % frames, ctx as unknown as Canvas2DLike, viewport);
+      renderer.render(doc, timing.frameAt(index % ticks), ctx as unknown as Canvas2DLike, viewport);
       if (watermark) {
         stampWatermark(ctx, targetWidth, height, scale);
       }

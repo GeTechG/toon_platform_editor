@@ -32,7 +32,7 @@
       // The lap is the player's to say: a hitch of a whole lap lands on the
       // frame it left, and a two-frame loop never counted down past one.
       if (lapped && editor.audio.sync && editor.audio.hasTrack) {
-        editor.audio.reseekAtLoop(editor.playbackFrame, editor.doc.frame_rate);
+        editor.audio.reseekAtLoop(editor.timing.start(editor.playbackFrame), editor.doc.frame_rate);
       }
       lapped = false;
     } catch (err) {
@@ -81,6 +81,7 @@
       startFrame,
       loopStart: span.start,
       loopEnd: span.end,
+      holds: editor.doc.holds,
       onFrame: (frame, lap) => {
         editor.playbackFrame = frame;
         lapped ||= lap;
@@ -88,7 +89,7 @@
     });
     editor.playbackFrame = startFrame;
     lapped = false;
-    editor.audio.playFrom(startFrame, editor.doc.frame_rate);
+    editor.audio.playFrom(editor.timing.start(startFrame), editor.doc.frame_rate);
     editor.playing = true;
     editor.stopPreview = stop;
     rafId = requestAnimationFrame(tick);
@@ -144,7 +145,7 @@
     if (!retied && untrack(() => editor.audio.sounding)) {
       return;
     }
-    editor.audio.playFrom(untrack(() => editor.playbackFrame), editor.doc.frame_rate);
+    editor.audio.playFrom(untrack(() => editor.timing.start(editor.playbackFrame)), editor.doc.frame_rate);
   });
 
   // A file dropped mid-preview replaces the document, and `replaceDoc` clears
@@ -173,7 +174,7 @@
     } else {
       // The frames wait too: the first tick back would leap the absence.
       player.rest();
-      editor.audio.resume(editor.playbackFrame, editor.doc.frame_rate);
+      editor.audio.resume(editor.timing.start(editor.playbackFrame), editor.doc.frame_rate);
     }
   }
 

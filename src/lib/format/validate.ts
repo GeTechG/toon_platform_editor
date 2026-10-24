@@ -108,6 +108,20 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
     }
   });
 
+  // One hold per frame, and none stored when every frame is one tick: two
+  // spellings of the same film would hash apart.
+  if (doc.holds) {
+    if (doc.holds.length !== expected) {
+      issues.push({
+        category: 'semantic',
+        path: '/holds',
+        message: `holds has ${doc.holds.length} entries; the document has ${expected} frames`,
+      });
+    } else if (doc.holds.every((hold) => hold === 1)) {
+      issues.push({ category: 'semantic', path: '/holds', message: 'holds of one tick each are left out' });
+    }
+  }
+
   for (const { path, frames } of cells) {
     frames.forEach((frame, f) => {
       frame.strokes.forEach((stroke, s) => {
