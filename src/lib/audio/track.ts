@@ -29,11 +29,12 @@ export const AUDIO_MAX_CREDIT = 120;
 
 /**
  * What the API keeps of a published soundtrack (`MAX_AUDIO_BYTES` and
- * `audio_type` in `services/api/src/publications/web.rs`): 10 MB of mp3, ogg
- * or wav. The editor holds more than that; the owner's call is to say so,
- * not to raise the server's cap. The platform page reads the same number.
+ * `audio_type` in `services/api/src/publications/web.rs`): 2 MB of mp3, ogg
+ * or wav (owner, 2026-10-25). The editor holds more than that; the owner's
+ * call is to say so, not to raise the server's cap. The platform page reads
+ * the same number.
  */
-export const PUBLISH_AUDIO_MAX_BYTES = 10 * 1024 * 1024;
+export const PUBLISH_AUDIO_MAX_BYTES = 2 * 1024 * 1024;
 
 /**
  * Why a track would not go out with the toon, from its first 12 bytes and its

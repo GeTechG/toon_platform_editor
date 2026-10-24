@@ -301,8 +301,9 @@ describe('publishProblem', () => {
     expect(publishProblem(new TextEncoder().encode('fLaC\0\0\0\0\0\0\0\0'), 1024)).toBe('format');
     expect(publishProblem(new TextEncoder().encode('\0\0\0\x20ftypM4A '), 1024)).toBe('format');
   });
-  test('past the server cap it will not publish', () => {
-    expect(publishProblem(head([0x49, 0x44, 0x33]), PUBLISH_AUDIO_MAX_BYTES)).toBeNull();
-    expect(publishProblem(head([0x49, 0x44, 0x33]), PUBLISH_AUDIO_MAX_BYTES + 1)).toBe('size');
+  // Two megabytes and not a byte more (owner, 2026-10-25).
+  test('past the server cap of 2 MB it will not publish', () => {
+    expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024)).toBeNull();
+    expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024 + 1)).toBe('size');
   });
 });

@@ -199,7 +199,7 @@
       {#if trackOutruns}
         <p class="hint">{t('audio.outruns')}</p>
       {/if}
-      <!-- The server keeps 10 MB of mp3, ogg or wav; the rest is published silent. -->
+      <!-- The server keeps 2 MB of mp3, ogg or wav; the rest is published silent. -->
       {#if publishes && editor.audio.unpublishable}
         <p class="hint error">
           {editor.audio.unpublishable === 'size'
