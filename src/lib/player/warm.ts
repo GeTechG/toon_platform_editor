@@ -16,9 +16,7 @@ export function warmCrew(cores: number | undefined, frames: number): number {
 /** What a worker is told: the film, and which frames of it are its own. */
 export interface WarmOrder {
   doc: ToonDocument;
-  /** Its first frame, and how far apart its frames are — the crew's size. */
-  from: number;
-  step: number;
+  frames: number[];
 }
 
 /** What a worker answers: a frame, or that it is through — `ok` if with all of them. */
@@ -34,16 +32,22 @@ export function canWarmApart(): boolean {
 }
 
 /**
- * Starts the crew. `onFrame` gets every frame as it comes; `onEnd` is called
+ * Starts the crew on `frames` of the film, dealt round. `onFrame` gets every
+ * frame as it comes; `onEnd` is called
  * once, when no more will: `false` if a worker fell or ran out of memory, and
  * the caller draws what is missing itself. Returns the way to call it off.
  */
 export function warmApart(
   doc: ToonDocument,
   crew: number,
+  frames: readonly number[],
   onFrame: (index: number, frame: ImageData) => void,
   onEnd: (ok: boolean) => void,
 ): () => void {
+  // A page holds the film in its state, and a Svelte `$state` is a proxy: it
+  // does not clone into a worker, and the crew fell to the page every time.
+  // The document is plain data, so a copy of it through JSON clones.
+  const film = JSON.parse(JSON.stringify(doc)) as ToonDocument;
   const workers: Worker[] = [];
   let left = crew;
   let whole = true;
@@ -71,7 +75,7 @@ export function warmApart(
       through(false);
     };
     try {
-      worker.postMessage({ doc, from, step: crew } satisfies WarmOrder);
+      worker.postMessage({ doc: film, frames: frames.filter((_, i) => i % crew === from) } satisfies WarmOrder);
     } catch (err) {
       // A film that cannot be handed over leaves no worker behind.
       stop();

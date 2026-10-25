@@ -12,7 +12,7 @@ const post = (report: WarmReport, transfer: Transferable[] = []): void => {
 };
 
 self.onmessage = (e: MessageEvent<WarmOrder>) => {
-  const { doc, from, step } = e.data;
+  const { doc, frames } = e.data;
   const raster = sheetRaster(doc);
   // Made for reading back: every frame drawn on it is read once and handed on.
   const ctx = typeof OffscreenCanvas !== 'undefined'
@@ -24,9 +24,8 @@ self.onmessage = (e: MessageEvent<WarmOrder>) => {
   }
   const renderer = new Canvas2DFrameRenderer();
   const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1 };
-  const total = doc.layers[0].frames.length;
   try {
-    for (let index = from; index < total; index += step) {
+    for (const index of frames) {
       renderer.render(doc, index, ctx as unknown as Canvas2DLike, viewport);
       const frame = ctx.getImageData(0, 0, raster.width, raster.height);
       post({ index, frame }, [frame.data.buffer]);

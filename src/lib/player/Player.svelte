@@ -10,6 +10,7 @@
   import { renderDensity, sheetRaster } from '../ui/viewport';
   import { FrameCache } from './frame-cache';
   import { canWarmApart, warmApart, warmCrew } from './warm';
+  import { frameTwins } from './twins';
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { filmTiming } from '../model/timing';
@@ -189,16 +190,26 @@
     }
     ready = false;
     warmed = 0;
+    // A frame held by copying it is rasterized once, and its copies are
+    // given the same pixels.
+    const twins = frameTwins(view);
+    const own = twins.flatMap((twin, index) => (twin === index ? [index] : []));
+    const hold = (index: number, frame: ImageData): void => {
+      for (const [copy, twin] of twins.entries()) {
+        if (twin === index) cache.put(copy, frame);
+      }
+    };
     const scratch = document.createElement('canvas');
     let timer: ReturnType<typeof setTimeout>;
     const warm = (): void => {
       const { width: pxWidth, height: pxHeight } = raster;
       cache.fit(view, pxWidth, pxHeight);
-      const index = cache.next(total, Math.min(untrack(() => current), total - 1));
-      if (index === null) {
+      const next = cache.next(total, Math.min(untrack(() => current), total - 1));
+      if (next === null) {
         ready = true;
         return;
       }
+      const index = twins[next] ?? next;
       if (scratch.width !== pxWidth) scratch.width = pxWidth;
       if (scratch.height !== pxHeight) scratch.height = pxHeight;
       // Made for reading back: every frame drawn on it is read once and kept.
@@ -211,7 +222,7 @@
       }
       paint(index, ctx as unknown as Canvas2DLike);
       try {
-        cache.put(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+        hold(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
       } catch {
         // The device has no room for another frame: the film plays with what
         // is held and draws the rest live, rather than loading for ever.
@@ -230,11 +241,12 @@
       cache.fit(view, raster.width, raster.height);
       dismiss = warmApart(
         view,
-        warmCrew(navigator.hardwareConcurrency, total),
+        warmCrew(navigator.hardwareConcurrency, own.length),
+        own,
         (index, frame) => {
           // A frame of the film this effect has let go of is nobody's.
           if (gone) return;
-          cache.put(index, frame);
+          hold(index, frame);
           warmed = cache.progress(total);
         },
         // Whatever the crew left undone the page draws; with nothing left,
