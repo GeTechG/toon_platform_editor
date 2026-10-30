@@ -73,6 +73,7 @@
     | 'user'
     | 'bell'
     | 'crown'
+    | 'flag'
     | 'megaphone';
 
   const PATHS: Record<IconName, string> = {
@@ -100,6 +101,8 @@
     user: 'M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4 21a8 8 0 0 1 16 0',
     // The trump place: its crown, and the word it puts out.
     crown: 'M3 8l4.500 4L12 5l4.500 7L21 8l-2 11H5z',
+    // A complaint about a toon.
+    flag: 'M5 21V4c2.300-1.500 4.700-1.500 7 0s4.700 1.500 7 0v10c-2.300 1.500-4.700 1.500-7 0s-4.700-1.500-7 0',
     megaphone: 'M4 10v4l12 5V5zM8 15.600V19h3v-2M19 9.500a3 3 0 0 1 0 5',
     // A bell: the site's notifications.
     bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
