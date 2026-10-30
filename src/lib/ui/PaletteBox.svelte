@@ -9,6 +9,7 @@
     gridStep,
     mergePalettes,
     overLimit,
+    paletteShelf,
     pressesCell,
     type SavedPalette,
   } from './color-palette';
@@ -41,7 +42,7 @@
   const outlineInGrid = $derived(editor.palette.includes(editor.brushColor));
   const fillInGrid = $derived(editor.palette.includes(editor.fillColor));
   const DEFAULT: SavedPalette = { id: -1, name: t('palette.default_name'), created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
-  const savedList = $derived([DEFAULT, ...editor.savedPalettes].reverse());
+  const savedList = $derived(paletteShelf(editor.savedPalettes, DEFAULT, editor.seasonPalette));
 
   /** Left button (or keyboard) → outline, right button → fill; remover mode deletes instead. */
   function onCell(e: MouseEvent, color: string): void {

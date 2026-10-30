@@ -394,6 +394,8 @@ export class EditorState {
   readonly errorLog: string[] = sessionErrors.lines;
   /** Reference `toonio_saved_palettes`: named snapshots of the grid. */
   savedPalettes = $state<SavedPalette[]>(loadSavedPalettes());
+  /** The host's palette for the time being (a holiday's): offered, never stored. */
+  seasonPalette = $state<SavedPalette | null>(null);
   /** Canvas zoom and pan; view state only, never part of the document. */
   view = $state<Viewport2D>({ ...IDENTITY_VIEW });
   /**

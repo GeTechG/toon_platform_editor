@@ -96,6 +96,7 @@
     onPublish,
     stageNote,
     mascot,
+    seasonPalette,
     named,
     startNew,
     open,
@@ -104,6 +105,8 @@
     stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;
     /** The host's mascot, a picture's address: it greets a first visit on the tour's first page. */
     mascot?: string;
+    /** A palette the host offers for now, among the built-in ones (a holiday's). */
+    seasonPalette?: { name: string; colours: string[] } | null;
     /** A first visit: a phone's row of keys wears its names until the host takes this back. */
     named?: boolean;
     startNew?: boolean;
@@ -111,6 +114,9 @@
   } = $props();
 
   const editor = new EditorState();
+  $effect(() => {
+    editor.seasonPalette = seasonPalette ? { id: -2, created: 0, ...seasonPalette } : null;
+  });
   // The session being autosaved. Minted when the editor opens and kept for as
   // long as this sheet lives, so a visit overwrites its own record instead of
   // piling up a new draft per stroke (reference `autosave_worker.js:14-22`); a

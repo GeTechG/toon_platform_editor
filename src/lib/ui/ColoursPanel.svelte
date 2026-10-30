@@ -15,7 +15,7 @@
   import Dropdown from './Dropdown.svelte';
   import Icon, { type IconName } from './Icon.svelte';
   import { hexToRgb, hsvToRgb, parseColourInput, rgbToHex, rgbToHsvExact, type Hsv, type Rgb } from './color-model';
-  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, overLimit, type SavedPalette } from './color-palette';
+  import { TONIO_DEFAULT_PALETTE, contrastInk, gridStep, overLimit, paletteShelf, type SavedPalette } from './color-palette';
   import {
     HARMONIES,
     discToSquare,
@@ -234,7 +234,7 @@
   }
 
   const DEFAULT: SavedPalette = { id: -1, name: t('palette.default_name'), created: 0, colours: [...TONIO_DEFAULT_PALETTE] };
-  const saved = $derived([...editor.savedPalettes].reverse().concat(DEFAULT));
+  const saved = $derived(paletteShelf(editor.savedPalettes, DEFAULT, editor.seasonPalette));
 
   async function savePalette(): Promise<void> {
     const name = (await editor.askText(t('palette.save_prompt'), t('palette.new_name')))?.trim();

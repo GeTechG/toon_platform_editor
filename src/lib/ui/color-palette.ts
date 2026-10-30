@@ -65,6 +65,15 @@ export function removePaletteColor(palette: readonly string[], color: string): s
  * Reference MergePalette: appends what the grid lacks, up to the limit, and
  * says how many did not fit so the UI can warn.
  */
+/**
+ * The palettes offered, in the order of the list: a season's on top, where it
+ * will be found, the saved ones newest first, the built-in one at the foot.
+ * Negative ids are what is not the reader's to delete.
+ */
+export function paletteShelf(saved: SavedPalette[], builtIn: SavedPalette, season: SavedPalette | null): SavedPalette[] {
+  return [...(season ? [season] : []), ...[...saved].reverse(), builtIn];
+}
+
 export function mergePalettes(
   palette: readonly string[],
   incoming: readonly string[],

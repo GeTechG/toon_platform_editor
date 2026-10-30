@@ -10,6 +10,7 @@ import {
   importPalettes,
   loadPalette,
   mergePalettes,
+  paletteShelf,
   parseSavedPalettes,
   removePaletteColor,
   stealPalette,
@@ -404,5 +405,21 @@ describe('owner after the tenth audit: an empty palette says how to fill it', ()
   it('the colour widget points at its own «+»', async () => {
     expect(await panel).toMatch(/\{#if editor\.palette\.length === 0\}[^]{0,120}t\('color\.empty'\)/);
     expect(t('color.empty')).toContain('«+»');
+  });
+});
+
+describe('the shelf of palettes', () => {
+  const made = (id: number, name: string) => ({ id, name, created: 0, colours: ['#000000'] });
+  const built = made(-1, 'Стандартная');
+  const season = made(-2, 'Хэллоуин');
+
+  it('the newest saved first, the built-in one last', () => {
+    expect(paletteShelf([made(1, 'a'), made(2, 'b')], built, null).map((p) => p.id)).toEqual([2, 1, -1]);
+  });
+
+  it('a season\'s palette opens the shelf, and can be told from one to delete', () => {
+    const shelf = paletteShelf([made(1, 'a')], built, season);
+    expect(shelf.map((p) => p.id)).toEqual([-2, 1, -1]);
+    expect(shelf[0].id).toBeLessThan(0);
   });
 });
