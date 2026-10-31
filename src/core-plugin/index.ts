@@ -1,13 +1,14 @@
 /**
- * The plugin the editor ships with: everything it needs to reproduce
- * multator.ru and toonio.ru, and nothing else.
+ * The plugin the editor ships with: the brushes that came from multator.ru and
+ * toonio.ru, and the pixel. Their presets are gone (owner, 2026-10-31), the
+ * lines stay.
  *
- * Six tools, two brush types and two presets. It travels with the editor and
- * is built with it, but it is not *of* it: nothing under `lib/` imports this
- * folder, the editor draws with its own brush under its own `toonop` preset,
- * and everything here reaches the editor through the plugin contract — the
- * same door an installed plugin comes through. Taking it out would cost the
- * editor two presets and five brushes, not a line of its own code.
+ * Seven tools and three brush types. It travels with the editor and is built
+ * with it, but it is not *of* it: nothing under `lib/` imports this folder,
+ * the editor draws with its own brush under its own `toonop` preset, and
+ * everything here reaches the editor through the plugin contract — the same
+ * door an installed plugin comes through. Taking it out would cost the editor
+ * these brushes, not a line of its own code.
  *
  * It cannot be switched off or removed, which is the one way it differs from
  * a plugin somebody installs: it is the delivery, not a choice.
@@ -32,7 +33,6 @@ import { MASCOTS_ICON } from './mascot';
 import { MULTATOR_RULES } from './multator';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool-geometry';
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
-import { PRESETS } from './presets';
 import { toonioRules } from './toonio';
 import { t } from '../lib/i18n';
 
@@ -109,11 +109,16 @@ const OLDSCHOOL_ERASER: PluginPrimitive = {
 // The tonio line, and the pixel that measures on its canvas
 // ---------------------------------------------------------------------------
 
-/** The brush the Toonio preset hands a tool that named no canvas of its own. */
 const TOONIO_BRUSH: PluginPrimitive = {
   kind: 'pencil',
   rules: ({ smooth, minDistance }) => toonioRules({ smooth, minDistance }),
   descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
+};
+
+const TOONIO_ERASER: PluginPrimitive = {
+  kind: 'eraser',
+  rules: ({ smooth, minDistance }) => toonioRules({ smooth, minDistance }),
+  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
 };
 
 const PIXEL: PluginPrimitive = {
@@ -169,6 +174,7 @@ const plugin: Plugin = {
     oldschool: twin(t('tool.oldschool_pen'), PENCIL_ICON, OLDSCHOOL_PEN),
     'oldschool-eraser': twin(t('tool.oldschool_eraser'), ERASER_ICON, OLDSCHOOL_ERASER),
     'toonio-brush': twin(t('tool.toonio_brush'), PENCIL_ICON, TOONIO_BRUSH),
+    'toonio-eraser': twin(t('tool.toonio_eraser'), ERASER_ICON, TOONIO_ERASER),
     pixel: {
       label: t('tool.pixel.label'),
       title: t('tool.pixel.title'),
@@ -194,8 +200,12 @@ const plugin: Plugin = {
       hint: t('brush_type.multator.hint'),
       twins: { pencil: 'multator-pencil', eraser: 'multator-eraser' },
     },
+    toonio: {
+      label: t('brush_type.toonio.label'),
+      hint: t('brush_type.toonio.hint'),
+      twins: { pencil: 'toonio-brush', eraser: 'toonio-eraser' },
+    },
   },
-  presets: PRESETS,
 };
 
 export default plugin;

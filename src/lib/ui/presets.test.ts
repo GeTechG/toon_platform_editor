@@ -205,7 +205,7 @@ test('an unknown pipette source falls back to the canvas', () => {
 
 test('panel height is clamped to the draggable range and falls back when absent', () => {
   const stored = (panelHeight: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: { activeProfile: 'toonio', tonio: {}, panelHeight },
   }))?.drawing.panelHeight;
 
@@ -217,7 +217,7 @@ test('panel height is clamped to the draggable range and falls back when absent'
 });
 
 test('settings fall back to the reference defaults when absent or corrupted', () => {
-  const base = { preset: 'toonio' };
+  const base = { preset: 'toonop' };
   expect(parseUiConfig(JSON.stringify(base))?.settings).toEqual(DEFAULT_SETTINGS);
   expect(parseUiConfig(JSON.stringify({ ...base, settings: 'nope' }))?.settings).toEqual(DEFAULT_SETTINGS);
   expect(parseUiConfig(JSON.stringify({ ...base, settings: { paletteAutoAdd: 1 } }))?.settings)
@@ -251,7 +251,7 @@ test('settings round-trip through the stored config', () => {
     },
   };
   const parsed = parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     settings,
   }));
   expect(parsed?.settings).toEqual(settings);
@@ -274,7 +274,7 @@ test('a broken onion side falls back to the default, a wild one is held to the w
 
 test('the picker model is one of the three, or the reference default', () => {
   const stored = (pickerModel: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     settings: { pickerModel },
   }))?.settings.pickerModel;
 
@@ -286,7 +286,7 @@ test('the picker model is one of the three, or the reference default', () => {
 
 test('the palette limit is clamped to 30..300 and snapped to the 10 step', () => {
   const stored = (paletteLimit: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     settings: { paletteLimit },
   }))?.settings.paletteLimit;
 
@@ -299,7 +299,7 @@ test('the palette limit is clamped to 30..300 and snapped to the 10 step', () =>
 
 test('an autosave interval outside the offered list falls back to the default', () => {
   const stored = (autosaveMs: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     settings: { autosaveMs },
   }))?.settings.autosaveMs;
 
@@ -374,7 +374,7 @@ test('the pipette is the editor\'s own unless the browser\'s is asked for', () =
   // nobody's choice: the setting has a new name, and the old one is not read.
   expect(DEFAULT_SETTINGS.browserPipette).toBe(false);
   const stored = (settings: Record<string, unknown>) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     settings,
   }))?.settings.browserPipette;
 
@@ -385,7 +385,7 @@ test('the pipette is the editor\'s own unless the browser\'s is asked for', () =
 
 test('side panel widths are clamped, and an untouched side keeps its natural width', () => {
   const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: { activeProfile: 'toonio', tonio: {}, sides },
   }))?.drawing.sides;
 
@@ -398,7 +398,7 @@ test('side panel widths are clamped, and an untouched side keeps its natural wid
 
 test('each side has its own floor: the tools shrink to one narrow column, the palette box never squashes', () => {
   const stored = (sides: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: { activeProfile: 'toonio', tonio: {}, sides },
   }))?.drawing.sides;
 
@@ -419,7 +419,7 @@ test('a fresh config leaves both side panels open at their natural width', () =>
 
 test('the bottom panel remembers being folded away, and a corrupted flag stays open', () => {
   const stored = (panelCollapsed: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: { activeProfile: 'toonio', tonio: {}, panelCollapsed },
   }))?.drawing.panelCollapsed;
 

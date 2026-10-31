@@ -12,8 +12,7 @@ const source = await Bun.file(new URL('./Editor.svelte', import.meta.url).pathna
 it('the stage note is drawn until the toon has a line and a second frame, with the hub and the «⋯» window down', () => {
   // The walk now ends at play (owner, 2026-10-08), so the host is told the
   // count of frames and whether the toon is playing, and ends the note itself.
-  // Under a phone's open boxes the bar is folded, and the note stood on the stage beneath them (owner, 2026-10-13).
-  expect(source).toContain("const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));");
+  expect(source).toContain('const noteDue = $derived(plateDue && !editor.presetAsk);');
   expect(source).toContain('{#if noteDue && !noteInPanel && !noteInTop && !editor.presetAsk && !(compact && !isEmptyDocument(editor.doc))}{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}{/if}');
   expect(source).toContain('stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;');
 });

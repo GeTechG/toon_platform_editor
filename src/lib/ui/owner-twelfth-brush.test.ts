@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { TOONOP_UX, nudgeBrushSize } from './ux-profile';
 import { sizeFromDrag } from './size-scale';
-import { PRESETS } from '../../core-plugin/presets';
 
 const canvas = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
 const panel = await Bun.file(new URL('./BrushPanel.svelte', import.meta.url)).text();
@@ -50,8 +49,8 @@ describe('+/− walk a ladder in the toonop preset', () => {
   });
 
   it('Multator and toonio keep their own steps', () => {
-    expect(nudgeBrushSize(20, 1, PRESETS.multator.ux)).toBe(30);
-    expect(nudgeBrushSize(100, 1, PRESETS.toonio.ux)).toBe(101);
+    expect(nudgeBrushSize(20, 1, { ...TOONOP_UX, adaptiveBrushStep: true })).toBe(30);
+    expect(nudgeBrushSize(100, 1, { ...TOONOP_UX, adaptiveBrushStep: false })).toBe(101);
   });
 });
 

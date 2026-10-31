@@ -294,12 +294,6 @@ export interface UxProfile {
    */
   readonly leftFixed?: boolean;
   /**
-   * A phone draws its own cut of this preset — one row of keys over the
-   * canvas, the rest behind «⋯» — instead of the preset's desk. A profile
-   * that says nothing keeps its desk on a phone too.
-   */
-  readonly phoneCut?: boolean;
-  /**
    * The frame rate on a bar is its value as a word — «12 к/с» — and the
    * slider comes up under it on a press. A profile that says nothing keeps
    * the reference's slider and box on the bar.

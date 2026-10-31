@@ -1,15 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { PRESETS } from '../../core-plugin/presets';
 import { TOONOP_UX } from './ux-profile';
 
 const editorSrc = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 
 describe('toonop\'s transport is Play and a step either side', () => {
-  it('the profile says so; Toonio keeps the whole transport, Multator Play alone', () => {
+  it('the profile says so', () => {
     expect(TOONOP_UX.transport).toBe('steps');
-    expect(PRESETS.toonio.ux.transport).toBeUndefined();
-    // The owner, 2026-10-06: «убери перемотку кадров, оставь только play».
-    expect(PRESETS.multator.ux.transport).toBe('play');
   });
 
   it('the steps wait for a profile that has them, on the bar', () => {

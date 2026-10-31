@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { presetAbout, presetPanels, presets, presetUx } from './presets';
+import { presetAbout, presetUx } from './presets';
 import { plugins } from '../plugins';
 import { PLUGIN_API } from '../plugins/contract';
 import { createDocument } from '../model/operations';
@@ -52,29 +52,15 @@ describe('первый вход: набор выбирают над холсто
   });
 
   it('под именем набора — пара слов о нём, а у набора из плагина — число инструментов', () => {
-    expect(presets().map((p) => p.id)).toEqual(['toonop', 'multator', 'toonio']);
     expect(presetAbout('toonop')).toBe('Сбалансированный');
-    expect(presetAbout('multator')).toBe('Минимализм и классика');
-    expect(presetAbout('toonio')).toBe('Гибкий и понятный');
-    plugins.register({ id: 'first-visit.test', api: PLUGIN_API, presets: { own: { label: 'Свой', brush: 'toonop-brush', ux: { ...presetUx('multator') } } } });
+    plugins.register({ id: 'first-visit.test', api: PLUGIN_API, presets: { own: { label: 'Свой', brush: 'toonop-brush', ux: { ...presetUx('toonop'), tools: ['pencil', 'eraser', 'pipette'] } } } });
     expect(presetAbout('own')).toBe('3 инструмента');
     const ask = tour.match(/<section class="preset-ask"[\s\S]*?<\/section>/)?.[0] ?? '';
     expect(ask).toContain('<span>{presetAbout(p.id)}</span>');
   });
 });
 
-// Multator — набор для того, кто видит студию впервые (три инструмента), а
-// клавиши «Справка» в нём не было: она лежала на полке (владелец, 2026-10-10).
-it('в Multator «Справка» стоит рядом с шестерёнкой', () => {
-  expect(presetPanels('multator').rows[1]).toEqual(['transport', 'fullscreen', 'settings', 'manual', 'publish', 'saved']);
-});
-
-// Пипетка показывает цвет, на который смотрит, в любом наборе: в Multator
-// квадратика у курсора не было — эталон его не рисует (владелец, 2026-10-10).
-it('пипетка показывает цвет под курсором во всех наборах', () => {
-  expect(['toonop', 'multator', 'toonio'].map((id) => [id, presetUx(id).livePipettePreview])).toEqual([
-    ['toonop', true],
-    ['multator', true],
-    ['toonio', true],
-  ]);
+// Пипетка показывает цвет, на который смотрит (владелец, 2026-10-10).
+it('пипетка показывает цвет под курсором', () => {
+  expect(presetUx('toonop').livePipettePreview).toBe(true);
 });

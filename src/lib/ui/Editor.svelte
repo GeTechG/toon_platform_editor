@@ -66,7 +66,7 @@
   import { columnDraws, itemDrawn, panelItem as panelItemSpec, stageRailShown, toolOfItem, toolOpensBrush, toolSlot, toolSpec, type PanelSlot } from './panels';
   import { DEFAULT_PRESET, presetPanels, type SideId } from './presets';
   import { rowHeight, rowOver } from './thumb-size';
-  import { boxRow, canvasFloor, deskOnPhone, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
+  import { boxRow, canvasFloor, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
   import type { DraftEntry } from '../draft/restore';
   import type { ToonDocument } from '../format/types';
@@ -282,14 +282,10 @@
   let step = $state<LayoutStep>('full');
   /** A phone: toonop's desktop, its bar over the canvas cut to one row (small-screen.ts). */
   const compact = $derived(step !== 'full');
-  /** A phone that keeps the preset's own desk (Multator, Toonio — owner, 2026-10-10); toonop's phone is its own cut. */
-  const deskPhone = $derived(compact && !editor.ux.phoneCut);
   /** Whether a phone draws the tool's key: the hand is a cursor's tool — two fingers move the sheet (owner, 2026-10-07). */
   const toolDrawn = (tool: string): boolean => (tool !== 'pipette' || editor.pipetteOffered) && !(tool === 'drag' && touch);
   const cut = $derived(
-    deskPhone
-      ? deskOnPhone(editor.panels)
-      : compact
+    compact
       ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {
           tools: phoneTools(editor.ux),
           tall,
@@ -325,10 +321,10 @@
   // keys too many it is (measured below), folded behind «Другие инструменты».
   let leftSpill = $state(0);
   let leftEl = $state<HTMLElement>();
-  const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));
+  const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, compact || editor.arranging ? 0 : leftSpill));
   const panels = $derived(over?.panels ?? editor.panels);
   /** Where the «+» stands: after the tools, on a desk — a phone's too — outside arranging. toonop's phone has no shelf: every tool is in hand. */
-  const addAt = $derived<PanelSlot | null>((compact && !deskPhone) || editor.arranging ? null : toolSlot(panels));
+  const addAt = $derived<PanelSlot | null>(compact || editor.arranging ? null : toolSlot(panels));
   /** The tools on the shelf, for the «+»: only tools (owner, 2026-10-16), and on a phone only those it draws. */
   const shelfTools = $derived(editor.panels.hidden.filter((id) => toolOfItem(id) !== null && (!compact || toolDrawn(toolOfItem(id) ?? ''))));
   // Another arrangement, another text size: both rows are measured anew.
@@ -535,32 +531,12 @@
   /** The stage height at which the column last had to fold: no taller, it is not unfolded again — the two would take turns. */
   let foldedAt = 0;
   /** The stage height the phone's rail was last measured at. */
-  let railMeasuredAt = 0;
   $effect(() => {
     void sideH.left;
     void editor.pluginsVersion;
     void sidePx.left;
     const [el, height] = [leftEl, stageHeight];
-    if (!el || editor.arranging || (compact && !(deskPhone && tall))) return;
-    // A desk standing on a phone wraps its rail into a second column instead
-    // of scrolling, and the sheet beside it was a third of the screen wide
-    // (owner, 2026-10-13, an iPhone SE): the rail stays one key wide — what
-    // the first column has no room for goes behind the same key. Measured
-    // afresh when the stage's height changes.
-    if (deskPhone) {
-      untrack(() => {
-        const turned = Math.abs(height - railMeasuredAt) > 1;
-        railMeasuredAt = height;
-        if (turned && leftSpill > 0) {
-          leftSpill = 0;
-          return;
-        }
-        const lefts = [...el.querySelectorAll<HTMLElement>('[data-tool]')].map((key) => Math.round(key.getBoundingClientRect().left));
-        const first = lefts.filter((x) => x === Math.min(...lefts)).length;
-        if (first < lefts.length) leftSpill = lefts.length - first;
-      });
-      return;
-    }
+    if (!el || editor.arranging || compact) return;
     const spare = el.scrollHeight - el.clientHeight;
     untrack(() => {
       if (spare > 1) {
@@ -634,7 +610,7 @@
    * at the edge, whichever leaves the sheet bigger (`railLiesFor`): a wide
    * sheet on a screen standing up wants the width, an upright one the height.
    */
-  const railLies = $derived(sideFixed('left') && !deskPhone && !editor.arranging && railLiesFor(
+  const railLies = $derived(sideFixed('left') && !editor.arranging && railLiesFor(
     { w: boxW, h: stageHeight },
     { width: editor.doc.width, height: editor.doc.height },
     // Its column (the card and the table at its edge); its line (a key, the card's padding, the table under it).
@@ -648,8 +624,6 @@
    */
   function sideTrack(id: SideId): number {
     if (id === 'left' && railLies) return 0;
-    // A phone standing up opens its boxes over the sheet, in no track.
-    if (id === 'right' && sideOver) return 0;
     if (!(sideDraws(id) || editor.arranging)) return 0;
     return sidePx[id] + (folded(id) ? 0 : SIDE_GAP * rem);
   }
@@ -689,7 +663,7 @@
     const top = draws(editor.panels.top) ? 3.75 * rem : 0;
     const full = { w: boxW - fullBase('left') - fullBase('right'), h: boxH - bar - top };
     const view = { w: viewportWidth || boxW, h: viewportHeight || boxH };
-    step = pickStep(was, full, view, touch && editor.ux.phoneCut);
+    step = pickStep(was, full, view, touch);
   });
   /**
    * The zoom window stands under the column on the screen's left, at the
@@ -707,7 +681,7 @@
   // for the one the desktop draws.
   $effect(() => {
     if (compact && editor.arranging) editor.arranging = false;
-    editor.noShelf = compact && !deskPhone;
+    editor.noShelf = compact;
     // Its key is a handle there, and the arranger's plate lay over its ×.
     if (editor.arranging) audioOpen = false;
   });
@@ -721,58 +695,9 @@
   let tabWindow = $state<HTMLElement | undefined>();
   /** The strip under a phone's transport, folded: lying down, or short (200 % text), until asked for. */
   let stripShut = $state<boolean | null>(null);
-  const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));
+  const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));
   /** A phone lying down with its strip folded: the transport is in the row over the canvas, the bar is its tab alone. */
   const barBare = $derived(compact && !tall && stripFolded && panels.rows.every((row) => row.includes('timeline')));
-  /**
-   * A desk's columns on a phone, each behind its tab (owner, 2026-10-10:
-   * «сворачивание левой нужно»): the rail open, the boxes shut, until asked for.
-   */
-  const sideShut = $state<Record<SideId, boolean | null>>({ left: null, right: null });
-  /**
-   * …and the boxes, open, lie over the sheet whichever way the phone is held:
-   * 390 px have no room for them beside it — not across standing up, not down
-   * lying (owner: «лёжа на телефоне даже цвета не влазят»).
-   */
-  const sideOver = $derived(deskPhone);
-  /**
-   * Lying down such a phone has one of the three open at a time — the rail,
-   * the boxes, the bar (owner, 2026-10-10: all three lay on one another) —
-   * and opening one shuts the others. Unasked, the one with the tools.
-   */
-  let lyingOpen = $state<SideId | 'panel' | 'none' | null>(null);
-  const openLying = $derived(lyingOpen ?? (panels.left.length > 0 ? 'left' : 'panel'));
-  /**
-   * Lying down, a desk that keeps everything under the sheet (Multator) stands
-   * its strip beside its rows of keys, not over them (owner, 2026-10-10:
-   * «каша из всего»): the bar is two keys tall, not five. Only where the
-   * widest row leaves the strip room: under 60rem — every phone lying down,
-   * 812 to 932 — beside the first row it had one cell, and the strip goes
-   * back to its own line, the whole width (owner, 2026-10-13: «лента во всю
-   * ширину»).
-   */
-  const stripBeside = $derived(deskPhone && !tall && panels.left.length === 0 && panels.right.length === 0 && boxW >= 60 * rem);
-  const toggleLying = (id: SideId | 'panel'): void => {
-    lyingOpen = openLying === id ? 'none' : id;
-  };
-  /**
-   * Standing up the boxes, open, put the rail away, and shut, give it back
-   * (owner, 2026-10-13: the two stood open side by side, tab to tab) —
-   * and the bar with it, by the same word. The
-   * rail's tab pressed under open boxes shuts them and opens the rail.
-   */
-  const toggleStanding = (id: SideId): void => {
-    const shut = !folded(id);
-    sideShut[id] = shut;
-    if (id === 'left' && !shut) sideShut.right = true;
-  };
-  /** A tap past the boxes lying over the sheet — on it, on the bar — only closes them (owner, 2026-10-08). */
-  function shutSideOver(e: PointerEvent): void {
-    if (!sideOver || folded('right')) return;
-    e.stopPropagation();
-    if (tall) sideShut.right = true;
-    else lyingOpen = 'none';
-  }
   const FOCUSABLE =
     'button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
@@ -891,18 +816,14 @@
    * Folded away — but never on a small screen, where there are no columns to
    * fold. A fold made on a desktop must not leave the tools unreachable there.
    */
-  const folded = (id: SideId): boolean => (deskPhone ? (tall ? (id === 'left' ? (sideShut.left ?? false) || !folded('right') : (sideShut.right ?? true)) : openLying !== id) : side(id).collapsed && !compact);
+  const folded = (id: SideId): boolean => side(id).collapsed && !compact;
   /** The bottom bar, folded away by the same rule. */
-  // A preset's desk on a phone folds its bar whole, as the desk does (owner,
-  // 2026-10-10: «пускай прячет всё»). Standing up it opens with the bar up;
-  // lying down the bar is one of the three that take turns (`openLying`).
-  const panelFolded = $derived(deskPhone ? (tall ? (stripShut ?? false) || !folded('right') : openLying !== 'panel') : editor.panelCollapsed && !compact);
+  const panelFolded = $derived(editor.panelCollapsed && !compact);
   /** What the bar's fold key says: the whole bar on the desktop, the strip on a phone. */
   const barFolded = $derived(panelFolded || stripFolded);
-  /** A phone's bar by its tab. Under a desk's open boxes it is folded: the tab shuts them and opens the bar (owner, 2026-10-13). */
+  /** A phone's bar by its tab. */
   const toggleStrip = (): void => {
     stripShut = !barFolded;
-    if (deskPhone && !stripShut) sideShut.right = true;
   };
   /**
    * The transport's key is on screen.
@@ -919,9 +840,7 @@
    */
   const stageRail = $derived(
     compact &&
-    stageRailShown(panels, { left: folded('left'), right: folded('right'), rows: panelFolded }) &&
-      // A preset's desk on a phone that draws its own thicknesses (Multator's dots): the rail beside them was a second one.
-      !(deskPhone && itemDrawn(panels, 'brush-sizes', { left: folded('left'), right: folded('right'), rows: panelFolded })),
+    stageRailShown(panels, { left: folded('left'), right: folded('right'), rows: panelFolded }),
   );
   /** An open column's width as drawn: the stored one, giving way to the canvas; unstored, as measured. */
   const sideWidth = (id: SideId): number => {
@@ -930,7 +849,7 @@
   };
   /** A folded column is sized by its strip rule, not by the width it remembers. */
   const sideStyle = (id: SideId): string | undefined =>
-    !folded(id) && !deskPhone && side(id).width ? `width: ${sideWidth(id)}px` : undefined;
+    !folded(id) && side(id).width ? `width: ${sideWidth(id)}px` : undefined;
   /** Collapse points away from the canvas, expand points back towards it. */
   const foldIcon = (id: SideId, collapsed: boolean): 'chevron-left' | 'chevron-right' =>
     atLeft(id) === collapsed ? 'chevron-right' : 'chevron-left';
@@ -1734,8 +1653,7 @@
   // at once, and the keys' names hung under the tour's card.
   /** The first visit's question stands whichever way the phone is held: gone with the line of words, a press on a preset took the plate away with nothing more to pick (owner, 2026-10-10). */
   const plateDue = $derived(!draftsOpen && !moreOpen);
-  // …nor under a phone's open boxes: the bar is folded there, and the note stood on the stage beneath them.
-  const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));
+  const noteDue = $derived(plateDue && !editor.presetAsk);
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {
@@ -2695,11 +2613,9 @@
   <div
     class="side-edge edge-{id}"
     class:folded={folded(id)}
-    class:over={id === 'right' && sideOver}
     class:at-left={atLeft(id)}
     class:dragging={resize?.side === id}
     style:--side-h={folded(id) ? undefined : `${sideH[id]}px`}
-    style:--side-w={id === 'right' && sideOver ? `${sidePx.right}px` : undefined}
   >
     {#if !folded(id)}
       <!-- A focusable separator is a window splitter widget (ARIA 1.2), which
@@ -2723,7 +2639,7 @@
     <!-- The arrow points the way the panel is about to travel. -->
     <button
       class="fold"
-      onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? toggleStanding(id) : toggleLying(id))}
+      onclick={() => editor.toggleSide(id)}
       aria-expanded={!folded(id)}
       title={folded(id) ? t('editor.panel_expand') : t('editor.panel_fold')}
       aria-label={t('editor.panel_toggle', { action: folded(id) ? t('editor.expand') : t('editor.fold'), label })}
@@ -3163,7 +3079,6 @@
   class:arranging={editor.arranging}
   class:compact={compact}
   class:phone={compact}
-  class:desk={deskPhone}
   class:tall
   class:fingers={noHover}
   class:low={sheetScrollsWhole(viewportHeight, rootFont)}
@@ -3187,7 +3102,7 @@
   {#if draws(panels.top) || editor.arranging}
     <!-- The bar over the canvas (toonop: the brush and the colours, a key
          each). Drawn only when it holds something; one row on a phone. -->
-    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} style:--key-h={compact && !deskPhone ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined} onpointerdowncapture={() => (rowPressed = true)}>
+    <div class="top" role="group" aria-label={t('panel.top')} data-slot="top" bind:this={topEl} style:--key-h={compact ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined} onpointerdowncapture={() => (rowPressed = true)}>
       {@render slot(panels.top, 'top')}
       {#if noteDue && noteInTop}<div class="top-note">{@render stageNote?.(!isEmptyDocument(editor.doc), frameCount(editor.doc), editor.playing, toolOpensBrush(panels, editor.tool))}</div>{/if}
     </div>
@@ -3199,7 +3114,7 @@
       aria-label={t('editor.tools_side')}
       data-slot="left"
       data-folded={folded('left') ? '' : undefined}
-      data-over-sheet={folded('left') || (compact && !deskPhone && !railLies) ? undefined : ''}
+      data-over-sheet={folded('left') || (compact && !railLies) ? undefined : ''}
       class:at-left={atLeft('left')}
       class:sidebar={sideFixed('left')}
       class:lies={railLies}
@@ -3213,11 +3128,11 @@
         {@render slot(panels.left, 'left')}
       {/if}
     </aside>
-    {#if !sideFixed('left') || deskPhone}
+    {#if !sideFixed('left')}
       {@render sideEdge('left', t('editor.tools_side'))}
     {/if}
   {/if}
-  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={(compact && !scaleUnder) || railLies} class:by-tab={deskPhone && sideDraws('right')} onpointerdowncapture={shutSideOver}
+  <div class="stage" data-slot="float" bind:clientWidth={stageWidth} bind:clientHeight={stageHeight} class:narrow={stageWidth < 44 * rem} class:zoom-corner={(compact && !scaleUnder) || railLies}
     style:--scale-left={scaleUnder ? `${-sidePx[scaleUnder]}px` : undefined}
     style:--stage-left={sideTrack(sideAt(true)) ? `${sideTrack(sideAt(true))}px` : undefined}
     style:--stage-right={sideTrack(sideAt(false)) ? `${sideTrack(sideAt(false))}px` : undefined}
@@ -3292,11 +3207,7 @@
          Nothing waits on it: the sheet under it draws, and the first line
          takes it away. -->
     {#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}
-      <!-- A phone's boxes, open, lie where the card stands: it steps out till
-           they shut — hidden, not unmounted, so its page is kept. -->
-      <div hidden={sideOver && !folded('right')}>
-        <Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />
-      </div>
+      <Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />
     {/if}
     {#if over && moreOpen}
       <!-- What a phone's row of keys has no room for, each key by its name. -->
@@ -3339,9 +3250,7 @@
       aria-label={t('editor.palette_side')}
       data-slot="right"
       data-folded={folded('right') ? '' : undefined}
-      data-over-sheet={folded('right') || sideOver ? undefined : ''}
-      class:over={sideOver}
-      style:--box-h={sideOver ? `${boxH}px` : undefined}
+      data-over-sheet={folded('right') ? undefined : ''}
       class:at-left={atLeft('right')}
       style={sideStyle('right')}
       bind:clientWidth={sidePx.right}
@@ -3357,13 +3266,10 @@
   {#if panels.rows.length > 0 || editor.arranging}
   <div
     class="panel"
-    onpointerdowncapture={shutSideOver}
     data-over-sheet={panelFolded ? undefined : ''}
     bind:offsetHeight={panelBoxH}
     class:collapsed={panelFolded}
     class:bare={barBare}
-    class:beside={stripBeside}
-    style:--key-rows={stripBeside ? panels.rows.filter((row) => !row.includes('timeline')).length : undefined}
     class:boxed={boxExtra > 0}
     data-slot={panelFolded && editor.arranging ? `row:${Math.max(0, panels.rows.length - 1)}` : undefined}
     data-folded={panelFolded && editor.arranging ? '' : undefined}
@@ -3374,7 +3280,7 @@
            its side at the corner of its seam. -->
       <button
         class="fold lying"
-        onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying('panel') : toggleStrip())}
+        onclick={() => (!compact ? editor.togglePanel() : toggleStrip())}
         aria-expanded={!barFolded}
         title={barFolded ? t('editor.panel_expand') : t('editor.panel_fold')}
         aria-label={barFolded ? t('editor.bottom_expand') : t('editor.bottom_fold')}
@@ -3796,12 +3702,6 @@
     --key-h: var(--tap);
     inset: var(--zoom-inset) var(--zoom-inset) auto auto;
     max-width: calc(100% - 2 * var(--zoom-inset));
-  }
-  /* A desk on a phone keeps its right boxes' fold tab at the screen's edge,
-     in the same corner: it lay over «Приблизить» (Toonio). The window
-     stands clear of it, the tab's width (`.fold`, 1.75rem) in. */
-  .stage.zoom-corner.by-tab > .scale-window {
-    inset-inline-end: calc(var(--zoom-inset) + 1.75rem);
   }
   .stage.zoom-corner > .scale-window :global(.value) {
     min-width: 0;
@@ -4309,7 +4209,7 @@
   /* The row shrinks its keys where it is too long (`rowKeySize`): a key's
      padding around its icon held it 42 px wide whatever its size. Not the
      keys of a window a row's key opens: those are a name by its icon. */
-  .studio.compact:not(.desk) .top :global(.key:not(.primary):not(.pop-plate *)) {
+  .studio.compact.phone .top :global(.key:not(.primary):not(.pop-plate *)) {
     padding: 0;
   }
   .studio.compact .top {
@@ -4328,100 +4228,6 @@
      of a thin brush was under the cut (owner, 2026-10-07). */
   .studio.compact:not(.tall) .left.sidebar :global(.brush-rail) {
     --rail-h: clamp(2rem, var(--stage-h) - 4rem, 9rem);
-  }
-  /* A phone that keeps its preset's desk (Multator, Toonio — owner,
-     2026-10-10). The left column is a rail of keys: one key wide where the
-     stage has the height for them, two — as on the desk — where it has not;
-     never a column that scrolls its last keys out of sight. */
-  .studio.compact.desk .left.sidebar:not(.collapsed) {
-    grid-auto-flow: column;
-    grid-template-columns: none;
-    grid-auto-columns: var(--tap);
-    grid-template-rows: repeat(auto-fill, var(--tap));
-    gap: 0.3rem;
-    width: auto;
-    align-self: start;
-    max-height: calc(var(--stage-h) - 1.2rem);
-    overflow: hidden;
-  }
-  .studio.compact.desk .left.sidebar .history {
-    display: contents;
-  }
-  /* Folded, the rail is its tab alone, as a desk's column is. */
-  .studio.compact.desk .left.sidebar.collapsed {
-    width: 0;
-    padding: 0;
-  }
-  .studio.compact.desk .side-resizer {
-    display: none;
-  }
-  /* The tab under a finger: twice the cursor's lip. */
-  .studio.compact.desk .side-edge .fold {
-    width: 1.75rem;
-  }
-  /* Lying down the rows of keys run on in one line, wrapping where the width
-     ends (Multator: three rows under the sheet took its whole height); the
-     strip, unfolded, takes a line of its own. */
-  .studio.compact.desk:not(.tall) .toolbar {
-    flex-direction: row;
-    flex-wrap: wrap;
-    column-gap: 0.8rem;
-  }
-  /* A desk standing on a phone has rows of keys over its strip: the strip
-     shows fewer layers and scrolls (owner, 2026-10-13: six layers on an
-     iPhone SE left the sheet a sixth of the screen). */
-  .studio.compact.desk.tall .panel :global(.board) {
-    max-height: 22dvh;
-  }
-  .studio.compact.desk:not(.tall) .toolbar > .row.strip-row {
-    flex: 1 1 100%;
-  }
-  /* …or stands beside them, down their whole height (`stripBeside`). */
-  .studio.compact.desk .panel.beside .toolbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.4rem 0.8rem;
-    align-items: start;
-  }
-  /* The rows of keys place themselves down the first column: the strip holds the second. */
-  .studio.compact.desk .panel.beside .toolbar > .row.strip-row {
-    grid-column: 2;
-    grid-row: 1 / span var(--key-rows, 1);
-  }
-  /* Its boxes open over the sheet, off the grid: beside it they left the
-     pencil a third of the width standing up, and lying down were cut at the
-     palette's waist. */
-  .studio.compact.desk .right.over:not(.collapsed) {
-    position: absolute;
-    /* Its containing block is the stage's whole row, not its own empty track. */
-    grid-column: 1 / -1;
-    grid-row: 1;
-    top: 0;
-    right: 0;
-    max-width: calc(100% - 4rem);
-    /* Whole where the studio has the height — over the bar too, as a window
-       is — and scrolling only past that. */
-    max-height: calc(var(--box-h) - 1.2rem);
-    z-index: 3;
-  }
-  /* Lying down the boxes stand side by side: one over the other they are
-     twice the screen's height. */
-  .studio.compact.desk:not(.tall) .right.over:not(.collapsed) {
-    display: flex;
-    align-items: flex-start;
-    width: auto;
-    padding-block: 0.6rem;
-  }
-  .studio.compact.desk:not(.tall) .right.over > :global(*) {
-    flex: none;
-    width: 14rem;
-  }
-  /* The brush box is a line a setting there (BrushPanel): the name, the track, the number. */
-  .studio.compact.desk:not(.tall) .right.over > :global(.brush-box) {
-    width: 20rem;
-  }
-  .studio.compact.desk .side-edge.edge-right.over:not(.folded) {
-    transform: translateX(calc(-1 * (var(--side-w, 0px) + 0.6rem)));
   }
   /* The seam is the card's edge, not a line down the whole stage: under the
      card it took a strip of the canvas from the pencil. */
@@ -4782,20 +4588,6 @@
   .fps-inline input[aria-disabled='true'] {
     opacity: 0.45;
     cursor: default;
-  }
-  /* On a phone's desk the slider takes what its row has left, so the rate
-     stands beside the last keys instead of on a row of its own. */
-  .studio.desk .fps-inline {
-    flex: 1 1 8rem;
-    min-width: 0;
-    /* …up to a slider's length: lying down it ran 640px (Toonio). */
-    max-width: 17rem;
-  }
-  .studio.desk .fps-inline input[type='range'] {
-    flex: 1 1 0;
-    width: auto;
-    min-width: 3rem;
-    max-width: 12rem;
   }
   /* The rate as a word is wider than an icon: the key grows round it, and
      an icon key has no padding of its own. */

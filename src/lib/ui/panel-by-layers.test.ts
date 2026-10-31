@@ -15,7 +15,7 @@ describe('the bottom bar stands by its layers until the divider is dragged', () 
   });
 
   const stored = (panelHeight: unknown) => parseUiConfig(JSON.stringify({
-    preset: 'toonio',
+    preset: 'toonop',
     drawing: { activeProfile: 'toonio', tonio: {}, panelHeight },
   }))?.drawing.panelHeight;
 

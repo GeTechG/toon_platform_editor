@@ -18,14 +18,11 @@ function member(source: string, name: string): string {
 }
 
 describe('the lasso as a tool', () => {
-  it('is toonop’s own, on the R key, beside the transform; the reference presets keep their toolbars', () => {
+  it('is toonop’s own, on the R key, beside the transform', () => {
     expect(plugins.tool('loop')).toMatchObject({ key: 'R', help: true, icon: 'lasso' });
     expect(presetUx(DEFAULT_PRESET).tools).toContain('loop');
     const left = presetPanels(DEFAULT_PRESET).left;
     expect(left.indexOf('tool:loop')).toBe(left.indexOf('tool:lasso') + 1);
-    for (const preset of ['toonio', 'multator']) {
-      expect(presetUx(preset).tools).not.toContain('loop');
-    }
     expect(editorUi).toMatch(/case 'r':\s*case 'R':\s*editor\.selectTool\('loop'\);/);
   });
 });

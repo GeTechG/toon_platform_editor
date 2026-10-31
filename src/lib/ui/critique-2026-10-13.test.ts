@@ -1,31 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import ru from '../i18n/ru.json';
 import { plugins } from '../plugins';
-import { presetPanels } from './presets';
-import { deskOnPhone } from './small-screen';
 
 // Critique 2026-10-13, the studio on a desk and on a phone: what the live run
 // found, held to the source the way the audits' tests hold theirs.
 void plugins;
 const UI = new URL('./', import.meta.url).pathname;
 const read = (name: string) => Bun.file(UI + name).text();
-
-describe('a phone that keeps a desk without undo', () => {
-  it('Multator: the step back stands by the transport — a finger has no Z and no shelf to fetch the key from', () => {
-    const rows = deskOnPhone(presetPanels('multator')).panels.rows;
-    // «+» and the bin stand by the strip with play, the steps after it in
-    // place of the gear and export (owner, the same day).
-    expect(rows[1]).toEqual(['add-frame', 'delete-frame', 'transport', 'history', 'publish', 'saved']);
-    expect(rows.at(-1)).toEqual(['tool:pencil', 'tool:eraser', 'tool:pipette', 'brush-sizes', 'color', 'fullscreen', 'settings', 'export', 'manual']);
-  });
-
-  it('Toonio, which places it, gets no second one', () => {
-    const cut = deskOnPhone(presetPanels('toonio')).panels;
-    expect([...cut.left, ...cut.rows.flat()].filter((id) => id === 'history')).toEqual(['history']);
-    // …and it stands with the keys, not in the rail (owner, 2026-10-13).
-    expect(cut.left).not.toContain('history');
-  });
-});
 
 describe('the thickness rail under a finger', () => {
   it('stands in the middle of the stage that shows, not of the table that runs on under the bottom panel', async () => {
@@ -171,20 +152,8 @@ describe('a small phone under a desk (owner, 2026-10-13, an iPhone SE under Toon
     expect(await read('Tour.svelte')).toMatch(/\.mascot \{[^}]*min-height: 3rem;/);
   });
 
-  it('the strip under three rows of keys shows fewer layers, so the sheet keeps the screen', async () => {
-    expect(await read('Editor.svelte')).toMatch(/\.studio\.compact\.desk\.tall \.panel :global\(\.board\) \{\s*max-height: 22dvh;/);
-  });
-
   it('the save note stands clear of the fold tab over the panel', async () => {
     expect(await read('Editor.svelte')).toMatch(/\.studio \.toolbar \.row > :global\(\.saved\) \{[^}]*bottom: calc\(100% \+ 1\.75rem\);/);
-  });
-});
-
-describe('the rail of a desk standing on a phone stays one key wide (owner, 2026-10-13)', () => {
-  it('folds what its first column has no room for behind «Другие инструменты», measured by where the keys stand', async () => {
-    const editor = await read('Editor.svelte');
-    expect(editor).toContain('(compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));');
-    expect(editor).toMatch(/if \(deskPhone\) \{[\s\S]{0,700}if \(first < lefts\.length\) leftSpill = lefts\.length - first;/);
   });
 });
 

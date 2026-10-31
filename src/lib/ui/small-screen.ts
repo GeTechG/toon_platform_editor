@@ -243,71 +243,11 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
   const drawn = [...PHONE_SIDE, ...rows.flat(), 'publish', 'spring', 'audio', 'onion', ...BEHIND_A_KEY, ...ON_THE_STRIP];
   // The frame rate is always there: the row it stood in has no room for it.
   // So are saving, export and the drafts, placed or not: a phone has no shelf
-  // to fetch a key from and no arranger, and Multator's arrangement — which
-  // places none of them — left its phone with no way to a GIF or to another toon.
+  // to fetch a key from and no arranger, and an arrangement that places none
+  // of them left its phone with no way to a GIF or to another toon.
   const always = ['fps', ...ALWAYS_BEHIND_MORE];
   const behind = [...placed.filter((id) => !drawn.includes(id) && toolOfItem(id) === null && !always.includes(id)), ...always];
   return { panels, more: moreGroups(behind), tools: rest };
-}
-
-/**
- * A phone that keeps the preset's own desk (owner, 2026-10-10: Multator and
- * Toonio on a phone «более похожими на пк версии, но с адаптивом»): the
- * user's arrangement as it stands — the studio draws its left column as a
- * rail and its right one behind a tab. The rail is the tools alone (owner,
- * 2026-10-13: with undo in it «Вернуть» stood in a second column and the
- * sheet was 171 px wide); the steps join the keys' row. The strip's row is the
- * strip alone, the phone's width — the keys beside it («+» and the bin under
- * Multator) open the row of keys next to it, by the transport (owner,
- * 2026-10-13: «добавить, удалить кадр — рядом с таймлайном, вместе с
- * проиграть»), and the steps back and forward follow the transport there in
- * place of the gear and export («вернуть назад вместо настроек и скачать»).
- * The keys about the studio itself — the gear, export, fullscreen, help — end
- * the last row instead, so «Отправить» is not left on a row of its own. The frame rate, a slider and
- * a box, ends its row, where it fits beside the last keys. A desk under
- * the sheet (Multator) stays under it whichever way the phone is held (owner,
- * 2026-10-10: beside the sheet was «странно»). Export is always there, by the gear: a desk
- * reaches it by Alt+S, and a phone has no keyboard and no shelf.
- */
-/** The keys about the studio itself, not the toon: the first to leave a row a phone has no width for. */
-const ABOUT_THE_STUDIO: readonly string[] = ['fullscreen', 'settings', 'export', 'manual'];
-
-// ponytail: export joins only an arrangement that places the gear; one without it has no export key on a phone.
-export function deskOnPhone(layout: PanelLayout): PhoneLayout {
-  const lacks = !allPlaced({ ...layout, hidden: [] }).includes('export');
-  const withExport = (ids: readonly string[]): string[] => ids.flatMap((id) => (lacks && id === 'settings' ? [id, 'export'] : [id]));
-  // The rail keeps the tools; what else stood in it joins the first row of keys.
-  const keys = layout.rows.findIndex((row) => !row.includes('timeline'));
-  const inRail = (id: string): boolean => keys < 0 || toolOfItem(id) !== null;
-  const besideStrip = keys < 0 ? [] : layout.rows.flatMap((row) => (row.includes('timeline') ? row.filter((id) => id !== 'timeline') : []));
-  // Nor Z: a desk that places no step back (Multator keeps it on the shelf)
-  // gets it — after the transport where the strip's keys opened that row,
-  // else at the end of the last row of keys.
-  const last = layout.rows.map((row) => !row.includes('timeline')).lastIndexOf(true);
-  const crowded = besideStrip.length > 0 && keys !== last;
-  const stepBack = allPlaced({ ...layout, hidden: [] }).includes('history') ? -1 : crowded ? keys : last;
-  const rows = layout.rows.map((row, i) => {
-    if (row.includes('timeline')) return keys < 0 ? [...row] : ['timeline'];
-    const moved = crowded ? layout.rows[keys].filter((id) => ABOUT_THE_STUDIO.includes(id)) : [];
-    const kept = row.filter((id) => i !== keys || !moved.includes(id));
-    const own = [
-      ...(i === keys ? besideStrip : []),
-      ...(i === stepBack && crowded ? kept.flatMap((id) => (id === 'transport' ? [id, 'history'] : [id])) : kept),
-      ...(i === keys ? layout.left.filter((id) => !inRail(id)) : []),
-      ...(i === stepBack && (!crowded || !kept.includes('transport')) ? ['history'] : []),
-      ...(i === last ? moved : []),
-    ];
-    return withExport([...own.filter((id) => id !== 'fps'), ...own.filter((id) => id === 'fps')]);
-  });
-  const panels: PanelLayout = {
-    ...layout,
-    left: withExport(layout.left.filter(inRail)),
-    top: withExport(layout.top),
-    right: withExport(layout.right),
-    rows,
-    hidden: layout.hidden.filter((id) => id !== 'export' && (stepBack < 0 || id !== 'history')),
-  };
-  return { panels, more: [], tools: [] };
 }
 
 /** «⋯»'s named groups, in the window's own order; no group is empty. */

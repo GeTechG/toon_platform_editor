@@ -41,15 +41,15 @@ describe('the brush type across a reload', () => {
   // its own until the preset was picked again. A type picked by hand was
   // lost the same way.
   const saved = (drawing: Record<string, unknown>) =>
-    parseUiConfig(JSON.stringify({ preset: 'multator', drawing }))?.drawing.brushType;
+    parseUiConfig(JSON.stringify({ preset: 'toonop', drawing }))?.drawing.brushType;
 
   it("falls back to the preset's own type", () => {
-    expect(saved({})).toBe('multator');
-    expect(saved({ brushType: 7 })).toBe('multator');
+    expect(saved({})).toBe('normal');
+    expect(saved({ brushType: 7 })).toBe('normal');
   });
 
   it('keeps the type picked by hand', () => {
-    expect(saved({ brushType: 'normal' })).toBe('normal');
+    expect(saved({ brushType: 'old' })).toBe('old');
   });
 
   it('is read on start and written with the rest of the brush', () => {

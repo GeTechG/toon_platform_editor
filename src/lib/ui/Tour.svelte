@@ -1,7 +1,8 @@
 <script lang="ts">
   // A first visit's tour (owner, 2026-10-12): a hello with the host's mascot,
   // a few pages on what the studio can do, each a small looped picture and a
-  // line of words, and the choice of a preset on the last one. It stands where
+  // line of words, and the choice of a preset where a plugin brought a second
+  // one. It stands where
   // the presets' plate stood and blocks nothing: the sheet under it draws.
   import Icon from './Icon.svelte';
   import { t } from '../i18n';
@@ -10,7 +11,7 @@
   import type { EditorState } from './editor-state.svelte';
 
   let { editor, mascot, platform, desk }: { editor: EditorState; mascot?: string; platform: boolean; desk: boolean } = $props();
-  const pages = $derived(tourPages(platform, desk));
+  const pages = $derived(tourPages(platform, desk, presets().length));
   let at = $state(0);
   // The window narrowed to a phone mid-tour: the panels' page goes, the count stays in range.
   const page = $derived(pages[Math.min(at, pages.length - 1)]);

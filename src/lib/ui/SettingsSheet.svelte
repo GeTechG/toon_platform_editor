@@ -415,9 +415,10 @@
         {@render act(t('settings.load_palettes'), 'chevron-right', () => paletteFile?.click())}
         {@render act(t('settings.wipe_palettes'), 'trash', wipePalettes, true)}
       {:else if tab === 'view'}
-        <!-- Reference «Настроить панель»: which buttons the toolbar shows, and
-             the preset they come from. The gear is never hideable, so this is
-             always reachable. -->
+        <!-- Reference «Настроить панель»: the preset the buttons come from,
+             where a plugin brought a second one to pick. The gear is never
+             hideable, so this is always reachable. -->
+        {#if presets().length > 1}
         <h3 class="sheet-hint">{t('settings.panel')}</h3>
         <div class="presets" role="group" aria-label={t('settings.preset_group')}>
           {#each presets() as p (p.id)}
@@ -430,7 +431,8 @@
           {/each}
         </div>
         <p class="said">{t('settings.preset_hint')}</p>
-        <!-- It swaps the columns: a set with none (Multator) has nothing to swap. -->
+        {/if}
+        <!-- It swaps the columns: a set with none has nothing to swap. -->
         {#if editor.panels.left.length > 0 || editor.panels.right.length > 0}
         <label class="toggle">
           <span class="toggle-label">{t('settings.mirror_layout')}</span>

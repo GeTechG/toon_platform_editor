@@ -72,10 +72,10 @@ describe('a phone draws toonop’s desktop', () => {
     expect(rowKeySize(568, 16, lying, true)).toBe(33);
     // Not under 32: past that the row wraps, as it did.
     expect(rowKeySize(400, 16, lying, true)).toBe(32);
-    expect(editorUi).toContain("style:--key-h={compact && !deskPhone ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined}");
+    expect(editorUi).toContain("style:--key-h={compact ? `${rowKeySize(boxW, rootFont, panels.top, !!onPublish)}px` : undefined}");
     expect(editorUi).toMatch(/\.studio\.compact \.top \.history :global\(\.key\) \{\s*min-width: var\(--key-h\);/);
     // An icon in its padding is 42 px wide whatever the key's size: the row's keys are their icon alone.
-    expect(editorUi).toMatch(/\.studio\.compact:not\(\.desk\) \.top :global\(\.key:not\(\.primary\):not\(\.pop-plate \*\)\) \{\s*padding: 0;/);
+    expect(editorUi).toMatch(/\.studio\.compact\.phone \.top :global\(\.key:not\(\.primary\):not\(\.pop-plate \*\)\) \{\s*padding: 0;/);
   });
 
   it('the sidebar and the bar under the canvas are the desktop’s own', () => {
@@ -183,13 +183,12 @@ describe('a phone draws toonop’s desktop', () => {
 });
 
 describe('the essentials of a preset', () => {
-  it('Toonop and Toonio: the pencil and the eraser — the pipette sits by the palette', () => {
+  it('the pencil and the eraser — the pipette sits by the palette', () => {
     expect(phoneTools(presetUx('toonop'))).toEqual(['pencil', 'eraser']);
-    expect(phoneTools(presetUx('toonio'))).toEqual(['pencil', 'eraser']);
   });
 
-  it('Multator keeps its pipette: there it is a key of the tools', () => {
-    expect(phoneTools(presetUx('multator'))).toEqual(['pencil', 'eraser', 'pipette']);
+  it('a preset that draws the pipette as a tool key keeps it', () => {
+    expect(phoneTools({ ...presetUx('toonop'), pipetteOffRail: false })).toEqual(['pencil', 'eraser', 'pipette']);
   });
 });
 
@@ -200,10 +199,10 @@ describe('the step is the desktop or the phone', () => {
     expect(pickStep('full', { w: 891, h: 649 }, { w: 1280, h: 800 })).toBe('full');
   });
 
-  it('a tablet under toonop takes the phone’s cut whatever its room (owner, 2026-10-12: «на всех планшетах» the keys stand over the canvas)', () => {
+  it('a tablet takes the phone’s cut whatever its room (owner, 2026-10-12: «на всех планшетах» the keys stand over the canvas)', () => {
     expect(pickStep('full', { w: 700, h: 900 }, view, true)).toBe('phone');
     expect(pickStep('phone', { w: 891, h: 649 }, { w: 1366, h: 1024 }, true)).toBe('phone');
-    expect(editorUi).toContain('step = pickStep(was, full, view, touch && editor.ux.phoneCut);');
+    expect(editorUi).toContain('step = pickStep(was, full, view, touch);');
   });
 
   it('a screen that leaves the canvas no room is the phone — there is no step between', () => {
@@ -234,7 +233,7 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('a phone’s cut is toonop’s arrangement, and everything is drawn from `panels`', () => {
-    expect(editorUi).toContain('const cut = $derived(\n    deskPhone\n      ? deskOnPhone(editor.panels)\n      : compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
+    expect(editorUi).toContain('const cut = $derived(\n    compact\n      ? phoneLayout(editor.panels, presetPanels(DEFAULT_PRESET), {');
     expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     const markup = editorUi.slice(editorUi.indexOf('<div\n  class="editor studio"'), editorUi.indexOf('<style>'));
     expect(markup).not.toContain('editor.panels');
@@ -335,9 +334,9 @@ describe('the studio draws one markup, given the arrangement', () => {
   });
 
   it('a phone folds the strip alone — the transport stays — and lying down starts folded', () => {
-    expect(editorUi).toContain('const stripFolded = $derived(compact && !deskPhone && (stripShut ?? (!tall || boxH < 30 * rem)));');
+    expect(editorUi).toContain('const stripFolded = $derived(compact && (stripShut ?? (!tall || boxH < 30 * rem)));');
     expect(editorUi).toContain("{#if !(stripFolded && row.includes('timeline'))}");
-    expect(editorUi).toContain('onclick={() => (!compact ? editor.togglePanel() : deskPhone && !tall ? toggleLying(\'panel\') : toggleStrip())}');
+    expect(editorUi).toContain('onclick={() => (!compact ? editor.togglePanel() : toggleStrip())}');
   });
 
   it('the transport’s row is one line on the narrowest phone: closer keys, less padding, as in the row over the canvas', () => {
@@ -359,7 +358,7 @@ describe('the studio draws one markup, given the arrangement', () => {
 
   it('on a phone the sheet is fitted under the sidebar and the zoom window: a bigger sheet is worth it (owner, 2026-10-07)', () => {
     // Lying at the stage's foot the widget costs the sheet nothing: there the sheet keeps clear of it, on a phone too.
-    expect(editorUi).toContain("data-over-sheet={folded('left') || (compact && !deskPhone && !railLies) ? undefined : ''}");
+    expect(editorUi).toContain("data-over-sheet={folded('left') || (compact && !railLies) ? undefined : ''}");
     // …and under the zoom window on every screen (owner, 2026-10-07): a corner of the sheet is not worth a third of it.
     expect(editorUi).not.toMatch(/class="scale-window" data-over-sheet=\{compact \? undefined : ''\}/);
   });
@@ -443,7 +442,7 @@ describe('the desktop’s bar over the canvas stays one row', () => {
   it('the studio measures what each row needs and picks the cut by the width — no wrap to detect, no flicker on the way back', () => {
     expect(editorUi).toContain('const topCut = $derived<TopCut>(compact || editor.arranging || boxW >= topNeed[0] ? 0 : boxW >= topNeed[1] ? 1 : 2);');
     // …and the column of tools folds by its height the same way (critique 2026-10-13).
-    expect(editorUi).toContain('const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, (compact && !(deskPhone && tall)) || editor.arranging ? 0 : leftSpill));');
+    expect(editorUi).toContain('const over = $derived(foldColumn(cut ?? oneRowTop(editor.panels, topCut, { tools: phoneTools(editor.ux) }), editor.panels, compact || editor.arranging ? 0 : leftSpill));');
     expect(editorUi).toContain('const panels = $derived(over?.panels ?? editor.panels);');
     expect(editorUi).toContain('{#if over && moreOpen}');
   });
@@ -474,7 +473,7 @@ describe('the thickness and undo are a widget of their own, standing or lying by
   });
 
   it('on a screen standing up the widget lies: one line at the foot of the stage, in the middle', () => {
-    expect(editorUi).toContain("const railLies = $derived(sideFixed('left') && !deskPhone && !editor.arranging && railLiesFor(");
+    expect(editorUi).toContain("const railLies = $derived(sideFixed('left') && !editor.arranging && railLiesFor(");
     expect(editorUi).toContain('class:lies={railLies}');
     expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \{[^}]*grid-column: 1 \/ -1;[^}]*align-self: end;[^}]*justify-self: center;[^}]*display: flex;/);
     expect(editorUi).toMatch(/\.studio \.left\.sidebar\.lies \.history \{[^}]*flex: none;\s*grid-template-columns: repeat\(2, var\(--key-h\)\);/);
@@ -497,32 +496,3 @@ describe('the thickness and undo are a widget of their own, standing or lying by
 });
 
 
-// Владелец, 2026-10-13: «я вроде просил запретить открывать одновременно» —
-// стоя рейка и коробки стола на телефоне сворачивались каждая сама по себе, и
-// открытые коробки ложились рядом с рейкой, язычок к язычку.
-describe('стоя стол на телефоне держит открытой одну боковую колонку', () => {
-  it('пока коробки открыты, рейка свёрнута — и возвращается, когда их закрыли', () => {
-    expect(editorUi).toContain("(id === 'left' ? (sideShut.left ?? false) || !folded('right') : (sideShut.right ?? true))");
-  });
-
-  it('язычок рейки при открытых коробках закрывает их и открывает рейку', () => {
-    const toggle = editorUi.match(/const toggleStanding = [^]*?\n  \};/)?.[0] ?? '';
-    expect(toggle).toContain('const shut = !folded(id);');
-    expect(toggle).toContain('sideShut[id] = shut;');
-    expect(toggle).toContain("if (id === 'left' && !shut) sideShut.right = true;");
-    expect(editorUi).toContain('onclick={() => (!deskPhone ? editor.toggleSide(id) : tall ? toggleStanding(id) : toggleLying(id))}');
-  });
-});
-
-// Владелец, 2026-10-13: «нижнюю панель и правую тоже нельзя одновременно».
-describe('стоя открытые коробки стола сворачивают и нижнюю панель', () => {
-  it('пока коробки открыты, бар свёрнут — и возвращается, когда их закрыли', () => {
-    expect(editorUi).toContain("(tall ? (stripShut ?? false) || !folded('right') : openLying !== 'panel')");
-  });
-
-  it('язычок бара при открытых коробках закрывает их и открывает бар', () => {
-    const toggle = editorUi.match(/const toggleStrip = [^]*?\n  \};/)?.[0] ?? '';
-    expect(toggle).toContain('stripShut = !barFolded;');
-    expect(toggle).toContain('if (deskPhone && !stripShut) sideShut.right = true;');
-  });
-});

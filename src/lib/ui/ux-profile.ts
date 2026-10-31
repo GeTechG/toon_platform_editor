@@ -76,8 +76,6 @@ export const TOONOP_UX: UxProfile = {
   transport: 'steps',
   // The thickness and undo beside the canvas (owner, 2026-10-05): a sidebar.
   leftFixed: true,
-  // Its phone is its own, after Procreate Pocket (owner, 2026-10-07); the reference presets keep their desks.
-  phoneCut: true,
   // The rate is a word on the bar, the slider pops up under it (owner, 2026-10-15).
   fpsKey: true,
 };

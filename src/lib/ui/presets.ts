@@ -381,13 +381,47 @@ export interface UiConfig {
 
 // A preset owns toolbar visibility, the brush drawn with next, and the UX
 // profile (palette, eraser rule, onion side, frame and playback behavior).
-// The editor holds its own, `toonop`, and nothing else: a preset that
-// reproduces somebody else's editor arrives as a register record, brought by
-// the plugin that also brings its brushes.
+// The editor holds its own, `toonop`, and nothing else: any other preset
+// arrives as a register record, brought by the plugin that also brings its
+// brushes.
 
 /** Every preset on offer: the editor's own and whatever the register holds. */
 export function presets(): readonly RegisteredPreset[] {
   return plugins.presets();
+}
+
+/**
+ * Presets the editor once shipped and no plugin will bring back (owner,
+ * 2026-10-31): the type each one's everyday brush drew as, which is what is
+ * left of it.
+ */
+const RETIRED_PRESETS: Readonly<Record<string, BrushType>> = { multator: 'multator', toonio: 'toonio' };
+
+/**
+ * A config left under a retired preset, as toonop's. The arrangement went with
+ * the preset: moves are moves over a start that is no more, so the panels, the
+ * windows' places and the sizes of the columns all start afresh. The brushes,
+ * the settings and the tour are the hand's and stay. Its everyday brush keeps
+ * drawing the line it drew; a type picked by hand stays picked.
+ */
+function leaveRetiredPreset(data: Record<string, unknown>, line: BrushType): Record<string, unknown> {
+  const drawing = record(data.drawing);
+  const picked = typeof drawing.brushType === 'string' && drawing.brushType !== NORMAL_BRUSH_TYPE;
+  return {
+    ...data,
+    preset: DEFAULT_PRESET,
+    panels: undefined,
+    moves: undefined,
+    features: undefined,
+    floatPos: undefined,
+    drawing: {
+      ...drawing,
+      brushType: picked ? drawing.brushType : line,
+      panelHeight: undefined,
+      panelCollapsed: undefined,
+      sides: undefined,
+    },
+  };
 }
 
 /**
@@ -493,10 +527,14 @@ export function parseUiConfig(raw: string | null): UiConfig | null {
   if (typeof data !== 'object' || data === null) {
     return null;
   }
-  const { preset, features, drawing } = data as Record<string, unknown>;
-  if (typeof preset !== 'string') {
+  if (typeof (data as Record<string, unknown>).preset !== 'string') {
     return null;
   }
+  const line = (data as { preset: string }).preset;
+  if (Object.hasOwn(RETIRED_PRESETS, line)) {
+    data = leaveRetiredPreset(data as Record<string, unknown>, RETIRED_PRESETS[line]);
+  }
+  const { preset, features, drawing } = data as { preset: string; features?: unknown; drawing?: unknown };
   // A config written before panels existed carried visibility in flags
   // instead: start from the arrangement and put away what was turned off.
   const storedPanels = (data as Record<string, unknown>).panels;
@@ -812,7 +850,7 @@ export function saveUiConfig(config: UiConfig, ownLayout = true): void {
     try {
       const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Record<string, unknown> | null;
       // Whatever shape it was stored in — moves, or whole before there were moves — it stays that.
-      if (stored && typeof stored === 'object' && (stored.panels !== undefined || stored.moves !== undefined)) {
+      if (stored && typeof stored === 'object' && !Object.hasOwn(RETIRED_PRESETS, String(stored.preset)) && (stored.panels !== undefined || stored.moves !== undefined)) {
         out = {
           ...config,
           panels: stored.panels as PanelLayout | undefined,

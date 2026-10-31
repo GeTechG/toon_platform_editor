@@ -11,23 +11,24 @@ const ru = await Bun.file(UI + '../i18n/ru.json').json();
 
 describe('тур первого входа', () => {
   // Владелец, 2026-10-18: рассказ открывается открытостью, совместимость с Тунио — после.
-  it('начинается с привета, рассказ — с открытости, кончается выбором набора', () => {
-    expect(tourPages(true, true)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'continue', 'layout']);
+  it('начинается с привета, рассказ — с открытости, а выбором набора кончается, когда есть из чего', () => {
+    expect(tourPages(true, true, 1)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'continue']);
+    expect(tourPages(true, true, 2)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'continue', 'layout']);
   });
 
   // Владелец, 2026-10-15: на десктопе панели расставляют под себя — на телефоне
   // расстановки нет, и страницы о ней тоже.
   it('о панелях рассказывает только десктоп', () => {
-    expect(tourPages(true, false)).toEqual(['welcome', 'open', 'toon', 'plugins', 'export', 'continue', 'layout']);
+    expect(tourPages(true, false, 1)).toEqual(['welcome', 'open', 'toon', 'plugins', 'export', 'continue']);
     expect(editor).toContain('<Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />');
   });
 
   it('без площадки о продолжениях не рассказывает: продолжать нечего', () => {
-    expect(tourPages(false, true)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export', 'layout']);
+    expect(tourPages(false, true, 1)).toEqual(['welcome', 'open', 'toon', 'plugins', 'panels', 'export']);
   });
 
   it('у каждой страницы рассказа есть заголовок и слова', () => {
-    for (const page of tourPages(true, true).slice(0, -1)) {
+    for (const page of tourPages(true, true, 1)) {
       expect(ru.tour[page].title).toBeString();
       expect(ru.tour[page].text).toBeString();
     }
@@ -95,15 +96,8 @@ describe('тур первого входа', () => {
     expect(tight).toContain('font-size: 0.95rem;');
   });
 
-  // Владелец, 2026-10-13: открытые коробки стола на телефоне лежали под
-  // карточкой тура, одно на другом. Карточка уходит, пока они открыты, и
-  // возвращается на той же странице: она спрятана, а не снята.
-  it('под открытыми коробками на телефоне тура не видно, страница его цела', () => {
-    expect(editor).toContain("<div hidden={sideOver && !folded('right')}>\n        <Tour {editor} {mascot} platform={!!onPublish} desk={!compact} />\n      </div>");
-  });
-
   // Владелец, 2026-10-13: «проблема анимаций что они не влезают» — сцена была
-  // 16rem при любой карточке, а под Toonio на телефоне карточке остаётся 250 px.
+  // 16rem при любой карточке, а на телефоне карточке остаётся 250 px.
   it('картинка рассказа сжимается вместе с карточкой: все её размеры — в долях ширины колодца', () => {
     expect(tour).toMatch(/\n  \.art \{[^}]*container-type: inline-size;/);
     expect(tour).toMatch(/@supports \(width: 1cqw\) \{\s*\.scene \{\s*--u: min\(1rem, 100cqw \/ 16\);/);
@@ -140,7 +134,7 @@ describe('флаг «тур пройден»', () => {
   });
 
   it('слово площадки и подписи клавиш ждут конца тура', () => {
-    expect(editor).toContain("const noteDue = $derived(plateDue && !editor.presetAsk && !(deskPhone && !tall) && !(sideOver && !folded('right')));");
+    expect(editor).toContain('const noteDue = $derived(plateDue && !editor.presetAsk);');
     expect(editor).toContain('class:named={named && !editor.presetAsk && !rowPressed && (noteInPanel || noteInTop || isEmptyDocument(editor.doc))}');
   });
 });
