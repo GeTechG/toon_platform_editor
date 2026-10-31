@@ -199,9 +199,7 @@
     "multator_pencil": "Мультаторовский карандаш",
     "multator_eraser": "Мультаторовский ластик",
     "oldschool_pen": "Старое перо",
-    "oldschool_eraser": "Старый ластик",
-    "toonio_brush": "Туниовская кисть",
-    "toonio_eraser": "Туниовский ластик"
+    "oldschool_eraser": "Старый ластик"
   },
   "brush_type": {
     "normal": {
@@ -215,10 +213,6 @@
     "multator": {
       "label": "Мультатор",
       "hint": "Сглаженная, дрожи руки почти не видно"
-    },
-    "toonio": {
-      "label": "Тунио",
-      "hint": "Линия как в Тунио, гладкость настраивается"
     }
   },
   "core": {

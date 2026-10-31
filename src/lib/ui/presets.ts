@@ -392,17 +392,18 @@ export function presets(): readonly RegisteredPreset[] {
 
 /**
  * Presets the editor once shipped and no plugin will bring back (owner,
- * 2026-10-31): the type each one's everyday brush drew as, which is what is
- * left of it.
+ * 2026-10-31), each with the type its hand goes on drawing with: the multator
+ * line is a type of its own; the toonio one was the everyday brush with two
+ * faults, so that brush is what it becomes.
  */
-const RETIRED_PRESETS: Readonly<Record<string, BrushType>> = { multator: 'multator', toonio: 'toonio' };
+const RETIRED_PRESETS: Readonly<Record<string, BrushType>> = { multator: 'multator', toonio: NORMAL_BRUSH_TYPE };
 
 /**
  * A config left under a retired preset, as toonop's. The arrangement went with
  * the preset: moves are moves over a start that is no more, so the panels, the
  * windows' places and the sizes of the columns all start afresh. The brushes,
- * the settings and the tour are the hand's and stay. Its everyday brush keeps
- * drawing the line it drew; a type picked by hand stays picked.
+ * the settings and the tour are the hand's and stay. A type picked by hand
+ * stays picked.
  */
 function leaveRetiredPreset(data: Record<string, unknown>, line: BrushType): Record<string, unknown> {
   const drawing = record(data.drawing);

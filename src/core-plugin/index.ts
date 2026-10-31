@@ -1,9 +1,8 @@
 /**
- * The plugin the editor ships with: the brushes that came from multator.ru and
- * toonio.ru, and the pixel. Their presets are gone (owner, 2026-10-31), the
- * lines stay.
+ * The plugin the editor ships with: the brushes that came from multator.ru,
+ * and the pixel. The presets are gone (owner, 2026-10-31), these lines stay.
  *
- * Seven tools and three brush types. It travels with the editor and is built
+ * Five tools and two brush types. It travels with the editor and is built
  * with it, but it is not *of* it: nothing under `lib/` imports this folder,
  * the editor draws with its own brush under its own `toonop` preset, and
  * everything here reaches the editor through the plugin contract — the same
@@ -33,7 +32,6 @@ import { MASCOTS_ICON } from './mascot';
 import { MULTATOR_RULES } from './multator';
 import { OLDSCHOOL_LANG_TOLERANCE_LOGICAL, commitOldschoolStroke } from './oldschool-geometry';
 import { appendPixelCells, pixelPrepare } from './pixel-geometry';
-import { toonioRules } from './toonio';
 import { t } from '../lib/i18n';
 
 // ---------------------------------------------------------------------------
@@ -106,20 +104,8 @@ const OLDSCHOOL_ERASER: PluginPrimitive = {
 };
 
 // ---------------------------------------------------------------------------
-// The tonio line, and the pixel that measures on its canvas
+// The pixel
 // ---------------------------------------------------------------------------
-
-const TOONIO_BRUSH: PluginPrimitive = {
-  kind: 'pencil',
-  rules: ({ smooth, minDistance }) => toonioRules({ smooth, minDistance }),
-  descriptor: ({ width, color }) => ({ kind: 'pencil', geometry: 'smooth', width, color }),
-};
-
-const TOONIO_ERASER: PluginPrimitive = {
-  kind: 'eraser',
-  rules: ({ smooth, minDistance }) => toonioRules({ smooth, minDistance }),
-  descriptor: ({ width }) => ({ kind: 'eraser', geometry: 'smooth', width }),
-};
 
 const PIXEL: PluginPrimitive = {
   kind: 'stamp',
@@ -173,8 +159,6 @@ const plugin: Plugin = {
     'multator-eraser': twin(t('tool.multator_eraser'), ERASER_ICON, MULTATOR_ERASER),
     oldschool: twin(t('tool.oldschool_pen'), PENCIL_ICON, OLDSCHOOL_PEN),
     'oldschool-eraser': twin(t('tool.oldschool_eraser'), ERASER_ICON, OLDSCHOOL_ERASER),
-    'toonio-brush': twin(t('tool.toonio_brush'), PENCIL_ICON, TOONIO_BRUSH),
-    'toonio-eraser': twin(t('tool.toonio_eraser'), ERASER_ICON, TOONIO_ERASER),
     pixel: {
       label: t('tool.pixel.label'),
       title: t('tool.pixel.title'),
@@ -199,11 +183,6 @@ const plugin: Plugin = {
       label: t('brush_type.multator.label'),
       hint: t('brush_type.multator.hint'),
       twins: { pencil: 'multator-pencil', eraser: 'multator-eraser' },
-    },
-    toonio: {
-      label: t('brush_type.toonio.label'),
-      hint: t('brush_type.toonio.hint'),
-      twins: { pencil: 'toonio-brush', eraser: 'toonio-eraser' },
     },
   },
 };

@@ -35,7 +35,7 @@ describe('линия под пером — с тем нажимом, с каки
   });
 
   it('линия, что хранит нажим, показывает его и под рукой', () => {
-    const { live, landed } = penGesture('toonio-brush');
+    const { live, landed } = penGesture('toonop-brush');
     expect(landed.pressure?.length).toBe(landed.points.length / 2);
     expect(live?.at(-1)).toBeGreaterThan(live![0]);
   });

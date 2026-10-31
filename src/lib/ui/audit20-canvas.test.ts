@@ -37,7 +37,7 @@ describe('живая линия пера у кисти, что нажим не �
   });
 
   it('кисть, что хранит нажим, меняет', () => {
-    expect(drawsPressure(penSession('toonio-brush'))).toBe(true);
+    expect(drawsPressure(penSession('toonop-brush'))).toBe(true);
   });
 
   it('холст рисует целиком только линию, что меняет ширину', () => {

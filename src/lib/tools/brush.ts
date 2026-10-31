@@ -2,9 +2,8 @@
  * The brush the editor draws with.
  *
  * It started from the line of toonio.ru and is ours now: the rules are written
- * out here in full and read nothing from the shipped parity plugin, the same
- * way the `toonop` UX profile is written out rather than copied from `toonio`.
- * A parity fix over there must not be able to move the line drawn here.
+ * out here in full and read nothing from the shipped plugin, the same way the
+ * `toonop` UX profile is written out.
  */
 
 import { FIXED_POINT_SCALE } from '../format/constants';
@@ -74,8 +73,7 @@ function thinBySmooth(points: readonly number[], smooth: number): number[] {
  * in screen pixels, so it is divided by the zoom. It is measured from the last
  * point kept, not from the sample before: a pen reports 240 times a second, a
  * slow hand moves under a pixel between two of them, and every middle point of
- * a slow arc fell — it landed as its chord. (The Tonio parity brush keeps the
- * reference's neighbour rule.)
+ * a slow arc fell — it landed as its chord.
  */
 function thinByDistance(
   points: readonly number[],

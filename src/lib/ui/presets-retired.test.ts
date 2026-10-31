@@ -62,9 +62,9 @@ describe('the Multator and Toonio presets are retired', () => {
     expect(config.drawing.brushType).toBe('multator');
   });
 
-  it('a Toonio hand keeps the toonio line: its everyday brush was that line', () => {
-    expect(parseUiConfig(stored({ preset: 'toonio' }))!.drawing.brushType).toBe('toonio');
-    expect(parseUiConfig(stored({ preset: 'toonio', drawing: { brushType: 'normal' } }))!.drawing.brushType).toBe('toonio');
+  it('a Toonio hand moves to the everyday brush: the owner dropped the line, it was that brush with two faults (2026-10-31)', () => {
+    expect(parseUiConfig(stored({ preset: 'toonio' }))!.drawing.brushType).toBe('normal');
+    expect(parseUiConfig(stored({ preset: 'toonio', drawing: { brushType: 'normal' } }))!.drawing.brushType).toBe('normal');
   });
 
   it('a type picked by hand under Toonio stays picked', () => {
@@ -93,23 +93,13 @@ describe('a tab that did not rearrange writes the config back', () => {
   });
 });
 
-describe('the Toonio line outlives its preset', () => {
-  it('is a type of the pencil and the eraser, offered in the brush box', () => {
-    expect(brushOfType('pencil', 'toonio')).toBe('toonio-brush');
-    expect(brushOfType('eraser', 'toonio')).toBe('toonio-eraser');
-    expect(brushTypesFor('pencil').map((type) => type.id)).toContain('toonio');
-    expect(brushTypesFor('eraser').map((type) => type.id)).toContain('toonio');
-  });
-
-  it('the eraser collects its line the same way the pencil does', () => {
-    const pencil = plugins.probeRules('toonio-brush')!;
-    const eraser = plugins.probeRules('toonio-eraser')!;
-    expect(eraser.range).toEqual(pencil.range);
-    expect(eraser.smoothing).toBe(true);
-    expect(eraser.commitOnCancel).toBe(true);
-    expect(plugins.tool('toonio-eraser')?.stroke?.descriptor({
-      width: 5, color: '#ff0000', fill: '#ffffff', smooth: 3, minDistance: 3,
-    })).toEqual({ kind: 'eraser', geometry: 'smooth', width: 5 });
+describe('the Toonio line left with its preset', () => {
+  it('is no type of the brush and no brush of the register', () => {
+    expect(brushOfType('pencil', 'toonio')).toBe('pencil');
+    expect(brushOfType('eraser', 'toonio')).toBe('eraser');
+    expect(brushTypesFor('pencil').map((type) => type.id)).toEqual(['normal', 'old', 'multator']);
+    expect(plugins.tool('toonio-brush')).toBeUndefined();
+    expect(plugins.tool('toonio-eraser')).toBeUndefined();
   });
 });
 

@@ -82,7 +82,7 @@ describe('the oldschool pen is a brush', () => {
     // itself. It finds a tool's policy by primitive kind, so a second brush of
     // kind `pencil` declaring one would change how every pencil stroke is cut.
     expect(plugins.tools().filter((t) => t.stroke?.kind === 'pencil').map((t) => t.id))
-      .toEqual(['pencil', 'toonop-brush', 'multator-pencil', 'oldschool', 'toonio-brush']);
+      .toEqual(['pencil', 'toonop-brush', 'multator-pencil', 'oldschool']);
     expect(plugins.tools()
       .filter((t) => t.stroke?.kind === 'pencil' || t.stroke?.kind === 'eraser')
       .filter((t) => t.stroke?.cut !== undefined))
