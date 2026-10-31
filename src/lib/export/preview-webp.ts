@@ -4,8 +4,8 @@
  * sees), downscaled and frame-capped, encode each frame to a WebP still with the
  * browser's native `canvas.toBlob('image/webp')` (libwebp in WASM where the
  * browser has none, see `webpStill`), and stitch the stills into one
- * looping animated WebP (see ./webp). It is made as good as its weight allows:
- * lossless first, stepping down only when the whole thing is too heavy.
+ * looping animated WebP (see ./webp). It goes out lossless, and the server packs
+ * it; stepping down here is only for what the server would not take.
  * DOM-bound, so it lives beside export-gif and isn't unit-tested here — its
  * pure pieces are (./webp.test.ts).
  */
@@ -19,7 +19,6 @@ import {
   assembleAnimatedWebp,
   downscaleSize,
   firstThatFits,
-  PREVIEW_BUDGET_BYTES,
   PREVIEW_RUNGS,
   previewFrameBudget,
   type PreviewRung,
@@ -29,12 +28,11 @@ import {
 
 /**
  * Build an animated WebP preview of `doc`: at most `previewFrameBudget` frames,
- * looping forever, at the best rung of `PREVIEW_RUNGS` that keeps it within
- * `PREVIEW_BUDGET_BYTES`.
+ * looping forever, at the best rung of `PREVIEW_RUNGS` within that rung's budget.
  */
 export function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
   const count = Math.min(previewFrameBudget(doc.frame_rate, { holds: doc.holds }), frameCount(doc));
-  return firstThatFits(PREVIEW_RUNGS, PREVIEW_BUDGET_BYTES, async (rung) => {
+  return firstThatFits(PREVIEW_RUNGS, (rung) => rung.budget, async (rung) => {
     const { canvas, ctx, renderer, viewport, width, height, raw } = previewTarget(doc, rung);
     const stills: WebpStill[] = [];
     for (let i = 0; i < count; i++) {

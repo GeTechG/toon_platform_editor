@@ -31,6 +31,18 @@ export interface AnimateOptions {
 /** Image sub-chunks a still may carry that belong inside an ANMF frame. */
 const FRAME_CHUNKS = new Set(['VP8 ', 'VP8L', 'ALPH']);
 
+/** Whether a still is written without loss: a VP8L chunk, not VP8 with or
+ * without its VP8X and ALPH around it. */
+function isLossless(still: Uint8Array): boolean {
+  const view = new DataView(still.buffer, still.byteOffset, still.byteLength);
+  for (let at = 12; at + 8 <= still.length; at += 8 + view.getUint32(at + 4, true) + (view.getUint32(at + 4, true) & 1)) {
+    const tag = String.fromCharCode(still[at], still[at + 1], still[at + 2], still[at + 3]);
+    if (tag === 'VP8L') return true;
+    if (tag === 'VP8 ') return false;
+  }
+  return false;
+}
+
 /**
  * The bytes of one WebP still: the browser's own `toBlob('image/webp')`
  * result when it is one, else `pixels` encoded by libwebp at the same
@@ -42,7 +54,11 @@ export async function webpStill(
   quality: number,
 ): Promise<Uint8Array> {
   if (native?.type === 'image/webp') {
-    return new Uint8Array(await native.arrayBuffer());
+    const made = new Uint8Array(await native.arrayBuffer());
+    // Asked to lose nothing, not every browser does: only a lossless one stays.
+    if (quality < 1 || isLossless(made)) {
+      return made;
+    }
   }
   const options = quality >= 1 ? { lossless: 1 } : { quality: quality * 100 };
   return new Uint8Array(await encodeWebp(pixels() as ImageData, options));
@@ -151,45 +167,48 @@ export function downscaleSize(
 export interface PreviewRung {
   side: number;
   quality: number;
+  /** The most it may weigh to go out at this rung. */
+  budget: number;
 }
 
 /**
- * How a preview is made, best first. Quality 1 is lossless where the browser
- * has it (Chromium): line art keeps its exact colours and edges, which the
- * lossy encoder's halved colour resolution smeared — a thin coloured line came
- * out duller and fringed. 512 px, because a card is drawn up to ~320 CSS px
- * wide and a dense screen doubles that. Each rung down trades some of that for
- * weight, the old 384 px at 0.75 last.
+ * What may be sent as it is, whatever its weight: the server packs it and lets
+ * go of what it must to keep `PREVIEW_BUDGET_BYTES` (`services/api/src/pictures.rs`),
+ * better than here, since it can say each frame by what changed. The rest of
+ * the rungs are for what is over even this, which the server would turn down.
  */
-export const PREVIEW_RUNGS: readonly PreviewRung[] = [
-  { side: 512, quality: 1 },
-  { side: 512, quality: 0.92 },
-  { side: 384, quality: 0.92 },
-  { side: 384, quality: 0.75 },
-];
+export const PREVIEW_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-/**
- * What a whole preview may weigh. A page of the gallery is 24 of them, so
- * this, not the server's 1 MB cap, is what a phone pays for. Measured
- * 2026-10-06 on published toons: a lossless 512 px frame is 15–35 KB, so a
- * short toon stays lossless and a 50-frame one steps down.
- */
+/** What a whole preview may weigh once made here, and not by the server. */
 export const PREVIEW_BUDGET_BYTES = 700 * 1024;
 
 /**
+ * How a preview is made, best first. Quality 1 is lossless: line art keeps its
+ * exact colours and edges, which the lossy encoder's halved colour resolution
+ * smeared. 512 px, because a card is drawn up to ~320 CSS px wide and a dense
+ * screen doubles that. Each rung down trades some of that for weight.
+ */
+export const PREVIEW_RUNGS: readonly PreviewRung[] = [
+  { side: 512, quality: 1, budget: PREVIEW_UPLOAD_BYTES },
+  { side: 512, quality: 0.92, budget: PREVIEW_BUDGET_BYTES },
+  { side: 384, quality: 0.92, budget: PREVIEW_BUDGET_BYTES },
+  { side: 384, quality: 0.75, budget: PREVIEW_BUDGET_BYTES },
+];
+
+/**
  * Build with each rung in turn, best first, and return the first result that
- * weighs no more than `budget`; if none does, the last rung's — a heavy
+ * weighs no more than its `budget`; if none does, the last rung's — a heavy
  * preview still beats none.
  */
 export async function firstThatFits<R>(
   rungs: readonly R[],
-  budget: number,
+  budget: (rung: R) => number,
   build: (rung: R) => Promise<Uint8Array<ArrayBuffer>>,
 ): Promise<Uint8Array<ArrayBuffer>> {
   let built = new Uint8Array(0);
   for (const rung of rungs) {
     built = await build(rung);
-    if (built.length <= budget) {
+    if (built.length <= budget(rung)) {
       break;
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assembleAnimatedWebp, webpStill, downscaleSize, firstThatFits, PREVIEW_RUNGS, previewFrameBudget, type WebpStill } from './webp';
+import { assembleAnimatedWebp, webpStill, downscaleSize, firstThatFits, PREVIEW_BUDGET_BYTES, PREVIEW_RUNGS, PREVIEW_UPLOAD_BYTES, previewFrameBudget, type WebpStill } from './webp';
 
 const ascii = (bytes: Uint8Array, from: number, to: number) =>
   String.fromCharCode(...bytes.subarray(from, to));
@@ -117,19 +117,19 @@ describe('firstThatFits', () => {
 
   test('the best rung goes out when it is light enough, and nothing else is built', async () => {
     const { tried, build } = sized([90, 50, 10]);
-    expect((await firstThatFits([0, 1, 2], 100, build)).length).toBe(90);
+    expect((await firstThatFits([0, 1, 2], () => 100, build)).length).toBe(90);
     expect(tried).toEqual([0]);
   });
 
   test('a heavy toon steps down until it fits', async () => {
     const { tried, build } = sized([300, 101, 100, 10]);
-    expect((await firstThatFits([0, 1, 2, 3], 100, build)).length).toBe(100);
+    expect((await firstThatFits([0, 1, 2, 3], () => 100, build)).length).toBe(100);
     expect(tried).toEqual([0, 1, 2]);
   });
 
   test('when nothing fits, the lightest rung goes out rather than nothing', async () => {
     const { build } = sized([300, 200, 150]);
-    expect((await firstThatFits([0, 1, 2], 100, build)).length).toBe(150);
+    expect((await firstThatFits([0, 1, 2], () => 100, build)).length).toBe(150);
   });
 });
 
@@ -144,6 +144,24 @@ describe('PREVIEW_RUNGS', () => {
   });
 });
 
+describe('how a preview goes out', () => {
+  const rungIndex = (sizes: number[]) => async (rung: (typeof PREVIEW_RUNGS)[number]) =>
+    new Uint8Array(sizes[PREVIEW_RUNGS.indexOf(rung)]);
+  const budget = (rung: (typeof PREVIEW_RUNGS)[number]) => rung.budget;
+
+  test('lossless and heavier than the budget, it still goes out for the server to pack', async () => {
+    const built = await firstThatFits(PREVIEW_RUNGS, budget, rungIndex([3_000_000, 1, 1, 1]));
+    expect(built.length).toBe(3_000_000);
+    expect(PREVIEW_RUNGS[0].quality).toBe(1);
+  });
+
+  test('over what the server takes, the studio steps down to the budget itself', async () => {
+    const over = PREVIEW_UPLOAD_BYTES + 1;
+    const built = await firstThatFits(PREVIEW_RUNGS, budget, rungIndex([over, PREVIEW_BUDGET_BYTES + 1, PREVIEW_BUDGET_BYTES, 1]));
+    expect(built.length).toBe(PREVIEW_BUDGET_BYTES);
+  });
+});
+
 describe('webpStill', () => {
   // 2×2 opaque red: what a canvas hands over as its pixels.
   const pixels = () => ({ data: new Uint8ClampedArray([255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]), width: 2, height: 2 });
@@ -152,6 +170,17 @@ describe('webpStill', () => {
     const native = fakeStill(2, 2, [1, 2, 3]).data;
     const still = await webpStill(new Blob([native as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), pixels, 1);
     expect(still).toEqual(native);
+  });
+
+  test('a browser that lost something when asked to lose nothing is not taken at its word', async () => {
+    const lossy = new Uint8Array(fakeStill(2, 2, [1, 2, 3]).data);
+    lossy.set([...'VP8 '].map((c) => c.charCodeAt(0)), 12);
+    const still = await webpStill(new Blob([lossy as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), pixels, 1);
+    expect(ascii(still, 12, 16)).not.toBe('VP8 ');
+    expect(ascii(still, 0, 4)).toBe('RIFF');
+    // Asked to let go, that is what it was asked for.
+    const kept = await webpStill(new Blob([lossy as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), pixels, 0.92);
+    expect(kept).toEqual(lossy);
   });
 
   test('a browser that made a PNG instead (Safari) still gets a WebP', async () => {
