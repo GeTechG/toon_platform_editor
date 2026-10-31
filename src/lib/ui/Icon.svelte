@@ -70,6 +70,8 @@
     | 'search'
     | 'home'
     | 'gallery'
+    | 'clock'
+    | 'picture'
     | 'user'
     | 'bell'
     | 'crown'
@@ -97,6 +99,9 @@
     home: 'M3 10.5 12 3l9 7.5M5 9v11h5v-6h4v6h5V9',
     // A shelf of four cards: the feed of new toons.
     gallery: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+    // The newest of a list, and a drawing that stands still (the site's sections).
+    clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+    picture: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM3 16l5-5 4 4 2-2 7 7M15.5 8.5h.01',
     // A head and shoulders: an account not signed in yet.
     user: 'M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM4 21a8 8 0 0 1 16 0',
     // The trump place: its crown, and the word it puts out.
