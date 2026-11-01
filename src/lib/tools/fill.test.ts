@@ -192,39 +192,57 @@ describe('growRim', () => {
   };
   const row1 = (mask: Uint8Array, n: number) => [...mask.slice(n, 2 * n)];
 
-  it('takes the soft edge and stops short of the solid ink when it lies on top', () => {
-    const values = [0, 0, 80, 170, 255, 255, 255];
+  /** A mask of the row's length, set on every row for the columns `xs`. */
+  const columns = (n: number, xs: number[]) => {
+    const m = new Uint8Array(n * 3);
+    for (let y = 0; y < 3; y++) for (const x of xs) m[y * n + x] = 1;
+    return m;
+  };
+  const none = (n: number) => new Uint8Array(n * 3);
+
+  const grow = (values: number[], steps: number, over: number[], paper: number[]) => {
+    const n = values.length;
     const mask = inRow(values, 25);
-    growRim(mask, row(values), 7, 3, 3, false);
-    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 0, 0, 0]);
+    growRim(mask, row(values), n, 3, steps, columns(n, over), columns(n, paper));
+    return row1(mask, n);
+  };
+
+  it('over a colour left uncovered, stops halfway up its soft edge', () => {
+    expect(grow([0, 0, 80, 170, 255, 255, 255], 3, [], [])).toEqual([1, 1, 1, 0, 0, 0, 0]);
   });
 
-  it('takes one pixel of the solid ink too when ink lies over it, no paper showing', () => {
-    const values = [0, 0, 80, 170, 255, 255, 255];
-    const mask = inRow(values, 25);
-    growRim(mask, row(values), 7, 3, 3, true);
-    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 1, 0, 0]);
+  it('near empty paper, takes the whole soft edge and none of the paper', () => {
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    expect(grow([0, 0, 80, 170, 255, 255, 255], 3, [], all)).toEqual([1, 1, 1, 1, 0, 0, 0]);
+  });
+
+  it('under ink, takes its soft edge and first solid pixel, no paper showing', () => {
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    expect(grow([0, 0, 80, 170, 255, 255, 255], 3, all, [])).toEqual([1, 1, 1, 1, 1, 0, 0]);
   });
 
   it('never passes the peak of a thin line to its far side', () => {
-    const values = [0, 0, 120, 200, 120, 0, 0];
-    const mask = inRow(values, 25);
-    growRim(mask, row(values), 7, 3, 3, true);
-    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 0, 0, 0]);
+    const all = [0, 1, 2, 3, 4, 5, 6];
+    expect(grow([0, 0, 120, 200, 120, 0, 0], 3, all, [])).toEqual([1, 1, 1, 1, 0, 0, 0]);
   });
 
-  it('takes nothing across a hard edge when it lies on top', () => {
-    const values = [0, 0, 255, 255, 255];
-    const mask = inRow(values, 25);
-    growRim(mask, row(values), 5, 3, 3, false);
-    expect(row1(mask, 5)).toEqual([1, 1, 0, 0, 0]);
+  it('takes nothing across a hard edge of an uncovered colour', () => {
+    expect(grow([0, 0, 255, 255, 255], 3, [], [])).toEqual([1, 1, 0, 0, 0]);
+  });
+
+  it('eats nothing of a thin shape left uncovered', () => {
+    expect(grow([0, 0, 150, 255, 150, 0, 0], 3, [], [])).toEqual([1, 1, 0, 0, 0, 0, 0]);
   });
 
   it('goes no further than its steps', () => {
-    const values = [0, 40, 80, 120, 160, 200, 255];
+    expect(grow([0, 40, 80, 120, 160, 200, 255], 2, [], [0, 1, 2, 3, 4, 5, 6])).toEqual([1, 1, 1, 0, 0, 0, 0]);
+  });
+
+  it('with nothing over it and no paper, takes the same as with empty masks', () => {
+    const values = [0, 0, 80, 170, 255];
     const mask = inRow(values, 25);
-    growRim(mask, row(values), 7, 3, 2, false);
-    expect(row1(mask, 7)).toEqual([1, 1, 1, 0, 0, 0, 0]);
+    growRim(mask, row(values), 5, 3, 3, none(5), none(5));
+    expect(row1(mask, 5)).toEqual([1, 1, 1, 0, 0]);
   });
 });
 

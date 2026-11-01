@@ -131,11 +131,14 @@ function takeNarrow(
 
 /**
  * The area grown over the soft edge of what borders it, `steps` rings at most,
- * so no rim of the old colour is left: a pixel is taken while the colour keeps
- * moving away from the one pressed, and there is further still to go — the
- * solid ink behind the edge is left be, as is the far side of a thin line.
- * `underInk`: ink lies over the fill, so its first solid pixel is taken too, or
- * the paper would show through the edge of the line.
+ * so no rim of the old colour is left — but only as far as that harms nothing;
+ * the fill paints over what it reaches unless ink lies over it. A pixel is taken
+ * while the colour keeps moving away from the one pressed, and:
+ * - under ink (`covered`), right up to the first solid pixel, or the paper would
+ *   show through the edge of the line;
+ * - by the paper (`byPaper`), up to the paper itself: nothing to eat there;
+ * - over any other colour, only up to the middle of the soft edge, where the
+ *   edge of that colour really lies (owner, 2026-11-01: «зашёл за цвет внутрь»).
  */
 export function growRim(
   mask: Uint8Array,
@@ -143,7 +146,8 @@ export function growRim(
   w: number,
   h: number,
   steps: number,
-  underInk: boolean,
+  covered: Uint8Array,
+  byPaper: Uint8Array,
 ): void {
   const around = (p: number, visit: (q: number) => void) => {
     const px = p % w;
@@ -156,19 +160,26 @@ export function growRim(
       }
     }
   };
-  const goesOn = (q: number) => {
-    let further = false;
+  /** The furthest colour around `q`, itself included. */
+  const furthest = (q: number) => {
+    let most = distance[q];
     around(q, (r) => {
-      if (distance[r] > distance[q]) further = true;
+      if (distance[r] > most) most = distance[r];
     });
-    return further;
+    return most;
+  };
+  const may = (q: number) => {
+    if (covered[q]) return true;
+    const most = furthest(q);
+    if (most === distance[q]) return false;
+    return byPaper[q] === 1 || distance[q] * 2 <= most;
   };
   let ring = edgeOf(mask, w, h);
   for (let step = 0; step < steps && ring.length > 0; step++) {
     const next: number[] = [];
     for (const p of ring) {
       around(p, (q) => {
-        if (!mask[q] && distance[q] > distance[p] && (underInk || goesOn(q))) {
+        if (!mask[q] && distance[q] > distance[p] && may(q)) {
           mask[q] = 1;
           next.push(q);
         }

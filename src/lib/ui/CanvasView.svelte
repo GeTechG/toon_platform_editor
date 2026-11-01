@@ -62,7 +62,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { colourDistance, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
+  import { colourDistance, distanceField, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
@@ -1241,10 +1241,16 @@
       return;
     }
 
+    // What the fill may grow over freely: the paper is nothing to eat. Ink over
+    // the fill is known once its slot is; until then, nothing is taken for covered.
+    const empty = distanceField(w, h, (p) => rgba[p * 4 + 3] === 0);
+    const byPaper = new Uint8Array(w * h);
+    for (let p = 0; p < byPaper.length; p++) byPaper[p] = empty[p] <= RIM_STEPS ? 1 : 0;
+
     /** The area's outline in document units, or null when nothing is left of it. */
-    const outline = (underInk: boolean): number[] | null => {
+    const outline = (covered: Uint8Array): number[] | null => {
       const grown = area.slice();
-      growRim(grown, distance, w, h, RIM_STEPS, underInk);
+      growRim(grown, distance, w, h, RIM_STEPS, covered, byPaper);
       // The staircase of pixel edges straightened; a hole straightened down to
       // a line is no hole.
       const [outer, ...holes] = traceRings(grown, w, h).map(smoothRing);
@@ -1252,7 +1258,7 @@
         ? null
         : keyhole([outer, ...holes.filter((hole) => hole.length >= 6)]).map((v) => clampCoord(Math.round(v * toDoc)));
     };
-    const onTop = outline(false);
+    const onTop = outline(new Uint8Array(w * h));
     if (!onTop) {
       return;
     }
@@ -1276,7 +1282,15 @@
       return count;
     };
     const slot = lowestSeenSlot(kept.length, seenAt);
-    const ring = slot < kept.length ? outline(true) ?? onTop : onTop;
+    let ring = onTop;
+    if (slot < kept.length) {
+      clear();
+      renderStrokesLayer({ strokes: kept.slice(slot) }, tools, ctx, viewport);
+      const over = plain.getImageData(0, 0, w, h).data;
+      const covered = new Uint8Array(w * h);
+      for (let p = 0; p < covered.length; p++) covered[p] = over[p * 4 + 3] > 0 ? 1 : 0;
+      ring = outline(covered) ?? onTop;
+    }
     editor.applyFill(ring, colour, slot, replaced);
   }
 
