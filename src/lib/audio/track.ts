@@ -36,6 +36,10 @@ export const AUDIO_MAX_CREDIT = 120;
  */
 export const PUBLISH_AUDIO_MAX_BYTES = 2 * 1024 * 1024;
 
+/** What a track costs, once per toon, draft or not — the server's own
+ * (`TRACK_PRICE` in `services/api/src/publications/store.rs`). */
+export const SOUND_PRICE = 50;
+
 /**
  * Why a track would not go out with the toon, from its first 12 bytes and its
  * size — the server's own sniff, byte for byte — or null if it would.

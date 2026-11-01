@@ -6,7 +6,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, playableAccept } from '../audio/track';
+  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE, playableAccept } from '../audio/track';
   import { t } from '../i18n';
   import { playableWords } from '../audio/state.svelte';
   import { lengthClock } from './frame-selection';
@@ -218,6 +218,12 @@
       <p class="hint">{t('audio.pitch')}</p>
       <button class="key wide" onclick={() => picker?.click()}>{t('audio.pick')}</button>
       <p class="hint">{formats}</p>
+    {/if}
+
+    <!-- Said before the file is picked, not first at the send form. A studio
+         that publishes nothing has nothing to charge for. -->
+    {#if publishes}
+      <p class="hint">{t('audio.price', { price: SOUND_PRICE })}</p>
     {/if}
 
     <p class="sr-only" role="status">
