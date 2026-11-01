@@ -40,12 +40,6 @@ export const PUBLISH_AUDIO_MAX_BYTES = 2 * 1024 * 1024;
  * (`TRACK_PRICE` in `services/api/src/publications/store.rs`). */
 export const SOUND_PRICE = 50;
 
-/** The credit a track still lacks: the server takes none without both. */
-export function missingCredit(track: { name: string; author: string }): 'name' | 'author' | null {
-  if (!track.name.trim()) return 'name';
-  return track.author.trim() ? null : 'author';
-}
-
 /**
  * Why a track would not go out with the toon, from its first 12 bytes and its
  * size — the server's own sniff, byte for byte — or null if it would.

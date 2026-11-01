@@ -6,7 +6,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE, missingCredit, playableAccept } from '../audio/track';
+  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE, playableAccept } from '../audio/track';
   import { t } from '../i18n';
   import { playableWords } from '../audio/state.svelte';
   import { lengthClock } from './frame-selection';
@@ -16,7 +16,6 @@
     anchor,
     publishes = false,
     docked = false,
-    askCredits = 0,
     onClose,
   }: {
     editor: EditorState;
@@ -24,8 +23,6 @@
     publishes?: boolean;
     /** Inside a small screen's window: the window places it, not the plate. */
     docked?: boolean;
-    /** Above zero: a send was held back for the credits. Each press asks again. */
-    askCredits?: number;
     onClose: () => void;
   } = $props();
 
@@ -39,14 +36,6 @@
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
   let replaceKey = $state<HTMLButtonElement | undefined>();
-  let nameField = $state<HTMLInputElement | undefined>();
-  let authorField = $state<HTMLInputElement | undefined>();
-  /** What the send is waiting for, gone the moment it is typed. */
-  const lacking = $derived(askCredits > 0 ? missingCredit(editor.audio) : null);
-
-  $effect(() => {
-    if (askCredits > 0) (missingCredit(editor.audio) === 'name' ? nameField : authorField)?.focus();
-  });
   /** What the last pick came to, for a screen reader: the fields appearing say it to the eye. */
   let loadedNote = $state('');
   let at = $state<{ x: number; top?: number; bottom?: number; max: number } | undefined>();
@@ -64,6 +53,10 @@
     void resized;
     // A track lays the wave's lane under the strip, which lifts the key.
     void editor.audio.hasTrack;
+    // So do the lines that come and go in the plate.
+    void trackOutruns;
+    void editor.audio.unpublishable;
+    void editor.audio.error;
     if (docked) {
       at = undefined;
       return;
@@ -83,13 +76,23 @@
     const flush = key.right - box.width >= 8 ? key.right - box.width : key.left;
     const x = Math.max(8, Math.min(flush, window.innerWidth - box.width - 8));
     // Held by the edge that faces the key, so a track's fields grow the plate
-    // away from it rather than over it. Too tall for either side (large text),
-    // it takes the roomier one and scrolls inside it.
+    // away from it rather than over it. Too tall for either side it stands over
+    // the key: squeezed beside it, the price and the rule on rights went under
+    // a scroll nothing showed. Only taller than the window does it scroll.
+    // The content's height, not the box's: the box is capped by the last `max`.
+    const tall = plate.scrollHeight;
     const above = key.top - 6 - 8;
     const below = window.innerHeight - key.bottom - 6 - 8;
-    at = box.height <= above || above >= below
-      ? { x, bottom: window.innerHeight - key.top + 6, max: above }
-      : { x, top: key.bottom + 6, max: below };
+    if (tall <= above) at = { x, bottom: window.innerHeight - key.top + 6, max: above };
+    else if (tall <= below) at = { x, top: key.bottom + 6, max: below };
+    else {
+      // Inside the studio's box, where it ends above the window's edge: past
+      // it the site's footer paints over the plate.
+      const studio = plate.closest('.editor')?.getBoundingClientRect();
+      const roof = Math.max(8, (studio?.top ?? 0) + 8);
+      const floor = Math.min(window.innerHeight, studio?.bottom ?? Infinity) - 8;
+      at = { x, top: Math.max(roof, floor - tall), max: floor - roof };
+    }
   });
 
   async function pickTrack(e: Event): Promise<void> {
@@ -176,15 +179,12 @@
     {#if editor.audio.hasTrack}
       <label class="field">
         <span>{t('audio.name')}</span>
-        <input bind:this={nameField} bind:value={editor.audio.name} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.name_placeholder')} aria-invalid={lacking && !editor.audio.name.trim() ? 'true' : undefined} />
+        <input bind:value={editor.audio.name} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.name_placeholder')} />
       </label>
       <label class="field">
         <span>{t('audio.author')}</span>
-        <input bind:this={authorField} bind:value={editor.audio.author} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.author_placeholder')} aria-invalid={lacking && !editor.audio.author.trim() ? 'true' : undefined} />
+        <input bind:value={editor.audio.author} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.author_placeholder')} />
       </label>
-      {#if lacking}
-        <p class="hint error" role="alert">{t('audio.credits_needed')}</p>
-      {/if}
 
       <label class="toggle">
         <span>
@@ -235,9 +235,11 @@
     {/if}
 
     <!-- Said before the file is picked, not first at the send form. A studio
-         that publishes nothing has nothing to charge for. -->
+         that publishes nothing has nothing to charge for and no site to answer
+         to. The link opens beside the studio: the drawing stays. -->
     {#if publishes}
       <p class="hint">{t('audio.price', { price: SOUND_PRICE })}</p>
+      <p class="hint">{t('audio.rights')} <a href="/terms#rightholders" target="_blank" rel="noopener">{t('audio.rights_link')}</a></p>
     {/if}
 
     <p class="sr-only" role="status">
@@ -424,6 +426,9 @@
     line-height: 1.35;
     color: var(--ink-2);
     text-wrap: pretty;
+  }
+  .hint a {
+    color: var(--accent-ink);
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */
   .hint.error {

@@ -55,7 +55,7 @@
   } from '../draft/store';
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
-  import { isAudioFile, missingCredit } from '../audio/track';
+  import { isAudioFile } from '../audio/track';
   import {
     PANEL_HEIGHT_AUDIO,
     PANEL_HEIGHT_MIN,
@@ -127,8 +127,6 @@
   // Root element, so F can request fullscreen on the whole editor.
   let editorEl: HTMLDivElement;
   let audioOpen = $state(false);
-  /** Presses of the send key the plate's empty credits held back. */
-  let askCredits = $state(0);
   let audioKey = $state<HTMLButtonElement | undefined>();
   // Components the keyboard drives: Space is play/stop, Alt+S the export.
   let playControls = $state<PlayControls | undefined>();
@@ -1948,17 +1946,6 @@
       void tell(t('editor.publish_over_budget', { percent: budgetLabel(editor.budgetShare).text }));
       return;
     }
-    // A track goes up signed, and the credits live in the sound's plate: the
-    // send form has no second pair of fields (owner, 2026-11-01). A layout that
-    // holds no key for the plate gets the same words as a message.
-    if (onPublish && editor.audio.blob && missingCredit(editor.audio)) {
-      askCredits++;
-      audioOpen = true;
-      void tick().then(() => {
-        if (!document.querySelector('.audio-plate')) void tell(t('audio.credits_needed'));
-      });
-      return;
-    }
     onPublish?.(
       $state.snapshot(editor.doc),
       editor.audio.blob
@@ -2910,10 +2897,7 @@
         <Icon name="note" />
       </button>
       {#if audioOpen}
-        <AudioPanel {editor} anchor={audioKey} publishes={!!onPublish} {askCredits} onClose={() => {
-          audioOpen = false;
-          askCredits = 0;
-        }} />
+        <AudioPanel {editor} anchor={audioKey} publishes={!!onPublish} onClose={() => (audioOpen = false)} />
       {/if}
     </div>
   {:else if id === 'export'}

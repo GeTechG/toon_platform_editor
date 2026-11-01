@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 // The studio's catalogue, which every surface that checks a file has loaded.
 import '../i18n';
 import {
-  missingCredit,
   AUDIO_MAX_BYTES,
   AUDIO_MAX_CREDIT,
   trackCredits,
@@ -306,18 +305,5 @@ describe('publishProblem', () => {
   test('past the server cap of 2 MB it will not publish', () => {
     expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024)).toBeNull();
     expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024 + 1)).toBe('size');
-  });
-});
-
-describe('a track goes up signed', () => {
-  test('the first credit left empty is the one to ask for', () => {
-    expect(missingCredit({ name: 'Кукушка', author: 'Кино' })).toBe(null);
-    expect(missingCredit({ name: '', author: 'Кино' })).toBe('name');
-    expect(missingCredit({ name: 'Кукушка', author: '' })).toBe('author');
-    expect(missingCredit({ name: '', author: '' })).toBe('name');
-  });
-
-  test('spaces are no credit: the server refuses them', () => {
-    expect(missingCredit({ name: 'Кукушка', author: '   ' })).toBe('author');
   });
 });
