@@ -310,7 +310,7 @@ describe('ninth audit: the plate fits the window', () => {
 describe('tenth audit: the soundtrack', () => {
   it('the credit fields stop where the server stops', () => {
     // Past 120 characters the publication came out silent, and nobody said so.
-    const fields = panel.match(/<input bind:value=\{editor\.audio\.(name|author)\}[^>]*>/g) ?? [];
+    const fields = panel.match(/<input bind:this=\{\w+\} bind:value=\{editor\.audio\.(name|author)\}[^>]*>/g) ?? [];
     expect(fields.length).toBe(2);
     for (const field of fields) expect(field).toContain('maxlength={AUDIO_MAX_CREDIT}');
   });

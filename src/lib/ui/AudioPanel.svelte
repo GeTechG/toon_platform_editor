@@ -6,7 +6,7 @@
   import { tick } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
   import Icon from './Icon.svelte';
-  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE, playableAccept } from '../audio/track';
+  import { AUDIO_MAX_CREDIT, PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE, missingCredit, playableAccept } from '../audio/track';
   import { t } from '../i18n';
   import { playableWords } from '../audio/state.svelte';
   import { lengthClock } from './frame-selection';
@@ -16,6 +16,7 @@
     anchor,
     publishes = false,
     docked = false,
+    askCredits = 0,
     onClose,
   }: {
     editor: EditorState;
@@ -23,6 +24,8 @@
     publishes?: boolean;
     /** Inside a small screen's window: the window places it, not the plate. */
     docked?: boolean;
+    /** Above zero: a send was held back for the credits. Each press asks again. */
+    askCredits?: number;
     onClose: () => void;
   } = $props();
 
@@ -36,6 +39,14 @@
   let picker = $state<HTMLInputElement | undefined>();
   let plate = $state<HTMLDivElement | undefined>();
   let replaceKey = $state<HTMLButtonElement | undefined>();
+  let nameField = $state<HTMLInputElement | undefined>();
+  let authorField = $state<HTMLInputElement | undefined>();
+  /** What the send is waiting for, gone the moment it is typed. */
+  const lacking = $derived(askCredits > 0 ? missingCredit(editor.audio) : null);
+
+  $effect(() => {
+    if (askCredits > 0) (missingCredit(editor.audio) === 'name' ? nameField : authorField)?.focus();
+  });
   /** What the last pick came to, for a screen reader: the fields appearing say it to the eye. */
   let loadedNote = $state('');
   let at = $state<{ x: number; top?: number; bottom?: number; max: number } | undefined>();
@@ -165,12 +176,15 @@
     {#if editor.audio.hasTrack}
       <label class="field">
         <span>{t('audio.name')}</span>
-        <input bind:value={editor.audio.name} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.name_placeholder')} />
+        <input bind:this={nameField} bind:value={editor.audio.name} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.name_placeholder')} aria-invalid={lacking && !editor.audio.name.trim() ? 'true' : undefined} />
       </label>
       <label class="field">
         <span>{t('audio.author')}</span>
-        <input bind:value={editor.audio.author} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.author_placeholder')} />
+        <input bind:this={authorField} bind:value={editor.audio.author} maxlength={AUDIO_MAX_CREDIT} placeholder={t('audio.author_placeholder')} aria-invalid={lacking && !editor.audio.author.trim() ? 'true' : undefined} />
       </label>
+      {#if lacking}
+        <p class="hint error" role="alert">{t('audio.credits_needed')}</p>
+      {/if}
 
       <label class="toggle">
         <span>
