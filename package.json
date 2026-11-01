@@ -12,6 +12,11 @@
       "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./dropdown": {
+      "types": "./src/lib/ui/Dropdown.svelte",
+      "svelte": "./src/lib/ui/Dropdown.svelte",
+      "default": "./src/lib/ui/Dropdown.svelte"
+    },
     "./icon": {
       "types": "./src/lib/ui/Icon.svelte",
       "svelte": "./src/lib/ui/Icon.svelte",
