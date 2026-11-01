@@ -77,7 +77,7 @@
     const x = Math.max(8, Math.min(flush, window.innerWidth - box.width - 8));
     // Held by the edge that faces the key, so a track's fields grow the plate
     // away from it rather than over it. Too tall for either side it stands over
-    // the key: squeezed beside it, the price and the rule on rights went under
+    // the key: squeezed beside it, the price went under
     // a scroll nothing showed. Only taller than the window does it scroll.
     // The content's height, not the box's: the box is capped by the last `max`.
     const tall = plate.scrollHeight;
@@ -235,11 +235,9 @@
     {/if}
 
     <!-- Said before the file is picked, not first at the send form. A studio
-         that publishes nothing has nothing to charge for and no site to answer
-         to. The link opens beside the studio: the drawing stays. -->
+         that publishes nothing has nothing to charge for. -->
     {#if publishes}
       <p class="hint">{t('audio.price', { price: SOUND_PRICE })}</p>
-      <p class="hint">{t('audio.rights')} <a href="/terms#rightholders" target="_blank" rel="noopener">{t('audio.rights_link')}</a></p>
     {/if}
 
     <p class="sr-only" role="status">
@@ -426,9 +424,6 @@
     line-height: 1.35;
     color: var(--ink-2);
     text-wrap: pretty;
-  }
-  .hint a {
-    color: var(--accent-ink);
   }
   /* DESIGN's Signal Rule reserves red for the "draw" action — errors stay ink. */
   .hint.error {
