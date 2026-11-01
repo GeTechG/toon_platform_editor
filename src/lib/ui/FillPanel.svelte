@@ -1,9 +1,9 @@
 <script lang="ts">
   /**
    * The bucket's own box, under its key pressed again (owner, 2026-10-16: the
-   * brush's box came up there): where the borders are looked for, and how
-   * wide a break in a line still holds the fill. The settings sheet keeps the
-   * gap too, as the other way to it.
+   * brush's box came up there): where the colour is looked at, how far a colour
+   * may be from the one pressed, and how wide a break in a line still holds the
+   * fill. The settings sheet keeps both numbers too, as the other way to them.
    */
   import type { EditorState } from './editor-state.svelte';
   import { FILL_GAP_MAX, type FillSource } from './presets';
@@ -15,6 +15,12 @@
     ['layer', t('fill.layer')],
     ['canvas', t('fill.canvas')],
   ];
+
+  function setTolerance(value: number): void {
+    if (Number.isFinite(value)) {
+      editor.setSetting('fillTolerance', Math.min(100, Math.max(0, Math.round(value))));
+    }
+  }
 
   function setGap(value: number): void {
     if (Number.isFinite(value)) {
@@ -35,6 +41,29 @@
       >{label}</button>
     {/each}
   </div>
+  <h2>{t('fill.tolerance')}</h2>
+  <input
+    type="range"
+    min="0"
+    max="100"
+    value={editor.settings.fillTolerance}
+    aria-label={t('fill.tolerance')}
+    aria-valuetext={t('settings.fill_tolerance_value', { n: editor.settings.fillTolerance })}
+    oninput={(e) => setTolerance(e.currentTarget.valueAsNumber)}
+  />
+  <input
+    type="number"
+    inputmode="numeric"
+    min="0"
+    max="100"
+    value={editor.settings.fillTolerance}
+    aria-label={t('fill.tolerance_number')}
+    onchange={(e) => {
+      setTolerance(e.currentTarget.valueAsNumber);
+      e.currentTarget.value = String(editor.settings.fillTolerance);
+    }}
+  />
+  <p class="hint">{t('settings.fill_tolerance_hint')}</p>
   <h2>{t('fill.gap')}</h2>
   <input
     type="range"

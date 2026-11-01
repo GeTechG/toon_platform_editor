@@ -13,6 +13,7 @@
     renderRawPolyline,
     renderResolvedPreview,
     renderLayersStacked,
+    renderStrokesLayer,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
@@ -61,7 +62,7 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
-  import { fillPlace, fillRegion, keyhole, simplifyRing, traceRings } from '../tools/fill';
+  import { colourDistance, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
@@ -331,6 +332,12 @@
   let pickEl: HTMLCanvasElement | null = null;
   /** Scratch the bucket reads the active layer back from. */
   let fillEl: HTMLCanvasElement | null = null;
+  /** The paper the bucket sees the colours on: BACKGROUND_COLOR. */
+  const PAPER = [1, 3, 5].map((i) => parseInt(BACKGROUND_COLOR.slice(i, i + 2), 16));
+  /** How many rings of a border's soft edge the fill reaches over. */
+  const RIM_STEPS = 3;
+  /** Colours nobody draws with, to see where a fill would be seen. */
+  const PROBES = ['#ff00fe', '#00fe01', '#0100fe', '#fefe01'];
   /** The sheet's bitmap: the frame is composed into it, and the view stretches it. */
   let sheetEl: HTMLCanvasElement | null = null;
   /** The sheet's bitmap the composer's buffers hold; the pipette reads them by it. */
@@ -1178,13 +1185,13 @@
   }
 
   /**
-   * The bucket's press: the borders are looked for in the active cell (or the
-   * whole frame, by the bucket's box) drawn onto the sheet's bitmap without
-   * its fills — an old fill is no border, and
-   * a press on one pours over it — and the area found goes into the layer as
-   * a contour under the lines, in place of the old fills it pours over
-   * (tools/fill.ts). It pours the
-   * outline's colour, and the fill's from the right button, as a line is drawn.
+   * The bucket's press: the colour seen under it — on the active cell or, by the
+   * bucket's box, on every visible one, paper under them — and the whole
+   * connected area of that colour, whatever made it, goes into the layer as a
+   * contour, in place of the old fills it pours over (tools/fill.ts). The
+   * contour lies as low as it stays seen all over the area, which is under its
+   * borders, over what it recolours. It pours the outline's colour, and the
+   * fill's from the right button, as a line is drawn.
    */
   function pour(e: PointerEvent): void {
     const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
@@ -1197,45 +1204,80 @@
     if (!ctx) {
       return;
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    // The lines of the active layer, or of every visible one (the bucket's
-    // box, «по всему холсту»): the fill goes into the active layer either way.
+    const plain = ctx as unknown as CanvasRenderingContext2D;
+    const clear = () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+    };
+    const viewport = { scale: level / FIXED_POINT_SCALE, dpr: 1 };
     const { tools } = editor.doc;
-    const lines = (frame: Frame): Frame => ({ strokes: frame.strokes.filter((s) => tools[s.tool_id]?.kind !== 'contour') });
+    clear();
     const cells = editor.settings.fillSource === 'canvas'
-      ? editor.doc.layers.filter((layer) => !layer.hidden).map((layer) => lines(layer.frames[editor.activeFrame]))
-      : [lines(cell)];
+      ? editor.doc.layers.filter((layer) => !layer.hidden).map((layer) => layer.frames[editor.activeFrame])
+      : [cell];
     // A layer that erases is drawn apart, so its eraser cuts its own lines alone.
-    renderLayersStacked(cells, tools, ctx, { scale: level / FIXED_POINT_SCALE, dpr: 1 }, () => {
+    renderLayersStacked(cells, tools, ctx, viewport, () => {
       const own = buffer(null, w, h);
       return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
     });
-    const rgba = (ctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, w, h).data;
-    const alpha = new Uint8Array(w * h);
-    for (let p = 0; p < alpha.length; p++) alpha[p] = rgba[p * 4 + 3];
+    const rgba = plain.getImageData(0, 0, w, h).data;
     const [ux, uy] = toDocUnits(e);
     const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
     const y = Math.min(h - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * level)));
-    // Two bitmap pixels in under the line: past its soft rim, short of crossing it.
-    const area = fillRegion(alpha, w, h, x, y, editor.settings.fillGap * level, 2);
-    if (!area) {
-      // The press landed on a line: hatching inside the borders is a border
-      // too, and the bucket says so rather than doing nothing.
-      editor.canvasHint = { text: t('canvas.fill_on_line') };
-      return;
-    }
-    // The staircase of pixel edges straightened; a hole straightened down to
-    // a line is no hole.
-    const [outer, ...holes] = traceRings(area, w, h).map((r) => simplifyRing(r));
-    if (outer.length < 6) {
-      return;
-    }
-    const ring = keyhole([outer, ...holes.filter((hole) => hole.length >= 6)]);
+    const distance = colourDistance(rgba, w, h, x, y, PAPER);
+    // Only an empty place runs out through a break in its border: ink ends where
+    // it was drawn, and a line's own narrow places are no breaks to hold at.
+    const onPaper = rgba[(y * w + x) * 4 + 3] === 0;
+    const gap = onPaper ? editor.settings.fillGap * level : 0;
+    const area = fillRegion(distance, w, h, x, y, (editor.settings.fillTolerance * 255) / 100, gap);
     const toDoc = FIXED_POINT_SCALE / level;
-    const { slot, replaced } = fillPlace(area, w, h, cell.strokes, editor.doc.tools, 1 / toDoc);
+    const replaced = oldFillsIn(area, w, h, cell.strokes, tools, 1 / toDoc);
+    const kept = cell.strokes.filter((_, i) => !replaced.includes(i));
+    const pure = pureOf(area, distance);
     const colour = e.button === 2 ? editor.fillColor : editor.brushColor;
-    editor.applyFill(ring.map((v) => clampCoord(Math.round(v * toDoc))), colour, slot, replaced);
+    const same = recolouredFill(pure, replaced, cell.strokes, tools, 1 / toDoc, w, h);
+    if (same !== null) {
+      editor.applyFill(cell.strokes[same].points, colour, same, replaced);
+      return;
+    }
+
+    /** The area's outline in document units, or null when nothing is left of it. */
+    const outline = (underInk: boolean): number[] | null => {
+      const grown = area.slice();
+      growRim(grown, distance, w, h, RIM_STEPS, underInk);
+      // The staircase of pixel edges straightened; a hole straightened down to
+      // a line is no hole.
+      const [outer, ...holes] = traceRings(grown, w, h).map(smoothRing);
+      return outer.length < 6
+        ? null
+        : keyhole([outer, ...holes.filter((hole) => hole.length >= 6)]).map((v) => clampCoord(Math.round(v * toDoc)));
+    };
+    const onTop = outline(false);
+    if (!onTop) {
+      return;
+    }
+
+    // Where the fill goes: drawn into each slot tried in a colour nobody uses.
+    const probe = PROBES.find((c) => !tools.some((tool) => 'color' in tool && tool.color === c)) ?? PROBES[0];
+    const [pr, pg, pb] = [1, 3, 5].map((i) => parseInt(probe.slice(i, i + 2), 16));
+    const trial = { points: onTop, tool_id: tools.length };
+    const trialTools = [...tools, { kind: 'contour' as const, geometry: 'line' as const, color: probe }];
+    const seenAt = (slot: number): number => {
+      clear();
+      renderStrokesLayer({ strokes: [...kept.slice(0, slot), trial, ...kept.slice(slot)] }, trialTools, ctx, viewport);
+      const seen = plain.getImageData(0, 0, w, h).data;
+      let count = 0;
+      for (const p of pure) {
+        const i = p * 4;
+        if (seen[i + 3] >= 250 && Math.abs(seen[i] - pr) <= 8 && Math.abs(seen[i + 1] - pg) <= 8 && Math.abs(seen[i + 2] - pb) <= 8) {
+          count++;
+        }
+      }
+      return count;
+    };
+    const slot = lowestSeenSlot(kept.length, seenAt);
+    const ring = slot < kept.length ? outline(true) ?? onTop : onTop;
+    editor.applyFill(ring, colour, slot, replaced);
   }
 
   /**

@@ -1,11 +1,10 @@
 /**
- * The bucket: finds the area around a press on a layer's bitmap and draws its
- * outline as a polygon, to be laid down as a `contour` stroke under the lines
- * that border it.
+ * The bucket: finds the area of the colour seen under a press on the sheet's
+ * bitmap, whatever made that colour, and draws its outline as a polygon, to be
+ * laid down as a `contour` stroke as low as it stays seen.
  *
- * Everything here works on one byte of alpha per pixel of the sheet's raster
- * and answers in its pixels: what a pixel is in document units is the
- * caller's business.
+ * Everything here works on the sheet's raster and answers in its pixels: what
+ * a pixel is in document units is the caller's business.
  */
 
 import type { ToolDescriptor } from '../format/types';
@@ -14,15 +13,11 @@ import { emitGeometry, type StrokeGeometry } from '../render/smoothing';
 /** Pieces a curve command is cut into; each is then walked a pixel at a time. */
 const CURVE_STEPS = 8;
 
-/** Pixels at least this opaque stop the flood; fainter ones are the line's soft rim. */
-const WALL_ALPHA = 64;
 /**
  * A pocket the lines enclose inside the area smaller than this many pixels is
  * filled with it: a speck between crossing lines is not worth a ring of its own.
  */
 const SPECK = 16;
-
-type Alpha = Uint8Array | Uint8ClampedArray;
 
 /** What `fillPlace` reads of a stroke. */
 interface SlotStroke {
@@ -31,51 +26,194 @@ interface SlotStroke {
 }
 
 /**
- * The area a press at (`x`, `y`) fills: 1 for every pixel of it, 0 for the
- * rest — or null when the press landed on the line itself.
- *
- * `gap`: a break in the line no wider than this many pixels holds the flood —
- * the line is swollen by half of it while the area is looked for, and the
- * area then grows back by as much over empty pixels into the corners the
- * swelling took. `grow`: how far the area reaches in under the line, over its
- * solid pixels only, so no rim of paper shows between the fill and the line,
- * a thin line is never crossed and its soft rim on the far side is left be. What a line encloses inside the area stays
- * out of it — a hole — unless it is a speck.
+ * How far every pixel of the sheet is from the colour seen at (`x`, `y`): the
+ * largest difference over the three channels, 0..255. A pixel is seen as its
+ * paint over `paper`, so ink as white as the paper is the paper to the bucket,
+ * as to the eye, and a half-covered pixel is the mix it looks like.
  */
-export function fillRegion(
-  alpha: Alpha,
+export function colourDistance(
+  rgba: Uint8ClampedArray,
   w: number,
   h: number,
   x: number,
   y: number,
+  paper: readonly number[],
+): Uint8Array {
+  const n = w * h;
+  const seen = new Uint8Array(n * 3);
+  for (let p = 0; p < n; p++) {
+    const a = rgba[p * 4 + 3];
+    for (let c = 0; c < 3; c++) {
+      seen[p * 3 + c] = (rgba[p * 4 + c] * a + paper[c] * (255 - a) + 127) / 255;
+    }
+  }
+  const seed = (y * w + x) * 3;
+  const [r, g, b] = [seen[seed], seen[seed + 1], seen[seed + 2]];
+  const distance = new Uint8Array(n);
+  for (let p = 0; p < n; p++) {
+    distance[p] = Math.max(Math.abs(seen[p * 3] - r), Math.abs(seen[p * 3 + 1] - g), Math.abs(seen[p * 3 + 2] - b));
+  }
+  return distance;
+}
+
+/**
+ * The area a press at (`x`, `y`) pours over: 1 for every connected pixel no
+ * further than `tolerance` from the colour pressed (`colourDistance`), 0 for
+ * the rest.
+ *
+ * `gap`: a break no wider than this many pixels in what stops the flood holds
+ * it — what stops it is swollen by half of that while the area is looked for,
+ * and the area then grows back by as much into the corners the swelling took.
+ * What the area encloses stays out of it — a hole — unless it is a speck.
+ */
+export function fillRegion(
+  distance: Uint8Array,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  tolerance: number,
   gap: number,
-  grow: number,
-): Uint8Array | null {
+): Uint8Array {
   const seed = y * w + x;
-  const wall = (p: number) => alpha[p] >= WALL_ALPHA;
+  const wall = (p: number) => distance[p] > tolerance;
   const reach = gap / 2;
   const toWall = reach > 0 ? distanceField(w, h, wall) : null;
   const swollen = (p: number) => (toWall ? toWall[p] <= reach : wall(p));
-  if (wall(seed)) {
-    return null;
-  }
   // A press into a corner narrower than the gap still fills what it pressed.
   const blocked = toWall && !swollen(seed) ? swollen : wall;
   const mask = new Uint8Array(w * h);
   mask[seed] = 1;
-  spread(mask, w, h, [seed], (p) => !blocked(p), Infinity, false);
+  const corners = softCorners(distance, w, h);
+  spread(mask, w, h, [seed], (p) => !blocked(p), Infinity, corners);
   if (toWall) {
     regrow(mask, w, h, wall, toWall, reach);
+    if (blocked === swollen) {
+      takeNarrow(mask, w, h, seed, wall, swollen, corners);
+    }
   }
-  if (grow > 0) {
-    spread(mask, w, h, edgeOf(mask, w, h), wall, grow, true);
+  takeSpecks(mask, w, h);
+  return mask;
+}
+
+/**
+ * Back into the area, what the swelling cut off and is narrower than the gap
+ * all through: the thin tail of a stroke with pressure, the point of a sharp
+ * corner. What leaks out through a break is never that: it widens behind it.
+ */
+function takeNarrow(
+  mask: Uint8Array,
+  w: number,
+  h: number,
+  seed: number,
+  wall: (p: number) => boolean,
+  swollen: (p: number) => boolean,
+  corners: CornerRule,
+): void {
+  const whole = new Uint8Array(w * h);
+  whole[seed] = 1;
+  spread(whole, w, h, [seed], (p) => !wall(p), Infinity, corners);
+  const seen = new Uint8Array(w * h);
+  for (let p = 0; p < w * h; p++) {
+    if (!whole[p] || mask[p] || seen[p]) continue;
+    seen[p] = 1;
+    const piece = [p];
+    spread(seen, w, h, [p], (q) => {
+      if (!whole[q] || mask[q]) return false;
+      piece.push(q);
+      return true;
+    }, Infinity, false);
+    if (piece.every(swollen)) {
+      for (const q of piece) mask[q] = 1;
+    }
   }
+}
+
+/**
+ * The area grown over the soft edge of what borders it, `steps` rings at most,
+ * so no rim of the old colour is left: a pixel is taken while the colour keeps
+ * moving away from the one pressed, and there is further still to go — the
+ * solid ink behind the edge is left be, as is the far side of a thin line.
+ * `underInk`: ink lies over the fill, so its first solid pixel is taken too, or
+ * the paper would show through the edge of the line.
+ */
+export function growRim(
+  mask: Uint8Array,
+  distance: Uint8Array,
+  w: number,
+  h: number,
+  steps: number,
+  underInk: boolean,
+): void {
+  const around = (p: number, visit: (q: number) => void) => {
+    const px = p % w;
+    const py = (p - px) / w;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const qx = px + dx;
+        const qy = py + dy;
+        if ((dx || dy) && qx >= 0 && qy >= 0 && qx < w && qy < h) visit(qy * w + qx);
+      }
+    }
+  };
+  const goesOn = (q: number) => {
+    let further = false;
+    around(q, (r) => {
+      if (distance[r] > distance[q]) further = true;
+    });
+    return further;
+  };
+  let ring = edgeOf(mask, w, h);
+  for (let step = 0; step < steps && ring.length > 0; step++) {
+    const next: number[] = [];
+    for (const p of ring) {
+      around(p, (q) => {
+        if (!mask[q] && distance[q] > distance[p] && (underInk || goesOn(q))) {
+          mask[q] = 1;
+          next.push(q);
+        }
+      });
+    }
+    ring = next;
+  }
+  takeSpecks(mask, w, h);
+}
+
+/** How much further a neighbour must be for a pixel to count as soft: a line's own unevenness is less. */
+const SOFT_STEP = 32;
+
+/** Whether a flood may step from one pixel to its diagonal neighbour, given the two pixels between. */
+type CornerRule = (a: number, b: number) => boolean;
+
+/**
+ * A flood steps through a pixel corner only between two soft pixels, those with
+ * something further from the colour pressed behind them: the blended sides of a
+ * thin smooth line, whose core at 45° is joined only by corners. Two solid
+ * pixels meeting at a corner are a wall, or a hard line a pixel wide would leak.
+ */
+function softCorners(distance: Uint8Array, w: number, h: number): CornerRule {
+  const soft = (p: number) => {
+    const px = p % w;
+    const py = (p - px) / w;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const qx = px + dx;
+        const qy = py + dy;
+        if (qx >= 0 && qy >= 0 && qx < w && qy < h && distance[qy * w + qx] > distance[p] + SOFT_STEP) return true;
+      }
+    }
+    return false;
+  };
+  return (a, b) => soft(a) && soft(b);
+}
+
+/** A pocket of the area too small to be worth a ring of its own goes into the area. */
+function takeSpecks(mask: Uint8Array, w: number, h: number): void {
   for (const hole of holesOf(mask, w, h)) {
     if (hole.length < SPECK) {
       for (const p of hole) mask[p] = 1;
     }
   }
-  return mask;
 }
 
 /**
@@ -98,7 +236,8 @@ function regrow(mask: Uint8Array, w: number, h: number, wall: (p: number) => boo
 
 /**
  * Floods `mask` from `from` over the pixels `open` lets in, at most `steps`
- * rings away — 8-connected when `diagonal`, so a ring is a square, else 4.
+ * rings away — 8-connected when `diagonal` is true, so a ring is a square, 4 when
+ * false; a rule lets a diagonal step through only where it says so.
  */
 function spread(
   mask: Uint8Array,
@@ -107,7 +246,7 @@ function spread(
   from: readonly number[],
   open: (p: number) => boolean,
   steps: number,
-  diagonal: boolean,
+  diagonal: boolean | CornerRule,
 ): void {
   let ring = [...from];
   for (let step = 0; step < steps && ring.length > 0; step++) {
@@ -122,7 +261,8 @@ function spread(
           const qy = py + dy;
           if (qx < 0 || qy < 0 || qx >= w || qy >= h) continue;
           const q = qy * w + qx;
-          if (!mask[q] && open(q)) {
+          if (!mask[q] && open(q)
+            && (diagonal === true || dx === 0 || dy === 0 || (diagonal as CornerRule)(py * w + qx, qy * w + px))) {
             mask[q] = 1;
             next.push(q);
           }
@@ -307,32 +447,19 @@ function walk(has: (p: number) => boolean, start: number, w: number, h: number):
 }
 
 /**
- * Where the fill of `area` goes among the layer's strokes, and which old
- * fills it replaces.
- *
- * An old fill (`contour`, what the bucket lays down) lying wholly in the area
- * is the same area poured again: it goes, wherever it lay — a refill is a new
- * colour, not one more layer of paint, and one that had landed over the lines
- * is mended with it.
- *
- * The new one goes under the lowest line that touches the area or lies inside
- * it — the line is its border, and the border is never covered (owner,
- * 2026-10-16). Old fills under that line stay under the new one by the same
- * token; one that lies over it covers the new fill where they meet, and an
- * eraser over it cuts it. With no line at all, it goes over every eraser and
- * fill it meets, or at the bottom.
- *
- * `slot` counts in the strokes left after the replaced ones are taken out.
- * `scale`: raster pixels per document unit.
+ * The old fills (`contour`, what the bucket lays down) lying wholly in `area`:
+ * the same area poured again, which the new fill replaces wherever they lay — a
+ * refill is a new colour, not one more layer of paint. `scale`: raster pixels
+ * per document unit.
  */
-export function fillPlace(
+export function oldFillsIn(
   area: Uint8Array,
   w: number,
   h: number,
   strokes: readonly SlotStroke[],
   tools: readonly ToolDescriptor[],
   scale: number,
-): { slot: number; replaced: number[] } {
+): number[] {
   const toArea = distanceField(w, h, (p) => area[p] === 1);
   // The same area traced again comes out a pixel or two off: a ring's
   // corners lie on pixel edges, and straightening moves them (a refill
@@ -342,82 +469,117 @@ export function fillPlace(
     const py = Math.min(h - 1, Math.max(0, Math.floor(y * scale)));
     return toArea[py * w + px] <= 3;
   };
-  const replaced: number[] = [];
-  const rest: SlotStroke[] = [];
+  const found: number[] = [];
   strokes.forEach((stroke, index) => {
     const tool = tools[stroke.tool_id];
     const path = tool?.kind === 'contour' ? flatten(stroke.points, tool.geometry, true) : [];
-    if (path.length > 0 && path.every((v, i) => i % 2 === 1 || within(v, path[i + 1]))) {
-      replaced.push(index);
-    } else {
-      rest.push(stroke);
+    // Its edge in the area is not enough: an area can be a ring round it, as a
+    // line pressed on is round what it encloses.
+    if (path.length > 0
+      && path.every((v, i) => i % 2 === 1 || within(v, path[i + 1]))
+      && everyPixelInside(path, scale, w, h, (p) => toArea[p] <= 3)) {
+      found.push(index);
     }
   });
-  // One pixel of the area: a shape whose outline never comes near the area
-  // holds all of it or none, and this pixel says which.
-  const inArea = area.indexOf(1);
-  const probe = { x: (inArea % w) + 0.5, y: Math.floor(inArea / w) + 0.5 };
-  let over = 0;
-  for (let index = 0; index < rest.length; index++) {
-    const stroke = rest[index];
-    const tool = tools[stroke.tool_id];
-    if (!tool) continue;
-    const under = tool.kind === 'eraser' || tool.kind === 'contour-eraser' || tool.kind === 'contour';
-    const hits = touches(stroke.points, tool, toArea, w, h, scale)
-      || (tool.kind === 'contour' && inArea >= 0 && inside(stroke.points, probe.x / scale, probe.y / scale));
-    if (!hits) continue;
-    if (!under) return { slot: index, replaced };
-    over = index + 1;
-  }
-  return { slot: over, replaced };
+  return found;
 }
 
-/** Whether (x, y) is inside the ring `points` (even–odd). */
-function inside(points: readonly number[], x: number, y: number): boolean {
-  let odd = false;
-  for (let i = 0, j = points.length - 2; i < points.length; j = i, i += 2) {
-    const yi = points[i + 1];
-    const yj = points[j + 1];
-    if ((yi > y) !== (yj > y) && x < ((points[j] - points[i]) * (y - yi)) / (yj - yi) + points[i]) {
-      odd = !odd;
-    }
-  }
-  return odd;
-}
+/** The share of what was pressed a fill may miss and still be all of it: its edge rounds a pixel or so. */
+const RECOLOUR_SLACK = 0.01;
 
-/** Whether a stroke's ink reaches within a pixel of the area. */
-function touches(
-  points: readonly number[],
-  tool: ToolDescriptor,
-  toArea: Float32Array,
+/**
+ * Which old fill the press is on, when the colour pressed is that one fill and
+ * nothing more — it then only changes colour, its outline untouched: traced
+ * again it would creep out over its own soft edge at every press. `found` is
+ * what `oldFillsIn` found, `pure` what `pureOf` did.
+ */
+export function recolouredFill(
+  pure: readonly number[],
+  found: readonly number[],
+  strokes: readonly SlotStroke[],
+  tools: readonly ToolDescriptor[],
+  scale: number,
   w: number,
   h: number,
+): number | null {
+  if (found.length !== 1) return null;
+  const stroke = strokes[found[0]];
+  const tool = tools[stroke.tool_id];
+  if (tool?.kind !== 'contour' || tool.geometry !== 'line') return null;
+  const inFill = new Uint8Array(w * h);
+  everyPixelInside(flatten(stroke.points, tool.geometry, true), scale, w, h, (p) => {
+    inFill[p] = 1;
+    return true;
+  });
+  let missed = 0;
+  for (const p of pure) missed += 1 - inFill[p];
+  return missed <= pure.length * RECOLOUR_SLACK ? found[0] : null;
+}
+
+/** Whether `test` holds for every pixel of the sheet inside the closed polyline `path` (even–odd). */
+function everyPixelInside(
+  path: readonly number[],
   scale: number,
+  w: number,
+  h: number,
+  test: (p: number) => boolean,
 ): boolean {
-  const width = 'width' in tool ? tool.width : 0;
-  // A stamp's mark is a square `width` across around its point: its corner is the farthest ink.
-  const reach = width * scale * (tool.kind === 'stamp' ? Math.SQRT1_2 : 0.5) + 1;
-  const near = (x: number, y: number) => {
-    const px = Math.floor(x);
-    const py = Math.floor(y);
-    return px >= 0 && py >= 0 && px < w && py < h && toArea[py * w + px] <= reach;
-  };
-  const closed = tool.kind === 'contour' || tool.kind === 'contour-eraser';
-  // Where the ink is: the curve the renderer reads out of the points, not the
-  // points themselves — a quick stroke's few points lie well off its curve.
-  const path = flatten(points, tool.geometry, closed);
-  if (path.length === 2) return near(path[0] * scale, path[1] * scale);
-  for (let i = 0; i + 3 < path.length; i += 2) {
-    const ax = path[i] * scale;
-    const ay = path[i + 1] * scale;
-    const bx = path[i + 2] * scale;
-    const by = path[i + 3] * scale;
-    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
-    for (let k = 0; k <= steps; k++) {
-      if (near(ax + ((bx - ax) * k) / steps, ay + ((by - ay) * k) / steps)) return true;
+  const n = path.length / 2;
+  for (let y = 0; y < h; y++) {
+    const line = (y + 0.5) / scale;
+    const crossings: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const ay = path[i * 2 + 1];
+      const by = path[j * 2 + 1];
+      if ((ay > line) !== (by > line)) {
+        crossings.push(path[i * 2] + ((line - ay) / (by - ay)) * (path[j * 2] - path[i * 2]));
+      }
+    }
+    crossings.sort((a, b) => a - b);
+    for (let c = 0; c + 1 < crossings.length; c += 2) {
+      const from = Math.max(0, Math.ceil(crossings[c] * scale - 0.5));
+      const to = Math.min(w - 1, Math.floor(crossings[c + 1] * scale - 0.5));
+      for (let x = from; x <= to; x++) {
+        if (!test(y * w + x)) return false;
+      }
     }
   }
-  return false;
+  return true;
+}
+
+/**
+ * The pixels of the area that are the colour pressed, give or take rounding:
+ * what the fill has to be seen on. The soft edge of what borders the area is
+ * not in it, or the fill would go over its own border to be seen there.
+ */
+export function pureOf(area: Uint8Array, distance: Uint8Array): number[] {
+  const pure: number[] = [];
+  for (let p = 0; p < area.length; p++) {
+    if (area[p] && distance[p] <= 2) pure.push(p);
+  }
+  return pure;
+}
+
+/**
+ * The slot of a stack of `count` strokes the fill goes in: the lowest one where
+ * it is seen as much as on top of everything. `seenAt` answers on how many
+ * pixels it is seen from a slot; a slot higher up is never seen on less, so this
+ * bisects, and a stack of thousands is drawn a dozen times.
+ */
+export function lowestSeenSlot(count: number, seenAt: (slot: number) => number): number {
+  const most = seenAt(count);
+  let low = 0;
+  let high = count;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (seenAt(middle) >= most) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return low;
 }
 
 /** The stroke's path as a polyline [x0, y0, …], every curve cut into `CURVE_STEPS` pieces. */
@@ -457,6 +619,42 @@ function flatten(points: readonly number[], geometry: StrokeGeometry, closed: bo
   return out;
 }
 
+
+/** A side of a ring at most this long is a step of a staircase. */
+const STEP = 2;
+/** A side at most this long beside a step is a run of a shallow staircase, not a side of the shape. */
+const RUN = 8;
+/** How far straightening may move a smoothed edge, pixels. */
+const SMOOTH_TOLERANCE = 0.6;
+
+/**
+ * A traced ring as an edge you would draw: a pixel staircase goes through the
+ * middles of its steps, which lie on the true edge where its corners stand half
+ * a pixel off, and is then straightened; a long side and the corners at its ends
+ * stay where they are. A recoloured line shows this edge bare, with no line
+ * over it to hide a wobble.
+ */
+export function smoothRing(ring: readonly number[]): number[] {
+  const n = ring.length / 2;
+  if (n < 4) return [...ring];
+  const side = (i: number) => {
+    const j = (i + 1) % n;
+    return Math.hypot(ring[2 * j] - ring[2 * i], ring[2 * j + 1] - ring[2 * i + 1]);
+  };
+  const stair = (i: number) => side(i) <= STEP
+    || (side(i) <= RUN && (side((i + n - 1) % n) <= STEP || side((i + 1) % n) <= STEP));
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (!stair((i + n - 1) % n) || !stair(i)) {
+      out.push(ring[2 * i], ring[2 * i + 1]);
+    }
+    if (stair(i)) {
+      out.push((ring[2 * i] + ring[2 * j]) / 2, (ring[2 * i + 1] + ring[2 * j + 1]) / 2);
+    }
+  }
+  return simplifyRing(out, SMOOTH_TOLERANCE);
+}
 
 /**
  * A ring straightened: the staircase of pixel edges comes down to its true

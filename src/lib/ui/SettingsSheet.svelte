@@ -359,6 +359,20 @@
             />
           </label>
           <label class="row">
+            <span class="row-label" title={t('settings.fill_tolerance_hint')}>{t('settings.fill_tolerance')}</span>
+            <span class="slider">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={editor.settings.fillTolerance}
+                oninput={(e) => editor.setSetting('fillTolerance', Number(e.currentTarget.value))}
+              />
+              <output>{t('settings.fill_tolerance_value', { n: editor.settings.fillTolerance })}</output>
+            </span>
+          </label>
+          <label class="row">
             <span class="row-label" title={t('settings.fill_gap_hint')}>{t('settings.fill_gap')}</span>
             <span class="slider">
               <input

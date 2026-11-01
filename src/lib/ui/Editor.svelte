@@ -1997,7 +1997,7 @@
 
   // The bucket's one warning, on its first pick of the session (owner,
   // 2026-10-16: «один раз при выборе и одно»): it is experimental, and pours
-  // only where the sheet is empty.
+  // over the whole area of the colour pressed.
   $effect(() => {
     if (editor.tool !== 'bucket' || editor.fillWarned) {
       return;

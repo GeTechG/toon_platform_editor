@@ -250,8 +250,10 @@ export interface EditorSettings {
   removerTipShown: boolean;
   /** The bucket's tolerance: a break in a line this many logical pixels wide holds it, 0..`FILL_GAP_MAX`. */
   fillGap: number;
-  /** Where the bucket looks for its borders: the active layer, or every visible one. */
+  /** Where the bucket looks at the colour: the active layer, or every visible one. */
   fillSource: FillSource;
+  /** How far a colour may be from the one pressed and still be its area: percent, 0..100. */
+  fillTolerance: number;
   /** The bucket warns on its first pick of a session, until «Больше не показывать». */
   fillWarning: boolean;
   /**
@@ -347,6 +349,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   megaEraserWarning: true,
   fillGap: 4,
   fillSource: 'layer',
+  fillTolerance: 10,
   fillWarning: true,
   pluginCatalog: PLUGIN_CATALOG,
   // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
@@ -618,6 +621,9 @@ function normalizeSettings(value: unknown): EditorSettings {
     fillGap: typeof raw.fillGap === 'number' && Number.isFinite(raw.fillGap)
       ? Math.min(FILL_GAP_MAX, Math.max(0, Math.round(raw.fillGap)))
       : DEFAULT_SETTINGS.fillGap,
+    fillTolerance: typeof raw.fillTolerance === 'number' && Number.isFinite(raw.fillTolerance)
+      ? Math.min(100, Math.max(0, Math.round(raw.fillTolerance)))
+      : DEFAULT_SETTINGS.fillTolerance,
     fillWarning: flag('fillWarning'),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),

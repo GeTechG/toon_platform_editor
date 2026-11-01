@@ -192,6 +192,9 @@ test('the pipette source is part of the drawing config and defaults to the canva
 test('an unknown bucket source falls back to the layer', () => {
   const parsed = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { fillSource: 'nonsense' } }));
   expect(parsed?.settings.fillSource).toBe('layer');
+  // A tolerance out of range lands on its end, one that is no number on the default.
+  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { fillTolerance: 400 } }))?.settings.fillTolerance).toBe(100);
+  expect(parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { fillTolerance: 'a' } }))?.settings.fillTolerance).toBe(10);
 });
 
 test('an unknown pipette source falls back to the canvas', () => {
@@ -242,6 +245,7 @@ test('settings round-trip through the stored config', () => {
     megaEraserWarning: false,
     fillGap: 9,
     fillSource: 'canvas' as const,
+    fillTolerance: 35,
     fillWarning: false,
     pluginCatalog: 'https://plugins.example/',
     onion: {

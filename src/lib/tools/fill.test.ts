@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { fillPlace, fillRegion, keyhole, simplifyRing, traceOutline, traceRings } from './fill';
+import { colourDistance, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, recolouredFill, simplifyRing, smoothRing, traceOutline, traceRings } from './fill';
 import type { ToolDescriptor } from '../format/types';
 
 /** A sheet of `w`×`h` alpha, with the given pixels opaque. */
@@ -21,73 +21,210 @@ function box(thick = 1, gap = 0) {
 
 const at = (mask: Uint8Array, x: number, y: number) => mask[y * 20 + x];
 
-describe('fillRegion', () => {
-  it('covers the whole sheet when the layer is empty', () => {
-    const mask = fillRegion(new Uint8Array(20 * 20), 20, 20, 5, 5, 0, 0)!;
-    expect(mask.every((v) => v === 1)).toBe(true);
+/** A `w`×`h` picture on empty paper: what `paint` names is opaque, the rest is not drawn. */
+function picture(w: number, h: number, paint: (x: number, y: number) => readonly number[] | null): Uint8ClampedArray {
+  const rgba = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const c = paint(x, y);
+      if (c) rgba.set(c.length === 4 ? c : [...c, 255], (y * w + x) * 4);
+    }
+  }
+  return rgba;
+}
+const WHITE = [255, 255, 255] as const;
+const BLACK = [0, 0, 0] as const;
+const RED = [255, 0, 0] as const;
+
+/** Where a press at (x, y) pours in a 20×20 picture: tolerance 25 of 255. */
+const pour20 = (rgba: Uint8ClampedArray, x: number, y: number, tolerance = 25, gap = 0) =>
+  fillRegion(colourDistance(rgba, 20, 20, x, y, WHITE), 20, 20, x, y, tolerance, gap);
+
+describe('fillRegion by the colour seen', () => {
+  const ring = (x: number, y: number) => box()[y * 20 + x] ? BLACK : null;
+
+  it('pours over the whole empty sheet', () => {
+    expect(pour20(picture(20, 20, () => null), 5, 5).every((v) => v === 1)).toBe(true);
   });
 
   it('stays inside a closed outline', () => {
-    const mask = fillRegion(box(), 20, 20, 7, 7, 0, 0)!;
+    const mask = pour20(picture(20, 20, ring), 7, 7);
     expect(at(mask, 7, 7)).toBe(1);
     expect(at(mask, 3, 3)).toBe(1);
+    expect(at(mask, 2, 7)).toBe(0);
     expect(at(mask, 0, 0)).toBe(0);
+  });
+
+  it('pressed on the line, takes the whole line and nothing else', () => {
+    const mask = pour20(picture(20, 20, ring), 2, 7);
+    expect(at(mask, 2, 7)).toBe(1);
+    expect(at(mask, 12, 12)).toBe(1);
+    expect(at(mask, 7, 7)).toBe(0);
+    expect(at(mask, 0, 0)).toBe(0);
+  });
+
+  it('pressed on a painted blob, takes it up to the next colour', () => {
+    const blob = (x: number) => (x === 10 ? BLACK : RED);
+    const mask = pour20(picture(20, 20, blob), 3, 3);
+    expect(at(mask, 9, 3)).toBe(1);
+    expect(at(mask, 10, 3)).toBe(0);
+    expect(at(mask, 11, 3)).toBe(0);
+  });
+
+  it('takes an old fill for a border when pressed beside it', () => {
+    const half = (x: number) => (x < 10 ? RED : null);
+    const mask = pour20(picture(20, 20, half), 15, 5);
+    expect(at(mask, 10, 5)).toBe(1);
+    expect(at(mask, 9, 5)).toBe(0);
+  });
+
+  it('sees white ink on the paper as paper', () => {
+    const mask = pour20(picture(20, 20, (x) => (x === 10 ? WHITE : null)), 3, 3);
+    expect(at(mask, 15, 3)).toBe(1);
+  });
+
+  it('crosses what is within the tolerance and stops at what is not', () => {
+    const shades = (x: number) => (x < 10 ? [200, 200, 200] : [220, 220, 220]);
+    expect(at(pour20(picture(20, 20, shades), 3, 3, 25), 15, 3)).toBe(1);
+    expect(at(pour20(picture(20, 20, shades), 3, 3, 10), 15, 3)).toBe(0);
+  });
+
+  it('counts half-covered ink as the mix the eye sees', () => {
+    // 8% black on the paper is within the tolerance, 50% is not.
+    const faint = (x: number) => (x === 10 ? [0, 0, 0, 20] : null);
+    const half = (x: number) => (x === 10 ? [0, 0, 0, 128] : null);
+    expect(at(pour20(picture(20, 20, faint), 3, 3), 15, 3)).toBe(1);
+    expect(at(pour20(picture(20, 20, half), 3, 3), 15, 3)).toBe(0);
+  });
+
+  it('leaves what a line encloses as a hole, and takes a speck with it', () => {
+    const nested = (lo: number, hi: number) => picture(30, 30, (x, y) => {
+      const r = (a: number, b: number) => x >= a && x <= b && y >= a && y <= b && (x === a || x === b || y === a || y === b);
+      return r(2, 27) || r(lo, hi) ? BLACK : null;
+    });
+    const pour = (rgba: Uint8ClampedArray) => fillRegion(colourDistance(rgba, 30, 30, 4, 4, WHITE), 30, 30, 4, 4, 25, 0);
+    expect(pour(nested(8, 20))[14 * 30 + 14]).toBe(0);
+    expect(pour(nested(8, 10))[9 * 30 + 9]).toBe(1);
+  });
+});
+
+describe('fillRegion on a diagonal', () => {
+  it('follows a thin smooth line whose core is joined only by corners', () => {
+    // A green line at 45° on the paper: its pure pixels touch by their corners,
+    // the pixels either side are half green, half paper.
+    const line = picture(20, 20, (x, y) => {
+      const off = Math.abs(x - y);
+      return off === 0 ? [0, 255, 0] : off === 1 ? [128, 255, 128] : null;
+    });
+    const mask = pour20(line, 2, 2);
+    expect(at(mask, 15, 15)).toBe(1);
+    expect(at(mask, 15, 3)).toBe(0);
+  });
+
+  it('holds at a hard line a pixel wide, joined only by corners', () => {
+    const wall = picture(20, 20, (x, y) => (x === y ? BLACK : null));
+    const mask = pour20(wall, 15, 3);
+    expect(at(mask, 18, 1)).toBe(1);
+    expect(at(mask, 3, 15)).toBe(0);
+  });
+
+  it('holds at a tapering line a pixel wide, each pixel a little darker than the last', () => {
+    const wall = picture(20, 20, (x, y) => (x + y === 19 ? [0, 0, 0, 120 + x * 4] : null));
+    const mask = pour20(wall, 3, 3);
     expect(at(mask, 15, 15)).toBe(0);
   });
 
-  it('refuses a press on the line itself', () => {
-    expect(fillRegion(box(), 20, 20, 2, 7, 0, 0)).toBeNull();
+  it('holds at a smooth line from the paper on either side of it', () => {
+    const line = picture(20, 20, (x, y) => {
+      const off = Math.abs(x - y);
+      return off === 0 ? BLACK : off === 1 ? [128, 128, 128] : null;
+    });
+    const mask = pour20(line, 15, 3);
+    expect(at(mask, 3, 15)).toBe(0);
+  });
+});
+
+describe('fillRegion and gaps', () => {
+  const ringWithGap = (gap: number) => picture(20, 20, (x, y) => box(1, gap)[y * 20 + x] ? BLACK : null);
+
+  it('leaks through a break when gaps are not held', () => {
+    expect(at(pour20(ringWithGap(2), 7, 7, 25, 0), 0, 0)).toBe(1);
   });
 
-  it('leaks through a gap wider than the tolerance', () => {
-    const mask = fillRegion(box(1, 2), 20, 20, 7, 7, 0, 0)!;
-    expect(at(mask, 0, 0)).toBe(1);
-  });
-
-  it('holds at a gap no wider than the tolerance, and still reaches the corners', () => {
-    const mask = fillRegion(box(1, 2), 20, 20, 7, 7, 4, 0)!;
+  it('holds at a break no wider than the gap, and still reaches the corners', () => {
+    const mask = pour20(ringWithGap(2), 7, 7, 25, 4);
     expect(at(mask, 0, 0)).toBe(0);
     expect(at(mask, 15, 15)).toBe(0);
     expect(at(mask, 3, 3)).toBe(1);
     expect(at(mask, 11, 11)).toBe(1);
   });
 
-  it('fills the strip between a line and the sheet\'s edge, the gap held', () => {
-    // The box stands two pixels off the edge, as near as the swelling reaches.
-    const mask = fillRegion(box(1), 20, 20, 16, 16, 4, 0)!;
+  it('fills the strip between a line and the sheet\'s edge', () => {
+    const mask = pour20(ringWithGap(0), 16, 16, 25, 4);
     expect(at(mask, 0, 7)).toBe(1);
     expect(at(mask, 1, 7)).toBe(1);
     expect(at(mask, 7, 7)).toBe(0);
   });
 
-  it('grows under the line by its inked pixels, never past a thin line', () => {
-    const thick = fillRegion(box(3), 20, 20, 7, 7, 0, 2)!;
-    expect(at(thick, 3, 7)).toBe(1);
-    expect(at(thick, 2, 7)).toBe(0);
-    const thin = fillRegion(box(1), 20, 20, 7, 7, 0, 2)!;
-    expect(at(thin, 2, 7)).toBe(1);
-    expect(at(thin, 1, 7)).toBe(0);
-    // The soft rim on the far side of a line is not reached either.
-    const rimmed = box(1);
-    rimmed[7 * 20 + 1] = 30;
-    expect(at(fillRegion(rimmed, 20, 20, 7, 7, 0, 2)!, 1, 7)).toBe(0);
+  it('takes the thin tail of a line pressed on its thick part', () => {
+    // A stroke with pressure: 8 pixels thick by x < 20, a pixel thin after.
+    const stroke = picture(40, 20, (x, y) => ((x < 20 && y >= 6 && y < 14) || (x < 36 && y === 10) ? BLACK : null));
+    const mask = fillRegion(colourDistance(stroke, 40, 20, 5, 10, WHITE), 40, 20, 5, 10, 25, 4);
+    expect(mask[10 * 40 + 34]).toBe(1);
+    expect(mask[10 * 40 + 38]).toBe(0);
+  });
+});
+
+describe('growRim', () => {
+  /** A row across a border: from the seed colour up the soft edge into the ink. */
+  const row = (values: number[]) => {
+    const distance = new Uint8Array(values.length * 3);
+    values.forEach((v, x) => { for (let y = 0; y < 3; y++) distance[y * values.length + x] = v; });
+    return distance;
+  };
+  const inRow = (values: number[], tolerance: number) => {
+    const m = new Uint8Array(values.length * 3);
+    // Only what the flood reaches: from the left, up to the first pixel past the tolerance.
+    for (let x = 0; x < values.length && values[x] <= tolerance; x++) {
+      for (let y = 0; y < 3; y++) m[y * values.length + x] = 1;
+    }
+    return m;
+  };
+  const row1 = (mask: Uint8Array, n: number) => [...mask.slice(n, 2 * n)];
+
+  it('takes the soft edge and stops short of the solid ink when it lies on top', () => {
+    const values = [0, 0, 80, 170, 255, 255, 255];
+    const mask = inRow(values, 25);
+    growRim(mask, row(values), 7, 3, 3, false);
+    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 0, 0, 0]);
   });
 
-  /** A 30×30 sheet: a ring 2..27 and inside it a square ring `lo`..`hi`. */
-  const nested = (lo: number, hi: number) => sheet(30, 30, (x, y) => {
-    const ring = (a: number, b: number) => x >= a && x <= b && y >= a && y <= b && (x === a || x === b || y === a || y === b);
-    return ring(2, 27) || ring(lo, hi);
+  it('takes one pixel of the solid ink too when ink lies over it, no paper showing', () => {
+    const values = [0, 0, 80, 170, 255, 255, 255];
+    const mask = inRow(values, 25);
+    growRim(mask, row(values), 7, 3, 3, true);
+    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 1, 0, 0]);
   });
 
-  it('leaves what a line encloses inside the area out of it', () => {
-    const mask = fillRegion(nested(8, 20), 30, 30, 4, 4, 0, 0)!;
-    expect(mask[4 * 30 + 4]).toBe(1);
-    expect(mask[14 * 30 + 14]).toBe(0);
+  it('never passes the peak of a thin line to its far side', () => {
+    const values = [0, 0, 120, 200, 120, 0, 0];
+    const mask = inRow(values, 25);
+    growRim(mask, row(values), 7, 3, 3, true);
+    expect(row1(mask, 7)).toEqual([1, 1, 1, 1, 0, 0, 0]);
   });
 
-  it('takes a speck the lines enclose with it', () => {
-    const mask = fillRegion(nested(8, 10), 30, 30, 4, 4, 0, 0)!;
-    expect(mask[9 * 30 + 9]).toBe(1);
+  it('takes nothing across a hard edge when it lies on top', () => {
+    const values = [0, 0, 255, 255, 255];
+    const mask = inRow(values, 25);
+    growRim(mask, row(values), 5, 3, 3, false);
+    expect(row1(mask, 5)).toEqual([1, 1, 0, 0, 0]);
+  });
+
+  it('goes no further than its steps', () => {
+    const values = [0, 40, 80, 120, 160, 200, 255];
+    const mask = inRow(values, 25);
+    growRim(mask, row(values), 7, 3, 2, false);
+    expect(row1(mask, 7)).toEqual([1, 1, 1, 0, 0, 0, 0]);
   });
 });
 
@@ -118,65 +255,99 @@ describe('traceOutline', () => {
   });
 });
 
-describe('fillPlace', () => {
+describe('oldFillsIn', () => {
   const tools: ToolDescriptor[] = [
     { kind: 'pencil', geometry: 'line', width: 2, color: '#000000' },
-    { kind: 'eraser', geometry: 'line', width: 2 },
     { kind: 'contour', geometry: 'line', color: '#ff0000' },
-    { kind: 'pencil', geometry: 'smooth', width: 6, color: '#000000' },
   ];
   const line = (...points: number[]) => ({ points, tool_id: 0 });
-  const erase = (...points: number[]) => ({ points, tool_id: 1 });
-  const fill = (...points: number[]) => ({ points, tool_id: 2 });
+  const fill = (...points: number[]) => ({ points, tool_id: 1 });
   // The area: the block 5..9 × 5..9 of a 20×20 sheet; its outline runs 5..10.
   const area = new Uint8Array(400);
   for (let y = 5; y < 10; y++) for (let x = 5; x < 10; x++) area[y * 20 + x] = 1;
-  const place = (strokes: { points: number[]; tool_id: number }[]) => fillPlace(area, 20, 20, strokes, tools, 1);
-  const slot = (strokes: { points: number[]; tool_id: number }[]) => place(strokes).slot;
+  const old = (strokes: { points: number[]; tool_id: number }[]) => oldFillsIn(area, 20, 20, strokes, tools, 1);
 
-  it('goes under the lowest line touching the area', () => {
-    expect(slot([line(0, 0, 0, 19), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
+  it('finds an old fill of the same area, wherever it lay', () => {
+    expect(old([fill(5, 5, 10, 5, 10, 10, 5, 10), line(4, 0, 4, 19)])).toEqual([0]);
+    expect(old([line(4, 0, 4, 19), fill(5, 5, 10, 5, 10, 10, 5, 10)])).toEqual([1]);
   });
 
-  it('counts a line inside the area', () => {
-    expect(slot([line(0, 0, 0, 19), line(7, 6, 8, 8), line(4, 0, 4, 19)])).toBe(1);
+  it('finds one traced a pixel or two wider, and keeps one that reaches beyond', () => {
+    expect(old([fill(4, 3, 11, 4, 11, 11, 4, 11)])).toEqual([0]);
+    expect(old([fill(5, 5, 15, 5, 15, 10, 5, 10)])).toEqual([]);
   });
 
-  it('goes to the bottom when no line touches it', () => {
-    expect(slot([line(0, 0, 0, 19), line(19, 0, 19, 19)])).toBe(0);
+  it('keeps a fill whose edge lies in the area and whose middle does not', () => {
+    // The area is a ring, as a line pressed on is; the old fill is what it encloses.
+    const ring = new Uint8Array(400);
+    for (let y = 2; y <= 17; y++) {
+      for (let x = 2; x <= 17; x++) if (x < 5 || x > 14 || y < 5 || y > 14) ring[y * 20 + x] = 1;
+    }
+    expect(oldFillsIn(ring, 20, 20, [fill(4, 4, 16, 4, 16, 16, 4, 16)], tools, 1)).toEqual([]);
   });
 
-  it('keeps under its lines whatever lies over them', () => {
-    // An eraser or a fill over the border line would cover or cut the new
-    // fill; the line covering it would be worse (owner, 2026-10-16).
-    expect(slot([line(4, 0, 4, 19), erase(6, 6, 8, 8)])).toBe(0);
-    expect(slot([line(4, 0, 4, 19), fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(0);
+  it('never takes a line, however deep inside', () => {
+    expect(old([line(6, 6, 8, 8)])).toEqual([]);
+  });
+});
+
+describe('recolouredFill', () => {
+  const tools: ToolDescriptor[] = [
+    { kind: 'pencil', geometry: 'line', width: 2, color: '#000000' },
+    { kind: 'contour', geometry: 'line', color: '#ff0000' },
+    { kind: 'contour', geometry: 'smooth', color: '#ff0000' },
+  ];
+  const square = (tool_id: number) => ({ points: [5, 5, 15, 5, 15, 15, 5, 15], tool_id });
+  const block = (x0: number, x1: number) => {
+    const pure: number[] = [];
+    for (let y = 5; y < 15; y++) for (let x = x0; x < x1; x++) pure.push(y * 20 + x);
+    return pure;
+  };
+
+  it('is the old fill when the colour pressed is that fill and nothing else', () => {
+    expect(recolouredFill(block(5, 15), [1], [square(0), square(1)], tools, 1, 20, 20)).toBe(1);
   });
 
-  it('with no line, stays above an eraser or a fill it meets', () => {
-    expect(slot([erase(6, 6, 8, 8), line(19, 0, 19, 19)])).toBe(1);
-    expect(slot([fill(0, 0, 19, 0, 19, 19, 0, 19)])).toBe(1);
+  it('is none when the same colour runs on past the fill', () => {
+    expect(recolouredFill(block(5, 19), [0], [square(1)], tools, 1, 20, 20)).toBeNull();
   });
 
-  it('takes no old fill for a border, and goes over one under its lines', () => {
-    expect(slot([fill(2, 2, 14, 2, 14, 14, 2, 14), line(4, 0, 4, 19), line(10, 0, 10, 19)])).toBe(1);
+  it('is none when several old fills make up the area', () => {
+    expect(recolouredFill(block(5, 15), [0, 1], [square(1), square(1)], tools, 1, 20, 20)).toBeNull();
   });
 
-  it('replaces an old fill of the same area, wherever it lay', () => {
-    expect(place([fill(5, 5, 10, 5, 10, 10, 5, 10), line(4, 0, 4, 19)])).toEqual({ slot: 0, replaced: [0] });
-    expect(place([line(4, 0, 4, 19), fill(5, 5, 10, 5, 10, 10, 5, 10)])).toEqual({ slot: 0, replaced: [1] });
+  it('is none for a curved contour, which the bucket did not lay down', () => {
+    expect(recolouredFill(block(5, 15), [0], [square(2)], tools, 1, 20, 20)).toBeNull();
+  });
+});
+
+describe('lowestSeenSlot', () => {
+  /** A stack where the fill is seen on `whole` pixels from slot `from` up. */
+  const seenFrom = (from: number, whole = 100) => (slot: number) => (slot >= from ? whole : whole - (from - slot));
+
+  it('goes to the very bottom when nothing covers it there', () => {
+    expect(lowestSeenSlot(5, seenFrom(0))).toBe(0);
   });
 
-  it('replaces an old fill traced a pixel or two wider, and keeps one that reaches beyond', () => {
-    expect(place([fill(4, 3, 11, 4, 11, 11, 4, 11)]).replaced).toEqual([0]);
-    expect(place([fill(5, 5, 15, 5, 15, 10, 5, 10)]).replaced).toEqual([]);
+  it('goes right over the last stroke that would cover it', () => {
+    expect(lowestSeenSlot(5, seenFrom(3))).toBe(3);
   });
 
-  it('reads a curve where it is drawn, not along the points that shape it', () => {
-    // A quick stroke: three points far from the area, the curve they shape
-    // passing three pixels over it.
-    const curve = { points: [-30, 30, 7, -26, 44, 30], tool_id: 3 };
-    expect(slot([line(19, 0, 19, 19), curve])).toBe(1);
+  it('goes on top when every slot under it loses a pixel', () => {
+    expect(lowestSeenSlot(5, seenFrom(5))).toBe(5);
+  });
+
+  it('takes the empty stack', () => {
+    expect(lowestSeenSlot(0, seenFrom(0))).toBe(0);
+  });
+
+  it('asks about as few slots as a bisection does', () => {
+    let asked = 0;
+    lowestSeenSlot(1000, (slot) => {
+      asked++;
+      return seenFrom(617)(slot);
+    });
+    expect(asked).toBeLessThanOrEqual(12);
   });
 });
 
@@ -197,6 +368,54 @@ describe('keyhole', () => {
 
   it('leaves a lone outline as it is', () => {
     expect(keyhole([[0, 0, 9, 0, 9, 9]])).toEqual([0, 0, 9, 0, 9, 9]);
+  });
+});
+
+describe('smoothRing', () => {
+  /** The ring round a disc of radius `r` in a sheet of its size, from its pixels. */
+  const disc = (r: number) => {
+    const size = 2 * r + 6;
+    const mask = new Uint8Array(size * size);
+    const c = size / 2;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) if (Math.hypot(x + 0.5 - c, y + 0.5 - c) <= r) mask[y * size + x] = 1;
+    }
+    return { ring: traceOutline(mask, size, size), c };
+  };
+
+  it('takes a circle down to a few dozen points that keep to the true edge', () => {
+    const { ring, c } = disc(150);
+    const smooth = smoothRing(ring);
+    expect(smooth.length / 2).toBeLessThan(90);
+    for (let i = 0; i < smooth.length; i += 2) {
+      expect(Math.abs(Math.hypot(smooth[i] - c, smooth[i + 1] - c) - 150)).toBeLessThan(0.9);
+    }
+    // Between its points too: the true edge never bulges past a chord by a pixel.
+    const n = smooth.length / 2;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const mx = (smooth[2 * i] + smooth[2 * j]) / 2;
+      const my = (smooth[2 * i + 1] + smooth[2 * j + 1]) / 2;
+      expect(Math.abs(Math.hypot(mx - c, my - c) - 150)).toBeLessThan(1);
+    }
+  });
+
+  it('keeps the corners of a block exactly', () => {
+    expect(smoothRing([3, 2, 30, 2, 30, 25, 3, 25])).toEqual([3, 2, 30, 2, 30, 25, 3, 25]);
+  });
+
+  it('keeps a thin straight bar as wide along its length', () => {
+    const smooth = smoothRing([0, 0, 100, 0, 100, 2, 0, 2]);
+    expect(smooth).toContainEqual(100);
+    for (let i = 1; i < smooth.length; i += 2) expect([0, 1, 2]).toContain(smooth[i]);
+    expect(smooth.filter((v, i) => i % 2 === 1 && v === 0).length).toBe(2);
+    expect(smooth.filter((v, i) => i % 2 === 1 && v === 2).length).toBe(2);
+  });
+
+  it('keeps a corner where a stair meets a long side', () => {
+    // A long flat top, a long right side and one little step cut out of its far corner.
+    const smooth = smoothRing([0, 0, 40, 0, 40, 39, 39, 39, 39, 40, 0, 40]);
+    expect(smooth.slice(0, 4)).toEqual([0, 0, 40, 0]);
   });
 });
 
