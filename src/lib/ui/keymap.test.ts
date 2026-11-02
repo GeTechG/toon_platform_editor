@@ -411,3 +411,15 @@ describe('holding a key', () => {
     expect(hold.held).toBe(false);
   });
 });
+
+describe('the held key stays the hold’s', () => {
+  it('knows its own key, so its auto-repeat is kept from the page whatever else is going on', () => {
+    const hold = holdKey({ start() {}, end() {}, tap() {} });
+    expect(hold.holds('Space')).toBe(false);
+    hold.down('Space');
+    expect(hold.holds('Space')).toBe(true);
+    expect(hold.holds('KeyA')).toBe(false);
+    hold.up('Space');
+    expect(hold.holds('Space')).toBe(false);
+  });
+});

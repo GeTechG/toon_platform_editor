@@ -896,6 +896,13 @@
     if (composing(e)) {
       return;
     }
+    // The key held for the hand: its auto-repeat is the hold's, whatever else
+    // goes on — mid-drag the sheet is a held gesture, the table below never
+    // ran, and Space scrolled the site's page under the studio.
+    if (panHold.holds(e.code)) {
+      e.preventDefault();
+      return;
+    }
     // Read by place on a non-Latin layout: «и» is B (key-owner.ts).
     const key = latinKey(e);
     // An open sheet is where the hands are: Alt+E and Alt+S stacked the

@@ -376,6 +376,8 @@ export function rewriteHint(text: string, labels: readonly string[]): string {
  */
 export function holdKey(on: { start: () => void; end: () => void; tap: () => void }): {
   readonly held: boolean;
+  /** Whether this is the key being held. */
+  holds(code: string): boolean;
   down(code: string): void;
   use(): void;
   up(code: string): void;
@@ -393,6 +395,7 @@ export function holdKey(on: { start: () => void; end: () => void; tap: () => voi
     get held() {
       return code !== null;
     },
+    holds: (pressed) => code !== null && pressed === code,
     down(pressed) {
       if (code !== null) return;
       code = pressed;
