@@ -11,8 +11,11 @@ export type Chord = string;
 export interface Command {
   id: string;
   defaults: readonly Chord[];
-  /** Answers only in that mode; a key there and elsewhere is no clash. */
-  scope?: 'transform';
+  /**
+   * Answers only in that mode; a key there and elsewhere is no clash. `hold`
+   * acts while the key is down, and the same key's tap keeps its own command.
+   */
+  scope?: 'transform' | 'hold';
   /** Runs on while the key is held: more of the same is the point. */
   repeat?: boolean;
 }
@@ -57,6 +60,8 @@ export function chordOf(e: KeyPressEvent): Chord | null {
 export interface ResolveContext {
   /** A live transform: its own commands come first. */
   transform?: boolean;
+  /** Asks only for a command that acts while its key is held. */
+  hold?: boolean;
   /** Whether a command is here now: a tool off the panel leaves its key to the next holder. */
   available?: (id: string) => boolean;
 }
@@ -109,7 +114,7 @@ export function buildKeymap(commands: readonly Command[], overrides: KeyOverride
     resolve(chord, context = {}) {
       const available = context.available ?? (() => true);
       const plain = chord.replace('Shift+', '');
-      const scopes = context.transform ? ['transform', 'studio'] : ['studio'];
+      const scopes = context.hold ? ['hold'] : context.transform ? ['transform', 'studio'] : ['studio'];
       for (const scope of scopes) {
         // A Shift that means nothing of its own is the same key.
         const found = first(scope, chord, available) ?? first(scope, plain, available);
@@ -134,8 +139,8 @@ export function buildKeymap(commands: readonly Command[], overrides: KeyOverride
       });
     },
     effective(id, available) {
-      const transform = byId.get(id)?.scope === 'transform';
-      return this.bindings(id).filter((chord) => this.resolve(chord, { transform, available }) === id);
+      const scope = byId.get(id)?.scope;
+      return this.bindings(id).filter((chord) => this.resolve(chord, { transform: scope === 'transform', hold: scope === 'hold', available }) === id);
     },
     changed: (id) => overrides[id] !== undefined,
     repeats: (id) => byId.get(id)?.repeat === true,
@@ -332,6 +337,9 @@ export function studioCommands(tools: readonly ToolKeys[]): Command[] {
     held('pan-right', 'Ctrl+Shift+ArrowRight'),
     held('pan-up', 'Ctrl+Shift+ArrowUp'),
     held('pan-down', 'Ctrl+Shift+ArrowDown'),
+    // Held, the sheet moves under the pointer; tapped, the key keeps its own
+    // command (Space plays): Photoshop, Krita and Animate pan on Space too.
+    { id: 'pan-hold', defaults: ['Space'], scope: 'hold' },
     held('turn-left', '['),
     held('turn-right', ']'),
     once('fullscreen', 'f'),
@@ -360,4 +368,45 @@ export function rewriteHint(text: string, labels: readonly string[]): string {
     const kept = [keys, ...rest].filter((part) => part !== '').join(' — ');
     return kept === '' ? '' : `${group.match(/^\s*/)![0]}(${kept})`;
   });
+}
+
+/**
+ * A key that acts while it is down: `start` on the press, `end` on the
+ * release, and `tap` after it when nothing used the hold in between.
+ */
+export function holdKey(on: { start: () => void; end: () => void; tap: () => void }): {
+  readonly held: boolean;
+  down(code: string): void;
+  use(): void;
+  up(code: string): void;
+  cancel(): void;
+} {
+  let code: string | null = null;
+  let used = false;
+  const release = (tap: boolean): void => {
+    if (code === null) return;
+    code = null;
+    on.end();
+    if (tap && !used) on.tap();
+  };
+  return {
+    get held() {
+      return code !== null;
+    },
+    down(pressed) {
+      if (code !== null) return;
+      code = pressed;
+      used = false;
+      on.start();
+    },
+    use() {
+      used = true;
+    },
+    up(pressed) {
+      if (pressed === code) release(true);
+    },
+    cancel() {
+      release(false);
+    },
+  };
 }

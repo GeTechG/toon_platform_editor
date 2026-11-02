@@ -38,7 +38,7 @@
   import { keyPan, turnStep, zoomDelta, zoomNotch } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, wrapIndex, type FrameMenuAction } from './frame-selection';
   import { composing, focusOrigin, keyOwner, latinKey, typesText } from './key-owner';
-  import { chordOf } from './keymap';
+  import { chordOf, holdKey } from './keymap';
   import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -920,6 +920,7 @@
       transform: !!editor.transform,
       available: (id) => editor.commandHere(id),
     });
+    const held = chord === null ? null : editor.keymap.resolve(chord, { hold: true });
     // A chord for saving fires from a form field too: the browser would
     // otherwise take it for «save page». The reference's Alt+Enter, which
     // muted every question (`HotEnter`, toonio.bundle.js:320), is gone on
@@ -960,9 +961,19 @@
       modalOpen,
       letterKeys: editor.settings.letterKeys,
       byPointer: focusFrom.byPointer(e.target),
-      bound: command !== null,
+      bound: command !== null || held !== null,
     });
     if (owner === 'control') {
+      return;
+    }
+    // A key that is the hand while held: its tap still does the key's own
+    // command, on the release (Space: the preview).
+    if (held === 'pan-hold' || panHold.held) {
+      e.preventDefault();
+      if (!panHold.held) {
+        heldTap = command === null ? null : { command, e };
+        panHold.down(e.code);
+      }
       return;
     }
     // A held key runs on only where more of the same is the point (keymap.ts):
@@ -991,6 +1002,26 @@
       e.preventDefault();
       runCommand(command, e);
     }
+  }
+
+  /** What the held key's tap does when it is let go unused. */
+  let heldTap: { command: string; e: KeyboardEvent } | null = null;
+  const panHold = holdKey({
+    start: () => {
+      editor.panHeldUsed = false;
+      editor.panHeld = true;
+    },
+    end: () => {
+      editor.panHeld = false;
+    },
+    tap: () => {
+      if (heldTap) runCommand(heldTap.command, heldTap.e);
+    },
+  });
+
+  function onKeyup(e: KeyboardEvent): void {
+    if (editor.panHeldUsed) panHold.use();
+    panHold.up(e.code);
   }
 
   /** Where each stepping command goes: sideways, and up along the layers. */
@@ -2291,6 +2322,8 @@
   bind:innerHeight={viewportHeight}
   bind:innerWidth={viewportWidth}
   onkeydown={onKeydown}
+  onkeyup={onKeyup}
+  onblur={() => panHold.cancel()}
   onpointerdowncapture={focusFrom.pointer}
   onfocusin={(e) => focusFrom.focus(e.target)}
   onpointermove={onDividerMove}

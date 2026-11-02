@@ -123,6 +123,7 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
       id: 'sheet',
       keys: [
         ...(has('drag') ? [tool('drag')] : []),
+        { kind: 'command', id: 'pan-hold', command: 'pan-hold', label: t('key.pan_hold') },
         command('zoom-in', 'zoom_in'),
         command('zoom-out', 'zoom_out'),
         command('turn-left', 'turn_left'),

@@ -493,7 +493,7 @@
   const overlayCursor = $derived(
     toolSpec(editor.tool)?.cursor
       ? toolSpec(editor.tool)!.cursor!
-      : editor.tool === 'drag'
+      : editor.tool === 'drag' || editor.panHeld
         ? (panning ? 'grabbing' : 'grab')
         : editor.transform
           ? CURSOR_BY_MODE[hoverMode] || (editor.tool === 'lasso' ? 'default' : editor.tool === 'loop' ? 'crosshair' : '')
@@ -1408,7 +1408,9 @@
     }
     // The hand is the tool whose whole job is this gesture (reference `Drag`);
     // once a pen has been used, a finger is always the hand.
-    if (e.button === 1 || editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)) {
+    if (e.button === 1 || editor.tool === 'drag' || editor.panHeld || (e.pointerType === 'touch' && editor.penSeen)) {
+      // A held key's hand was used: letting the key go is no tap (keymap holdKey).
+      if (editor.panHeld) editor.panHeldUsed = true;
       panning = {
         pointerId: e.pointerId,
         x: e.clientX,

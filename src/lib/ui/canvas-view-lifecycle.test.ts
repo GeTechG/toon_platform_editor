@@ -526,7 +526,7 @@ describe('palm rejection once a pen has touched the sheet', () => {
 
   it('after the pen, one finger pans the sheet instead of drawing', () => {
     const nav = handler('startNavigation');
-    expect(nav).toContain("editor.tool === 'drag' || (e.pointerType === 'touch' && editor.penSeen)");
+    expect(nav).toContain("editor.tool === 'drag' || editor.panHeld || (e.pointerType === 'touch' && editor.penSeen)");
   });
 
   it('a palm that lands while the pen is busy neither pans nor pinches', () => {

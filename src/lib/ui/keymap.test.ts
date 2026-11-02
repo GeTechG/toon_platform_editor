@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { assignChord, buildKeymap, chordAria, chordLabel, chordOf, holdersOf, isBare, normalizeChord, readOverrides, refusal, removeChord, resetCommand, rewriteHint, studioCommands, type Command } from './keymap';
+import { assignChord, buildKeymap, chordAria, chordLabel, chordOf, holdersOf, isBare, normalizeChord, readOverrides, refusal, removeChord, resetCommand, rewriteHint, studioCommands, holdKey, type Command } from './keymap';
 
 const press = (key: string, code = '', mods: { ctrl?: boolean; meta?: boolean; alt?: boolean; shift?: boolean } = {}) => ({
   key,
@@ -343,5 +343,71 @@ describe('a key shared by design stays in its order', () => {
   it('with the pen off the panel F is fullscreen again, F2 still', () => {
     const map = buildKeymap(commands, assignChord(commands, {}, 'fullscreen', 'F2'));
     expect(map.effective('fullscreen', (id) => id !== 'tool:feather')).toEqual(['f', 'F2']);
+  });
+});
+
+describe('a key that acts while held', () => {
+  const commands = studioCommands([]);
+
+  it('Space is the hand while held and the preview when tapped, and that is no clash', () => {
+    const map = buildKeymap(commands, {});
+    expect(map.resolve('Space', { hold: true })).toBe('pan-hold');
+    expect(map.resolve('Space')).toBe('play');
+    expect(map.resolve('Shift+Space', { hold: true })).toBe('pan-hold');
+    expect(holdersOf(commands, {}, 'Space', 'pan-hold')).toEqual([]);
+    expect(map.effective('pan-hold', () => true)).toEqual(['Space']);
+    expect(map.effective('play', () => true)).toEqual(['Space']);
+  });
+
+  it('moved to another key, the hand leaves Space to the preview alone', () => {
+    const map = buildKeymap(commands, assignChord(commands, {}, 'pan-hold', 'h', 'Space'));
+    expect(map.resolve('Space', { hold: true })).toBeNull();
+    expect(map.resolve('h', { hold: true })).toBe('pan-hold');
+    expect(map.resolve('h')).toBe('mirror-h');
+  });
+
+  it('a key that only acts on a tap answers no hold', () => {
+    expect(buildKeymap(commands, {}).resolve('k', { hold: true })).toBeNull();
+  });
+});
+
+describe('holding a key', () => {
+  const run = () => {
+    const log: string[] = [];
+    const hold = holdKey({ start: () => log.push('start'), end: () => log.push('end'), tap: () => log.push('tap') });
+    return { hold, log };
+  };
+
+  it('a press and a release with nothing done between is a tap', () => {
+    const { hold, log } = run();
+    hold.down('Space');
+    hold.up('Space');
+    expect(log).toEqual(['start', 'end', 'tap']);
+  });
+
+  it('a press that was used is no tap', () => {
+    const { hold, log } = run();
+    hold.down('Space');
+    hold.use();
+    hold.up('Space');
+    expect(log).toEqual(['start', 'end']);
+  });
+
+  it('the auto-repeat of a held key starts nothing again', () => {
+    const { hold, log } = run();
+    hold.down('Space');
+    hold.down('Space');
+    hold.up('Space');
+    expect(log).toEqual(['start', 'end', 'tap']);
+  });
+
+  it('another key let go does not end it; the window losing focus ends it without a tap', () => {
+    const { hold, log } = run();
+    hold.down('Space');
+    hold.up('KeyA');
+    expect(hold.held).toBe(true);
+    hold.cancel();
+    expect(log).toEqual(['start', 'end']);
+    expect(hold.held).toBe(false);
   });
 });

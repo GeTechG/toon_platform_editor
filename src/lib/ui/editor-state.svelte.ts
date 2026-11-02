@@ -539,6 +539,10 @@ export class EditorState {
   presetAsk = $state(false);
   /** The tour asked for again from help: shown over whatever is drawn, and written nowhere. */
   tourReplay = $state(false);
+  /** A key held for the hand (keymap `pan-hold`): a press on the sheet moves it. */
+  panHeld = $state(false);
+  /** The held hand moved the sheet, so its key's release is no tap. */
+  panHeldUsed = false;
   /** Title the opened `.toon` carried (reference «имя оригинала»); '' when none. */
   original = $state('');
   /** Set by the transport so a write deferred by playback lands on stop. */
