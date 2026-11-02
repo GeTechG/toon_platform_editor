@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
 
 // Owner's calls after the tenth audit that live in the studio shell.
 // Editor.svelte is asserted as source, like shell-audit.test.ts; the store it
@@ -54,6 +55,6 @@ describe('a plugin that will not go in', () => {
 
 describe('the manual names redo under Ctrl+Shift+Z', () => {
   it('lists it next to Y', () => {
-    expect(editorUi).toContain("['Y, Ctrl+Shift+Z', t('key.redo')]");
+    expect(buildKeymap(studioCommands([]), {}).bindings('redo').map(chordLabel)).toEqual(expect.arrayContaining(['Y', 'Ctrl+Shift+Z']));
   });
 });

@@ -93,13 +93,15 @@ describe('with single-letter keys off', () => {
   });
 
   it('the editor reads the setting through one helper', () => {
-    expect(method('keyHint')).toMatch(/this\.settings\.letterKeys \? text : withoutLetterKeys\(text\)/);
+    expect(method('keyHint')).toMatch(/this\.settings\.letterKeys \? current : withoutLetterKeys\(current\)/);
+    expect(method('keysOf')).toMatch(/this\.settings\.letterKeys \? keys : keys\.filter\(\(chord\) => !isBare\(chord\)\)/);
   });
 
   it('a tool key drops its letter from the title and the hover label', () => {
     expect(toolKey).toContain("data-key={keys.join(' / ') || undefined}");
     // The pipette's title depends on the eyedropper (owner, sixteenth audit).
-    expect(toolKey).toContain('title={editor.keyHint(title)}');
+    expect(toolKey).toContain('title={editor.keyHint(title, command)}');
+    expect(toolKey).toContain('editor.keysOf(command).map(chordLabel)');
   });
 
   it('the shell\'s letter keys drop their hover labels and titles', () => {
@@ -108,12 +110,12 @@ describe('with single-letter keys off', () => {
     for (const key of ['Z', 'Y', 'A', 'K', 'C', 'V', 'M']) {
       expect(editorUi).not.toContain(`data-key="${key}"`);
     }
-    for (const key of ['Z', 'Y', 'K']) {
-      expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
+    for (const command of ['undo', 'redo', 'onion']) {
+      expect(editorUi).toContain(`data-key={editor.keyLabel('${command}')}`);
     }
     expect(editorUi).not.toMatch(/data-key=\{hasFeather \? undefined : 'F'\}/);
-    for (const key of ['undo_title', 'redo_title', 'fullscreen_title']) {
-      expect(editorUi).toContain(`editor.keyHint(t('editor.${key}'))`);
+    for (const [key, command] of [['undo_title', 'undo'], ['redo_title', 'redo'], ['fullscreen_title', 'fullscreen']]) {
+      expect(editorUi).toContain(`editor.keyHint(t('editor.${key}'), '${command}')`);
     }
   });
 
@@ -127,20 +129,20 @@ describe('with single-letter keys off', () => {
       const ui = await read(file);
       for (const call of calls) {
         const bare = ui.split(call).length - 1;
-        const wrapped = ui.split(`editor.keyHint(${call})`).length - 1;
+        const wrapped = ui.split(`editor.keyHint(${call}`).length - 1;
         expect({ file, call, bare: bare - wrapped }).toEqual({ file, call, bare: 0 });
       }
     }
   });
 
-  it('«Справка» lists no bare letter', () => {
-    const table = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf('const SHORTCUTS') + 3000);
-    expect(table).toMatch(/editor\.keyHint\(keys\)/);
+  it('«Справка» lists no bare letter', async () => {
+    expect(await read('ManualSheet.svelte')).toContain('editor.keysOf(command).map(chordLabel)');
+    expect(method('keysOf')).toContain('!isBare(chord)');
   });
 });
 
 describe('«+ Слой» без буквенных клавиш', () => {
   it('подсказка кнопки идёт через keyHint', async () => {
-    expect(await read('LayerRows.svelte')).toContain("editor.keyHint(t('layer.add_title'))");
+    expect(await read('LayerRows.svelte')).toContain("editor.keyHint(t('layer.add_title'), 'add-layer')");
   });
 });

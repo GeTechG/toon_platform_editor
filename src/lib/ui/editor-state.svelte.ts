@@ -80,6 +80,9 @@ import {
   type OnionSettings,
   type OnionSide,
   type PickSource,
+  frameMenuKey,
+  MENU_COMMANDS,
+  type FrameMenuAction,
 } from './frame-selection';
 import {
   addPaletteColor,
@@ -170,6 +173,7 @@ import {
   normalizePanels,
   toolSpec,
   visibleTools,
+  toolKeyList,
   toolOrder,
   panelItemVisible,
   showPanelItem,
@@ -180,6 +184,19 @@ import {
   type PanelSlot,
 } from './panels';
 import { withoutLetterKeys } from './key-owner';
+import {
+  assignChord,
+  buildKeymap,
+  chordAria,
+  chordLabel,
+  isBare,
+  removeChord,
+  resetCommand,
+  rewriteHint,
+  studioCommands,
+  toolCommand,
+  type Chord,
+} from './keymap';
 import {
   DEFAULT_PRESET,
   DEFAULT_DRAWING_UI_CONFIG,
@@ -1468,9 +1485,77 @@ export class EditorState {
         : this.confirmed(t('arrange.replace_confirm', { name: presets().find((p) => p.id === id)?.label ?? id })));
   }
 
-  /** A key hint as shown: with single-letter keys off, their letters go (owner, 11th audit). */
-  keyHint(text: string): string {
-    return this.settings.letterKeys ? text : withoutLetterKeys(text);
+  /** Every command the keys reach: the tools the register holds now, then the studio's own. */
+  commands = $derived.by(() => {
+    void this.pluginsVersion;
+    return studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) })));
+  });
+  /** What a press means now: the defaults with the person's changes over them. */
+  keymap = $derived(buildKeymap(this.commands, this.settings.keymap));
+
+  /** The pen and the mega-eraser answer only on the panel; other tools' keys ask selectTool. */
+  commandHere(id: string): boolean {
+    return id === toolCommand('feather') || id === toolCommand('mega-eraser')
+      ? this.availableTools.includes(id.slice('tool:'.length))
+      : true;
+  }
+
+  /** The keys of a command that work now: with single-letter keys off, its bare ones do not. */
+  keysOf(command: string): readonly Chord[] {
+    const keys = this.keymap.effective(command, (id) => this.commandHere(id));
+    return this.settings.letterKeys ? keys : keys.filter((chord) => !isBare(chord));
+  }
+
+  /** The first key a button names on its plate. */
+  keyLabel(command: string): string | undefined {
+    const first = this.keysOf(command)[0];
+    return first === undefined ? undefined : chordLabel(first);
+  }
+
+  /** All its keys, for `aria-keyshortcuts`. */
+  keyAria(command: string): string | undefined {
+    return this.keysOf(command).map(chordAria).join(' ') || undefined;
+  }
+
+  /**
+   * A key hint as shown: with single-letter keys off, their letters go (owner,
+   * 11th audit). Told its command, it names that command's keys if they moved.
+   */
+  keyHint(text: string, command?: string): string {
+    const current = command !== undefined && this.keymap.moved(command)
+      ? rewriteHint(text, this.keymap.bindings(command).map(chordLabel))
+      : text;
+    return this.settings.letterKeys ? current : withoutLetterKeys(current);
+  }
+
+  /** The key a frame-menu item names: as the table has it until the person moved it. */
+  menuKey(action: FrameMenuAction, quickPalette: boolean): { aria: string; label: string } | null {
+    const command = MENU_COMMANDS[action];
+    if (!this.keymap.moved(command)) {
+      return frameMenuKey(action, this.settings.letterKeys, quickPalette);
+    }
+    if (action === 'merge' && quickPalette) {
+      return null;
+    }
+    const label = this.keyLabel(command);
+    return label === undefined ? null : { aria: this.keyAria(command) ?? '', label };
+  }
+
+  /** Gives a command a key, in place of `replacing` or beside its others; whoever held it lets go. */
+  assignKey(command: string, chord: Chord, replacing?: Chord): void {
+    this.setSetting('keymap', assignChord(this.commands, this.settings.keymap, command, chord, replacing));
+  }
+
+  removeKey(command: string, chord: Chord): void {
+    this.setSetting('keymap', removeChord(this.commands, this.settings.keymap, command, chord));
+  }
+
+  resetKey(command: string): void {
+    this.setSetting('keymap', resetCommand(this.settings.keymap, command));
+  }
+
+  resetKeys(): void {
+    this.setSetting('keymap', {});
   }
 
   /** The frame that should currently be on the canvas. */

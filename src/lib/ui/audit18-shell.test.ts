@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { withoutLetterKeys } from './key-owner';
+import { buildKeymap, isBare, studioCommands } from './keymap';
 import { itemDrawn, type PanelLayout } from './panels';
 
 // Восемнадцатый аудит, оболочка студии. Editor.svelte проверяется как исходник,
@@ -65,7 +66,9 @@ describe('«Добавить кадр» перед текущим', () => {
 
 describe('справка', () => {
   it('называет F7: без буквенных клавиш строка «Добавить кадр» пропадала, хотя F7 работает', () => {
-    expect(editorUi).toContain("['A, F7', t('key.add_frame')]");
+    const bindings = buildKeymap(studioCommands([]), {}).bindings('add-frame');
+    expect(bindings).toEqual(['a', 'F7']);
+    expect(bindings.filter((chord) => !isBare(chord))).toEqual(['F7']);
     expect(withoutLetterKeys('A, F7')).toBe('F7');
   });
 });

@@ -11,7 +11,6 @@
   import { scrollToFrame, stripTabStop, stripTail, stripWindow, wheelOnStrip } from './strip-window';
   import {
     carryTarget,
-    frameMenuKey,
     framesToCarry,
     frameMenuTop,
     onScrollbar,
@@ -766,7 +765,7 @@
 
   /** The key an item names — none, the letter, or what still works with the letters off. */
   function menuKey(action: FrameMenuAction) {
-    return frameMenuKey(action, editor.settings.letterKeys, editor.ux.quickPalette !== null);
+    return editor.menuKey(action, editor.ux.quickPalette !== null);
   }
 
   function run(action: () => void): void {

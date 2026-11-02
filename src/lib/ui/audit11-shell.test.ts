@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { t } from '../i18n';
-import { repeats } from './key-owner';
+import { buildKeymap, chordOf, studioCommands } from './keymap';
 import { duplicateDraft, listDrafts, saveDraft } from '../draft/store';
 import { FakeReq, fakeIndexedDB, setIndexedDB } from '../test-support/fake-idb';
 
@@ -18,6 +18,14 @@ function fn(name: string): string {
 }
 
 describe('a held key', () => {
+  const keys = buildKeymap(studioCommands([]), {});
+  // A live transform: outside one nothing holds W and Q only picks a tool.
+  const repeats = (key: string): boolean => {
+    const chord = chordOf({ key, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: /^[A-Z]$/.test(key) });
+    const command = chord === null ? null : keys.resolve(chord, { transform: true });
+    return command !== null && keys.repeats(command);
+  };
+
   it('repeats only what is meant to run on: steps, size, zoom, undo, new frames', () => {
     for (const key of ['ArrowLeft', 'ArrowDown', '+', '-', 'z', 'Z', 'y', 'a', 'A', 'F7', 'q', 'w', 'Delete']) {
       expect(repeats(key)).toBe(true);
@@ -35,9 +43,11 @@ describe('a held key', () => {
 
   it('is dropped by the handler once the editor owns it', () => {
     const handler = fn('onKeydown');
-    expect(handler).toMatch(/if \(e\.repeat && !repeats\(key\)\) \{\s*e\.preventDefault\(\);\s*return;/);
-    // Before the transform branch, where Space and H live too.
-    expect(handler.indexOf('repeats(key)')).toBeLessThan(handler.indexOf('if (editor.transform)'));
+    expect(handler).toMatch(/if \(e\.repeat && !\(command !== null && editor\.keymap\.repeats\(command\)\)\) \{\s*e\.preventDefault\(\);\s*return;/);
+    // Before the transform's Enter and Esc and before the command runs.
+    const held = handler.indexOf('editor.keymap.repeats(command)');
+    expect(held).toBeLessThan(handler.indexOf('if (editor.transform &&'));
+    expect(held).toBeLessThan(handler.lastIndexOf('runCommand(command, e)'));
   });
 
   it('with Ctrl or Alt does its thing once: one save, one log file', () => {
@@ -45,7 +55,9 @@ describe('a held key', () => {
     const handler = fn('onKeydown');
     // Ctrl+S applies a live transform first (owner-fourteenth-shell).
     expect(handler).toMatch(/if \(!e\.repeat\) \{\s*saveByHand\(\);/);
-    expect(handler).toMatch(/if \(!e\.repeat\) \{\s*downloadErrorLog\(\);/);
+    // Every Alt command, Alt+L among them, goes through the one branch.
+    expect(handler).toMatch(/if \(e\.altKey\) \{\s*if \(command\) \{[^]*?if \(!e\.repeat && !blocked\) \{\s*runCommand\(command, e\);/);
+    expect(editorUi).toMatch(/case 'error-log':\s*downloadErrorLog\(\);/);
   });
 });
 
@@ -55,8 +67,9 @@ describe('Alt+E and Alt+S under an open sheet', () => {
     // the mega-eraser warning over both — three modals deep.
     const handler = fn('onKeydown');
     expect(handler).toMatch(/const modalOpen = document\.querySelector\(SHEET_UP\) !== null;/);
-    expect(handler).toMatch(/if \(!e\.repeat && !modalOpen && !editor\.gestureHeld\) \{\s*editor\.selectTool\('mega-eraser'\);/);
-    expect(handler).toMatch(/if \(e\.repeat \|\| modalOpen\) \{\s*return;\s*\}\s*\/\/ Reference Alt\+S/);
+    // Alt+L alone goes on under a sheet: its file opens nothing on top.
+    expect(handler).toContain("const blocked = (modalOpen && command !== 'error-log') || (editor.gestureHeld && command.startsWith('tool:'));");
+    expect(handler).toMatch(/if \(!e\.repeat && !blocked\) \{\s*runCommand\(command, e\);/);
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { manualSections } from './manual-sections';
 import ru from '../i18n/ru.json';
 import { t } from '../i18n';
 
@@ -115,8 +116,10 @@ describe('words', () => {
   });
 
   it('in «Справка» Q is not two things: the turn row says it is inside the transform', () => {
-    expect(ru.key.transform_turn).toStartWith('В трансформации');
-    expect(ru.key.transform_turn).toContain('15°');
+    for (const row of [ru.key.transform_turn_left, ru.key.transform_turn_right]) {
+      expect(row).toStartWith('В трансформации');
+      expect(row).toContain('15°');
+    }
   });
 
   it('the local save is called by what it does', () => {
@@ -143,9 +146,18 @@ describe('settings', () => {
     }
   });
 
-  it('«Справка» there is the gestures alone', async () => {
-    const editor = await read('Editor.svelte');
-    expect(editor).toMatch(/\{@render gestureList\(\)\}\s*\{#if !fingersOnly\}\{@render keyList\(\)\}\{\/if\}/);
+  it('«Справка» there is the gestures alone', () => {
+    const rows = manualSections({
+      input: 'finger',
+      tools: [{ id: 'pencil', label: 'Кисть' }, { id: 'drag', label: 'Рука' }, { id: 'lasso', label: 'Трансформация' }],
+      quickPalette: false,
+      hasProjectFile: false,
+      fullscreen: true,
+      toolOpensBrush: true,
+      keysOf: () => ['B'],
+    }).flatMap((one) => one.rows);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(new Set(rows.map((row) => row.kind))).toEqual(new Set(['gesture']));
   });
 });
 

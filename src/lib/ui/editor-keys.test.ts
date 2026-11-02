@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, studioCommands } from './keymap';
 
 // Editor.svelte is asserted as source, the same way timeline-studio.test.ts
 // checks the studio wiring: the keymap is a switch over a DOM event, and the
@@ -10,6 +11,9 @@ function onKeydown(): string {
   if (!match) throw new Error('missing onKeydown');
   return match[0];
 }
+
+const runCommand = editorUi.slice(editorUi.indexOf('function runCommand'), editorUi.indexOf('// Installed plugins come up'));
+const keys = buildKeymap(studioCommands([]), {});
 
 describe('modifiers reach the keymap', () => {
   it('Ctrl and Meta no longer bail out before the switch', () => {
@@ -30,34 +34,39 @@ describe('modifiers reach the keymap', () => {
 
 describe('frames on Ctrl+A and F7', () => {
   it('Ctrl+A and Ctrl+F7 insert a frame in front of the current one', () => {
-    const source = onKeydown();
-    expect(source).toMatch(/case 'F7':/);
-    expect(source).toContain('editor.addFrameBeforeActive()');
-    expect(source).toContain('editor.addFrameAfterActive()');
+    expect(keys.resolve('Ctrl+a')).toBe('add-frame-before');
+    expect(keys.resolve('Ctrl+F7')).toBe('add-frame-before');
+    expect(keys.resolve('a')).toBe('add-frame');
+    expect(keys.resolve('F7')).toBe('add-frame');
+    expect(runCommand).toMatch(/case 'add-frame-before':\s*editor\.addFrameBeforeActive\(\)/);
+    expect(runCommand).toMatch(/case 'add-frame':\s*editor\.addFrameAfterActive\(\)/);
   });
 });
 
 describe('the hand owns the keyboard while it is picked', () => {
   it('zoom and pan come before the frame navigation switch', () => {
-    const source = onKeydown();
-    const hand = source.indexOf("editor.tool === 'drag'");
-    const mainSwitch = source.indexOf("case 'ArrowLeft':");
+    const hand = runCommand.indexOf("editor.tool === 'drag'");
+    const frameSteps = runCommand.indexOf('moveOrExtend(');
     expect(hand).toBeGreaterThan(-1);
-    expect(hand).toBeLessThan(mainSwitch);
-    expect(source).toContain('editor.zoomBy(');
-    expect(source).toContain('editor.panBy(');
+    expect(hand).toBeLessThan(frameSteps);
+    expect(hand).toBeLessThan(runCommand.indexOf("case 'brush-bigger':\n        editor.increaseBrushSize()"));
+    expect(runCommand).toContain('editor.zoomBy(');
+    expect(runCommand).toContain('editor.panBy(');
   });
 
   it('Shift makes the pan step the reference 30 px', () => {
-    expect(onKeydown()).toContain('e.shiftKey ? 30 : 10');
+    expect(runCommand).toContain("const far = e.shiftKey || command.startsWith('extend-');");
+    expect(runCommand).toContain('far ? 30 : 10');
   });
 });
 
 describe('timeline navigation wraps round (Toonio parity)', () => {
   it('the layer arrows wrap instead of stopping at the ends', () => {
     // The arrows pass a step; the bare move wraps it (Shift clamps, ninth audit).
-    expect(onKeydown()).toContain('moveOrExtend(e.shiftKey, 0, 1)');
-    expect(onKeydown()).toContain('moveOrExtend(e.shiftKey, 0, -1)');
+    expect(keys.resolve('ArrowUp')).toBe('layer-up');
+    expect(keys.resolve('ArrowDown')).toBe('layer-down');
+    expect(editorUi).toContain("'layer-up': [0, 1], 'layer-down': [0, -1]");
+    expect(runCommand).toContain('moveOrExtend(far, arrow[0], arrow[1])');
     expect(editorUi).toContain('editor.selectLayer(wrapIndex(active.layer + dLayer, editor.doc.layers.length))');
   });
 
@@ -70,7 +79,10 @@ describe('timeline navigation wraps round (Toonio parity)', () => {
 
 describe('preview start (Toonio parity)', () => {
   it('Shift+Space begins at the active frame, plain Space at the range start', () => {
-    expect(onKeydown()).toContain('playControls?.toggle({ fromActive: e.shiftKey })');
+    expect(keys.resolve('Space')).toBe('play');
+    expect(keys.resolve('Shift+Space')).toBe('play-from-active');
+    expect(runCommand).toMatch(/case 'play':\s*playControls\?\.toggle\(\{ fromActive: false \}\)/);
+    expect(runCommand).toMatch(/case 'play-from-active':\s*playControls\?\.toggle\(\{ fromActive: true \}\)/);
   });
 });
 

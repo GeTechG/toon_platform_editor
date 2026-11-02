@@ -9,6 +9,7 @@
  * hide the way back.
  */
 
+import { readOverrides, type KeyOverrides } from './keymap';
 import { CANVAS_LOGICAL_WIDTH, MAX_BRUSH_SIZE_LOGICAL } from '../format/constants';
 import { NORMAL_BRUSH_TYPE, type BrushType } from '../plugins/brush-types';
 import { plugins } from '../plugins';
@@ -244,6 +245,8 @@ export interface EditorSettings {
    * out for speech input, which types letters at the page (WCAG 2.1.4).
    */
   letterKeys: boolean;
+  /** Commands whose keys the person changed, over the defaults (keymap.ts). */
+  keymap: KeyOverrides;
   /** The one-off hint on first entering the palette's remover mode has been shown. */
   /** The mega-eraser warns on its first pick of a session, until «Больше не показывать». */
   megaEraserWarning: boolean;
@@ -345,6 +348,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   pickerModel: 'hsv',
   altLayout: false,
   letterKeys: true,
+  keymap: {},
   removerTipShown: false,
   megaEraserWarning: true,
   fillGap: 4,
@@ -616,6 +620,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
     letterKeys: flag('letterKeys'),
+    keymap: readOverrides(raw.keymap),
     removerTipShown: flag('removerTipShown'),
     megaEraserWarning: flag('megaEraserWarning'),
     fillGap: typeof raw.fillGap === 'number' && Number.isFinite(raw.fillGap)

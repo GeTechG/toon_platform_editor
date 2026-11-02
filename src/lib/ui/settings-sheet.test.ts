@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
+import { manualSections, type ManualContext } from './manual-sections';
 import { AUTOSAVE_INTERVALS, autosaveLabel, SETTINGS_TABS, stepTab } from './presets';
 import { t } from '../i18n';
 
@@ -11,6 +13,21 @@ const canvasView = await Bun.file(new URL('./CanvasView.svelte', import.meta.url
 const tools = await Bun.file(new URL('./ToolKey.svelte', import.meta.url)).text();
 const panels = await Bun.file(new URL('../plugins/builtins.ts', import.meta.url)).text();
 const play = await Bun.file(new URL('./PlayControls.svelte', import.meta.url)).text();
+
+const keys = buildKeymap(studioCommands([]), {});
+const manual = (patch: Partial<ManualContext> = {}) =>
+  manualSections({
+    input: 'cursor',
+    tools: [],
+    quickPalette: false,
+    hasProjectFile: false,
+    fullscreen: true,
+    toolOpensBrush: false,
+    keysOf: (command) => keys.bindings(command).map(chordLabel),
+    ...patch,
+  });
+const rowsOf = (section: string, patch: Partial<ManualContext> = {}) => manual(patch).find((one) => one.id === section)?.rows ?? [];
+const idsOf = (section: string, patch: Partial<ManualContext> = {}) => rowsOf(section, patch).map((row) => row.id);
 
 /** The body of a class method, so a contract cannot be met by a later method. */
 function methodBody(source: string, name: string): string {
@@ -99,8 +116,8 @@ describe('the rail and the chrome follow the reference studio', () => {
   });
 
   it('downloads the session error log on Alt+L', () => {
-    expect(editorUi).toMatch(/altKey[^]{0,80}'l'/i);
-    expect(editorUi).toContain('errorLog');
+    expect(keys.resolve('Alt+l')).toBe('error-log');
+    expect(editorUi).toMatch(/case 'error-log':\s*downloadErrorLog\(\);/);
     // Rejections are caught by the page's one log (error-log.test.ts).
     expect(state).toContain('sessionErrors.watch(window, console)');
   });
@@ -310,19 +327,23 @@ describe('autosave on the settings interval', () => {
 
 describe('the remaining reference keys', () => {
   it('Space plays, or applies an open transform', () => {
-    expect(editorUi).toMatch(/case ' ':/);
-    expect(editorUi).toContain('editor.commitTransform()');
+    expect(keys.resolve('Space')).toBe('play');
+    expect(editorUi).toMatch(/case 'play':\s*case 'play-from-active':\s*editor\.commitTransform\(\);/);
+    expect(editorUi).toMatch(/case 'play':\s*playControls\?\.toggle\(/);
   });
 
   it('Ctrl+S saves the draft now, Alt+S opens the export, Alt+Enter is not a key', () => {
-    expect(editorUi).toMatch(/key === 's'[^]*?saveNow\(/);
-    expect(editorUi).toContain("altKey && (key === 's'");
-    expect(editorUi).not.toMatch(/altKey && key === 'Enter'/);
+    expect(keys.resolve('Ctrl+s')).toBe('save');
+    expect(keys.resolve('Alt+s')).toBe('export');
+    expect(keys.resolve('Alt+Enter')).toBeNull();
+    expect(editorUi).toMatch(/function saveByHand\(\)[^]*?saveNow\(/);
+    expect(editorUi).toMatch(/case 'export':[^]*?exportButton\?\.start\(\)/);
   });
 
   it('the shortcut list names them too, so the sheet does not lie', () => {
-    for (const combo of ['Space', 'Ctrl + S', 'Alt + S']) {
-      expect(editorUi).toContain(`['${combo}'`);
+    for (const [section, id, key] of [['preview', 'play', 'Space'], ['file', 'save', 'Ctrl+S'], ['file', 'export', 'Alt+S']]) {
+      expect(idsOf(section)).toContain(id);
+      expect(keys.bindings(id).map(chordLabel)).toContain(key);
     }
   });
 });
@@ -336,20 +357,21 @@ describe('key hints on the buttons', () => {
   });
 
   it('the transport keys are on the transport', () => {
-    for (const key of ['Z', 'Y', 'K']) {
-      expect(editorUi).toContain(`data-key={editor.keyHint('${key}') || undefined}`);
+    for (const command of ['undo', 'redo', 'onion']) {
+      expect(editorUi).toContain(`data-key={editor.keyLabel('${command}')}`);
     }
     // The frame keys say what the frame menu says; under Multator merge names
     // none (owner-seventeenth-shell).
     for (const action of ['add', 'copy', 'paste', 'merge']) {
       expect(editorUi).toContain(`data-key={menuKey('${action}')?.label}`);
     }
-    expect(play).toContain('data-key="Space"');
+    expect(play).toContain("data-key={editor.keyLabel('play')}");
+    expect(keys.bindings('play').map(chordLabel)).toEqual(['Space']);
   });
 
   it('a key on a button is in its title too, for the keyboard and the readers', () => {
     expect(t('editor.onion_on')).toContain('(K)');
-    expect(play).toContain('title={editor.playing');
+    expect(play).toContain('title={editor.keyHint(editor.playing');
     expect(t('play.title_play')).toContain('Space');
     expect(t('play.title_stop')).toContain('Space');
   });

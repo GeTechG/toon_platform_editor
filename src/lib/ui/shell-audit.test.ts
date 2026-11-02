@@ -54,7 +54,7 @@ describe('closing the drafts sheet by opening a draft', () => {
 describe('Shift+Delete on a layer', () => {
   it('asks once — removeActiveLayer asks itself', () => {
     expect(editorUi).not.toContain("t('editor.layer_has_strokes')");
-    expect(editorUi).toMatch(/if \(e\.shiftKey\) \{\s*editor\.removeActiveLayer\(\);/);
+    expect(editorUi).toMatch(/case 'delete-layer':\s*editor\.removeActiveLayer\(\);/);
   });
 });
 

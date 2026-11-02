@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { keyOwner, type KeyTarget } from './key-owner';
+import { buildKeymap, chordLabel, chordOf, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
+import { manualSections } from './manual-sections';
 import { RESERVED_KEYS } from '../plugins/builtins';
 import { addStroke, createDocument, replaceCells } from '../model/operations';
 import { importDrafts, listDrafts } from '../draft/store';
@@ -33,10 +36,17 @@ afterEach(() => {
 // «Если нужны, то да»: C and V copy and paste the timeline selection, so
 // Ctrl+X is the cut next to them — copy, then empty the cells, one undo step.
 // Ctrl+arrows and Ctrl+X-as-swap stay gone: the bare keys already do both.
+/** What the studio hands keyOwner as `bound`: whether the default table holds this press. */
+const table = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+function held(key: string, mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): boolean {
+  const chord = chordOf({ key, code: '', ctrlKey: !!mods.ctrlKey, metaKey: !!mods.metaKey, altKey: false, shiftKey: mods.shiftKey ?? /^[A-Z]$/.test(key) });
+  return chord !== null && table.resolve(chord) !== null;
+}
+
 describe('Ctrl+X cuts the timeline selection', () => {
   const body: KeyTarget = { tagName: 'BODY', isContentEditable: false, getAttribute: () => null, matches: () => false };
   const chord = (key: string) =>
-    keyOwner({ key, target: body, defaultPrevented: false, ctrlKey: true, metaKey: false, modalOpen: false, letterKeys: true });
+    keyOwner({ key, target: body, defaultPrevented: false, ctrlKey: true, metaKey: false, modalOpen: false, letterKeys: true, bound: held(key, { ctrlKey: true }) });
 
   it('reaches the studio, while Ctrl+arrows stay the browser’s', () => {
     expect(chord('x')).toBe('editor');
@@ -45,7 +55,10 @@ describe('Ctrl+X cuts the timeline selection', () => {
   });
 
   it('under Ctrl the X case cuts; bare X still swaps the colours', () => {
-    expect(editorUi).toMatch(/case 'x':\s*case 'X':\s*if \(e\.ctrlKey \|\| e\.metaKey\) \{\s*editor\.cutSelection\(\);\s*\} else \{\s*editor\.swapColors\(\);/);
+    expect(table.resolve('Ctrl+x')).toBe('cut');
+    expect(table.resolve('x')).toBe('swap');
+    expect(editorUi).toMatch(/case 'cut':\s*editor\.cutSelection\(\);/);
+    expect(editorUi).toMatch(/case 'swap':\s*editor\.swapColors\(\);/);
   });
 
   it('copies, then empties the cells in one filed edit', () => {
@@ -63,8 +76,17 @@ describe('Ctrl+X cuts the timeline selection', () => {
   });
 
   it('is in the key list and kept from plugins', () => {
-    expect(editorUi).toContain("['Ctrl + X', t('key.cut')]");
-    expect(t('key.cut')).toBe('Вырезать выделение ленты');
+    const edit = manualSections({
+      input: 'cursor',
+      tools: [],
+      quickPalette: false,
+      hasProjectFile: false,
+      fullscreen: true,
+      toolOpensBrush: false,
+      keysOf: (command) => table.bindings(command).map(chordLabel),
+    }).find((one) => one.id === 'edit')!.rows;
+    expect(edit.find((row) => row.id === 'cut')).toMatchObject({ kind: 'command', label: t('key.cut') });
+    expect(table.bindings('cut').map(chordLabel)).toEqual(['Ctrl+X']);
     expect(RESERVED_KEYS).toContain('Ctrl+X');
   });
 });

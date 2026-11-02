@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
+import { manualSections, type ManualContext } from './manual-sections';
 import ru from '../i18n/ru.json';
 import { plugins } from '../plugins';
 
@@ -30,20 +32,37 @@ describe('the drafts hub on a phone', () => {
   });
 });
 
+const keys = buildKeymap(studioCommands([]), {});
+const manual = (patch: Partial<ManualContext> = {}) =>
+  manualSections({
+    input: 'cursor',
+    tools: [],
+    quickPalette: false,
+    hasProjectFile: false,
+    fullscreen: true,
+    toolOpensBrush: false,
+    keysOf: (command) => keys.bindings(command).map(chordLabel),
+    ...patch,
+  });
+const rowsOf = (section: string, patch: Partial<ManualContext> = {}) => manual(patch).find((one) => one.id === section)?.rows ?? [];
+const idsOf = (section: string, patch: Partial<ManualContext> = {}) => rowsOf(section, patch).map((row) => row.id);
+
 describe('what the studio says of itself', () => {
   it('the tour opens a .toon by a way a phone has too', () => {
     expect(ru.tour.toon.text).toContain('«Открыть файл...»');
   });
 
-  it('help names the repeat press that opens a tool’s settings, where a key opens them', async () => {
-    const editor = await read('Editor.svelte');
-    expect(editor).toContain("'tool_again'");
+  it('help names the repeat press that opens a tool’s settings, where a key opens them', () => {
+    expect(idsOf('draw', { toolOpensBrush: true })).toContain('mouse.tool_again');
+    expect(idsOf('draw', { toolOpensBrush: true, input: 'finger' })).toContain('gesture.tool_again');
+    expect(idsOf('draw', { toolOpensBrush: false })).not.toContain('mouse.tool_again');
     expect(ru.gesture.tool_again.length).toBeGreaterThan(0);
     expect(ru.gesture_does.tool_again.length).toBeGreaterThan(0);
   });
 
-  it('help lists G, the key the frame’s menu shows', async () => {
-    expect(await read('Editor.svelte')).toContain("['G', t('panel.item.duplicate_frame')]");
+  it('help lists G, the key the frame’s menu shows', () => {
+    expect(idsOf('frames')).toContain('duplicate-frame');
+    expect(keys.bindings('duplicate-frame').map(chordLabel)).toEqual(['G']);
   });
 });
 
@@ -94,7 +113,8 @@ describe('a press on the sheet while the preview runs (owner, 2026-10-13)', () =
 describe('the tour once more (owner, 2026-10-13)', () => {
   it('help brings it back over whatever is drawn, and the first-visit flag is not touched', async () => {
     const editor = await read('Editor.svelte');
-    expect(editor).toContain("editor.tourReplay = true; }}>{t('editor.tour_again')}</button>");
+    expect(editor).toContain('onTour={() => (editor.tourReplay = true)}');
+    expect(await read('ManualSheet.svelte')).toContain("onclick={() => { dialogEl?.close(); onTour(); }}>{t('editor.tour_again')}</button>");
     expect(editor).toContain('{#if (editor.presetAsk || editor.tourReplay) && plateDue && !editor.arranging}');
     expect(await read('editor-state.svelte.ts')).toMatch(/closePresetAsk\(\): void \{\s*this\.tourReplay = false;/);
     expect(ru.tour.export.text).toBe('Экспортируй мульт в GIF или видео, а один кадр — в PNG.');

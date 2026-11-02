@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { buildKeymap, chordOf, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
 import { keyOwner, latinKey, type KeyTarget } from './key-owner';
 import { createDocument } from '../model/operations';
 import { importDrafts, listDrafts, saveDraft } from '../draft/store';
@@ -79,10 +81,17 @@ describe('loading a drafts file', () => {
   });
 });
 
+/** What the studio hands keyOwner as `bound`: whether the default table holds this press. */
+const table = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+function held(key: string, mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): boolean {
+  const chord = chordOf({ key, code: '', ctrlKey: !!mods.ctrlKey, metaKey: !!mods.metaKey, altKey: false, shiftKey: mods.shiftKey ?? /^[A-Z]$/.test(key) });
+  return chord !== null && table.resolve(chord) !== null;
+}
+
 describe('a chord the browser owns', () => {
   const body: KeyTarget = { tagName: 'BODY', isContentEditable: false, getAttribute: () => null, matches: () => false };
   const press = (key: string) =>
-    keyOwner({ key, target: body, defaultPrevented: false, ctrlKey: true, metaKey: false, modalOpen: false, letterKeys: true });
+    keyOwner({ key, target: body, defaultPrevented: false, ctrlKey: true, metaKey: false, modalOpen: false, letterKeys: true, bound: held(key, { ctrlKey: true }) });
 
   it('stays the browser’s: Ctrl+L, P, F, D, H, J, O are not tools', () => {
     // Every Ctrl chord went down the hotkey table and was prevented: Ctrl+P

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
-  import { plugins } from '../plugins';
   import { EditorState } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
@@ -24,6 +23,7 @@
   import Timeline from './Timeline.svelte';
   import PlayControls from './PlayControls.svelte';
   import SettingsSheet from './SettingsSheet.svelte';
+  import ManualSheet from './ManualSheet.svelte';
   import DraftsHub from './DraftsHub.svelte';
   import Tour from './Tour.svelte';
   import PluginsSheet from './PluginsSheet.svelte';
@@ -36,8 +36,9 @@
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
   import { keyPan, turnStep, zoomDelta, zoomNotch } from './viewport';
-  import { extendTarget, fpsFromField, frameKeyTitle, frameMenuKey, wrapIndex, type FrameMenuAction } from './frame-selection';
-  import { composing, focusOrigin, keyOwner, latinKey, panSheetKey, repeats, typesText, zoomSheetKey } from './key-owner';
+  import { extendTarget, fpsFromField, frameKeyTitle, wrapIndex, type FrameMenuAction } from './frame-selection';
+  import { composing, focusOrigin, keyOwner, latinKey, typesText } from './key-owner';
+  import { chordOf } from './keymap';
   import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -142,10 +143,6 @@
   let hubFrom: Element | null = null;
   /** A sheet is up: a modal one, or the hub standing in place of the studio. */
   const SHEET_UP = 'dialog:modal, dialog.hub[open]';
-  let manualDialog = $state<HTMLDialogElement | undefined>();
-  $effect(() => {
-    manualDialog?.showModal();
-  });
   // The studio's own question, note and name — where the browser's confirm(),
   // alert() and prompt() stood (critique 2026-10-06): its chrome and its «OK»
   // at the very moments a drawing is at stake. One at a time; a new one
@@ -248,11 +245,9 @@
   // it away and F is fullscreen again. The quick palette (a preset's own
   // behaviour) still decides whether M opens the picker (Multator) or merges
   // the buffer (Toonio/Toonop).
-  const hasMegaEraser = $derived(editor.availableTools.includes('mega-eraser'));
-  const hasFeather = $derived(editor.availableTools.includes('feather'));
   const quickPalette = $derived(editor.ux.quickPalette !== null);
   /** A shell key's hover label, as the frame menu names it (owner, 17th audit). */
-  const menuKey = (action: FrameMenuAction) => frameMenuKey(action, editor.settings.letterKeys, quickPalette);
+  const menuKey = (action: FrameMenuAction) => editor.menuKey(action, quickPalette);
   /** The pipette's source pair is on the panel always, live only under the pipette. */
   const pipetteUp = $derived(editor.tool === 'pipette');
   /** Toonio keeps a project file behind Alt+S; the others export instead. */
@@ -918,50 +913,34 @@
     if (e.altKey && typesText(e.target instanceof HTMLElement ? e.target : null)) {
       return;
     }
-    // Alt+E is the reference's mega-eraser; every other modifier is the
-    // browser's or the OS's.
-    if (e.altKey && (key === 'e' || key === 'E') && hasMegaEraser) {
-      e.preventDefault();
-      // A held stroke or handle keeps its tool, as under the letter keys below.
-      if (!e.repeat && !modalOpen && !editor.gestureHeld) {
-        editor.selectTool('mega-eraser');
-      }
-      return;
-    }
-    // Reference Ctrl+S / Alt+S. These fire from a form field too: the browser
-    // would otherwise take Ctrl+S for "save page". The reference's Alt+Enter,
-    // which muted every question (`HotEnter`, toonio.bundle.js:320), is gone
-    // on purpose: a drawing must not go by accident (owner, twelfth audit).
-    if ((e.ctrlKey || e.metaKey) && (key === 's' || key === 'S')) {
+    // What the press means here (keymap.ts): the pen and the mega-eraser only
+    // answer where they are on the panel, and F falls through to fullscreen.
+    const chord = chordOf(e);
+    const command = chord === null ? null : editor.keymap.resolve(chord, {
+      transform: !!editor.transform,
+      available: (id) => editor.commandHere(id),
+    });
+    // A chord for saving fires from a form field too: the browser would
+    // otherwise take it for «save page». The reference's Alt+Enter, which
+    // muted every question (`HotEnter`, toonio.bundle.js:320), is gone on
+    // purpose: a drawing must not go by accident (owner, twelfth audit).
+    if (command === 'save' && (e.ctrlKey || e.metaKey || e.altKey)) {
       e.preventDefault();
       if (!e.repeat) {
         saveByHand();
       }
       return;
     }
-    if (e.altKey && (key === 's' || key === 'S')) {
-      e.preventDefault();
-      if (e.repeat || modalOpen) {
-        return;
-      }
-      // Reference Alt+S in Toonio saves the project to a file; the other
-      // presets have no project file, so there it stays the export.
-      if (hasProjectFile) {
-        saveProjectFile();
-      } else {
-        exportButton?.start();
-      }
-      return;
-    }
-    // Reference Alt+L: the session's errors as a file, for a bug report.
-    if (e.altKey && (key === 'l' || key === 'L')) {
-      e.preventDefault();
-      if (!e.repeat) {
-        downloadErrorLog();
-      }
-      return;
-    }
+    // Every other Alt is the browser's or the OS's. A held stroke keeps its
+    // tool; an open sheet keeps the hands, but for the error log.
     if (e.altKey) {
+      if (command) {
+        e.preventDefault();
+        const blocked = (modalOpen && command !== 'error-log') || (editor.gestureHeld && command.startsWith('tool:'));
+        if (!e.repeat && !blocked) {
+          runCommand(command, e);
+        }
+      }
       return;
     }
     // A stroke, an eraser pass or a dragged handle is under the hand: a frame
@@ -969,9 +948,6 @@
     if (editor.gestureHeld) {
       return;
     }
-    // The reference dispatches its hotkey table whatever modifier is held, so
-    // Ctrl+Z, Ctrl+C, Ctrl+V and Ctrl+M land on the same handlers as the bare
-    // keys; only A and F7 change meaning under Ctrl.
     // What the focused control, an open sheet or the letter-keys setting
     // keeps for itself never reaches the table (key-owner.ts).
     const owner = keyOwner({
@@ -984,377 +960,247 @@
       modalOpen,
       letterKeys: editor.settings.letterKeys,
       byPointer: focusFrom.byPointer(e.target),
+      bound: command !== null,
     });
     if (owner === 'control') {
       return;
     }
-    // A held key runs on only where more of the same is the point (key-owner.ts):
+    // A held key runs on only where more of the same is the point (keymap.ts):
     // a held Space, K or H flipped its toggle with every auto-repeat.
-    if (e.repeat && !repeats(key)) {
+    if (e.repeat && !(command !== null && editor.keymap.repeats(command))) {
       e.preventDefault();
       return;
     }
-    // Ctrl+Shift+arrow slides a magnified sheet by a tenth of the table,
-    // whatever the tool, a live transform included: it moves the view, not
-    // the drawing (owner, after the fourteenth audit; key-owner.ts says why
-    // not Shift+arrows).
-    if (panSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey })) {
+    // Enter and Esc are nobody's to change: they apply and cancel a transform.
+    if (editor.transform && (key === 'Enter' || key === 'Escape')) {
       e.preventDefault();
-      editor.view = keyPan(editor.view, editor.stage, key);
+      if (key === 'Enter') {
+        editor.commitTransform();
+      } else {
+        editor.cancelTransform();
+      }
       return;
     }
-    // [ and ] turn the sheet a notch of fifteen degrees, whatever the tool
-    // and in a live transform too (Krita's Ctrl+[ and Ctrl+]): the view
-    // turns, not the drawing.
-    if ((key === '[' || key === ']') && !e.ctrlKey && !e.metaKey) {
+    // Esc ends every other mode here; the preview ran on under it.
+    if (key === 'Escape' && editor.playing) {
       e.preventDefault();
-      editor.rotateTo(turnStep(editor.view.angle, key === ']' ? 1 : -1));
+      playControls?.toggle();
       return;
     }
-    // Ctrl+plus or minus zooms the sheet whatever the tool, a live transform
-    // included, instead of the browser zooming the page (key-owner.ts).
-    if (zoomSheetKey({ key, ctrlKey: e.ctrlKey, metaKey: e.metaKey })) {
+    if (command) {
       e.preventDefault();
-      editor.zoomBy(zoomNotch(editor.view.zoom, key === '+' || key === '=' ? 1 : -1) - editor.view.zoom, false);
+      runCommand(command, e);
+    }
+  }
+
+  /** Where each stepping command goes: sideways, and up along the layers. */
+  const ARROW_STEP: Readonly<Record<string, readonly [-1 | 0 | 1, -1 | 0 | 1]>> = {
+    'frame-prev': [-1, 0], 'frame-next': [1, 0], 'layer-up': [0, 1], 'layer-down': [0, -1],
+    'extend-left': [-1, 0], 'extend-right': [1, 0], 'extend-up': [0, 1], 'extend-down': [0, -1],
+  };
+  const PAN_KEY: Readonly<Record<string, string>> = {
+    'pan-left': 'ArrowLeft', 'pan-right': 'ArrowRight', 'pan-up': 'ArrowUp', 'pan-down': 'ArrowDown',
+  };
+
+  /** What a command does in this moment: the hand and a live transform read the same keys their own way. */
+  function runCommand(command: string, e: KeyboardEvent): void {
+    const far = e.shiftKey || command.startsWith('extend-');
+    const arrow = ARROW_STEP[command];
+    // The view moves whatever the tool, a live transform included: it moves
+    // the view, not the drawing.
+    if (PAN_KEY[command]) {
+      editor.view = keyPan(editor.view, editor.stage, PAN_KEY[command]);
+      return;
+    }
+    if (command === 'turn-left' || command === 'turn-right') {
+      editor.rotateTo(turnStep(editor.view.angle, command === 'turn-right' ? 1 : -1));
+      return;
+    }
+    if (command === 'zoom-in' || command === 'zoom-out') {
+      editor.zoomBy(zoomNotch(editor.view.zoom, command === 'zoom-in' ? 1 : -1) - editor.view.zoom, false);
       return;
     }
     // The hand takes the zoom and the arrows before frames and brush size do
     // — the reference's `helpTool.ArrowMove || PrevFrame` order.
     if (editor.tool === 'drag' && !editor.transform) {
-      const step = e.shiftKey ? 30 : 10;
-      let taken = true;
-      switch (key) {
-        case '+':
-        case '=':
-          editor.zoomBy(zoomDelta(editor.view.zoom, 1));
-          break;
-        case '-':
-        case '_':
-          editor.zoomBy(zoomDelta(editor.view.zoom, -1));
-          break;
-        case 'ArrowLeft':
-          editor.panBy(step, 0);
-          break;
-        case 'ArrowRight':
-          editor.panBy(-step, 0);
-          break;
-        case 'ArrowUp':
-          editor.panBy(0, step);
-          break;
-        case 'ArrowDown':
-          editor.panBy(0, -step);
-          break;
-        default:
-          taken = false;
+      if (command === 'brush-bigger' || command === 'brush-smaller') {
+        editor.zoomBy(zoomDelta(editor.view.zoom, command === 'brush-bigger' ? 1 : -1));
+        return;
       }
-      if (taken) {
-        e.preventDefault();
+      if (arrow) {
+        const step = far ? 30 : 10;
+        editor.panBy(-arrow[0] * step, arrow[1] * step);
         return;
       }
     }
-    // An open transform owns the arrows, Q/W, +/- and Enter/Esc. Without one
-    // those keys stay frame navigation and brush size, so this branch has to
-    // come before the main switch.
+    // An open transform owns the arrows, the turn, the size and its clipboard.
+    // Without one those keys stay frame navigation and brush size.
     if (editor.transform) {
-      let taken = true;
-      switch (key) {
+      if (arrow) {
+        if (arrow[0] !== 0) editor.nudgeTransform('move', arrow[0], far, 'x');
+        else editor.nudgeTransform('move', arrow[1] > 0 ? -1 : 1, far, 'y');
+        return;
+      }
+      switch (command) {
         // Reference: Space applies an unfinished transform instead of playing.
-        case ' ':
-        case 'Enter':
+        case 'play':
+        case 'play-from-active':
           editor.commitTransform();
-          break;
-        case 'Escape':
-          editor.cancelTransform();
-          break;
-        case 'ArrowLeft':
-          editor.nudgeTransform('move', -1, e.shiftKey, 'x');
-          break;
-        case 'ArrowRight':
-          editor.nudgeTransform('move', 1, e.shiftKey, 'x');
-          break;
-        case 'ArrowUp':
-          editor.nudgeTransform('move', -1, e.shiftKey, 'y');
-          break;
-        case 'ArrowDown':
-          editor.nudgeTransform('move', 1, e.shiftKey, 'y');
-          break;
-        // Reference: Q and W turn the selection while it is live; outside a
-        // transform Q is one of the two keys that pick the lasso up.
-        case 'q':
-        case 'Q':
+          return;
+        case 'transform-turn-left':
           editor.nudgeTransform('rotate', -1, e.shiftKey);
-          break;
-        case 'w':
-        case 'W':
+          return;
+        case 'transform-turn-right':
           editor.nudgeTransform('rotate', 1, e.shiftKey);
-          break;
-        case '+':
-        case '=':
+          return;
+        case 'brush-bigger':
           editor.nudgeTransform('scale', 1, e.shiftKey);
-          break;
-        case '-':
-        case '_':
+          return;
+        case 'brush-smaller':
           editor.nudgeTransform('scale', -1, e.shiftKey);
-          break;
-        case 'h':
+          return;
+        case 'mirror-h':
           editor.mirrorTransform('horizontal');
-          break;
-        case 'H':
+          return;
+        case 'mirror-v':
           editor.mirrorTransform('vertical');
-          break;
-        // The selection's own clipboard: C copies what it holds, V floats the
-        // copy over the frame, Ctrl+X and Delete take it away.
-        case 'c':
-        case 'C':
+          return;
+        // The selection's own clipboard.
+        case 'copy':
           editor.copySelected();
-          break;
-        case 'v':
-        case 'V':
+          return;
+        case 'paste':
           editor.pasteSelection();
-          break;
-        case 'x':
-        case 'X':
-          if (e.ctrlKey || e.metaKey) {
-            editor.cutSelected();
-          } else {
-            taken = false;
-          }
-          break;
-        case 'Delete':
-        case 'Backspace':
+          return;
+        case 'cut':
+          editor.cutSelected();
+          return;
+        case 'delete-frame':
+        case 'delete-layer':
           editor.deleteSelected();
-          break;
-        // Z and Y walk the session's own steps. With none left they are
+          return;
+        // These walk the session's own steps. With none left they are
         // swallowed rather than falling through to the document's undo,
         // which would delete the strokes under the live frame.
-        // Ctrl+Shift+Z is redo, as everywhere outside the reference;
-        // bare Shift+Z stays undo.
-        case 'Z':
-          if (e.ctrlKey || e.metaKey) {
-            editor.redoTransform();
-          } else {
-            editor.undoTransform();
-          }
-          break;
-        case 'z':
+        case 'undo':
           editor.undoTransform();
-          break;
-        case 'y':
-        case 'Y':
+          return;
+        case 'redo':
           editor.redoTransform();
-          break;
-        default:
-          taken = false;
-      }
-      if (taken) {
-        e.preventDefault();
-        return;
+          return;
       }
     }
-
-    let handled = true;
-    switch (key) {
-      case '+':
-      case '=':
+    if (command.startsWith('tool:')) {
+      editor.selectTool(command.slice('tool:'.length));
+      return;
+    }
+    // Shift extends the selection to the neighbor instead of walking the
+    // active cell there — the keyboard equivalent of a Shift+click.
+    if (arrow) {
+      moveOrExtend(far, arrow[0], arrow[1]);
+      return;
+    }
+    switch (command) {
+      case 'brush-bigger':
         editor.increaseBrushSize();
         break;
-      case '-':
-      case '_':
+      case 'brush-smaller':
         editor.decreaseBrushSize();
         break;
-      case 'b':
-      case 'B':
-        editor.selectTool('pencil');
-        break;
-      case 'e':
-      case 'E':
-        editor.selectTool('eraser');
-        break;
-      case 'p':
-      case 'P':
-        editor.selectTool('pipette');
-        break;
-      // The bucket: G, as in Photoshop, already duplicates the frame here.
-      case 'n':
-      case 'N':
-        editor.selectTool('bucket');
-        break;
-      // Reference transform tools: D or O is the hand, Q or S the lasso,
-      // `~` the distort. Unavailable under a preset that has no such button —
-      // selectTool drops what the profile does not offer.
-      case 'd':
-      case 'D':
-      case 'o':
-      case 'O':
-        editor.selectTool('drag');
-        break;
-      case 'q':
-      case 'Q':
-      case 's':
-      case 'S':
-        editor.selectTool('lasso');
-        break;
-      case 'r':
-      case 'R':
-        editor.selectTool('loop');
-        break;
-      case '~':
-      case '`':
-        editor.selectTool('distort');
-        break;
-      // Reference Mirror: with nothing selected H flips the frame on every
+      // Reference Mirror: with nothing selected it flips the frame on every
       // selected layer.
-      case 'h':
+      case 'mirror-h':
         editor.mirrorSelectedLayers('horizontal');
         break;
-      case 'H':
+      case 'mirror-v':
         editor.mirrorSelectedLayers('vertical');
         break;
-      // The clipboard is the timeline selection (cells × layers) — the strip
-      // carries layers in every preset now.
-      case 'c':
-      case 'C':
+      // The clipboard is the timeline selection (cells × layers).
+      case 'copy':
         editor.copySelection();
         break;
-      case 'v':
-      case 'V':
+      case 'paste':
         editor.pasteSelection();
         break;
-      // Ctrl+Shift+Z is redo, as everywhere outside the reference; bare
-      // Shift+Z stays undo there.
-      case 'Z':
-        if (e.ctrlKey || e.metaKey) {
-          editor.redo();
-        } else {
-          editor.undo();
-        }
+      case 'cut':
+        editor.cutSelection();
         break;
-      case 'z':
+      case 'undo':
         editor.undo();
         break;
-      // Redo also takes a bare key of its own, like every other shortcut here —
-      // bare z/Z both mean undo, so shift alone cannot carry it.
-      case 'y':
-      case 'Y':
+      case 'redo':
         editor.redo();
         break;
       // Reference M merges the buffer into the selected cells. Under Multator
       // it keeps its own meaning — M is the only way to its full colour picker.
-      case 'm':
-      case 'M':
+      case 'merge':
         quickPalette ? editor.togglePalette() : editor.mergeSelection();
         break;
-      // The reference's F is the feather where the preset has one; ours is
-      // fullscreen, which otherwise stays on the button.
-      case 'f':
-      case 'F':
-        if (hasFeather) {
-          editor.selectTool('feather');
-        } else {
-          toggleFullscreen();
-        }
+      case 'fullscreen':
+        toggleFullscreen();
         break;
-      // Reference HotAdd / HotRemove: A adds a frame, Shift+A a layer;
-      // Delete removes the frame, Shift+Delete the layer.
-      // Reference HotAdd: A (and F7) add a frame after the current one, the
-      // same key with Ctrl inserts one in front of it.
-      case 'a':
-      case 'F7':
-        // Shift+F7 is the layer, as Shift+A: with the letters off the manual's
-        // «F7 … Shift — слой» added a frame, and no key added a layer at all.
-        if (e.shiftKey) {
-          editor.addLayerAtActive(e.ctrlKey || e.metaKey);
-        } else if (e.ctrlKey || e.metaKey) {
-          editor.addFrameBeforeActive();
-        } else {
-          editor.addFrameAfterActive();
-        }
+      // Reference HotAdd: a frame after the current one, or in front of it.
+      case 'add-frame':
+        editor.addFrameAfterActive();
         break;
-      case 'A':
-        editor.addLayerAtActive(e.ctrlKey || e.metaKey);
+      case 'add-frame-before':
+        editor.addFrameBeforeActive();
         break;
-      // The frame once more, after itself (owner, 2026-10-08). Bare only:
-      // Ctrl+G is the browser's.
-      case 'g':
-      case 'G':
-        if (!e.ctrlKey && !e.metaKey) editor.duplicateActiveFrame();
+      case 'add-layer':
+        editor.addLayerAtActive(false);
         break;
-      // Backspace is Delete's other name — the Mac's «delete» key sends it.
-      case 'Delete':
-      case 'Backspace':
-        // The state asks «Удалить «Слой N»?» itself; a second question here
-        // made Shift+Delete ask twice.
-        if (e.shiftKey) {
-          editor.removeActiveLayer();
-        } else {
-          editor.removeActiveFrame();
-        }
+      case 'add-layer-before':
+        editor.addLayerAtActive(true);
         break;
-      // Reference J / L and the arrows: frames sideways, layers up and down.
-      case 'j':
-      case 'J':
+      // The frame once more, after itself (owner, 2026-10-08).
+      case 'duplicate-frame':
+        editor.duplicateActiveFrame();
+        break;
+      // The state asks «Удалить «Слой N»?» itself.
+      case 'delete-frame':
+        editor.removeActiveFrame();
+        break;
+      case 'delete-layer':
+        editor.removeActiveLayer();
+        break;
+      case 'frame-first':
         editor.selectFrame(0);
         break;
-      case 'l':
-      case 'L':
+      case 'frame-last':
         editor.selectFrame(lastFrame);
         break;
-      // Shift extends the selection to the neighbor instead of walking the
-      // active cell there — the keyboard equivalent of a Shift+click.
-      case 'ArrowLeft':
-        moveOrExtend(e.shiftKey, -1, 0);
-        break;
-      case 'ArrowRight':
-        moveOrExtend(e.shiftKey, 1, 0);
-        break;
-      case 'ArrowUp':
-        moveOrExtend(e.shiftKey, 0, 1);
-        break;
-      case 'ArrowDown':
-        moveOrExtend(e.shiftKey, 0, -1);
-        break;
       // Onion skin. The reference binds Tab; we do not — Tab is the way out
-      // of the canvas for keyboard users (WCAG 2.1.2), so «калька» takes K.
-      case 'k':
-      case 'K':
+      // of the canvas for keyboard users (WCAG 2.1.2).
+      case 'onion':
         editor.toggleOnionSkin();
         break;
       // Reference: the X between the two swatches swaps outline and fill.
-      // Under Ctrl it is the cut next to C and V (owner, after the twelfth audit).
-      case 'x':
-      case 'X':
-        if (e.ctrlKey || e.metaKey) {
-          editor.cutSelection();
+      case 'swap':
+        editor.swapColors();
+        break;
+      // Reference Space: run and stop the preview, from the start of the range or the active frame.
+      case 'play':
+        playControls?.toggle({ fromActive: false });
+        break;
+      case 'play-from-active':
+        playControls?.toggle({ fromActive: true });
+        break;
+      case 'save':
+        saveByHand();
+        break;
+      // Reference Alt+S in Toonio saves the project to a file; without a
+      // project file it stays the export.
+      case 'export':
+        if (hasProjectFile) {
+          saveProjectFile();
         } else {
-          editor.swapColors();
+          exportButton?.start();
         }
         break;
-      // Reference Space: run and stop the preview. Shift starts at the
-      // active frame instead of the start of the range.
-      case ' ':
-        playControls?.toggle({ fromActive: e.shiftKey });
+      // Reference Alt+L: the session's errors as a file, for a bug report.
+      case 'error-log':
+        downloadErrorLog();
         break;
-      // Esc ends every other mode here; the preview ran on under it.
-      case 'Escape':
-        if (editor.playing) {
-          playControls?.toggle();
-        } else {
-          handled = false;
-        }
-        break;
-      default: {
-        // A plugin's key comes from its manifest, not from a case here: the
-        // register already refused it if something above holds it.
-        const added = plugins.toolByKey(key);
-        if (added && !added.builtin) {
-          editor.selectTool(added.id);
-        } else {
-          handled = false;
-        }
-      }
-    }
-    if (handled) {
-      e.preventDefault();
     }
   }
 
@@ -2375,94 +2221,9 @@
       : new Date(editor.lastSavedAt).toLocaleTimeString(dateLocale(), { hour: '2-digit', minute: '2-digit' }),
   );
 
-  // Reference «Мануал» (`E:61-63`) opens the site's manual page; we have none,
-  // so the button opens the list of keys the editor actually implements.
+  // Reference «Мануал» (`E:61-63`) opens the site's manual page; ours is the
+  // sheet with what each hand can do, where the keys are changed too.
   let manualOpen = $state(false);
-  // What a finger does that no key on screen says: under one, these lead the
-  // manual; under a cursor the keys do.
-  const GESTURES = $derived([...(toolOpensBrush(panels, editor.tool) ? (['tool_again'] as const) : []), 'two_fingers', 'hold_sheet', 'hold_frame', 'hold_layer'] as const);
-  const touchFirst = $derived(manualOpen && matchMedia('(hover: none)').matches);
-  // Nothing that hovers at all — no mouse, so no keyboard to speak of: the
-  // manual is the gestures alone, not thirty keys the phone does not have.
-  const fingersOnly = $derived(manualOpen && matchMedia('(any-hover: none)').matches);
-
-  // Mirrors the key handler above one-for-one. If a case is added there and not
-  // here, the sheet lies — keep them next to each other for that reason. A key
-  // whose meaning the preset decides says this studio's meaning, and a tool key
-  // shows only where the tool is on the panel.
-  const has = (tool: string): boolean => editor.availableTools.includes(tool);
-  // Under headings (owner's critique, 2026-10-18): thirty keys in one column
-  // read as a wall. A heading is a word in the list, its keys follow it; one
-  // left with no keys here (no lasso: no transform) is not drawn.
-  type KeyGroup = 'tools' | 'frames' | 'sheet' | 'transform' | 'file';
-  const SHORTCUTS: [KeyGroup, [string, string][]][] = $derived.by(() => {
-    // With single-letter keys off their letters are not offered at all.
-    const hint = (keys: string): string => editor.keyHint(keys);
-    const rows = (
-      [
-        'tools',
-        ['B', t('key.pencil')],
-        ['E', t('key.eraser')],
-        hasMegaEraser && ['Alt + E', t('tool.mega_eraser.label')],
-        ['P', t('key.pipette')],
-        ['Shift + Enter', t('key.pick_fill')],
-        has('bucket') && ['N', t('tool.bucket.label')],
-        has('drag') && ['D / O', t('tool.hand.label')],
-        has('loop') && ['R', t('tool.lasso.label')],
-        has('distort') && ['~', t('tool.jitter.label')],
-        hasFeather && ['F', t('tool.feather.label')],
-        ['+ / −', t('key.brush_size')],
-        ['X', t('key.swap')],
-        ['M, Ctrl + M', quickPalette ? t('key.palette') : t('key.merge')],
-        // A plugin's tool answers to its manifest's key (the default branch
-        // of the handler): on the panel, it is in the sheet too.
-        ...plugins
-          .tools()
-          .map((tool) => !tool.builtin && tool.key && has(tool.id) && ([tool.key.toUpperCase(), tool.label] as [string, string])),
-        'frames',
-        ['Z, Ctrl + Z', t('key.undo')],
-        ['Y, Ctrl+Shift+Z', t('key.redo')],
-        ['C, Ctrl + C', t('key.copy')],
-        ['V, Ctrl + V', t('key.paste')],
-        ['Ctrl + X', t('key.cut')],
-        // F7 is the frame's key with the letters off: the row went with «A».
-        ['A, F7', t('key.add_frame')],
-        ['G', t('panel.item.duplicate_frame')],
-        ['Del / Backspace', t('key.delete_frame')],
-        ['J / L', t('key.ends')],
-        ['← / →', t('key.steps')],
-        ['↑ / ↓', t('key.layers')],
-        ['Shift + ←→↑↓', t('key.extend')],
-        ['H / Shift + H', t('key.mirror')],
-        ['K', t('key.onion')],
-        ['Space', t('key.preview')],
-        'sheet',
-        // The hand's own keys: the only keyboard zoom.
-        has('drag') && ['+ / −, ←→↑↓', t('key.hand_keys')],
-        ['Ctrl + Shift + ←→↑↓', t('key.pan_sheet')],
-        ['[ / ]', t('key.turn_sheet')],
-        has('drag') && [t('key.turn_drag_keys'), t('key.turn_drag')],
-        // Without a fullscreen here (an iPhone) the key and its button are not there either.
-        !hasFeather && document.fullscreenEnabled && ['F', t('key.fullscreen')],
-        'transform',
-        has('lasso') && ['Q / S', t('tool.transform.label')],
-        has('lasso') && ['Q / W', t('key.transform_turn')],
-        has('lasso') && ['Enter / Esc', t('key.transform_apply')],
-        'file',
-        ['Ctrl + S', t('key.save')],
-        ['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')],
-        ['Alt + L', t('key.error_log')],
-      ] as (KeyGroup | [string, string] | false | '')[]
-    );
-    const groups: [KeyGroup, [string, string][]][] = [];
-    for (const row of rows) {
-      if (typeof row === 'string' && row !== '') groups.push([row, []]);
-      else if (Array.isArray(row) && hint(row[0]) !== '') groups.at(-1)![1].push([hint(row[0]), row[1]]);
-    }
-    return groups.filter(([, list]) => list.length > 0);
-  });
-  /** What a mouse does that no key says (owner's critique, 2026-10-18): under a cursor these stand where a finger's gestures stand on a phone. */
-  const MOUSE = $derived([...(toolOpensBrush(panels, editor.tool) ? (['tool_again'] as const) : []), 'frame_menu', 'shift_drag', 'middle', 'wheel', 'trackpad', 'layer_name'] as const);
 
   // Copy/paste confirmation: the reference flashes the whole stage for 50 ms
   // (fadeSprite). Skipped under reduced motion — where the words stand in for
@@ -2586,9 +2347,9 @@
     class="key"
     disabled={!editor.canUndo}
     onclick={() => editor.undo()}
-    data-key={editor.keyHint('Z') || undefined}
-    aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'}
-    title={editor.keyHint(t('editor.undo_title'))}
+    data-key={editor.keyLabel('undo')}
+    aria-keyshortcuts={editor.keyAria('undo')}
+    title={editor.keyHint(t('editor.undo_title'), 'undo')}
     aria-label={t('editor.undo')}
   >
     <Icon name="undo" />
@@ -2597,9 +2358,9 @@
     class="key"
     disabled={!editor.canRedo}
     onclick={() => editor.redo()}
-    data-key={editor.keyHint('Y') || undefined}
-    aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'}
-    title={editor.keyHint(t('editor.redo_title'))}
+    data-key={editor.keyLabel('redo')}
+    aria-keyshortcuts={editor.keyAria('redo')}
+    title={editor.keyHint(t('editor.redo_title'), 'redo')}
     aria-label={t('editor.redo')}
   >
     <Icon name="redo" />
@@ -2666,9 +2427,9 @@
       class="key icon"
       onclick={saveByHand}
       disabled={!dirty && !editor.canUndoTransform}
-      data-key="Ctrl+S"
-      aria-keyshortcuts="Control+S"
-      title={t('editor.save_title')}
+      data-key={editor.keyLabel('save')}
+      aria-keyshortcuts={editor.keyAria('save')}
+      title={editor.keyHint(t('editor.save_title'), 'save')}
       aria-label={t('editor.save')}
     >
       <Icon name="save" />
@@ -2689,9 +2450,9 @@
         class:active={isFullscreen}
         aria-pressed={isFullscreen}
         onclick={toggleFullscreen}
-        data-key={hasFeather ? undefined : editor.keyHint('F') || undefined}
-        aria-keyshortcuts={hasFeather || !editor.settings.letterKeys ? undefined : 'F'}
-        title={hasFeather ? t('editor.fullscreen') : editor.keyHint(t('editor.fullscreen_title'))}
+        data-key={editor.keyLabel('fullscreen')}
+        aria-keyshortcuts={editor.keyAria('fullscreen')}
+        title={editor.keyLabel('fullscreen') ? editor.keyHint(t('editor.fullscreen_title'), 'fullscreen') : t('editor.fullscreen')}
         aria-label={t('editor.fullscreen')}
       >
         <Icon name="expand" />
@@ -2782,8 +2543,8 @@
       disabled={editor.playing}
       onclick={onAddFrame}
       data-key={menuKey('add')?.label}
-      aria-keyshortcuts={editor.settings.letterKeys ? 'A F7' : 'F7'}
-      title={frameKeyTitle(t('editor.add_frame_title'), 'add', editor.settings.letterKeys, quickPalette)}
+      aria-keyshortcuts={editor.keyAria('add-frame')}
+      title={frameKeyTitle(t('editor.add_frame_title'), 'add', editor.settings.letterKeys, quickPalette, menuKey('add'))}
       aria-label={t('editor.add_frame')}
       data-name={t('editor.add_frame_short')}
     >
@@ -2795,9 +2556,9 @@
       disabled={editor.playing}
       aria-disabled={!editor.canRemoveFrame || undefined}
       onclick={() => editor.removeActiveFrame()}
-      data-key="Del"
-      aria-keyshortcuts="Delete Backspace"
-      title={t('editor.delete_frame_title')}
+      data-key={editor.keyLabel('delete-frame')}
+      aria-keyshortcuts={editor.keyAria('delete-frame')}
+      title={editor.keyHint(t('editor.delete_frame_title'), 'delete-frame')}
       aria-label={t('editor.delete_frame')}
     >
       <Icon name="trash" />
@@ -2807,7 +2568,7 @@
          it on; on, a press opens its window, the way Dreams keeps the onions. -->
     <PopKey
       label={t('editor.onion')}
-      title={editor.keyHint(editor.onionSkin ? t('onion.key_on') : t('editor.onion_off'))}
+      title={editor.keyHint(editor.onionSkin ? t('onion.key_on') : t('editor.onion_off'), 'onion')}
       active={editor.onionSkin}
       gate={() => {
         if (editor.onionSkin) return true;
@@ -2816,8 +2577,8 @@
       }}
       attrs={{
         'aria-pressed': editor.onionSkin,
-        'data-key': editor.keyHint('K') || undefined,
-        'aria-keyshortcuts': editor.settings.letterKeys ? 'K' : undefined,
+        'data-key': editor.keyLabel('onion'),
+        'aria-keyshortcuts': editor.keyAria('onion'),
       }}
     >
       {#snippet face()}<Icon name="onion" />{/snippet}
@@ -2829,9 +2590,9 @@
       class:active={editor.onionSkin}
       aria-pressed={editor.onionSkin}
       onclick={() => editor.toggleOnionSkin()}
-      data-key={editor.keyHint('K') || undefined}
-      aria-keyshortcuts={editor.settings.letterKeys ? 'K' : undefined}
-      title={editor.keyHint(editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off'))}
+      data-key={editor.keyLabel('onion')}
+      aria-keyshortcuts={editor.keyAria('onion')}
+      title={editor.keyHint(editor.onionSkin ? t('editor.onion_on') : t('editor.onion_off'), 'onion')}
       aria-label={t('editor.onion')}
     >
       <Icon name="onion" />
@@ -2907,9 +2668,9 @@
       class="key"
       aria-haspopup="dialog"
       onclick={() => exportButton?.start()}
-      data-key={hasProjectFile ? undefined : 'Alt+S'}
-      aria-keyshortcuts={hasProjectFile ? undefined : 'Alt+S'}
-      title={hasProjectFile ? t('export.sheet') : t('export.title')}
+      data-key={hasProjectFile ? undefined : editor.keyLabel('export')}
+      aria-keyshortcuts={hasProjectFile ? undefined : editor.keyAria('export')}
+      title={hasProjectFile ? t('export.sheet') : editor.keyHint(t('export.title'), 'export')}
       aria-label={t('export.sheet')}
     >
       <Icon name="download" />
@@ -2938,8 +2699,8 @@
       disabled={editor.playing}
       onclick={() => editor.copySelection()}
       data-key={menuKey('copy')?.label}
-      aria-keyshortcuts={editor.settings.letterKeys ? 'C Control+C' : 'Control+C'}
-      title={frameKeyTitle(t('editor.copy_title'), 'copy', editor.settings.letterKeys, quickPalette)}
+      aria-keyshortcuts={editor.keyAria('copy')}
+      title={frameKeyTitle(t('editor.copy_title'), 'copy', editor.settings.letterKeys, quickPalette, menuKey('copy'))}
       aria-label={t('editor.copy')}
     ><Icon name="copy" /></button>
   {:else if id === 'paste'}
@@ -2948,8 +2709,8 @@
       disabled={!editor.canPasteCells}
       onclick={() => editor.pasteSelection()}
       data-key={menuKey('paste')?.label}
-      aria-keyshortcuts={editor.settings.letterKeys ? 'V Control+V' : 'Control+V'}
-      title={frameKeyTitle(t('editor.paste_title'), 'paste', editor.settings.letterKeys, quickPalette)}
+      aria-keyshortcuts={editor.keyAria('paste')}
+      title={frameKeyTitle(t('editor.paste_title'), 'paste', editor.settings.letterKeys, quickPalette, menuKey('paste'))}
       aria-label={t('editor.paste')}
     ><Icon name="paste" /></button>
   {:else if id === 'settings'}
@@ -3008,8 +2769,8 @@
       disabled={!editor.canPasteCells}
       onclick={() => editor.mergeSelection()}
       data-key={menuKey('merge')?.label}
-      aria-keyshortcuts={quickPalette ? undefined : editor.settings.letterKeys ? 'M Control+M' : 'Control+M'}
-      title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette)}
+      aria-keyshortcuts={quickPalette ? undefined : editor.keyAria('merge')}
+      title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette, menuKey('merge'))}
       aria-label={t('editor.merge')}
     ><Icon name="merge" /></button>
   {/if}
@@ -3398,6 +3159,7 @@
       onOpenFile={() => fileInput?.click()}
       onOpenDrafts={openDrafts}
       onOpenPlugins={() => (pluginsSheetOpen = true)}
+      onOpenManual={() => (manualOpen = true)}
     />
   {/if}
 
@@ -3429,86 +3191,15 @@
     <p id="editor-updating">{t('editor.plugins_updating')}</p>
   </dialog>
 
-  <!-- Customization sheet: roomy, one concern per row, big tap targets. -->
-  <!-- (SHORTCUTS is declared in the script block above.) -->
   {#if manualOpen}
-    <dialog
-      bind:this={manualDialog}
-      class="sheet sheet-dialog manual"
-      aria-label={t('editor.manual')}
-      onclose={() => (manualOpen = false)}
-    >
-      <header class="sheet-head">
-        <h2>{t('editor.manual')}</h2>
-        <button class="key icon" onclick={() => manualDialog?.close()} aria-label={t('editor.close')}>
-          <Icon name="x" />
-        </button>
-      </header>
-
-      <!-- Nothing inside takes focus, so the body itself does: otherwise the
-           arrow keys have nowhere to scroll the list from. -->
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="sheet-body" tabindex="0">
-        <!-- Every shortcut the key handler above actually implements, in one
-             place. They were reachable but undocumented: nothing in the UI said
-             the editor had any. Behind the sheet, so the toolbar stays quiet. -->
-        {#snippet keyList()}
-          <p class="sheet-hint">{t('editor.shortcuts')}</p>
-          <div class="keygroups">
-            {#each SHORTCUTS as [group, rows] (group)}
-              <section class="keygroup">
-                <h3 class="keygroup-title">{t(`editor.key_group.${group}`)}</h3>
-                <dl class="keylist">
-                  {#each rows as [combo, what] (combo)}
-                    <div class="keyrow">
-                      <dt><kbd>{combo}</kbd></dt>
-                      <dd>{what}</dd>
-                    </div>
-                  {/each}
-                </dl>
-              </section>
-            {/each}
-          </div>
-        {/snippet}
-        {#snippet mouseList()}
-          <p class="sheet-hint">{t('editor.mouse')}</p>
-          <dl class="keylist gestures">
-            {#each MOUSE as id (id)}
-              <div class="keyrow">
-                <dt>{t(`mouse.${id}`)}</dt>
-                <dd>{t(`mouse_does.${id}`)}</dd>
-              </div>
-            {/each}
-          </dl>
-        {/snippet}
-        {#snippet gestureList()}
-          <p class="sheet-hint">{t('editor.gestures')}</p>
-          <dl class="keylist gestures">
-            {#each GESTURES as id (id)}
-              <div class="keyrow">
-                <dt>{t(`gesture.${id}`)}</dt>
-                <dd>{t(`gesture_does.${id}`)}</dd>
-              </div>
-            {/each}
-          </dl>
-        {/snippet}
-        <!-- A finger's gestures lead under a finger; under a cursor the keys
-             lead and the mouse's own moves follow, not a finger's. -->
-        {#if touchFirst}
-          {@render gestureList()}
-          {#if !fingersOnly}{@render keyList()}{/if}
-        {:else}
-          {@render keyList()}
-          {@render mouseList()}
-        {/if}
-      </div>
-
-      <footer class="sheet-foot">
-        <!-- The tour once more (owner, 2026-10-13): skipped on the first visit, it was gone for good. -->
-        <button class="key" onclick={() => { manualDialog?.close(); editor.tourReplay = true; }}>{t('editor.tour_again')}</button>
-        <button class="key primary" onclick={() => manualDialog?.close()}>{t('editor.done')}</button>
-      </footer>
-    </dialog>
+    <ManualSheet
+      {editor}
+      {quickPalette}
+      {hasProjectFile}
+      opensBrush={toolOpensBrush(panels, editor.tool)}
+      onClose={() => (manualOpen = false)}
+      onTour={() => (editor.tourReplay = true)}
+    />
   {/if}
 
   {#if question}
@@ -5177,70 +4868,6 @@
      fixed 4.6rem broke «Del / Backspace» and «Ctrl+Shift+Z» mid-word. The
      row wrapper steps aside (display: contents), so dt and dd sit in the
      list's own columns; subgrid would need Chrome 117. */
-  .keylist {
-    margin: 0;
-    display: grid;
-    grid-template-columns: fit-content(50%) 1fr;
-    column-gap: 0.75rem;
-    row-gap: 0.1rem;
-  }
-  .keyrow {
-    display: contents;
-  }
-  .keyrow dt,
-  .keyrow dd {
-    margin: 0;
-    padding: 0.32rem 0;
-    align-self: baseline;
-  }
-  .keylist kbd {
-    display: inline-block;
-    min-width: 1.9rem;
-    padding: 0.15rem 0.45rem;
-    background: var(--paper);
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-sm);
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-    color: var(--ink);
-  }
-  .keylist dd {
-    font-size: 0.9rem;
-    color: var(--ink-2);
-  }
-  /* The keys under their headings, in two columns where the sheet is wide:
-     a desk's manual is read beside the keyboard, not on a phone. */
-  .keygroups {
-    columns: 2 18rem;
-    column-gap: 1.75rem;
-  }
-  .keygroup {
-    break-inside: avoid;
-    padding-bottom: 0.6rem;
-  }
-  .keygroup-title {
-    margin: 0 0 0.15rem;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--ink);
-  }
-  @media (hover: hover) and (min-width: 52rem) {
-    .editor :global(.sheet.manual) {
-      width: min(44rem, calc(100% - 2rem));
-    }
-  }
-  /* A gesture is a phrase, not a key cap: in ink, at the reading size. */
-  .keylist.gestures dt {
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--ink);
-  }
-  .keylist + :global(.sheet-hint) {
-    margin-top: 1rem;
-  }
   .editor :global(.toggle) {
     display: flex;
     align-items: center;

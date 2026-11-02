@@ -20,7 +20,6 @@ export interface KeyPress {
   defaultPrevented: boolean;
   ctrlKey: boolean;
   metaKey: boolean;
-  /** Shift held: Ctrl+Shift+arrows move a magnified sheet (panSheetKey). */
   shiftKey?: boolean;
   /** A modal sheet is up: the page behind it is inert, its hotkeys too. */
   modalOpen: boolean;
@@ -28,6 +27,8 @@ export interface KeyPress {
   letterKeys: boolean;
   /** The focused control took its focus from a pointer press (focusOrigin). */
   byPointer?: boolean;
+  /** The keymap holds this press; what it let go stays the browser's (keymap.ts). */
+  bound: boolean;
 }
 
 /**
@@ -71,42 +72,6 @@ const SLIDERS = new Set(['slider', 'separator', 'spinbutton', 'range']);
 const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
 /**
- * The chords the table takes: the reference's Ctrl+Z, Y, C, V and M, Ctrl+A
- * / Ctrl+F7 (a frame in front), and Ctrl+X, the cut next to C and V. Every other Ctrl chord went down the table as
- * well and was prevented — Ctrl+= thickened the brush instead of zooming the
- * page (WCAG 1.4.4), Ctrl+P picked the pipette instead of printing, Ctrl+L
- * never reached the address bar. Ctrl+S is the editor's own, before this.
- */
-const CHORDS = new Set(['z', 'Z', 'y', 'Y', 'c', 'C', 'v', 'V', 'x', 'X', 'm', 'M', 'a', 'A', 'F7']);
-
-/** The four arrows alone — Home, End and the page keys pan nothing. */
-const PAN_ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
-
-/**
- * Ctrl+Shift+arrow (Cmd+Shift on a Mac): the sheet moved from the keyboard
- * (owner, after the fourteenth audit). Not Shift+arrows — those extend the
- * strip's selection and push a transform ten units; not Alt — Alt+← is the
- * browser's «back»; not Ctrl alone — Ctrl+← on a Mac switches desktops.
- * Outside a text field nothing in a browser holds Ctrl+Shift+arrow; inside
- * one it still selects by words (the field check below).
- */
-export function panSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey?: boolean }): boolean {
-  return (e.ctrlKey || e.metaKey) && e.shiftKey === true && PAN_ARROWS.has(e.key);
-}
-
-/** The keys that zoom: `=` is `+` without Shift, `_` is `-` with it. */
-const ZOOM_KEYS = new Set(['+', '=', '-', '_']);
-
-/**
- * Ctrl+plus or minus (Cmd on a Mac) zooms the sheet whatever the tool, as in
- * Photoshop (owner, 2026-10-15): the browser zoomed the whole page with it.
- * A text field still leaves it to the browser (the field check below).
- */
-export function zoomSheetKey(e: { key: string; ctrlKey: boolean; metaKey: boolean }): boolean {
-  return (e.ctrlKey || e.metaKey) && ZOOM_KEYS.has(e.key);
-}
-
-/**
  * An input method is composing: its Enter picks a character, its Esc drops
  * the composition. Safari sends the Enter that commits it with `isComposing`
  * already false — keyCode 229 is the one mark it keeps.
@@ -118,12 +83,8 @@ export function composing(e: { isComposing: boolean; keyCode: number }): boolean
 /** A field still hands these over: apply and cancel a transform from its inputs. */
 const FIELD_PASSES = new Set(['Enter', 'Escape']);
 
-/**
- * The named keys the table holds. Every other one — Tab, the page keys, F5 —
- * is the browser's: taken as the editor's, a held Tab was swallowed with the
- * auto-repeat of the toggles and walked one control instead of the row.
- */
-const NAMED = new Set([...PAN_ARROWS, 'Enter', 'Escape', 'Delete', 'Backspace', 'F7']);
+/** Enter and Esc apply and cancel whatever the table holds; they are not anyone's to change. */
+const ALWAYS = new Set(['Enter', 'Escape']);
 
 function kindOf(target: KeyTarget): { field: boolean; pressed: boolean; slider: boolean } {
   const tag = target.tagName.toLowerCase();
@@ -155,11 +116,15 @@ export function typesText(target: KeyTarget | null): boolean {
 }
 
 export function keyOwner(e: KeyPress): 'editor' | 'control' {
-  if (e.defaultPrevented || e.modalOpen || (e.key.length > 1 && !NAMED.has(e.key))) {
+  // A named key nothing holds — Tab, the page keys, F5 — is the browser's:
+  // taken as the editor's, a held Tab was swallowed with the auto-repeat of
+  // the toggles. So is a chord: Ctrl+= thickened the brush instead of zooming
+  // the page (WCAG 1.4.4), Ctrl+L never reached the address bar.
+  if (e.defaultPrevented || e.modalOpen || (e.key.length > 1 && !e.bound && !ALWAYS.has(e.key))) {
     return 'control';
   }
   const chord = e.ctrlKey || e.metaKey;
-  if (chord && !CHORDS.has(e.key) && !panSheetKey(e) && !zoomSheetKey(e)) {
+  if (chord && !e.bound) {
     return 'control';
   }
   if (!e.letterKeys && !chord && e.key.length === 1 && e.key !== ' ') {
@@ -222,26 +187,6 @@ export function latinKey(e: { key: string; code: string; shiftKey?: boolean }): 
     return e.code === 'BracketLeft' ? '[' : ']';
   }
   return e.key;
-}
-
-/**
- * Keys that mean «more of the same» and run on while held: steps, brush size,
- * zoom, undo and redo, turning a selection, new frames, deleting. Everything
- * else is one press per press — a held K flipped the onion skin with every
- * auto-repeat and stopped wherever the hand let go, a held Space started and
- * stopped the preview.
- */
-const HELD = new Set([
-  'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown',
-  '+', '=', '-', '_',
-  'z', 'Z', 'y', 'Y',
-  'q', 'Q', 'w', 'W',
-  '[', ']',
-  'a', 'A', 'F7', 'Delete', 'Backspace',
-]);
-
-export function repeats(key: string): boolean {
-  return HELD.has(key);
 }
 
 /**

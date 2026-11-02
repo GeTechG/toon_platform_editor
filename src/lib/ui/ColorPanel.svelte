@@ -34,11 +34,11 @@
   const quickPalette = $derived(editor.paletteExpanded || !editor.ux.quickPalette ? null : quickColours(editor.ux.quickPalette));
   /** Either eraser: a pick hands the pencil back, so no colour is the one in hand. */
   const erasing = $derived(editor.tool === 'eraser' || editor.tool === 'mega-eraser');
-  const strokeTitle = $derived(editor.ux.quickPalette ? editor.keyHint(t('color.stroke_title')) : t('color.stroke'));
+  const strokeTitle = $derived(editor.ux.quickPalette ? editor.keyHint(t('color.stroke_title'), 'merge') : t('color.stroke'));
 </script>
 
 {#if quickPalette}
-  <div class="quick" role="group" aria-label={editor.keyHint(t('color.quick_group'))}>
+  <div class="quick" role="group" aria-label={editor.keyHint(t('color.quick_group'), 'merge')}>
     {#each quickPalette as color (color)}
       <button
         class="swatch"
@@ -46,7 +46,7 @@
         aria-pressed={editor.brushColor === color && !erasing}
         style:--swatch={color}
         onclick={() => editor.pickColor(color, 'outline', true)}
-        title={editor.keyHint(t('color.quick_title', { color }))}
+        title={editor.keyHint(t('color.quick_title', { color }), 'merge')}
         aria-label={t('color.swatch', { color })}
       ></button>
     {/each}
@@ -79,7 +79,7 @@
   <button
     class="key icon"
     onclick={() => editor.swapColors()}
-    title={editor.keyHint(t('color.swap_title'))}
+    title={editor.keyHint(t('color.swap_title'), 'swap')}
     aria-label={t('color.swap')}
   ><Icon name="swap" /></button>
   {#if editor.ux.colorGrid}

@@ -50,7 +50,7 @@ describe('шестнадцатый аудит: цвет', () => {
 
   it('подсказка контура говорит про M только там, где M прячет палитру', () => {
     // Без быстрой палитры M — «объединить», а подсказка обещала «скрыть палитру».
-    expect(panel).toMatch(/editor\.ux\.quickPalette \? editor\.keyHint\(t\('color\.stroke_title'\)\) : t\('color\.stroke'\)/);
+    expect(panel).toMatch(/editor\.ux\.quickPalette \? editor\.keyHint\(t\('color\.stroke_title'\), 'merge'\) : t\('color\.stroke'\)/);
     expect(panel).toMatch(/aria-label=\{strokeTitle\}/);
     expect(ru.color.stroke).toBe('Цвет контура');
   });

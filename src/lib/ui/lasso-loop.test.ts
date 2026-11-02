@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
 import { plugins } from '../plugins';
 import { DEFAULT_PRESET, presetPanels, presetUx } from './presets';
 
@@ -23,7 +25,10 @@ describe('the lasso as a tool', () => {
     expect(presetUx(DEFAULT_PRESET).tools).toContain('loop');
     const left = presetPanels(DEFAULT_PRESET).left;
     expect(left.indexOf('tool:loop')).toBe(left.indexOf('tool:lasso') + 1);
-    expect(editorUi).toMatch(/case 'r':\s*case 'R':\s*editor\.selectTool\('loop'\);/);
+    const keys = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+    expect(keys.resolve('r')).toBe('tool:loop');
+    expect(keys.resolve('Shift+r')).toBe('tool:loop');
+    expect(editorUi).toContain("editor.selectTool(command.slice('tool:'.length))");
   });
 });
 

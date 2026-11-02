@@ -498,7 +498,7 @@
     class="add-layer"
     aria-disabled={!canAdd || editor.playing || undefined}
     onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
-    title={canAdd ? editor.keyHint(t('layer.add_title')) : t('layer.full', { max: MAX_LAYERS })}
+    title={canAdd ? editor.keyHint(t('layer.add_title'), 'add-layer') : t('layer.full', { max: MAX_LAYERS })}
   >
     <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>

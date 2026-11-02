@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { manualSections } from './manual-sections';
 import { EMPTY_TRANSFORM, scaledBy } from '../tools/lasso';
 
 // Sixteenth audit, tools: a handle that shrank a mirrored selection when it
@@ -91,22 +92,26 @@ describe('a pinch that begins on a live selection does not move it', () => {
   });
 });
 
-const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
 const ru = await Bun.file(new URL('../i18n/ru.json', import.meta.url)).json();
 
 describe('the manual names the keys of a live transform', () => {
-  const table = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf(']);', editorUi.indexOf('const SHORTCUTS')));
 
   it('turning, applying and cancelling are listed where the lasso is', () => {
     // The handler turns a selection on Q / W, applies on Enter and drops on
     // Esc, and moves and scales it on the arrows and + / −; the manual, which
     // says it mirrors the handler, named none of it.
-    expect(table).toContain("has('lasso') && ['Q / W', t('key.transform_turn')]");
-    expect(table).toContain("has('lasso') && ['Enter / Esc', t('key.transform_apply')]");
-    expect(ru.key.transform_turn).toContain('15°');
+    const rows = (tools: { id: string; label: string }[]) =>
+      manualSections({ input: 'cursor', tools, quickPalette: false, hasProjectFile: false, fullscreen: true, toolOpensBrush: false, keysOf: () => ['+'] })
+        .find((one) => one.id === 'selection')?.rows.map((row) => row.id) ?? [];
+    expect(rows([{ id: 'lasso', label: 'Трансформация' }])).toEqual(
+      expect.arrayContaining(['transform-turn-left', 'transform-turn-right', 'transform_size', 'transform_move', 'transform_apply', 'transform_cancel']),
+    );
+    expect(rows([{ id: 'pencil', label: 'Кисть' }])).toEqual([]);
+    expect(ru.key.transform_turn_left).toContain('15°');
+    expect(ru.key.transform_turn_right).toContain('15°');
     expect(ru.key.transform_apply).toContain('трансформ');
-    expect(ru.key.steps).toContain('в трансформации');
-    expect(ru.key.brush_size).toContain('в трансформации');
+    expect(ru.key.transform_move).toContain('В трансформации');
+    expect(ru.key.transform_size).toContain('В трансформации');
   });
 });
 

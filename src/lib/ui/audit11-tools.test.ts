@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, studioCommands } from './keymap';
 import { t } from '../i18n';
 
 // Eleventh audit, tools: the open transform, the pipette and the tool keys.
@@ -66,8 +67,13 @@ describe('the fullscreen key does not promise F while F picks the feather', () =
   it('the badge and the tooltip drop F when the feather is on the panel', () => {
     const key = editorUi.match(/\{:else if id === 'fullscreen'\}[^]*?<\/button>/)?.[0] ?? '';
     expect(key).not.toContain('data-key="F"');
-    expect(key).toContain("data-key={hasFeather ? undefined : editor.keyHint('F') || undefined}");
-    expect(key).toContain("hasFeather ? t('editor.fullscreen') : editor.keyHint(t('editor.fullscreen_title'))");
+    expect(key).toContain("data-key={editor.keyLabel('fullscreen')}");
+    expect(key).toContain("editor.keyLabel('fullscreen') ? editor.keyHint(t('editor.fullscreen_title'), 'fullscreen') : t('editor.fullscreen')");
+    // keyLabel reads the keys that reach it now: with the pen on the panel F is not one.
+    expect(state).toContain('this.keymap.effective(command, (id) => this.commandHere(id))');
+    const keys = buildKeymap(studioCommands([{ id: 'feather', keys: ['F'] }]), {});
+    expect(keys.effective('fullscreen', () => true)).toEqual([]);
+    expect(keys.effective('fullscreen', (id) => id !== 'tool:feather')).toEqual(['f']);
   });
 });
 

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
 import ru from '../i18n/ru.json';
 import { PLUGIN_API } from '../plugins/contract';
 import { loadInstalled } from '../plugins/install';
@@ -91,6 +92,7 @@ describe('words that say what the studio does', () => {
   });
 
   it('the manual names Shift+Space, which starts the preview at the active frame', () => {
-    expect(ru.key.preview).toContain('Shift');
+    expect(typeof ru.key.play_from_active).toBe('string');
+    expect(buildKeymap(studioCommands([]), {}).bindings('play-from-active').map(chordLabel)).toContain('Shift+Space');
   });
 });

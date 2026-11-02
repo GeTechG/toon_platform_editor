@@ -208,8 +208,8 @@
   class:playing={editor.playing}
   aria-disabled={!canPlay || undefined}
   onclick={() => toggle()}
-  data-key="Space"
-  title={editor.playing ? t('play.title_stop') : t('play.title_play')}
+  data-key={editor.keyLabel('play')}
+  title={editor.keyHint(editor.playing ? t('play.title_stop') : t('play.title_play'), 'play')}
   aria-label={editor.playing ? t('play.stop') : t('play.play')}
   data-name={editor.playing ? t('play.stop_short') : t('play.play_short')}
 >

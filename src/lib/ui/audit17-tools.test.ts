@@ -61,8 +61,10 @@ describe('Alt+E waits for the hand, like every other tool key', () => {
   it('a held stroke or handle is not switched out from under it', () => {
     // The letter keys stop while a gesture is held; Alt+E ran before that
     // check and committed a live transform in the middle of its drag.
-    const alt = editorUi.slice(editorUi.indexOf("(key === 'e' || key === 'E') && hasMegaEraser"));
-    expect(alt.slice(0, alt.indexOf('return;'))).toContain('!editor.gestureHeld');
+    const alt = editorUi.slice(editorUi.indexOf('if (e.altKey) {\n      if (command)'));
+    const branch = alt.slice(0, alt.indexOf('return;'));
+    expect(branch).toContain("editor.gestureHeld && command.startsWith('tool:')");
+    expect(branch).toMatch(/if \(!e\.repeat && !blocked\) \{\s*runCommand\(command, e\);/);
   });
 });
 

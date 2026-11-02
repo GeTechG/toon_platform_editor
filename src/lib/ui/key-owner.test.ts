@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { focusOrigin, keyOwner, latinKey, type KeyPress } from './key-owner';
+import { buildKeymap, chordOf, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
 
 // The editor listens on the window, so every key a focused control was meant
 // to get reached the hotkey table first. Space played the preview from a
@@ -17,8 +19,15 @@ function el(tag: string, attrs: Record<string, string> = {}, keyboardFocus = tru
   };
 }
 
+/** What the studio hands keyOwner as `bound`: whether the default table holds this press. */
+const table = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+function held(key: string, mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): boolean {
+  const chord = chordOf({ key, code: '', ctrlKey: !!mods.ctrlKey, metaKey: !!mods.metaKey, altKey: false, shiftKey: mods.shiftKey ?? /^[A-Z]$/.test(key) });
+  return chord !== null && table.resolve(chord) !== null;
+}
+
 function press(key: string, target: ReturnType<typeof el> | null, extra: Partial<KeyPress> = {}): KeyPress {
-  return { key, target, defaultPrevented: false, ctrlKey: false, metaKey: false, modalOpen: false, letterKeys: true, ...extra };
+  return { key, target, defaultPrevented: false, ctrlKey: false, metaKey: false, modalOpen: false, letterKeys: true, bound: held(key, extra), ...extra };
 }
 
 describe('a key a control handled stays with it', () => {
@@ -214,7 +223,10 @@ describe('2026-10-08 critique: Esc stops the preview', () => {
   it('a running preview is stopped, and with none running the key stays the browser’s', async () => {
     const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
     const handler = editorUi.match(/function onKeydown\([^]*?\n  }\n/)![0];
-    expect(handler).toMatch(/case 'Escape':\s*(?:\/\/[^\n]*\s*)*if \(editor\.playing\) \{\s*playControls\?\.toggle\(\);\s*\} else \{\s*handled = false;\s*\}\s*break;/);
+    expect(handler).toMatch(/if \(key === 'Escape' && editor\.playing\) \{\s*e\.preventDefault\(\);\s*playControls\?\.toggle\(\);\s*return;/);
+    // Nothing holds Esc, so nothing past this prevents it.
+    expect(table.resolve('Escape')).toBeNull();
+    expect(handler).toMatch(/if \(command\) \{\s*e\.preventDefault\(\);\s*runCommand\(command, e\);\s*\}\s*\}\n$/);
   });
 });
 
@@ -232,8 +244,36 @@ describe('Ctrl and plus or minus zoom the sheet, not the page (owner, 2026-10-15
 
   it('the studio zooms on it before the hand and the brush size look', () => {
     const editorUi = require('node:fs').readFileSync(new URL('./Editor.svelte', import.meta.url), 'utf8') as string;
-    const zoom = editorUi.indexOf('zoomSheetKey(');
+    expect(table.resolve('Ctrl++')).toBe('zoom-in');
+    expect(table.resolve('Ctrl+-')).toBe('zoom-out');
+    const zoom = editorUi.indexOf("command === 'zoom-in'");
     expect(zoom).toBeGreaterThan(0);
     expect(zoom).toBeLessThan(editorUi.indexOf("if (editor.tool === 'drag' && !editor.transform)"));
+  });
+});
+
+describe('what the keymap holds is the editor’s, what it let go is the browser’s', () => {
+  it('a chord given to a command reaches the editor', () => {
+    expect(keyOwner({ ...press('k', null, { ctrlKey: true }), bound: true })).toBe('editor');
+  });
+
+  it('a chord nothing holds stays the browser’s, even one the studio holds out of the box', () => {
+    expect(keyOwner({ ...press('z', null, { ctrlKey: true }), bound: false })).toBe('control');
+    expect(keyOwner({ ...press('p', null, { ctrlKey: true }), bound: false })).toBe('control');
+  });
+
+  it('a named key follows the same rule', () => {
+    expect(keyOwner({ ...press('F2', null), bound: true })).toBe('editor');
+    expect(keyOwner({ ...press('F7', null), bound: false })).toBe('control');
+    expect(keyOwner({ ...press('ArrowLeft', null), bound: false })).toBe('control');
+  });
+
+  it('Enter and Esc are the transform’s and the preview’s whatever is held', () => {
+    expect(keyOwner({ ...press('Enter', null), bound: false })).toBe('editor');
+    expect(keyOwner({ ...press('Escape', null), bound: false })).toBe('editor');
+  });
+
+  it('a field still types a key given to a command', () => {
+    expect(keyOwner({ ...press('k', el('input', { type: 'text' })), bound: true })).toBe('control');
   });
 });

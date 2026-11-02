@@ -2,7 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { addFrame, addLayer, addStroke, createDocument } from '../model/operations';
 import { EMPTY_TRANSFORM } from '../tools/lasso';
 import { bakeTransform } from '../tools/bake-transform';
-import { keyOwner, repeats } from './key-owner';
+import { keyOwner } from './key-owner';
+import { buildKeymap, chordAria, chordLabel, studioCommands } from './keymap';
 import { frameMenuKey } from './frame-selection';
 import { RESERVED_KEYS } from '../plugins/builtins';
 
@@ -59,13 +60,6 @@ describe('Ctrl+S при живой трансформации', () => {
     expect(state).toMatch(/if \(this\.transformLock\) \{\s*this\.canvasHint = \{ text: t\('canvas\.transform_locked'\) \};\s*return false;/);
   });
 });
-
-function onKeydownBlock(head: RegExp): string {
-  const keys = fn('onKeydown');
-  const at = keys.search(head);
-  if (at < 0) throw new Error('missing block');
-  return keys.slice(at, keys.indexOf('return;', at));
-}
 
 describe('рисунок с применённой трансформацией, не выходя из неё', () => {
   it('сдвигает выбранные ячейки активного кадра в копии', () => {
@@ -133,20 +127,26 @@ describe('вкладка ушла в фон с живым выделением',
 });
 
 describe('Backspace — синоним Delete', () => {
+  const keys = buildKeymap(studioCommands([]), {});
+
   it('в таблице клавиш удаляет кадр, с Shift — слой, как Delete', () => {
-    const keys = fn('onKeydown');
-    expect(keys).toMatch(/case 'Delete':\s*case 'Backspace':\s*[^]*?if \(e\.shiftKey\) \{\s*editor\.removeActiveLayer\(\);\s*\} else \{\s*editor\.removeActiveFrame\(\);/);
+    expect(keys.resolve('Delete')).toBe('delete-frame');
+    expect(keys.resolve('Backspace')).toBe('delete-frame');
+    expect(keys.resolve('Shift+Delete')).toBe('delete-layer');
+    expect(keys.resolve('Shift+Backspace')).toBe('delete-layer');
+    expect(editorUi).toMatch(/case 'delete-frame':\s*editor\.removeActiveFrame\(\);/);
+    expect(editorUi).toMatch(/case 'delete-layer':\s*editor\.removeActiveLayer\(\);/);
   });
 
   it('в поле имени слоя и в любом текстовом поле стирает букву, а не кадр', () => {
     const input = { tagName: 'INPUT', isContentEditable: false, getAttribute: (n: string) => (n === 'type' ? 'text' : null), matches: () => false };
-    const press = { target: input, defaultPrevented: false, ctrlKey: false, metaKey: false, modalOpen: false, letterKeys: true };
+    const press = { target: input, defaultPrevented: false, ctrlKey: false, metaKey: false, modalOpen: false, letterKeys: true, bound: keys.resolve('Backspace') !== null };
     expect(keyOwner({ ...press, key: 'Backspace' })).toBe('control');
     expect(keyOwner({ ...press, key: 'Backspace', target: null })).toBe('editor');
   });
 
   it('держится, как Delete: кадр за кадром', () => {
-    expect(repeats('Backspace')).toBe(true);
+    expect(keys.repeats(keys.resolve('Backspace')!)).toBe(true);
   });
 
   it('плагин не может его себе забрать', () => {
@@ -160,9 +160,10 @@ describe('Backspace — синоним Delete', () => {
 
   it('меню кадра, ключ «Удалить кадр», подсказка и мануал называют обе клавиши', () => {
     expect(frameMenuKey('delete', true, false)).toEqual({ aria: 'Delete Backspace', label: 'Del' });
-    expect(snippet('delete-frame')).toMatch(/aria-keyshortcuts="Delete Backspace"/);
+    expect(snippet('delete-frame')).toContain("aria-keyshortcuts={editor.keyAria('delete-frame')}");
+    expect(keys.bindings('delete-frame').map(chordAria).join(' ')).toBe('Delete Backspace');
     expect(ru.editor.delete_frame_title).toContain('Backspace');
-    expect(editorUi).toMatch(/\['Del \/ Backspace', t\('key\.delete_frame'\)\]/);
+    expect(keys.bindings('delete-frame').map(chordLabel)).toEqual(['Del', 'Backspace']);
   });
 });
 
@@ -177,8 +178,10 @@ describe('Alt+S открывает экспорт и без ключа на па
     const key = snippet('export');
     expect(key).toMatch(/onclick=\{\(\) => exportButton\?\.start\(\)\}/);
     // Под Toonio Alt+S скачивает проект — там ключ его не обещает (audit16-shell).
-    expect(key).toMatch(/data-key=\{hasProjectFile \? undefined : 'Alt\+S'\}/);
-    const alt = onKeydownBlock(/e\.altKey && \(key === 's' \|\| key === 'S'\)\) \{/);
+    expect(key).toContain("data-key={hasProjectFile ? undefined : editor.keyLabel('export')}");
+    const from = editorUi.indexOf("case 'export':");
+    const alt = editorUi.slice(from, editorUi.indexOf('case ', from + 5));
+    expect(alt).toContain('exportButton?.start()');
     expect(alt).not.toMatch(/openTab|showTab/);
   });
 

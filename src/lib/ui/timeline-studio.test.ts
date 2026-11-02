@@ -235,8 +235,7 @@ describe('side panel dividers', () => {
   it('both side columns resize from their inner edge, by drag or by arrow', () => {
     expect(editorUi).toContain('aria-orientation="vertical"');
     expect(editorUi).toContain('editor.setSideWidth(');
-    expect(editorUi).toContain("case 'ArrowLeft'");
-    expect(editorUi).toContain("case 'ArrowRight'");
+    expect(editorUi).toContain("e.key === 'ArrowRight' ? SIDE_STEP : e.key === 'ArrowLeft' ? -SIDE_STEP : 0");
     expect(editorUi).toContain('class="side-resizer"');
   });
 
@@ -598,10 +597,12 @@ describe('tenth audit: the strip under forced colours', () => {
 
 describe('owner answers: the frame menu honours the letter-keys setting', () => {
   const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
-  it('no item promises a bare letter the setting has turned off', () => {
+  it('no item promises a bare letter the setting has turned off', async () => {
     // With the letter keys off, «C» next to «Копировать» was a key that did nothing.
     expect(menu).not.toMatch(/aria-keyshortcuts="[A-Z]"/);
-    expect(timeline).toMatch(/frameMenuKey\([^)]*editor\.settings\.letterKeys/);
+    expect(timeline).toContain('editor.menuKey(action, editor.ux.quickPalette !== null)');
+    const state = await Bun.file(new URL('./editor-state.svelte.ts', import.meta.url)).text();
+    expect(state).toContain('frameMenuKey(action, this.settings.letterKeys, quickPalette)');
   });
 });
 

@@ -241,6 +241,7 @@ test('settings round-trip through the stored config', () => {
     pickerModel: 'wheel' as const,
     altLayout: true,
     letterKeys: false,
+    keymap: { undo: ['u', 'Ctrl+z'] },
     removerTipShown: true,
     megaEraserWarning: false,
     fillGap: 9,

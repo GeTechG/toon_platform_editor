@@ -76,7 +76,8 @@ describe('Alt chords in a text field', () => {
     const keys = fn('onKeydown');
     const guard = keys.search(/if \(e\.altKey && typesText\(/);
     expect(guard).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(keys.indexOf("e.altKey && (key === 'e'"));
+    expect(guard).toBeLessThan(keys.indexOf("command === 'save'"));
+    expect(guard).toBeLessThan(keys.indexOf('if (e.altKey) {'));
     // Ctrl+S from a field is still the studio's save: only Alt is let go.
     expect(keys.slice(guard, keys.indexOf('\n', guard))).not.toMatch(/ctrlKey|metaKey/);
   });

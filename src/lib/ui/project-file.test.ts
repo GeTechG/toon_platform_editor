@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
+import { manualSections, type ManualContext } from './manual-sections';
 import { t } from '../i18n';
+
+const keys = buildKeymap(studioCommands([]), {});
+const manual = (patch: Partial<ManualContext> = {}) =>
+  manualSections({
+    input: 'cursor',
+    tools: [],
+    quickPalette: false,
+    hasProjectFile: false,
+    fullscreen: true,
+    toolOpensBrush: false,
+    keysOf: (command) => keys.bindings(command).map(chordLabel),
+    ...patch,
+  });
+const rowsOf = (section: string, patch: Partial<ManualContext> = {}) => manual(patch).find((one) => one.id === section)?.rows ?? [];
+
 
 // The drafts hub is its own component since 2026-10-05.
 const hubUi = await Bun.file(new URL('./DraftsHub.svelte', import.meta.url)).text();
@@ -28,11 +45,14 @@ describe('Alt+S saves the project as a file', () => {
   });
 
   it('is the export everywhere but in the Toonio preset', () => {
-    expect(editorUi).toMatch(/altKey && \(key === 's'[^]*?hasProjectFile[^]*?exportButton\?\.start\(\)/);
+    expect(keys.resolve('Alt+s')).toBe('export');
+    expect(editorUi).toMatch(/case 'export':\s*if \(hasProjectFile\) \{\s*saveProjectFile\(\);\s*\} else \{\s*exportButton\?\.start\(\);/);
   });
 
   it('the shortcut table says what the key does in this preset', () => {
-    expect(editorUi).toContain("['Alt + S', hasProjectFile ? t('key.download_project') : t('key.export')]");
+    const labelOf = (hasProjectFile: boolean) => rowsOf('file', { hasProjectFile }).find((row) => row.id === 'export')?.label;
+    expect(labelOf(true)).toBe(t('key.download_project'));
+    expect(labelOf(false)).toBe(t('key.export'));
     expect(t('key.download_project')).toBe('Скачать проект (.toonop)');
     expect(t('key.export')).toBe('Экспорт');
   });
@@ -153,7 +173,8 @@ describe('a failed write is not silent', () => {
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);
     expect(editorUi).toContain('onclick={saveByHand}');
-    expect(editorUi).toMatch(/metaKey\) && \(key === 's'[^]*?saveByHand\(\)/);
+    expect(keys.resolve('Ctrl+s')).toBe('save');
+    expect(editorUi).toMatch(/command === 'save' && \(e\.ctrlKey \|\| e\.metaKey \|\| e\.altKey\)[^]*?saveByHand\(\)/);
     expect(t('editor.save_failed_alert')).not.toContain('перезагруз');
   });
 });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { keyOwner, type KeyPress, type KeyTarget } from './key-owner';
+import { buildKeymap, chordOf, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
 
 // Девятнадцатый аудит, оболочка студии. Editor.svelte проверяется как исходник,
 // как в audit18-shell.test.ts; что можно запустить по-настоящему — запускается.
@@ -13,6 +15,13 @@ const button: KeyTarget = {
   matches: () => false,
 };
 
+/** What the studio hands keyOwner as `bound`: whether the default table holds this press. */
+const table = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+function held(key: string, mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): boolean {
+  const chord = chordOf({ key, code: '', ctrlKey: !!mods.ctrlKey, metaKey: !!mods.metaKey, altKey: false, shiftKey: mods.shiftKey ?? /^[A-Z]$/.test(key) });
+  return chord !== null && table.resolve(chord) !== null;
+}
+
 const press = (key: string, patch: Partial<KeyPress> = {}): KeyPress => ({
   key,
   target: button,
@@ -22,6 +31,7 @@ const press = (key: string, patch: Partial<KeyPress> = {}): KeyPress => ({
   shiftKey: false,
   modalOpen: false,
   letterKeys: true,
+  bound: held(key, patch),
   ...patch,
 });
 

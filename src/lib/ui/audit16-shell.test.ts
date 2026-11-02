@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordLabel, studioCommands } from './keymap';
+import { manualSections } from './manual-sections';
 import { focusHeir } from './focus-heir';
 
 // Sixteenth audit, the studio shell: the top keys, the drafts, open / save /
@@ -71,16 +73,28 @@ describe('the export key under Toonio', () => {
   it('does not promise Alt+S there: that key downloads the project', () => {
     const exportKey = item('export');
     expect(exportKey).not.toMatch(/data-key="Alt\+S"/);
-    expect(exportKey).toMatch(/hasProjectFile \? undefined : 'Alt\+S'/);
-    expect(exportKey).toMatch(/hasProjectFile \? t\('export\.sheet'\) : t\('export\.title'\)/);
+    expect(exportKey).toContain("data-key={hasProjectFile ? undefined : editor.keyLabel('export')}");
+    expect(exportKey).toContain("aria-keyshortcuts={hasProjectFile ? undefined : editor.keyAria('export')}");
+    expect(exportKey).toContain("hasProjectFile ? t('export.sheet') : editor.keyHint(t('export.title'), 'export')");
   });
 });
 
 describe('the shortcut sheet', () => {
   it('lists the keys of the plugin tools on the panel: the handler takes them, the sheet kept quiet', () => {
-    const table = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf('// Copy/paste confirmation'));
-    expect(table).toMatch(/plugins\s*\.tools\(\)/);
-    expect(table).toMatch(/!tool\.builtin && tool\.key && has\(tool\.id\)/);
+    const keys = buildKeymap(studioCommands([{ id: 'stamp', keys: ['U'] }]), {});
+    expect(keys.resolve('u')).toBe('tool:stamp');
+    const draw = (tools: { id: string; label: string }[]) =>
+      manualSections({
+        input: 'cursor',
+        tools,
+        quickPalette: false,
+        hasProjectFile: false,
+        fullscreen: true,
+        toolOpensBrush: false,
+        keysOf: (command) => keys.bindings(command).map(chordLabel),
+      }).find((one) => one.id === 'draw')!.rows;
+    expect(draw([{ id: 'stamp', label: 'Штамп' }]).find((row) => row.id === 'tool:stamp')).toMatchObject({ kind: 'command', label: 'Штамп' });
+    expect(draw([]).find((row) => row.id === 'tool:stamp')).toBeUndefined();
   });
 });
 

@@ -330,7 +330,7 @@
       class:active={editor.tool === 'pipette'}
       aria-pressed={editor.tool === 'pipette'}
       onclick={() => editor.selectTool('pipette', target)}
-      title={editor.keyHint(t('tool.pipette.title'))}
+      title={editor.keyHint(t('tool.pipette.title'), 'tool:pipette')}
       aria-label={t('tool.pipette.label')}
     >
       <Icon name="pipette" size={20} />

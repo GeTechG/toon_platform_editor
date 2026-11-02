@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordOf, studioCommands } from './keymap';
+import { toolKeyList, toolOrder } from './panels';
 import { addStroke, createDocument, removeLastStroke } from '../model/operations';
 import { t } from '../i18n';
+
+const keys = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+const typed = (key: string) => chordOf({ key, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })!;
+
 
 // EditorState is a runes class, so it is asserted as source (same contract
 // style as layers-panel.test.ts); the model round trip redo depends on is
@@ -70,17 +76,20 @@ describe('undo/redo availability', () => {
 
 describe('editor toolbar and hotkeys', () => {
   it('keeps z on undo and gives redo its own bare key', () => {
-    expect(editorUi).toContain("case 'z':");
-    expect(editorUi).toContain('editor.undo()');
-    expect(editorUi).toContain("case 'y':");
-    expect(editorUi).toContain('editor.redo()');
+    expect(keys.resolve('z')).toBe('undo');
+    expect(keys.resolve('Shift+z')).toBe('undo');
+    expect(keys.resolve('y')).toBe('redo');
+    expect(editorUi).toMatch(/case 'undo':\s*editor\.undo\(\)/);
+    expect(editorUi).toMatch(/case 'redo':\s*editor\.redo\(\)/);
   });
 
   // Owner, after the tenth audit: Ctrl+Shift+Z is redo everywhere else, and
   // here it undid. Bare Z and Shift+Z stay undo, as in the reference.
   it('Ctrl+Shift+Z redoes, in the document and in a transform session', () => {
-    const redoUnderCtrl = /case 'Z':\s*if \(e\.ctrlKey \|\| e\.metaKey\) \{\s*editor\.(redo|redoTransform)\(\);/g;
-    expect([...editorUi.matchAll(redoUnderCtrl)].map((m) => m[1]).sort()).toEqual(['redo', 'redoTransform']);
+    expect(keys.resolve('Ctrl+Shift+z')).toBe('redo');
+    expect(keys.resolve('Ctrl+Shift+z', { transform: true })).toBe('redo');
+    const redo = /case 'redo':\s*editor\.(redo|redoTransform)\(\);/g;
+    expect([...editorUi.matchAll(redo)].map((m) => m[1]).sort()).toEqual(['redo', 'redoTransform']);
     expect(t('editor.redo_title')).toContain('Ctrl+Shift+Z');
     expect(t('transform.redo')).toContain('Ctrl+Shift+Z');
   });
@@ -128,13 +137,13 @@ describe('transform edits go on the same undo stack', () => {
 
 describe('transform hotkeys', () => {
   it('binds the reference tool keys: D/O hand, Q/S lasso, ~ distort', () => {
-    expect(editorUi).toContain("case 'd':");
-    expect(editorUi).toContain("case 'o':");
-    expect(editorUi).toContain("editor.selectTool('drag')");
-    expect(editorUi).toContain("case 's':");
-    expect(editorUi).toContain("editor.selectTool('lasso')");
-    expect(editorUi).toContain("case '~':");
-    expect(editorUi).toContain("editor.selectTool('distort')");
+    expect(keys.resolve('d')).toBe('tool:drag');
+    expect(keys.resolve('o')).toBe('tool:drag');
+    expect(keys.resolve('q')).toBe('tool:lasso');
+    expect(keys.resolve('s')).toBe('tool:lasso');
+    expect(keys.resolve(typed('~'))).toBe('tool:distort');
+    expect(keys.resolve(typed('`'))).toBe('tool:distort');
+    expect(editorUi).toContain("editor.selectTool(command.slice('tool:'.length))");
   });
 
   it('H mirrors the selected layers horizontally and Shift+H vertically', () => {
@@ -150,10 +159,7 @@ describe('transform hotkeys', () => {
   });
 
   it('Enter applies the open transform and Escape drops it', () => {
-    expect(editorUi).toContain("case 'Enter':");
-    expect(editorUi).toContain('editor.commitTransform()');
-    expect(editorUi).toContain("case 'Escape':");
-    expect(editorUi).toContain('editor.cancelTransform()');
+    expect(editorUi).toMatch(/if \(editor\.transform && \(key === 'Enter' \|\| key === 'Escape'\)\) \{\s*e\.preventDefault\(\);\s*if \(key === 'Enter'\) \{\s*editor\.commitTransform\(\);\s*\} else \{\s*editor\.cancelTransform\(\);/);
   });
 
   it('routes the arrows, Q/W and +/- to the transform while one is open', () => {

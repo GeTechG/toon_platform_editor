@@ -5,9 +5,19 @@ import { editCells } from '../plugins/host';
 import { t } from '../i18n';
 import { keyOwner, type KeyPress } from './key-owner';
 import { pickerFirstFocus, pickerKeyAction } from './picker-model';
-import { toolKeyList } from './panels';
+import { toolKeyList, toolOrder } from './panels';
+import { buildKeymap, chordAria, chordLabel, chordOf, studioCommands } from './keymap';
+import { manualSections } from './manual-sections';
 import { keyPan, type Stage } from './viewport';
 import { createSideButtonGuard } from './side-buttons';
+
+/** What the studio hands keyOwner as `bound`: whether the default table holds this press. */
+const table = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+function held(key: string, mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): boolean {
+  const chord = chordOf({ key, code: '', ctrlKey: !!mods.ctrlKey, metaKey: !!mods.metaKey, altKey: false, shiftKey: mods.shiftKey ?? /^[A-Z]$/.test(key) });
+  return chord !== null && table.resolve(chord) !== null;
+}
+
 
 // Ответы владельца после четырнадцатого аудита, холст и окно цвета:
 // 1. Поле в окне цвета подписано «Цвет», а не «HEX», и читалке сказано, что
@@ -77,9 +87,14 @@ describe('у лассо и у руки по две клавиши, и подск
   });
 
   it('кнопка инструмента отдаёт обе клавиши и в data-key, и в aria-keyshortcuts', () => {
-    expect(toolKey).toContain('toolKeyList(tool)');
-    expect(toolKey).toContain("aria-keyshortcuts={keys.join(' ') || undefined}");
+    expect(toolKey).toContain('editor.keysOf(command).map(chordLabel)');
+    expect(toolKey).toContain('aria-keyshortcuts={editor.keyAria(command)}');
     expect(toolKey).toContain("data-key={keys.join(' / ') || undefined}");
+    for (const [tool, label, aria] of [['drag', 'D / O', 'D O'], ['lasso', 'Q / S', 'Q S']]) {
+      const chords = table.bindings(`tool:${tool}`);
+      expect(chords.map(chordLabel).join(' / ')).toBe(label);
+      expect(chords.map(chordAria).join(' ')).toBe(aria);
+    }
   });
 });
 
@@ -95,6 +110,7 @@ describe('лист, не влезающий в стол, двигается с �
       modalOpen: false,
       letterKeys: true,
       shiftKey: true,
+      bound: held(key, { ctrlKey: true, shiftKey: extra.shiftKey ?? true }),
       ...extra,
     });
 
@@ -134,8 +150,19 @@ describe('лист, не влезающий в стол, двигается с �
 
   it('студия зовёт это правило, и мануал называет сочетание', () => {
     expect(editorUi).toContain('keyPan(');
-    expect(ru.key.pan_sheet).toBeTruthy();
-    expect(editorUi).toContain("['Ctrl + Shift + ←→↑↓', t('key.pan_sheet')]");
+    const sheet = manualSections({
+      input: 'cursor',
+      tools: [],
+      quickPalette: false,
+      hasProjectFile: false,
+      fullscreen: true,
+      toolOpensBrush: false,
+      keysOf: (command) => table.bindings(command).map(chordLabel),
+    }).find((one) => one.id === 'sheet')!.rows.map((row) => row.id);
+    for (const [command, chord] of [['pan-left', 'ArrowLeft'], ['pan-right', 'ArrowRight'], ['pan-up', 'ArrowUp'], ['pan-down', 'ArrowDown']]) {
+      expect(sheet).toContain(command);
+      expect(table.resolve(`Ctrl+Shift+${chord}`)).toBe(command);
+    }
   });
 });
 

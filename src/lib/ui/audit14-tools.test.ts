@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordAria, studioCommands } from './keymap';
 import { SQUARE_STAMP } from '../format/types';
 import type { LineToolDescriptor } from '../format/types';
 import { MAX_STROKE_COORDS } from '../format/constants';
@@ -238,7 +239,10 @@ describe('undo and redo name the chord that works with the letter keys off', () 
   });
 
   it('the keys tell a reader their shortcuts, as the tool keys do', () => {
-    expect(editorUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'}");
-    expect(editorUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'}");
+    expect(editorUi).toContain("aria-keyshortcuts={editor.keyAria('undo')}");
+    expect(editorUi).toContain("aria-keyshortcuts={editor.keyAria('redo')}");
+    const keys = buildKeymap(studioCommands([]), {});
+    expect(keys.bindings('undo').map(chordAria)).toEqual(['Z', 'Control+Z']);
+    expect(keys.bindings('redo').map(chordAria)).toEqual(expect.arrayContaining(['Y', 'Control+Shift+Z']));
   });
 });

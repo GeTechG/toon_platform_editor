@@ -345,7 +345,7 @@
     <button
       class="swap"
       onclick={() => editor.swapColors()}
-      title={editor.keyHint(t('color.swap_title'))}
+      title={editor.keyHint(t('color.swap_title'), 'swap')}
       aria-label={t('color.swap')}
     ><Icon name="swap" size={16} /></button>
   </div>
@@ -485,7 +485,7 @@
           // The keys' right button, as on a palette cell.
           if (e.key === 'Enter' && e.shiftKey) (e.preventDefault(), editor.selectTool('pipette', 'fill'));
         }}
-        title={editor.keyHint(t('palette.pipette_title'))}
+        title={editor.keyHint(t('palette.pipette_title'), 'tool:pipette')}
         aria-label={t('palette.pipette')}
       ><Icon name="pipette" size={18} /></button>
     {/if}

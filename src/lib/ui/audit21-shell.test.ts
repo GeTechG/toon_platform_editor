@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, studioCommands } from './keymap';
 
 // Двадцать первый аудит, оболочка студии. Editor.svelte проверяется как
 // исходник, как в audit20-shell.test.ts.
@@ -26,7 +27,14 @@ describe('перезагрузка с живой трансформацией', 
 
 describe('Shift+F7', () => {
   it('добавляет слой, как обещает справка: без однобуквенных клавиш строка «F7 … Shift — слой» добавляла кадр', () => {
-    const keys = editorUi.slice(editorUi.indexOf('function onKeydown'), editorUi.indexOf('// Installed plugins come up'));
-    expect(keys).toMatch(/case 'a':\s*case 'F7':\s*(?:\/\/.*\s*)*if \(e\.shiftKey\) \{\s*editor\.addLayerAtActive\(e\.ctrlKey \|\| e\.metaKey\);\s*\} else if \(e\.ctrlKey \|\| e\.metaKey\) \{\s*editor\.addFrameBeforeActive\(\);/);
+    const keys = buildKeymap(studioCommands([]), {});
+    expect(keys.resolve('F7')).toBe('add-frame');
+    expect(keys.resolve('Ctrl+F7')).toBe('add-frame-before');
+    expect(keys.resolve('Shift+F7')).toBe('add-layer');
+    expect(keys.resolve('Ctrl+Shift+F7')).toBe('add-layer-before');
+    const run = editorUi.slice(editorUi.indexOf('function runCommand'), editorUi.indexOf('// Installed plugins come up'));
+    expect(run).toMatch(/case 'add-layer':\s*editor\.addLayerAtActive\(false\);/);
+    expect(run).toMatch(/case 'add-layer-before':\s*editor\.addLayerAtActive\(true\);/);
+    expect(run).toMatch(/case 'add-frame-before':\s*editor\.addFrameBeforeActive\(\);/);
   });
 });

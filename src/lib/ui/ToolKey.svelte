@@ -4,7 +4,8 @@
    * however many of these the config put in a panel — not a fixed group.
    */
   import type { EditorState } from './editor-state.svelte';
-  import { toolKeyList, toolSpec } from './panels';
+  import { toolSpec } from './panels';
+  import { chordLabel, toolCommand } from './keymap';
   import Icon from './Icon.svelte';
   import BrushPanel from './BrushPanel.svelte';
   import FillPanel from './FillPanel.svelte';
@@ -27,7 +28,8 @@
   const spec = $derived((void editor.pluginsVersion, toolSpec(tool)));
   // Both keys where a tool has two (the hand D or O, the lasso Q or S), each
   // left out when single-letter keys are off.
-  const keys = $derived(toolKeyList(tool).map((key) => editor.keyHint(key)).filter(Boolean));
+  const command = $derived(toolCommand(tool));
+  const keys = $derived(editor.keysOf(command).map(chordLabel));
   // A key is drawn wherever the arrangement puts it — the preset only decided
   // where it started. The pipette is the one exception the references make of
   // themselves: it exists only once the palette is enabled (ToolPanel.hx), and
@@ -47,7 +49,7 @@
 {#if offered && spec && brush}
   <PopKey
     label={spec.label}
-    title={t(tool === 'bucket' ? 'tool.again_fill' : 'tool.again_brush', { title: editor.keyHint(title) })}
+    title={t(tool === 'bucket' ? 'tool.again_fill' : 'tool.again_brush', { title: editor.keyHint(title, command) })}
     active={editor.tool === tool}
     gate={() => {
       if (editor.tool === tool) return true;
@@ -58,7 +60,7 @@
       'aria-pressed': editor.tool === tool,
       'data-key': keys.join(' / ') || undefined,
       'data-tool': tool,
-      'aria-keyshortcuts': keys.join(' ') || undefined,
+      'aria-keyshortcuts': editor.keyAria(command),
     }}
   >
     {#snippet face()}<Icon name={spec.icon} />{/snippet}
@@ -77,8 +79,8 @@
     onclick={() => editor.selectTool(tool)}
     data-key={keys.join(' / ') || undefined}
     data-tool={tool}
-    aria-keyshortcuts={keys.join(' ') || undefined}
-    title={editor.keyHint(title)}
+    aria-keyshortcuts={editor.keyAria(command)}
+    title={editor.keyHint(title, command)}
     aria-label={spec.label}
   >
     <Icon name={spec.icon} />

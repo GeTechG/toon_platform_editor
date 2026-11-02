@@ -537,6 +537,11 @@ export function cursorShape(width: number, crossCursor: boolean): { ring: boolea
 /** What the frame menu offers. */
 export type FrameMenuAction = 'add' | 'duplicate' | 'delete' | 'copy' | 'paste' | 'merge';
 
+/** The command behind each item of the frame menu (keymap.ts). */
+export const MENU_COMMANDS: Record<FrameMenuAction, string> = {
+  add: 'add-frame', duplicate: 'duplicate-frame', delete: 'delete-frame', copy: 'copy', paste: 'paste', merge: 'merge',
+};
+
 const MENU_LETTERS: Record<FrameMenuAction, string> = { add: 'A', duplicate: 'G', delete: '', copy: 'C', paste: 'V', merge: 'M' };
 
 /**
@@ -571,8 +576,8 @@ export function frameKeyTitle(
   action: Exclude<FrameMenuAction, 'delete'>,
   letterKeys: boolean,
   quickPalette: boolean,
+  key: { aria: string; label: string } | null = frameMenuKey(action, letterKeys, quickPalette),
 ): string {
-  const key = frameMenuKey(action, letterKeys, quickPalette);
   return key ? text.replace(`(${MENU_LETTERS[action]}`, `(${key.label}`) : withoutLetterKeys(text);
 }
 

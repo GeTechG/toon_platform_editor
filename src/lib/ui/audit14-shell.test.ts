@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { manualSections } from './manual-sections';
 import { createDocument, renameLayer } from '../model/operations';
 import { importDrafts, listDrafts, newDraftId } from '../draft/store';
 import { decodeLegacyJson, decodeToon } from '../format/toon-decode';
@@ -197,9 +198,13 @@ describe('черновики на старте', () => {
 });
 
 describe('мануал', () => {
-  it('не обещает F — во весь экран там, где его нет (iPhone): кнопки тоже нет', () => {
-    const rows = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf('.filter((row)'));
-    expect(rows).toMatch(/!hasFeather && document\.fullscreenEnabled && \['F'/);
+  it('не обещает F — во весь экран там, где его нет (iPhone): кнопки тоже нет', async () => {
+    const sheet = (fullscreen: boolean) =>
+      manualSections({ input: 'cursor', tools: [], quickPalette: false, hasProjectFile: false, fullscreen, toolOpensBrush: false, keysOf: () => [] })
+        .find((one) => one.id === 'sheet')!.rows.map((row) => row.id);
+    expect(sheet(true)).toContain('fullscreen');
+    expect(sheet(false)).not.toContain('fullscreen');
+    expect(await Bun.file(new URL('./ManualSheet.svelte', import.meta.url)).text()).toContain('fullscreen: document.fullscreenEnabled');
   });
 });
 

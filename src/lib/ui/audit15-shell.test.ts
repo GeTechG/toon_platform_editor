@@ -108,10 +108,4 @@ describe('«Скачать черновик» с карточки', () => {
 });
 
 describe('справка', () => {
-  it('колонка клавиш по самой широкой, а не 4.6rem: «Del / Backspace» и «Ctrl+Shift+Z» рвались посреди слова', () => {
-    expect(editorUi).not.toMatch(/grid-template-columns: 4\.6rem 1fr/);
-    expect(editorUi).toMatch(/grid-template-columns: fit-content\(50%\) 1fr/);
-    // subgrid — только Chrome 117+, цель сборки chrome111.
-    expect(editorUi).not.toMatch(/grid-template-columns: subgrid/);
-  });
 });

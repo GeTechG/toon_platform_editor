@@ -50,16 +50,15 @@ describe('кнопки оболочки без однобуквенных кла
   it('кнопки берут метку и подсказку из frameMenuKey, как меню кадра на ленте', () => {
     for (const [id, action, key] of [['copy', 'copy', 'copy'], ['paste', 'paste', 'paste'], ['merge', 'merge', 'merge'], ['add-frame', 'add', 'add_frame']]) {
       expect(item(id)).toContain(`data-key={menuKey('${action}')?.label}`);
-      expect(item(id)).toContain(`title={frameKeyTitle(t('editor.${key}_title'), '${action}', editor.settings.letterKeys, quickPalette)}`);
+      expect(item(id)).toContain(`title={frameKeyTitle(t('editor.${key}_title'), '${action}', editor.settings.letterKeys, quickPalette, menuKey('${action}'))}`);
     }
   });
 });
 
 describe('окно трансформации для экранного чтеца', () => {
   it('«Отразить» и шаги объявляют клавиши, которые называют', () => {
-    expect(transformUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'H' : undefined}");
-    expect(transformUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'Shift+H' : undefined}");
-    expect(transformUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'}");
-    expect(transformUi).toContain("aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'}");
+    for (const command of ['mirror-h', 'mirror-v', 'undo', 'redo']) {
+      expect(transformUi).toContain(`aria-keyshortcuts={editor.keyAria('${command}')}`);
+    }
   });
 });

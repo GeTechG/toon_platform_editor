@@ -157,17 +157,17 @@
     </details>
 
     <div class="row">
-      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-keyshortcuts={editor.settings.letterKeys ? 'H' : undefined} aria-label={editor.keyHint(t('transform.flip_h'))} title={editor.keyHint(t('transform.flip_h'))}><Icon name="flip-h" /></button>
-      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-keyshortcuts={editor.settings.letterKeys ? 'Shift+H' : undefined} aria-label={editor.keyHint(t('transform.flip_v'))} title={editor.keyHint(t('transform.flip_v'))}><Icon name="flip-v" /></button>
-      <button class="key icon step" onclick={() => editor.undoTransform()} aria-disabled={!editor.canUndoTransform} aria-keyshortcuts={editor.settings.letterKeys ? 'Z Control+Z' : 'Control+Z'} aria-label={editor.keyHint(t('transform.undo'))} title={editor.keyHint(t('transform.undo'))}><Icon name="undo" /></button>
-      <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-keyshortcuts={editor.settings.letterKeys ? 'Y Control+Shift+Z' : 'Control+Shift+Z'} aria-label={editor.keyHint(t('transform.redo'))} title={editor.keyHint(t('transform.redo'))}><Icon name="redo" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('horizontal')} aria-keyshortcuts={editor.keyAria('mirror-h')} aria-label={editor.keyHint(t('transform.flip_h'), 'mirror-h')} title={editor.keyHint(t('transform.flip_h'), 'mirror-h')}><Icon name="flip-h" /></button>
+      <button class="key icon" onclick={() => editor.mirrorTransform('vertical')} aria-keyshortcuts={editor.keyAria('mirror-v')} aria-label={editor.keyHint(t('transform.flip_v'), 'mirror-v')} title={editor.keyHint(t('transform.flip_v'), 'mirror-v')}><Icon name="flip-v" /></button>
+      <button class="key icon step" onclick={() => editor.undoTransform()} aria-disabled={!editor.canUndoTransform} aria-keyshortcuts={editor.keyAria('undo')} aria-label={editor.keyHint(t('transform.undo'), 'undo')} title={editor.keyHint(t('transform.undo'), 'undo')}><Icon name="undo" /></button>
+      <button class="key icon step" onclick={() => editor.redoTransform()} aria-disabled={!editor.canRedoTransform} aria-keyshortcuts={editor.keyAria('redo')} aria-label={editor.keyHint(t('transform.redo'), 'redo')} title={editor.keyHint(t('transform.redo'), 'redo')}><Icon name="redo" /></button>
     </div>
 
     <!-- The selection's own clipboard, for a hand with no keyboard. -->
     <div class="row">
-      <button class="key icon" onclick={() => editor.copySelected()} aria-keyshortcuts="Control+C" aria-label={t('transform.copy')} title={t('transform.copy')}><Icon name="copy" /></button>
-      <button class="key icon" onclick={() => editor.pasteSelection()} disabled={!editor.copiedPart} aria-keyshortcuts="Control+V" aria-label={t('transform.paste')} title={t('transform.paste')}><Icon name="paste" /></button>
-      <button class="key icon" onclick={() => editor.deleteSelected()} aria-keyshortcuts="Delete Backspace" aria-label={t('transform.delete')} title={t('transform.delete')}><Icon name="trash" /></button>
+      <button class="key icon" onclick={() => editor.copySelected()} aria-keyshortcuts={editor.keyAria('copy')} aria-label={t('transform.copy')} title={editor.keyHint(t('transform.copy'), 'copy')}><Icon name="copy" /></button>
+      <button class="key icon" onclick={() => editor.pasteSelection()} disabled={!editor.copiedPart} aria-keyshortcuts={editor.keyAria('paste')} aria-label={t('transform.paste')} title={editor.keyHint(t('transform.paste'), 'paste')}><Icon name="paste" /></button>
+      <button class="key icon" onclick={() => editor.deleteSelected()} aria-keyshortcuts={editor.keyAria('delete-frame')} aria-label={t('transform.delete')} title={editor.keyHint(t('transform.delete'), 'delete-frame')}><Icon name="trash" /></button>
     </div>
 
     <!-- On a phone the zoom window gives this one its row; its keys come along. -->

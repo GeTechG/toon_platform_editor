@@ -47,6 +47,7 @@
     onOpenFile,
     onOpenDrafts,
     onOpenPlugins,
+    onOpenManual,
     compact = false,
   }: {
     editor: EditorState;
@@ -59,6 +60,8 @@
     onOpenFile?: () => void;
     onOpenPlugins?: () => void;
     onOpenDrafts?: () => void;
+    /** Where the keys are changed: the list is there, not here. */
+    onOpenManual?: () => void;
   } = $props();
 
   /**
@@ -468,6 +471,10 @@
             onchange={(e) => editor.setSetting('letterKeys', e.currentTarget.checked)}
           />
         </label>
+        {@render act(t('settings.change_keys'), 'chevron-right', () => {
+          dialogEl?.close();
+          onOpenManual?.();
+        })}
         {/if}
         <!-- Расположение: arranged by hand in the editor, where the panels are.
              A list of selects said the same thing twice and nobody used it. -->

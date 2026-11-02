@@ -252,6 +252,6 @@ describe('a tool key tells a reader its shortcut', () => {
   it('the key carries aria-keyshortcuts, and only while the letter keys work', () => {
     // The shortcut was only in the tooltip, which a screen reader does not
     // read for a key that already has a name.
-    expect(toolKey).toContain("aria-keyshortcuts={keys.join(' ') || undefined}");
+    expect(toolKey).toContain('aria-keyshortcuts={editor.keyAria(command)}');
   });
 });

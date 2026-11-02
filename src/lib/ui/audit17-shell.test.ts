@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'bun:test';
+import { buildKeymap, chordAria, chordLabel, isBare, studioCommands } from './keymap';
+import { manualSections, type ManualContext } from './manual-sections';
+import { toolKeyList, toolOrder } from './panels';
 import { withoutLetterKeys } from './key-owner';
+
+const keys = buildKeymap(studioCommands(toolOrder().map((id) => ({ id, keys: toolKeyList(id) }))), {});
+const manual = (patch: Partial<ManualContext> = {}) =>
+  manualSections({
+    input: 'cursor',
+    tools: toolOrder().map((id) => ({ id, label: id })),
+    quickPalette: false,
+    hasProjectFile: false,
+    fullscreen: true,
+    toolOpensBrush: false,
+    keysOf: (command) => keys.bindings(command).map(chordLabel),
+    ...patch,
+  });
+const rowsOf = (section: string, patch: Partial<ManualContext> = {}) => manual(patch).find((one) => one.id === section)?.rows ?? [];
+const idsOf = (section: string, patch: Partial<ManualContext> = {}) => rowsOf(section, patch).map((row) => row.id);
+
 
 // Семнадцатый аудит, оболочка студии. Editor.svelte проверяется как исходник,
 // как в audit16-shell.test.ts; что можно запустить по-настоящему — запускается.
@@ -46,21 +65,36 @@ describe('кнопка «Объединить» под Мультатором', 
     const merge = item('merge');
     // Through frameMenuKey, as the frame menu (owner-seventeenth-shell).
     expect(merge).toContain("data-key={menuKey('merge')?.label}");
-    expect(merge).toContain("title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette)}");
+    expect(merge).toContain("title={frameKeyTitle(t('editor.merge_title'), 'merge', editor.settings.letterKeys, quickPalette, menuKey('merge'))}");
     expect(withoutLetterKeys(ru.editor.merge_title)).not.toMatch(/\(M\)/);
   });
 });
 
 describe('клавиши кнопок для экранного чтеца', () => {
   it('у каждой кнопки с подсказкой клавиши есть aria-keyshortcuts, как у «Отменить»', () => {
-    expect(item('save')).toMatch(/aria-keyshortcuts="Control\+S"/);
-    expect(item('copy')).toMatch(/aria-keyshortcuts=\{editor\.settings\.letterKeys \? 'C Control\+C' : 'Control\+C'\}/);
-    expect(item('paste')).toMatch(/aria-keyshortcuts=\{editor\.settings\.letterKeys \? 'V Control\+V' : 'Control\+V'\}/);
-    expect(item('merge')).toMatch(/aria-keyshortcuts=\{quickPalette \? undefined : editor\.settings\.letterKeys \? 'M Control\+M' : 'Control\+M'\}/);
-    expect(item('add-frame')).toMatch(/aria-keyshortcuts=\{editor\.settings\.letterKeys \? 'A F7' : 'F7'\}/);
-    expect(item('onion')).toMatch(/aria-keyshortcuts=\{editor\.settings\.letterKeys \? 'K' : undefined\}/);
-    expect(item('export')).toMatch(/aria-keyshortcuts=\{hasProjectFile \? undefined : 'Alt\+S'\}/);
-    expect(item('fullscreen')).toMatch(/aria-keyshortcuts=\{hasFeather \|\| !editor\.settings\.letterKeys \? undefined : 'F'\}/);
+    for (const id of ['save', 'copy', 'paste', 'onion', 'fullscreen']) {
+      expect(item(id)).toContain(`aria-keyshortcuts={editor.keyAria('${id}')}`);
+    }
+    expect(item('merge')).toContain("aria-keyshortcuts={quickPalette ? undefined : editor.keyAria('merge')}");
+    expect(item('add-frame')).toContain("aria-keyshortcuts={editor.keyAria('add-frame')}");
+    expect(item('export')).toContain("aria-keyshortcuts={hasProjectFile ? undefined : editor.keyAria('export')}");
+    // Что они объявляют: с буквами и без них.
+    const aria = (command: string, letterKeys = true) =>
+      keys.bindings(command).filter((chord) => letterKeys || !isBare(chord)).map(chordAria).join(' ');
+    expect(aria('save')).toBe('Control+S');
+    expect(aria('copy')).toBe('C Control+C');
+    expect(aria('copy', false)).toBe('Control+C');
+    expect(aria('paste')).toBe('V Control+V');
+    expect(aria('paste', false)).toBe('Control+V');
+    expect(aria('merge')).toBe('M Control+M');
+    expect(aria('merge', false)).toBe('Control+M');
+    expect(aria('add-frame')).toBe('A F7');
+    expect(aria('add-frame', false)).toBe('F7');
+    expect(aria('onion')).toBe('K');
+    expect(aria('onion', false)).toBe('');
+    expect(aria('export')).toBe('Alt+S');
+    expect(aria('fullscreen')).toBe('F');
+    expect(aria('fullscreen', false)).toBe('');
   });
 
   it('справка и черновики говорят, что откроют окно, как «Настройки»', () => {
@@ -79,9 +113,13 @@ describe('звук, брошенный после отказа', () => {
 
 describe('справка про руку', () => {
   it('называет её клавиши: + / − масштаб листа, стрелки его двигают — без справки их не найти', () => {
-    const table = editorUi.slice(editorUi.indexOf('const SHORTCUTS'), editorUi.indexOf('// Copy/paste confirmation'));
-    expect(table).toMatch(/has\('drag'\) && \['\+ \/ −, ←→↑↓', t\('key\.hand_keys'\)\]/);
-    expect(typeof ru.key.hand_keys).toBe('string');
+    const row = (id: string) => rowsOf('sheet').find((one) => one.id === id);
+    expect(row('hand_zoom')).toMatchObject({ kind: 'fixed', keys: '+ / −' });
+    expect(row('hand_pan')).toMatchObject({ kind: 'fixed', keys: '← → ↑ ↓' });
+    // Без руки этих строк нет: клавиши без неё делают другое.
+    const noHand = idsOf('sheet', { tools: [{ id: 'pencil', label: 'Кисть' }] });
+    expect(noHand).not.toContain('hand_zoom');
+    expect(noHand).not.toContain('hand_pan');
   });
 
   it('без однобуквенных клавиш остаются стрелки: + и − тогда не работают', () => {
