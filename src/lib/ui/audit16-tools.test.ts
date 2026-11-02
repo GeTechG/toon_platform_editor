@@ -110,8 +110,8 @@ describe('the manual names the keys of a live transform', () => {
     expect(ru.key.transform_turn_left).toContain('15°');
     expect(ru.key.transform_turn_right).toContain('15°');
     expect(ru.key.transform_apply).toContain('трансформ');
-    expect(ru.key.transform_move).toContain('В трансформации');
-    expect(ru.key.transform_size).toContain('В трансформации');
+    expect(ru.key.transform_move).toStartWith('Трансформация:');
+    expect(ru.key.transform_size).toStartWith('Трансформация:');
   });
 });
 

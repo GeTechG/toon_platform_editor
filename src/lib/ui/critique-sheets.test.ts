@@ -117,7 +117,7 @@ describe('words', () => {
 
   it('in «Справка» Q is not two things: the turn row says it is inside the transform', () => {
     for (const row of [ru.key.transform_turn_left, ru.key.transform_turn_right]) {
-      expect(row).toStartWith('В трансформации');
+      expect(row).toStartWith('Трансформация:');
       expect(row).toContain('15°');
     }
   });

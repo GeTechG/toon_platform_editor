@@ -96,7 +96,10 @@ describe('the dictionary says one thing one way', async () => {
 
   it('a press is «нажми» / «нажатие» and the buttons are «левая» / «правая», for mouse and touch alike', () => {
     // The strings mixed «Щёлкай», «клик», «Ctrl+клик» and «ЛКМ/ПКМ» for the same act.
-    expect(all).not.toMatch(/клик|щёлк|щелк|ЛКМ|ПКМ/i);
+    // The manual's mouse column is the exception: short, as on a cheat sheet
+    // (owner, 2026-11-02: «сократи до аббревиатур ПКМ, ЛКМ»).
+    const { mouse: _mouse, ...rest } = ru;
+    expect(JSON.stringify(rest)).not.toMatch(/клик|щёлк|щелк|ЛКМ|ПКМ/i);
     expect(ru.editor.add_frame_title).toContain('Ctrl+нажатие');
     expect(ru.layer.rename_hint).toContain('Двойное нажатие');
   });
