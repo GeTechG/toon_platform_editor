@@ -10,10 +10,12 @@
  * Nothing about the call sites changes: `{ t }` still comes from `../i18n`, and
  * so do `i18n` and `translator` for anyone who was reading them here.
  */
+import en from './i18n/en.json';
 import ru from './i18n/ru.json';
 import { BASE_LOCALE, i18n, translator } from './i18n-core';
 
 i18n.addResourceBundle(BASE_LOCALE, 'editor', ru);
+i18n.addResourceBundle('en', 'editor', en);
 
 /** The editor's own words. */
 export const t = translator('editor');

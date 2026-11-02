@@ -15,9 +15,10 @@
  * rode along to the feed. The catalogue now registers next door, where only the
  * editor's own surfaces pull it in.
  *
- * Russian is the only language today. What the library buys over a plain table
- * of strings is the door it leaves open: `addResourceBundle` takes a locale
- * that was not in the build, which is how a translation can arrive without one.
+ * Russian is the base language, English the second. On a server one instance
+ * answers many visitors at once, so the language of a call is asked of a
+ * source (`setLanguageSource`) — the site points it at the request — and the
+ * instance's own setting is only the browser's.
  */
 import i18next from 'i18next';
 
@@ -33,18 +34,32 @@ i18next.init({
   interpolation: { escapeValue: false },
 });
 
+let languageSource: () => string | undefined = () => undefined;
+
+/**
+ * Who knows the language of the call being made: the server's request, when
+ * there is one. Returning `undefined` leaves it to the instance.
+ */
+export function setLanguageSource(source: () => string | undefined): void {
+  languageSource = source;
+}
+
+function language(): string {
+  return languageSource() ?? (i18next.language || BASE_LOCALE);
+}
+
 /**
  * The reader for one namespace. Resolution happens per call, so a language
  * changed at runtime is picked up by the next render.
  *
  * ponytail: a language switched while the editor is open does not re-render by
- * itself — nothing subscribes to `languageChanged` yet, because nothing can
- * switch it. A rune that bumps on that event is the upgrade, and it belongs in
+ * itself — nothing subscribes to `languageChanged`, because the site's switch
+ * reloads the page. A rune that bumps on that event is the upgrade, and it belongs in
  * a `.svelte.ts` module: this one is imported by plain unit tests.
  */
 export function translator(namespace: string) {
   return (key: string, params?: Record<string, unknown>): string =>
-    i18next.t(key, { ns: namespace, ...params });
+    i18next.t(key, { ns: namespace, lng: language(), ...params });
 }
 
 /**
@@ -52,7 +67,7 @@ export function translator(namespace: string) {
  * translation brings its dates along instead of keeping Russian ones.
  */
 export function dateLocale(): string {
-  return i18next.language || BASE_LOCALE;
+  return language();
 }
 
 /**

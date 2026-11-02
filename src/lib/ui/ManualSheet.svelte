@@ -469,7 +469,7 @@
     min-width: 2rem;
     min-height: 1.9rem;
     padding: 0.1rem 0.5rem;
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--edge);
     border-radius: var(--r-sm);
     background: var(--paper);
     color: var(--ink);

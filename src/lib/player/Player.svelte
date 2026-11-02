@@ -19,12 +19,14 @@
   // catalogue, and the share page downloaded all of it for three strings. A
   // named import of the JSON leaves the rest out of the bundle.
   import { play } from '../i18n/ru.json';
-  import { BASE_LOCALE, i18n, translator } from '../i18n-core';
+  import { play as playEn } from '../i18n/en.json';
+  import { BASE_LOCALE, dateLocale, i18n, translator } from '../i18n-core';
   // The accent is an alias (`--accent` → `--signal-dark`), which a literal
   // fallback cannot carry: the player brings the table itself, as the studio does.
   import '../ui/tokens.css';
 
   i18n.addResourceBundle(BASE_LOCALE, 'editor', { play }, true, false);
+  i18n.addResourceBundle('en', 'editor', { play: playEn }, true, false);
   const t = translator('editor');
 
   /**
@@ -106,7 +108,7 @@
    */
   let ready = $state(false);
   let warmed = $state(0);
-  const percent = new Intl.NumberFormat(BASE_LOCALE, { style: 'percent' });
+  const percent = new Intl.NumberFormat(dateLocale(), { style: 'percent' });
 
   /**
    * The bitmap the frames are rasterized into — the sheet's, by the rule the
