@@ -122,13 +122,78 @@ const encoderSupports = async (
   }
 };
 
+interface TrialEncoder {
+  isConfigSupported(config: never): Promise<{ supported?: boolean }>;
+  new (init: { output: (chunk: unknown) => void; error: (err: Error) => void }): {
+    configure(config: never): void;
+    encode(frame: never, options?: { keyFrame?: boolean }): void;
+    flush(): Promise<void>;
+    close(): void;
+  };
+}
+
+/**
+ * Whether the encoder really encodes `config`: claimed by `isConfigSupported`
+ * and then one frame encoded. A claim alone is not enough — Firefox on Linux
+ * says yes to H.264 and fails the first frame with «The given encoding is not
+ * supported», which took every silent export down.
+ */
+export async function videoEncodes(
+  Encoder: TrialEncoder | undefined,
+  makeFrame: (width: number, height: number) => { close(): void },
+  config: { codec: string; width: number; height: number; bitrate?: number },
+): Promise<boolean> {
+  if (!(await encoderSupports(Encoder, config))) {
+    return false;
+  }
+  let failed = false;
+  let chunks = 0;
+  let encoder: InstanceType<TrialEncoder> | undefined;
+  try {
+    encoder = new Encoder!({
+      output: () => {
+        chunks++;
+      },
+      error: () => {
+        failed = true;
+      },
+    });
+    encoder.configure(config as never);
+    const frame = makeFrame(config.width, config.height);
+    try {
+      encoder.encode(frame as never, { keyFrame: true });
+    } finally {
+      frame.close();
+    }
+    await encoder.flush();
+    return !failed && chunks > 0;
+  } catch {
+    return false;
+  } finally {
+    try {
+      encoder?.close();
+    } catch {
+      // Already closed by its own error.
+    }
+  }
+}
+
+/** A blank frame of the export's size, for `videoEncodes`. */
+const blankFrame = (width: number, height: number) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d')?.fillRect(0, 0, 1, 1);
+  return new VideoFrame(canvas, { timestamp: 0 });
+};
+
 /** The best container this browser can encode into, or `null` if there is none. */
 export async function selectVideoTarget({
   hasAudio,
   width,
   height,
   probeVideo = (config) =>
-    encoderSupports(typeof VideoEncoder === 'undefined' ? undefined : VideoEncoder, {
+    videoEncodes(typeof VideoEncoder === 'undefined' ? undefined : (VideoEncoder as never), blankFrame, {
       ...config,
       width,
       height,
