@@ -25,8 +25,9 @@
   const max = $derived(editor.brushSizeMax);
   const size = $derived(editor.brushSizeLogical);
   /**
-   * Lying under a phone's canvas, the widget carries a small key to the box of
-   * the tool in hand (owner, 2026-11-11): a tool taken from «Другие» opened
+   * The widget carries a small key to the box of the tool in hand — after the
+   * slider lying under a phone's canvas, under it standing beside the canvas
+   * of a phone on its side (owner, 2026-11-11): a tool taken from «Другие» opened
    * its settings only by pressing that list's key again, which nobody guessed.
    * A tool that interrupts drawing (the pipette, the hand) has no box.
    */
@@ -66,7 +67,7 @@
       />
     </span>
   </label>
-  {#if lying && boxed}
+  {#if boxed}
     <span class="tool-box-key">
       <PopKey label={t('tool.box_key')} shutOn={editor.tool}>
         {#snippet face()}<Icon name="sliders" />{/snippet}
@@ -153,7 +154,13 @@
   .tool-box-key {
     display: flex;
     align-items: center;
+    justify-content: center;
     flex: none;
+  }
+  /* Standing, the key goes under the slider, not beside it. */
+  .brush-rail:not(.lying) {
+    flex-direction: column;
+    align-items: center;
   }
   .tool-box-key :global(.pop-key > .key:not([aria-expanded='true'])) {
     background: transparent;
