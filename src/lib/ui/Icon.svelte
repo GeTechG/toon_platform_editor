@@ -77,7 +77,8 @@
     | 'mail'
     | 'crown'
     | 'flag'
-    | 'megaphone';
+    | 'megaphone'
+    | 'bulb';
 
   const PATHS: Record<IconName, string> = {
     // An artist's brush — a round handle and a loaded tip — for the drawing
@@ -110,6 +111,8 @@
     // A complaint about a toon.
     flag: 'M5 21V4c2.300-1.500 4.700-1.500 7 0s4.700 1.500 7 0v10c-2.300 1.500-4.700 1.500-7 0s-4.700-1.500-7 0',
     megaphone: 'M4 10v4l12 5V5zM8 15.600V19h3v-2M19 9.500a3 3 0 0 1 0 5',
+    // A light bulb: an idea to draw — the theme of the day.
+    bulb: 'M9 18h6M10 21.5h4M9 15c0-1.6-.8-2.4-1.7-3.4A5.6 5.6 0 0 1 6 8a6 6 0 0 1 12 0 5.6 5.6 0 0 1-1.3 3.6c-.9 1-1.7 1.8-1.7 3.4Z',
     // A bell: the site's notifications.
     bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
     // An envelope: personal messages.
