@@ -9,10 +9,6 @@
   import type { EditorState } from './editor-state.svelte';
   import { SIZE_TRACK, positionOfSize, sizeAtPosition, sizeByKey } from './size-scale';
   import { t } from '../i18n';
-  import { toolSpec } from './panels';
-  import Icon from './Icon.svelte';
-  import PopKey from './PopKey.svelte';
-  import ToolBox from './ToolBox.svelte';
 
   import { onDestroy } from 'svelte';
 
@@ -24,14 +20,6 @@
   const min = $derived(editor.brushRange.min);
   const max = $derived(editor.brushSizeMax);
   const size = $derived(editor.brushSizeLogical);
-  /**
-   * The widget carries a small key to the box of the tool in hand — after the
-   * slider lying under a phone's canvas, under it standing beside the canvas
-   * of a phone on its side (owner, 2026-11-11): a tool taken from «Другие» opened
-   * its settings only by pressing that list's key again, which nobody guessed.
-   * A tool that interrupts drawing (the pipette, the hand) has no box.
-   */
-  const boxed = $derived((void editor.pluginsVersion, !!toolSpec(editor.tool) && !toolSpec(editor.tool)?.help));
 </script>
 
 <div class="brush-rail" class:lying role="group" aria-label={t('brush.box')}>
@@ -67,14 +55,6 @@
       />
     </span>
   </label>
-  {#if boxed}
-    <span class="tool-box-key">
-      <PopKey label={t('tool.box_key')} shutOn={editor.tool}>
-        {#snippet face()}<Icon name="sliders" />{/snippet}
-        <ToolBox {editor} tool={editor.tool} />
-      </PopKey>
-    </span>
-  {/if}
 </div>
 
 <style>
@@ -148,25 +128,6 @@
     min-height: 0;
     width: 14rem;
     height: var(--key-h);
-  }
-  /* Small to the eye — a way to the settings beside the slider, not a tool of
-     its own — and still a finger's size to press (the tap floor). */
-  .tool-box-key {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-  }
-  /* Standing, the key goes under the slider, not beside it. */
-  .brush-rail:not(.lying) {
-    flex-direction: column;
-    align-items: center;
-  }
-  .tool-box-key :global(.pop-key > .key:not([aria-expanded='true'])) {
-    background: transparent;
-  }
-  .tool-box-key :global(.pop-key > .key svg) {
-    scale: 0.75;
   }
   .brush-rail.lying .well input {
     position: static;

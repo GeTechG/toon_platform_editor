@@ -233,7 +233,7 @@ export function phoneLayout(layout: PanelLayout, _base: PanelLayout, keep: Phone
   const panels: PanelLayout = {
     left: PHONE_SIDE.filter((id) => !lying.includes(id)),
     right: [],
-    top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 ? ['tools'] : []), 'color-key'],
+    top: [...placed.filter((id) => id === 'publish'), 'more', ...lying, ...lifted, 'spring', ...inRow, ...(rest.length > 0 ? ['tools'] : []), 'tool-box', 'color-key'],
     rows: keep.tall ? rows : rows.filter((row) => !row.includes('transport')),
     float: [],
     hidden: [],

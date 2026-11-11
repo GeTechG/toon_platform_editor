@@ -10,6 +10,7 @@
   import { createLostRelease } from './lost-release';
   import { sideAsDrawn, transportKeys } from './ux-profile';
   import BrushRail from './BrushRail.svelte';
+  import ToolBox from './ToolBox.svelte';
   import BrushSizes from './BrushSizes.svelte';
   import ColorPanel from './ColorPanel.svelte';
   import PaletteBox from './PaletteBox.svelte';
@@ -286,7 +287,7 @@
           tall,
           // «Отправить», «⋯» and the colour; lying down, undo and redo and the
           // transport's six too: a frame, back, play, on, the onion skin, the sound.
-          room: toolRoom(boxW, rootFont, { publish: !!onPublish, keys: tall ? 2 : 10 }),
+          room: toolRoom(boxW, rootFont, { publish: !!onPublish, keys: tall ? 3 : 11 }),
           drawn: toolDrawn,
         })
       : null,
@@ -2764,6 +2765,21 @@
     >
       <Icon name="gear" />
     </button>
+  {:else if id === 'tool-box'}
+    <!-- The settings of the tool in hand, by the tools (owner, 2026-11-11): on
+         a phone a tool from «Другие» opened its box only by pressing that
+         list's key again, which nobody guessed. A tool with no box — the
+         pipette, the hand, the lassos — leaves the key there, shut. -->
+    {#if toolSpec(editor.tool) && !toolSpec(editor.tool)?.help}
+      <PopKey label={t('tool.box_key')} attrs={{ 'data-name': t('tool.box_short') }}>
+        {#snippet face()}<Icon name="sliders" />{/snippet}
+        <ToolBox {editor} tool={editor.tool} />
+      </PopKey>
+    {:else}
+      <button class="key icon" disabled data-name={t('tool.box_short')} title={t('tool.box_key')} aria-label={t('tool.box_key')}>
+        <Icon name="sliders" />
+      </button>
+    {/if}
   {:else if id === 'tools'}
     <!-- The tools a phone's row had no room for, behind one key: it wears the
          one in hand, as a group of tools does. -->

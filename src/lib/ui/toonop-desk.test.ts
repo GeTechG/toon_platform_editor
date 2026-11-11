@@ -50,7 +50,7 @@ describe('toonop on a desk', () => {
     const cut = phoneLayout(base, base, keep);
     expect(cut.panels.left).toEqual(['brush-rail', 'history']);
     expect(cut.panels.right).toEqual([]);
-    expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
+    expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'tool-box', 'color-key']);
     expect(cut.panels.rows).toEqual([['add-frame', 'transport', 'spring', 'onion', 'audio'], ['timeline']]);
     expect(cut.more.flatMap((group) => group.items)).not.toContain('colours');
   });

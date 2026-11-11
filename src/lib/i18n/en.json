@@ -144,6 +144,7 @@
     "again_fill": "{{title}}. Press again or right-click to open fill settings",
     "again_magnet": "{{title}}. Press again or right-click to open magnet settings",
     "box_key": "Tool settings",
+    "box_short": "Settings",
     "pencil": {
       "label": "Brush",
       "title": "Brush (B)"
