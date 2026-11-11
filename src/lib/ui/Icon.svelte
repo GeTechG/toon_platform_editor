@@ -78,7 +78,8 @@
     | 'crown'
     | 'flag'
     | 'megaphone'
-    | 'bulb';
+    | 'bulb'
+    | 'adult';
 
   const PATHS: Record<IconName, string> = {
     // An artist's brush — a round handle and a loaded tip — for the drawing
@@ -112,6 +113,8 @@
     flag: 'M5 21V4c2.300-1.500 4.700-1.500 7 0s4.700 1.500 7 0v10c-2.300 1.500-4.700 1.500-7 0s-4.700-1.500-7 0',
     megaphone: 'M4 10v4l12 5V5zM8 15.600V19h3v-2M19 9.500a3 3 0 0 1 0 5',
     // A light bulb: an idea to draw — the theme of the day.
+    // «18+» in the same ink line: the 18+ mark, apart from «hide» (an eye).
+    adult: 'M3 9l2.5-2v10M10.5 7a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 1 0 0-4.8ZM10.5 11.8a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 1 0 0-5.2ZM16 12h6M19 9v6',
     bulb: 'M9 18h6M10 21.5h4M9 15c0-1.6-.8-2.4-1.7-3.4A5.6 5.6 0 0 1 6 8a6 6 0 0 1 12 0 5.6 5.6 0 0 1-1.3 3.6c-.9 1-1.7 1.8-1.7 3.4Z',
     // A bell: the site's notifications.
     bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
