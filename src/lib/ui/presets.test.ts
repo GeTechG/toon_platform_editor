@@ -248,6 +248,8 @@ test('settings round-trip through the stored config', () => {
     fillSource: 'canvas' as const,
     fillTolerance: 35,
     fillWarning: false,
+    magnetRadius: 120,
+    magnetStrength: 80,
     pluginCatalog: 'https://plugins.example/',
     onion: {
       back: { frames: 4, opacity: 45, tinted: true, colour: '#ff0000' },
@@ -260,6 +262,17 @@ test('settings round-trip through the stored config', () => {
     settings,
   }));
   expect(parsed?.settings).toEqual(settings);
+});
+
+test('the magnet starts at radius 40 and strength 50, and a stored one is held to 5..500 and 1..100', () => {
+  const stored = (settings: unknown) => parseUiConfig(JSON.stringify({ preset: 'toonop', settings }))?.settings;
+
+  expect(DEFAULT_SETTINGS.magnetRadius).toBe(40);
+  expect(DEFAULT_SETTINGS.magnetStrength).toBe(50);
+  expect(stored({ magnetRadius: 900, magnetStrength: 0 })).toMatchObject({ magnetRadius: 500, magnetStrength: 1 });
+  expect(stored({ magnetRadius: 2, magnetStrength: 140 })).toMatchObject({ magnetRadius: 5, magnetStrength: 100 });
+  expect(stored({ magnetRadius: 'big', magnetStrength: null })).toMatchObject({ magnetRadius: 40, magnetStrength: 50 });
+  expect(stored({ magnetRadius: 63.6 })?.magnetRadius).toBe(64);
 });
 
 test('a broken onion side falls back to the default, a wild one is held to the window', () => {

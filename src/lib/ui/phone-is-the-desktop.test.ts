@@ -25,28 +25,28 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(bareShelf, base, keep);
     expect(cut.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     // The transform among them (owner, 2026-10-07: «трансформацию спрячь в инструменты»).
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet']);
   });
 
   it('the row scales with the screen: a wide one holds every tool and no key for the rest, any other only the essential ones', () => {
     const wide = phoneLayout(bareShelf, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'color-key']);
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'color-key']);
     expect(wide.tools).toEqual([]);
     // One short of them all: still only the essential ones, not «whatever came next».
     const near = phoneLayout(bareShelf, base, { ...keep, room: 5 });
     expect(near.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     const narrow = phoneLayout(bareShelf, base, { ...keep, room: 2 });
     expect(narrow.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tools', 'color-key']);
-    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(narrow.tools).toEqual(['tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet']);
   });
 
   // A phone has no shelf and no arranger (owner, 2026-10-18: «давай тогда уже
   // показывать все инструменты как есть»): every tool is in hand.
   it('a tool on the shelf is a tool like any other: behind the key for the other tools, or in the row where it fits', () => {
     // toonop's own shelf: the bucket, the distortion, the pixel brush.
-    expect(phoneLayout(base, base, keep).tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:bucket', 'tool:distort', 'tool:pixel']);
+    expect(phoneLayout(base, base, keep).tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:distort', 'tool:pixel']);
     const wide = phoneLayout(base, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:bucket', 'tool:distort', 'tool:pixel', 'color-key']);
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:distort', 'tool:pixel', 'color-key']);
     // One the profile does not draw stays out.
     expect(phoneLayout(movePanelItem(bareShelf, 'tool:pipette', 'hidden'), base, keep).tools).not.toContain('tool:pipette');
   });
@@ -157,7 +157,7 @@ describe('a phone draws toonop’s desktop', () => {
     const cut = phoneLayout(bareShelf, base, { ...keep, tall: false, room: 12 });
     expect(cut.panels.top).toEqual(['publish', 'more', 'history', 'spring:lead', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'tool:pencil', 'tool:eraser', 'tools', 'color-key']);
     expect(cut.panels.rows).toEqual([['timeline']]);
-    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop']);
+    expect(cut.tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet']);
     // «Добавить кадр», three of the transport, the onion skin and the sound take the row's room with undo and redo.
     expect(editorUi).toContain('keys: tall ? 2 : 10');
     // In the middle of the row (owner: «сделай их по центру»): a spring on either side.

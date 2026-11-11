@@ -259,6 +259,10 @@ export interface EditorSettings {
   fillTolerance: number;
   /** The bucket warns on its first pick of a session, until «Больше не показывать». */
   fillWarning: boolean;
+  /** The magnet's radius of influence, logical pixels, `MAGNET_RADIUS_MIN`..`MAGNET_RADIUS_MAX`. */
+  magnetRadius: number;
+  /** How much of the cursor's step the middle of the magnet passes on: percent, 1..100. */
+  magnetStrength: number;
   /**
    * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
    * there is no catalog: nothing can be installed from one and not a single
@@ -334,6 +338,9 @@ const FILL_SOURCES: readonly FillSource[] = ['layer', 'canvas'];
 
 /** The widest break in a line the bucket can be told to hold at, logical px. */
 export const FILL_GAP_MAX = 20;
+/** The magnet's circle, logical pixels: a few pixels to most of the sheet's height. */
+export const MAGNET_RADIUS_MIN = 5;
+export const MAGNET_RADIUS_MAX = 500;
 
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
@@ -355,6 +362,8 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   fillSource: 'layer',
   fillTolerance: 10,
   fillWarning: true,
+  magnetRadius: 40,
+  magnetStrength: 50,
   pluginCatalog: PLUGIN_CATALOG,
   // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
   // Tinted from the start, blue behind and green ahead (owner, 2026-10-18).
@@ -598,6 +607,11 @@ function normalizeFloatPos(value: unknown): Record<string, { x: number; y: numbe
   return out;
 }
 
+/** A stored number, whole and held to its range; anything else is the default. */
+function wholeIn(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : fallback;
+}
+
 function normalizeSettings(value: unknown): EditorSettings {
   const raw = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
   const flag = (key: keyof EditorSettings): boolean =>
@@ -630,6 +644,8 @@ function normalizeSettings(value: unknown): EditorSettings {
       ? Math.min(100, Math.max(0, Math.round(raw.fillTolerance)))
       : DEFAULT_SETTINGS.fillTolerance,
     fillWarning: flag('fillWarning'),
+    magnetRadius: wholeIn(raw.magnetRadius, MAGNET_RADIUS_MIN, MAGNET_RADIUS_MAX, DEFAULT_SETTINGS.magnetRadius),
+    magnetStrength: wholeIn(raw.magnetStrength, 1, 100, DEFAULT_SETTINGS.magnetStrength),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),
     onion: normalizeOnion(raw.onion),

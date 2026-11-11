@@ -142,6 +142,7 @@
   "tool": {
     "again_brush": "{{title}}. Press again or right-click to open brush settings",
     "again_fill": "{{title}}. Press again or right-click to open fill settings",
+    "again_magnet": "{{title}}. Press again or right-click to open magnet settings",
     "pencil": {
       "label": "Brush",
       "title": "Brush (B)"
@@ -186,6 +187,10 @@
     "jitter": {
       "label": "Jitter",
       "title": "Jitter (~) — wobbles the frame's strokes"
+    },
+    "magnet": {
+      "label": "Magnet",
+      "title": "Magnet (U) — drags lines along with the cursor"
     },
     "pixel": {
       "label": "Pixel",
@@ -1028,5 +1033,15 @@
     "tolerance_number": "Color tolerance, %",
     "gap": "Gaps",
     "gap_number": "Gaps, px"
+  },
+  "magnet": {
+    "box": "Magnet settings",
+    "radius": "Radius",
+    "radius_number": "Radius, px",
+    "strength": "Strength",
+    "strength_number": "Strength, %",
+    "radius_value": "{{n}} px",
+    "strength_value": "{{n}} %",
+    "radius_title": "Radius {{size}} px"
   }
 }

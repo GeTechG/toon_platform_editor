@@ -19,6 +19,7 @@
     | 'feather'
     | 'pixel'
     | 'mega-eraser'
+    | 'magnet'
     | 'gear'
     | 'download'
     | 'send'
@@ -152,6 +153,8 @@
     pixel: 'M4 4h5v5h5v5h5v5H4zM4 9h5M4 14h10M9 9v10M14 14v5',
     // The eraser silhouette cutting a line in two.
     'mega-eraser': 'M3 12h4M17 12h4M8.5 5.5h7v13h-7z',
+    // A horseshoe magnet, its poles marked (Lucide's magnet): the tool that drags lines along.
+    magnet: 'm6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15M5 8l4 4M12 15l4 4',
     // An open hand: the tool that drags the canvas about.
     hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 12V4.5a1.5 1.5 0 0 1 3 0V12M14 12V6.5a1.5 1.5 0 0 1 3 0V13M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a1.5 1.5 0 0 1 2.6-1.5L8 15',
     // The frame taken in hand: a box with a handle at every corner.

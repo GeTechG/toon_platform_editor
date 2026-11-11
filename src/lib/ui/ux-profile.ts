@@ -29,6 +29,7 @@ const TOONOP_TOOLS: readonly string[] = [
   'drag',
   'lasso',
   'loop',
+  'magnet',
   'distort',
   'pixel',
 ];

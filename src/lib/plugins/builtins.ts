@@ -81,6 +81,9 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
   // before it had a loop to draw, and stored arrangements hold that name.
   loop: { icon: 'lasso', title: t('tool.lasso.title'), label: t('tool.lasso.label'), key: 'R', help: true },
   distort: distortTool,
+  // Drags the lines under its circle along with the cursor (owner,
+  // 2026-11-11); the canvas runs it, its two numbers are the settings'.
+  magnet: { icon: 'magnet', title: t('tool.magnet.title'), label: t('tool.magnet.label'), key: 'U' },
   'toonop-brush': {
     icon: 'pencil',
     title: t('tool.editor_brush.title'),
@@ -146,6 +149,7 @@ const TOONOP_PRESET: PluginPreset = {
         'tool:drag',
         'tool:lasso',
         'tool:loop',
+        'tool:magnet',
         'history',
       ],
       right: ['colours'],

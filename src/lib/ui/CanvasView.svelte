@@ -65,6 +65,7 @@
   import { colourDistance, distanceField, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
+  import { MAGNET_RADIUS_MAX, MAGNET_RADIUS_MIN } from './presets';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
@@ -110,7 +111,10 @@
    * Shift+drag sizing the brush (Krita): where it was pressed, the size it
    * started from and the one it has reached. Nothing is written until it ends.
    */
-  let sizing = $state<{ pointerId: number; x: number; y: number; start: number; size: number } | null>(null);
+  let sizing = $state<{ pointerId: number; x: number; y: number; start: number; size: number; magnet: boolean } | null>(null);
+  /** The magnet in hand: the ring is its circle of influence, and Shift+drag sizes that. */
+  const magnet = $derived(editor.tool === 'magnet');
+
   /**
    * The finger's way to the thickness (Procreate Dreams' sidebar): a vertical
    * rail on the edge of the stage, for a hand that touches — a coarse pointer
@@ -122,7 +126,8 @@
   let railTrack = $state<HTMLElement>();
   /** The size ring of a gesture: the Shift+drag where it began, the rail — or the sidebar's slider — in the middle. */
   const ring = $derived(
-    sizing ? { x: sizing.x, y: sizing.y, size: sizing.size }
+    // The magnet's size is its radius: its ring is twice that across.
+    sizing ? { x: sizing.x, y: sizing.y, size: sizing.magnet ? sizing.size * 2 : sizing.size, magnet: sizing.magnet }
     : railHeld ? { x: railHeld.x, y: railHeld.y, size: editor.brushSizeLogical }
     // The sidebar's slider: the ring alone — the number stands over the slider
     // (owner, 2026-10-05: «слово не нужно, а размер нужно»).
@@ -239,6 +244,8 @@
   let megaAt: { layer: Layer | undefined; cell: Frame | undefined } = { layer: undefined, cell: undefined };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
+  /** Where the magnet's pointer was on its last move, document units; null when it is not held. */
+  let magnetAt: [number, number] | null = null;
   /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
   let pluginGrab: { pointerId: number; spec: NonNullable<ReturnType<typeof toolSpec>> } | null = null;
   /**
@@ -521,12 +528,12 @@
    * measure. A pixel is a pixel: the width the slider shows is the width that
    * lands, and only the view (fit and zoom) stands between them.
    */
-  const cursorDiameter = $derived(diameterOf(editor.brushSizeLogical));
+  const cursorDiameter = $derived(magnet ? diameterOf(editor.settings.magnetRadius * 2) : diameterOf(editor.brushSizeLogical));
   function diameterOf(size: number): number {
     return Math.max(1, (size * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE));
   }
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
-  const cursorParts = $derived(cursorShape(editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
+  const cursorParts = $derived(cursorShape(magnet ? editor.settings.magnetRadius * 2 : editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
 
   /** The workspace the sheet was last laid out on; null until it is measured. */
   let placedStage: Stage | null = null;
@@ -1443,8 +1450,18 @@
     grab = null;
     megaGesture = null;
     loopGesture = null;
+    releaseMagnet();
     releasePluginGrab();
     gesturePointerId = -1;
+  }
+
+  /** Lets go of the magnet: whatever it moved is one step of undo. */
+  function releaseMagnet(): void {
+    if (magnetAt) {
+      magnetAt = null;
+      gesturePointerId = -1;
+      editor.endMagnet();
+    }
   }
 
   /**
@@ -1747,7 +1764,7 @@
    */
   function drawingBusy(): boolean {
     return pointer.session !== null || grab !== null || megaGesture !== null || loopGesture !== null || pluginGrab !== null
-      || sizing !== null;
+      || magnetAt !== null || sizing !== null;
   }
 
   /** The pen (or mouse) is in the middle of something on the sheet. */
@@ -1861,8 +1878,8 @@
     // pen tip; a finger never, it has no Shift. No dot, no stroke.
     if (e.shiftKey && e.button === 0 && e.pointerType !== 'touch' && !editor.transform
       && editor.tool !== 'pipette' && !overlayCursor) {
-      const size = editor.brushSizeLogical;
-      sizing = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, start: size, size };
+      const size = magnet ? editor.settings.magnetRadius : editor.brushSizeLogical;
+      sizing = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, start: size, size, magnet };
       canvasEl.setPointerCapture(e.pointerId);
       return;
     }
@@ -1918,6 +1935,16 @@
       pluginGrab = { pointerId: e.pointerId, spec };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
+      return;
+    }
+    // The magnet drags the lines under its circle on every selected visible
+    // layer; the drag is one step of undo (tools/magnet.ts).
+    if (editor.tool === 'magnet') {
+      if (editor.beginMagnet()) {
+        magnetAt = toDocUnits(e);
+        canvasEl.setPointerCapture(e.pointerId);
+        gesturePointerId = e.pointerId;
+      }
       return;
     }
     if (editor.tool === 'bucket') {
@@ -1993,7 +2020,7 @@
     // gesture here, or the stroke follows the hover and refuses the next press.
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
-      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || panning || sizing)) {
+      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || magnetAt || panning || sizing)) {
       // Firefox on Windows sends a Wacom pen's light line one move with no
       // buttons while the tip stays down: the line goes on. Whether the pen
       // really left is told by its next press (onPointerDown).
@@ -2020,8 +2047,9 @@
       cancelHold();
     }
     if (sizing && e.pointerId === sizing.pointerId) {
-      sizing.size = sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y,
-        editor.brushRange.min, editor.brushSizeMax);
+      sizing.size = sizing.magnet
+        ? sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y, MAGNET_RADIUS_MIN, MAGNET_RADIUS_MAX)
+        : sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y, editor.brushRange.min, editor.brushSizeMax);
       return;
     }
     // Read once here and handed to every branch below, so a move costs one query.
@@ -2066,6 +2094,12 @@
     if (loopGesture && e.pointerId === gesturePointerId) {
       const [x, y] = toDocUnits(e, rect);
       loopGesture.push(Math.round(x), Math.round(y));
+      return;
+    }
+    if (magnetAt && e.pointerId === gesturePointerId) {
+      const [x, y] = toDocUnits(e, rect);
+      editor.dragMagnet(magnetAt, [x, y]);
+      magnetAt = [x, y];
       return;
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
@@ -2197,8 +2231,10 @@
       return;
     }
     if (sizing && e.pointerId === sizing.pointerId) {
-      // Through the slider's own setter: clamped, saved to the brush record.
-      editor.brushSizeLogical = sizing.size;
+      // Through the slider's own setter: clamped, saved to the brush record —
+      // or to the magnet's radius.
+      if (sizing.magnet) editor.setMagnetRadius(sizing.size);
+      else editor.brushSizeLogical = sizing.size;
       sizing = null;
       return;
     }
@@ -2208,6 +2244,10 @@
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
       releasePluginGrab();
+      return;
+    }
+    if (magnetAt && e.pointerId === gesturePointerId) {
+      releaseMagnet();
       return;
     }
     if (loopGesture && e.pointerId === gesturePointerId) {
@@ -2487,14 +2527,15 @@
       class="size-number"
       style:transform="translate({ring.x}px, {ring.y}px) translate(-50%, calc(-100% - 12px))"
       aria-hidden="true"
-    >{t('brush.size_title', { size: ring.size })}</span>
+    >{ring.magnet ? t('magnet.radius_title', { size: ring.size / 2 }) : t('brush.size_title', { size: ring.size })}</span>
     {/if}
   {/if}
   <!-- The thickness for a finger (Procreate Dreams' sidebar): on the stage,
        not in a column, so it stays whatever the panels around it do. Through
        the preview it stays as the fps slider does, aria-disabled: gone, it
        dropped the focus on it to <body> (owner, after the seventeenth audit). -->
-  {#if rail}
+  <!-- The rail is the brush's: under the magnet it would size a line nobody is drawing. -->
+  {#if rail && !magnet}
   <div
     class="size-rail"
     data-over-sheet="side"

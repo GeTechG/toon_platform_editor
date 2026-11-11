@@ -16,6 +16,7 @@ import {
   MAX_DOCUMENT_WEIGHT,
   CANVAS_LOGICAL_HEIGHT,
   CANVAS_LOGICAL_WIDTH,
+  FIXED_POINT_SCALE,
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
@@ -106,6 +107,7 @@ import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-co
 import { filmTiming, type FilmTiming } from '../model/timing';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
+import { MagnetSession } from '../tools/magnet';
 import type { LassoCut, TransformSession } from '../tools/lasso';
 import { copyPart, eraseSelected, pastePart, type CopiedPart } from '../tools/selection-clipboard';
 import {
@@ -210,6 +212,8 @@ import {
   defaultBrushOf,
   DEFAULT_SETTINGS,
   loadUiConfig,
+  MAGNET_RADIUS_MAX,
+  MAGNET_RADIUS_MIN,
   presetBrushType,
   presetDefaultBrush,
   presetExists,
@@ -329,6 +333,8 @@ export class EditorState {
   transformWidthWithScale = $state(false);
   /** The live gesture of a tool that brought its own (plugins): the cells as they were on press. */
   private pluginGesture: { snapshots: CellSnapshot[]; wrote: boolean } | null = null;
+  /** The magnet's drag: its unrounded points, over the cells the gesture snapshotted. */
+  private magnet: MagnetSession | null = null;
   /**
    * Bumped whenever the register changed. The register is plain data outside
    * the runes (it is read by pure tests), so this is what tells the rail and
@@ -2991,6 +2997,64 @@ export class EditorState {
     }
   }
 
+  /**
+   * The magnet takes hold (tools/magnet.ts): the current frame on every
+   * selected visible layer is snapshotted, as for a plugin's gesture, so the
+   * whole drag is one step of undo — and none if it moved nothing.
+   */
+  beginMagnet(): boolean {
+    if (!this.beginPluginGesture() || !this.pluginGesture) {
+      return false;
+    }
+    const cells = this.pluginGesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    this.magnet = new MagnetSession(cells, this.doc.tools);
+    return true;
+  }
+
+  /** One move of the magnet, from where the pointer was to where it is, in document units. */
+  dragMagnet(from: readonly [number, number], to: readonly [number, number]): void {
+    const gesture = this.pluginGesture;
+    if (!this.magnet || !gesture) {
+      return;
+    }
+    const next = this.magnet.drag({
+      from,
+      to,
+      radius: this.settings.magnetRadius * FIXED_POINT_SCALE,
+      strength: this.settings.magnetStrength / 100,
+    });
+    if (!next) {
+      return;
+    }
+    const before = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    try {
+      gesture.snapshots.forEach(({ layer, frame }, i) => {
+        // A fresh cell object: that identity change tells the canvas its buffers are stale.
+        this.#write((doc) => replaceStrokes(doc, layer, frame, next[i]));
+      });
+      gesture.wrote = true;
+      this.touched = true;
+    } catch (err) {
+      // The points put in to bend a line can reach the frame's limit: the
+      // move is refused whole, and the drag stops writing.
+      this.#write((doc) => {
+        gesture.snapshots.forEach(({ layer, frame }, i) => {
+          doc.layers[layer].frames[frame] = before[i];
+        });
+      });
+      this.magnet = null;
+      if (!this.refuseAtLimit(err)) {
+        throw err;
+      }
+    }
+  }
+
+  /** Pointer up: one step of undo for the whole drag. */
+  endMagnet(): void {
+    this.magnet = null;
+    this.endPluginGesture();
+  }
+
   /** The strokes a plugin may rewrite: the current frame on the visible selected layers. */
   pluginStrokes(): PluginStroke[] {
     return this.visibleSelectedLayers.flatMap((layer) =>
@@ -3212,14 +3276,36 @@ export class EditorState {
     this.transform = null;
   }
 
-  /** Grows the brush by the profile's step (+ hotkey), up to its maximum. */
+  /** Grows the brush by the profile's step (+ hotkey), up to its maximum; the magnet's circle while it is in hand. */
   increaseBrushSize(): void {
+    if (this.tool === 'magnet') {
+      this.setMagnetRadius(nudgeBrushSize(this.settings.magnetRadius, 1, this.ux));
+      return;
+    }
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, 1, this.ux);
   }
 
-  /** Shrinks the brush by the profile's step (- hotkey), down to the minimum. */
+  /** Shrinks the brush by the profile's step (- hotkey), down to the minimum; the magnet's circle while it is in hand. */
   decreaseBrushSize(): void {
+    if (this.tool === 'magnet') {
+      this.setMagnetRadius(nudgeBrushSize(this.settings.magnetRadius, -1, this.ux));
+      return;
+    }
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, -1, this.ux);
+  }
+
+  /** The magnet's radius of influence, logical pixels, held to its range. */
+  setMagnetRadius(value: number): void {
+    if (Number.isFinite(value)) {
+      this.setSetting('magnetRadius', Math.min(MAGNET_RADIUS_MAX, Math.max(MAGNET_RADIUS_MIN, Math.round(value))));
+    }
+  }
+
+  /** The magnet's strength, percent 1–100. */
+  setMagnetStrength(value: number): void {
+    if (Number.isFinite(value)) {
+      this.setSetting('magnetStrength', Math.min(100, Math.max(1, Math.round(value))));
+    }
   }
 
   /** One settings option, applied and persisted at once. */
