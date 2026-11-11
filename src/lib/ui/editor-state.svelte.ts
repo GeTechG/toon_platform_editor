@@ -684,6 +684,8 @@ export class EditorState {
 
   /** What a width may be on the canvas in hand — the brush says, else the profile. */
   get brushRange(): { min: number; max: number } {
+    // The magnet's size is its radius, on the same sliders (owner, 2026-11-11).
+    if (this.tool === 'magnet') return { min: MAGNET_RADIUS_MIN, max: MAGNET_RADIUS_MAX };
     return widthRange(this.widthRules?.range, brushCeiling(this.ux));
   }
 
@@ -740,8 +742,13 @@ export class EditorState {
     return this.brush.minDistance;
   }
 
+  /**
+   * The size every size control reads — the rail, the slider, Shift+drag,
+   * + and −: the brush's width, or with the magnet in hand its radius
+   * (owner, 2026-11-11: the strip must size the magnet too).
+   */
   get brushSizeLogical(): number {
-    return this.brush.width;
+    return this.tool === 'magnet' ? this.settings.magnetRadius : this.brush.width;
   }
 
   /**
@@ -755,6 +762,10 @@ export class EditorState {
   }
 
   set brushSizeLogical(value: number) {
+    if (this.tool === 'magnet') {
+      this.setMagnetRadius(value);
+      return;
+    }
     const range = this.brushRange;
     this.editBrush({ width: Math.min(range.max, Math.max(range.min, Math.round(value))) });
   }
@@ -3275,19 +3286,11 @@ export class EditorState {
 
   /** Grows the brush by the profile's step (+ hotkey), up to its maximum; the magnet's circle while it is in hand. */
   increaseBrushSize(): void {
-    if (this.tool === 'magnet') {
-      this.setMagnetRadius(nudgeBrushSize(this.settings.magnetRadius, 1, this.ux));
-      return;
-    }
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, 1, this.ux);
   }
 
   /** Shrinks the brush by the profile's step (- hotkey), down to the minimum; the magnet's circle while it is in hand. */
   decreaseBrushSize(): void {
-    if (this.tool === 'magnet') {
-      this.setMagnetRadius(nudgeBrushSize(this.settings.magnetRadius, -1, this.ux));
-      return;
-    }
     this.brushSizeLogical = nudgeBrushSize(this.brushSizeLogical, -1, this.ux);
   }
 

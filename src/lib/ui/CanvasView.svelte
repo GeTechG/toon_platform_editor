@@ -65,7 +65,6 @@
   import { colourDistance, distanceField, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
   import { clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
-  import { MAGNET_RADIUS_MAX, MAGNET_RADIUS_MIN } from './presets';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
   import {
     PointerStrokeController,
@@ -128,10 +127,10 @@
   const ring = $derived(
     // The magnet's size is its radius: its ring is twice that across.
     sizing ? { x: sizing.x, y: sizing.y, size: sizing.magnet ? sizing.size * 2 : sizing.size, magnet: sizing.magnet }
-    : railHeld ? { x: railHeld.x, y: railHeld.y, size: editor.brushSizeLogical }
+    : railHeld ? { x: railHeld.x, y: railHeld.y, size: editor.brushSizeLogical * (magnet ? 2 : 1), magnet }
     // The sidebar's slider: the ring alone — the number stands over the slider
     // (owner, 2026-10-05: «слово не нужно, а размер нужно»).
-    : editor.sizeShown && !editor.playing ? { ...stageMiddle(), size: editor.brushSizeLogical, bare: true }
+    : editor.sizeShown && !editor.playing ? { ...stageMiddle(), size: editor.brushSizeLogical * (magnet ? 2 : 1), magnet, bare: true }
     : null,
   );
   function stageMiddle(): { x: number; y: number } {
@@ -528,12 +527,12 @@
    * measure. A pixel is a pixel: the width the slider shows is the width that
    * lands, and only the view (fit and zoom) stands between them.
    */
-  const cursorDiameter = $derived(magnet ? diameterOf(editor.settings.magnetRadius * 2) : diameterOf(editor.brushSizeLogical));
+  const cursorDiameter = $derived(magnet ? diameterOf(editor.brushSizeLogical * 2) : diameterOf(editor.brushSizeLogical));
   function diameterOf(size: number): number {
     return Math.max(1, (size * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE));
   }
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
-  const cursorParts = $derived(cursorShape(magnet ? editor.settings.magnetRadius * 2 : editor.brushSizeLogical, editor.ux.crossCursor && editor.settings.crossCursor));
+  const cursorParts = $derived(cursorShape(editor.brushSizeLogical * (magnet ? 2 : 1), editor.ux.crossCursor && editor.settings.crossCursor));
 
   /** The workspace the sheet was last laid out on; null until it is measured. */
   let placedStage: Stage | null = null;
@@ -1878,7 +1877,7 @@
     // pen tip; a finger never, it has no Shift. No dot, no stroke.
     if (e.shiftKey && e.button === 0 && e.pointerType !== 'touch' && !editor.transform
       && editor.tool !== 'pipette' && !overlayCursor) {
-      const size = magnet ? editor.settings.magnetRadius : editor.brushSizeLogical;
+      const size = editor.brushSizeLogical;
       sizing = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, start: size, size, magnet };
       canvasEl.setPointerCapture(e.pointerId);
       return;
@@ -2047,9 +2046,8 @@
       cancelHold();
     }
     if (sizing && e.pointerId === sizing.pointerId) {
-      sizing.size = sizing.magnet
-        ? sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y, MAGNET_RADIUS_MIN, MAGNET_RADIUS_MAX)
-        : sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y, editor.brushRange.min, editor.brushSizeMax);
+      sizing.size = sizeFromDrag(sizing.start, e.clientX - sizing.x, e.clientY - sizing.y,
+        editor.brushRange.min, editor.brushSizeMax);
       return;
     }
     // Read once here and handed to every branch below, so a move costs one query.
@@ -2230,9 +2228,8 @@
     }
     if (sizing && e.pointerId === sizing.pointerId) {
       // Through the slider's own setter: clamped, saved to the brush record —
-      // or to the magnet's radius.
-      if (sizing.magnet) editor.setMagnetRadius(sizing.size);
-      else editor.brushSizeLogical = sizing.size;
+      // or, with the magnet in hand, to its radius.
+      editor.brushSizeLogical = sizing.size;
       sizing = null;
       return;
     }
@@ -2532,8 +2529,7 @@
        not in a column, so it stays whatever the panels around it do. Through
        the preview it stays as the fps slider does, aria-disabled: gone, it
        dropped the focus on it to <body> (owner, after the seventeenth audit). -->
-  <!-- The rail is the brush's: under the magnet it would size a line nobody is drawing. -->
-  {#if rail && !magnet}
+  {#if rail}
   <div
     class="size-rail"
     data-over-sheet="side"

@@ -7,9 +7,7 @@
   import { toolSpec } from './panels';
   import { chordLabel, toolCommand } from './keymap';
   import Icon from './Icon.svelte';
-  import BrushPanel from './BrushPanel.svelte';
-  import FillPanel from './FillPanel.svelte';
-  import MagnetPanel from './MagnetPanel.svelte';
+  import ToolBox from './ToolBox.svelte';
   import PopKey from './PopKey.svelte';
   import { t } from '../i18n';
 
@@ -65,14 +63,8 @@
     }}
   >
     {#snippet face()}<Icon name={spec.icon} />{/snippet}
-    <!-- The bucket draws no line: its key opens its own box. -->
-    {#if tool === 'bucket'}
-      <FillPanel {editor} />
-    {:else if tool === 'magnet'}
-      <MagnetPanel {editor} />
-    {:else}
-      <BrushPanel {editor} />
-    {/if}
+    <!-- The bucket and the magnet draw no line: their keys open their own boxes. -->
+    <ToolBox {editor} {tool} />
   </PopKey>
 {:else if offered && spec}
   <button
