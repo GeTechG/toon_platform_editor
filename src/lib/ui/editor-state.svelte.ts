@@ -2998,31 +2998,28 @@ export class EditorState {
   }
 
   /**
-   * The magnet takes hold (tools/magnet.ts): the current frame on every
-   * selected visible layer is snapshotted, as for a plugin's gesture, so the
-   * whole drag is one step of undo — and none if it moved nothing.
+   * The magnet takes hold at `at`, document units (tools/magnet.ts): the
+   * current frame on every selected visible layer is snapshotted, as for a
+   * plugin's gesture, so the whole drag is one step of undo — and none if it
+   * moved nothing. What the circle holds now is what the drag moves.
    */
-  beginMagnet(): boolean {
+  beginMagnet(at: readonly [number, number]): boolean {
     if (!this.beginPluginGesture() || !this.pluginGesture) {
       return false;
     }
     const cells = this.pluginGesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
     this.magnet = new MagnetSession(cells, this.doc.tools);
+    this.magnet.grab(at, this.settings.magnetRadius * FIXED_POINT_SCALE, this.settings.magnetStrength / 100);
     return true;
   }
 
-  /** One move of the magnet, from where the pointer was to where it is, in document units. */
-  dragMagnet(from: readonly [number, number], to: readonly [number, number]): void {
+  /** One move of the magnet: the points it took follow the pointer to `to`, document units. */
+  dragMagnet(to: readonly [number, number]): void {
     const gesture = this.pluginGesture;
     if (!this.magnet || !gesture) {
       return;
     }
-    const next = this.magnet.drag({
-      from,
-      to,
-      radius: this.settings.magnetRadius * FIXED_POINT_SCALE,
-      strength: this.settings.magnetStrength / 100,
-    });
+    const next = this.magnet.drag(to);
     if (!next) {
       return;
     }

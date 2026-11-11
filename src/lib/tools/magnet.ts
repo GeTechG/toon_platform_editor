@@ -1,43 +1,22 @@
 /**
- * The magnet: lines under its circle are dragged along with the cursor
- * (owner, 2026-11-11 — «тащит за курсором», not pulled into the centre). A
- * point at distance `d` from where the cursor was moves by the cursor's step
- * times the strength times `(1 - (d/R)²)²`: whole under the middle, nothing
- * at the rim, smooth in between, so a line bends instead of breaking.
+ * The magnet: a press takes hold of the points of the lines under its circle,
+ * and until the button is let go those points, and only those, follow the
+ * cursor (owner, 2026-11-11: the first one moved whatever it passed over —
+ * «больше похож на палец из фотошопа»). A point taken at distance `d` from the
+ * press stands at where it was plus the cursor's travel from the press times
+ * the strength times `(1 - (d/R)²)²`: whole under the middle, nothing at the
+ * rim, so a line bends instead of breaking. Long segments under the circle are
+ * split once, on the press, so a straight line of two points bends too.
  *
- * Pure: the editor snapshots the cells, calls this on every move and writes
- * what comes back, the whole drag being one step of undo.
+ * Pure: the editor snapshots the cells, hands them here, and writes what each
+ * move gives back; the whole drag is one step of undo.
  */
 
 import { MAX_STROKE_COORDS } from '../format/constants';
 import type { Stroke, ToolDescriptor } from '../format/types';
 import { quantizeStrokePoints } from '../model/operations';
 
-export interface MagnetPull {
-  /** Where the cursor was, document units. */
-  readonly from: readonly [number, number];
-  /** Where it is now. */
-  readonly to: readonly [number, number];
-  /** Radius of influence, document units. */
-  readonly radius: number;
-  /** Strength of influence, 0–1. */
-  readonly strength: number;
-  /**
-   * Split long segments under the circle first, so a straight line of two
-   * points bends. Only for smooth lines: a pixel stroke's points are marks,
-   * and a cubic one's count is fixed by its segments.
-   */
-  readonly densify: boolean;
-}
-
-export interface MagnetResult {
-  points: number[];
-  pressure?: number[];
-  /** Whether any point moved at all: a drag past every line is no step of undo. */
-  moved: boolean;
-}
-
-/** How much of the step a point at squared distance `d2` gets. */
+/** How much of the cursor's travel a point at squared distance `d2` from the press takes. */
 function weight(d2: number, r2: number): number {
   if (d2 >= r2) return 0;
   const k = 1 - d2 / r2;
@@ -91,43 +70,27 @@ function densify(
   return { points: out, pressure: press ?? pressure?.slice() };
 }
 
-export function magnetStroke(
-  points: readonly number[],
-  pressure: readonly number[] | undefined,
-  pull: MagnetPull,
-): MagnetResult {
-  const [cx, cy] = pull.from;
-  const dx = (pull.to[0] - cx) * pull.strength;
-  const dy = (pull.to[1] - cy) * pull.strength;
-  const r2 = pull.radius * pull.radius;
-  const split = pull.densify ? densify(points, pressure, cx, cy, pull.radius) : { points: points.slice(), pressure: pressure?.slice() };
-  const out = split.points;
-  let moved = false;
-  for (let i = 0; i + 1 < out.length; i += 2) {
-    const w = weight((out[i] - cx) ** 2 + (out[i + 1] - cy) ** 2, r2);
-    if (w > 0 && (dx !== 0 || dy !== 0)) {
-      out[i] += dx * w;
-      out[i + 1] += dy * w;
-      moved = true;
-    }
-  }
-  return { points: out, pressure: split.pressure, moved };
-}
-
 /** The cells a drag may rewrite, as the editor snapshotted them on press. */
 export interface MagnetCell {
   readonly strokes: readonly Stroke[];
 }
 
-/**
- * One drag of the magnet over the cells of every selected visible layer.
- *
- * It keeps the points unrounded between moves: the document holds whole
- * units, and a slow drag passes on less than one at the rim on every move —
- * rounded each time, those lines never moved at all.
- */
+interface Held {
+  /** Where the points stood at the press (split there, when the line bends). */
+  points: number[];
+  pressure?: number[];
+  /** Each point's share of the cursor's travel, fixed at the press; 0 for one not taken. */
+  weights: number[];
+  readonly tool_id: number;
+  readonly tool?: ToolDescriptor;
+  readonly densify: boolean;
+}
+
 export class MagnetSession {
-  readonly #cells: { points: number[]; pressure?: number[]; tool_id: number; densify: boolean; tool?: ToolDescriptor }[][];
+  readonly #cells: Held[][];
+  #at: readonly [number, number] = [0, 0];
+  #strength = 0;
+  #took = false;
 
   constructor(cells: readonly MagnetCell[], tools: readonly ToolDescriptor[]) {
     this.#cells = cells.map((cell) => cell.strokes.map((stroke) => {
@@ -135,37 +98,51 @@ export class MagnetSession {
       return {
         points: [...stroke.points],
         pressure: stroke.pressure ? [...stroke.pressure] : undefined,
+        weights: [],
         tool_id: stroke.tool_id,
+        tool,
         // Only a line read as a polyline or a smooth chain bends by more
         // points: a stamp's points are its marks, a cubic one's count is its
         // segments'.
         densify: !!tool && tool.kind !== 'stamp' && tool.geometry !== 'cubic',
-        tool,
       };
     }));
   }
 
-  /** The new strokes of every cell, or null when no point moved. */
-  drag(pull: Omit<MagnetPull, 'densify'>): Stroke[][] | null {
-    let moved = false;
-    for (const cell of this.#cells) {
-      for (const stroke of cell) {
-        const next = magnetStroke(stroke.points, stroke.pressure, { ...pull, densify: stroke.densify });
-        if (!next.moved) continue;
+  /** The press: which points the circle holds, and how much of the travel each takes. */
+  grab(at: readonly [number, number], radius: number, strength: number): void {
+    this.#at = [at[0], at[1]];
+    this.#strength = strength;
+    this.#took = false;
+    const r2 = radius * radius;
+    for (const held of this.#cells.flat()) {
+      if (held.densify) {
+        const split = densify(held.points, held.pressure, at[0], at[1], radius);
         // More points than a stroke may hold: it bends by the ones it has.
-        const fits = next.points.length <= MAX_STROKE_COORDS;
-        const kept = fits ? next : magnetStroke(stroke.points, stroke.pressure, { ...pull, densify: false });
-        stroke.points = kept.points;
-        stroke.pressure = kept.pressure;
-        moved = true;
+        if (split.points.length <= MAX_STROKE_COORDS) {
+          held.points = split.points;
+          held.pressure = split.pressure;
+        }
+      }
+      held.weights = [];
+      for (let i = 0; i + 1 < held.points.length; i += 2) {
+        const w = weight((held.points[i] - at[0]) ** 2 + (held.points[i + 1] - at[1]) ** 2, r2);
+        held.weights.push(w);
+        if (w > 0) this.#took = true;
       }
     }
-    if (!moved) return null;
-    return this.#cells.map((cell) => cell.map((stroke) => {
-      const points = stroke.points.map(Math.round);
-      if (stroke.tool) quantizeStrokePoints(points, stroke.tool);
-      const out: Stroke = { points, tool_id: stroke.tool_id };
-      if (stroke.pressure) out.pressure = [...stroke.pressure];
+  }
+
+  /** The new strokes of every cell with the cursor at `to`, or null when the press took no point. */
+  drag(to: readonly [number, number]): Stroke[][] | null {
+    if (!this.#took) return null;
+    const dx = (to[0] - this.#at[0]) * this.#strength;
+    const dy = (to[1] - this.#at[1]) * this.#strength;
+    return this.#cells.map((cell) => cell.map((held) => {
+      const points = held.points.map((value, i) => Math.round(value + (i % 2 === 0 ? dx : dy) * (held.weights[i >> 1] ?? 0)));
+      if (held.tool) quantizeStrokePoints(points, held.tool);
+      const out: Stroke = { points, tool_id: held.tool_id };
+      if (held.pressure) out.pressure = [...held.pressure];
       return out;
     }));
   }

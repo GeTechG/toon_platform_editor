@@ -244,8 +244,8 @@
   let megaAt: { layer: Layer | undefined; cell: Frame | undefined } = { layer: undefined, cell: undefined };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
-  /** Where the magnet's pointer was on its last move, document units; null when it is not held. */
-  let magnetAt: [number, number] | null = null;
+  /** The magnet is held: what its press took follows the pointer until it is let go. */
+  let magnetHeld = false;
   /** Pointer holding a gesture a tool brought itself (plugins/contract.ts). */
   let pluginGrab: { pointerId: number; spec: NonNullable<ReturnType<typeof toolSpec>> } | null = null;
   /**
@@ -1457,8 +1457,8 @@
 
   /** Lets go of the magnet: whatever it moved is one step of undo. */
   function releaseMagnet(): void {
-    if (magnetAt) {
-      magnetAt = null;
+    if (magnetHeld) {
+      magnetHeld = false;
       gesturePointerId = -1;
       editor.endMagnet();
     }
@@ -1764,7 +1764,7 @@
    */
   function drawingBusy(): boolean {
     return pointer.session !== null || grab !== null || megaGesture !== null || loopGesture !== null || pluginGrab !== null
-      || magnetAt !== null || sizing !== null;
+      || magnetHeld || sizing !== null;
   }
 
   /** The pen (or mouse) is in the middle of something on the sheet. */
@@ -1937,11 +1937,11 @@
       gesturePointerId = e.pointerId;
       return;
     }
-    // The magnet drags the lines under its circle on every selected visible
-    // layer; the drag is one step of undo (tools/magnet.ts).
+    // The magnet takes the points under its circle on every selected visible
+    // layer and carries them until let go; one step of undo (tools/magnet.ts).
     if (editor.tool === 'magnet') {
-      if (editor.beginMagnet()) {
-        magnetAt = toDocUnits(e);
+      if (editor.beginMagnet(toDocUnits(e))) {
+        magnetHeld = true;
         canvasEl.setPointerCapture(e.pointerId);
         gesturePointerId = e.pointerId;
       }
@@ -2020,7 +2020,7 @@
     // gesture here, or the stroke follows the hover and refuses the next press.
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
-      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || magnetAt || panning || sizing)) {
+      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || magnetHeld || panning || sizing)) {
       // Firefox on Windows sends a Wacom pen's light line one move with no
       // buttons while the tip stays down: the line goes on. Whether the pen
       // really left is told by its next press (onPointerDown).
@@ -2096,10 +2096,8 @@
       loopGesture.push(Math.round(x), Math.round(y));
       return;
     }
-    if (magnetAt && e.pointerId === gesturePointerId) {
-      const [x, y] = toDocUnits(e, rect);
-      editor.dragMagnet(magnetAt, [x, y]);
-      magnetAt = [x, y];
+    if (magnetHeld && e.pointerId === gesturePointerId) {
+      editor.dragMagnet(toDocUnits(e, rect));
       return;
     }
     if (pluginGrab && e.pointerId === gesturePointerId) {
@@ -2246,7 +2244,7 @@
       releasePluginGrab();
       return;
     }
-    if (magnetAt && e.pointerId === gesturePointerId) {
+    if (magnetHeld && e.pointerId === gesturePointerId) {
       releaseMagnet();
       return;
     }
