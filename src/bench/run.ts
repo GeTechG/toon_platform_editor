@@ -9,7 +9,7 @@ import type { ToonDocument } from '../lib/format/types';
 import { LoopPlayer } from '../lib/player/player';
 import { brushWidthDoc } from '../lib/tools/stroke-builder';
 import type { BenchConfig } from './config';
-import { FrameComposer, type ComposeTarget, type LiveLine } from '../lib/render/frame-compose';
+import { CELL_CACHE_BYTES, FrameComposer, type ComposeTarget, type LiveLine } from '../lib/render/frame-compose';
 import { onionLayers } from '../lib/ui/frame-selection';
 import { frameCount } from '../lib/model/operations';
 import { buildCorpus, syntheticRawPoints } from './corpus';
@@ -45,7 +45,7 @@ function usedHeap(): number | null {
  */
 class BenchCanvas {
   readonly #ctx: ComposeTarget;
-  readonly #composer = new FrameComposer();
+  readonly #composer = new FrameComposer(undefined, { cellBytes: CELL_CACHE_BYTES });
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');

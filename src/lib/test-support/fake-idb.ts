@@ -15,6 +15,9 @@ export class FakeReq {
 
 export type Stores = Map<string, Map<string, unknown>>;
 
+/** Records read one by one (`get`) since the count was last zeroed. */
+export const fakeReads = { count: 0 };
+
 /** Every store the editor keeps is keyed by `id`; the pre-v2 `draft` one was not. */
 function keyPathOf(name: string): string | null {
   return name === 'draft' ? null : 'id';
@@ -27,6 +30,7 @@ class FakeObjectStore {
     private keyPath: string | null,
   ) {}
   get(key: string): FakeReq {
+    fakeReads.count++;
     const req = new FakeReq();
     req.result = this.data.get(key);
     queueMicrotask(() => {

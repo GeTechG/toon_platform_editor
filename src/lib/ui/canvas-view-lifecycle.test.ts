@@ -334,7 +334,7 @@ describe('onion position in the layer stack (Toonio parity)', () => {
   it('the ghosts land between the layers below and the active one', () => {
     // Asserted for real against a recording target in frame-compose.test.ts;
     // here only that the canvas still asks for them.
-    expect(handler('draw')).toContain('ghosts: editor.showOnionSkin');
+    expect(handler('draw')).toContain('const ghosts = editor.showOnionSkin');
   });
 
   it('a ghost flattens every layer the selection covers', () => {

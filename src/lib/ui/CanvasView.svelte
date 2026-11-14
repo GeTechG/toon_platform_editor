@@ -17,7 +17,8 @@
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
-  import { FrameComposer, type LiveLine } from '../render/frame-compose';
+  import { CELL_CACHE_BYTES, FrameComposer, type LiveLine } from '../render/frame-compose';
+  import { PlaybackFrames } from './playback-frames';
   import { isFilledLineTool } from '../render/dispatch';
   import { cursorShape, pickSource } from './frame-selection';
   import {
@@ -96,6 +97,8 @@
       clip(): void;
       save(): void;
       restore(): void;
+      getImageData(x: number, y: number, w: number, h: number): ImageData;
+      putImageData(data: ImageData, x: number, y: number): void;
     };
 
   let canvasEl: HTMLCanvasElement;
@@ -208,6 +211,7 @@
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(glideRaf);
     composer.dispose();
+    played.release();
     for (const spare of [shotCanvas, sheetEl, pickEl, canvasEl]) {
       if (spare) {
         spare.width = 0;
@@ -332,7 +336,9 @@
    * onion between them and the line under the hand. The same composer the
    * benchmark runs, so what is measured there is what is drawn here.
    */
-  const composer = new FrameComposer();
+  const composer = new FrameComposer(undefined, { cellBytes: CELL_CACHE_BYTES });
+  /** The frames of the playback under way, composed once each (playback-frames.ts). */
+  const played = new PlaybackFrames<ImageData>();
   /** The paper and its shadow, and the shape they were drawn for. */
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
@@ -694,23 +700,41 @@
         sheetCtx.clearRect(0, 0, raster.width, raster.height);
         lastDrawn = drawn;
         lastRaster = raster;
-        composer.compose(sheetCtx, raster.width, raster.height, {
-          doc: editor.doc,
-          frame,
-          activeLayer: editor.activeLayer,
-          viewport,
-          tools: previewTools,
-          cellAt: stackCell,
-          ghosts: editor.showOnionSkin
-            ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
-            : undefined,
-          live: liveLine(viewport),
-          // The profile's active alpha (Multator: 0.8, its containerSprite)
-          // applies to the whole current frame; toonop's onion window can
-          // blend it half through over its ghosts.
-          alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
-          blend: editor.onionBlends,
-        });
+        const ghosts = editor.showOnionSkin
+          ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+          : undefined;
+        const live = liveLine(viewport);
+        // Played, a frame is what it was the last time round: nothing is drawn
+        // while the film plays.
+        const still = editor.playing && !ghosts && !live;
+        const kept = still ? played.get(editor.doc, raster, frame) : undefined;
+        if (kept) {
+          sheetCtx.putImageData(kept, 0, 0);
+        } else {
+          composer.compose(sheetCtx, raster.width, raster.height, {
+            doc: editor.doc,
+            frame,
+            activeLayer: editor.activeLayer,
+            viewport,
+            tools: previewTools,
+            cellAt: stackCell,
+            ghosts,
+            live,
+            // The profile's active alpha (Multator: 0.8, its containerSprite)
+            // applies to the whole current frame; toonop's onion window can
+            // blend it half through over its ghosts.
+            alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
+            blend: editor.onionBlends,
+          });
+          if (still) {
+            // A device out of memory keeps no more frames: the rest are composed.
+            try {
+              played.keep(editor.doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height));
+            } catch {
+              // Drawn live, as before.
+            }
+          }
+        }
         // Magnified past its own pixels the sheet shows them, squares and
         // all; anything less is smoothed.
         const stretch = perPixel / raster.level;
@@ -1065,6 +1089,13 @@
     void editor.playing;
     void cursorDiameter;
     scheduleDraw();
+  });
+
+  // The frames kept for a playback go when it stops.
+  $effect(() => {
+    if (!editor.playing) {
+      played.release();
+    }
   });
 
   // A window dragged to a screen of another density changes nothing else the

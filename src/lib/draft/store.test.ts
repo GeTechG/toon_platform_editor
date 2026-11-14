@@ -13,9 +13,10 @@ import {
   setDraftScreenshot,
 } from './store';
 import type { DraftState } from './store';
+import { DRAFTS_CHANNEL } from './store';
 
 import { createDocument } from '../model/operations';
-import { FakeReq, fakeIndexedDB, setIndexedDB, type Stores } from '../test-support/fake-idb';
+import { FakeReq, fakeIndexedDB, fakeReads, setIndexedDB, type Stores } from '../test-support/fake-idb';
 
 
 // A drawing the editor opens: an import drops one that will not.
@@ -570,5 +571,41 @@ describe('a side write does not weigh the document again', () => {
     await saveDraft('a', doc(2));
     await setDraftScreenshot('a', new Blob([new Uint8Array([1])]));
     expect(opens).toBe(1);
+  });
+});
+
+describe('a write does not read the document back', () => {
+  const track = () => ({ blob: new Blob([new Uint8Array([1, 2])]), name: 'song', author: 'me' });
+
+  it('a second save by the same tab reads nothing and keeps the track and the screenshot', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(1));
+    await setDraftAudio('a', track());
+    await setDraftScreenshot('a', new Blob([new Uint8Array([7])]));
+    fakeReads.count = 0;
+    await saveDraft('a', doc(2));
+    await setDraftScreenshot('a', new Blob([new Uint8Array([8])]));
+    expect(fakeReads.count).toBe(0);
+    const [record] = await listDrafts();
+    expect(record.doc).toEqual(doc(2));
+    expect(record.audio?.name).toBe('song');
+    expect(record.screenshot?.size).toBe(1);
+  });
+
+  it('reads the record again once another tab has written it', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', doc(1));
+    // Another tab attaches a track to the same draft and says so.
+    const drafts = stores.get('drafts')!;
+    drafts.set('a', { ...(drafts.get('a') as object), audio: track() });
+    const other = new BroadcastChannel(DRAFTS_CHANNEL);
+    other.postMessage({ id: 'a' });
+    other.close();
+    await Bun.sleep(5);
+    await saveDraft('a', doc(2));
+    const [record] = await listDrafts();
+    expect(record.doc).toEqual(doc(2));
+    expect(record.audio?.name).toBe('song');
   });
 });

@@ -16,6 +16,7 @@
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
 import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, type Canvas2DLike } from './canvas2d';
+import { CellCache } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
 
@@ -34,6 +35,17 @@ export interface ComposeBuffer {
 }
 
 export type BufferFactory = () => ComposeBuffer;
+
+/** The editor's budget for kept cells (owner, 2026-11-14): 17 sheets of 1280×720, 7 of 1080p. */
+export const CELL_CACHE_BYTES = 64 * 1024 * 1024;
+
+export interface ComposerOptions {
+  /**
+   * Pixels, in bytes, the composer may keep of cells it has rasterized, to lay
+   * the same cell again as a copy (cell-cache.ts). Absent or 0: none kept.
+   */
+  cellBytes?: number;
+}
 
 /** A ghost frame: which frame, how strongly it shows, and the colour it is painted in. */
 export interface GhostFrame {
@@ -157,10 +169,18 @@ export class FrameComposer {
   #aboveInk = false;
   /** What each buffer was last painted from, and the view it was painted under. */
   readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[] }>();
+  /** Cells rasterized before, by what they hold; absent when none are kept. */
+  readonly #cells: CellCache | undefined;
+  /**
+   * Cells the scene put in place of the document's (a lasso's moved strokes):
+   * new under every move of the hand, so never worth keeping.
+   */
+  #standIns = new WeakSet<Frame>();
 
-  constructor(make: BufferFactory = domBuffer) {
+  constructor(make: BufferFactory = domBuffer, options: ComposerOptions = {}) {
     this.#make = make;
     this.#ghosts = new BufferRing(GHOST_BUFFERS, make);
+    this.#cells = options.cellBytes ? new CellCache(make, options.cellBytes) : undefined;
   }
 
   /**
@@ -181,6 +201,7 @@ export class FrameComposer {
   dispose(): void {
     const buffers = [this.#below, this.#active, this.#above, this.#scratch, this.#live, this.#composite,
       this.#under, ...this.#ghosts.drain()];
+    this.#cells?.dispose();
     for (const buffer of buffers) {
       buffer?.size(0, 0);
     }
@@ -280,9 +301,15 @@ export class FrameComposer {
   }
 
   #cell(scene: FrameScene, layer: number): Frame | undefined {
-    return scene.cellAt
-      ? scene.cellAt(layer, scene.frame)
-      : scene.doc.layers[layer]?.frames[scene.frame];
+    const own = scene.doc.layers[layer]?.frames[scene.frame];
+    if (!scene.cellAt) {
+      return own;
+    }
+    const shown = scene.cellAt(layer, scene.frame);
+    if (shown && shown !== own) {
+      this.#standIns.add(shown);
+    }
+    return shown;
   }
 
   /**
@@ -336,14 +363,34 @@ export class FrameComposer {
     }
     buffer.size(width, height);
     buffer.clear();
-    // Layers that erase nothing go straight onto the buffer; one that erases
-    // above another is rasterized apart, so its eraser cuts only its own.
-    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, () => {
+    const apart = () => {
       const scratch = (this.#scratch ??= this.#make());
       scratch.size(width, height);
       scratch.clear();
       return scratch;
-    });
+    };
+    if (this.#cells) {
+      // Each cell from the kept ones, or rasterized into one and kept: a cell
+      // in its own buffer is a layer apart, so an eraser cuts only its own.
+      const kept = this.#cells;
+      for (const cell of cells) {
+        const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart);
+        const pixels = this.#standIns.has(cell)
+          ? null
+          : kept.take(cell, scene.tools, scene.viewport, width, height, own);
+        if (pixels) {
+          blitLayer(pixels.image, buffer.ctx);
+        } else {
+          const scratch = apart();
+          own(scratch);
+          blitLayer(scratch.image, buffer.ctx);
+        }
+      }
+      return true;
+    }
+    // Layers that erase nothing go straight onto the buffer; one that erases
+    // above another is rasterized apart, so its eraser cuts only its own.
+    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart);
     return true;
   }
 

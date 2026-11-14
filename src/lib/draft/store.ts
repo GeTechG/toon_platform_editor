@@ -158,6 +158,8 @@ function connection(): Promise<IDBDatabase> {
   if (shared && shared.factory === factory) {
     return shared.db;
   }
+  // Another base, or this one dropped under the page: what was known of it is not.
+  known.clear();
   const db = openDb().then((opened) => {
     opened.onversionchange = () => {
       opened.close();
@@ -258,8 +260,47 @@ function queueWrite<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * The records as this tab last wrote or read them, by id. A write takes what it
+ * does not change (the track, the screenshot, the credits) from here instead
+ * of reading the record back: a read hands back the whole document, and
+ * taking it apart cost more than the write itself — 0.7 s a minute on a weak
+ * processor for a drawing of 34 000 lines (a sent file, 2026-11-14).
+ */
+const known = new Map<string, DraftRecord>();
+
+/** Where tabs tell each other which draft they wrote or deleted. */
+export const DRAFTS_CHANNEL = 'toonop-drafts';
+
+let channel: BroadcastChannel | null | undefined;
+/** The channel, opened once; none where the browser has none. */
+function drafts(): BroadcastChannel | null {
+  if (channel === undefined) {
+    channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(DRAFTS_CHANNEL);
+    if (channel) {
+      // Another tab wrote or deleted it: what this one remembers is old.
+      channel.onmessage = (event: MessageEvent<{ id?: unknown }>) => {
+        if (typeof event.data?.id === 'string') {
+          known.delete(event.data.id);
+        }
+      };
+    }
+  }
+  return channel;
+}
+
+/** Tells the other tabs a record changed. */
+function told(id: string): void {
+  try {
+    drafts()?.postMessage({ id });
+  } catch {
+    // A closed channel: nobody to tell.
+  }
+}
+
+/**
  * Read-modify-write of one record in a single transaction, so an autosave
  * never drops the track and attaching a track never rewinds the document.
+ * The record is read only when this tab does not already know it (`known`).
  * `mutate` returning null writes nothing — that is how a side write (the
  * screenshot, the track, its credits) declines to resurrect a record that was
  * deleted while it was in flight. Never throws; `false` means the write into
@@ -274,38 +315,62 @@ async function updateDraft(
   /** What the record turned out to weigh — the write already knows. */
   wrote?: (bytes: number) => void,
 ): Promise<boolean> {
+  drafts();
   try {
     const tx = await transaction('readwrite');
     if (!tx) {
       return true;
     }
     let bytes: number | undefined;
+    let written: DraftRecord | undefined;
+    let read: DraftRecord | undefined;
     await new Promise<void>((resolve, reject) => {
       const store = tx.objectStore(STORE);
-      const read = store.get(id);
-      read.onsuccess = () => {
-        const previous = read.result as DraftRecord | undefined;
+      const write = (previous: DraftRecord | undefined): boolean => {
         const next = mutate(previous);
         if (!next) {
-          return; // nothing to write; the transaction completes on its own
+          return false; // nothing to write; the transaction completes on its own
         }
         next.bytes = recordBytes(next, previous);
         bytes = next.bytes;
+        written = next;
         store.put(next);
+        return true;
       };
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       // A full quota aborts the commit: `abort` fires, `error` never does,
       // and a promise left pending here held up every write queued after it.
       tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
+      const remembered = known.get(id);
+      if (remembered) {
+        // A transaction asked for nothing has nothing to complete with.
+        if (!write(remembered)) {
+          resolve();
+        }
+        return;
+      }
+      const request = store.get(id);
+      request.onsuccess = () => {
+        read = request.result as DraftRecord | undefined;
+        write(read);
+      };
     });
     // Told only once the transaction has landed: a `put` that was handed over
     // may still be thrown out with it, and its size is then nobody's.
+    if (written) {
+      known.set(id, written);
+      told(id);
+    } else if (read) {
+      known.set(id, read);
+    }
     if (bytes !== undefined) {
       wrote?.(bytes);
     }
     return true;
   } catch (err) {
+    // What landed is not known: the next write reads it.
+    known.delete(id);
     console.warn(`${what} failed:`, err);
     return false;
   }
@@ -417,6 +482,7 @@ export async function deleteDraft(id: string): Promise<void> {
 }
 
 async function removeDraft(id: string): Promise<void> {
+  known.delete(id);
   try {
     const tx = await transaction('readwrite');
     if (!tx) {
@@ -430,6 +496,7 @@ async function removeDraft(id: string): Promise<void> {
       // and a promise left pending here held up every write queued after it.
       tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
     });
+    told(id);
   } catch (err) {
     console.warn('draft delete failed:', err);
   }

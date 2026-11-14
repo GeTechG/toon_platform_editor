@@ -343,3 +343,104 @@ describe('the composer knows no brushes', () => {
     expect(source).not.toContain('.kind');
   });
 });
+
+describe('the cell cache', () => {
+  /** A composer that keeps rasterized cells, with room for plenty of them. */
+  function cached(bytes = 64 * 1024 * 1024) {
+    const made: Recorder[] = [];
+    const instance = new FrameComposer(() => {
+      const buffer = new Recorder(`b${made.length}`);
+      made.push(buffer);
+      return buffer;
+    }, { cellBytes: bytes });
+    return { instance, made };
+  }
+  /** Every line drawn in `colour` on any buffer since `from` (log lengths). */
+  const drawnIn = (made: readonly Recorder[], colour: string, from: readonly number[] = []) =>
+    made.flatMap((buffer, i) => buffer.log.slice(from[i] ?? 0)).filter((e) => e === `stroke ${colour}`).length;
+  const lengths = (made: readonly Recorder[]) => made.map((buffer) => buffer.log.length);
+
+  /** Two frames; layer 0 holds the same sketch in both, as a copy (a file read back). */
+  function sketched(): ToonDocument {
+    const built = doc(2);
+    addFrame(built, 0);
+    built.layers[0].frames[0].strokes = [];
+    addStroke(built, 0, 0, { points: [0, 0, 400, 400, 800, 0], width: 40, color: '#123456' });
+    addStroke(built, 0, 0, { points: [10, 10, 410, 410, 810, 10], width: 40, color: '#123456' });
+    built.layers[0].frames[1] = structuredClone(built.layers[0].frames[0]);
+    addStroke(built, 1, 1, line(700));
+    return built;
+  }
+
+  it('rasterizes a cell once when another frame holds the same strokes', () => {
+    const built = sketched();
+    const { instance, made } = cached();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(drawnIn(made, '#123456')).toBe(2);
+    const before = lengths(made);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, frame: 1 });
+    expect(drawnIn(made, '#123456', before)).toBe(0);
+    // The layer that differs is drawn.
+    expect(drawnIn(made, '#000000', before)).toBeGreaterThan(0);
+  });
+  it('lays a cell back from the cache when an undo makes it what it was', () => {
+    const built = sketched();
+    const { instance, made } = cached();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    addStroke(built, 0, 0, line(900));
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, tools: built.tools });
+    const before = lengths(made);
+    built.layers[0].frames[0].strokes.pop();
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(drawnIn(made, '#123456', before)).toBe(0);
+  });
+
+  it('rasterizes a cell again when a stroke on it was given other points', () => {
+    const built = sketched();
+    const { instance, made } = cached();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    const before = lengths(made);
+    const shaken = built.layers[0].frames[0].strokes[0];
+    shaken.points = shaken.points.map((value) => value + 8);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(drawnIn(made, '#123456', before)).toBe(2);
+  });
+  it('keeps no more cells than its budget holds, giving the oldest back', () => {
+    const built = sketched();
+    // Room for one cell of 100×50 and no more.
+    const { instance, made } = cached(100 * 50 * 4);
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    const before = lengths(made);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, frame: 1 });
+    // The sketch was pushed out by the layer above it and is drawn again.
+    expect(drawnIn(made, '#123456', before)).toBe(2);
+    expect(made.some((buffer) => buffer.canvas.width === 0)).toBe(true);
+  });
+
+  it('lays a ghost from the same cells as the frame', () => {
+    const built = sketched();
+    const { instance, made } = cached();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools });
+    const before = lengths(made);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 1, activeLayer: 1, viewport, tools: built.tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
+    });
+    expect(drawnIn(made, '#123456', before)).toBe(0);
+  });
+});
