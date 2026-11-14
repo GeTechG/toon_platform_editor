@@ -80,7 +80,9 @@ export const LANG_TOLERANCE_DOC = LANG_TOLERANCE_LOGICAL * FIXED_POINT_SCALE;
  * other, the studio says it cannot be sent, and the server refuses it. The
  * server counts the same way; its body caps are sized so a full budget fits.
  */
-export const MAX_DOCUMENT_WEIGHT = 1_000_000;
+// Five million since 2026-11-15: an author filled 68 % with 4 layers × 22
+// frames (owner: «расширь лимиты мульта»).
+export const MAX_DOCUMENT_WEIGHT = 5_000_000;
 export const STROKE_WEIGHT = 3;
 export const CELL_WEIGHT = 10;
 

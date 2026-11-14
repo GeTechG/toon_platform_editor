@@ -965,10 +965,12 @@ describe('document budget', () => {
 
   it('drawing is not held to the budget: only overBudget says the mult cannot be published', () => {
     const doc = createDocument();
-    doc.layers[0].frames = emptyFrames(99_999); // 999 990 of the million
-    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
-    addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
-    expect(documentWeight(doc)).toBe(1_000_000);
+    // Five layers of 99 999 empty frames: 4 999 950 of the five million.
+    doc.layers = Array.from({ length: 5 }, () => ({ hidden: false, frames: emptyFrames(99_999) }));
+    for (let i = 0; i < 10; i++) {
+      addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
+    }
+    expect(documentWeight(doc)).toBe(5_000_000);
     expect(overBudget(doc)).toBe(false);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     addLayer(doc, 1);
