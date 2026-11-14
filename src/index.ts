@@ -20,3 +20,6 @@ export { PUBLISH_AUDIO_MAX_BYTES, SOUND_PRICE } from './lib/audio/track';
 
 // Animated-WebP gallery preview built from a document at publish time.
 export { buildPreview } from './lib/export/preview-webp';
+
+// The studio's commands by name, for the page's error reports (no data of the drawing).
+export { onEditorCommand } from './lib/ui/command-trail';

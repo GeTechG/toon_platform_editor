@@ -40,6 +40,7 @@
   import { extendTarget, fpsFromField, frameKeyTitle, wrapIndex, type FrameMenuAction } from './frame-selection';
   import { composing, focusOrigin, keyOwner, latinKey, typesText } from './key-owner';
   import { chordOf, holdKey } from './keymap';
+  import { reportCommand } from './command-trail';
   import { focusHeir, twinSelector } from './focus-heir';
   import { draftEntries } from '../draft/restore';
   import {
@@ -1042,8 +1043,16 @@
     'pan-left': 'ArrowLeft', 'pan-right': 'ArrowRight', 'pan-up': 'ArrowUp', 'pan-down': 'ArrowDown',
   };
 
+  // A tool taken by a key, a button or a gesture is one more step of the
+  // studio's trail (command-trail.ts) - by name only.
+  $effect(() => {
+    reportCommand(`tool:${editor.tool}`);
+  });
+
   /** What a command does in this moment: the hand and a live transform read the same keys their own way. */
   function runCommand(command: string, e: KeyboardEvent): void {
+    // A tool is told by the effect above, whichever way it was taken.
+    if (!command.startsWith('tool:')) reportCommand(command);
     const far = e.shiftKey || command.startsWith('extend-');
     const arrow = ARROW_STEP[command];
     // The view moves whatever the tool, a live transform included: it moves
