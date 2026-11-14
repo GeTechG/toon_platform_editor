@@ -55,6 +55,7 @@
     setDraftCredits,
     setDraftScreenshot,
   } from '../draft/store';
+  import { drawsInSoftware, softwareHintDue, webglProbe } from './software-render';
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
   import { isAudioFile } from '../audio/track';
@@ -1539,6 +1540,20 @@
   /** The first visit's question stands whichever way the phone is held: gone with the line of words, a press on a preset took the plate away with nothing more to pick (owner, 2026-10-10). */
   const plateDue = $derived(!draftsOpen && !moreOpen);
   const noteDue = $derived(plateDue && !editor.presetAsk);
+  // A browser drawing without the video card is told so once on a device —
+  // after the tour, when the studio is idle (software-render.ts).
+  let softwareAsked = false;
+  $effect(() => {
+    if (softwareAsked || !noteDue || editor.tourReplay) return;
+    softwareAsked = true;
+    const idle = globalThis.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 2000));
+    idle(() => {
+      const probe = webglProbe();
+      if (drawsInSoftware(probe.renderer, probe.caveat) && softwareHintDue(localStorage)) {
+        void tell(t('editor.software_render_hint'));
+      }
+    });
+  });
   // The first visit's presets stand over the empty sheet; the first line — or
   // a drawing opened — ends the question for good.
   $effect(() => {

@@ -40,8 +40,9 @@ export interface Canvas2DLike extends PathSink {
   drawImage(image: CanvasImageSource, dx: number, dy: number): void;
   beginPath(): void;
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
-  stroke(): void;
-  fill(): void;
+  /** Without a path, the current one; with one, that path (stroke-path cache). */
+  stroke(path?: Path2D): void;
+  fill(path?: Path2D): void;
 }
 
 /** Minimal target for blitting a cached layer (identity transform). */
@@ -268,7 +269,7 @@ export function renderStrokesLayer(
       target.globalAlpha = opacity / 100;
     }
     drawResolvedStroke(
-      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure,
+      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure, true,
     );
     if (opacity !== undefined) {
       target.globalAlpha = 1;
@@ -279,13 +280,128 @@ export function renderStrokesLayer(
   }
 }
 
+/**
+ * A stroke's paths, built once. The path is in document units and the view is
+ * the target's transform, so it holds for every rasterization of the stroke:
+ * the smoothing and the pressure outline are worked out once, not every time a
+ * cell is drawn (owner, 2026-11-14).
+ */
+interface StrokePaths {
+  /** The feather's fill under a pressured outline: filled in the tool's fill. */
+  readonly under?: Path2D;
+  readonly main: Path2D;
+  /** Filled in the paint colour; otherwise stroked at the tool's width. */
+  readonly filled: boolean;
+  /** A feather's line: its own path filled in the tool's fill before the stroke. */
+  readonly fillFirst: boolean;
+}
+
+/** Kept per points array (never edited in place), then per tool and pressure. */
+const keptPaths = new WeakMap<readonly number[], { tool: ToolDescriptor; pressure?: readonly number[]; paths: StrokePaths }[]>();
+
+function strokePaths(points: readonly number[], tool: ToolDescriptor, pressure?: readonly number[]): StrokePaths {
+  let kept = keptPaths.get(points);
+  const found = kept?.find((entry) => entry.tool === tool && entry.pressure === pressure);
+  if (found) {
+    return found.paths;
+  }
+  const paths = buildPaths(points, tool, pressure);
+  if (!kept) {
+    kept = [];
+    keptPaths.set(points, kept);
+  }
+  kept.push({ tool, pressure, paths });
+  return paths;
+}
+
+function buildPaths(points: readonly number[], tool: ToolDescriptor, pressure?: readonly number[]): StrokePaths {
+  const main = new Path2D();
+  if (isStampTool(tool)) {
+    emitStamps(points, tool, main);
+    return { main, filled: true, fillFirst: false };
+  }
+  if (isContourTool(tool)) {
+    emitPathForTool(points, tool, main);
+    return { main, filled: true, fillFirst: false };
+  }
+  if (pressure && pressure.length === points.length / 2) {
+    let under: Path2D | undefined;
+    if (isFilledLineTool(tool)) {
+      under = new Path2D();
+      emitPathForTool(points, tool, under);
+    }
+    emitPressuredOutline(flattenPressured(points, pressure, tool.geometry), tool.width, main);
+    return { under, main, filled: true, fillFirst: false };
+  }
+  if (isDot(points)) {
+    main.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
+    return { main, filled: true, fillFirst: false };
+  }
+  emitPathForTool(points, tool, main);
+  return { main, filled: false, fillFirst: isFilledLineTool(tool) };
+}
+
+function isDot(points: readonly number[]): boolean {
+  return points.length === 2
+    || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
+}
+
+/** A stamp's marks, the places a fast drag skipped filled in, as one path. */
+function emitStamps(points: readonly number[], tool: ToolDescriptor & { kind: 'stamp' }, sink: PathSink): void {
+  const stamp = (x: number, y: number): void => {
+    sink.moveTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
+    for (let i = 2; i < tool.shape.length; i += 2) {
+      sink.lineTo(x + tool.shape[i] * tool.width, y + tool.shape[i + 1] * tool.width);
+    }
+    sink.lineTo(x + tool.shape[0] * tool.width, y + tool.shape[1] * tool.width);
+  };
+  for (let i = 0; i < points.length; i += 2) {
+    if (i >= 2) {
+      const between = interpolatePixelLine(points[i - 2], points[i - 1], points[i], points[i + 1], tool.width);
+      for (let j = 0; j < between.length; j += 2) {
+        stamp(between[j], between[j + 1]);
+      }
+    }
+    stamp(points[i], points[i + 1]);
+  }
+}
+
 function drawResolvedStroke(
   target: Canvas2DLike,
   points: readonly number[],
   tool: ToolDescriptor,
   color: string,
   pressure?: readonly number[],
+  /**
+   * A committed stroke, whose points never change: its path is kept. The line
+   * under the hand grows in place, so a kept path would be the line as it was.
+   */
+  keep = false,
 ): void {
+  if (keep && typeof Path2D !== 'undefined') {
+    const paths = strokePaths(points, tool, pressure);
+    if (paths.under) {
+      target.fillStyle = (tool as { fill: string }).fill;
+      target.fill(paths.under);
+    }
+    if (paths.filled) {
+      target.fillStyle = color;
+      target.fill(paths.main);
+      return;
+    }
+    if (paths.fillFirst) {
+      target.fillStyle = (tool as { fill: string }).fill;
+    }
+    target.lineWidth = (tool as { width: number }).width;
+    target.strokeStyle = color;
+    target.lineCap = 'round';
+    target.lineJoin = 'round';
+    if (paths.fillFirst) {
+      target.fill(paths.main);
+    }
+    target.stroke(paths.main);
+    return;
+  }
   if (isStampTool(tool)) {
     // Every stored point is a place the tool's polygon is stamped at, `width`
     // document units across, with the places a fast drag skipped filled in by

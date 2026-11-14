@@ -2,9 +2,10 @@
   // Thumbnail of one layer's cell — the layer alone, not the composite, so a
   // layers-panel row shows what that layer contributes. Same stroke path as
   // the canvas (renderStrokesLayer), on a transparent little buffer.
-  import type { ToonDocument } from '../format/types';
+  import type { Frame, ToonDocument } from '../format/types';
   import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
-  import { cellStamp, fitThumb } from './thumb-size';
+  import { cellStamp, fitThumb, thumbStep } from './thumb-size';
+  import { studioCells } from '../render/studio-cells';
   import { whenOnScreen } from './on-screen';
   import { renderDensity } from './viewport';
 
@@ -57,6 +58,8 @@
    */
   let painted: number | undefined;
   let paintedBox = '';
+  /** The strokes on the thumbnail now: a line put at the end of them is only added. */
+  let onThumb: Frame['strokes'] | null = null;
 
   $effect(() => {
     const cell = doc.layers[layerIndex]?.frames[frameIndex];
@@ -69,10 +72,18 @@
       return;
     }
     const dpr = renderDensity(window.devicePixelRatio || 1);
-    canvasEl.width = Math.max(1, Math.round(box.w * dpr));
-    canvasEl.height = Math.max(1, Math.round(box.h * dpr));
+    const width = Math.max(1, Math.round(box.w * dpr));
+    const height = Math.max(1, Math.round(box.h * dpr));
+    // A resize clears the canvas: then nothing on it can be added to.
+    const resized = canvasEl.width !== width || canvasEl.height !== height;
+    if (resized) {
+      canvasEl.width = width;
+      canvasEl.height = height;
+    }
     const ctx = canvasEl.getContext('2d') as unknown as (Canvas2DLike & {
       clearRect(x: number, y: number, w: number, h: number): void;
+      imageSmoothingQuality: string;
+      drawImage(image: CanvasImageSource, x: number, y: number, w: number, h: number): void;
     }) | null;
     // Safari hands out null once the page's canvas memory is spent (a long
     // mult on an iPhone): the cell stays blank rather than the effect throwing,
@@ -80,11 +91,26 @@
     if (!ctx) {
       return;
     }
+    const viewport = { scale: box.w / doc.width, dpr };
+    const step = resized || shape !== paintedBox ? { whole: true as const } : thumbStep(onThumb, cell.strokes);
     painted = stamp;
     paintedBox = shape;
+    onThumb = cell.strokes.slice();
+    if (!step.whole) {
+      // A finished line costs the thumbnail that line, not the cell.
+      renderStrokesLayer({ strokes: cell.strokes.slice(step.from) }, doc.tools, ctx, viewport);
+      return;
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-    renderStrokesLayer(cell, doc.tools, ctx, { scale: box.w / doc.width, dpr });
+    ctx.clearRect(0, 0, width, height);
+    // The canvas has the cell rasterized already: shrunk, it is the thumbnail.
+    const kept = studioCells.current?.anyOf(cell, doc.tools);
+    if (kept) {
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(kept.image, 0, 0, width, height);
+      return;
+    }
+    renderStrokesLayer(cell, doc.tools, ctx, viewport);
   });
 </script>
 

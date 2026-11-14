@@ -7,6 +7,8 @@
 
 import { parseDraft } from './restore';
 import { decodeToon } from '../format/toon-decode';
+import { packDocument, unpackDocument } from '../format/pack';
+import type { ToonDocument } from '../format/types';
 import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
 
 const DB_NAME = 'toon-editor';
@@ -60,7 +62,14 @@ export interface DraftState {
 export interface DraftRecord {
   id: string;
   updated: number;
+  /**
+   * The document. In the base it is kept as `packed` instead (2026-11-14);
+   * records written before that hold it here, and every record read out of the
+   * store carries it here, whichever way it was kept.
+   */
   doc: unknown;
+  /** The document as the UTF-8 bytes of its packed JSON (`pack.ts`), as it lies in the base. */
+  packed?: Uint8Array;
   /** Absent on every draft written before tracks existed — no migration needed. */
   audio?: DraftAudio;
   state?: DraftState;
@@ -76,20 +85,63 @@ function blobBytes(record: DraftRecord): number {
 }
 
 /**
- * What the record weighs: document text, track and screenshot. A write that
- * kept the document it read — the screenshot, the track, its credits — carries
- * the document's share over from the size already stored instead of walking
- * every stroke again to learn a number it has.
+ * The document as it goes into the base: one array of bytes, the packed JSON
+ * of it. A tree of 34 000 strokes was cloned into IndexedDB and out of it
+ * object by object, which cost more than the text it makes (a sent file,
+ * 2026-11-14). The text is the one serialization a write makes — its length is
+ * what the record weighs.
+ */
+function encodeDoc(doc: unknown): Uint8Array {
+  const isDocument = typeof doc === 'object' && doc !== null && Array.isArray((doc as ToonDocument).layers);
+  return new TextEncoder().encode(JSON.stringify(isDocument ? packDocument(doc as ToonDocument) : doc ?? null));
+}
+
+/** A record as the rest of the studio reads it: the document in `doc`, however it was kept. */
+function opened(record: DraftRecord): DraftRecord {
+  if (!record.packed) {
+    return record;
+  }
+  const { packed, ...rest } = record;
+  let doc: unknown = null;
+  try {
+    doc = unpackDocument(JSON.parse(new TextDecoder().decode(packed)));
+  } catch {
+    // Bytes that do not read: the record lists with no document, as a broken one did.
+  }
+  return { ...rest, doc };
+}
+
+/**
+ * Puts the record's document into bytes, if it came as a document — a save,
+ * a copy, an import. A write that kept the document it read (the screenshot,
+ * the track, its credits) keeps its bytes as they are.
+ */
+function pack(record: DraftRecord): void {
+  if (record.doc !== undefined) {
+    record.packed = encodeDoc(record.doc);
+    delete (record as Partial<DraftRecord>).doc;
+  }
+}
+
+/**
+ * What the record weighs: the document's bytes, track and screenshot. A write
+ * that kept the bytes it read carries their share over instead of weighing
+ * them again.
  */
 function recordBytes(record: DraftRecord, previous: DraftRecord | undefined): number {
-  if (previous && record.doc === previous.doc && previous.bytes !== undefined) {
+  if (previous && record.packed !== undefined && record.packed === previous.packed && previous.bytes !== undefined) {
     return previous.bytes - blobBytes(previous) + blobBytes(record);
   }
-  let bytes = 0;
-  try {
-    bytes += JSON.stringify(record.doc ?? null).length;
-  } catch {
-    // A document that will not stringify is not one we can size.
+  if (previous && record.packed === undefined && record.doc === previous.doc && previous.bytes !== undefined) {
+    return previous.bytes - blobBytes(previous) + blobBytes(record);
+  }
+  let bytes = record.packed?.length ?? 0;
+  if (record.packed === undefined) {
+    try {
+      bytes += JSON.stringify(record.doc ?? null).length;
+    } catch {
+      // A document that will not stringify is not one we can size.
+    }
   }
   return bytes + blobBytes(record);
 }
@@ -233,7 +285,7 @@ export async function listDrafts(): Promise<DraftRecord[]> {
     }
     const all = await new Promise<DraftRecord[]>((resolve, reject) => {
       const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result as DraftRecord[]);
+      req.onsuccess = () => resolve((req.result as DraftRecord[]).map(opened));
       req.onerror = () => reject(req.error);
     });
     return all.sort((a, b) => b.updated - a.updated);
@@ -331,6 +383,8 @@ async function updateDraft(
         if (!next) {
           return false; // nothing to write; the transaction completes on its own
         }
+        // A record from before the bytes, or a new document: it goes in as bytes.
+        pack(next);
         next.bytes = recordBytes(next, previous);
         bytes = next.bytes;
         written = next;

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { addStroke, createDocument, addLayer, addFrame } from '../model/operations';
 import type { ToonDocument } from '../format/types';
 import { FrameComposer, type ComposeBuffer, type ComposeTarget } from './frame-compose';
+import { CellWarmer, warmWay, type WarmCrew } from './cell-warm';
+import { CellCache } from './cell-cache';
 
 /**
  * Buffers and a target that write down what was drawn on them instead of
@@ -416,18 +418,29 @@ describe('the cell cache', () => {
     expect(drawnIn(made, '#123456', before)).toBe(2);
   });
   it('keeps no more cells than its budget holds, giving the oldest back', () => {
-    const built = sketched();
+    const made: Recorder[] = [];
     // Room for one cell of 100×50 and no more.
-    const { instance, made } = cached(100 * 50 * 4);
-    const target = new Recorder('target');
-    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
-    instance.compose(target.ctx, 100, 50, scene);
-    const before = lengths(made);
-    instance.invalidate();
-    instance.compose(target.ctx, 100, 50, { ...scene, frame: 1 });
-    // The sketch was pushed out by the layer above it and is drawn again.
-    expect(drawnIn(made, '#123456', before)).toBe(2);
-    expect(made.some((buffer) => buffer.canvas.width === 0)).toBe(true);
+    const cells = new CellCache(() => {
+      const buffer = new Recorder(`c${made.length}`);
+      made.push(buffer);
+      return buffer;
+    }, 100 * 50 * 4);
+    const built = sketched();
+    const [first, second] = [built.layers[0].frames[0], built.layers[1].frames[1]];
+    cells.take(first, built.tools, viewport, 100, 50, () => {});
+    cells.take(second, built.tools, viewport, 100, 50, () => {});
+    expect(cells.has(second, built.tools, viewport, 100, 50)).toBe(true);
+    expect(cells.has(first, built.tools, viewport, 100, 50)).toBe(false);
+    expect(made[0].canvas.width).toBe(0);
+  });
+
+  it('hands the kept pixels of a cell to whoever asks by its strokes alone, at whatever size they were kept', () => {
+    const built = sketched();
+    const { instance } = cached();
+    instance.compose(new Recorder('target').ctx, 100, 50, { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools });
+    const copy = structuredClone(built.layers[0].frames[0]);
+    expect(instance.cells!.anyOf(copy, built.tools)).not.toBeNull();
+    expect(instance.cells!.anyOf({ strokes: [] }, built.tools)).toBeNull();
   });
 
   it('lays a ghost from the same cells as the frame', () => {
@@ -442,5 +455,184 @@ describe('the cell cache', () => {
       ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
     });
     expect(drawnIn(made, '#123456', before)).toBe(0);
+  });
+});
+
+describe('the cell drawn on stays ready', () => {
+  function cachedComposer() {
+    const made: Recorder[] = [];
+    const instance = new FrameComposer(() => {
+      const buffer = new Recorder(`b${made.length}`);
+      made.push(buffer);
+      return buffer;
+    }, { cellBytes: 64 * 1024 * 1024 });
+    return { instance, made };
+  }
+  const strokesSince = (made: readonly Recorder[], from: readonly number[]) =>
+    made.flatMap((buffer, i) => buffer.log.slice(from[i] ?? 0)).filter((e) => e.startsWith('stroke'));
+
+  it('is laid from the cache when the hand steps off it and it shows as a ghost', () => {
+    const built = doc(1);
+    addFrame(built, 0);
+    addStroke(built, 0, 1, line(600));
+    const { instance, made } = cachedComposer();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    // Drawn on: the line lands on top of the layer, nothing else is redrawn.
+    addStroke(built, 0, 0, { points: [0, 0, 300, 300], width: 40, color: '#00ff00' });
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, tools: built.tools });
+    const before = made.map((buffer) => buffer.log.length);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, {
+      ...scene, tools: built.tools, frame: 1, ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
+    });
+    // The ghost of the frame left is a copy of what the layer held, not drawn again.
+    expect(strokesSince(made, before)).toEqual(['stroke #000000']);
+  });
+
+  it('a cell put whole on the layer, as a file opening does, goes through the cache', () => {
+    const empty = createDocument();
+    const { instance, made } = cachedComposer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, { doc: empty, frame: 0, activeLayer: 0, viewport, tools: empty.tools });
+    const opened = doc(1);
+    addFrame(opened, 0);
+    for (let i = 0; i < 20; i++) addStroke(opened, 0, 1, line(10 * i));
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { doc: opened, frame: 1, activeLayer: 0, viewport, tools: opened.tools });
+    const before = made.map((buffer) => buffer.log.length);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, {
+      doc: opened, frame: 0, activeLayer: 0, viewport, tools: opened.tools,
+      ghosts: { frames: [{ index: 1, alpha: 0.3 }], layers: [0] },
+    });
+    // Frame 0's own line is new here; frame 1, shown as a ghost, is not drawn again.
+    expect(strokesSince(made, before)).toEqual(['stroke #000000']);
+  });
+});
+
+describe('an undo repaints the place it took from', () => {
+  /** A recorder that can clip, as a real canvas can. */
+  class Clipper extends Recorder {
+    save(): void { this.log.push('save'); }
+    restore(): void { this.log.push('restore'); }
+    rect(x: number, y: number, w: number, h: number): void { this.log.push(`rect ${x},${y},${w},${h}`); }
+    clip(): void { this.log.push('clip'); }
+  }
+
+  it('draws again only the lines that touch the place of the stroke taken back', () => {
+    const built = createDocument();
+    const at = (x: number, colour: string) => ({ points: [x, 0, x + 100, 100], width: 40, color: colour });
+    addStroke(built, 0, 0, at(0, '#aa0000'));
+    addStroke(built, 0, 0, at(5000, '#00aa00'));
+    addStroke(built, 0, 0, at(5050, '#0000aa'));
+    addStroke(built, 0, 0, at(9000, '#aaaa00'));
+    const made: Clipper[] = [];
+    const instance = new FrameComposer(() => {
+      const buffer = new Clipper(`b${made.length}`);
+      made.push(buffer);
+      return buffer;
+    });
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools };
+    instance.compose(target.ctx, 1000, 100, scene);
+    const before = made.map((buffer) => buffer.log.length);
+    built.layers[0].frames[0].strokes.splice(2, 1);
+    instance.invalidate();
+    instance.compose(target.ctx, 1000, 100, scene);
+    const after = made.flatMap((buffer, i) => buffer.log.slice(before[i]));
+    expect(after).toContain('clip');
+    // The neighbour under the place is drawn again; the far ones are not.
+    expect(after.filter((e) => e.startsWith('stroke'))).toEqual(['stroke #00aa00']);
+  });
+});
+
+describe('neighbouring frames are rasterized ahead', () => {
+  it('goes to workers where the browser draws in them, and stays on the page where not', () => {
+    expect(warmWay({ worker: true, offscreen2d: true })).toBe('workers');
+    expect(warmWay({ worker: true, offscreen2d: false })).toBe('page');
+    expect(warmWay({ worker: false, offscreen2d: true })).toBe('page');
+  });
+
+  /** Five frames, each layer with lines of its own colour per frame. */
+  function film(): ToonDocument {
+    const built = doc(2);
+    for (let f = 1; f < 5; f++) addFrame(built, f - 1);
+    for (let f = 1; f < 5; f++) {
+      for (let l = 0; l < 2; l++) {
+        addStroke(built, l, f, { points: [f * 100, l * 100, f * 100 + 50, l * 100 + 50], width: 40, color: `#0${f}0${l}00` });
+      }
+    }
+    return built;
+  }
+
+  function setup(crew?: WarmCrew) {
+    const made: Recorder[] = [];
+    const instance = new FrameComposer(() => {
+      const buffer = new Recorder(`b${made.length}`);
+      made.push(buffer);
+      return buffer;
+    }, { cellBytes: 64 * 1024 * 1024 });
+    const tasks: (() => void)[] = [];
+    const warmer = new CellWarmer(instance.cells!, (task) => {
+      tasks.push(task);
+      return () => { const i = tasks.indexOf(task); if (i >= 0) tasks.splice(i, 1); };
+    }, crew);
+    const runAll = async () => {
+      while (tasks.length > 0) {
+        tasks.shift()!();
+        await Bun.sleep(0);
+      }
+    };
+    return { instance, made, warmer, tasks, runAll };
+  }
+  const strokesSince = (made: readonly Recorder[], from: readonly number[]) =>
+    made.flatMap((buffer, i) => buffer.log.slice(from[i] ?? 0)).filter((e) => e.startsWith('stroke')).length;
+
+  it('on the page: the next frame is drawn from what idle time rasterized', async () => {
+    const built = film();
+    const { instance, made, warmer, runAll } = setup();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 2, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    warmer.request({ doc: built, frame: 2, tools: built.tools, viewport, width: 100, height: 50 });
+    await runAll();
+    const before = made.map((buffer) => buffer.log.length);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, frame: 3 });
+    expect(strokesSince(made, before)).toBe(0);
+  });
+
+  it('in workers: the cells come back as pixels and are laid from there', async () => {
+    const built = film();
+    const asked: number[] = [];
+    const crew: WarmCrew = {
+      draw: async (job) => {
+        asked.push(job.strokes.length);
+        return { image: { worker: true } as unknown as CanvasImageSource, free: () => {} };
+      },
+    };
+    const { instance, made, warmer, runAll } = setup(crew);
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 2, activeLayer: 1, viewport, tools: built.tools };
+    instance.compose(target.ctx, 100, 50, scene);
+    warmer.request({ doc: built, frame: 2, tools: built.tools, viewport, width: 100, height: 50 });
+    await runAll();
+    expect(asked.length).toBeGreaterThan(0);
+    const before = made.map((buffer) => buffer.log.length);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, { ...scene, frame: 1 });
+    expect(strokesSince(made, before)).toBe(0);
+  });
+
+  it('drops what it had not done yet when told to stop', async () => {
+    const built = film();
+    const { warmer, tasks } = setup();
+    warmer.request({ doc: built, frame: 2, tools: built.tools, viewport, width: 100, height: 50 });
+    expect(tasks.length).toBeGreaterThan(0);
+    warmer.stop();
+    expect(tasks.length).toBe(0);
   });
 });

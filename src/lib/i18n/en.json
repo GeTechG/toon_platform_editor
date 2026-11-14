@@ -762,6 +762,7 @@
   "editor": {
     "publish_over_budget": "The toon is over the publishing limit: {{percent}} full. Remove extra frames or lines and send it again — your drawing isn't going anywhere.",
     "save_failed_alert": "The draft didn't save on this device. Your drawing is still here — don't close the tab: free up space in “Drafts” and save again (Ctrl+S).",
+    "software_render_hint": "Your browser is drawing without the graphics card, so the studio may be slow. Turn on hardware acceleration in the browser settings or update the graphics driver, and drawing will get faster.",
     "download_project_confirm": "Download the project as .toonop?",
     "drafts_wipe_confirm": "Delete all drafts? This can't be undone.",
     "draft_open_confirm": "Open the draft? The current drawing will be replaced.",

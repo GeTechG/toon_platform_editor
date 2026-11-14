@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { fitThumb, rowHeight, CELL_BOX, cellStamp } from './thumb-size';
+import { fitThumb, rowHeight, CELL_BOX, cellStamp, thumbStep } from './thumb-size';
 import { mirrorCell } from '../model/operations';
 
 describe('the canvas is max-fitted into the frame', () => {
@@ -74,3 +74,39 @@ describe('ninth audit: the timeline cell redraws by its stamp', () => {
     expect(thumb).not.toContain('paintedStrokes');
   });
 });
+
+describe('a cell thumbnail does not walk the whole cell again', () => {
+  /** Points that count how often they are read. */
+  function counted(values: number[]) {
+    const reads = { count: 0 };
+    const points = new Proxy(values, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads.count++;
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    return { points, reads };
+  }
+
+  it('reads the points of a stroke it has stamped before no more', () => {
+    const { points, reads } = counted([10, 10, 30, 40, 50, 60]);
+    const cell = { strokes: [{ points, tool_id: 0 }] };
+    const first = cellStamp(cell);
+    const read = reads.count;
+    cell.strokes.push({ points: [1, 2, 3, 4], tool_id: 0 });
+    expect(cellStamp(cell)).not.toBe(first);
+    expect(reads.count).toBe(read);
+  });
+
+  it('adds the strokes put at the end, and draws the cell anew otherwise', () => {
+    const a = { points: [1, 1], tool_id: 0 };
+    const b = { points: [2, 2], tool_id: 0 };
+    const c = { points: [3, 3], tool_id: 0 };
+    expect(thumbStep(null, [a, b])).toEqual({ whole: true });
+    expect(thumbStep([a, b], [a, b, c])).toEqual({ whole: false, from: 2 });
+    expect(thumbStep([a, b], [a, b])).toEqual({ whole: false, from: 2 });
+    expect(thumbStep([a, b, c], [a, b])).toEqual({ whole: true });
+    expect(thumbStep([a, b], [a, c])).toEqual({ whole: true });
+  });
+});
+

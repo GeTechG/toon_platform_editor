@@ -13,11 +13,29 @@ interface Sheet {
   readonly height: number;
 }
 
+/**
+ * What a played frame is kept as: a bitmap, laid with one `drawImage`, where
+ * the browser makes them; pixels in Safari and on an iPhone (every browser
+ * there is Safari underneath), which count bitmaps against their cap on canvas
+ * memory and drop the page past it (owner, 2026-11-14: by the device).
+ */
+export function playbackKeeps(userAgent: string, bitmaps: boolean): 'bitmap' | 'pixels' {
+  const apple = /iPhone|iPad|iPod/.test(userAgent)
+    || (/Safari\//.test(userAgent) && !/Chrome\/|Chromium\/|Edg\/|Firefox\//.test(userAgent));
+  return bitmaps && !apple ? 'bitmap' : 'pixels';
+}
+
 export class PlaybackFrames<P> {
+  readonly #free: (pixels: P) => void;
   #doc: object | null = null;
   #width = 0;
   #height = 0;
   readonly #frames = new Map<number, P>();
+
+  /** `free` gives a frame's pixels back as it is dropped (a bitmap's `close`). */
+  constructor(free: (pixels: P) => void = () => {}) {
+    this.#free = free;
+  }
 
   /** The frame's pixels kept this playback; nothing once the document or the sheet is another. */
   get(doc: object, sheet: Sheet, frame: number): P | undefined {
@@ -27,17 +45,24 @@ export class PlaybackFrames<P> {
 
   keep(doc: object, sheet: Sheet, frame: number, pixels: P): void {
     this.#settle(doc, sheet);
+    const old = this.#frames.get(frame);
+    if (old !== undefined && old !== pixels) this.#free(old);
     this.#frames.set(frame, pixels);
   }
 
   release(): void {
-    this.#frames.clear();
+    this.#drop();
     this.#doc = null;
+  }
+
+  #drop(): void {
+    for (const pixels of this.#frames.values()) this.#free(pixels);
+    this.#frames.clear();
   }
 
   #settle(doc: object, { width, height }: Sheet): void {
     if (doc !== this.#doc || width !== this.#width || height !== this.#height) {
-      this.#frames.clear();
+      this.#drop();
       this.#doc = doc;
       this.#width = width;
       this.#height = height;

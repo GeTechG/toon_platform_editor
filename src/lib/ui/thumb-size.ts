@@ -61,23 +61,60 @@ export function rowHeightCss(doc: { width: number; height: number }): string {
   return `max(${rowHeight(doc)}px, calc(1.75rem + 4px))`;
 }
 
+/** Stamps of points arrays already read: the points of a stroke are not edited in place. */
+const pointStamps = new WeakMap<readonly number[], number>();
+
+function pointsStamp(points: readonly number[]): number {
+  let h = pointStamps.get(points);
+  if (h === undefined) {
+    h = points.length;
+    for (const v of points) {
+      h = (Math.imul(h, 31) + v) | 0;
+    }
+    pointStamps.set(points, h);
+  }
+  return h;
+}
+
 /**
  * What a cell thumbnail was drawn from, as one number. H, a lasso move and a
- * transform rewrite the points in place — the same cell with the same count —
- * so identity and count alone left the timeline showing the old drawing. One
- * pass over the points, the same order of work as drawing them, and only for
- * cells on screen.
+ * transform give a stroke new points — the same cell with the same count —
+ * so identity and count alone left the timeline showing the old drawing. Each
+ * stroke's points are read once and remembered: every write to the document
+ * stamps every cell on screen, and reading all their points again was a pass
+ * over the whole drawing per stroke (a sent file of 34 000 lines, 2026-11-14).
  */
 export function cellStamp(cell: { strokes: readonly { points: readonly number[]; tool_id: number }[] }): number {
   let h = cell.strokes.length;
   for (const stroke of cell.strokes) {
     h = (Math.imul(h, 31) + stroke.tool_id) | 0;
-    h = (Math.imul(h, 31) + stroke.points.length) | 0;
-    for (const v of stroke.points) {
-      h = (Math.imul(h, 31) + v) | 0;
-    }
+    h = (Math.imul(h, 31) + pointsStamp(stroke.points)) | 0;
   }
   return h;
+}
+
+type ThumbStroke = { readonly points: readonly number[]; readonly tool_id: number; readonly pressure?: readonly number[] };
+
+/**
+ * How a thumbnail drawn from `was` becomes one of `now`: the strokes put at
+ * the end are drawn on top (`from` the first of them), anything else draws the
+ * cell anew — a finished line costs the thumbnail one line.
+ */
+export function thumbStep(
+  was: readonly ThumbStroke[] | null,
+  now: readonly ThumbStroke[],
+): { whole: true } | { whole: false; from: number } {
+  if (!was || was.length > now.length) {
+    return { whole: true };
+  }
+  for (let i = 0; i < was.length; i++) {
+    const a = was[i];
+    const b = now[i];
+    if (a.points !== b.points || a.tool_id !== b.tool_id || a.pressure !== b.pressure) {
+      return { whole: true };
+    }
+  }
+  return { whole: false, from: was.length };
 }
 
 /** The layer row the bottom bar's floor is written for, px (presets.ts, `PANEL_HEIGHT_MIN`). */

@@ -15,7 +15,8 @@ import {
 import type { DraftState } from './store';
 import { DRAFTS_CHANNEL } from './store';
 
-import { createDocument } from '../model/operations';
+import { addStroke, createDocument } from '../model/operations';
+import { packDocument } from '../format/pack';
 import { FakeReq, fakeIndexedDB, fakeReads, setIndexedDB, type Stores } from '../test-support/fake-idb';
 
 
@@ -107,7 +108,8 @@ describe('draft store', () => {
     setIndexedDB(fakeIndexedDB());
     const written = await saveDraft('a', doc(12));
     expect(written.ok).toBe(true);
-    expect(written.bytes).toBe(JSON.stringify(doc(12)).length);
+    // The document is kept as the bytes of its packed text: those are what it weighs.
+    expect(written.bytes).toBe(new TextEncoder().encode(JSON.stringify(packDocument(doc(12)))).length);
     const [listed] = await listDrafts();
     expect(listed.bytes).toBe(written.bytes);
   });
@@ -609,3 +611,40 @@ describe('a write does not read the document back', () => {
     expect(record.audio?.name).toBe('song');
   });
 });
+
+describe('the document is kept as bytes', () => {
+  const drawn = () => {
+    const built = createDocument();
+    addStroke(built, 0, 0, { points: [10, 20, 300, 400, 500, 20], width: 9, color: '#123456' });
+    return built;
+  };
+
+  it('stores one array of bytes, not the tree of strokes, and hands the document back', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', drawn());
+    const raw = stores.get('drafts')!.get('a') as Record<string, unknown>;
+    expect(raw.doc).toBeUndefined();
+    expect(raw.packed).toBeInstanceOf(Uint8Array);
+    const [listed] = await listDrafts();
+    expect(listed.doc).toEqual(drawn());
+  });
+
+  it('reads a record written before, with the document as it was', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('new', doc(1));
+    stores.get('drafts')!.set('old', { id: 'old', updated: 1, doc: drawn() });
+    const old = (await listDrafts()).find((d) => d.id === 'old')!;
+    expect(old.doc).toEqual(drawn());
+  });
+
+  it('a copy and the drafts file carry the document', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', drawn());
+    const copy = await duplicateDraft('a');
+    const listed = (await listDrafts()).find((d) => d.id === copy)!;
+    expect(listed.doc).toEqual(drawn());
+  });
+});
+

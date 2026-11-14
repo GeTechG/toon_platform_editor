@@ -18,7 +18,10 @@
     type Canvas2DLike,
   } from '../render/canvas2d';
   import { CELL_CACHE_BYTES, FrameComposer, type LiveLine } from '../render/frame-compose';
-  import { PlaybackFrames } from './playback-frames';
+  import { PlaybackFrames, playbackKeeps } from './playback-frames';
+  import { CellWarmer } from '../render/cell-warm';
+  import { cellCrew } from '../render/cell-crew';
+  import { studioCells } from '../render/studio-cells';
   import { isFilledLineTool } from '../render/dispatch';
   import { cursorShape, pickSource } from './frame-selection';
   import {
@@ -210,6 +213,12 @@
     destroyed = true;
     cancelAnimationFrame(rafId);
     cancelAnimationFrame(glideRaf);
+    clearTimeout(warmTimer);
+    warmer.stop();
+    crew?.close();
+    if (studioCells.current === composer.cells) {
+      studioCells.current = undefined;
+    }
     composer.dispose();
     played.release();
     for (const spare of [shotCanvas, sheetEl, pickEl, canvasEl]) {
@@ -337,8 +346,26 @@
    * benchmark runs, so what is measured there is what is drawn here.
    */
   const composer = new FrameComposer(undefined, { cellBytes: CELL_CACHE_BYTES });
+  /** Rasterizes the cells of the frames around this one while the studio idles (cell-warm.ts). */
+  const crew = cellCrew();
+  studioCells.current = composer.cells;
+  const warmer = new CellWarmer(composer.cells!, (task) => {
+    // Safari has no idle callback: a short timeout stands in for it.
+    const idle = globalThis.requestIdleCallback ?? null;
+    if (idle) {
+      const id = idle(task, { timeout: 1000 });
+      return () => globalThis.cancelIdleCallback?.(id);
+    }
+    const id = setTimeout(task, 50);
+    return () => clearTimeout(id);
+  }, crew);
+  let warmTimer: ReturnType<typeof setTimeout> | undefined;
   /** The frames of the playback under way, composed once each (playback-frames.ts). */
-  const played = new PlaybackFrames<ImageData>();
+  const played = new PlaybackFrames<ImageData | ImageBitmap>((pixels) => {
+    if ('close' in pixels) pixels.close();
+  });
+  /** What a played frame is kept as, by the browser (playback-frames.ts). */
+  const keepAs = playbackKeeps(navigator.userAgent, typeof createImageBitmap === 'function');
   /** The paper and its shadow, and the shape they were drawn for. */
   /** Scratch the pipette flattens the frame into before reading a pixel back. */
   let pickEl: HTMLCanvasElement | null = null;
@@ -709,7 +736,11 @@
         const still = editor.playing && !ghosts && !live;
         const kept = still ? played.get(editor.doc, raster, frame) : undefined;
         if (kept) {
-          sheetCtx.putImageData(kept, 0, 0);
+          if ('close' in kept) {
+            sheetCtx.drawImage(kept, 0, 0);
+          } else {
+            sheetCtx.putImageData(kept, 0, 0);
+          }
         } else {
           composer.compose(sheetCtx, raster.width, raster.height, {
             doc: editor.doc,
@@ -726,12 +757,38 @@
             alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
             blend: editor.onionBlends,
           });
+          // The hand at rest: the frames it goes to next are made ready. A
+          // line under the hand stops it; the frame it lands on starts it over.
+          clearTimeout(warmTimer);
+          if (live) {
+            warmer.stop();
+          } else {
+            const scene = {
+              doc: editor.doc, frame, tools: editor.doc.tools, viewport,
+              width: raster.width, height: raster.height, ahead: editor.playing,
+            };
+            warmTimer = setTimeout(() => warmer.request(scene), editor.playing ? 0 : 150);
+          }
           if (still) {
             // A device out of memory keeps no more frames: the rest are composed.
-            try {
-              played.keep(editor.doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height));
-            } catch {
-              // Drawn live, as before.
+            const doc = editor.doc;
+            if (keepAs === 'bitmap' && sheetEl) {
+              createImageBitmap(sheetEl).then((bitmap) => {
+                // Stopped meanwhile: nobody will show it.
+                if (editor.playing && editor.doc === doc) {
+                  played.keep(doc, raster, frame, bitmap);
+                } else {
+                  bitmap.close();
+                }
+              }, () => {
+                // Drawn live, as before.
+              });
+            } else {
+              try {
+                played.keep(doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height));
+              } catch {
+                // Drawn live, as before.
+              }
             }
           }
         }

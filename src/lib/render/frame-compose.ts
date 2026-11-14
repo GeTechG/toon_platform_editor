@@ -16,7 +16,7 @@
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
 import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, type Canvas2DLike } from './canvas2d';
-import { CellCache } from './cell-cache';
+import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
 
@@ -36,8 +36,13 @@ export interface ComposeBuffer {
 
 export type BufferFactory = () => ComposeBuffer;
 
-/** The editor's budget for kept cells (owner, 2026-11-14): 17 sheets of 1280×720, 7 of 1080p. */
-export const CELL_CACHE_BYTES = 64 * 1024 * 1024;
+/**
+ * The editor's budget for kept cells: by the device's memory where the browser
+ * tells it (cell-cache.ts `cellBudget`) — 64 MB is 17 sheets of 1280×720.
+ */
+export const CELL_CACHE_BYTES = cellBudget(
+  typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+);
 
 export interface ComposerOptions {
   /**
@@ -181,6 +186,11 @@ export class FrameComposer {
     this.#make = make;
     this.#ghosts = new BufferRing(GHOST_BUFFERS, make);
     this.#cells = options.cellBytes ? new CellCache(make, options.cellBytes) : undefined;
+  }
+
+  /** The cells it keeps, for whoever rasterizes some ahead (cell-warm.ts); absent when none are kept. */
+  get cells(): CellCache | undefined {
+    return this.#cells;
   }
 
   /**
@@ -356,10 +366,30 @@ export class FrameComposer {
     if (kept && was.every((old, c) => old.length === ink[c].length)) {
       return false;
     }
-    if (kept && cells.length === 1) {
+    const had = was?.[0]?.length ?? 0;
+    // A few lines more go on top; a cell put whole (a file opened over an
+    // empty one) goes through the cache, so it is kept like any other.
+    const grown = (ink[0]?.length ?? 0) - had;
+    if (kept && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
       const added = { strokes: cells[0].strokes.slice(was[0].length / 3) };
       renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport);
       return true;
+    }
+    if (was !== undefined && cells.length === 1 && was.length === 1
+      && !this.#cells?.has(cells[0], scene.tools, scene.viewport, width, height)
+      && repaintTaken(buffer.ctx, cells[0], was[0], ink[0], scene, width, height)) {
+      return true;
+    }
+    // What the buffer holds is one cell drawn whole or added to: kept as a
+    // copy before it is drawn over, the cell the hand just left is ready as a
+    // ghost and to come back to.
+    if (this.#cells && was !== undefined && was.length === 1 && was[0].length > 0) {
+      const flat = was[0];
+      const triples = [];
+      for (let i = 0; i < flat.length; i += 3) {
+        triples.push([flat[i], flat[i + 1], flat[i + 2]] as const);
+      }
+      this.#cells.keepCopy(triples as unknown as Ink, scene.viewport, width, height, buffer.image);
     }
     buffer.size(width, height);
     buffer.clear();
@@ -374,6 +404,9 @@ export class FrameComposer {
       // in its own buffer is a layer apart, so an eraser cuts only its own.
       const kept = this.#cells;
       for (const cell of cells) {
+        if (cell.strokes.length === 0) {
+          continue; // nothing to lay, and no room to spend on it
+        }
         const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart);
         const pixels = this.#standIns.has(cell)
           ? null
@@ -580,6 +613,112 @@ export class FrameComposer {
     }
     return { buffer, key };
   }
+}
+
+/** A canvas that can be cut to a rectangle for a while. */
+interface ClipCtx extends Canvas2DLike {
+  save(): void;
+  restore(): void;
+  rect(x: number, y: number, w: number, h: number): void;
+  clip(): void;
+}
+
+/** A stroke's reach in document units: its points, out by its width. Kept per points array. */
+const reaches = new WeakMap<readonly number[], { width: number; box: readonly [number, number, number, number] }>();
+function reach(points: readonly number[], tool: unknown): readonly [number, number, number, number] {
+  const width = (tool as { width?: number } | undefined)?.width ?? 0;
+  const kept = reaches.get(points);
+  if (kept && kept.width === width) {
+    return kept.box;
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    minX = Math.min(minX, points[i]);
+    maxX = Math.max(maxX, points[i]);
+    minY = Math.min(minY, points[i + 1]);
+    maxY = Math.max(maxY, points[i + 1]);
+  }
+  // The whole width out, not half: a stamp's shape and a pressure outline
+  // reach as far, and a little more repainted costs nothing.
+  const box = [minX - width, minY - width, maxX + width, maxY + width] as const;
+  reaches.set(points, { width, box });
+  return box;
+}
+
+/**
+ * Strokes taken out of a cell whose pixels are on the buffer, the rest left in
+ * their order: only the place they covered is cleared and drawn again, with
+ * the strokes that reach into it. An undo of a small line in a cell of 900
+ * drew all 900 (owner, 2026-11-14). False when it is not that, or the canvas
+ * cannot clip, or the place is most of the buffer: then the cell is drawn whole.
+ */
+function repaintTaken(
+  ctx: Canvas2DLike,
+  cell: Frame,
+  was: readonly unknown[],
+  now: readonly unknown[],
+  scene: FrameScene,
+  width: number,
+  height: number,
+): boolean {
+  const clipper = ctx as ClipCtx;
+  if (typeof clipper.clip !== 'function' || now.length >= was.length) {
+    return false;
+  }
+  // Was = now with some strokes taken out, the rest in the same order.
+  let j = 0;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < was.length; i += 3) {
+    if (j < now.length && was[i] === now[j] && was[i + 1] === now[j + 1] && was[i + 2] === now[j + 2]) {
+      j += 3;
+      continue;
+    }
+    const [a, b, c, d] = reach(was[i] as readonly number[], was[i + 1]);
+    x0 = Math.min(x0, a);
+    y0 = Math.min(y0, b);
+    x1 = Math.max(x1, c);
+    y1 = Math.max(y1, d);
+  }
+  if (j !== now.length || !Number.isFinite(x0)) {
+    return false;
+  }
+  const { viewport } = scene;
+  const k = viewport.scale * viewport.dpr;
+  const ox = (viewport.panX ?? 0) * viewport.dpr;
+  const oy = (viewport.panY ?? 0) * viewport.dpr;
+  // Two pixels more a side for the smoothing of the edges.
+  const left = Math.max(0, Math.floor(x0 * k + ox) - 2);
+  const top = Math.max(0, Math.floor(y0 * k + oy) - 2);
+  const right = Math.min(width, Math.ceil(x1 * k + ox) + 2);
+  const bottom = Math.min(height, Math.ceil(y1 * k + oy) + 2);
+  if (right <= left || bottom <= top) {
+    return true; // nothing of it was on the buffer
+  }
+  if ((right - left) * (bottom - top) > width * height / 2) {
+    return false;
+  }
+  const touching = cell.strokes.filter((stroke) => {
+    const [a, b, c, d] = reach(stroke.points, scene.tools[stroke.tool_id]);
+    return a * k + ox < right && c * k + ox > left && b * k + oy < bottom && d * k + oy > top;
+  });
+  clipper.save();
+  try {
+    clipper.setTransform(1, 0, 0, 1, 0, 0);
+    clipper.beginPath();
+    clipper.rect(left, top, right - left, bottom - top);
+    clipper.clip();
+    clipper.clearRect(left, top, right - left, bottom - top);
+    renderStrokesLayer({ strokes: touching }, scene.tools, clipper, viewport);
+  } finally {
+    clipper.restore();
+  }
+  return true;
 }
 
 /**
