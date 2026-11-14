@@ -225,3 +225,12 @@ export function withoutLetterKeys(text: string): string {
     return kept === '' ? '' : `${group.match(/^\s*/)![0]}(${kept})`;
   });
 }
+
+/**
+ * Whether a keydown is a press at all. A script's `new Event('keydown')` - an
+ * extension, a page tool - comes to the window's listener with no key, and
+ * reading `.length` of it threw inside the studio.
+ */
+export function isKeyPress(e: KeyboardEvent): boolean {
+  return typeof e.key === 'string';
+}

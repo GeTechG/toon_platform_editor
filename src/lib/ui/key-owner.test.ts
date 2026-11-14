@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { focusOrigin, keyOwner, latinKey, type KeyPress } from './key-owner';
+import { focusOrigin, isKeyPress, keyOwner, latinKey, type KeyPress } from './key-owner';
 import { buildKeymap, chordOf, studioCommands } from './keymap';
 import { toolKeyList, toolOrder } from './panels';
 
@@ -275,5 +275,18 @@ describe('what the keymap holds is the editor’s, what it let go is the browser
 
   it('a field still types a key given to a command', () => {
     expect(keyOwner({ ...press('k', el('input', { type: 'text' })), bound: true })).toBe('control');
+  });
+});
+
+describe('a keydown with no key', () => {
+  // A script's `new Event('keydown')` (an extension, a page tool) reaches the
+  // window's listener with no key at all; reading it threw inside the studio.
+  it('is no press at all', () => {
+    expect(isKeyPress({} as unknown as KeyboardEvent)).toBe(false);
+  });
+
+  it('a real press is one, a key of its own or an empty one', () => {
+    expect(isKeyPress({ key: 'a' } as KeyboardEvent)).toBe(true);
+    expect(isKeyPress({ key: '' } as KeyboardEvent)).toBe(true);
   });
 });

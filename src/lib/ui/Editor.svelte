@@ -38,7 +38,7 @@
   import { saveFile } from './save-file';
   import { keyPan, turnStep, zoomDelta, zoomNotch } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, wrapIndex, type FrameMenuAction } from './frame-selection';
-  import { composing, focusOrigin, keyOwner, latinKey, typesText } from './key-owner';
+  import { composing, focusOrigin, isKeyPress, keyOwner, latinKey, typesText } from './key-owner';
   import { chordOf, holdKey } from './keymap';
   import { reportCommand } from './command-trail';
   import { focusHeir, twinSelector } from './focus-heir';
@@ -884,6 +884,7 @@
   const focusFrom = focusOrigin();
 
   function onKeydown(e: KeyboardEvent): void {
+    if (!isKeyPress(e)) return;
     focusFrom.key(e.key);
     // An update is downloading: the editor is not there to be typed at. Its
     // Ctrl+S is still not the browser's «save page».
@@ -1030,6 +1031,7 @@
   });
 
   function onKeyup(e: KeyboardEvent): void {
+    if (!isKeyPress(e)) return;
     if (editor.panHeldUsed) panHold.use();
     panHold.up(e.code);
   }
