@@ -32,6 +32,22 @@ export function canWarmApart(): boolean {
 }
 
 /**
+ * The film as one worker needs it: every frame in its place, the strokes of
+ * `frames` alone. Each worker holding all of a heavy toon was the film over
+ * again per worker (2026-11-15).
+ */
+export function filmFor(doc: ToonDocument, frames: readonly number[]): ToonDocument {
+  const own = new Set(frames);
+  return {
+    ...doc,
+    layers: doc.layers.map((layer) => ({
+      ...layer,
+      frames: layer.frames.map((cell, index) => (own.has(index) ? cell : { strokes: [] })),
+    })),
+  };
+}
+
+/**
  * Starts the crew on `frames` of the film, dealt round. `onFrame` gets every
  * frame as it comes; `onEnd` is called
  * once, when no more will: `false` if a worker fell or ran out of memory, and
@@ -44,10 +60,6 @@ export function warmApart(
   onFrame: (index: number, frame: ImageData) => void,
   onEnd: (ok: boolean) => void,
 ): () => void {
-  // A page holds the film in its state, and a Svelte `$state` is a proxy: it
-  // does not clone into a worker, and the crew fell to the page every time.
-  // The document is plain data, so a copy of it through JSON clones.
-  const film = JSON.parse(JSON.stringify(doc)) as ToonDocument;
   const workers: Worker[] = [];
   let left = crew;
   let whole = true;
@@ -75,7 +87,13 @@ export function warmApart(
       through(false);
     };
     try {
-      worker.postMessage({ doc: film, frames: frames.filter((_, i) => i % crew === from) } satisfies WarmOrder);
+      const share = frames.filter((_, i) => i % crew === from);
+      // A page holds the film in its state, and a Svelte `$state` is a proxy:
+      // it does not clone into a worker, and the crew fell to the page every
+      // time. The document is plain data, so a copy of it through JSON clones —
+      // one worker's share at a time, not the whole film at once.
+      const film = JSON.parse(JSON.stringify(filmFor(doc, share))) as ToonDocument;
+      worker.postMessage({ doc: film, frames: share } satisfies WarmOrder);
     } catch (err) {
       // A film that cannot be handed over leaves no worker behind.
       stop();

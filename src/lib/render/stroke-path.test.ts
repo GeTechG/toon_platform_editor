@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { renderStrokesLayer, type Canvas2DLike } from './canvas2d';
+import { Canvas2DFrameRenderer, renderStrokesLayer, type Canvas2DLike, type StrokePaths } from './canvas2d';
+import { PathKeeper } from './path-keeper';
 import type { Frame, ToolDescriptor } from '../format/types';
 
 /** A Path2D that writes down what it was told, and how many were made. */
@@ -59,17 +60,32 @@ describe('a stroke keeps its path', () => {
     renderStrokesLayer(frame, [pencil, feather], direct.ctx, viewport);
     (globalThis as { Path2D?: unknown }).Path2D = FakePath;
     const kept = target();
-    renderStrokesLayer(frame, [pencil, feather], kept.ctx, viewport);
+    renderStrokesLayer(frame, [pencil, feather], kept.ctx, viewport, undefined, new PathKeeper<StrokePaths>(1 << 20));
     expect(paints(kept.log)).toEqual(paints(direct.log));
   });
 
   it('builds the path of a stroke once, however often it is drawn', () => {
     (globalThis as { Path2D?: unknown }).Path2D = FakePath;
     const strokes: Frame = { strokes: frame.strokes.map((s) => ({ ...s, points: s.points.slice() })) };
-    renderStrokesLayer(strokes, [pencil, feather], target().ctx, viewport);
+    const keeper = new PathKeeper<StrokePaths>(1 << 20);
+    renderStrokesLayer(strokes, [pencil, feather], target().ctx, viewport, undefined, keeper);
     const once = FakePath.made;
     expect(once).toBeGreaterThan(0);
-    renderStrokesLayer(strokes, [pencil, feather], target().ctx, viewport);
+    renderStrokesLayer(strokes, [pencil, feather], target().ctx, viewport, undefined, keeper);
     expect(FakePath.made).toBe(once);
+  });
+
+  it('keeps nothing unless told where: what draws a stroke once holds no paths', () => {
+    (globalThis as { Path2D?: unknown }).Path2D = FakePath;
+    const fresh = (): Frame => ({ strokes: frame.strokes.map((s) => ({ ...s, points: s.points.slice() })) });
+    renderStrokesLayer(fresh(), [pencil, feather], target().ctx, viewport);
+    expect(FakePath.made).toBe(0);
+    const doc = {
+      schema_version: 7, width: 800, height: 800, frame_rate: 12, tools: [pencil, feather],
+      layers: [{ hidden: false, frames: [fresh()] }, { hidden: false, frames: [fresh()] }],
+    } as const;
+    const renderer = new Canvas2DFrameRenderer(() => target() as unknown as { ctx: Canvas2DLike; image: CanvasImageSource });
+    renderer.render(doc as never, 0, target().ctx, viewport);
+    expect(FakePath.made).toBe(0);
   });
 });

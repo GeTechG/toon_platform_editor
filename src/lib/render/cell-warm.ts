@@ -11,7 +11,7 @@
  */
 
 import type { Frame, Stroke, ToolDescriptor, ToonDocument } from '../format/types';
-import { renderStrokesLayer } from './canvas2d';
+import { renderStrokesLayer, STUDIO_PATHS } from './canvas2d';
 import type { CellCache } from './cell-cache';
 import type { Viewport } from './contract';
 
@@ -144,7 +144,7 @@ export class CellWarmer {
       this.#crew = undefined;
     }
     this.#cache.take(cell, tools, viewport, width, height, (buffer) => {
-      renderStrokesLayer(cell, tools, buffer.ctx, viewport);
+      renderStrokesLayer(cell, tools, buffer.ctx, viewport, undefined, STUDIO_PATHS);
     });
   }
 }

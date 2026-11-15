@@ -19,6 +19,8 @@ import {
   resolveTool,
 } from './dispatch';
 import { emitPressuredOutline, flattenPressured } from './pressure';
+import { PathKeeper } from './path-keeper';
+import { cellBudget } from './cell-cache';
 
 /**
  * Subset of CanvasRenderingContext2D used by the renderer.
@@ -144,14 +146,16 @@ export function renderLayersStacked(
   target: Canvas2DLike,
   viewport: Viewport,
   apart: () => ScratchLayer,
+  /** Where the strokes' paths are kept to be drawn again; none kept without. */
+  paths?: PathKeeper<StrokePaths>,
 ): void {
   for (const [index, cell] of cells.entries()) {
     if (index === 0 || !hasEraser(cell, tools)) {
-      renderStrokesLayer(cell, tools, target, viewport);
+      renderStrokesLayer(cell, tools, target, viewport, undefined, paths);
       continue;
     }
     const own = apart();
-    renderStrokesLayer(cell, tools, own.ctx, viewport);
+    renderStrokesLayer(cell, tools, own.ctx, viewport, undefined, paths);
     blitLayer(own.image, target);
   }
 }
@@ -251,6 +255,12 @@ export function renderStrokesLayer(
   target: Canvas2DLike,
   viewport: Viewport,
   tint?: string,
+  /**
+   * Where the strokes' paths are kept to be drawn again: the studio's canvas
+   * ([`STUDIO_PATHS`]). Without it nothing is kept — what draws a stroke once
+   * (the player, exports, thumbnails) would only hold memory.
+   */
+  paths?: PathKeeper<StrokePaths>,
 ): void {
   applyDocTransform(target, viewport);
   for (const stroke of frame.strokes) {
@@ -269,7 +279,7 @@ export function renderStrokesLayer(
       target.globalAlpha = opacity / 100;
     }
     drawResolvedStroke(
-      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure, true,
+      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure, paths,
     );
     if (opacity !== undefined) {
       target.globalAlpha = 1;
@@ -286,7 +296,7 @@ export function renderStrokesLayer(
  * the smoothing and the pressure outline are worked out once, not every time a
  * cell is drawn (owner, 2026-11-14).
  */
-interface StrokePaths {
+export interface StrokePaths {
   /** The feather's fill under a pressured outline: filled in the tool's fill. */
   readonly under?: Path2D;
   readonly main: Path2D;
@@ -296,23 +306,14 @@ interface StrokePaths {
   readonly fillFirst: boolean;
 }
 
-/** Kept per points array (never edited in place), then per tool and pressure. */
-const keptPaths = new WeakMap<readonly number[], { tool: ToolDescriptor; pressure?: readonly number[]; paths: StrokePaths }[]>();
-
-function strokePaths(points: readonly number[], tool: ToolDescriptor, pressure?: readonly number[]): StrokePaths {
-  let kept = keptPaths.get(points);
-  const found = kept?.find((entry) => entry.tool === tool && entry.pressure === pressure);
-  if (found) {
-    return found.paths;
-  }
-  const paths = buildPaths(points, tool, pressure);
-  if (!kept) {
-    kept = [];
-    keptPaths.set(points, kept);
-  }
-  kept.push({ tool, pressure, paths });
-  return paths;
-}
+/**
+ * The studio's kept paths: as much as the device's memory allows, by the same
+ * steps as its kept cells (cell-cache.ts `cellBudget`), the longest unused let
+ * go first.
+ */
+export const STUDIO_PATHS = new PathKeeper<StrokePaths>(
+  cellBudget(typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory),
+);
 
 function buildPaths(points: readonly number[], tool: ToolDescriptor, pressure?: readonly number[]): StrokePaths {
   const main = new Path2D();
@@ -373,13 +374,13 @@ function drawResolvedStroke(
   color: string,
   pressure?: readonly number[],
   /**
-   * A committed stroke, whose points never change: its path is kept. The line
-   * under the hand grows in place, so a kept path would be the line as it was.
+   * Where a committed stroke's path is kept, its points never changing. The
+   * line under the hand grows in place, so a kept path would be the line as it was.
    */
-  keep = false,
+  keep?: PathKeeper<StrokePaths>,
 ): void {
   if (keep && typeof Path2D !== 'undefined') {
-    const paths = strokePaths(points, tool, pressure);
+    const paths = keep.take(points, tool, pressure, () => buildPaths(points, tool, pressure));
     if (paths.under) {
       target.fillStyle = (tool as { fill: string }).fill;
       target.fill(paths.under);

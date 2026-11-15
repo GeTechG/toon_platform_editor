@@ -15,7 +15,7 @@
 
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
-import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, type Canvas2DLike } from './canvas2d';
+import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike } from './canvas2d';
 import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
@@ -372,7 +372,7 @@ export class FrameComposer {
     const grown = (ink[0]?.length ?? 0) - had;
     if (kept && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
       const added = { strokes: cells[0].strokes.slice(was[0].length / 3) };
-      renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport);
+      renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport, undefined, STUDIO_PATHS);
       return true;
     }
     if (was !== undefined && cells.length === 1 && was.length === 1
@@ -407,7 +407,7 @@ export class FrameComposer {
         if (cell.strokes.length === 0) {
           continue; // nothing to lay, and no room to spend on it
         }
-        const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart);
+        const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart, STUDIO_PATHS);
         const pixels = this.#standIns.has(cell)
           ? null
           : kept.take(cell, scene.tools, scene.viewport, width, height, own);
@@ -423,7 +423,7 @@ export class FrameComposer {
     }
     // Layers that erase nothing go straight onto the buffer; one that erases
     // above another is rasterized apart, so its eraser cuts only its own.
-    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart);
+    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart, STUDIO_PATHS);
     return true;
   }
 
@@ -714,7 +714,7 @@ function repaintTaken(
     clipper.rect(left, top, right - left, bottom - top);
     clipper.clip();
     clipper.clearRect(left, top, right - left, bottom - top);
-    renderStrokesLayer({ strokes: touching }, scene.tools, clipper, viewport);
+    renderStrokesLayer({ strokes: touching }, scene.tools, clipper, viewport, undefined, STUDIO_PATHS);
   } finally {
     clipper.restore();
   }

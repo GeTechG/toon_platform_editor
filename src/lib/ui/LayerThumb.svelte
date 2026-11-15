@@ -3,7 +3,7 @@
   // layers-panel row shows what that layer contributes. Same stroke path as
   // the canvas (renderStrokesLayer), on a transparent little buffer.
   import type { Frame, ToonDocument } from '../format/types';
-  import { renderStrokesLayer, type Canvas2DLike } from '../render/canvas2d';
+  import { renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike } from '../render/canvas2d';
   import { cellStamp, fitThumb, thumbStep } from './thumb-size';
   import { studioCells } from '../render/studio-cells';
   import { whenOnScreen } from './on-screen';
@@ -98,7 +98,7 @@
     onThumb = cell.strokes.slice();
     if (!step.whole) {
       // A finished line costs the thumbnail that line, not the cell.
-      renderStrokesLayer({ strokes: cell.strokes.slice(step.from) }, doc.tools, ctx, viewport);
+      renderStrokesLayer({ strokes: cell.strokes.slice(step.from) }, doc.tools, ctx, viewport, undefined, STUDIO_PATHS);
       return;
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -110,7 +110,7 @@
       ctx.drawImage(kept.image, 0, 0, width, height);
       return;
     }
-    renderStrokesLayer(cell, doc.tools, ctx, viewport);
+    renderStrokesLayer(cell, doc.tools, ctx, viewport, undefined, STUDIO_PATHS);
   });
 </script>
 

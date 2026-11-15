@@ -14,6 +14,7 @@
     renderResolvedPreview,
     renderLayersStacked,
     renderStrokesLayer,
+    STUDIO_PATHS,
     type BlitTarget,
     type Canvas2DLike,
   } from '../render/canvas2d';
@@ -1313,7 +1314,7 @@
     renderLayersStacked(cells, tools, ctx, viewport, () => {
       const own = buffer(null, w, h);
       return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
-    });
+    }, STUDIO_PATHS);
     const rgba = plain.getImageData(0, 0, w, h).data;
     const [ux, uy] = toDocUnits(e);
     const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
@@ -1364,7 +1365,7 @@
     const trialTools = [...tools, { kind: 'contour' as const, geometry: 'line' as const, color: probe }];
     const seenAt = (slot: number): number => {
       clear();
-      renderStrokesLayer({ strokes: [...kept.slice(0, slot), trial, ...kept.slice(slot)] }, trialTools, ctx, viewport);
+      renderStrokesLayer({ strokes: [...kept.slice(0, slot), trial, ...kept.slice(slot)] }, trialTools, ctx, viewport, undefined, STUDIO_PATHS);
       const seen = plain.getImageData(0, 0, w, h).data;
       let count = 0;
       for (const p of pure) {
@@ -1379,7 +1380,7 @@
     let ring = onTop;
     if (slot < kept.length) {
       clear();
-      renderStrokesLayer({ strokes: kept.slice(slot) }, tools, ctx, viewport);
+      renderStrokesLayer({ strokes: kept.slice(slot) }, tools, ctx, viewport, undefined, STUDIO_PATHS);
       const over = plain.getImageData(0, 0, w, h).data;
       const covered = new Uint8Array(w * h);
       for (let p = 0; p < covered.length; p++) covered[p] = over[p * 4 + 3] > 0 ? 1 : 0;
