@@ -716,15 +716,15 @@ describe('pen pressure', () => {
     expect(ctx.log.filter((entry) => entry === 'fill()')).toHaveLength(1);
     expect(ctx.log).toContain('fillStyle=#112233');
     // Thin where the pen barely touched, full where it pressed.
-    expect(ctx.log).toContain('arc(0,0,0.75,0,6.283185307179586)');
-    expect(ctx.log).toContain('arc(100,0,5,0,6.283185307179586)');
+    expect(ctx.log.some((entry) => entry.startsWith('arc(0,0,0.75,'))).toBe(true);
+    expect(ctx.log.some((entry) => entry.startsWith('arc(100,0,5,'))).toBe(true);
   });
 
   it('draws a pressured dot at its own width', () => {
     const ctx = new RecordingCtx();
     const frame: Frame = { strokes: [{ points: [5, 5], tool_id: 0, pressure: [0] }] };
     renderStrokesLayer(frame, [pencil], ctx, viewport);
-    expect(ctx.log).toContain('arc(5,5,0.75,0,6.283185307179586)');
+    expect(ctx.log.some((entry) => entry.startsWith('arc(5,5,0.75,0,6.283185307179586'))).toBe(true);
   });
 
   it('draws a stroke without pressure exactly as before', () => {

@@ -3,10 +3,11 @@
  * pressure a pen reported lands on the points a brush kept.
  *
  * A pressured stroke is a line whose width changes along it, which a canvas
- * stroke cannot draw — so it is drawn as the union of a circle at every point
- * and a quad between neighbours, filled once. Every circle and quad is wound
- * the same way, so the nonzero fill is exactly their union: no overlap is
- * painted twice, and an eraser cuts it the same way.
+ * stroke cannot draw — so it is drawn as its outline, one closed contour,
+ * filled once under the nonzero rule. Until 2026-11-16 it was the union of a
+ * circle at every flattened point and a quad between neighbours: the same
+ * shape, but the circles cost 70% of a heavy frame (555 ms against 78 ms for
+ * 2037 strokes without a GPU) — every editor looked at draws one contour.
  */
 
 import { emitGeometry, type StrokeGeometry } from './smoothing';
@@ -111,50 +112,126 @@ export function flattenPressured(
   return out;
 }
 
-/** What the outline is laid into — a canvas context satisfies it. */
+/** What the outline is laid into — a canvas context or a `Path2D` satisfies it. */
 export interface OutlineSink {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
-  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
+  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): void;
 }
 
-/** The union of circles and quads over a flattened `[x, y, q, …]` line. */
+/** Below this turn (radians) a join is a mitre point, past it a round one. */
+const ROUND_TURN = 0.2;
+
+/**
+ * A press falling faster than this share of the step leaves the circle of the
+ * firmer point sticking out past the line's sides: it gets a circle of its own.
+ */
+const STEEP_PRESS = 0.25;
+
+/** Closer than this (document units) two points are one: no direction between them. */
+const SAME_POINT = 1;
+
+/**
+ * The outline of a flattened `[x, y, q, …]` line as one closed contour: the
+ * left side forward, the right side back, a half circle round each end.
+ *
+ * Where the line turns sharply the outer side goes round on an arc and the
+ * inner side through the point itself, as Skia's own stroker does: the little
+ * loops that leaves are wound the same way as the rest and the nonzero fill
+ * counts them twice, never cuts them out. Straight from one edge to the next
+ * instead, a firm point between two light ones turned the loop inside out and
+ * it cancelled the point's own circle — a hole. A turn straight back
+ * (hatching) goes round on a half circle like an end.
+ */
 export function emitPressuredOutline(flat: readonly number[], width: number, sink: OutlineSink): void {
-  const radius = (i: number): number => pressureWidth(width, flat[i + 2]) / 2;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const rs: number[] = [];
   for (let i = 0; i < flat.length; i += 3) {
-    const r = radius(i);
-    sink.moveTo(flat[i] + r, flat[i + 1]);
-    sink.arc(flat[i], flat[i + 1], r, 0, Math.PI * 2);
+    const r = pressureWidth(width, flat[i + 2]) / 2;
+    const n = xs.length;
+    if (n > 0 && Math.hypot(flat[i] - xs[n - 1], flat[i + 1] - ys[n - 1]) < SAME_POINT) {
+      rs[n - 1] = Math.max(rs[n - 1], r);
+      continue;
+    }
+    xs.push(flat[i]);
+    ys.push(flat[i + 1]);
+    rs.push(r);
   }
-  for (let i = 3; i < flat.length; i += 3) {
-    const ax = flat[i - 3];
-    const ay = flat[i - 2];
-    const bx = flat[i];
-    const by = flat[i + 1];
-    const length = Math.hypot(bx - ax, by - ay);
-    if (length === 0) continue;
-    const nx = -(by - ay) / length;
-    const ny = (bx - ax) / length;
-    const ra = radius(i - 3);
-    const rb = radius(i);
-    // The quad's corners, in scalars: this runs per segment per frame.
-    const x0 = ax + nx * ra, y0 = ay + ny * ra;
-    const x1 = bx + nx * rb, y1 = by + ny * rb;
-    const x2 = bx - nx * rb, y2 = by - ny * rb;
-    const x3 = ax - nx * ra, y3 = ay - ny * ra;
-    // A canvas arc drawn clockwise has a positive shoelace area; a quad wound
-    // the other way would cancel it under the nonzero rule.
-    const area = (x0 * y1 - x1 * y0) + (x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y0 - x0 * y3);
-    if (area > 0) {
-      sink.moveTo(x0, y0);
-      sink.lineTo(x1, y1);
-      sink.lineTo(x2, y2);
-      sink.lineTo(x3, y3);
-    } else {
-      sink.moveTo(x3, y3);
-      sink.lineTo(x2, y2);
-      sink.lineTo(x1, y1);
-      sink.lineTo(x0, y0);
+  const n = xs.length;
+  if (n === 1) {
+    sink.moveTo(xs[0] + rs[0], ys[0]);
+    sink.arc(xs[0], ys[0], rs[0], 0, Math.PI * 2, true);
+    return;
+  }
+  const dx: number[] = [];
+  const dy: number[] = [];
+  const lengths: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const ex = xs[i + 1] - xs[i];
+    const ey = ys[i + 1] - ys[i];
+    const length = Math.hypot(ex, ey);
+    dx.push(ex / length);
+    dy.push(ey / length);
+    lengths.push(length);
+  }
+  // `side` 1 is the left normal (-dy, dx), walked forward; -1 the right, walked back.
+  const join = (i: number, side: 1 | -1): void => {
+    const r = rs[i];
+    const ax = dx[i - 1], ay = dy[i - 1], bx = dx[i], by = dy[i];
+    const cross = ax * by - ay * bx;
+    const turn = Math.atan2(Math.abs(cross), ax * bx + ay * by);
+    // The normals in the order this side meets them.
+    const [px, py, qx, qy] = side === 1
+      ? [-ay, ax, -by, bx]
+      : [by, -bx, ay, -ax];
+    // Straight back has no side to turn to: the left one takes the arc.
+    const outer = side === 1 ? cross <= 0 : cross > 0;
+    if (turn > ROUND_TURN) {
+      sink.lineTo(xs[i] + px * r, ys[i] + py * r);
+      if (!outer) {
+        sink.lineTo(xs[i], ys[i]);
+        sink.lineTo(xs[i] + qx * r, ys[i] + qy * r);
+        return;
+      }
+      const from = Math.atan2(py, px);
+      let sweep = Math.atan2(qy, qx) - from;
+      if (sweep > Math.PI) sweep -= 2 * Math.PI;
+      if (sweep < -Math.PI) sweep += 2 * Math.PI;
+      // Round the outside, the way the line was going: near straight back the
+      // short way and the long way are the same length.
+      if (Math.cos(from + sweep / 2 - Math.atan2(ay - by, ax - bx)) < 0) {
+        sweep -= Math.sign(sweep) * 2 * Math.PI;
+      }
+      sink.arc(xs[i], ys[i], r, from, from + sweep, sweep < 0);
+      return;
+    }
+    // A gentle turn: the point where both sides' edges meet.
+    let mx = px + qx;
+    let my = py + qy;
+    const ml = Math.hypot(mx, my);
+    mx /= ml;
+    my /= ml;
+    const k = r / (mx * px + my * py);
+    sink.lineTo(xs[i] + mx * k, ys[i] + my * k);
+  };
+  const start = Math.atan2(dx[0], -dy[0]);
+  sink.moveTo(xs[0] - dy[0] * rs[0], ys[0] + dx[0] * rs[0]);
+  for (let i = 1; i < n - 1; i++) join(i, 1);
+  const e = n - 1;
+  const end = Math.atan2(dx[e - 1], -dy[e - 1]);
+  sink.lineTo(xs[e] - dy[e - 1] * rs[e], ys[e] + dx[e - 1] * rs[e]);
+  sink.arc(xs[e], ys[e], rs[e], end, end - Math.PI, true);
+  for (let i = n - 2; i >= 1; i--) join(i, -1);
+  sink.lineTo(xs[0] + dy[0] * rs[0], ys[0] - dx[0] * rs[0]);
+  sink.arc(xs[0], ys[0], rs[0], start - Math.PI, start - 2 * Math.PI, true);
+  // A point much firmer than a close neighbour: its circle, wound like the contour.
+  for (let i = 0; i < n; i++) {
+    const before = i > 0 ? (rs[i] - rs[i - 1]) / lengths[i - 1] : 0;
+    const after = i < n - 1 ? (rs[i] - rs[i + 1]) / lengths[i] : 0;
+    if (before > STEEP_PRESS || after > STEEP_PRESS) {
+      sink.moveTo(xs[i] + rs[i], ys[i]);
+      sink.arc(xs[i], ys[i], rs[i], 0, Math.PI * 2, true);
     }
   }
 }

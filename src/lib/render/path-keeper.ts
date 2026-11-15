@@ -12,11 +12,12 @@ import type { ToolDescriptor } from '../format/types';
 
 /**
  * What a stroke's paths are taken to weigh, in bytes: measured on a
- * pressured outline (about 1.9 KB a point in Chrome), a guess for a plain
- * path, which holds the points and little else.
+ * pressured outline (one contour since 2026-11-16: 235 B a point of the
+ * stroke in Chrome, against 1.15 KB for the union of circles before it), a
+ * guess for a plain path, which holds the points and little else.
  */
 export function pathCost(points: readonly number[], pressure?: readonly number[]): number {
-  return 256 + (points.length / 2) * (pressure ? 2048 : 64);
+  return 256 + (points.length / 2) * (pressure ? 512 : 64);
 }
 
 interface Kept<P> {

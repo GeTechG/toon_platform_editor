@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { addLayer, addStroke, createDocument } from '../model/operations';
 import { FrameComposer, type ComposeBuffer, type ComposeTarget } from '../render/frame-compose';
-import { emitPressuredOutline, flattenPressured, pressureWidth } from '../render/pressure';
+import { flattenPressured } from '../render/pressure';
 import { emitGeometry, type StrokeGeometry } from '../render/smoothing';
 
 const source = await Bun.file(new URL('./CanvasView.svelte', import.meta.url)).text();
@@ -135,34 +135,6 @@ function flattenReference(points: readonly number[], pressure: readonly number[]
   return out;
 }
 
-function outlineReference(flat: readonly number[], width: number): string[] {
-  const log: string[] = [];
-  const radius = (i: number): number => pressureWidth(width, flat[i + 2]) / 2;
-  for (let i = 0; i < flat.length; i += 3) {
-    const r = radius(i);
-    log.push(`m ${flat[i] + r} ${flat[i + 1]}`, `a ${flat[i]} ${flat[i + 1]} ${r}`);
-  }
-  for (let i = 3; i < flat.length; i += 3) {
-    const [ax, ay, bx, by] = [flat[i - 3], flat[i - 2], flat[i], flat[i + 1]];
-    const length = Math.hypot(bx - ax, by - ay);
-    if (length === 0) continue;
-    const nx = -(by - ay) / length;
-    const ny = (bx - ax) / length;
-    const ra = radius(i - 3);
-    const rb = radius(i);
-    const quad = [ax + nx * ra, ay + ny * ra, bx + nx * rb, by + ny * rb, bx - nx * rb, by - ny * rb, ax - nx * ra, ay - ny * ra];
-    let area = 0;
-    for (let j = 0; j < 8; j += 2) {
-      const k = (j + 2) % 8;
-      area += quad[j] * quad[k + 1] - quad[k] * quad[j + 1];
-    }
-    const order = area > 0 ? [0, 2, 4, 6] : [6, 4, 2, 0];
-    log.push(`m ${quad[order[0]]} ${quad[order[0] + 1]}`);
-    for (let j = 1; j < 4; j++) log.push(`l ${quad[order[j]]} ${quad[order[j] + 1]}`);
-  }
-  return log;
-}
-
 function seeded(seed: number): () => number {
   let s = seed;
   return () => {
@@ -177,14 +149,10 @@ describe('the pen line under the hand, redrawn whole every frame', () => {
       pressureSource.indexOf('export interface OutlineSink'));
     expect(flatten).not.toContain('commands.push((t)');
     expect(flatten).not.toContain('const [x, y] = command(t)');
-    const outline = pressureSource.slice(pressureSource.indexOf('export function emitPressuredOutline'),
-      pressureSource.indexOf('function cumulative'));
-    expect(outline).not.toContain('const quad = [');
-    expect(outline).not.toContain('const order = ');
   });
 
   for (const geometry of ['line', 'smooth', 'cubic'] as const) {
-    it(`draws exactly what it drew before (${geometry})`, () => {
+    it(`flattens exactly as it did before (${geometry})`, () => {
       const random = seeded(geometry.length * 7919);
       for (let run = 0; run < 20; run++) {
         const n = geometry === 'cubic' ? 1 + 3 * (1 + Math.floor(random() * 6)) : 1 + Math.floor(random() * 30);
@@ -197,13 +165,6 @@ describe('the pen line under the hand, redrawn whole every frame', () => {
         if (run === 0 && n > 1) { points[2] = points[0]; points[3] = points[1]; }
         const flat = flattenPressured(points, pressure, geometry);
         expect(flat).toEqual(flattenReference(points, pressure, geometry));
-        const log: string[] = [];
-        emitPressuredOutline(flat, 90, {
-          moveTo: (x, y) => log.push(`m ${x} ${y}`),
-          lineTo: (x, y) => log.push(`l ${x} ${y}`),
-          arc: (x, y, r) => log.push(`a ${x} ${y} ${r}`),
-        });
-        expect(log).toEqual(outlineReference(flat, 90));
       }
     });
   }
