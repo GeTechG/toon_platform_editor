@@ -188,9 +188,15 @@ describe('the indicator', () => {
 });
 
 describe('persistent storage', () => {
-  it('is asked for on the way in, and can be asked for again', () => {
-    expect(editorUi).toContain('navigator.storage');
-    expect(editorUi).toContain('.persist?.()');
+  it('is asked for after the first write that lands, and can be asked for again', () => {
+    // Firefox asks it as a question over the page: not to someone who has
+    // drawn nothing yet (owner, 2026-11-16).
+    const mount = editorUi.slice(editorUi.indexOf('onMount(async () => {'));
+    expect(mount.slice(0, mount.indexOf('\n  });'))).not.toContain('persist');
+    const saved = editorUi.slice(editorUi.indexOf('function saveNow('));
+    const landed = saved.slice(saved.indexOf('if (ok) {'), saved.indexOf('return true;', saved.indexOf('if (ok) {')));
+    expect(landed).toContain('askPersistOnce()');
+    expect(editorUi).toMatch(/function askPersistOnce\(\)[\s\S]*?if \(persistAsked\)[\s\S]*?persistAsked = true;[\s\S]*?\.persist\?\.\(\)/);
     expect(sheet).toContain("t('settings.ask_persist')");
     expect(t('settings.ask_persist')).toBe('Запросить постоянное хранилище');
     // Saving is not a setting (owner, 2026-10-05): Ctrl+S, the rail's key and

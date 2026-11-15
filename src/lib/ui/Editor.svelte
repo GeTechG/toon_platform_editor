@@ -1331,6 +1331,23 @@
    */
   let writing = 0;
 
+  /** Asked once a session, the first time a draft lands. */
+  let persistAsked = false;
+
+  /**
+   * Ask the browser to keep the drafts: without this they are evictable the
+   * moment the device is short of space. Firefox asks it as a question over
+   * the page, so not on the way in, but once there is a draft to lose (owner,
+   * 2026-11-16); the browser remembers the answer.
+   */
+  function askPersistOnce(): void {
+    if (persistAsked) {
+      return;
+    }
+    persistAsked = true;
+    void navigator.storage?.persist?.().catch(() => false);
+  }
+
   /**
    * Writes the draft right now — the autosave clock, Ctrl+S and the sheet.
    * After a failure the clock stays off, but a save asked for by hand tries
@@ -1376,6 +1393,7 @@
         // Storage that was away for a moment (an upgrade in another tab) is back.
         storageBlocked = false;
         writeScreenshot(doc);
+        askPersistOnce();
         return true;
       }
       if (leaving) {
@@ -1713,9 +1731,6 @@
     editor.askText = askText;
     // The transport defers a write until the preview is over and tells us here.
     editor.onStop = saveQueued;
-    // Ask the browser to keep the drafts: without this they are evictable the
-    // moment the device is short of space.
-    void navigator.storage?.persist?.().catch(() => false);
     await refreshDrafts();
     draftsRead = true;
   });
