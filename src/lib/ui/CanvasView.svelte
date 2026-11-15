@@ -33,6 +33,8 @@
     scaledBy,
     EMPTY_TRANSFORM,
     sameSession,
+    keepsShape,
+    sessionMatrix,
     sessionWidthScale,
     type HitMode,
     type TransformSession,
@@ -69,7 +71,7 @@
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
   import { colourDistance, distanceField, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
-  import { clampCoord } from '../model/geom';
+  import { applyMatrix, clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
   import { opacityOf, type LineToolDescriptor } from '../format/types';
   import {
@@ -884,6 +886,16 @@
   });
 
   /**
+   * The open session's matrix, worked out once a change of the session rather
+   * than at every point of every stroke it carries — and the same array while
+   * the session stands, so the stack sees nothing new to draw.
+   */
+  const placing = $derived.by(() => {
+    const open = editor.transform;
+    return open ? sessionMatrix(open.session, open.box) : null;
+  });
+
+  /**
    * A layer's cell as the stack should draw it: the lasso takes whole cells,
    * so a selected one is rasterized already moved rather than left in its old
    * place with a preview on top.
@@ -901,10 +913,19 @@
       return cell;
     }
     const indices = cut && new Set(cut.indices);
+    const matrix = placing!;
+    // A shift, a turn or a mirror leaves every line its shape: drawn from its
+    // own points under the matrix, its kept path is drawn again and no new one
+    // is built (owner, 2026-11-16). A stamp is laid back on its grid, so it
+    // goes the way apply writes it.
+    const rigid = keepsShape(open.session);
     return {
       strokes: (cut?.strokes ?? cell.strokes).map((stroke, index) => {
         if (indices && !indices.has(index)) {
           return stroke;
+        }
+        if (rigid && editor.doc.tools[stroke.tool_id]?.kind !== 'stamp') {
+          return { ...stroke, place: matrix };
         }
         // The scaled copies sit right after the real table, at the same offsets.
         // The same placing apply will perform, so the drag shows the real
@@ -912,7 +933,7 @@
         const tool_id = open.widthWithScale ? stroke.tool_id + editor.doc.tools.length : stroke.tool_id;
         const points = placeStrokePoints(
           stroke.points,
-          (x, y) => editor.transformPoint(x, y),
+          (x, y) => applyMatrix(matrix, x, y),
           editor.doc.tools[stroke.tool_id],
           previewTools[tool_id],
         );

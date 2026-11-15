@@ -112,6 +112,16 @@ export function sessionMatrix(session: TransformSession, box: Box): Matrix {
 }
 
 /**
+ * Whether the session only moves the selection — shifts, turns, mirrors. A
+ * line's smoothing and its pressure outline are then the outline of the moved
+ * points, so the canvas draws the paths it already has under the session's
+ * matrix; a scale would stretch the width with the points.
+ */
+export function keepsShape(session: TransformSession): boolean {
+  return Math.abs(session.scaleX) === 1 && Math.abs(session.scaleY) === 1;
+}
+
+/**
  * Factor the stroke width is multiplied by when "change width with scale" is
  * on: the smaller of the axis scales, unsigned — a mirror does not thin a
  * line, and a stretch on one axis alone does not fatten it (`tools.js:1861`).

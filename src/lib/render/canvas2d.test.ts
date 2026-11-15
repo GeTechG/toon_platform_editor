@@ -7,7 +7,9 @@ import {
   renderRawPolyline,
   renderStrokesLayer,
   type Canvas2DLike,
+  type StrokePaths,
 } from './canvas2d';
+import { PathKeeper } from './path-keeper';
 
 /** Recording context: journals every command and property assignment. */
 class RecordingCtx implements Canvas2DLike {
@@ -760,5 +762,51 @@ describe('tool opacity', () => {
     const ctx = new RecordingCtx();
     renderStrokesLayer(frame, tools, ctx, viewport, '#ff3b30');
     expect(ctx.log).toContain('globalAlpha=0.4');
+  });
+});
+
+describe('a stroke placed by a matrix', () => {
+  const pen: ToolDescriptor = { kind: 'pencil', width: 4, color: '#112233', geometry: 'line' };
+
+  it('is drawn from its own points under the view times the matrix, the next stroke back in the view', () => {
+    const ctx = new RecordingCtx();
+    const turn = [0, 1, -1, 0, 10, 20];
+    renderStrokesLayer(
+      { strokes: [{ tool_id: 0, points: [0, 0, 8, 0], place: turn }, { tool_id: 0, points: [2, 2, 6, 6] }] } as unknown as Frame,
+      [pen], ctx, { scale: 0.5, dpr: 1 },
+    );
+    const placed = ctx.log.indexOf('setTransform(0,0.5,-0.5,0,5,10)');
+    expect(placed).toBeGreaterThan(-1);
+    expect(ctx.log.indexOf('moveTo(0,0)')).toBeGreaterThan(placed);
+    const back = ctx.log.lastIndexOf('setTransform(0.5,0,0,0.5,0,0)');
+    expect(back).toBeGreaterThan(ctx.log.indexOf('moveTo(0,0)'));
+    expect(ctx.log.indexOf('moveTo(2,2)')).toBeGreaterThan(back);
+  });
+
+  it('takes the path kept for its points and keeps no new one', () => {
+    const had = (globalThis as { Path2D?: unknown }).Path2D;
+    (globalThis as { Path2D?: unknown }).Path2D = class {
+      moveTo(): void {}
+      lineTo(): void {}
+      quadraticCurveTo(): void {}
+      bezierCurveTo(): void {}
+      arc(): void {}
+    };
+    try {
+      const keeper = new PathKeeper<StrokePaths>(1 << 20);
+      const points = [0, 0, 8, 0, 16, 4];
+      const cell = { strokes: [{ tool_id: 0, points }] } as Frame;
+      renderStrokesLayer(cell, [pen], new RecordingCtx(), { scale: 1, dpr: 1 }, undefined, keeper);
+      const kept = keeper.bytes;
+      for (let i = 1; i <= 5; i++) {
+        renderStrokesLayer(
+          { strokes: [{ tool_id: 0, points, place: [1, 0, 0, 1, 40 * i, 0] }] } as unknown as Frame,
+          [pen], new RecordingCtx(), { scale: 1, dpr: 1 }, undefined, keeper,
+        );
+      }
+      expect(keeper.bytes).toBe(kept);
+    } finally {
+      (globalThis as { Path2D?: unknown }).Path2D = had;
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 
 import { applyMatrix } from '../model/geom';
 import { addStroke, createDocument } from '../model/operations';
@@ -6,6 +6,7 @@ import { bakeTransform } from './bake-transform';
 import {
   EMPTY_TRANSFORM,
   hitMode,
+  keepsShape,
   lassoCut,
   movedBy,
   nudged,
@@ -319,5 +320,18 @@ describe('a lasso selection applied', () => {
     const cut = lassoCut(doc.layers[0].frames[0].strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
     const open = { layers: [0], box: { x: 40, y: 0, width: 20, height: 0 }, session: { ...EMPTY_TRANSFORM }, widthWithScale: false, picked: [cut] };
     expect(bakeTransform(doc, 0, open)).toBe(doc);
+  });
+});
+
+describe('a session that only moves the selection', () => {
+  it('is a shift, a turn or a mirror — the drawn lines keep their shape', () => {
+    expect(keepsShape({ dx: 40, dy: -8, rotate: 30, scaleX: 1, scaleY: 1 })).toBe(true);
+    expect(keepsShape({ dx: 0, dy: 0, rotate: 0, scaleX: -1, scaleY: 1 })).toBe(true);
+    expect(keepsShape({ dx: 0, dy: 0, rotate: 180, scaleX: -1, scaleY: -1 })).toBe(true);
+  });
+
+  it('is not a scale: the width would stretch with the points', () => {
+    expect(keepsShape({ dx: 0, dy: 0, rotate: 0, scaleX: 1.5, scaleY: 1 })).toBe(false);
+    expect(keepsShape({ dx: 0, dy: 0, rotate: 0, scaleX: 0.5, scaleY: 0.5 })).toBe(false);
   });
 });

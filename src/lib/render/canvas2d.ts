@@ -264,6 +264,10 @@ export function renderStrokesLayer(
 ): void {
   applyDocTransform(target, viewport);
   for (const stroke of frame.strokes) {
+    const { place } = stroke as PlacedStroke;
+    if (place) {
+      placeTransform(target, viewport, place);
+    }
     const tool = resolveTool(tools, stroke);
     const erase = isEraserTool(tool);
     if (erase) {
@@ -287,7 +291,29 @@ export function renderStrokesLayer(
     if (erase) {
       target.globalCompositeOperation = 'source-over';
     }
+    if (place) {
+      applyDocTransform(target, viewport);
+    }
   }
+}
+
+/**
+ * A stroke of a selection being moved, as the studio's canvas hands it in: its
+ * own points, never rewritten, and the session's matrix that carries them
+ * (`keepsShape` in tools/lasso.ts). The stroke's kept path is drawn under the
+ * view times that matrix — a move costs no new points and no new path.
+ */
+export type PlacedStroke = Frame['strokes'][number] & {
+  /** Document → document, in `setTransform` order: a, b, c, d, e, f. */
+  readonly place?: readonly number[];
+};
+
+/** The view times the stroke's matrix. */
+function placeTransform(target: Canvas2DLike, viewport: Viewport, [a, b, c, d, e, f]: readonly number[]): void {
+  const k = viewport.scale * viewport.dpr;
+  const ox = (viewport.panX ?? 0) * viewport.dpr;
+  const oy = (viewport.panY ?? 0) * viewport.dpr;
+  target.setTransform(k * a, k * b, k * c, k * d, k * e + ox, k * f + oy);
 }
 
 /**

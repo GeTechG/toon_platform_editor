@@ -15,7 +15,7 @@
 
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
-import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike } from './canvas2d';
+import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type PlacedStroke } from './canvas2d';
 import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
@@ -173,7 +173,7 @@ export class FrameComposer {
   #belowInk = false;
   #aboveInk = false;
   /** What each buffer was last painted from, and the view it was painted under. */
-  readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[] }>();
+  readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[]; standIn: boolean }>();
   /** Cells rasterized before, by what they hold; absent when none are kept. */
   readonly #cells: CellCache | undefined;
   /**
@@ -342,13 +342,21 @@ export class FrameComposer {
     const view = `${width}x${height}@${viewport.scale}:${viewport.dpr}:${viewport.panX ?? 0}:${viewport.panY ?? 0}`;
     // A stroke is its points, its tool and its pressure: an edit in place
     // (the distort brush) swaps the points of a stroke that stays where it was.
-    const ink = cells.map((cell) => cell.strokes.flatMap((s) => [s.points, scene.tools[s.tool_id], s.pressure]));
+    // A selection being moved keeps its points and changes its matrix, which
+    // stands in the pressure's place — the area repaint reads only the first
+    // two, and a stand-in cell is never kept.
+    const ink = cells.map((cell) => cell.strokes.flatMap((s) =>
+      [s.points, scene.tools[s.tool_id], (s as PlacedStroke).place ?? s.pressure]));
     const was = afresh ? undefined : this.#ink.get(buffer);
     // Not until it is painted: a stroke that throws half-way leaves a buffer
     // that holds neither what it had nor what it was asked for.
     this.#ink.delete(buffer);
-    const painted = this.#lay(buffer, cells, scene, width, height, was?.view === view ? was.ink : undefined, ink);
-    this.#ink.set(buffer, { view, ink });
+    // What a buffer held in place of the document's cell — a selection being
+    // moved — is no cell to come back to: kept, every move cost a sheet of the
+    // cache and pushed a real cell out of it. Nor is it repainted by area.
+    const keepable = was !== undefined && !was.standIn;
+    const painted = this.#lay(buffer, cells, scene, width, height, was?.view === view ? was.ink : undefined, ink, keepable);
+    this.#ink.set(buffer, { view, ink, standIn: cells.some((cell) => this.#standIns.has(cell)) });
     return painted;
   }
 
@@ -360,6 +368,7 @@ export class FrameComposer {
     height: number,
     was: readonly (readonly unknown[])[] | undefined,
     ink: readonly (readonly unknown[])[],
+    keepable: boolean,
   ): boolean {
     const kept = was !== undefined && was.length === ink.length
       && was.every((old, c) => old.length <= ink[c].length && old.every((part, i) => part === ink[c][i]));
@@ -375,7 +384,9 @@ export class FrameComposer {
       renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport, undefined, STUDIO_PATHS);
       return true;
     }
-    if (was !== undefined && cells.length === 1 && was.length === 1
+    // The area a stroke took is read off its points; a moved one stood where
+    // its matrix put it, so a buffer that held a moved selection is drawn whole.
+    if (was !== undefined && keepable && cells.length === 1 && was.length === 1
       && !this.#cells?.has(cells[0], scene.tools, scene.viewport, width, height)
       && repaintTaken(buffer.ctx, cells[0], was[0], ink[0], scene, width, height)) {
       return true;
@@ -383,7 +394,7 @@ export class FrameComposer {
     // What the buffer holds is one cell drawn whole or added to: kept as a
     // copy before it is drawn over, the cell the hand just left is ready as a
     // ghost and to come back to.
-    if (this.#cells && was !== undefined && was.length === 1 && was[0].length > 0) {
+    if (this.#cells && keepable && was !== undefined && was.length === 1 && was[0].length > 0) {
       const flat = was[0];
       const triples = [];
       for (let i = 0; i < flat.length; i += 3) {

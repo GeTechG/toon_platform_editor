@@ -374,6 +374,33 @@ describe('the cell cache', () => {
     return built;
   }
 
+  it('keeps no copy of a selection being moved: a move is not a cell to come back to', () => {
+    const built = sketched();
+    const { instance, made } = cached();
+    const target = new Recorder('target');
+    const own = built.layers[0].frames[0]!;
+    let move: ((typeof own.strokes)[number])[] | null = null;
+    const scene = {
+      doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools,
+      cellAt: (layer: number, frame: number) => (layer === 0 && frame === 0 && move
+        ? { strokes: move }
+        : built.layers[layer].frames[frame]),
+    };
+    instance.compose(target.ctx, 100, 50, scene);
+    for (let i = 1; i <= 2; i++) {
+      move = own.strokes.map((stroke) => ({ ...stroke, place: [1, 0, 0, 1, 40 * i, 0] }));
+      instance.invalidate();
+      instance.compose(target.ctx, 100, 50, scene);
+    }
+    const buffers = made.length;
+    for (let i = 3; i <= 6; i++) {
+      move = own.strokes.map((stroke) => ({ ...stroke, place: [1, 0, 0, 1, 40 * i, 0] }));
+      instance.invalidate();
+      instance.compose(target.ctx, 100, 50, scene);
+    }
+    expect(made.length).toBe(buffers);
+  });
+
   it('rasterizes a cell once when another frame holds the same strokes', () => {
     const built = sketched();
     const { instance, made } = cached();
@@ -650,5 +677,67 @@ describe('neighbouring frames are rasterized ahead', () => {
     expect(tasks.length).toBeGreaterThan(0);
     warmer.stop();
     expect(tasks.length).toBe(0);
+  });
+});
+
+describe('a selection moved by a matrix', () => {
+  it('repaints the active layer when only the matrix changed, and leaves it when nothing did', () => {
+    const built = doc(1);
+    const own = built.layers[0].frames[0]!;
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    let place = [1, 0, 0, 1, 40, 0];
+    const scene = {
+      doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools,
+      cellAt: () => ({ strokes: own.strokes.map((stroke) => ({ ...stroke, place })) }),
+    };
+    instance.compose(target.ctx, 100, 50, scene);
+    const active = made[1];
+    const strokes = () => active.log.filter((entry) => entry.startsWith('stroke')).length;
+    const first = strokes();
+    expect(first).toBe(1);
+    place = [1, 0, 0, 1, 80, 0];
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(strokes()).toBe(2);
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(strokes()).toBe(2);
+  });
+});
+
+describe('a moved selection taken away', () => {
+  it('repaints the whole layer, not the place the strokes stood before the move', () => {
+    // The area repaint reads where a stroke stood from its points; a moved
+    // one is drawn elsewhere by its matrix, and Delete left it on the canvas.
+    class Clipping extends Recorder {
+      save(): void {}
+      restore(): void {}
+      rect(): void {}
+      clip(): void { this.log.push('clip'); }
+    }
+    const made: Recorder[] = [];
+    const instance = new FrameComposer(() => {
+      const buffer = new Clipping(`b${made.length}`);
+      made.push(buffer);
+      return buffer;
+    });
+    const built = doc(1);
+    addStroke(built, 0, 0, line(600));
+    const own = built.layers[0].frames[0]!;
+    const target = new Recorder('target');
+    // The first stroke is not selected; the second is moved far off.
+    let shown = { strokes: [own.strokes[0], { ...own.strokes[1], place: [1, 0, 0, 1, 2000, 0] }] };
+    const scene = { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools, cellAt: () => shown };
+    instance.compose(target.ctx, 100, 50, scene);
+    const active = made[1];
+    const from = active.log.length;
+    // Delete: the moved strokes go, one is left where it was.
+    shown = { strokes: [own.strokes[0]] } as typeof shown;
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    const after = active.log.slice(from);
+    expect(after).not.toContain('clip');
+    expect(after[0]).toBe('clear');
   });
 });

@@ -172,7 +172,9 @@ describe('transform tools on the canvas', () => {
   it('draws the selection moved, not doubled: the stack rasterizes it transformed', () => {
     // Otherwise the originals stay under the preview and every drag smears.
     expect(handler('stackCell')).toContain('editor.transform');
-    expect(handler('stackCell')).toContain('editor.transformPoint(');
+    // The session's matrix, worked out once a change, not once a point.
+    expect(handler('stackCell')).toContain('placing');
+    expect(handler('stackCell')).not.toContain('editor.transformPoint(');
     // The composer asks for the cell as it should be drawn, not as it is stored.
     expect(handler('draw')).toContain('cellAt: stackCell');
     expect(compose).toContain('scene.cellAt');
