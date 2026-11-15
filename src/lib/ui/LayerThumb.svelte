@@ -7,6 +7,7 @@
   import { cellStamp, fitThumb, thumbStep } from './thumb-size';
   import { studioCells } from '../render/studio-cells';
   import { whenOnScreen } from './on-screen';
+  import { thumbPaints } from './paint-queue';
   import { renderDensity } from './viewport';
 
   let {
@@ -61,6 +62,46 @@
   /** The strokes on the thumbnail now: a line put at the end of them is only added. */
   let onThumb: Frame['strokes'] | null = null;
 
+  /** This thumbnail in the queue of whole paints (`paint-queue.ts`). */
+  const me = {};
+  $effect(() => () => thumbPaints.cancel(me));
+
+  type ThumbContext = Canvas2DLike & {
+    clearRect(x: number, y: number, w: number, h: number): void;
+    imageSmoothingQuality: string;
+    drawImage(image: CanvasImageSource, x: number, y: number, w: number, h: number): void;
+  };
+
+  const context = (): ThumbContext | null => canvasEl.getContext('2d') as unknown as ThumbContext | null;
+
+  /**
+   * The cell drawn whole, as it is when the queue gets to it — a stroke added
+   * while it waited is in it, so nothing is added on top in the meantime.
+   */
+  function paintWhole(): void {
+    const cell = doc.layers[layerIndex]?.frames[frameIndex];
+    const ctx = canvasEl ? context() : null;
+    // Safari hands out null once the page's canvas memory is spent (a long
+    // mult on an iPhone): the cell stays blank rather than the paint throwing,
+    // and it is not marked painted, so the next write tries again.
+    if (!cell || !ctx) {
+      painted = undefined;
+      return;
+    }
+    onThumb = cell.strokes.slice();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    // The canvas has the cell rasterized already: shrunk, it is the thumbnail.
+    const kept = studioCells.current?.anyOf(cell, doc.tools);
+    if (kept) {
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(kept.image, 0, 0, canvasEl.width, canvasEl.height);
+      return;
+    }
+    const dpr = renderDensity(window.devicePixelRatio || 1);
+    renderStrokesLayer(cell, doc.tools, ctx, { scale: box.w / doc.width, dpr }, undefined, STUDIO_PATHS);
+  }
+
   $effect(() => {
     const cell = doc.layers[layerIndex]?.frames[frameIndex];
     if (!canvasEl || !cell || !onScreen) {
@@ -80,37 +121,25 @@
       canvasEl.width = width;
       canvasEl.height = height;
     }
-    const ctx = canvasEl.getContext('2d') as unknown as (Canvas2DLike & {
-      clearRect(x: number, y: number, w: number, h: number): void;
-      imageSmoothingQuality: string;
-      drawImage(image: CanvasImageSource, x: number, y: number, w: number, h: number): void;
-    }) | null;
-    // Safari hands out null once the page's canvas memory is spent (a long
-    // mult on an iPhone): the cell stays blank rather than the effect throwing,
-    // and it is not marked painted, so the next write tries again.
-    if (!ctx) {
-      return;
-    }
-    const viewport = { scale: box.w / doc.width, dpr };
-    const step = resized || shape !== paintedBox ? { whole: true as const } : thumbStep(onThumb, cell.strokes);
+    const whole = resized || shape !== paintedBox || thumbPaints.waiting(me);
+    const step = whole ? { whole: true as const } : thumbStep(onThumb, cell.strokes);
     painted = stamp;
     paintedBox = shape;
-    onThumb = cell.strokes.slice();
     if (!step.whole) {
-      // A finished line costs the thumbnail that line, not the cell.
-      renderStrokesLayer({ strokes: cell.strokes.slice(step.from) }, doc.tools, ctx, viewport, undefined, STUDIO_PATHS);
+      const ctx = context();
+      if (!ctx) {
+        painted = undefined;
+        return;
+      }
+      onThumb = cell.strokes.slice();
+      // A finished line costs the thumbnail that line, not the cell, and is
+      // drawn at once — the hand is watching it.
+      renderStrokesLayer({ strokes: cell.strokes.slice(step.from) }, doc.tools, ctx, { scale: box.w / doc.width, dpr }, undefined, STUDIO_PATHS);
       return;
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    // The canvas has the cell rasterized already: shrunk, it is the thumbnail.
-    const kept = studioCells.current?.anyOf(cell, doc.tools);
-    if (kept) {
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(kept.image, 0, 0, width, height);
-      return;
-    }
-    renderStrokesLayer(cell, doc.tools, ctx, viewport, undefined, STUDIO_PATHS);
+    // Whole, it waits its turn: a heavy draft opened puts a hundred of these
+    // on screen at once, and the canvas goes first.
+    thumbPaints.ask(me, paintWhole);
   });
 </script>
 

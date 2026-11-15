@@ -226,7 +226,13 @@ describe('четырнадцатый аудит: миниатюра без хо�
   // (длинный мульт на iPhone): setTransform на null бросал в эффекте.
   it.each(['LayerThumb.svelte', 'FrameThumb.svelte'])('%s рисует, только получив контекст', async (name) => {
     const text = await Bun.file(UI + name).text();
-    expect(text).toMatch(/getContext\('2d'\)[\s\S]*?\| null;(?:\n\s*\/\/[^\n]*)*\n\s*if \(!ctx\) \{\n\s*return;/);
+    expect(text).toMatch(/getContext\('2d'\)[\s\S]*?\| null;/);
+    // Every place that takes the context leaves before drawing when it is null.
+    const takes = text.split(/const ctx = [^\n]*\n/).slice(1);
+    expect(takes.length).toBeGreaterThan(0);
+    for (const after of takes) {
+      expect(after).toMatch(/^(?:\s*\/\/[^\n]*\n)*\s*if \((?:!cell \|\| )?!ctx\) \{\n(?:\s*painted = undefined;\n)?\s*return;/);
+    }
   });
 });
 
