@@ -66,13 +66,18 @@ export function validateDocument(data: unknown): ValidationResult {
   return { ok: issues.length === 0, issues };
 }
 
-/** Validates and types already-parsed JSON; throws FormatError. */
-export function loadDocument(data: unknown): ToonDocument {
+/**
+ * Validates and types already-parsed JSON; throws FormatError. The document
+ * comes back as a copy, unless the caller `owns` the tree — one just parsed
+ * from bytes that nobody else holds (a draft opened, 2026-11-15): copying a
+ * heavy one cost a third of opening it.
+ */
+export function loadDocument(data: unknown, { owned = false }: { owned?: boolean } = {}): ToonDocument {
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);
   }
-  const doc = structuredClone(data) as ToonDocument;
+  const doc = (owned ? data : structuredClone(data)) as ToonDocument;
   // A name cut through an emoji by an older build (in its drafts, in its
   // .toonop) opened fine and never published: the API refuses a lone half.
   for (const layer of doc.layers) {

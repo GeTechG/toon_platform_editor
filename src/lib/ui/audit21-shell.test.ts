@@ -9,7 +9,7 @@ describe('открытый черновик сохраняется', () => {
   it('список черновиков держит документы как значения: из `$state` документ выходил прокси, и IndexedDB отказывалась его писать', () => {
     // Открыт черновик из списка → штрих → Ctrl+S: DataCloneError, «Черновик не
     // сохранился», а при уходе со страницы штрихи пропадали молча.
-    expect(editorUi).toMatch(/let drafts = \$state\.raw<DraftEntry\[\]>\(\[\]\);/);
+    expect(editorUi).toMatch(/let drafts = \$state\.raw<DraftCard\[\]>\(\[\]\);/);
     // Значение заменяют целиком, на месте его не правят — иначе список бы не обновился.
     expect(editorUi).not.toMatch(/\bdrafts\.(push|splice|sort|reverse|pop|shift|unshift)\(|\bdrafts\[[^\]]+\]\s*=[^=]/);
   });

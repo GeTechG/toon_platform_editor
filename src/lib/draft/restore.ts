@@ -5,47 +5,23 @@
  * Kept pure and rune-free for tests.
  */
 
-import { loadDocument, validateDocument } from '../format/validate';
+import { loadDocument } from '../format/validate';
 import type { ToonDocument } from '../format/types';
-import type { DraftAudio, DraftRecord, DraftState } from './store';
 
 /** The document held by a draft record, or null if it is not one. */
-export function parseDraft(raw: unknown): ToonDocument | null {
+export function parseDraft(
+  raw: unknown,
+  /** The tree was just read out of the base and nobody else holds it: no copy. */
+  owned = false,
+): ToonDocument | null {
   if (raw == null) {
     return null;
   }
-  return validateDocument(raw).ok ? loadDocument(raw) : null;
-}
-
-/** A stored draft whose document loaded — what the drafts list shows. */
-export interface DraftEntry {
-  id: string;
-  updated: number;
-  doc: ToonDocument;
-  /** The session's soundtrack, if it had one. */
-  audio?: DraftAudio;
-  /** Where the hand was; absent on records written before it was kept. */
-  state?: DraftState;
-  screenshot?: Blob;
-  bytes?: number;
-}
-
-/** Loads every record that still parses; a corrupt one is dropped, not fatal. */
-export function draftEntries(records: DraftRecord[]): DraftEntry[] {
-  return records.flatMap((record) => {
-    const doc = parseDraft(record.doc);
-    if (!doc) {
-      return [];
-    }
-    const { id, updated, audio, state, screenshot, bytes } = record;
-    return [{
-      id,
-      updated,
-      doc,
-      ...(audio ? { audio } : {}),
-      ...(state ? { state } : {}),
-      ...(screenshot ? { screenshot } : {}),
-      ...(bytes !== undefined ? { bytes } : {}),
-    }];
-  });
+  // `loadDocument` validates on its own: checking first went over a heavy
+  // document twice.
+  try {
+    return loadDocument(raw, { owned });
+  } catch {
+    return null;
+  }
 }

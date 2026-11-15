@@ -766,6 +766,7 @@
     "download_project_confirm": "Download the project as .toonop?",
     "drafts_wipe_confirm": "Delete all drafts? This can't be undone.",
     "draft_open_confirm": "Open the draft? The current drawing will be replaced.",
+    "draft_open_failed": "This draft will not open: it is damaged. You can delete it.",
     "draft_delete_confirm": "Delete the draft? This can't be undone.",
     "draft_delete_open_confirm": "Delete the draft? It's on the canvas now: the drawing will stay and be saved again.",
     "drafts_delete_open": "The one on the canvas will stay and be saved again.",

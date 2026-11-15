@@ -13,7 +13,7 @@
    */
   import { onMount, tick, untrack } from 'svelte';
   import type { EditorState } from './editor-state.svelte';
-  import type { DraftEntry } from '../draft/restore';
+  import type { DraftCard } from '../draft/store';
   import FrameThumb from './FrameThumb.svelte';
   import Icon from './Icon.svelte';
   import { draftSizeClass, formatFileSize } from './file-size';
@@ -42,7 +42,7 @@
     editor: EditorState;
     /** The studio is on a small screen's layout. */
     compact: boolean;
-    drafts: DraftEntry[];
+    drafts: DraftCard[];
     /** Object URLs of the cards' stills, by draft id. */
     thumbUrls: Record<string, string>;
     storageUsed: number;
@@ -50,7 +50,7 @@
     draftId: string;
     /** The drafts have been read: until then the hub cannot know its view. */
     ready: boolean;
-    onOpen: (entry: DraftEntry) => void;
+    onOpen: (entry: DraftCard) => void;
     onCopy: (ids: string[]) => Promise<void>;
     onDownload: (ids: string[]) => Promise<void>;
     /** Both say whether the drafts were deleted, so the focus can be placed. */
@@ -214,10 +214,10 @@
     }
   });
 
-  function pick(entry: DraftEntry): void {
+  function pick(entry: DraftCard): void {
     picked = picked.includes(entry.id) ? picked.filter((id) => id !== entry.id) : [...picked, entry.id];
   }
-  const openDraft = (entry: DraftEntry) => onOpen(entry);
+  const openDraft = (entry: DraftCard) => onOpen(entry);
   const copyPicked = () => onCopy(picked);
   const downloadPicked = () => onDownload(picked);
 
@@ -530,7 +530,7 @@
         </li>
         {/if}
         {#each drafts as entry (entry.id)}
-          {@const box = fitThumb(entry.doc.width, entry.doc.height, 288, 162)}
+          {@const box = fitThumb(entry.summary.width, entry.summary.height, 288, 162)}
           {@const date = new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
           <li class="draft">
             <button
@@ -544,15 +544,15 @@
                   <!-- The still written with the record: no document to
                        re-render, and it is what the drawing looked like. -->
                   <img src={thumbUrls[entry.id]} alt="" width={box.w} height={box.h} />
-                {:else}
+                {:else if entry.doc}
                   <FrameThumb doc={entry.doc} frameIndex={0} maxW={box.w} maxH={box.h} />
                 {/if}
               </span>
               <span class="draft-meta">
                 <span class="draft-date">{date}{#if entry.id === draftId}{` · ${t('draft.current')}`}{/if}</span>
                 <span class="draft-size">
-                  {t('draft.frames', { count: entry.doc.layers[0].frames.length })} ·
-                  {t('draft.layers', { count: entry.doc.layers.length })}
+                  {t('draft.frames', { count: entry.summary.frames })} ·
+                  {t('draft.layers', { count: entry.summary.layers })}
                   {#if entry.bytes}
                     · <span class={draftSizeClass(entry.bytes)}>{formatFileSize(entry.bytes)}</span>
                   {/if}

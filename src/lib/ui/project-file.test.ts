@@ -255,12 +255,12 @@ describe('the drafts file', () => {
 });
 
 describe('the picklist in the settings cannot show a record that is not a draft', () => {
-  it('goes through draftEntries, so a document-less record never appears', () => {
+  it('goes through the cards, so a document-less record never appears', () => {
     // A write that landed after a delete used to recreate the record as a
     // stub: gone from the drafts sheet, still ticked here, and exported as
-    // `"data":"null"`. The list is built from parsed entries now.
-    expect(sheet).toContain('draftEntries(');
-    expect(sheet).not.toContain('drafts = records');
+    // `"data":"null"`. The list is built from the cards now (store.test.ts).
+    expect(sheet).toContain('listDraftCards()');
+    expect(sheet).not.toContain('listDrafts()');
   });
 
   it('names what each record holds, not just its date', () => {

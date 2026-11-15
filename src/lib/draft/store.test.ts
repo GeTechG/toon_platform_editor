@@ -5,8 +5,10 @@ import {
   duplicateDraft,
   exportDrafts,
   importDrafts,
+  listDraftCards,
   listDrafts,
   newDraftId,
+  readDraft,
   saveDraft,
   setDraftAudio,
   setDraftCredits,
@@ -648,3 +650,78 @@ describe('the document is kept as bytes', () => {
   });
 });
 
+
+describe('the list reads cards, not documents', () => {
+  const drawn = () => {
+    const built = createDocument();
+    addStroke(built, 0, 0, { points: [10, 20, 300, 400, 500, 20], width: 9, color: '#123456' });
+    return built;
+  };
+
+  it('a card carries the sheet, the frames and the layers, and the document is read on opening', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const written = drawn();
+    await saveDraft('a', written);
+    await setDraftScreenshot('a', new Blob([new Uint8Array([1])]));
+    const [card] = await listDraftCards();
+    expect(card.id).toBe('a');
+    expect(card.summary).toEqual({ width: written.width, height: written.height, frames: 1, layers: written.layers.length });
+    expect(card.doc).toBeUndefined();
+    expect(await readDraft('a')).toEqual(written);
+  });
+
+  it('a document spoilt after it was written still lists, and does not open', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', drawn());
+    const drafts = stores.get('drafts')!;
+    drafts.set('a', { ...(drafts.get('a') as object), packed: new TextEncoder().encode('{"not a toon"') });
+    expect((await listDraftCards()).map((c) => c.id)).toEqual(['a']);
+    expect(await readDraft('a')).toBeNull();
+  });
+
+  it('a record written before the cards is read once and gets its card', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    stores.set('drafts', new Map([['old', { id: 'old', updated: 1, doc: drawn() }]]));
+    const [card] = await listDraftCards();
+    expect(card.summary?.frames).toBe(1);
+    await Bun.sleep(5);
+    const raw = stores.get('drafts')!.get('old') as Record<string, unknown>;
+    expect(raw.summary).toEqual(card.summary);
+  });
+
+  it('a record written before the cards that does not read stays out of the list', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('good', drawn());
+    stores.get('drafts')!.set('bad', { id: 'bad', updated: 1, doc: { layers: 'no' } });
+    expect((await listDraftCards()).map((c) => c.id)).toEqual(['good']);
+  });
+
+  it('a screenshot that lands after the draft was deleted leaves no card', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', drawn());
+    await deleteDraft('a');
+    await setDraftScreenshot('a', new Blob([new Uint8Array([1])]));
+    expect(await listDraftCards()).toEqual([]);
+  });
+
+  it('a card with no screenshot brings the document for its first frame', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', drawn());
+    await saveDraft('b', drawn());
+    await setDraftScreenshot('b', new Blob([new Uint8Array([1])]));
+    const cards = await listDraftCards();
+    expect(cards.find((c) => c.id === 'a')!.doc).toEqual(drawn());
+    expect(cards.find((c) => c.id === 'b')!.doc).toBeUndefined();
+  });
+
+  it('a copy keeps the drawing without reading it', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', drawn());
+    const copy = await duplicateDraft('a');
+    expect(await readDraft(copy!)).toEqual(drawn());
+    expect((await listDraftCards()).find((c) => c.id === copy)!.summary?.frames).toBe(1);
+  });
+});

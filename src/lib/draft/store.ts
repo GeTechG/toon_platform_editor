@@ -77,6 +77,36 @@ export interface DraftRecord {
   screenshot?: Blob;
   /** Size of the record as last written, so the list never weighs it again. */
   bytes?: number;
+  /**
+   * What the card shows of the document, written with it — the list reads this
+   * and never the document (2026-11-15). Absent on records written before.
+   */
+  summary?: DraftSummary;
+  /** A record from before the cards whose document did not read: kept, never listed. */
+  broken?: true;
+}
+
+/** The sheet, the frames and the layers of a draft, as its card shows them. */
+export interface DraftSummary {
+  width: number;
+  height: number;
+  frames: number;
+  layers: number;
+}
+
+/**
+ * A draft as the list shows it: no document, except for a card that has no
+ * screenshot yet — its first frame is drawn from the document.
+ */
+export interface DraftCard {
+  id: string;
+  updated: number;
+  summary: DraftSummary;
+  audio?: DraftAudio;
+  state?: DraftState;
+  screenshot?: Blob;
+  bytes?: number;
+  doc?: ToonDocument;
 }
 
 /** What the track and the screenshot add to a record. */
@@ -111,6 +141,14 @@ function opened(record: DraftRecord): DraftRecord {
   return { ...rest, doc };
 }
 
+function summarize(doc: unknown): DraftSummary | null {
+  if (typeof doc !== 'object' || doc === null || !Array.isArray((doc as ToonDocument).layers)) {
+    return null;
+  }
+  const { width, height, layers } = doc as ToonDocument;
+  return { width, height, frames: layers[0]?.frames?.length ?? 0, layers: layers.length };
+}
+
 /**
  * Puts the record's document into bytes, if it came as a document — a save,
  * a copy, an import. A write that kept the document it read (the screenshot,
@@ -118,6 +156,11 @@ function opened(record: DraftRecord): DraftRecord {
  */
 function pack(record: DraftRecord): void {
   if (record.doc !== undefined) {
+    const summary = summarize(record.doc);
+    if (summary) {
+      record.summary = summary;
+      delete record.broken;
+    }
     record.packed = encodeDoc(record.doc);
     delete (record as Partial<DraftRecord>).doc;
   }
@@ -268,31 +311,117 @@ async function transaction(mode: IDBTransactionMode): Promise<IDBTransaction | n
 }
 
 /**
- * Every saved draft, newest first.
- *
- * ponytail: reads whole documents to build the list — the preview is drawn
- * from the document itself, so there is nothing lighter to read. Add a meta
- * index if someone keeps dozens of heavy drafts.
+ * Saved drafts with their documents, newest first — every one, or only those
+ * of `ids`, read before any document is: an export of two drafts does not read
+ * the rest. The list on screen reads `listDraftCards` instead.
  */
-export async function listDrafts(): Promise<DraftRecord[]> {
+export async function listDrafts(ids?: readonly string[]): Promise<DraftRecord[]> {
   try {
-    // After the writes already asked for: a list read around them showed the
-    // record from before the save that was just made.
-    await writes;
-    const tx = await transaction('readonly');
-    if (!tx) {
-      return [];
-    }
-    const all = await new Promise<DraftRecord[]>((resolve, reject) => {
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve((req.result as DraftRecord[]).map(opened));
-      req.onerror = () => reject(req.error);
-    });
+    const all = (await rawRecords()).filter((record) => !ids || ids.includes(record.id)).map(opened);
     return all.sort((a, b) => b.updated - a.updated);
   } catch (err) {
     console.warn('draft list failed:', err);
     return [];
   }
+}
+
+/** Every record as it lies in the base, the document still in bytes. */
+async function rawRecords(): Promise<DraftRecord[]> {
+  // After the writes already asked for: a list read around them showed the
+  // record from before the save that was just made.
+  await writes;
+  const tx = await transaction('readonly');
+  if (!tx) {
+    return [];
+  }
+  return new Promise<DraftRecord[]>((resolve, reject) => {
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => resolve(req.result as DraftRecord[]);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function rawRecord(id: string): Promise<DraftRecord | undefined> {
+  try {
+    await writes;
+    const tx = await transaction('readonly');
+    if (!tx) {
+      return undefined;
+    }
+    return await new Promise<DraftRecord | undefined>((resolve, reject) => {
+      const req = tx.objectStore(STORE).get(id);
+      req.onsuccess = () => resolve(req.result as DraftRecord | undefined);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (err) {
+    console.warn('draft read failed:', err);
+    return undefined;
+  }
+}
+
+/**
+ * The drafts as the hub and the settings list them, newest first. A heavy
+ * document took about a second to read and check, per draft, on every way
+ * into the studio (2026-11-15): the cards are written with the document and
+ * read instead. A record from before them is read once here and gets its card
+ * (or is marked broken and left out, as the list always dropped one).
+ */
+export async function listDraftCards(): Promise<DraftCard[]> {
+  let records: DraftRecord[];
+  try {
+    records = await rawRecords();
+  } catch (err) {
+    console.warn('draft list failed:', err);
+    return [];
+  }
+  const cards: DraftCard[] = [];
+  for (const record of records) {
+    if (record.broken) {
+      continue;
+    }
+    let doc: ToonDocument | null | undefined;
+    let summary = record.summary;
+    if (!summary) {
+      doc = parseDraft(opened(record).doc, true);
+      const found = doc ? summarize(doc) : null;
+      void queueWrite(() =>
+        updateDraft(record.id, 'draft card', (previous) => {
+          if (!previous || previous.summary) {
+            return null;
+          }
+          return found ? { ...previous, summary: found } : { ...previous, broken: true };
+        }),
+      );
+      if (!found) {
+        continue;
+      }
+      summary = found;
+    }
+    if (!record.screenshot && doc === undefined) {
+      doc = parseDraft(opened(record).doc, true);
+    }
+    const { id, updated, audio, state, screenshot, bytes } = record;
+    cards.push({
+      id,
+      updated,
+      summary,
+      ...(audio ? { audio } : {}),
+      ...(state ? { state } : {}),
+      ...(screenshot ? { screenshot } : {}),
+      ...(bytes !== undefined ? { bytes } : {}),
+      ...(doc && !screenshot ? { doc } : {}),
+    });
+  }
+  return cards.sort((a, b) => b.updated - a.updated);
+}
+
+/**
+ * The document of one draft, read and checked as any input is — once, when it
+ * is opened. Null for a draft that is gone or does not read.
+ */
+export async function readDraft(id: string): Promise<ToonDocument | null> {
+  const record = await rawRecord(id);
+  return record ? parseDraft(opened(record).doc, true) : null;
 }
 
 /**
@@ -492,8 +621,9 @@ export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<
  * record that was never written.
  */
 export async function duplicateDraft(id: string): Promise<string | null> {
-  const source = (await listDrafts()).find((draft) => draft.id === id);
-  if (!source) {
+  // The bytes go across as they lie: a copy is no reason to read the drawing.
+  const source = await rawRecord(id);
+  if (!source || source.broken) {
     return null;
   }
   const copy = newDraftId();
@@ -503,7 +633,9 @@ export async function duplicateDraft(id: string): Promise<string | null> {
 
 /** Empties the list. Never throws. */
 export async function deleteAllDrafts(): Promise<void> {
-  for (const draft of await listDrafts()) {
+  // Only the keys are wanted: no document is read to be deleted.
+  const records = await rawRecords().catch(() => [] as DraftRecord[]);
+  for (const draft of records) {
     await deleteDraft(draft.id);
   }
 }
@@ -641,7 +773,7 @@ export async function exportDrafts(
   ids?: readonly string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<string> {
-  const chosen = (await listDrafts()).filter((draft) => !ids || ids.includes(draft.id));
+  const chosen = await listDrafts(ids);
   const saves: DraftSave[] = [];
   for (const draft of chosen) {
     const save: DraftSave = {
@@ -690,7 +822,7 @@ export async function importDrafts(raw: string): Promise<{ loaded: number; broke
   if (!Array.isArray(entries)) {
     return { loaded: 0, broken: 0 };
   }
-  const taken = new Set((await listDrafts()).map((d) => d.id));
+  const taken = new Set((await rawRecords().catch(() => [] as DraftRecord[])).map((d) => d.id));
   let loaded = 0;
   let broken = 0;
   for (const entry of entries) {

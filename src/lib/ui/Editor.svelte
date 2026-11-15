@@ -42,14 +42,14 @@
   import { chordOf, holdKey } from './keymap';
   import { reportCommand } from './command-trail';
   import { focusHeir, twinSelector } from './focus-heir';
-  import { draftEntries } from '../draft/restore';
   import {
     deleteAllDrafts,
     deleteDraft,
     duplicateDraft,
     exportDrafts,
     importDrafts,
-    listDrafts,
+    listDraftCards,
+    readDraft,
     newDraftId,
     saveDraft,
     setDraftAudio,
@@ -72,7 +72,7 @@
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
-  import type { DraftEntry } from '../draft/restore';
+  import type { DraftCard } from '../draft/store';
   import type { ToonDocument } from '../format/types';
   import { dateLocale, t } from '../i18n';
   import { budgetLabel } from './format-limit';
@@ -1585,7 +1585,7 @@
   // Raw: `$state` hands every entry out as a proxy, the document in it too —
   // a draft opened from the list was one IndexedDB refuses to write
   // (DataCloneError), so nothing drawn on it since was ever saved.
-  let drafts = $state.raw<DraftEntry[]>([]);
+  let drafts = $state.raw<DraftCard[]>([]);
   /** How much of the device's storage everything on it takes, for the header. */
   let storageUsed = $state(0);
 
@@ -1648,12 +1648,12 @@
   });
 
   async function refreshDrafts(): Promise<void> {
-    const records = await listDrafts();
+    const cards = await listDraftCards();
     // Read after the studio was left: URLs minted now would be revoked by nobody.
     if (destroyed) {
       return;
     }
-    drafts = draftEntries(records);
+    drafts = cards;
     for (const url of Object.values(thumbUrls)) {
       URL.revokeObjectURL(url);
     }
@@ -1740,7 +1740,7 @@
   }
 
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
-  async function openDraft(entry: DraftEntry): Promise<void> {
+  async function openDraft(entry: DraftCard): Promise<void> {
     // The draft on the canvas is newer than its card: the list was read when
     // the sheet opened, and loading it would put back the older copy.
     if (entry.id === draftId) {
@@ -1750,6 +1750,13 @@
     // A selection moved and not applied belongs to the drawing being left: it
     // goes into its draft, not away with the document swap. The lock refuses.
     if (!editor.leaveTransform()) {
+      return;
+    }
+    // The list holds cards: the document is read and checked here, once, and
+    // before the question — a draft that will not open replaces nothing.
+    const doc = await readDraft(entry.id);
+    if (!doc) {
+      void tell(t('editor.draft_open_failed'));
       return;
     }
     if (editor.touched) {
@@ -1762,7 +1769,7 @@
         return;
       }
     }
-    editor.openDraft(entry.doc);
+    editor.openDraft(doc);
     if (entry.state) {
       editor.restoreState(entry.state);
     }

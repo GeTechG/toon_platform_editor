@@ -20,8 +20,7 @@
    * focus trap, the Esc key and an inert page with it (WCAG 2.4.3, 2.1.2).
    */
   import { tick } from 'svelte';
-  import { exportDrafts, importDrafts, listDrafts } from '../draft/store';
-  import { draftEntries, type DraftEntry } from '../draft/restore';
+  import { exportDrafts, importDrafts, listDraftCards, type DraftCard } from '../draft/store';
   import { formatFileSize } from './file-size';
   import {
     AUTOSAVE_INTERVALS,
@@ -125,16 +124,16 @@
 
   // The records to tick for an export. Read once when the sheet opens: the
   // list is a few dozen rows at most and nothing writes while it is up. They
-  // go through `draftEntries`, so a record whose document does not parse is
-  // not offered for export — it is not a draft, whatever storage still holds.
-  let drafts = $state<DraftEntry[]>([]);
+  // are the cards, so a stub left by a late side write (no document, no card)
+  // is not offered for export — it is not a draft, whatever storage still holds.
+  let drafts = $state<DraftCard[]>([]);
   let chosen = $state<string[]>([]);
   /** Records written so far / to write, while an export runs. */
   let exporting = $state<{ done: number; total: number } | null>(null);
 
   $effect(() => {
-    void listDrafts().then((records) => {
-      drafts = draftEntries(records);
+    void listDraftCards().then((cards) => {
+      drafts = cards;
       chosen = drafts.map((entry) => entry.id);
     });
   });
@@ -225,7 +224,7 @@
     }
     // What came in is ticked like the rest: the list opens with everything on.
     const before = new Set(drafts.map((entry) => entry.id));
-    drafts = draftEntries(await listDrafts());
+    drafts = await listDraftCards();
     chosen = [...chosen, ...drafts.filter((entry) => !before.has(entry.id)).map((entry) => entry.id)];
   }
 
@@ -531,7 +530,7 @@
                     <span class="toggle-label stacked">
                       {new Date(entry.updated).toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' })}
                       <small>
-                        {t('draft.frames', { count: entry.doc.layers[0].frames.length })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
+                        {t('draft.frames', { count: entry.summary.frames })}{#if entry.bytes} · {formatFileSize(entry.bytes)}{/if}{#if entry.audio}{t('draft.with_audio')}{/if}
                       </small>
                     </span>
                     <input
