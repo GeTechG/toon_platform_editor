@@ -154,19 +154,28 @@
   // Not during playback — the strip stays put while frames flip. A narrower
   // strip (a phone turned, larger text) is a reason too: the frame it showed
   // may now sit past its edge, and a clamped scroll fires no scroll event.
+  // The film's shape and an opened draft are heard, not every write: hiding
+  // a layer or a stroke replaces the document too, and the strip scrolled
+  // away from where it was being looked at back to the active frame.
   $effect(() => {
     const index = editor.activeFrame;
-    void editor.doc;
+    void editor.docOpens;
+    void frameTotal;
+    void filmTicks;
+    void thumbWidth;
     void stripWidth;
     if (editor.playing || !strip) return;
-    stripScroll = strip.scrollLeft;
-    // Where the frame sits is arithmetic: its cell may not be built.
-    // The row's padding is the gap, so the last frame comes in ring and all.
-    const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
-    if (to !== null) {
-      strip.scrollLeft = to;
-      stripScroll = to;
-    }
+    untrack(() => {
+      if (!strip) return;
+      stripScroll = strip.scrollLeft;
+      // Where the frame sits is arithmetic: its cell may not be built.
+      // The row's padding is the gap, so the last frame comes in ring and all.
+      const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
+      if (to !== null) {
+        strip.scrollLeft = to;
+        stripScroll = to;
+      }
+    });
   });
 
   // Keep the active row in view too: the arrows walk the layers from the
@@ -174,7 +183,8 @@
   // under the sticky frame numbers or below the fold. The rows are the same
   // arithmetic as the frames, turned on their side, below the header.
   $effect(() => {
-    const at = editor.doc.layers.length - 1 - editor.activeLayer;
+    const at = layerTotal - 1 - editor.activeLayer;
+    void editor.docOpens;
     void row;
     void stripWidth;
     if (editor.playing || !strip) return;
@@ -822,6 +832,10 @@
   const thumbWidth = $derived(cell.w + 2);
   /** Where each frame starts in ticks: a held frame is as wide as its ticks. */
   const timing = $derived(editor.timing);
+  // Numbers, so the scroll-into-view effects hear the film change shape and
+  // not every write — each one is a new document and a new timing.
+  const filmTicks = $derived(timing.total);
+  const layerTotal = $derived(editor.doc.layers.length);
   /** A frame's width on the strip: a cell a tick, and the gaps between them. */
   const spanWidth = (frame: number) => (timing.start(frame + 1) - timing.start(frame)) * (thumbWidth + GRID_GAP) - GRID_GAP;
   /** The frames built right now — the ones in view, plus a screen either side. */

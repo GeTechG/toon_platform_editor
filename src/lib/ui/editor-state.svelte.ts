@@ -370,6 +370,12 @@ export class EditorState {
    * thumbnails and the autosave hear.
    */
   doc = $state.raw(createDocument());
+  /**
+   * Counts the documents put in place of the drawing. The strip listens to
+   * the film's shape, not to every write, and a draft of the same size opened
+   * on the same active cell has no other way to say it is another film.
+   */
+  docOpens = $state(0);
   /** The mult's weight as a share of the publish budget; over 1 it cannot be sent. */
   budgetShare = $derived(documentWeight(this.doc) / MAX_DOCUMENT_WEIGHT);
   activeFrame = $state(0);
@@ -1803,6 +1809,7 @@ export class EditorState {
     // A session open on the old drawing would be applied to this one.
     this.transform = null;
     this.doc = doc;
+    this.docOpens += 1;
     this.layerColors = defaultLayerColors(doc.layers.length);
     this.resetView();
     this.activeFrame = 0;
