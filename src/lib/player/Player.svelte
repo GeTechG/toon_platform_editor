@@ -9,7 +9,8 @@
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { renderDensity, sheetRaster } from '../ui/viewport';
   import { FrameCache } from './frame-cache';
-  import { canWarmApart, warmApart, warmCrew } from './warm';
+  import { canWarmApart, warmApart, warmCrew, type Crew } from './warm';
+  import { aheadReady, firstUnready, playbackWindow, startNeed, windowFrames } from '../render/playback-window';
   import { frameTwins } from './twins';
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
@@ -102,12 +103,21 @@
   /** The frames rasterized ahead of the clock (`warm` below), as pixels. */
   const cache = new FrameCache<ImageData>();
   /**
-   * Whether the film is rasterized — every frame of it. Until
-   * then the clock stands and the viewer is shown the wait: a film that
-   * starts at once stutters through its first lap, drawing each frame live.
+   * Whether the clock may run: the frames ahead of the one on screen are
+   * ready — the whole film when it fits the window (`playback-window.ts`), else
+   * as many as keep the first lap ahead of the drawing. Until then the clock
+   * stands and the viewer is shown the wait: a film that starts at once
+   * stutters through its first lap, drawing each frame live.
    */
   let ready = $state(false);
+  /** Whether the film has been on screen: a wait after it is over the last frame, not a blank. */
+  let shown = $state(false);
+  /** Played drawn live, never waited for: a replay, or no room or canvas for frames. */
+  let live = $state(false);
+  /** How much of the wait is over, 0…1. */
   let warmed = $state(0);
+  /** Tells the warming the show moved on; set by it. */
+  let wake = (): void => {};
   const percent = new Intl.NumberFormat(dateLocale(), { style: 'percent' });
 
   /**
@@ -117,6 +127,19 @@
    * watches it, and the ones it was drawn in.
    */
   const raster = $derived(sheetRaster(view));
+  /**
+   * How many frames of the sheet this device holds ready. A film tied to its
+   * track is held whole, as before the window: the track is its clock, and a
+   * track cannot wait for a frame as the frame clock does — two clocks gated
+   * by turns took a late track for a lap gone by.
+   */
+  const windowSize = $derived(audioSrc && audioSync
+    ? Infinity
+    : playbackWindow(
+      typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+      raster.width,
+      raster.height,
+    ));
   /**
    * Whether the page shows the bitmap at twice its size or more: then its
    * pixels are shown as they are. The density capped like the editor's; the
@@ -149,10 +172,10 @@
     if (canvasEl.height !== pxHeight) {
       canvasEl.height = pxHeight;
     }
-    // Until the film is rasterized the canvas stays blank under the wait:
+    // Until the film is first ready the canvas stays blank under the wait:
     // the viewer is shown the loading and then the film, not a frame drawn
     // live in the meantime (the owner, 2026-10-22).
-    if (current >= total || !ready) {
+    if (current >= total || !shown) {
       return;
     }
     const ctx = canvasEl.getContext('2d') as unknown as Canvas2DLike | null;
@@ -161,15 +184,17 @@
     if (!ctx) {
       return;
     }
-    // A frame rasterized already is laid down as it is; one the warming has
-    // not reached yet is drawn stroke by stroke, as every frame used to be.
+    // A frame rasterized already is laid down as it is. One the warming has
+    // not reached yet is drawn stroke by stroke where the film plays live or
+    // a paused viewer steps to it; playing, the clock waits for it over the
+    // last frame instead.
     cache.fit(view, pxWidth, pxHeight);
     const held = cache.get(current);
     if (held) {
       (ctx as unknown as CanvasRenderingContext2D).putImageData(held, 0, 0);
       return;
     }
-    paint(current, ctx);
+    if (live || !playing) paint(current, ctx);
   }
 
   // The film is rasterized ahead of its clock, so the show is not every stroke
@@ -187,31 +212,81 @@
     // of them every stroke before it drawn again. It is drawn live, a step a
     // tenth of a second.
     if (length.replay) {
+      live = true;
       ready = true;
+      shown = true;
       return;
     }
+    live = false;
+    shown = false;
     ready = false;
     warmed = 0;
+    // The window is part of the warming: a track tied or untied on the same
+    // film starts it over, whole or windowed.
+    const size = windowSize;
+    // Frames shown a second, the held ones counted by their ticks.
+    const playRate = (fps * total) / timing.total;
     // A frame held by copying it is rasterized once, and its copies are
     // given the same pixels.
     const twins = frameTwins(view);
-    const own = twins.flatMap((twin, index) => (twin === index ? [index] : []));
+    const asked = new Set<number>();
+    const arrivals: number[] = [];
+    const has = (index: number): boolean => cache.get(index) !== undefined;
+    const measured = (): number | undefined => arrivals.length < 2
+      ? undefined
+      : ((arrivals.length - 1) * 1000) / Math.max(1, arrivals[arrivals.length - 1] - arrivals[0]);
+    /** Whether the clock may run: enough frames ready in a row from the one on screen. */
+    const settle = (): void => {
+      if (live) return;
+      const ahead = aheadReady(has, total, untrack(() => current) % total);
+      const need = startNeed({ total, window: size, playRate, rasterRate: measured() });
+      warmed = Math.min(1, ahead / need);
+      if (!ready && ahead >= need) {
+        ready = true;
+        shown = true;
+      }
+    };
+    /** The frame to rasterize next: one of the window not held or asked for yet. */
+    const pick = (): number | null => {
+      for (const index of windowFrames(total, untrack(() => current) % total, size)) {
+        const twin = twins[index] ?? index;
+        if (has(index) || asked.has(twin)) continue;
+        asked.add(twin);
+        return twin;
+      }
+      return null;
+    };
     const hold = (index: number, frame: ImageData): void => {
+      asked.delete(index);
+      arrivals.push(performance.now());
+      if (arrivals.length > 8) arrivals.shift();
       for (const [copy, twin] of twins.entries()) {
         if (twin === index) cache.put(copy, frame);
       }
+      settle();
+    };
+    /** No room or no canvas for frames: the film plays drawn live rather than waits. */
+    const goLive = (): void => {
+      live = true;
+      ready = true;
+      shown = true;
     };
     const scratch = document.createElement('canvas');
-    let timer: ReturnType<typeof setTimeout>;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let crew: Crew | null = null;
+    // On the page the drawing shares the thread with the clock: a frame of a
+    // heavy film drawn while the film plays held the clock up and it skipped
+    // frames. Without a crew the page fills the window while the clock
+    // stands, plays it, and fills it again.
+    const clockRuns = (): boolean => playing && ready;
     const warm = (): void => {
+      timer = undefined;
+      if (clockRuns()) return;
       const { width: pxWidth, height: pxHeight } = raster;
       cache.fit(view, pxWidth, pxHeight);
-      const next = cache.next(total, Math.min(untrack(() => current), total - 1));
-      if (next === null) {
-        ready = true;
-        return;
-      }
-      const index = twins[next] ?? next;
+      const next = pick();
+      // Nothing wanted now: the show moving on wakes it (`wake` below).
+      if (next === null) return;
       if (scratch.width !== pxWidth) scratch.width = pxWidth;
       if (scratch.height !== pxHeight) scratch.height = pxHeight;
       // Made for reading back: every frame drawn on it is read once and kept.
@@ -219,53 +294,77 @@
       if (!ctx) {
         // No canvas to rasterize on (Safari out of canvas memory): the film
         // plays drawn live rather than waits for frames that will not come.
-        ready = true;
+        goLive();
         return;
       }
-      paint(index, ctx as unknown as Canvas2DLike);
+      paint(next, ctx as unknown as Canvas2DLike);
       try {
-        hold(index, ctx.getImageData(0, 0, pxWidth, pxHeight));
+        hold(next, ctx.getImageData(0, 0, pxWidth, pxHeight));
       } catch {
         // The device has no room for another frame: the film plays with what
         // is held and draws the rest live, rather than loading for ever.
-        ready = true;
+        goLive();
         return;
       }
-      warmed = cache.progress(total);
       timer = setTimeout(warm, 0);
     };
+    const onPage = (): void => {
+      crew = null;
+      // What a fallen crew had been asked for is the page's to draw.
+      asked.clear();
+      timer ??= setTimeout(warm, 0);
+    };
+    wake = () => {
+      if (crew) crew.kick();
+      // Everything wanted may be held already: then nothing arrives to say so.
+      settle();
+      if (!crew && !live && !clockRuns()) timer ??= setTimeout(warm, 0);
+    };
     let gone = false;
-    let dismiss = (): void => {};
     try {
       if (!canWarmApart()) {
         throw new Error('no workers here');
       }
       cache.fit(view, raster.width, raster.height);
-      dismiss = warmApart(
+      const own = twins.filter((twin, index) => twin === index).length;
+      crew = warmApart(
         view,
-        warmCrew(navigator.hardwareConcurrency, own.length),
-        own,
+        warmCrew(navigator.hardwareConcurrency, Math.min(own, size)),
+        pick,
         (index, frame) => {
           // A frame of the film this effect has let go of is nobody's.
           if (gone) return;
           hold(index, frame);
-          warmed = cache.progress(total);
         },
-        // Whatever the crew left undone the page draws; with nothing left,
-        // that is the film ready.
-        () => (timer = setTimeout(warm, 0)),
+        onPage,
       );
     } catch {
-      timer = setTimeout(warm, 0);
+      onPage();
     }
     return () => {
       gone = true;
-      dismiss();
+      wake = () => {};
+      crew?.stop();
       clearTimeout(timer);
       scratch.width = 0;
       scratch.height = 0;
       cache.clear();
     };
+  });
+
+  // The show moves on: the frames behind it leave a film longer than the
+  // window, the crew is told what is wanted now, and a frame not ready in
+  // time stops the clock until enough are again — the film is not shown
+  // with frames skipped or drawn live a stroke at a time (owner, 2026-11-16).
+  $effect(() => {
+    const frame = current;
+    // A pause is time the page may draw in, too.
+    void playing;
+    if (length.replay || live || frame >= total) return;
+    untrack(() => {
+      if (total > windowSize) cache.trim(windowFrames(total, frame, windowSize));
+      wake();
+    });
   });
 
   // The soundtrack, when there is one. It is built once per src and its own
@@ -319,18 +418,38 @@
     if (once) {
       current = replayStart(untrack(() => current), total);
     }
+    /**
+     * The clock moves the show to `index`. A late tick, the track's clock or
+     * a tab put away can step over several frames, a whole lap even: the
+     * first of them not ready is where the show stops and waits, not the one
+     * it landed on — no frame is skipped.
+     */
+    const advance = (index: number, laps: number): void => {
+      // Stopped already: nothing moves the show until it starts again.
+      if (!ready) return;
+      const from = current;
+      const stop = live ? null : firstUnready((frame) => cache.get(frame) !== undefined, total, from, index, laps);
+      if (stop === null) {
+        current = index;
+        return;
+      }
+      ready = false;
+      current = stop;
+      // Stopped where it was: nothing changed for the warming to hear.
+      wake();
+    };
     const player = new LoopPlayer({
       frameCount: total,
       fps,
       startFrame: Math.min(untrack(() => current), total - 1),
       holds,
-      onFrame: (index) => {
+      onFrame: (index, _lapped, laps) => {
         if (once && replayEnded(current, index, total)) {
           current = total - 1;
           playing = false;
           return;
         }
-        current = index;
+        advance(index, laps);
       },
     });
     const sound = audio;
@@ -365,6 +484,8 @@
     }
     let raf = requestAnimationFrame(function tick(now: number) {
       player.tick(now);
+      // The clock stopped on a frame not ready: the track must not move it on.
+      if (!ready) return;
       if (audioSync && sound) {
         if (trackKeepsTime(sound)) {
           // Tied, the track is pinned to the first frame and comes back round
@@ -417,6 +538,8 @@
     void cssWidth;
     void view;
     void ready;
+    void shown;
+    void playing;
     draw();
   });
 </script>
@@ -430,7 +553,7 @@
     style:width="{cssWidth}px"
     style:height="{cssHeight}px"
     style:image-rendering={magnified ? 'pixelated' : null}
-    style:visibility={ready ? null : 'hidden'}
+    style:visibility={shown ? null : 'hidden'}
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>

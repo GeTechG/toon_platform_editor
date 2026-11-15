@@ -44,8 +44,12 @@ export interface WarmScene {
   readonly viewport: Viewport;
   readonly width: number;
   readonly height: number;
-  /** A playback: only the frames ahead, round the loop. */
-  readonly ahead?: boolean;
+  /**
+   * A playback: only the frames ahead, round the loop — this many, the
+   * playback's window of frames (`playback-window.ts`), as far as the cell
+   * cache has room.
+   */
+  readonly ahead?: number;
 }
 
 /** Runs a task when the page is free; returns the way to call it off. */
@@ -53,7 +57,6 @@ export type Schedule = (task: () => void) => () => void;
 
 /** How far round the frame on screen the cells are made ready. */
 const AROUND = 2;
-const AHEAD = 3;
 
 export class CellWarmer {
   readonly #cache: CellCache;
@@ -106,7 +109,7 @@ export class CellWarmer {
     let room = this.#cache.room(width, height) - 2 * shown;
     const order: number[] = [];
     if (scene.ahead) {
-      for (let d = 1; d <= AHEAD; d++) order.push((frame + d) % count);
+      for (let d = 1; d <= Math.min(scene.ahead, count - 1); d++) order.push((frame + d) % count);
     } else {
       for (let d = 1; d <= AROUND; d++) order.push(frame + d, frame - d);
     }

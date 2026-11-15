@@ -132,3 +132,15 @@ describe('LoopPlayer с длительностями кадров', () => {
     expect(lapped).toBe(2);
   });
 });
+
+describe('how many laps a late tick went by', () => {
+  it('counts every time the clock passed the loop end', () => {
+    const laps: number[] = [];
+    const p = new LoopPlayer({ frameCount: 10, fps: 10, startFrame: 8, onFrame: (_, __, n) => laps.push(n) });
+    p.tick(0);
+    p.tick(100); // 8 → 9
+    p.tick(300); // 9 → 1, past the end once
+    p.tick(2400); // 1 → 2, twenty-one frames on: past the end twice
+    expect(laps).toEqual([0, 1, 2]);
+  });
+});

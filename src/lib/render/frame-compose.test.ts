@@ -627,6 +627,22 @@ describe('neighbouring frames are rasterized ahead', () => {
     expect(strokesSince(made, before)).toBe(0);
   });
 
+  it('during a playback, makes ready as many frames ahead as the window holds', async () => {
+    const built = film();
+    const asked: number[] = [];
+    const crew: WarmCrew = {
+      draw: async (job) => {
+        asked.push(job.strokes.length);
+        return { image: { worker: true } as unknown as CanvasImageSource, free: () => {} };
+      },
+    };
+    const { warmer, runAll } = setup(crew);
+    // Frames 1 to 4 ahead of the empty first one, two layers each.
+    warmer.request({ doc: built, frame: 0, tools: built.tools, viewport, width: 100, height: 50, ahead: 4 });
+    await runAll();
+    expect(asked.length).toBe(8);
+  });
+
   it('drops what it had not done yet when told to stop', async () => {
     const built = film();
     const { warmer, tasks } = setup();

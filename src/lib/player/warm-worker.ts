@@ -11,13 +11,22 @@ const post = (report: WarmReport, transfer: Transferable[] = []): void => {
   (self as unknown as Worker).postMessage(report, transfer);
 };
 
+let canvas: OffscreenCanvas | null = null;
+
+/** The sheet's bitmap, kept from order to order: an order is a frame at a time. */
+function sheet(width: number, height: number): OffscreenCanvasRenderingContext2D | null {
+  if (!canvas || canvas.width !== width || canvas.height !== height) {
+    canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : null;
+  }
+  if (!canvas) return null;
+  // Made for reading back: every frame drawn on it is read once and handed on.
+  return canvas.getContext('2d', { willReadFrequently: true });
+}
+
 self.onmessage = (e: MessageEvent<WarmOrder>) => {
   const { doc, frames } = e.data;
   const raster = sheetRaster(doc);
-  // Made for reading back: every frame drawn on it is read once and handed on.
-  const ctx = typeof OffscreenCanvas !== 'undefined'
-    ? new OffscreenCanvas(raster.width, raster.height).getContext('2d', { willReadFrequently: true })
-    : null;
+  const ctx = sheet(raster.width, raster.height);
   if (!ctx) {
     post({ done: true, ok: false });
     return;

@@ -2,9 +2,12 @@
 // every stroke of every layer drawn again; shown from here it is one copy of
 // pixels. Pure — the player decides what a frame is and how it is drawn.
 //
-// No ceiling on what it holds (owner, 2026-10-10): the whole film, whatever
-// its length. A device that cannot hold it says so when a frame is taken, and
-// the player draws the rest live.
+// It holds the window of frames the device's memory allows
+// (`render/playback-window.ts`): the whole film when it fits, else the frames
+// ahead of the one on screen, the played ones let go (owner, 2026-11-16 —
+// the ceiling turned down on 2026-10-10 came back for films longer than it). A
+// device that cannot hold even that says so when a frame is taken, and the
+// player draws the rest live.
 
 export class FrameCache<T> {
   readonly #frames = new Map<number, T>();
@@ -31,12 +34,21 @@ export class FrameCache<T> {
     this.#frames.set(index, frame);
   }
 
+  /** Lets go of every frame but `keep`'s. */
+  trim(keep: Iterable<number>): void {
+    const kept = new Set(keep);
+    for (const index of [...this.#frames.keys()]) {
+      if (!kept.has(index)) this.#frames.delete(index);
+    }
+  }
+
   /**
    * The frame to rasterize next: the first not held yet, from the one on
-   * screen onwards and round. Null when all are held.
+   * screen onwards and round, within `window` frames of it. Null when all of
+   * them are held.
    */
-  next(total: number, from: number): number | null {
-    for (let step = 0; step < total; step++) {
+  next(total: number, from: number, window = total): number | null {
+    for (let step = 0; step < Math.min(total, window); step++) {
       const index = (from + step) % total;
       if (!this.#frames.has(index)) {
         return index;

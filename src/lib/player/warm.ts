@@ -47,58 +47,84 @@ export function filmFor(doc: ToonDocument, frames: readonly number[]): ToonDocum
   };
 }
 
+/** The crew at work: woken when frames are wanted again, let go with the film. */
+export interface Crew {
+  /** Idle workers ask again what is wanted: the show moved on and the window with it. */
+  kick(): void;
+  stop(): void;
+}
+
+const spawnWorker = (): Worker => new Worker(new URL('./warm-worker.ts', import.meta.url), { type: 'module' });
+
 /**
- * Starts the crew on `frames` of the film, dealt round. `onFrame` gets every
- * frame as it comes; `onEnd` is called
- * once, when no more will: `false` if a worker fell or ran out of memory, and
- * the caller draws what is missing itself. Returns the way to call it off.
+ * Starts a crew of `crew` workers on the film. A worker free to draw asks
+ * `pick` for the frame wanted next and gets it alone — not a share dealt out
+ * up front: the show goes on while they draw, and what is wanted moves with
+ * it (owner, 2026-11-16: a window of frames ahead, not the whole film). A
+ * worker told nothing waits for `kick`. `onFrame` gets every frame as it
+ * comes; `onFail` is called once if a worker falls or runs out of memory —
+ * the crew is let go and the caller draws the rest itself.
  */
 export function warmApart(
   doc: ToonDocument,
   crew: number,
-  frames: readonly number[],
+  pick: () => number | null,
   onFrame: (index: number, frame: ImageData) => void,
-  onEnd: (ok: boolean) => void,
-): () => void {
+  onFail: () => void,
+  spawn: () => Worker = spawnWorker,
+): Crew {
   const workers: Worker[] = [];
-  let left = crew;
-  let whole = true;
+  const idle: Worker[] = [];
+  let over = false;
   const stop = (): void => {
+    over = true;
     for (const worker of workers) worker.terminate();
     workers.length = 0;
+    idle.length = 0;
   };
-  const through = (ok: boolean): void => {
-    whole &&= ok;
-    if (--left === 0) {
-      stop();
-      onEnd(whole);
+  // Told a turn later: a crew that fails while it is being started has not
+  // been handed to its caller yet.
+  const fail = (): void => {
+    if (over) return;
+    stop();
+    queueMicrotask(onFail);
+  };
+  const give = (worker: Worker): void => {
+    if (over) return;
+    const index = pick();
+    if (index === null) {
+      idle.push(worker);
+      return;
     }
-  };
-  for (let from = 0; from < crew; from++) {
-    const worker = new Worker(new URL('./warm-worker.ts', import.meta.url), { type: 'module' });
-    workers.push(worker);
-    worker.onmessage = (e: MessageEvent<WarmReport>) => {
-      if ('done' in e.data) through(e.data.ok);
-      else onFrame(e.data.index, e.data.frame);
-    };
-    worker.onerror = () => {
-      worker.onmessage = null;
-      worker.onerror = null;
-      through(false);
-    };
     try {
-      const share = frames.filter((_, i) => i % crew === from);
       // A page holds the film in its state, and a Svelte `$state` is a proxy:
       // it does not clone into a worker, and the crew fell to the page every
       // time. The document is plain data, so a copy of it through JSON clones —
-      // one worker's share at a time, not the whole film at once.
-      const film = JSON.parse(JSON.stringify(filmFor(doc, share))) as ToonDocument;
-      worker.postMessage({ doc: film, frames: share } satisfies WarmOrder);
-    } catch (err) {
-      // A film that cannot be handed over leaves no worker behind.
-      stop();
-      throw err;
+      // the strokes of the one frame only.
+      const film = JSON.parse(JSON.stringify(filmFor(doc, [index]))) as ToonDocument;
+      worker.postMessage({ doc: film, frames: [index] } satisfies WarmOrder);
+    } catch {
+      // A frame that cannot be handed over, now or later: the page draws the
+      // rest, the frame asked for included.
+      fail();
     }
+  };
+  for (let n = 0; n < crew; n++) {
+    const worker = spawn();
+    workers.push(worker);
+    worker.onmessage = (e: MessageEvent<WarmReport>) => {
+      if (over) return;
+      if (!('done' in e.data)) onFrame(e.data.index, e.data.frame);
+      else if (e.data.ok) give(worker);
+      else fail();
+    };
+    worker.onerror = () => fail();
   }
-  return stop;
+  for (const worker of [...workers]) give(worker);
+  return {
+    kick() {
+      for (const worker of idle.splice(0)) give(worker);
+    },
+    stop,
+  };
 }

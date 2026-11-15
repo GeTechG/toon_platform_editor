@@ -20,6 +20,7 @@
   } from '../render/canvas2d';
   import { CELL_CACHE_BYTES, FrameComposer, type LiveLine } from '../render/frame-compose';
   import { PlaybackFrames, playbackKeeps } from './playback-frames';
+  import { playbackWindow } from '../render/playback-window';
   import { CellWarmer } from '../render/cell-warm';
   import { cellCrew } from '../render/cell-crew';
   import { studioCells } from '../render/studio-cells';
@@ -362,9 +363,15 @@
   }, crew);
   let warmTimer: ReturnType<typeof setTimeout> | undefined;
   /** The frames of the playback under way, composed once each (playback-frames.ts). */
+  /** How many sheets a playback holds ready on this device (`playback-window.ts`). */
+  const playWindow = (sheet: { width: number; height: number }): number => playbackWindow(
+    typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+    sheet.width,
+    sheet.height,
+  );
   const played = new PlaybackFrames<ImageData | ImageBitmap>((pixels) => {
     if ('close' in pixels) pixels.close();
-  });
+  }, playWindow);
   /** What a played frame is kept as, by the browser (playback-frames.ts). */
   const keepAs = playbackKeeps(navigator.userAgent, typeof createImageBitmap === 'function');
   /** The paper and its shadow, and the shape they were drawn for. */
@@ -772,7 +779,8 @@
           } else {
             const scene = {
               doc: editor.doc, frame, tools: editor.doc.tools, viewport,
-              width: raster.width, height: raster.height, ahead: editor.playing,
+              width: raster.width, height: raster.height,
+              ahead: editor.playing ? playWindow(raster) : undefined,
             };
             warmTimer = setTimeout(() => warmer.request(scene), editor.playing ? 0 : 150);
           }
@@ -783,7 +791,7 @@
               createImageBitmap(sheetEl).then((bitmap) => {
                 // Stopped meanwhile: nobody will show it.
                 if (editor.playing && editor.doc === doc) {
-                  played.keep(doc, raster, frame, bitmap);
+                  played.keep(doc, raster, frame, bitmap, frameCount(doc));
                 } else {
                   bitmap.close();
                 }
@@ -792,7 +800,7 @@
               });
             } else {
               try {
-                played.keep(doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height));
+                played.keep(doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height), frameCount(doc));
               } catch {
                 // Drawn live, as before.
               }

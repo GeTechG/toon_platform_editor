@@ -7,27 +7,46 @@ describe('frames of a playback', () => {
 
   it('hands a frame back as it was kept, for the same document and sheet', () => {
     const frames = new PlaybackFrames<string>();
-    frames.keep(doc, sheet, 3, 'pixels of 3');
+    frames.keep(doc, sheet, 3, 'pixels of 3', 10);
     expect(frames.get(doc, sheet, 3)).toBe('pixels of 3');
     expect(frames.get(doc, sheet, 4)).toBeUndefined();
   });
 
   it('drops every frame when the document is another', () => {
     const frames = new PlaybackFrames<string>();
-    frames.keep(doc, sheet, 3, 'pixels of 3');
+    frames.keep(doc, sheet, 3, 'pixels of 3', 10);
     expect(frames.get({}, sheet, 3)).toBeUndefined();
     expect(frames.get(doc, sheet, 3)).toBeUndefined();
   });
 
   it('drops every frame when the sheet bitmap is another size', () => {
     const frames = new PlaybackFrames<string>();
-    frames.keep(doc, sheet, 3, 'pixels of 3');
+    frames.keep(doc, sheet, 3, 'pixels of 3', 10);
     expect(frames.get(doc, { width: 1920, height: 1080 }, 3)).toBeUndefined();
+  });
+
+  it('holds no more than its window, letting go of the frame due last round the loop', () => {
+    const freed: string[] = [];
+    const frames = new PlaybackFrames<string>((pixels) => freed.push(pixels), () => 3);
+    for (const frame of [5, 6, 7]) frames.keep(doc, sheet, frame, `pixels of ${frame}`, 10);
+    frames.keep(doc, sheet, 8, 'pixels of 8', 10);
+    // From 8 on, 7 comes round last: it was just played.
+    expect(freed).toEqual(['pixels of 7']);
+    expect(frames.get(doc, sheet, 5)).toBe('pixels of 5');
+    expect(frames.get(doc, sheet, 8)).toBe('pixels of 8');
+  });
+
+  it('takes its window from the sheet', () => {
+    const frames = new PlaybackFrames<string>(() => {}, (size) => (size.width > 1000 ? 1 : 5));
+    frames.keep(doc, sheet, 0, 'a', 10);
+    frames.keep(doc, sheet, 1, 'b', 10);
+    expect(frames.get(doc, sheet, 0)).toBeUndefined();
+    expect(frames.get(doc, sheet, 1)).toBe('b');
   });
 
   it('lets go of everything when the playback stops', () => {
     const frames = new PlaybackFrames<string>();
-    frames.keep(doc, sheet, 3, 'pixels of 3');
+    frames.keep(doc, sheet, 3, 'pixels of 3', 10);
     frames.release();
     expect(frames.get(doc, sheet, 3)).toBeUndefined();
   });
@@ -54,11 +73,11 @@ describe('what a played frame is kept as', () => {
     const frames = new PlaybackFrames<string>((pixels) => freed.push(pixels));
     const doc = {};
     const sheet = { width: 10, height: 10 };
-    frames.keep(doc, sheet, 0, 'a');
-    frames.keep(doc, sheet, 1, 'b');
+    frames.keep(doc, sheet, 0, 'a', 2);
+    frames.keep(doc, sheet, 1, 'b', 2);
     frames.get({}, sheet, 0);
     expect(freed.sort()).toEqual(['a', 'b']);
-    frames.keep(doc, sheet, 0, 'c');
+    frames.keep(doc, sheet, 0, 'c', 2);
     frames.release();
     expect(freed).toContain('c');
   });

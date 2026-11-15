@@ -23,9 +23,11 @@ export interface LoopPlayerOptions {
   holds?: readonly number[];
   /**
    * `lapped`: the step went past the loop's end. The frame number alone does
-   * not say so — a hitch of a whole lap lands on the frame it left.
+   * not say so — a hitch of a whole lap lands on the frame it left. `laps`:
+   * how many times it did — more than one, or one landing no earlier than it
+   * left, is a whole lap gone by.
    */
-  onFrame: (frameIndex: number, lapped: boolean) => void;
+  onFrame: (frameIndex: number, lapped: boolean, laps: number) => void;
 }
 
 export class LoopPlayer {
@@ -36,7 +38,7 @@ export class LoopPlayer {
   #tick: number;
   readonly #intervalMs: number;
   readonly #startFrame: number;
-  readonly #onFrame: (frameIndex: number, lapped: boolean) => void;
+  readonly #onFrame: (frameIndex: number, lapped: boolean, laps: number) => void;
   #current: number;
   #last: number | null = null;
 
@@ -98,7 +100,8 @@ export class LoopPlayer {
     this.#tick = this.#loopStart + (reach % this.#loopLength);
     this.#current = this.#timing.frameAt(this.#tick);
     this.#last = nowMs - (delta % this.#intervalMs);
-    this.#onFrame(this.#current, reach >= this.#loopLength);
+    const laps = Math.floor(reach / this.#loopLength);
+    this.#onFrame(this.#current, laps > 0, laps);
   }
 
   /**

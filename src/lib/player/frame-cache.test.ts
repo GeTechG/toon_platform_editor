@@ -36,6 +36,28 @@ describe('кэш кадров плеера', () => {
     expect(cache.next(501, 0)).toBe(500);
   });
 
+  it('отпускает кадры вне окна, держит кадры окна', () => {
+    const cache = new FrameCache<string>();
+    cache.fit(doc, 1280, 720);
+    for (let i = 0; i < 10; i++) cache.put(i, `кадр ${i}`);
+    cache.trim([7, 8, 9, 0, 1]);
+    expect(cache.get(3)).toBeUndefined();
+    expect(cache.get(6)).toBeUndefined();
+    expect(cache.get(8)).toBe('кадр 8');
+    expect(cache.get(1)).toBe('кадр 1');
+  });
+
+  it('следующий к растеризации — только из окна впереди кадра на экране', () => {
+    const cache = new FrameCache<string>();
+    cache.fit(doc, 1280, 720);
+    cache.put(7, 'a');
+    cache.put(9, 'b');
+    expect(cache.next(10, 7, 3)).toBe(8);
+    cache.put(8, 'c');
+    // 0 лежит за окном из трёх кадров: его время ещё не пришло.
+    expect(cache.next(10, 7, 3)).toBeNull();
+  });
+
   it('доля готового — от всех кадров фильма', () => {
     const cache = new FrameCache<string>();
     cache.fit(doc, 1280, 720);
@@ -81,6 +103,6 @@ describe('плеер показывает готовое', () => {
 
   it('повтор рисунка из одного кадра не растеризуется заранее: шаг на штрих — это сотни битмапов', async () => {
     const source = await Bun.file(new URL('./Player.svelte', import.meta.url)).text();
-    expect(source).toMatch(/if \(length\.replay\) \{\s*ready = true;\s*return;/);
+    expect(source).toMatch(/if \(length\.replay\) \{\s*live = true;\s*ready = true;\s*shown = true;\s*return;/);
   });
 });
