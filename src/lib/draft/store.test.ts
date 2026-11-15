@@ -699,6 +699,37 @@ describe('the list reads cards, not documents', () => {
     expect((await listDraftCards()).map((c) => c.id)).toEqual(['good']);
   });
 
+  it('a record before the cards that has layers and still does not read stays out on every list', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    stores.set('drafts', new Map([['bad', { id: 'bad', updated: 1, doc: { ...drawn(), schema_version: 6 } }]]));
+    expect(await listDraftCards()).toEqual([]);
+    await Bun.sleep(5);
+    expect(await listDraftCards()).toEqual([]);
+  });
+
+  it('a record before the cards whose frames are not frames is marked, not packed', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    const doc = { layers: [{ frames: 'invalid' }] };
+    stores.set('drafts', new Map([['bad', { id: 'bad', updated: 1, doc }]]));
+    expect(await listDraftCards()).toEqual([]);
+    await Bun.sleep(5);
+    const raw = stores.get('drafts')!.get('bad') as Record<string, unknown>;
+    expect(raw.broken).toBe(true);
+    expect(raw.doc).toEqual(doc);
+  });
+
+  it('a drawing saved over a record that did not read lists again', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    stores.set('drafts', new Map([['bad', { id: 'bad', updated: 1, doc: { ...drawn(), schema_version: 6 } }]]));
+    await listDraftCards();
+    await Bun.sleep(5);
+    await saveDraft('bad', drawn());
+    expect((await listDraftCards()).map((c) => c.id)).toEqual(['bad']);
+  });
+
   it('a screenshot that lands after the draft was deleted leaves no card', async () => {
     setIndexedDB(fakeIndexedDB());
     await saveDraft('a', drawn());

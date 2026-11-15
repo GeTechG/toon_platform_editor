@@ -155,11 +155,13 @@ function summarize(doc: unknown): DraftSummary | null {
  * the track, its credits) keeps its bytes as they are.
  */
 function pack(record: DraftRecord): void {
-  if (record.doc !== undefined) {
+  // A record marked broken stays as it lay: its document did not read, so a
+  // card counted from it would list it, and packing a tree that is not a
+  // document can throw inside the write. A save clears the mark.
+  if (record.doc !== undefined && !record.broken) {
     const summary = summarize(record.doc);
     if (summary) {
       record.summary = summary;
-      delete record.broken;
     }
     record.packed = encodeDoc(record.doc);
     delete (record as Partial<DraftRecord>).doc;
@@ -588,6 +590,8 @@ export async function saveDraft(
   const ok = await queueWrite(() =>
     updateDraft(id, 'draft save', (previous) => {
       const next: DraftRecord = { ...previous, id, updated: Date.now(), doc };
+      // The studio's own drawing: whatever did not read before is replaced.
+      delete next.broken;
       if (state) {
         next.state = state;
       }
