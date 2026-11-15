@@ -526,12 +526,20 @@ export function pasteTargetFromSelection(
 /**
  * What the brush cursor is made of (reference `tools.js:80-100`): a ring the
  * width of the brush, and a cross when the brush is too thin to aim with or
- * so thick its ring hides the point. A thin brush with the cross on drops the
- * ring — two pixels of circle are noise, not a cursor.
+ * so thick its ring hides the point. Thin is measured on the screen, not on
+ * the slider: a ring under 12 px with the cross on gives way to the cross —
+ * a few pixels of circle were not seen at all on a sheet zoomed out (owner,
+ * 2026-11-15). The thick cross stays the reference's, by the width. A grid
+ * tool's square is its cell, not a ring: it stays, with the cross over it.
  */
-export function cursorShape(width: number, crossCursor: boolean): { ring: boolean; cross: boolean } {
-  const thin = width <= 3;
-  return { ring: !(thin && crossCursor), cross: (thin && crossCursor) || width >= 25 };
+export function cursorShape(
+  width: number,
+  diameter: number,
+  crossCursor: boolean,
+  grid = false,
+): { ring: boolean; cross: boolean } {
+  const thin = crossCursor && diameter < 12;
+  return { ring: grid || !thin, cross: thin || width >= 25 };
 }
 
 /** What the frame menu offers. */

@@ -64,11 +64,13 @@ describe('палец-пипетка меняет только цвет', () => {
 describe('при просмотре холст не обещает нажатия', () => {
   it('кольцо кисти и образец пипетки прячутся, пока фильм идёт', () => {
     expect(source).toMatch(/\{#if cursorVisible && !editor\.playing && editor\.tool === 'pipette' && pickPreview\}/);
-    expect(source).toMatch(/\{#if cursorVisible && !editor\.playing && editor\.tool !== 'pipette'/);
+    expect(source).toMatch(/\{:else if cursorVisible && !editor\.playing && editor\.tool !== 'pipette'/);
+    // The aiming cross stands for no brush either: crossOnly is off while playing.
+    expect(source).toMatch(/const crossOnly = \$derived\(!editor\.playing && /);
   });
 
   it('мыши — обычный системный курсор', () => {
-    expect(source).toMatch(/class:custom-cursor=\{!editor\.playing && editor\.tool !== 'pipette' && !overlayCursor\}/);
+    expect(source).toMatch(/class:custom-cursor=\{!editor\.playing && editor\.tool !== 'pipette' && \(!overlayCursor \|\| crossOnly\)\}/);
     expect(source).toMatch(/class:playing=\{editor\.playing\}/);
     expect(source).toMatch(/canvas\.playing \{\s*cursor: default;/);
   });

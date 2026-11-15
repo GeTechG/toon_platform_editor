@@ -566,7 +566,13 @@
     return Math.max(1, (size * sheetWidth * editor.view.zoom) / (editor.doc.width / FIXED_POINT_SCALE));
   }
   /** Ring, cross, or the cross alone for a brush too thin to draw a circle for. */
-  const cursorParts = $derived(cursorShape(editor.brushSizeLogical * (magnet ? 2 : 1), editor.ux.crossCursor && editor.settings.crossCursor));
+  const cursorParts = $derived(cursorShape(editor.brushSizeLogical * (magnet ? 2 : 1), cursorDiameter, editor.ux.crossCursor && editor.settings.crossCursor, !!toolSpec(editor.brushTool)?.stroke?.grid));
+  /**
+   * The lasso, the bucket and the turn of a transform aim at a point: the
+   * system's crosshair was a hair on some desktops and none on others, so
+   * the cross is ours — the brush's, without its ring (owner, 2026-11-15).
+   */
+  const crossOnly = $derived(!editor.playing && overlayCursor === 'crosshair');
 
   /** The workspace the sheet was last laid out on; null until it is measured. */
   let placedStage: Stage | null = null;
@@ -2538,9 +2544,9 @@
       // the edge the cursor left by (owner, after the sixteenth audit).
       editor.lastScalePivot = null;
     }}
-    class:custom-cursor={!editor.playing && editor.tool !== 'pipette' && !overlayCursor}
+    class:custom-cursor={!editor.playing && editor.tool !== 'pipette' && (!overlayCursor || crossOnly)}
     class:playing={editor.playing}
-    style:cursor={(!editor.playing && overlayCursor) || null}
+    style:cursor={(!editor.playing && !crossOnly && overlayCursor) || null}
   ></canvas>
   <!-- Selection chrome. Purely visual: every gesture is read off the canvas
        itself, so pointer capture, touch and the keyboard path stay intact. -->
@@ -2649,7 +2655,13 @@
     </span>
   </div>
   {/if}
-  {#if cursorVisible && !editor.playing && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
+  {#if cursorVisible && crossOnly && !ring && !dropper}
+    <span
+      class="brush-cursor cross ringless"
+      style:transform="translate({cursorX}px, {cursorY}px) translate(-50%, -50%)"
+      aria-hidden="true"
+    ></span>
+  {:else if cursorVisible && !editor.playing && editor.tool !== 'pipette' && !overlayCursor && !ring && !dropper}
     <span
       class="brush-cursor"
       class:eraser={editor.tool === 'eraser' || editor.tool === 'mega-eraser'}
@@ -2765,13 +2777,14 @@
     box-shadow: 0 0 0 1px var(--canvas);
     transform: translate(-50%, -50%);
   }
+  /* 25 px arms, so a thin brush is found at a glance (owner, 2026-11-15). */
   .brush-cursor.cross::before {
-    width: 11px;
+    width: 25px;
     height: 1px;
   }
   .brush-cursor.cross::after {
     width: 1px;
-    height: 11px;
+    height: 25px;
   }
   /* The number of the Shift+drag, over the ring, as the hint is drawn. */
   .size-number {

@@ -332,26 +332,38 @@ describe('toggleLayerInSelection', () => {
 });
 
 describe('cursorShape', () => {
-  it('drops the ring for a thin brush and shows the cross instead', () => {
-    expect(cursorShape(2, true)).toEqual({ ring: false, cross: true });
-    expect(cursorShape(3, true)).toEqual({ ring: false, cross: true });
+  it('drops the ring for a brush too small on screen and shows the cross instead', () => {
+    expect(cursorShape(2, 2, true)).toEqual({ ring: false, cross: true });
+    // A width the slider calls ordinary is a few pixels on a sheet zoomed out.
+    expect(cursorShape(6, 4, true)).toEqual({ ring: false, cross: true });
+    expect(cursorShape(8, 11, true)).toEqual({ ring: false, cross: true });
+  });
+
+  it('a thin width zoomed in to a real circle is a ring', () => {
+    expect(cursorShape(2, 12, true)).toEqual({ ring: true, cross: false });
+    expect(cursorShape(3, 40, true)).toEqual({ ring: true, cross: false });
   });
 
   it('keeps the ring alone between the two thresholds', () => {
     for (const cross of [true, false]) {
-      expect(cursorShape(4, cross)).toEqual({ ring: true, cross: false });
-      expect(cursorShape(24, cross)).toEqual({ ring: true, cross: false });
+      expect(cursorShape(4, 12, cross)).toEqual({ ring: true, cross: false });
+      expect(cursorShape(24, 30, cross)).toEqual({ ring: true, cross: false });
     }
   });
 
   it('crosses a thick brush whether or not the setting is on', () => {
-    expect(cursorShape(25, false)).toEqual({ ring: true, cross: true });
-    expect(cursorShape(25, true)).toEqual({ ring: true, cross: true });
+    expect(cursorShape(25, 30, false)).toEqual({ ring: true, cross: true });
+    expect(cursorShape(25, 30, true)).toEqual({ ring: true, cross: true });
   });
 
-  it('a thin brush without the setting is a plain ring', () => {
-    expect(cursorShape(2, false)).toEqual({ ring: true, cross: false });
-    expect(cursorShape(3, false)).toEqual({ ring: true, cross: false });
+  it('keeps the cell square of a grid tool however small, adding the cross', () => {
+    expect(cursorShape(8, 6, true, true)).toEqual({ ring: true, cross: true });
+    expect(cursorShape(8, 6, false, true)).toEqual({ ring: true, cross: false });
+  });
+
+  it('a small ring without the setting stays a plain ring', () => {
+    expect(cursorShape(2, 2, false)).toEqual({ ring: true, cross: false });
+    expect(cursorShape(6, 4, false)).toEqual({ ring: true, cross: false });
   });
 });
 
