@@ -24,6 +24,8 @@
     | 'download'
     | 'send'
     | 'heart'
+    | 'bookmark'
+    | 'archive'
     | 'play'
     | 'pause'
     | 'stop'
@@ -180,6 +182,10 @@
     // The host's «нравится», under a toon and under a comment.
     heart:
       'M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.500 3c-1.76 0-3 .5-4.500 2-1.500-1.500-2.740-2-4.500-2A5.500 5.500 0 0 0 2 8.500c0 2.300 1.500 4.050 3 5.500l7 7Z',
+    // Somebody else's toon laid by: a ribbon in a book, filled when laid.
+    bookmark: 'M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z',
+    // One's own toon put away: a box with its lid.
+    archive: 'M3 3h18v5H3ZM4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4',
     play: 'M8 5.5v13l11-6.5-11-6.5Z',
     pause: 'M9 6v12M15 6v12',
     // Transport: a step of one frame, and the jump to either end of the strip.
