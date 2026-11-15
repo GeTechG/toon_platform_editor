@@ -683,6 +683,7 @@
     "done": "Готово"
   },
   "draft": {
+    "opening": "Открываю...",
     "frames_one": "{{count}} кадр",
     "frames_few": "{{count}} кадра",
     "frames_many": "{{count}} кадров",

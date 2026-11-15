@@ -669,6 +669,7 @@
     "done": "Done"
   },
   "draft": {
+    "opening": "Opening...",
     "frames_one": "{{count}} frame",
     "frames_other": "{{count}} frames",
     "saved_one": "Downloaded {{count}} draft",

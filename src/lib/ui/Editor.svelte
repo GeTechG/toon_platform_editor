@@ -1739,6 +1739,29 @@
     draftsOpen = true;
   }
 
+  /**
+   * The draft whose card is being opened: reading a heavy one holds the page
+   * for a second or more, and with nothing on the card the studio looked hung
+   * (owner, 2026-11-15).
+   */
+  let openingDraft = $state('');
+
+  /** A card pressed in the hub: it shows it is opening while the draft loads. */
+  async function openCard(entry: DraftCard): Promise<void> {
+    // One at a time: a second card pressed while the first reads is not a second open.
+    if (openingDraft) {
+      return;
+    }
+    openingDraft = entry.id;
+    try {
+      // The card shows it is opening before the work that holds the page begins.
+      await new Promise<void>((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+      await openDraft(entry);
+    } finally {
+      openingDraft = '';
+    }
+  }
+
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
   async function openDraft(entry: DraftCard): Promise<void> {
     // The draft on the canvas is newer than its card: the list was read when
@@ -3216,8 +3239,9 @@
       {thumbUrls}
       {storageUsed}
       {draftId}
+      opening={openingDraft}
       ready={draftsRead}
-      onOpen={openDraft}
+      onOpen={openCard}
       onCopy={copyDrafts}
       onDownload={downloadDrafts}
       onRemove={removeDrafts}

@@ -30,6 +30,7 @@
     thumbUrls,
     storageUsed,
     draftId,
+    opening = '',
     ready,
     onOpen,
     onCopy,
@@ -48,6 +49,8 @@
     storageUsed: number;
     /** The draft behind the drawing on the canvas. */
     draftId: string;
+    /** The draft being opened, its document still being read; '' when none. */
+    opening?: string;
     /** The drafts have been read: until then the hub cannot know its view. */
     ready: boolean;
     onOpen: (entry: DraftCard) => void;
@@ -536,10 +539,20 @@
             <button
               class="draft-open"
               class:picked={picked.includes(entry.id)}
+              class:opening={opening === entry.id}
               aria-pressed={choosing ? picked.includes(entry.id) : undefined}
+              aria-busy={opening === entry.id ? true : undefined}
               onclick={() => (choosing ? pick(entry) : openDraft(entry))}
             >
               <span class="draft-thumb">
+                {#if opening === entry.id}
+                  <!-- A heavy draft holds the page while it is read: the bar
+                       runs on the compositor, so it keeps moving meanwhile. -->
+                  <span class="draft-opening" role="status">
+                    <span class="opening-bar" aria-hidden="true"></span>
+                    <span class="opening-label">{t('draft.opening')}</span>
+                  </span>
+                {/if}
                 {#if thumbUrls[entry.id]}
                   <!-- The still written with the record: no document to
                        re-render, and it is what the drawing looked like. -->
@@ -1166,6 +1179,7 @@
     outline-color: transparent;
   }
   .draft-thumb {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1176,6 +1190,59 @@
     border-radius: var(--r-lg);
     background: var(--well);
     overflow: hidden;
+  }
+  /* Opening: the still dims under a word and a running bar, so a heavy draft
+     read for a few seconds does not look like a studio that hung. */
+  .draft-opening {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  /* The veil on its own, so its opacity leaves the word whole. */
+  .draft-opening::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--canvas);
+    opacity: 0.72;
+  }
+  .opening-label {
+    position: relative;
+  }
+  .opening-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    overflow: hidden;
+    background: var(--accent-wash);
+  }
+  .opening-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: var(--accent);
+    animation: opening-run var(--dur-busy) linear infinite;
+  }
+  @keyframes opening-run {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .opening-bar::after {
+      width: 100%;
+      animation: none;
+    }
   }
   /* «Новый мульт»: the tile the site's gallery opens with, in its tone. */
   .draft-open.hub-new {

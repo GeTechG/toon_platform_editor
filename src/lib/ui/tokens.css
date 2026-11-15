@@ -105,6 +105,9 @@
   --dur-fast: 0.12s; /* a press, a leave */
   --dur: 0.15s; /* a change of state: hover, picked, toggled */
   --dur-enter: 0.2s; /* a menu, a window, a sheet arriving */
+  /* The one loop: a bar running while the page is held by work it cannot
+     cut short (a heavy draft read), with no stroke in flight to steal from. */
+  --dur-busy: 1.1s;
 
   --r-sm: 7px;
   --r-md: 14px;
