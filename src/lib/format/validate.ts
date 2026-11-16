@@ -10,10 +10,11 @@
  * `new Function`, which a strict CSP does not allow.
  */
 
-import validateSchema from './schema/toon-v7.validate.js';
+import validateSchema from './schema/toon-v8.validate.js';
 import { SCHEMA_VERSION, wellFormed } from './constants';
 import type { ToolDescriptor, ToonDocument } from './types';
 import { FormatError } from './format-error';
+import { fromV7 } from './v7';
 
 export type ValidationCategory = 'unsupported-version' | 'schema' | 'semantic';
 
@@ -41,8 +42,9 @@ export function validateDocument(data: unknown): ValidationResult {
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return failure('schema', '/schema_version', 'schema_version must be an integer ≥ 1');
   }
-  // One version, no migrations: a document of any other version is not this
-  // format, and guessing at it would draw a picture nobody made.
+  // One version: a document of any other version is not this format, and
+  // guessing at it would draw a picture nobody made. Version 7 is translated
+  // by `loadDocument` before it gets here.
   if (version !== SCHEMA_VERSION) {
     return failure(
       'unsupported-version',
@@ -73,6 +75,10 @@ export function validateDocument(data: unknown): ValidationResult {
  * heavy one cost a third of opening it.
  */
 export function loadDocument(data: unknown, { owned = false }: { owned?: boolean } = {}): ToonDocument {
+  if ((data as { schema_version?: unknown } | null)?.schema_version === 7) {
+    data = fromV7(owned ? data : structuredClone(data));
+    owned = true;
+  }
   const result = validateDocument(data);
   if (!result.ok) {
     throw new FormatError(result.issues);
@@ -113,23 +119,21 @@ function semanticIssues(doc: ToonDocument): ValidationIssue[] {
     }
   });
 
-  // One hold per frame, and none stored when every frame is one tick: two
-  // spellings of the same film would hash apart.
-  if (doc.holds) {
-    if (doc.holds.length !== expected) {
+  // A continuation shows the drawing before it, so a layer cannot open with
+  // one: "empty from the start" is an empty drawing, one spelling only.
+  doc.layers.forEach((layer, l) => {
+    if (layer.frames[0] === null) {
       issues.push({
         category: 'semantic',
-        path: '/holds',
-        message: `holds has ${doc.holds.length} entries; the document has ${expected} frames`,
+        path: `/layers/${l}/frames/0`,
+        message: 'a layer opens with a drawing, not a continuation',
       });
-    } else if (doc.holds.every((hold) => hold === 1)) {
-      issues.push({ category: 'semantic', path: '/holds', message: 'holds of one tick each are left out' });
     }
-  }
+  });
 
   for (const { path, frames } of cells) {
     frames.forEach((frame, f) => {
-      frame.strokes.forEach((stroke, s) => {
+      frame?.strokes.forEach((stroke, s) => {
         const base = `${path}/${f}/strokes/${s}`;
         if (stroke.points.length % 2 !== 0) {
           issues.push({

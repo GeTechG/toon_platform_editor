@@ -1,4 +1,4 @@
 {
-  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,8,8],\"tool_id\":0}]}],\"hidden\":false}],\"schema_version\":7,\"tools\":[{\"color\":\"#000000\",\"fill\":\"#ff0000\",\"geometry\":\"smooth\",\"kind\":\"feather\",\"width\":40}],\"width\":4800}",
-  "sha256": "1069633e52d76f1a5c098026e8fbaf8c92087204f605f09c90cfa127579ce320"
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,8,8],\"tool_id\":0}]}],\"hidden\":false}],\"schema_version\":8,\"tools\":[{\"color\":\"#000000\",\"fill\":\"#ff0000\",\"geometry\":\"smooth\",\"kind\":\"feather\",\"width\":40}],\"width\":4800}",
+  "sha256": "785c8c31681793dbf6390129b76674fbbf9eba40eefb27d9c303ae9470a7fc8c"
 }

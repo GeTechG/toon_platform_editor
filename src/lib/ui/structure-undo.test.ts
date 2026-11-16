@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { addFrame, addLayer, addStroke, copyFrames, createDocument, moveFrames, setFrameHolds, removeFrame, removeLayer, renameLayer, setLayerBlend, setLayerOpacity } from '../model/operations';
+import { addFrame, addLayer, addStroke, copyFrames, createDocument, moveFrames, removeFrame, removeLayer, renameLayer, setLayerBlend, setLayerOpacity } from '../model/operations';
 import { restoreStructure, structureIntact, takeStructure } from './structure-undo';
 
 // Владелец после одиннадцатого аудита: удаление кадров и слоёв отменяется.
@@ -15,29 +15,29 @@ function doc(frames: number, layers = 1) {
   }
   return d;
 }
-const xs = (d: ReturnType<typeof doc>, l = 0) => d.layers[l].frames.map((f) => f.strokes[0]?.points[0]);
+const xs = (d: ReturnType<typeof doc>, l = 0) => d.layers[l].frames.map((f) => f?.strokes[0]?.points[0]);
 
 describe('отмена удаления', () => {
-  it('возвращает длительности кадров вместе с кадрами', () => {
+  it('возвращает продолжения вместе с кадрами', () => {
     const d = doc(3);
-    setFrameHolds(d, 0, 1, 4);
+    d.layers[0].frames[1] = null;
     const snap = takeStructure(d);
     moveFrames(d, 0, 1, 2);
     snap.seal(d);
     restoreStructure(d, snap);
-    expect(d.holds).toEqual([4, 1, 1]);
+    expect(xs(d)).toEqual([0, undefined, 2]);
+    expect(d.layers[0].frames[1]).toBeNull();
   });
 
-  it('длительность, изменённая после шага, закрывает его отмену', () => {
+  it('штрих по продолжению после шага закрывает его отмену', () => {
     const d = doc(3);
+    d.layers[0].frames[2] = null;
     const snap = takeStructure(d);
-    setFrameHolds(d, 1, 1, 3);
+    moveFrames(d, 0, 1, 1);
     snap.seal(d);
     expect(structureIntact(d, snap)).toBe(true);
-    setFrameHolds(d, 1, 1, 5);
+    addStroke(d, 0, 2, { points: [9, 9], width: 8, color: '#000000' });
     expect(structureIntact(d, snap)).toBe(false);
-    restoreStructure(d, snap);
-    expect(d.holds).toBeUndefined();
   });
 
   it('убирает копии, вставленные протяжкой с Ctrl', () => {
@@ -113,7 +113,7 @@ describe('отмена удаления', () => {
     snap.seal(d);
     addStroke(d, 0, 0, { points: [9, 9], width: 8, color: '#000000' });
     expect(structureIntact(d, snap)).toBe(false);
-    d.layers[0].frames[0].strokes.pop();
+    d.layers[0].frames[0]!.strokes.pop();
     expect(structureIntact(d, snap)).toBe(true);
   });
 

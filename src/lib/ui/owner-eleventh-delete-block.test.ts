@@ -29,14 +29,14 @@ describe('removing a run of frames', () => {
   it('takes the run from every layer and keeps the rest in order', () => {
     const doc = frames(8);
     removeFrame(doc, 2, 5);
-    expect(doc.layers[0].frames.map((f) => f.strokes[0].points[0])).toEqual([0, 1, 7]);
+    expect(doc.layers[0].frames.map((f) => f!.strokes[0].points[0])).toEqual([0, 1, 7]);
   });
 
   it('never leaves the document without a frame: all of them clears the first', () => {
     const doc = frames(4);
     removeFrame(doc, 0, 4);
     expect(doc.layers[0].frames).toHaveLength(1);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
   });
 
   it('refuses a run past the end', () => {

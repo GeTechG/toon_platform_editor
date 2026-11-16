@@ -20,13 +20,15 @@ function mapPoints(doc: ToonDocument, points: (points: number[], path: string) =
     ...doc,
     layers: doc.layers.map((layer, l) => ({
       ...layer,
-      frames: layer.frames.map((frame, f) => ({
-        ...frame,
-        strokes: frame.strokes.map((stroke, s) => ({
-          ...stroke,
-          points: points(stroke.points, `/layers/${l}/frames/${f}/strokes/${s}/points`),
-        })),
-      })),
+      // A continuation has no points: it stays the null it is.
+      frames: layer.frames.map((frame, f) =>
+        frame && {
+          ...frame,
+          strokes: frame.strokes.map((stroke, s) => ({
+            ...stroke,
+            points: points(stroke.points, `/layers/${l}/frames/${f}/strokes/${s}/points`),
+          })),
+        }),
     })),
   };
 }

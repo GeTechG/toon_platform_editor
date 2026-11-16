@@ -4,7 +4,7 @@ import { createDocument } from '../model/operations';
 
 describe('parseDraft', () => {
   it('parses a valid draft', () => {
-    expect(parseDraft(createDocument())?.schema_version).toBe(7);
+    expect(parseDraft(createDocument())?.schema_version).toBe(8);
   });
 
   it('discards a draft that fails format validation', () => {

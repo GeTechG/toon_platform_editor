@@ -13,6 +13,7 @@
 import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
 import { filmTiming } from '../model/timing';
+import { stills, type Stills } from '../model/stills';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 import {
   FrameRasterizer,
@@ -275,20 +276,21 @@ export function exportVideo(doc: ToonDocument, options: VideoExportOptions): Pro
   // «Отменить» for good: the checks between frames were never reached. The
   // cancel is the race's; the work left behind stops at its next check.
   return untilAborted(
-    options.plan.realtime ? recordVideo(doc, options) : encodeVideo(doc, options),
+    // The film goes as stills: a pause is one picture given its ticks.
+    options.plan.realtime ? recordVideo(stills(doc), options) : encodeVideo(stills(doc), options),
     options.signal,
   );
 }
 
 /** WebCodecs: frames are encoded as fast as the machine manages. */
-async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob | null> {
+async function encodeVideo(still: Stills, options: VideoExportOptions): Promise<Blob | null> {
   const { sink, signal, discard } = options;
   // Held before anything can fail: the muxer's chunk that did not load, a
   // canvas the browser had no memory for — the export threw before it took
   // the file, which stayed open, empty and locked under the name picked.
   const file = sink ? guardSink(sink, signal, discard) : null;
   try {
-    return await encodeFrames(doc, options, file);
+    return await encodeFrames(still, options, file);
   } catch (err) {
     await file?.drop();
     throw err;
@@ -296,10 +298,11 @@ async function encodeVideo(doc: ToonDocument, options: VideoExportOptions): Prom
 }
 
 async function encodeFrames(
-  doc: ToonDocument,
+  still: Stills,
   options: VideoExportOptions,
   file: ReturnType<typeof guardSink> | null,
 ): Promise<Blob | null> {
+  const doc = still.film;
   // `sink` and `discard` are the guard's: named here only to stay out of `raster`.
   const { plan, audio, onProgress, signal, trackSeconds, sink: _sink, discard: _discard, ...raster } = options;
   const target = plan.target;
@@ -312,7 +315,7 @@ async function encodeFrames(
   const fps = doc.frame_rate;
   // The video goes tick by tick: a held frame is the same picture for its
   // ticks, drawn once and given to the encoder again.
-  const timing = filmTiming(doc.holds, frameCount(doc));
+  const timing = filmTiming(still.holds, frameCount(doc));
   const ticks = timing.total;
   const total = exportFrameCount(ticks, fps, trackSeconds);
   const rasterizer = new FrameRasterizer(doc, raster);
@@ -424,7 +427,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.
  * the wall clock, so this runs in real time — a 120-frame animation at 12 fps
  * takes ten seconds.
  */
-async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Promise<Blob> {
+async function recordVideo(still: Stills, options: VideoExportOptions): Promise<Blob> {
+  const doc = still.film;
   const { plan, audio, onProgress, signal, trackSeconds, width, watermark } = options;
   const format = plan.format;
   if (!format) {
@@ -505,7 +509,7 @@ async function recordVideo(doc: ToonDocument, options: VideoExportOptions): Prom
   });
   recorded.catch(() => {});
 
-  const timing = filmTiming(doc.holds, frameCount(doc));
+  const timing = filmTiming(still.holds, frameCount(doc));
   const ticks = timing.total;
   const total = exportFrameCount(ticks, fps, trackSeconds);
   const deadlines = frameDeadlines(total, fps);

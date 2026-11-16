@@ -2,7 +2,8 @@
  * Canonical serialization per RFC 8785 (JCS) for the JSON subset used by
  * the format: objects, arrays, strings, integers.
  *
- * Booleans (layer `hidden`) serialize as the JSON literals.
+ * Booleans (layer `hidden`) serialize as the JSON literals, and so does
+ * `null` (a continuation cell, v8).
  * Floats are forbidden in the format, so the hardest part of JCS
  * (ECMAScript floating-point number serialization) is not needed: safe
  * integers serialize as String(n). Strings go through JSON.stringify
@@ -14,6 +15,9 @@
  */
 
 export function canonicalize(value: unknown): string {
+  if (value === null) {
+    return 'null';
+  }
   if (typeof value === 'boolean') {
     return value ? 'true' : 'false';
   }
@@ -38,5 +42,5 @@ export function canonicalize(value: unknown): string {
     const members = keys.map((key) => JSON.stringify(key) + ':' + canonicalize(record[key]));
     return '{' + members.join(',') + '}';
   }
-  throw new TypeError(`type outside the canonical format subset: ${value === null ? 'null' : typeof value}`);
+  throw new TypeError(`type outside the canonical format subset: ${typeof value}`);
 }

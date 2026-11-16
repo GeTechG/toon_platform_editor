@@ -98,8 +98,8 @@ it('duplicates a frame after itself, in every layer, as a copy of its own', () =
   expect(doc.layers[0].frames[1]).toEqual(doc.layers[0].frames[0]);
   // A copy: a stroke added to one is not in the other.
   addStroke(doc, 0, 1, { points: [3, 4], width: 8, color: '#112233' });
-  expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
-  expect(doc.layers[0].frames[1].strokes).toHaveLength(2);
+  expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
+  expect(doc.layers[0].frames[1]!.strokes).toHaveLength(2);
 });
 
 it('offers «Дублировать» in the frame menu', () => {

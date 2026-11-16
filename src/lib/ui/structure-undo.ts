@@ -1,4 +1,4 @@
-import type { Frame, Layer, Stroke, ToonDocument } from '../format/types';
+import type { Cell, Frame, Layer, Stroke, ToonDocument } from '../format/types';
 
 /**
  * The document's shape before a frame or layer delete, and after it. Cells
@@ -10,13 +10,11 @@ import type { Frame, Layer, Stroke, ToonDocument } from '../format/types';
 export interface StructureSnapshot {
   kind: 'structure';
   layers: Layer[];
-  frames: Frame[][];
+  frames: Cell[][];
   firstStrokes: Stroke[][];
-  /** The frames' holds, copied: a hold changes in place. */
-  holds: number[] | undefined;
   /** Each layer's opacity and blend mode, copied: they change in place on the layer. */
   looks: { opacity?: number; blend?: Layer['blend'] }[];
-  after: { layers: Layer[]; frames: Frame[][]; counts: number[][]; holds: string; looks: string } | null;
+  after: { layers: Layer[]; frames: Cell[][]; counts: number[][]; looks: string } | null;
   /** Records the shape the delete left; call it right after the write. */
   seal(doc: ToonDocument): void;
 }
@@ -27,7 +25,6 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
     layers: [...doc.layers],
     frames: doc.layers.map((l) => [...l.frames]),
     firstStrokes: doc.layers.map((l) => [...(l.frames[0]?.strokes ?? [])]),
-    holds: doc.holds ? [...doc.holds] : undefined,
     looks: doc.layers.map((layer) => ({ opacity: layer.opacity, blend: layer.blend })),
     after: null,
     seal(d) {
@@ -38,8 +35,8 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
       this.after = {
         layers: [...d.layers],
         frames: d.layers.map((l) => [...l.frames]),
-        counts: d.layers.map((l) => l.frames.map((f) => f.strokes.length)),
-        holds: String(d.holds ?? ''),
+        // A continuation has no strokes to count: −1 tells it from an empty drawing.
+        counts: d.layers.map((l) => l.frames.map((f) => f?.strokes.length ?? -1)),
         looks: looksOf(d),
       };
     },
@@ -55,14 +52,13 @@ function looksOf(doc: ToonDocument): string {
 
 export function structureIntact(doc: ToonDocument, snap: StructureSnapshot): boolean {
   const after = snap.after;
-  if (!after || doc.layers.length !== after.layers.length || String(doc.holds ?? '') !== after.holds
-    || looksOf(doc) !== after.looks) {
+  if (!after || doc.layers.length !== after.layers.length || looksOf(doc) !== after.looks) {
     return false;
   }
   return doc.layers.every((layer, l) =>
     layer === after.layers[l]
     && layer.frames.length === after.frames[l].length
-    && layer.frames.every((cell, f) => cell === after.frames[l][f] && cell.strokes.length === after.counts[l][f]),
+    && layer.frames.every((cell, f) => cell === after.frames[l][f] && (cell?.strokes.length ?? -1) === after.counts[l][f]),
   );
 }
 
@@ -108,7 +104,7 @@ function sameStroke(a: Stroke | undefined, b: Stroke | undefined): boolean {
 export function restorableBlock<S extends EditedCell>(
   doc: ToonDocument,
   edits: readonly (readonly S[] | object)[],
-  active: Frame | undefined,
+  active: Cell | undefined,
 ): S[] | undefined {
   // Cells the steps passed over left: a transform or a mirror rewrites a cell
   // in place — same object, same count — so a paste over two frames looked
@@ -186,11 +182,12 @@ export function placeBlock(doc: ToonDocument, step: readonly EditedCell[]): void
  * one, a frame deleted before a sweep of the eraser never came back once the
  * sweep was undone. `grew` is how many strokes the undo gave the cell back.
  */
-export function recell(snap: StructureSnapshot, from: Frame, to: Frame, grew = 0): void {
-  const swap = (rows: Frame[][], counts?: number[][]) => rows.forEach((row, l) => row.forEach((cell, f) => {
+export function recell(snap: StructureSnapshot, from: Frame, to: Cell, grew = 0): void {
+  const swap = (rows: Cell[][], counts?: number[][]) => rows.forEach((row, l) => row.forEach((cell, f) => {
     if (cell === from) {
       row[f] = to;
-      if (counts) counts[l][f] += grew;
+      // A continuation given back has no strokes to count.
+      if (counts) counts[l][f] = to ? counts[l][f] + grew : -1;
     }
   }));
   swap(snap.frames);
@@ -199,7 +196,7 @@ export function recell(snap: StructureSnapshot, from: Frame, to: Frame, grew = 0
 
 /** A step of the history as undo walks it: a block edit's cells, or a delete or a move. */
 type HistoryStep =
-  | readonly (EditedCell & { was: Frame })[]
+  | readonly (EditedCell & { was: Cell })[]
   | { snap: StructureSnapshot; redo?: { snap: StructureSnapshot } };
 
 /**
@@ -207,15 +204,15 @@ type HistoryStep =
  * the history that knew the cell by the old object is re-pointed. `undone` is
  * the cell of the step taken back — what it left, and what it was made over.
  */
-export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { was: Frame }, restored: Frame): void {
-  const grew = restored.strokes.length - undone.after;
+export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { was: Cell }, restored: Cell): void {
+  const grew = restored ? restored.strokes.length - undone.after : 0;
   for (const step of steps) {
     if ('snap' in step) {
       // A delete or a layer move: unmatched, a frame deleted before a sweep
       // never came back once the sweep was undone.
       for (const snap of step.redo ? [step.snap, step.redo.snap] : [step.snap]) {
         recell(snap, undone.cell, restored, grew);
-        recell(snap, undone.was, restored);
+        if (undone.was) recell(snap, undone.was, restored);
       }
       continue;
     }
@@ -223,13 +220,13 @@ export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { wa
       // The step under this one knows the cell by the object it left:
       // unmatched, a second Z after two sweeps took a stroke instead of
       // giving the first sweep back.
-      if (older.cell === undone.was) {
+      if (restored && older.cell === undone.was) {
         older.cell = restored;
       }
       // A transform or a mirror writes in place — the cell it was made over
       // is the cell it left. Left pointing at the old object, the third Z
       // after three mirrors found no step and took a stroke.
-      if (older.was === undone.was) {
+      if (undone.was && older.was === undone.was) {
         older.was = restored;
       }
     }
@@ -238,11 +235,6 @@ export function repoint(steps: readonly HistoryStep[], undone: EditedCell & { wa
 
 export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): void {
   doc.layers = [...snap.layers];
-  if (snap.holds) {
-    doc.holds = [...snap.holds];
-  } else {
-    delete doc.holds;
-  }
   snap.layers.forEach((layer, l) => {
     layer.frames = [...snap.frames[l]];
     // One canonical form: a look that was not there is no field, not a default.

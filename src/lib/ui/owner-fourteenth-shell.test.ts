@@ -66,7 +66,7 @@ describe('рисунок с применённой трансформацией,
     const doc = drawn();
     const baked = bakeTransform(doc, 0, { layers: [0], box, session: { ...EMPTY_TRANSFORM, dx: 100, dy: -5 }, widthWithScale: false });
     expect(baked).not.toBe(doc);
-    expect(baked.layers[0].frames[0].strokes[0].points).toEqual([110, 15, 130, 35]);
+    expect(baked.layers[0].frames[0]!.strokes[0].points).toEqual([110, 15, 130, 35]);
   });
 
   it('не трогает сам рисунок: живое выделение продолжает двигать неприменённое', () => {
@@ -90,7 +90,7 @@ describe('рисунок с применённой трансформацией,
   it('толщина с масштабом ложится новым инструментом копии', () => {
     const doc = drawn();
     const baked = bakeTransform(doc, 0, { layers: [0], box, session: { ...EMPTY_TRANSFORM, scaleX: 2, scaleY: 2 }, widthWithScale: true });
-    const tool = baked.tools[baked.layers[0].frames[0].strokes[0].tool_id];
+    const tool = baked.tools[baked.layers[0].frames[0]!.strokes[0].tool_id];
     expect('width' in tool && tool.width).toBe(18);
     expect(doc.tools.length).toBe(1);
   });

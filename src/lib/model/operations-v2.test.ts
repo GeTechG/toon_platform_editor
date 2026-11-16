@@ -7,7 +7,7 @@ const internTool = (operations as unknown as { internTool?: InternTool }).intern
 
 function doc(): ToonDocument {
   return {
-    schema_version: 7,
+    schema_version: 8,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -96,7 +96,7 @@ describe('v2 resolved document operations', () => {
     expect(target.tools).toEqual([
       { kind: 'pencil', geometry: 'smooth', width: 40, color: '#123456' },
     ]);
-    expect(target.layers[0].frames[0].strokes).toEqual([{ points: [1, 2, 3, 4], tool_id: 0 }]);
+    expect(target.layers[0].frames[0]!.strokes).toEqual([{ points: [1, 2, 3, 4], tool_id: 0 }]);
   });
 
   it('clone/copy/paste carries resolved descriptors between documents', () => {
@@ -112,7 +112,7 @@ describe('v2 resolved document operations', () => {
     target.tools.push({ kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
     operations.replaceCells(target, one, copied);
 
-    expect(target.layers[0].frames[0].strokes).toEqual([{ points: [10, 20], tool_id: 1 }]);
+    expect(target.layers[0].frames[0]!.strokes).toEqual([{ points: [10, 20], tool_id: 1 }]);
     expect(target.tools[1]).toEqual({ kind: 'eraser', geometry: 'smooth', width: 64 });
   });
 

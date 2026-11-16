@@ -110,7 +110,7 @@ describe('a brush the editor never heard of', () => {
       kind: 'pencil', geometry: 'cubic', width: 32, color: '#123456',
     } as ToolDescriptor);
     // Two segments of six numbers each, after the starting point.
-    expect(doc.layers[0].frames[0].strokes[0].points).toHaveLength(2 + 12);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toHaveLength(2 + 12);
   });
 
   it('is drawn by the renderer the player uses, with no plugin code in sight', () => {

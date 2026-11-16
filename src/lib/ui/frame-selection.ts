@@ -9,7 +9,7 @@ import {
   PLAYER_FPS_MAX,
   PLAYER_FPS_MIN,
 } from '../format/constants';
-import type { Frame, ToonDocument } from '../format/types';
+import type { Cell as DocCell, Frame, ToonDocument } from '../format/types';
 import { withoutLetterKeys } from './key-owner';
 
 /**
@@ -142,6 +142,28 @@ export function onionSideLayers(active: number, frameCount: number, onion: Onion
     }
   }
   return layers;
+}
+
+/**
+ * The onion by the drawings of a layer, not its ticks: a continuation shows
+ * the drawing before it, so the neighbours of a tick are the drawings around
+ * the one it shows — a pause is no neighbour of itself. `layers` lays the
+ * onion out over the drawings as if they were frames; the indices it gives
+ * are turned back into the ticks those drawings stand on.
+ */
+export function onionByDrawings(
+  frames: readonly DocCell[],
+  active: number,
+  layers: (active: number, count: number) => OnionLayer[],
+): OnionLayer[] {
+  const drawings: number[] = [];
+  let at = 0;
+  frames.forEach((cell, i) => {
+    if (cell === null) return;
+    if (i <= active) at = drawings.length;
+    drawings.push(i);
+  });
+  return layers(at, drawings.length).map((layer) => ({ ...layer, index: drawings[layer.index] }));
 }
 
 /**
@@ -628,17 +650,21 @@ export function selectionSpan(selection: CellSelection): { from: number; to: num
  */
 export function copiedMarks(doc: ToonDocument, range: CellSelection): ReadonlySet<Frame> {
   return new Set(range.layers.flatMap((l) =>
-    range.frames.map((f) => doc.layers[l]?.frames[f]).filter((cell) => cell !== undefined)));
+    // A continuation is no object of its own to know again: it is not marked.
+    range.frames.map((f) => doc.layers[l]?.frames[f]).filter((cell): cell is Frame => !!cell)));
 }
 
 export function isMarked(doc: ToonDocument, marks: ReadonlySet<Frame>, frame: number, layer: number): boolean {
   const cell = doc.layers[layer]?.frames[frame];
-  return cell !== undefined && marks.has(cell);
+  return !!cell && marks.has(cell);
 }
 
 /** The header marks a frame while any of its cells is still marked. */
 export function isFrameMarked(doc: ToonDocument, marks: ReadonlySet<Frame>, frame: number): boolean {
-  return marks.size > 0 && doc.layers.some((layer) => marks.has(layer.frames[frame]));
+  return marks.size > 0 && doc.layers.some((layer) => {
+    const cell = layer.frames[frame];
+    return !!cell && marks.has(cell);
+  });
 }
 
 /**

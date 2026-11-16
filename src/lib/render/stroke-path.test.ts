@@ -81,7 +81,7 @@ describe('a stroke keeps its path', () => {
     renderStrokesLayer(fresh(), [pencil, feather], target().ctx, viewport);
     expect(FakePath.made).toBe(0);
     const doc = {
-      schema_version: 7, width: 800, height: 800, frame_rate: 12, tools: [pencil, feather],
+      schema_version: 8, width: 800, height: 800, frame_rate: 12, tools: [pencil, feather],
       layers: [{ hidden: false, frames: [fresh()] }, { hidden: false, frames: [fresh()] }],
     } as const;
     const renderer = new Canvas2DFrameRenderer(() => target() as unknown as { ctx: Canvas2DLike; image: CanvasImageSource });

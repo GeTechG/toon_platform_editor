@@ -2,6 +2,7 @@
   // Thumbnail of one layer's cell — the layer alone, not the composite, so a
   // layers-panel row shows what that layer contributes. Same stroke path as
   // the canvas (renderStrokesLayer), on a transparent little buffer.
+  import { resolveCell } from '../model/cells';
   import type { Frame, ToonDocument } from '../format/types';
   import { renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike } from '../render/canvas2d';
   import { cellStamp, fitThumb, thumbStep } from './thumb-size';
@@ -79,7 +80,9 @@
    * while it waited is in it, so nothing is added on top in the meantime.
    */
   function paintWhole(): void {
-    const cell = doc.layers[layerIndex]?.frames[frameIndex];
+    // A continuation shows the drawing it continues.
+    const row = doc.layers[layerIndex];
+    const cell = row && frameIndex < row.frames.length ? resolveCell(row, frameIndex) : undefined;
     const ctx = canvasEl ? context() : null;
     // Safari hands out null once the page's canvas memory is spent (a long
     // mult on an iPhone): the cell stays blank rather than the paint throwing,
@@ -103,7 +106,9 @@
   }
 
   $effect(() => {
-    const cell = doc.layers[layerIndex]?.frames[frameIndex];
+    // A continuation shows the drawing it continues.
+    const row = doc.layers[layerIndex];
+    const cell = row && frameIndex < row.frames.length ? resolveCell(row, frameIndex) : undefined;
     if (!canvasEl || !cell || !onScreen) {
       return;
     }

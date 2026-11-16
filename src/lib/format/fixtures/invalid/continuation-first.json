@@ -1,0 +1,35 @@
+{
+  "schema_version": 8,
+  "width": 4800,
+  "height": 2400,
+  "frame_rate": 12,
+  "tools": [
+    {
+      "kind": "pencil",
+      "geometry": "smooth",
+      "width": 64,
+      "color": "#0026ff"
+    }
+  ],
+  "layers": [
+    {
+      "hidden": false,
+      "frames": [
+        null,
+        {
+          "strokes": [
+            {
+              "points": [
+                0,
+                0,
+                64,
+                0
+              ],
+              "tool_id": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

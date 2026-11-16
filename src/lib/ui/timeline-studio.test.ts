@@ -560,9 +560,9 @@ describe('tenth audit: menu items are named without their key letter', () => {
     // «Добавить кадрA» was the accessible name: the kbd text ran into it.
     const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
-    expect(items.length).toBe(10);
-    // «Сдвинуть» has no key: Alt+←/→ is the browser's «back»; nor has the hold's − and +.
-    for (const item of items.filter((i) => !i.includes('shiftFrames') && !i.includes('nudgeHolds'))) {
+    expect(items.length).toBe(8);
+    // «Сдвинуть» has no key: Alt+←/→ is the browser's «back».
+    for (const item of items.filter((i) => !i.includes('shiftFrames'))) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
       expect(item).toContain('{@render key(');
     }

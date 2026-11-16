@@ -17,11 +17,14 @@ describe('canonicalize (RFC 8785, format subset)', () => {
     expect(canonicalize(-0)).toBe('0');
   });
 
-  it('rejects values outside the subset: float, NaN, null', () => {
+  it('writes a continuation cell as the JSON null', () => {
+    expect(canonicalize([{ strokes: [] }, null])).toBe('[{"strokes":[]},null]');
+  });
+
+  it('rejects values outside the subset: float, NaN, undefined', () => {
     expect(() => canonicalize(1.5)).toThrow(TypeError);
     expect(() => canonicalize(Number.NaN)).toThrow(TypeError);
     expect(() => canonicalize(Number.POSITIVE_INFINITY)).toThrow(TypeError);
-    expect(() => canonicalize(null)).toThrow(TypeError);
     expect(() => canonicalize({ a: undefined })).toThrow(TypeError);
   });
 

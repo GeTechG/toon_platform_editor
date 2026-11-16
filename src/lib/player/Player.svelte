@@ -15,6 +15,7 @@
   import { LoopPlayer } from './player';
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { filmTiming } from '../model/timing';
+  import { stills } from '../model/stills';
   import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
@@ -70,8 +71,10 @@
     current?: number;
   } = $props();
 
-  // The server stores v7 only (no migrations), so the document is drawn as is.
-  const view = $derived(doc);
+  // The film as stills: ticks on which every layer shows the same drawings are
+  // one frame that lasts them, as a pause was before continuations (v8).
+  const still = $derived(stills(doc));
+  const view = $derived(still.film);
   // A one-frame drawing is replayed stroke by stroke: then the "frames" below
   // are its strokes and the rate is the replay's own.
   const length = $derived(playLength(view));
@@ -79,7 +82,7 @@
   const fps = $derived(length.fps);
   // Time is ticks: a held frame stays on screen its ticks, and the track
   // goes by them. A replay's strokes are a tick each.
-  const holds = $derived(length.replay ? undefined : view.holds);
+  const holds = $derived(length.replay ? undefined : still.holds);
   const timing = $derived(filmTiming(holds, total));
 
   const renderer = new Canvas2DFrameRenderer();

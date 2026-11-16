@@ -9,3 +9,4 @@ export { default } from './lib/player/Player.svelte';
 export { playLength } from './lib/player/replay';
 export type { ToonDocument } from './lib/format/types';
 export { unpackDocument } from './lib/format/pack';
+export { fromV7 } from './lib/format/v7';

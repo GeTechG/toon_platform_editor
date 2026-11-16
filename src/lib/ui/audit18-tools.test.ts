@@ -22,9 +22,9 @@ describe('two block edits of one cell are two steps of undo', () => {
   it('a restore makes a new cell — which is why the step under it lost its own', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
-    const left = doc.layers[0].frames[0];
+    const left = doc.layers[0].frames[0]!;
     replaceStrokes(doc, 0, 0, left.strokes);
-    expect(doc.layers[0].frames[0]).not.toBe(left);
+    expect(doc.layers[0].frames[0]!).not.toBe(left);
   });
 
   it('the snapshot keeps the cell it was taken from', () => {

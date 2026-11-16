@@ -157,7 +157,7 @@ describe('видео: «Отменить», когда кодировщик за
 
   it('видео ждёт кодировщик и звук не дольше, чем до «Отменить»', async () => {
     const video = await source('../export/video.ts');
-    expect(video).toMatch(/untilAborted\(\s*options\.plan\.realtime/);
+    expect(video).toMatch(/untilAborted\(\s*\/\/[^\n]*\n\s*options\.plan\.realtime/);
   });
 });
 

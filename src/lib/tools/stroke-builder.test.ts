@@ -129,7 +129,7 @@ describe('StrokeBuilder', () => {
       b.addPoint(50 + i * 100, 400 + i);
       addStroke(doc, 0, 0, b.commit());
     });
-    expect(doc.layers[0].frames[0].strokes.map((s) => {
+    expect(doc.layers[0].frames[0]!.strokes.map((s) => {
       const tool = doc.tools[s.tool_id];
       return [tool.kind === 'pencil' ? tool.width : undefined, tool.kind === 'pencil' ? tool.color : undefined];
     })).toEqual([

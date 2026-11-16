@@ -32,7 +32,7 @@ function recorder(): PluginCanvas & { calls: string[] } {
 function doc(): ToonDocument {
   const cell = (tool_id: number, points: number[]) => ({ strokes: [{ tool_id, points }] });
   return {
-    schema_version: 7,
+    schema_version: 8,
     width: 800,
     height: 600,
     frame_rate: 12,
@@ -88,5 +88,22 @@ describe('the scene a format reads', () => {
     scene.draw(-1, 0, canvas);
 
     expect(canvas.calls).toEqual([]);
+  });
+});
+
+describe('a continuation in the scene', () => {
+  test('is drawn as the drawing it continues', () => {
+    const film = doc();
+    film.layers = [{ hidden: false, frames: [film.layers[0].frames[0], null, null] }];
+    const held = recorder();
+    const drawn = recorder();
+
+    const scene = makeScene(film, 0);
+    scene.draw(0, 2, held);
+    scene.draw(0, 0, drawn);
+
+    expect(scene.frames).toBe(3);
+    expect(held.calls).toEqual(drawn.calls);
+    expect(held.calls).toContain('stroke #ff0000 40 source-over');
   });
 });

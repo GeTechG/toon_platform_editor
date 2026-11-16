@@ -20,9 +20,9 @@ function method(name: string): string {
 
 /** A block edit of one cell, as the store files it: the cell it left and its count. */
 function edited(doc: ReturnType<typeof createDocument>, frame: number) {
-  const strokes = doc.layers[0].frames[frame].strokes;
+  const strokes = doc.layers[0].frames[frame]!.strokes;
   replaceStrokes(doc, 0, frame, strokes.slice(0, 1));
-  const cell = doc.layers[0].frames[frame];
+  const cell = doc.layers[0].frames[frame]!;
   return [{ cell, layer: 0, frame, after: cell.strokes.length }];
 }
 
@@ -42,15 +42,15 @@ describe('a block edit is undone from the cell it was made in', () => {
     const first = edited(doc, 0);
     const second = edited(doc, 1);
     const edits = [first, second];
-    expect(restorableBlock(doc, edits, doc.layers[0].frames[0])).toBe(first);
-    expect(restorableBlock(doc, edits, doc.layers[0].frames[1])).toBe(second);
+    expect(restorableBlock(doc, edits, doc.layers[0].frames[0]!)).toBe(first);
+    expect(restorableBlock(doc, edits, doc.layers[0].frames[1]!)).toBe(second);
   });
 
   it('the newest edit of the cell is the one, and only while the cell is as it left it', () => {
     const doc = twoFrames();
     const first = edited(doc, 0);
     // A second edit over the same cell, in place — what a transform does.
-    const cell = doc.layers[0].frames[0];
+    const cell = doc.layers[0].frames[0]!;
     const second = [{ cell, layer: 0, frame: 0, after: cell.strokes.length }];
     expect(restorableBlock(doc, [first, second], cell)).toBe(second);
     // A stroke drawn since goes first.
@@ -61,8 +61,8 @@ describe('a block edit is undone from the cell it was made in', () => {
   it('a delete in the history is stepped over, not taken for a block', () => {
     const doc = twoFrames();
     const first = edited(doc, 0);
-    expect(restorableBlock(doc, [first, { snap: {} }], doc.layers[0].frames[0])).toBe(first);
-    expect(restorableBlock(doc, [{ snap: {} }], doc.layers[0].frames[0])).toBeUndefined();
+    expect(restorableBlock(doc, [first, { snap: {} }], doc.layers[0].frames[0]!)).toBe(first);
+    expect(restorableBlock(doc, [{ snap: {} }], doc.layers[0].frames[0]!)).toBeUndefined();
   });
 
   it('the store asks it, and takes that step off the history wherever it lies', () => {

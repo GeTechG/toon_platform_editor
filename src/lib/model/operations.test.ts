@@ -17,9 +17,7 @@ import {
   internTool,
   isEmptyDocument,
   copyFrames,
-  frameHold,
   duplicateFrame,
-  setFrameHolds,
   moveFrames,
   moveLayer,
   removeFrame,
@@ -35,13 +33,15 @@ import {
   replaceStrokes,
   transformStrokes,
   mirrorCell,
+  frameCount,
 } from './operations';
+import { keyIndex, resolveCell } from './cells';
 import { transformMatrix } from './geom';
 
 describe('createDocument', () => {
   it('creates a valid document with the research defaults', () => {
     const doc = createDocument();
-    expect(doc.schema_version).toBe(7);
+    expect(doc.schema_version).toBe(8);
     expect(doc.tools).toEqual([]);
     expect(doc.width).toBe(10240);
     expect(doc.height).toBe(5760);
@@ -64,8 +64,8 @@ describe('addFrame / removeFrame', () => {
     const idx = addFrame(doc, 0);
     expect(idx).toBe(1);
     expect(doc.layers[0].frames).toHaveLength(2);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
-    expect(doc.layers[0].frames[1].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[1]!.strokes).toHaveLength(0);
   });
 
   it('insertFrameBefore puts an empty frame in front of the given one', () => {
@@ -74,8 +74,8 @@ describe('addFrame / removeFrame', () => {
     const idx = insertFrameBefore(doc, 0);
     expect(idx).toBe(0);
     expect(doc.layers[0].frames).toHaveLength(2);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
-    expect(doc.layers[0].frames[1].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[1]!.strokes).toHaveLength(1);
   });
 
   it('insertFrameBefore rejects an out-of-range index and the frame cap', () => {
@@ -91,7 +91,7 @@ describe('addFrame / removeFrame', () => {
     addStroke(doc, 0, 2, { points: [5, 5], width: 8, color: '#000000' });
     removeFrame(doc, 1);
     expect(doc.layers[0].frames).toHaveLength(2);
-    expect(doc.layers[0].frames[1].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[1]!.strokes).toHaveLength(1);
   });
 
   it('clears the only frame instead of removing it', () => {
@@ -99,7 +99,7 @@ describe('addFrame / removeFrame', () => {
     addStroke(doc, 0, 0, { points: [5, 5], width: 8, color: '#000000' });
     removeFrame(doc, 0);
     expect(doc.layers[0].frames).toHaveLength(1);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
   });
 
   it('rejects an out-of-range index', () => {
@@ -120,7 +120,7 @@ describe('moveFrames', () => {
     }
     return doc;
   }
-  const xs = (doc: ReturnType<typeof numbered>, l = 0) => doc.layers[l].frames.map((f) => f.strokes[0].points[0]);
+  const xs = (doc: ReturnType<typeof numbered>, l = 0) => doc.layers[l].frames.map((f) => f!.strokes[0].points[0]);
 
   it('carries a frame right, in every layer', () => {
     const doc = numbered(4, 2);
@@ -139,9 +139,9 @@ describe('moveFrames', () => {
 
   it('keeps the cells themselves, so marks and undo know them', () => {
     const doc = numbered(3);
-    const cell = doc.layers[0].frames[0];
+    const cell = doc.layers[0].frames[0]!;
     moveFrames(doc, 0, 1, 2);
-    expect(doc.layers[0].frames[2]).toBe(cell);
+    expect(doc.layers[0].frames[2]!).toBe(cell);
   });
 
   it('copyFrames puts copies of a block at `to`, the originals stay', () => {
@@ -149,7 +149,7 @@ describe('moveFrames', () => {
     copyFrames(doc, 0, 2, 3);
     expect(xs(doc)).toEqual([0, 1, 2, 0, 1, 3]);
     expect(xs(doc, 1)).toEqual([0, 1, 2, 0, 1, 3]);
-    expect(doc.layers[0].frames[3]).not.toBe(doc.layers[0].frames[0]);
+    expect(doc.layers[0].frames[3]!).not.toBe(doc.layers[0].frames[0]!);
     copyFrames(doc, 5, 1, 6);
     expect(xs(doc)).toEqual([0, 1, 2, 0, 1, 3, 3]);
   });
@@ -172,59 +172,140 @@ describe('moveFrames', () => {
   });
 });
 
-describe('frame holds', () => {
-  function held(frames: number, holds?: number[]) {
+describe('continuation cells', () => {
+  const PEN = { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' } as const;
+  /** A drawing that says which it is by where its one stroke starts. */
+  const drawing = (x: number) => ({ strokes: [{ points: [x, 0, x + 8, 0], tool_id: 0 }] });
+  /** A layer per string: a letter is a drawing at its char code, `.` a continuation, `_` an empty drawing. */
+  function film(...rows: string[]) {
     const doc = createDocument();
-    for (let i = 1; i < frames; i++) addFrame(doc, i - 1);
-    if (holds) doc.holds = holds;
+    doc.tools.push({ ...PEN });
+    doc.layers = rows.map((row) => ({
+      hidden: false,
+      frames: [...row].map((c) => (c === '.' ? null : c === '_' ? { strokes: [] } : drawing(c.charCodeAt(0)))),
+    }));
     return doc;
   }
-  const holdsOf = (doc: ReturnType<typeof held>) => Array.from({ length: doc.layers[0].frames.length }, (_, i) => frameHold(doc, i));
+  /** Each layer as it is seen tick by tick: the letter its drawing stands for, `_` for nothing. */
+  const seen = (doc: ReturnType<typeof film>) =>
+    doc.layers.map((_, l) => Array.from({ length: frameCount(doc) }, (_, t) => {
+      const x = resolveCell(doc.layers[l], t).strokes[0]?.points[0];
+      return x === undefined ? '_' : String.fromCharCode(x);
+    }).join(''));
+  const written = (doc: ReturnType<typeof film>) =>
+    doc.layers.map((layer) => layer.frames.map((f) => (f === null ? '.' : f.strokes.length ? "'" : '_')).join(''));
 
-  it('a frame is one tick until told otherwise', () => {
-    const doc = held(3);
-    expect(holdsOf(doc)).toEqual([1, 1, 1]);
-    expect(doc.holds).toBeUndefined();
+  it('a continuation shows the nearest drawing of its layer before it', () => {
+    const doc = film('A..B.', 'F....');
+    expect(seen(doc)).toEqual(['AAABB', 'FFFFF']);
+    expect(Array.from(keyIndex(doc.layers[0]))).toEqual([0, 0, 0, 3, 3]);
+    expect(resolveCell(doc.layers[0], 2)).toBe(doc.layers[0].frames[0]!);
   });
 
-  it('setFrameHolds sets a block, clamped to 1–99, and drops the list when all are one tick', () => {
-    const doc = held(4);
-    setFrameHolds(doc, 1, 2, 3);
-    expect(doc.holds).toEqual([1, 3, 3, 1]);
-    setFrameHolds(doc, 0, 1, 500);
-    expect(frameHold(doc, 0)).toBe(99);
-    setFrameHolds(doc, 0, 4, 1);
-    expect(doc.holds).toBeUndefined();
+  it('weighs nothing', () => {
+    expect(documentWeight(film('A....'))).toBe(documentWeight(film('A')));
+  });
+
+  it('is not a stroke: a film of continuations of empty drawings is empty', () => {
+    expect(isEmptyDocument(film('_...'))).toBe(true);
+    expect(isEmptyDocument(film('_..A'))).toBe(false);
+  });
+
+  it('takes a stroke on a copy of what it shows, and the drawing it continued stays', () => {
+    const doc = film('A...');
+    addStroke(doc, 0, 2, { points: [0, 50, 8, 50], tool: { ...PEN } });
+    expect(seen(doc)).toEqual(['AAAA']);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[2]!.strokes).toHaveLength(2);
+    expect(doc.layers[0].frames[3]!).toBeNull();
+    expect(doc.layers[0].frames[1]!).toBeNull();
+  });
+
+  it('is written on a copy by every write into a cell', () => {
+    const doc = film('A..');
+    replaceStrokes(doc, 0, 1, []);
+    expect(written(doc)).toEqual(["'_."]);
+    const again = film('A..');
+    mirrorCell(again, 0, 2, 'horizontal');
+    expect(again.layers[0].frames[0]!.strokes[0].points[0]).toBe(65);
+    expect(again.layers[0].frames[2]!).not.toBeNull();
+  });
+
+  it('gives nothing to undo: Z on a continuation takes no stroke of the drawing it shows', () => {
+    const doc = film('A.');
+    expect(removeLastStroke(doc, 0, 1)).toBe(false);
+    expect(written(doc)).toEqual(["'."]);
+  });
+
+  it('comes back when the stroke drawn on it is undone', () => {
+    const doc = film('A..');
+    addStroke(doc, 0, 1, { points: [0, 50, 8, 50], tool: { ...PEN } });
+    expect(removeLastStroke(doc, 0, 1)).toBe(true);
+    expect(written(doc)).toEqual(["'.."]);
+  });
+
+  it('stays a drawing when undone after it was moved to the start of the layer', () => {
+    const doc = film('A._');
+    addStroke(doc, 0, 1, { points: [0, 50, 8, 50], tool: { ...PEN } });
+    moveFrames(doc, 1, 1, 0);
+    expect(removeLastStroke(doc, 0, 0)).toBe(true);
+    expect(written(doc)).toEqual(["''_"]);
     expect(validateDocument(doc).ok).toBe(true);
   });
 
-  it('a frame added, removed, moved, copied or duplicated keeps its hold beside it', () => {
-    const doc = held(3, [2, 3, 4]);
-    addFrame(doc, 0);
-    expect(doc.holds).toEqual([2, 1, 3, 4]);
-    insertFrameBefore(doc, 0);
-    expect(doc.holds).toEqual([1, 2, 1, 3, 4]);
-    removeFrame(doc, 0, 2);
-    expect(doc.holds).toEqual([1, 3, 4]);
-    moveFrames(doc, 1, 2, 0);
-    expect(doc.holds).toEqual([3, 4, 1]);
-    copyFrames(doc, 0, 1, 3);
-    expect(doc.holds).toEqual([3, 4, 1, 3]);
+  it('stays a drawing when undone where a continuation would show another drawing', () => {
+    const doc = film('A.B');
+    addStroke(doc, 0, 1, { points: [0, 50, 8, 50], tool: { ...PEN } });
+    moveFrames(doc, 1, 1, 2);
+    expect(removeLastStroke(doc, 0, 2)).toBe(true);
+    expect(seen(doc)).toEqual(['ABA']);
+  });
+
+  it('a copy a cut of the eraser made stays a drawing when its strokes go', () => {
+    const doc = film('A.');
+    replaceStrokes(doc, 0, 1, [{ points: [1, 1, 9, 1], tool_id: 0 }]);
+    expect(removeLastStroke(doc, 0, 1)).toBe(true);
+    expect(written(doc)).toEqual(["'_"]);
+  });
+
+  it('is read as the drawing it shows when copied for the clipboard', () => {
+    const doc = film('A.');
+    expect(copyCells(doc, { layers: [0], frames: [1] })[0][0].strokes).toHaveLength(1);
+    expect(pasteNeedsConfirm(doc, { layers: [0], frames: [1] }).nonEmpty).toBe(true);
+  });
+
+  it('a column moved away from under a pause leaves its drawing to the ticks that showed it', () => {
+    const doc = film('F...', 'ABCD');
+    moveFrames(doc, 0, 1, 3);
+    expect(seen(doc)).toEqual(['FFFF', 'BCDA']);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('a column moved inside a pause keeps every tick as it looked', () => {
+    const doc = film('A...B', 'abcde');
+    moveFrames(doc, 2, 1, 4);
+    expect(seen(doc)).toEqual(['AAABA', 'abdec']);
+  });
+
+  it('a block that starts on a continuation carries what it showed', () => {
+    const doc = film('A.B', 'abc');
+    copyFrames(doc, 1, 1, 3);
+    expect(seen(doc)).toEqual(['AABA', 'abcb']);
     duplicateFrame(doc, 1);
-    expect(doc.holds).toEqual([3, 4, 4, 1, 3]);
+    expect(seen(doc)).toEqual(['AAABA', 'abbcb']);
+  });
+
+  it('removing a column under a pause keeps the pause', () => {
+    const doc = film('F..', 'ABC');
+    removeFrame(doc, 0);
+    expect(seen(doc)).toEqual(['FF', 'BC']);
     expect(validateDocument(doc).ok).toBe(true);
   });
 
-  it('taking every frame leaves one frame of one tick', () => {
-    const doc = held(2, [5, 6]);
-    removeFrame(doc, 0, 2);
-    expect(doc.holds).toBeUndefined();
-  });
-
-  it('removing the only long frame drops the list', () => {
-    const doc = held(3, [1, 4, 1]);
-    removeFrame(doc, 1);
-    expect(doc.holds).toBeUndefined();
+  it('a column put inside a pause is continued by what is left of it', () => {
+    const doc = film('A...');
+    addFrame(doc, 0);
+    expect(seen(doc)).toEqual(['A____']);
   });
 });
 
@@ -245,8 +326,8 @@ describe('layer operations', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(addLayer(doc, 0)).toBe(0);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(1);
   });
 
   it('addLayer takes the index one past the top — the new top layer', () => {
@@ -279,10 +360,10 @@ describe('layer operations', () => {
     addLayer(doc, 2);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
     moveLayer(doc, 0, 2);
-    expect(doc.layers[2].frames[0].strokes).toHaveLength(1);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[2].frames[0]!.strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
     moveLayer(doc, 2, 0);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
   });
 
   it('rejects out-of-range layer indices', () => {
@@ -343,11 +424,11 @@ describe('removeLastStroke (per-stroke undo)', () => {
     addStroke(doc, 0, 0, { points: [3, 4], width: 8, color: '#ff0000' });
 
     expect(removeLastStroke(doc, 0, 0)).toBe(true);
-    expect(doc.layers[0].frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
+    expect(doc.layers[0].frames[0]!.strokes.map((s) => doc.tools[s.tool_id])).toEqual([
       { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' },
     ]);
     expect(removeLastStroke(doc, 0, 0)).toBe(true);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
     expect(removeLastStroke(doc, 0, 0)).toBe(false);
   });
 
@@ -362,7 +443,7 @@ describe('addStroke', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [0, 0, 10, 10], width: 32, color: '#000000' });
     addStroke(doc, 0, 0, { points: [20, 20], width: 16, color: '#ff0000' });
-    expect(doc.layers[0].frames[0].strokes.map((s) => doc.tools[s.tool_id])).toEqual([
+    expect(doc.layers[0].frames[0]!.strokes.map((s) => doc.tools[s.tool_id])).toEqual([
       { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' },
       { kind: 'pencil', geometry: 'smooth', width: 16, color: '#ff0000' },
     ]);
@@ -410,7 +491,7 @@ describe('setFrameRate', () => {
 describe('schema limits', () => {
   it('constants match the schema', async () => {
     const [{ default: schema }, limits] = await Promise.all([
-      import('../format/schema/toon-v7.schema.json'),
+      import('../format/schema/toon-v8.schema.json'),
       import('../format/constants'),
     ]);
     expect(limits.MAX_DOC_DIMENSION).toBe(schema.properties.width.maximum);
@@ -444,7 +525,7 @@ describe('schema limits', () => {
     const doc = createDocument();
     doc.tools.push({ kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
     for (let i = 0; i < 16384; i++) {
-      doc.layers[0].frames[0].strokes.push({ points: [1, 2], tool_id: 0 });
+      doc.layers[0].frames[0]!.strokes.push({ points: [1, 2], tool_id: 0 });
     }
     expect(() => addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' })).toThrow(
       RangeError,
@@ -459,8 +540,8 @@ describe('layer coordinate', () => {
     const doc = createDocument();
     addLayer(doc, 1);
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(0);
   });
 
   it('removeLastStroke pops from the given layer only', () => {
@@ -470,7 +551,7 @@ describe('layer coordinate', () => {
     addStroke(doc, 1, 0, { points: [3, 4], width: 8, color: '#ff0000' });
     expect(removeLastStroke(doc, 1, 0)).toBe(true);
     expect(removeLastStroke(doc, 1, 0)).toBe(false);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(1);
   });
 
   it('rejects an out-of-range layer index', () => {
@@ -488,8 +569,8 @@ describe('frame operations across layers', () => {
     addStroke(doc, 2, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(addFrame(doc, 0)).toBe(1);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([2, 2, 2]);
-    expect(doc.layers.every((l) => l.frames[1].strokes.length === 0)).toBe(true);
-    expect(doc.layers[2].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers.every((l) => l.frames[1]!.strokes.length === 0)).toBe(true);
+    expect(doc.layers[2].frames[0]!.strokes).toHaveLength(1);
     expect(validateDocument(doc).ok).toBe(true);
   });
 
@@ -499,8 +580,8 @@ describe('frame operations across layers', () => {
     addStroke(doc, 1, 0, { points: [1, 2], width: 8, color: '#000000' });
     expect(insertFrameBefore(doc, 0)).toBe(0);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([2, 2]);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(0);
-    expect(doc.layers[1].frames[1].strokes).toHaveLength(1);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(0);
+    expect(doc.layers[1].frames[1]!.strokes).toHaveLength(1);
   });
 
   it('removeFrame removes the column from every layer', () => {
@@ -510,7 +591,7 @@ describe('frame operations across layers', () => {
     addStroke(doc, 1, 1, { points: [1, 2], width: 8, color: '#000000' });
     removeFrame(doc, 0);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([1, 1]);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(1);
   });
 
   it('clears the last remaining column in every layer, keeping the layers', () => {
@@ -521,14 +602,14 @@ describe('frame operations across layers', () => {
     removeFrame(doc, 0);
     expect(doc.layers).toHaveLength(2);
     expect(doc.layers.map((l) => l.frames.length)).toEqual([1, 1]);
-    expect(doc.layers.every((l) => l.frames[0].strokes.length === 0)).toBe(true);
+    expect(doc.layers.every((l) => l.frames[0]!.strokes.length === 0)).toBe(true);
   });
 });
 
 describe('layer schema limits', () => {
   it('constants match the schema', async () => {
     const [{ default: schema }, limits] = await Promise.all([
-      import('../format/schema/toon-v7.schema.json'),
+      import('../format/schema/toon-v8.schema.json'),
       import('../format/constants'),
     ]);
     expect(limits.MAX_LAYERS).toBe(schema.properties.layers.maxItems);
@@ -550,7 +631,7 @@ describe('replaceStrokes (mega eraser)', () => {
       { points: [0, 0, 4, 4], tool_id: 0 },
       { points: [16, 16, 24, 24], tool_id: 0 },
     ]);
-    expect(doc.layers[0].frames[0].strokes).toEqual([
+    expect(doc.layers[0].frames[0]!.strokes).toEqual([
       { points: [0, 0, 4, 4], tool_id: 0 },
       { points: [16, 16, 24, 24], tool_id: 0 },
     ]);
@@ -586,7 +667,7 @@ describe('copyCells / replaceCells / mergeCells (timeline block copy-paste)', ()
   }
 
   const at = (doc: ReturnType<typeof createDocument>, l: number, f: number) =>
-    doc.layers[l].frames[f].strokes.map((s) => s.points);
+    doc.layers[l].frames[f]!.strokes.map((s) => s.points);
 
   it('copies the selected block, layers then frames, with the tools resolved', () => {
     const doc = grid();
@@ -729,7 +810,7 @@ describe('transformStrokes and the pixel grid', () => {
   it('puts the scaled cells back on the grid, so drawing over them lines up', () => {
     const doc = pixelRow(20, 6);
     transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.2, scaleY: 1.2 }, 50, 50), 1.2);
-    const points = doc.layers[0].frames[0].strokes[0].points;
+    const points = doc.layers[0].frames[0]!.strokes[0].points;
     expect(points.every((v) => v % 24 === 0)).toBe(true);
   });
 
@@ -740,7 +821,7 @@ describe('transformStrokes and the pixel grid', () => {
     // this: neighbours collapse onto one cell and the row grows holes.
     const doc = pixelRow(20, 6);
     transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.2, scaleY: 1.2 }, 50, 50), 1.2);
-    const stroke = doc.layers[0].frames[0].strokes[0];
+    const stroke = doc.layers[0].frames[0]!.strokes[0];
     const tool = doc.tools[stroke.tool_id];
     expect(tool.kind === 'stamp' && tool.width).toBe(24);
     expect(steps(stroke.points)).toEqual([24, 24, 24, 24, 24]);
@@ -753,12 +834,12 @@ describe('transformStrokes and the pixel grid', () => {
       tool: { kind: 'pencil', geometry: 'smooth', width: 10, color: '#000000' },
     });
     transformStrokes(doc, 0, 0, null, transformMatrix({ scaleX: 1.5, scaleY: 1.5 }, 0, 0));
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([0, 0, 15, 15]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([0, 0, 15, 15]);
   });
 });
 
 describe('transformStrokes', () => {
-  const cell = (doc: ReturnType<typeof createDocument>) => doc.layers[0].frames[0];
+  const cell = (doc: ReturnType<typeof createDocument>) => doc.layers[0].frames[0]!;
 
   function withStrokes(...widths: number[]) {
     const doc = createDocument({ width: 100, height: 100 });
@@ -839,20 +920,20 @@ describe('mirrorCell', () => {
   it('flips horizontally about the canvas centre', () => {
     const doc = oneStroke();
     mirrorCell(doc, 0, 0, 'horizontal');
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([90, 20, 70, 40]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([90, 20, 70, 40]);
   });
 
   it('flips vertically about the canvas centre', () => {
     const doc = oneStroke();
     mirrorCell(doc, 0, 0, 'vertical');
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([10, 80, 30, 60]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([10, 80, 30, 60]);
   });
 
   it('mirroring twice is the identity', () => {
     const doc = oneStroke();
     mirrorCell(doc, 0, 0, 'horizontal');
     mirrorCell(doc, 0, 0, 'horizontal');
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([10, 20, 30, 40]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([10, 20, 30, 40]);
   });
 });
 
@@ -948,7 +1029,7 @@ describe('isEmptyDocument', () => {
     addFrame(doc, 0);
     addLayer(doc, 1);
     const tool = internTool(doc, { kind: 'pencil', geometry: 'smooth', width: 8, color: '#000000' });
-    doc.layers[1].frames[1].strokes.push({ points: [0, 0, 8, 8], tool_id: tool });
+    doc.layers[1].frames[1]!.strokes.push({ points: [0, 0, 8, 8], tool_id: tool });
     expect(isEmptyDocument(doc)).toBe(false);
   });
 
@@ -968,7 +1049,7 @@ describe('pen pressure travels with the points', () => {
     addStroke(doc, 0, 0, { points: [0, 0, 10, 0], tool: pencil, pressure: [10, 90] });
     const one = { frames: [0], layers: [0] };
     replaceCells(doc, one, copyCells(doc, one));
-    expect(doc.layers[0].frames[0].strokes[0].pressure).toEqual([10, 90]);
+    expect(doc.layers[0].frames[0]!.strokes[0].pressure).toEqual([10, 90]);
   });
 
   it('keeps a matching array and drops one that no longer fits the points', () => {
@@ -978,7 +1059,7 @@ describe('pen pressure travels with the points', () => {
       { points: [0, 0, 5, 5], tool_id: 0, pressure: [1, 2] },
       { points: [0, 0, 5, 5, 9, 9], tool_id: 0, pressure: [1, 2] },
     ]);
-    const [kept, dropped] = doc.layers[0].frames[0].strokes;
+    const [kept, dropped] = doc.layers[0].frames[0]!.strokes;
     expect(kept.pressure).toEqual([1, 2]);
     expect('pressure' in dropped).toBe(false);
   });

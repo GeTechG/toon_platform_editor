@@ -16,27 +16,27 @@ function fn(source: string, name: string): string {
 
 describe('a gesture is pinned to the cell itself, not its index', () => {
   it('the line keeps the cell of its press', () => {
-    expect(fn(canvas, 'onPointerDown')).toContain('strokeCell = editor.activeCell');
+    expect(fn(canvas, 'onPointerDown')).toContain('strokeCell = markActive()');
     const commit = fn(canvas, 'commitPendingStroke');
-    expect(commit).toContain('strokeCell ? editor.doc.layers[index]?.frames.indexOf(strokeCell)');
+    expect(commit).toContain('strokeCell ? frameOfMark(index, strokeCell)');
     expect(commit).toContain('editor.commitStroke(index, stroke, frame)');
     expect(commit).not.toContain('ponytail');
     expect(canvas).not.toContain('strokeFrame');
   });
 
   it('the mega eraser keeps the cell its sweep began on', () => {
-    expect(fn(canvas, 'onPointerDown')).toContain('megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: editor.activeCell }');
-    expect(fn(canvas, 'onPointerUp')).toContain('.frames.indexOf(megaAt.cell)');
+    expect(fn(canvas, 'onPointerDown')).toContain('megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: markActive() }');
+    expect(fn(canvas, 'onPointerUp')).toContain('frameOfMark(layer, megaAt.cell)');
   });
 
   it('the line under the hand is drawn only over its own cell', () => {
-    expect(fn(canvas, 'liveLine')).toContain('strokeCell !== editor.activeCell');
+    expect(fn(canvas, 'liveLine')).toContain('!strokeCell || !stillActive(strokeCell)');
   });
 });
 
 describe('the sweep\'s trail stays over the cell it cuts', () => {
   it('another frame made active hides the trail', () => {
-    expect(fn(canvas, 'liveLine')).toContain('megaGesture && megaGesture.length >= 2 && megaAt.cell === editor.activeCell');
+    expect(fn(canvas, 'liveLine')).toContain('megaGesture && megaGesture.length >= 2 && megaAt.cell && stillActive(megaAt.cell)');
   });
 });
 

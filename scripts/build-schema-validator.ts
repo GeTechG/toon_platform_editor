@@ -12,13 +12,13 @@
 import Ajv2020 from 'ajv/dist/2020';
 import standaloneCode from 'ajv/dist/standalone';
 import ucs2length from 'ajv/dist/runtime/ucs2length';
-import schema from '../src/lib/format/schema/toon-v7.schema.json';
+import schema from '../src/lib/format/schema/toon-v8.schema.json';
 
 /** The generated module, beside the schema it comes from. */
-export const VALIDATOR_PATH = new URL('../src/lib/format/schema/toon-v7.validate.js', import.meta.url)
+export const VALIDATOR_PATH = new URL('../src/lib/format/schema/toon-v8.validate.js', import.meta.url)
   .pathname;
 
-const BANNER = `// Generated from toon-v7.schema.json by scripts/build-schema-validator.ts.
+const BANNER = `// Generated from toon-v8.schema.json by scripts/build-schema-validator.ts.
 // Do not edit: run \`bun run schema\` instead.
 `;
 

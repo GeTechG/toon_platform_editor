@@ -2,11 +2,11 @@
  * Document model types.
  *
  * Model = format: serializable plain objects described by the JSON Schema
- * (schema/toon-v7.schema.json). All mutations go through the operations
+ * (schema/toon-v8.schema.json). All mutations go through the operations
  * module (../model/operations.ts).
  *
- * There is one version and no migrations: a document of any other version is
- * refused rather than guessed at.
+ * The editor writes one version. The one before it is translated once on load
+ * (`v7.ts`); any other version is refused rather than guessed at.
  */
 
 import type { StrokeGeometry } from '../render/smoothing';
@@ -158,7 +158,14 @@ export const BLEND_MODES = [
 
 export type BlendMode = (typeof BLEND_MODES)[number];
 
-/** A layer: named, hideable, one cell per frame. */
+/**
+ * A layer's cell on one tick: a drawing, or `null` — a continuation, which
+ * shows the layer's nearest drawing before it. The first cell of a layer is
+ * never a continuation; an empty start is an empty drawing.
+ */
+export type Cell = Frame | null;
+
+/** A layer: named, hideable, one cell per tick. */
 export interface Layer {
   /** Hidden layers are skipped by every renderer; always present (one canonical form). */
   hidden: boolean;
@@ -171,24 +178,18 @@ export interface Layer {
   opacity?: number;
   /** How the layer is laid over what lies under it, paper included. Absent — normal, never stored. */
   blend?: BlendMode;
-  /** Cells in frame order; every layer of a document has the same length. */
-  frames: Frame[];
+  /** Cells in tick order; every layer of a document has the same length. */
+  frames: Cell[];
 }
 
 export interface ToonDocument {
-  schema_version: 7;
+  schema_version: 8;
   /** Canvas width in document units (integer). */
   width: number;
   /** Canvas height in document units (integer). */
   height: number;
   /** Playback rate, frames per second (integer). */
   frame_rate: number;
-  /**
-   * How many ticks (1/`frame_rate` s) each frame stays on screen, one per
-   * frame, 1–`MAX_HOLD`. Absent — one tick each, as before the field
-   * existed; never stored when every frame is one tick (one canonical form).
-   */
-  holds?: number[];
   tools: ToolDescriptor[];
   /** Layers bottom-up: layers[0] renders first, the last one on top. */
   layers: Layer[];

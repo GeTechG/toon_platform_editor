@@ -6,7 +6,9 @@
   import { PENCIL } from '../plugins';
   import type { EditorState, Tool } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_BLEND_ALPHA } from '../format/constants';
-  import type { Frame, Layer } from '../format/types';
+  import type { Cell, Frame, Layer } from '../format/types';
+  import { resolveCell } from '../model/cells';
+  import { stillStart } from '../model/stills';
   import { frameCount, placeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
   import {
@@ -279,7 +281,7 @@
      */
     second: number | null;
     layer: Layer | undefined;
-    cell: Frame | undefined;
+    cell: CellMark;
   } | null>(null);
   /** The ruler while a hand drags or turns it; kept to the settings on release. */
   let rulerLive = $state.raw<Ruler | null>(null);
@@ -297,7 +299,7 @@
   /** The lasso's loop while it is being drawn, in document units. */
   let loopGesture = $state<number[] | null>(null);
   /** The cell the sweep began on, pinned like the line's. */
-  let megaAt: { layer: Layer | undefined; cell: Frame | undefined } = { layer: undefined, cell: undefined };
+  let megaAt: { layer: Layer | undefined; cell: CellMark | undefined } = { layer: undefined, cell: undefined };
   /** Pointer owning the mega-eraser or distort gesture — only one runs at a time. */
   let gesturePointerId = -1;
   /** The magnet is held: what its press took follows the pointer until it is let go. */
@@ -399,7 +401,28 @@
    * while the pen drew landed the line there, and a frame put in front of it
    * shifted an index onto the neighbour.
    */
-  let strokeCell: Frame | undefined;
+  let strokeCell: CellMark | undefined;
+
+  /**
+   * The cell a gesture began on, to land it there however the strip moved
+   * meanwhile: by its object — or, a continuation, by its place, since every
+   * continuation is the same null.
+   */
+  type CellMark = { cell: Cell | undefined; frame: number };
+  function markActive(): CellMark {
+    return { cell: editor.activeCell, frame: editor.activeFrame };
+  }
+  /** Whether the cell the gesture began on is the active one still. */
+  function stillActive(mark: CellMark): boolean {
+    return mark.cell === editor.activeCell && (mark.cell !== null || mark.frame === editor.activeFrame);
+  }
+  /** Where that cell stands now in layer `layer`, or −1. */
+  function frameOfMark(layer: number, mark: CellMark): number {
+    const frames = editor.doc.layers[layer]?.frames;
+    if (!frames || mark.cell === undefined) return -1;
+    if (mark.cell === null) return frames[mark.frame] === null ? mark.frame : -1;
+    return frames.indexOf(mark.cell);
+  }
 
   /**
    * The frame itself: the layers around the active one, the ghosts of the
@@ -726,7 +749,7 @@
       return;
     }
     const frame = editor.displayedFrame;
-    if (!editor.doc.layers[0]?.frames[frame]) {
+    if (frame >= (editor.doc.layers[0]?.frames.length ?? 0)) {
       return;
     }
 
@@ -807,7 +830,9 @@
         // Played, a frame is what it was the last time round: nothing is drawn
         // while the film plays.
         const still = editor.playing && !ghosts && !live;
-        const kept = still ? played.get(editor.doc, raster, frame) : undefined;
+        // Kept by the tick its still begins on: a pause is one picture, not one per tick.
+        const playKey = still ? stillStart(editor.doc, frame) : frame;
+        const kept = still ? played.get(editor.doc, raster, playKey) : undefined;
         if (kept) {
           if ('close' in kept) {
             sheetCtx.drawImage(kept, 0, 0);
@@ -851,7 +876,7 @@
               createImageBitmap(sheetEl).then((bitmap) => {
                 // Stopped meanwhile: nobody will show it.
                 if (editor.playing && editor.doc === doc) {
-                  played.keep(doc, raster, frame, bitmap, frameCount(doc));
+                  played.keep(doc, raster, playKey, bitmap, frameCount(doc));
                 } else {
                   bitmap.close();
                 }
@@ -860,7 +885,7 @@
               });
             } else {
               try {
-                played.keep(doc, raster, frame, sheetCtx.getImageData(0, 0, raster.width, raster.height), frameCount(doc));
+                played.keep(doc, raster, playKey, sheetCtx.getImageData(0, 0, raster.width, raster.height), frameCount(doc));
               } catch {
                 // Drawn live, as before.
               }
@@ -959,7 +984,8 @@
    * place with a preview on top.
    */
   function stackCell(layer: number, frame: number): Frame | undefined {
-    const cell = editor.doc.layers[layer]?.frames[frame];
+    const row = editor.doc.layers[layer];
+    const cell = row && frame < row.frames.length ? resolveCell(row, frame) : undefined;
     const open = editor.transform;
     if (!cell || !open || frame !== editor.activeFrame || !open.layers.includes(layer)) {
       return cell;
@@ -1050,7 +1076,7 @@
   function liveLine(viewport: Viewport): LiveLine | null {
     // The trail is drawn over the cell the release cuts, not another frame
     // a finger made active meanwhile.
-    if (megaGesture && megaGesture.length >= 2 && megaAt.cell === editor.activeCell) {
+    if (megaGesture && megaGesture.length >= 2 && megaAt.cell && stillActive(megaAt.cell)) {
       const gesture = megaGesture;
       return {
         id: nodeId(gesture),
@@ -1066,7 +1092,7 @@
         ),
       };
     }
-    if (shapeGesture && shapeGesture.cell === editor.activeCell) {
+    if (shapeGesture && stillActive(shapeGesture.cell)) {
       const drag = shapeGesture;
       const stroke = shapeNow(drag);
       if (!stroke) return null;
@@ -1085,7 +1111,7 @@
       };
     }
     const session = pointer.session;
-    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || strokeCell !== editor.activeCell) {
+    if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || !strokeCell || !stillActive(strokeCell)) {
       return null;
     }
     const erase = session.descriptor.kind === 'eraser';
@@ -1464,7 +1490,8 @@
    * fill's from the right button, as a line is drawn.
    */
   function pour(e: PointerEvent): void {
-    const cell = editor.doc.layers[editor.activeLayer]?.frames[editor.activeFrame];
+    const row = editor.doc.layers[editor.activeLayer];
+    const cell = row && resolveCell(row, editor.activeFrame);
     if (!cell || !lastRaster) {
       return;
     }
@@ -1483,7 +1510,7 @@
     const { tools } = editor.doc;
     clear();
     const shown = editor.settings.fillSource === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
-    const cells = shown.length > 0 ? shown.map((layer) => layer.frames[editor.activeFrame]) : [cell];
+    const cells = shown.length > 0 ? shown.map((layer) => resolveCell(layer, editor.activeFrame)) : [cell];
     // A layer that erases is drawn apart, so its eraser cuts its own lines
     // alone; one with a look is laid with it — the colour seen is the one filled.
     renderLayersStacked(cells, tools, ctx, viewport, () => {
@@ -2312,7 +2339,7 @@
           touch: e.pointerType === 'touch',
           second: null,
           layer: editor.doc.layers[editor.activeLayer],
-          cell: editor.activeCell,
+          cell: markActive(),
         };
         canvasEl.setPointerCapture(e.pointerId);
         gesturePointerId = e.pointerId;
@@ -2361,7 +2388,7 @@
       }
       const [x, y] = toDocUnits(e);
       megaGesture = [Math.round(x), Math.round(y)];
-      megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: editor.activeCell };
+      megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: markActive() };
       canvasEl.setPointerCapture(e.pointerId);
       gesturePointerId = e.pointerId;
       scheduleDraw();
@@ -2372,7 +2399,7 @@
       return;
     }
     strokeLayer = editor.doc.layers[editor.activeLayer];
-    strokeCell = editor.activeCell;
+    strokeCell = markActive();
     // The eraser end (5) is the eraser itself, not a second button's colour.
     strokeButton = e.button === 5 ? 0 : e.button;
     if (rulerHit?.part === 'edge' && shownRuler) {
@@ -2668,7 +2695,7 @@
       // A click lays nothing: a shape is a drag, past the threshold of one.
       const stroke = press?.far ? shapeNow(drag) : null;
       const layer = drag.layer ? editor.doc.layers.indexOf(drag.layer) : -1;
-      const frame = drag.cell ? editor.doc.layers[layer]?.frames.indexOf(drag.cell) ?? -1 : -1;
+      const frame = frameOfMark(layer, drag.cell);
       if (stroke && layer >= 0 && frame >= 0) {
         try {
           editor.commitStroke(layer, stroke, frame);
@@ -2688,7 +2715,7 @@
         return;
       }
       const layer = megaAt.layer ? editor.doc.layers.indexOf(megaAt.layer) : -1;
-      const frame = megaAt.cell ? editor.doc.layers[layer]?.frames.indexOf(megaAt.cell) ?? -1 : -1;
+      const frame = megaAt.cell ? frameOfMark(layer, megaAt.cell) : -1;
       editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, layer, frame);
       megaGesture = null;
       gesturePointerId = -1;
@@ -2749,7 +2776,7 @@
     const index = strokeLayer ? editor.doc.layers.indexOf(strokeLayer) : -1;
     // The cell is found again the same way: a frame put in front of it
     // mid-line moved its index, not the cell.
-    const frame = strokeCell ? editor.doc.layers[index]?.frames.indexOf(strokeCell) ?? -1 : -1;
+    const frame = strokeCell ? frameOfMark(index, strokeCell) : -1;
     if (index < 0 || frame < 0) return;
     try {
       editor.commitStroke(index, stroke, frame);

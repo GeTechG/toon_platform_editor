@@ -9,14 +9,14 @@ import { playLength, REPLAY_FPS, replayAt, replayEnded, replayStart } from './re
 const s = (n: number) => ({ tool: 0, points: [n, n] }) as unknown as Stroke;
 const doc = (layers: Array<{ hidden?: boolean; frames: number[][] }>): ToonDocument =>
   ({
-    schema_version: 7,
+    schema_version: 8,
     width: 640,
     height: 320,
     frame_rate: 12,
     tools: [],
     layers: layers.map((l) => ({ hidden: l.hidden ?? false, frames: l.frames.map((f) => ({ strokes: f.map(s) })) })),
   }) as ToonDocument;
-const shown = (d: ToonDocument) => d.layers.map((l) => l.frames[0].strokes.map((x) => x.points[0]));
+const shown = (d: ToonDocument) => d.layers.map((l) => l.frames[0]!.strokes.map((x) => x.points[0]));
 
 describe('how long a publication plays', () => {
   it('an animation plays its own frames at its own rate', () => {

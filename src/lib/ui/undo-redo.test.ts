@@ -27,15 +27,15 @@ describe('redo round trip through the model', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [1, 2, 3, 4], width: 8, color: '#000000' });
     addStroke(doc, 0, 0, { points: [5, 6], width: 8, color: '#ff0000' });
-    const before = structuredClone(doc.layers[0].frames[0].strokes);
-    const popped = structuredClone(doc.layers[0].frames[0].strokes[1]);
+    const before = structuredClone(doc.layers[0].frames[0]!.strokes);
+    const popped = structuredClone(doc.layers[0].frames[0]!.strokes[1]);
 
     expect(removeLastStroke(doc, 0, 0)).toBe(true);
     // What redo does: the stroke's tool is still interned, so re-adding it
     // resolves to the same tool_id instead of growing doc.tools.
     addStroke(doc, 0, 0, { points: popped.points, tool: doc.tools[popped.tool_id] });
 
-    expect(doc.layers[0].frames[0].strokes).toEqual(before);
+    expect(doc.layers[0].frames[0]!.strokes).toEqual(before);
     expect(doc.tools).toHaveLength(2);
   });
 });
@@ -56,7 +56,7 @@ describe('undo/redo availability', () => {
   });
 
   it('remembers what undo removed and hands it back on redo', () => {
-    expect(member(state, 'undo')).toContain('this.undone = [...this.undone, { cell, stroke }]');
+    expect(member(state, 'undo')).toContain('this.undone = [...undone, { cell: at ? null : cell, stroke');
     expect(member(state, 'redo')).toContain('addStroke(');
   });
 

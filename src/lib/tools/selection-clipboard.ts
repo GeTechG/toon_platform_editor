@@ -5,6 +5,7 @@
  * inside the handles.
  */
 
+import { resolveCell } from '../model/cells';
 import type { ToonDocument } from '../format/types';
 import { cloneFrame, internTool, pressureOf, replaceStrokes, type ResolvedStroke } from '../model/operations';
 import { bakeCopy, type BakedTransform } from './bake-transform';
@@ -21,7 +22,7 @@ export type CopiedPart = { layer: number; strokes: ResolvedStroke[] }[];
 export function copyPart(doc: ToonDocument, frame: number, open: BakedTransform): CopiedPart {
   const baked = bakeCopy(doc, frame, open);
   return open.layers.map((layer, at) => {
-    const cell = baked.layers[layer].frames[frame];
+    const cell = resolveCell(baked.layers[layer], frame);
     const cut = open.picked?.[at];
     const strokes = cut ? cut.indices.map((index) => cell.strokes[index]) : cell.strokes;
     return { layer, strokes: cloneFrame(baked, { strokes }).strokes };
@@ -57,7 +58,7 @@ export function pastePart(
     const target = layerFor(layer);
     let cut = byLayer.get(target);
     if (!cut) {
-      cut = { strokes: doc.layers[target].frames[frame].strokes.map((s) => ({ ...s, points: s.points.slice() })), indices: [] };
+      cut = { strokes: resolveCell(doc.layers[target], frame).strokes.map((s) => ({ ...s, points: s.points.slice() })), indices: [] };
       byLayer.set(target, cut);
     }
     for (const stroke of strokes) {

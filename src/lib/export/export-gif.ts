@@ -10,7 +10,8 @@
  */
 
 import type { ToonDocument } from '../format/types';
-import { frameCount, frameHold } from '../model/operations';
+import { frameCount } from '../model/operations';
+import { stills } from '../model/stills';
 import {
   exportSize,
   logicalSize,
@@ -32,9 +33,11 @@ export interface ExportGifOptions extends RasterizeOptions {
 
 /** Rasterizes the document and encodes it to GIF bytes in a Web Worker. */
 export async function exportGif(
-  doc: ToonDocument,
+  source: ToonDocument,
   { signal, onProgress, ...raster }: ExportGifOptions = {},
 ): Promise<Uint8Array<ArrayBuffer>> {
+  // Stills: a pause is one frame of the file with its ticks for a delay.
+  const { film: doc, holds } = stills(source);
   const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   const size = exportSize(doc, raster.width ?? logicalSize(doc).width);
   const total = frameCount(doc);
@@ -112,7 +115,7 @@ export async function exportGif(
       if (settled) {
         break;
       }
-      send({ type: 'frame', frame, hold: frameHold(doc, sent) }, [frame.data]);
+      send({ type: 'frame', frame, hold: holds?.[sent] ?? 1 }, [frame.data]);
       await caughtUp(++sent);
     }
     throwIfAborted(signal);

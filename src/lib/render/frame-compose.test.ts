@@ -230,7 +230,7 @@ describe('the composer stacks a frame', () => {
     const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
     instance.compose(target.ctx, 100, 50, scene);
     const [below, active] = made.map((buffer) => buffer.log.length);
-    built.layers[1].frames[0].strokes.pop();
+    built.layers[1].frames[0]!.strokes.pop();
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, scene);
     expect(made[1].log.slice(active)).toEqual(['clear', 'stroke #000000']);
@@ -246,7 +246,7 @@ describe('the composer stacks a frame', () => {
     const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
     instance.compose(target.ctx, 100, 50, scene);
     const below = made[0].log.length;
-    const shaken = built.layers[0].frames[0].strokes[0];
+    const shaken = built.layers[0].frames[0]!.strokes[0];
     shaken.points = shaken.points.map((value) => value + 8);
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, scene);
@@ -367,10 +367,10 @@ describe('the cell cache', () => {
   function sketched(): ToonDocument {
     const built = doc(2);
     addFrame(built, 0);
-    built.layers[0].frames[0].strokes = [];
+    built.layers[0].frames[0]!.strokes = [];
     addStroke(built, 0, 0, { points: [0, 0, 400, 400, 800, 0], width: 40, color: '#123456' });
     addStroke(built, 0, 0, { points: [10, 10, 410, 410, 810, 10], width: 40, color: '#123456' });
-    built.layers[0].frames[1] = structuredClone(built.layers[0].frames[0]);
+    built.layers[0].frames[1] = structuredClone(built.layers[0].frames[0]!);
     addStroke(built, 1, 1, line(700));
     return built;
   }
@@ -385,7 +385,7 @@ describe('the cell cache', () => {
       doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools,
       cellAt: (layer: number, frame: number) => (layer === 0 && frame === 0 && move
         ? { strokes: move }
-        : built.layers[layer].frames[frame]),
+        : built.layers[layer].frames[frame]!),
     };
     instance.compose(target.ctx, 100, 50, scene);
     for (let i = 1; i <= 2; i++) {
@@ -426,7 +426,7 @@ describe('the cell cache', () => {
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, { ...scene, tools: built.tools });
     const before = lengths(made);
-    built.layers[0].frames[0].strokes.pop();
+    built.layers[0].frames[0]!.strokes.pop();
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, scene);
     expect(drawnIn(made, '#123456', before)).toBe(0);
@@ -439,7 +439,7 @@ describe('the cell cache', () => {
     const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools };
     instance.compose(target.ctx, 100, 50, scene);
     const before = lengths(made);
-    const shaken = built.layers[0].frames[0].strokes[0];
+    const shaken = built.layers[0].frames[0]!.strokes[0];
     shaken.points = shaken.points.map((value) => value + 8);
     instance.invalidate();
     instance.compose(target.ctx, 100, 50, scene);
@@ -454,7 +454,7 @@ describe('the cell cache', () => {
       return buffer;
     }, 100 * 50 * 4);
     const built = sketched();
-    const [first, second] = [built.layers[0].frames[0], built.layers[1].frames[1]];
+    const [first, second] = [built.layers[0].frames[0]!, built.layers[1].frames[1]!];
     cells.take(first, built.tools, viewport, 100, 50, () => {});
     cells.take(second, built.tools, viewport, 100, 50, () => {});
     expect(cells.has(second, built.tools, viewport, 100, 50)).toBe(true);
@@ -466,7 +466,7 @@ describe('the cell cache', () => {
     const built = sketched();
     const { instance } = cached();
     instance.compose(new Recorder('target').ctx, 100, 50, { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools });
-    const copy = structuredClone(built.layers[0].frames[0]);
+    const copy = structuredClone(built.layers[0].frames[0]!);
     expect(instance.cells!.anyOf(copy, built.tools)).not.toBeNull();
     expect(instance.cells!.anyOf({ strokes: [] }, built.tools)).toBeNull();
   });
@@ -567,7 +567,7 @@ describe('an undo repaints the place it took from', () => {
     const scene = { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools };
     instance.compose(target.ctx, 1000, 100, scene);
     const before = made.map((buffer) => buffer.log.length);
-    built.layers[0].frames[0].strokes.splice(2, 1);
+    built.layers[0].frames[0]!.strokes.splice(2, 1);
     instance.invalidate();
     instance.compose(target.ctx, 1000, 100, scene);
     const after = made.flatMap((buffer, i) => buffer.log.slice(before[i]));

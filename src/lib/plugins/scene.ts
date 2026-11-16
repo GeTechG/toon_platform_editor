@@ -6,6 +6,7 @@
  * renderer the player uses, onto whatever canvas the format brings.
  */
 
+import { resolveCell } from '../model/cells';
 import { BACKGROUND_COLOR } from '../format/constants';
 import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
@@ -26,7 +27,8 @@ export function makeScene(doc: ToonDocument, frame: number): PluginScene {
     background: BACKGROUND_COLOR,
     layers: visible.length,
     draw(layer, at, target) {
-      const cell = visible[layer]?.frames[at];
+      const row = visible[layer];
+      const cell = row && at < row.frames.length ? resolveCell(row, at) : undefined;
       if (cell) {
         // The renderer asks for the whole Canvas2DLike, but a cell reaches
         // only the part the contract names.

@@ -10,6 +10,7 @@
  * browser can, the same as before where it cannot).
  */
 
+import { resolveCell } from '../model/cells';
 import type { Frame, Stroke, ToolDescriptor, ToonDocument } from '../format/types';
 import { renderStrokesLayer, STUDIO_PATHS } from './canvas2d';
 import type { CellCache } from './cell-cache';
@@ -104,7 +105,7 @@ export class CellWarmer {
     const { doc, frame, tools, viewport, width, height } = scene;
     const count = doc.layers[0]?.frames.length ?? 0;
     const visible = doc.layers.filter((layer) => !layer.hidden);
-    const shown = visible.filter((layer) => (layer.frames[frame]?.strokes.length ?? 0) > 0).length;
+    const shown = visible.filter((layer) => frame < layer.frames.length && resolveCell(layer, frame).strokes.length > 0).length;
     // The frame on screen and its ghosts stay in: what is warmed must not push them out.
     let room = this.#cache.room(width, height) - 2 * shown;
     const order: number[] = [];
@@ -117,8 +118,8 @@ export class CellWarmer {
     for (const index of order) {
       if (index < 0 || index >= count || index === frame) continue;
       for (const layer of visible) {
-        const cell = layer.frames[index];
-        if (!cell || cell.strokes.length === 0 || room <= 0) continue;
+        const cell = resolveCell(layer, index);
+        if (cell.strokes.length === 0 || room <= 0) continue;
         if (this.#cache.has(cell, tools, viewport, width, height)) continue;
         // The strokes as they are now: a cell gains strokes in place.
         jobs.push({ strokes: cell.strokes.slice() });

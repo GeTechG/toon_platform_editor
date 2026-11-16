@@ -180,7 +180,7 @@ it('round-trips coarse → fine → coarse strokes in one frame', () => {
   // One descriptor for all three: the document says how the points are read,
   // never which brush laid them down — what differs is the points themselves.
   expect(reloaded.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 32, color: '#123456' }]);
-  expect(reloaded.layers[0].frames[0].strokes).toHaveLength(3);
+  expect(reloaded.layers[0].frames[0]!.strokes).toHaveLength(3);
   expect(reloaded).toEqual(doc);
 });
 
@@ -507,7 +507,7 @@ describe('pen pressure', () => {
     controller.pointerUp(pen(100, 0));
     const doc = createDocument();
     addStroke(doc, 0, 0, controller.takeCommitted()!);
-    expect(loadDocument(doc).layers[0].frames[0].strokes[0].pressure).toEqual([20, 90, 90]);
+    expect(loadDocument(doc).layers[0].frames[0]!.strokes[0].pressure).toEqual([20, 90, 90]);
   });
 });
 

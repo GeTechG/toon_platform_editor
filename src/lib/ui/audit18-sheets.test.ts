@@ -52,7 +52,7 @@ describe('.toon из чужих рук: тысячи разных инструм
     }
     const result = decodeToon(new Int16Array(words).buffer);
     expect(result.ok && result.doc.tools.length).toBe(2);
-    expect(result.ok && result.doc.layers[0].frames[0].strokes.map((stroke) => stroke.tool_id)).toEqual([0, 1, 0]);
+    expect(result.ok && result.doc.layers[0].frames[0]!.strokes.map((stroke) => stroke.tool_id)).toEqual([0, 1, 0]);
   });
 });
 

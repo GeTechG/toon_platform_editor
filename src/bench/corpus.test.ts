@@ -7,7 +7,7 @@ describe('buildCorpus', () => {
     const doc = buildCorpus({ frames: 8, strokesPerFrame: 5, pointsPerStroke: 32 });
     expect(doc.layers[0].frames.length).toBe(8);
     for (const frame of doc.layers[0].frames) {
-      expect(frame.strokes.length).toBe(5);
+      expect(frame!.strokes.length).toBe(5);
     }
     // Built through the real model path, so it must pass the same validator.
     expect(validateDocument(doc).ok).toBe(true);
@@ -15,7 +15,7 @@ describe('buildCorpus', () => {
 
   it('strokes retain points (not collapsed to a straight line by Lang)', () => {
     const doc = buildCorpus({ frames: 1, strokesPerFrame: 1, pointsPerStroke: 64 });
-    expect(doc.layers[0].frames[0].strokes[0].points.length).toBeGreaterThan(4);
+    expect(doc.layers[0].frames[0]!.strokes[0].points.length).toBeGreaterThan(4);
   });
 });
 
@@ -24,7 +24,7 @@ it('builds a valid mixed Multator/Tonio benchmark corpus', () => {
   expect(validateDocument(doc).ok).toBe(true);
   // Both brushes lay their points down for the one reader; what tells them
   // apart in the document is the shape of the line, not a name on the tool.
-  const strokes = doc.layers[0].frames.flatMap((frame) => frame.strokes);
+  const strokes = doc.layers[0].frames.flatMap((frame) => frame!.strokes);
   const repeatsFirstPoint = (p: number[]) => p[0] === p[2] && p[1] === p[3];
   expect(strokes.some((s) => repeatsFirstPoint(s.points))).toBe(true);
   expect(strokes.some((s) => !repeatsFirstPoint(s.points))).toBe(true);
@@ -38,7 +38,7 @@ describe('layered corpus', () => {
     for (const layer of doc.layers) {
       expect(layer.frames).toHaveLength(4);
       for (const cell of layer.frames) {
-        expect(cell.strokes).toHaveLength(3);
+        expect(cell!.strokes).toHaveLength(3);
       }
     }
     expect(validateDocument(doc).ok).toBe(true);

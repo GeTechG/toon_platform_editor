@@ -3,6 +3,7 @@
  * The only place where editor code talks to the Canvas API.
  */
 
+import { resolveCell } from '../model/cells';
 import { BACKGROUND_COLOR } from '../format/constants';
 import { opacityOf } from '../format/types';
 import type { BlendMode, Frame, ToonDocument, ToolDescriptor } from '../format/types';
@@ -107,7 +108,8 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     const cells: Frame[] = [];
     const looks: LayerLook[] = [];
     for (const layer of doc.layers) {
-      const cell = layer.frames[frameIndex];
+      // A continuation is drawn as the drawing it shows.
+      const cell = layer.frames.length > frameIndex ? resolveCell(layer, frameIndex) : undefined;
       if (!layer.hidden && cell) {
         cells.push(cell);
         looks.push(layer);

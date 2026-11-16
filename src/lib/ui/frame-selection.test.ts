@@ -17,6 +17,7 @@ import {
   onionHistoryLayers,
   onionLayers,
   onionSideLayers,
+  onionByDrawings,
   onionSkinVisible,
   playbackRange,
   pushVisited,
@@ -704,5 +705,28 @@ describe('цель переноса при кадрах разной ширин�
   it('копия встаёт и за последний кадр', () => {
     // Копии ещё нет: блок из одного кадра вставляется; указатель за концом.
     expect(carryTarget([1, 1], 0, 1, 0, 9, 2, true)).toBe(2);
+  });
+});
+
+describe('the onion goes by the drawings of the layer', () => {
+  const A = { strokes: [] };
+  const side = (frames: number) => ({ frames, opacity: 50, tinted: false, colour: '#00ff00' });
+  const onion = { back: side(1), ahead: side(1), blend: false };
+  // A (0), B (1) held three more ticks, C (5).
+  const frames = [A, { strokes: [] }, null, null, null, { strokes: [] }];
+
+  it('over a pause shows the drawings around the one it continues', () => {
+    expect(onionByDrawings(frames, 3, (active, count) => onionSideLayers(active, count, onion)).map((l) => l.index))
+      .toEqual([0, 5]);
+  });
+
+  it('on a drawing shows the same neighbours', () => {
+    expect(onionByDrawings(frames, 1, (active, count) => onionSideLayers(active, count, onion)).map((l) => l.index))
+      .toEqual([0, 5]);
+  });
+
+  it('on the first drawing has nothing before it, the pause after it is no neighbour', () => {
+    expect(onionByDrawings([A, null, null, { strokes: [] }], 0, (active, count) => onionSideLayers(active, count, onion))
+      .map((l) => l.index)).toEqual([3]);
   });
 });

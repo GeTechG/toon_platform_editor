@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,64,0],\"tool_id\":0}]},null,null,{\"strokes\":[]},null],\"hidden\":false},{\"frames\":[{\"strokes\":[{\"points\":[0,0,64,0],\"tool_id\":0}]},null,null,null,null],\"hidden\":false,\"name\":\"Фон\"}],\"schema_version\":8,\"tools\":[{\"color\":\"#0026ff\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":64}],\"width\":4800}",
+  "sha256": "68b9f568fdae30583221256e9d25d51d6a07184fe7c61b76d375320ea7050be0"
+}

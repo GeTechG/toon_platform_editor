@@ -1,4 +1,4 @@
 {
-  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,400,200],\"tool_id\":0}]}],\"hidden\":false,\"name\":\"Фон\"},{\"frames\":[{\"strokes\":[]}],\"hidden\":false,\"opacity\":0},{\"blend\":\"multiply\",\"frames\":[{\"strokes\":[]}],\"hidden\":false,\"opacity\":40},{\"blend\":\"luminosity\",\"frames\":[{\"strokes\":[]}],\"hidden\":true}],\"schema_version\":7,\"tools\":[{\"color\":\"#000000\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32}],\"width\":4800}",
-  "sha256": "190fb81c4702cacb574dcdf1237adcb26cb48c984919b355cfe9cff75ab44584"
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[0,0,400,200],\"tool_id\":0}]}],\"hidden\":false,\"name\":\"Фон\"},{\"frames\":[{\"strokes\":[]}],\"hidden\":false,\"opacity\":0},{\"blend\":\"multiply\",\"frames\":[{\"strokes\":[]}],\"hidden\":false,\"opacity\":40},{\"blend\":\"luminosity\",\"frames\":[{\"strokes\":[]}],\"hidden\":true}],\"schema_version\":8,\"tools\":[{\"color\":\"#000000\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32}],\"width\":4800}",
+  "sha256": "67de6c1b3e6359092d9f7939fdc453904507e35438cef0f9749d7ce230fe8384"
 }

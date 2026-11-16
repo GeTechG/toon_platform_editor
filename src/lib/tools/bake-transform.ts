@@ -1,3 +1,4 @@
+import { resolveCell } from '../model/cells';
 import type { ToonDocument } from '../format/types';
 import type { Box } from '../model/geom';
 import { replaceStrokes, transformStrokes } from '../model/operations';
@@ -62,7 +63,7 @@ export function bakeCopy(doc: ToonDocument, frame: number, open: BakedTransform)
     ...doc,
     tools: [...doc.tools],
     layers: doc.layers.map((layer, index) => moved.has(index)
-      ? { ...layer, frames: layer.frames.map((cell, at) => (at === frame ? { ...cell, strokes: [...cell.strokes] } : cell)) }
+      ? { ...layer, frames: layer.frames.map((cell, at) => (at === frame ? { strokes: [...resolveCell(layer, at).strokes] } : cell)) }
       : layer),
   };
   for (const layer of moved) {

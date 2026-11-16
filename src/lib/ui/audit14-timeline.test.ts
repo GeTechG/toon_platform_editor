@@ -242,7 +242,7 @@ describe('четырнадцатый аудит: читалка слышит с�
   it('имя ячейки называет её скопированной', async () => {
     const ru = await Bun.file(UI + '../i18n/ru.json').json();
     expect(ru.timeline.cell_copied).toBe(', скопирован');
-    expect(timeline).toMatch(/aria-label=\{`\$\{t\([\s\S]*?\)\}\$\{editor\.isCopiedCell\(i, layerIndex\) \? t\('timeline\.cell_copied'\) : ''\}`\}/);
+    expect(timeline).toMatch(/aria-label=\{`\$\{[\s\S]*?\)\}\$\{editor\.isCopiedCell\(i, layerIndex\) \? t\('timeline\.cell_copied'\) : ''\}`\}/);
   });
 });
 

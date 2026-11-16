@@ -72,7 +72,7 @@ describe('Ctrl+X cuts the timeline selection', () => {
     addStroke(doc, 0, 0, { points: [1, 1], width: 8, color: '#000000' });
     const target = { frames: [0], layers: [0] };
     replaceCells(doc, target, target.layers.map(() => [{ strokes: [] }]));
-    expect(doc.layers[0].frames[0].strokes).toEqual([]);
+    expect(doc.layers[0].frames[0]!.strokes).toEqual([]);
   });
 
   it('is in the key list and kept from plugins', () => {
@@ -173,7 +173,7 @@ describe('a toonio.ru save file', () => {
     // Stored as ours: the current schema, not the `.toon` stream.
     const stored = draft.doc as ReturnType<typeof createDocument>;
     expect(stored.schema_version).toBe(createDocument().schema_version);
-    expect(stored.layers[0].frames[0].strokes).toHaveLength(1);
+    expect(stored.layers[0].frames[0]!.strokes).toHaveLength(1);
     expect(draft.screenshot!.type).toBe('image/png');
     expect(new Uint8Array(await draft.audio!.blob.arrayBuffer())).toEqual(new Uint8Array([9, 8]));
     expect(draft.audio!.sync).toBe(false);

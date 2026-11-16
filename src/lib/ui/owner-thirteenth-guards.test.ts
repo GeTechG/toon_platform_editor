@@ -35,7 +35,7 @@ describe('a refusal at the format limit names the limit', () => {
   it('a frame at the stroke limit: the frame is full', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [1, 1], width: 9, color: '#000000' });
-    const one = doc.layers[0].frames[0].strokes[0];
+    const one = doc.layers[0].frames[0]!.strokes[0];
     replaceStrokes(doc, 0, 0, Array.from({ length: MAX_STROKES_PER_FRAME }, () => one));
     const err = caught(() => addStroke(doc, 0, 0, { points: [2, 2], width: 9, color: '#000000' }));
     expect(formatLimitHint(err)).toBe(t('canvas.frame_full'));

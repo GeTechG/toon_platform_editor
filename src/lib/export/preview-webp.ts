@@ -25,21 +25,24 @@ import {
   type WebpStill,
   webpStill,
 } from './webp';
+import { stills } from '../model/stills';
 
 /**
  * Build an animated WebP preview of `doc`: at most `previewFrameBudget` frames,
  * looping forever, at the best rung of `PREVIEW_RUNGS` within that rung's budget.
  */
-export function buildPreview(doc: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
-  const count = Math.min(previewFrameBudget(doc.frame_rate, { holds: doc.holds }), frameCount(doc));
+export function buildPreview(source: ToonDocument): Promise<Uint8Array<ArrayBuffer>> {
+  // Stills: a pause is one frame of the file that lasts its ticks.
+  const { film: doc, holds } = stills(source);
+  const count = Math.min(previewFrameBudget(doc.frame_rate, { holds }), frameCount(doc));
   return firstThatFits(PREVIEW_RUNGS, (rung) => rung.budget, async (rung) => {
     const { canvas, ctx, renderer, viewport, width, height, raw } = previewTarget(doc, rung);
-    const stills: WebpStill[] = [];
+    const frames: WebpStill[] = [];
     for (let i = 0; i < count; i++) {
       renderer.render(doc, i, ctx, viewport);
-      stills.push({ data: await encodeStill(canvas, raw, rung.quality), width, height });
+      frames.push({ data: await encodeStill(canvas, raw, rung.quality), width, height });
     }
-    return assembleAnimatedWebp(stills, { fps: doc.frame_rate, holds: doc.holds });
+    return assembleAnimatedWebp(frames, { fps: doc.frame_rate, holds });
   });
 }
 

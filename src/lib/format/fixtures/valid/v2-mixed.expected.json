@@ -1,4 +1,4 @@
 {
-  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[10,20,30,40],\"tool_id\":0},{\"points\":[-8,-16,4808,2416],\"tool_id\":1}]}],\"hidden\":false}],\"schema_version\":7,\"tools\":[{\"color\":\"#123456\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32},{\"geometry\":\"smooth\",\"kind\":\"eraser\",\"width\":40}],\"width\":4800}",
-  "sha256": "c7b7ccbda8a9375cfc5d22c187253b0efba17a8971aee1858f50177de0423721"
+  "canonical": "{\"frame_rate\":12,\"height\":2400,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[10,20,30,40],\"tool_id\":0},{\"points\":[-8,-16,4808,2416],\"tool_id\":1}]}],\"hidden\":false}],\"schema_version\":8,\"tools\":[{\"color\":\"#123456\",\"geometry\":\"smooth\",\"kind\":\"pencil\",\"width\":32},{\"geometry\":\"smooth\",\"kind\":\"eraser\",\"width\":40}],\"width\":4800}",
+  "sha256": "2f5e33c93ae11ca80f73c1ee84a6652540abe06d548c641f1f7f6b9b7d1145f2"
 }

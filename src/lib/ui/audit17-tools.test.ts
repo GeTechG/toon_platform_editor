@@ -28,7 +28,7 @@ describe('a gesture lands on the cell it was begun on', () => {
     // the active frame: the line landed there, on a frame it was never drawn
     // over, and the one under the pen stayed empty.
     // Pinned as the cell object since (owner-seventeenth-tools.test.ts).
-    expect(canvasFn('onPointerDown')).toContain('strokeCell = editor.activeCell');
+    expect(canvasFn('onPointerDown')).toContain('strokeCell = markActive()');
     expect(canvasFn('commitPendingStroke')).toContain('editor.commitStroke(index, stroke, frame)');
     const commit = method('commitStroke');
     expect(commit).toMatch(/commitStroke\(layerIndex: number, stroke: ResolvedStroke, frame = this\.activeFrame\)/);
@@ -37,11 +37,11 @@ describe('a gesture lands on the cell it was begun on', () => {
   });
 
   it('the line under the hand is not drawn over another frame', () => {
-    expect(canvasFn('liveLine')).toContain('strokeCell !== editor.activeCell');
+    expect(canvasFn('liveLine')).toContain('!strokeCell || !stillActive(strokeCell)');
   });
 
   it('the mega eraser cuts the cell its sweep began on', () => {
-    expect(canvasFn('onPointerDown')).toContain('megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: editor.activeCell }');
+    expect(canvasFn('onPointerDown')).toContain('megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: markActive() }');
     expect(canvasFn('onPointerUp')).toContain('editor.applyMegaEraser(megaGesture, brushWidthDoc(editor.brushSizeLogical) / 2, layer, frame)');
     const erase = method('applyMegaEraser');
     expect(erase).toMatch(/applyMegaEraser\(gesture: readonly number\[\], radius: number, layer = this\.activeLayer, frame = this\.activeFrame\)/);

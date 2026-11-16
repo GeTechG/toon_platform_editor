@@ -81,7 +81,6 @@
       startFrame,
       loopStart: span.start,
       loopEnd: span.end,
-      holds: editor.doc.holds,
       onFrame: (frame, lap) => {
         editor.playbackFrame = frame;
         lapped ||= lap;

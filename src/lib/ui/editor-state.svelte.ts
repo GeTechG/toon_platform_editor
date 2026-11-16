@@ -6,12 +6,12 @@
 import { sessionErrors } from './error-log';
 import { AudioTrackState } from '../audio/state.svelte';
 import type { DraftState } from '../draft/store';
-import type { BlendMode, Frame, Stroke, ToonDocument } from '../format/types';
+import type { BlendMode, Cell, Frame, Stroke, ToonDocument } from '../format/types';
+import { resolveCell } from '../model/cells';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
   MAX_FRAMES,
-  MAX_HOLD,
   MAX_LAYERS,
   MAX_DOCUMENT_WEIGHT,
   CANVAS_LOGICAL_HEIGHT,
@@ -33,8 +33,6 @@ import {
   insertFrameBefore,
   mergeCells,
   copyFrames,
-  frameHold,
-  setFrameHolds,
   moveFrames,
   moveLayer,
   removeFrame,
@@ -65,6 +63,7 @@ import {
   onionHistoryLayers,
   onionLayers,
   onionSideLayers,
+  onionByDrawings,
   onionSkinVisible,
   scaleMenuVisible,
   SCALE_MENU_MS,
@@ -266,8 +265,11 @@ function sameStrokes(a: readonly Stroke[], b: readonly Stroke[]): boolean {
 interface CellSnapshot {
   /** The cell object the edit produced — identity is how undo knows it is untouched. */
   cell: Frame;
-  /** The cell object the edit was made over: what an older step knows it by. */
-  was: Frame;
+  /**
+   * The cell object the edit was made over: what an older step knows it by.
+   * `null` — a continuation, which undo gives back as one.
+   */
+  was: Cell;
   layer: number;
   frame: number;
   /** What the cell held before. Tool ids stay valid: the tool table only grows. */
@@ -289,8 +291,6 @@ interface StructureEdit {
   moved?: { from: number; to: number };
   /** A frame move or a Ctrl+drag copy: one drag's steps fold into it. */
   framesMoved?: true;
-  /** A change of holds: one drag of the handle folds into it. */
-  framesHeld?: true;
   /** A change of a layer's opacity or blend mode: one drag of the slider folds into it. */
   looked?: true;
   /** The block that was selected, for a carry taken back unfiled. */
@@ -462,7 +462,7 @@ export class EditorState {
    */
   edits = $state.raw<(CellSnapshot[] | StructureEdit)[]>([]);
   /** Strokes taken off by undo, newest last — what redo puts back. */
-  undone = $state.raw<{ cell: Frame; stroke: Stroke }[]>([]);
+  undone = $state.raw<{ cell: Cell; stroke: Stroke; at?: { layer: number; frame: number } }[]>([]);
   /** A layer move undo took back, with the shape undo left — redo offers it while that stands. */
   redoStructure = $state.raw<{ edit: StructureEdit; back: StructureSnapshot } | null>(null);
   /** A move undo or redo made: where the layer is now, for the panel to say (a fresh object each time). */
@@ -1679,12 +1679,16 @@ export class EditorState {
 
   /** Onion layers for the canvas: fading neighbors, or Tonio's visited frames. */
   get onionSkinLayers(): OnionLayer[] {
+    // The neighbours are the active layer's drawings: over a pause the onion
+    // shows the drawings around the one it continues, not the pause itself.
+    const frames = this.doc.layers[this.activeLayer]?.frames ?? [];
     if (this.ux.onionMode === 'sides') {
-      return onionSideLayers(this.activeFrame, frameCount(this.doc), this.settings.onion);
+      return onionByDrawings(frames, this.activeFrame, (active, count) => onionSideLayers(active, count, this.settings.onion));
     }
     return this.ux.onionMode === 'history'
       ? onionHistoryLayers(this.visitedFrames, this.activeFrame, frameCount(this.doc))
-      : onionLayers(this.activeFrame, frameCount(this.doc), ONION_SKIN_ALPHAS, this.ux.onionSides);
+      : onionByDrawings(frames, this.activeFrame, (active, count) =>
+        onionLayers(active, count, ONION_SKIN_ALPHAS, this.ux.onionSides));
   }
 
   /**
@@ -1981,7 +1985,7 @@ export class EditorState {
 
   /** The film's time in ticks: where each frame starts, how long the whole runs. */
   get timing(): FilmTiming {
-    return filmTiming(this.doc.holds, frameCount(this.doc));
+    return filmTiming(undefined, frameCount(this.doc));
   }
 
   /** Whether «Дублировать» has room for the copies of the frame or the block. */
@@ -2170,66 +2174,6 @@ export class EditorState {
     this.touched = true;
   }
 
-  /** How many ticks the active frame stays on screen. */
-  get activeHold(): number {
-    return frameHold(this.doc, this.activeFrame);
-  }
-
-  /**
-   * Holds `count` frames from `from` for `hold` ticks: a pause is a held
-   * frame, not copies of it (owner, 2026-10-24). `merge` folds the steps of
-   * one drag of the handle into one undo step.
-   */
-  holdFrames(from: number, count: number, hold: number, merge = false): void {
-    this.#writeHolds((doc) => setFrameHolds(doc, from, count, hold), merge);
-  }
-
-  /** Whether − (or +) would change any frame of the block. */
-  canNudgeHolds(step: -1 | 1): boolean {
-    const { from, count } = this.framesToShift;
-    if (this.playing) return false;
-    for (let i = from; i < from + count; i++) {
-      const hold = frameHold(this.doc, i);
-      if (step < 0 ? hold > 1 : hold < MAX_HOLD) return true;
-    }
-    return false;
-  }
-
-  /** «Длительность» − and +: every frame of the block one tick shorter or longer. */
-  nudgeHolds(step: -1 | 1): void {
-    const { from, count } = this.framesToShift;
-    this.#writeHolds((doc) => {
-      for (let i = from; i < from + count; i++) setFrameHolds(doc, i, 1, frameHold(doc, i) + step);
-    });
-  }
-
-  /** A change of holds as one undo step with its redo; a change that changed nothing files none. */
-  #writeHolds(change: (doc: ToonDocument) => void, merge = false): void {
-    if (this.playing || !this.leaveTransform()) {
-      return;
-    }
-    const top = this.edits[this.edits.length - 1];
-    const folded = merge && top && !Array.isArray(top) && top.framesHeld && structureIntact(this.doc, top.snap)
-      ? top
-      : undefined;
-    const was = String(this.doc.holds ?? '');
-    const before = folded ?? this.takeStructure();
-    this.#write(change);
-    const now = String(this.doc.holds ?? '');
-    if (folded) {
-      this.edits = this.edits.slice(0, -1);
-      if (String(folded.snap.holds ?? '') === now) {
-        this.touched = true;
-        return;
-      }
-    } else if (was === now) {
-      return;
-    }
-    before.framesHeld = true;
-    before.redo = this.takeStructure();
-    this.pushStructure(before);
-  }
-
   /** What «Сдвинуть» carries: the selected block, or the active frame alone. */
   get framesToShift(): { from: number; count: number } {
     return framesToCarry(this.selection, this.activeFrame);
@@ -2384,12 +2328,15 @@ export class EditorState {
     for (const layer of target.layers) {
       for (const frame of target.frames) {
         const cell = this.doc.layers[layer].frames[frame];
+        // A continuation is snapshotted as what it shows: that is what the
+        // edit is made over, and what an unchanged edit leaves it.
+        const shown = resolveCell(this.doc.layers[layer], frame);
         snapshots.push({
-          cell,
+          cell: shown,
           was: cell,
           layer,
           frame,
-          strokes: cell.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id, ...pressureOf(s) })),
+          strokes: shown.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id, ...pressureOf(s) })),
           after: 0,
         });
       }
@@ -2407,11 +2354,11 @@ export class EditorState {
     // second time — is not a step: filed, it undid nothing and threw the redo
     // stack away. The cells it rewrote get their own objects back, so the
     // step below still finds them intact.
-    if (snapshots.every((snapshot) =>
-      sameStrokes(snapshot.strokes, this.doc.layers[snapshot.layer].frames[snapshot.frame].strokes))) {
+    const shown = (snapshot: CellSnapshot) => resolveCell(this.doc.layers[snapshot.layer], snapshot.frame).strokes;
+    if (snapshots.every((snapshot) => sameStrokes(snapshot.strokes, shown(snapshot)))) {
       this.#write((doc) => {
         for (const snapshot of snapshots) {
-          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.cell;
+          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.was;
         }
       });
       return;
@@ -2419,17 +2366,17 @@ export class EditorState {
     // Only the cells the edit changed are the step: a paste of what a frame
     // already held left it a cell that, taken back alone, undid nothing. Such
     // a cell gets its own object back, like the edit that changed none.
-    const changed = snapshots.filter((snapshot) =>
-      !sameStrokes(snapshot.strokes, this.doc.layers[snapshot.layer].frames[snapshot.frame].strokes));
+    const changed = snapshots.filter((snapshot) => !sameStrokes(snapshot.strokes, shown(snapshot)));
     this.#write((doc) => {
       for (const snapshot of snapshots) {
         if (!changed.includes(snapshot)) {
-          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.cell;
+          doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.was;
         }
       }
     });
     for (const snapshot of changed) {
-      snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame];
+      // Changed, the cell is a drawing of its own.
+      snapshot.cell = this.doc.layers[snapshot.layer].frames[snapshot.frame]!;
       snapshot.after = snapshot.cell.strokes.length;
       snapshot.last = snapshot.cell.strokes[snapshot.after - 1];
     }
@@ -2471,7 +2418,7 @@ export class EditorState {
   }
 
   /** The cell the next stroke goes into — undo and redo both work on it. */
-  get activeCell(): Frame | undefined {
+  get activeCell(): Cell | undefined {
     return this.doc.layers[this.activeLayer]?.frames[this.activeFrame];
   }
 
@@ -2506,8 +2453,9 @@ export class EditorState {
       return this.canRedoTransform;
     }
     const last = this.undone[this.undone.length - 1];
-    return !this.playing
-      && (this.redoableStructure !== undefined || (last !== undefined && last.cell === this.activeCell));
+    const here = last !== undefined && last.cell === this.activeCell
+      && (!last.at || (last.at.layer === this.activeLayer && last.at.frame === this.activeFrame));
+    return !this.playing && (this.redoableStructure !== undefined || here);
   }
 
   /** The move redo would put back: while the document is still what undo left. */
@@ -2561,8 +2509,16 @@ export class EditorState {
       // thrown out of the key, it was gone from the history with its strokes.
       const left = edit.map((snapshot) => this.doc.layers[snapshot.layer].frames[snapshot.frame]);
       try {
-        this.#write((doc) => edit.forEach((snapshot) =>
-          replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes)));
+        // A continuation the edit was made over comes back a continuation —
+        // while one there would show what it showed: moved to the start of
+        // the layer or after another drawing, it comes back as that drawing.
+        this.#write((doc) => edit.forEach((snapshot) => {
+          const frames = doc.layers[snapshot.layer].frames;
+          const continues = snapshot.was === null && snapshot.frame > 0
+            && sameStrokes(snapshot.strokes, resolveCell(doc.layers[snapshot.layer], snapshot.frame - 1).strokes);
+          if (continues) frames[snapshot.frame] = null;
+          else replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes);
+        }));
       } catch (err) {
         this.#write((doc) => edit.forEach((snapshot, i) => {
           doc.layers[snapshot.layer].frames[snapshot.frame] = left[i];
@@ -2596,7 +2552,13 @@ export class EditorState {
     }
     // Unbounded, like the reference's own buffer: a stroke off the stack is
     // still the one the document held a moment ago, not a second copy of it.
-    this.undone = [...this.undone, { cell, stroke }];
+    // The last stroke of a copy of a pause leaves a continuation, which is
+    // known by its place: every continuation is the same null.
+    const at = this.activeCell === null ? { layer: this.activeLayer, frame: this.activeFrame } : undefined;
+    // The strokes undone from that copy before are known by its place too:
+    // redo makes a new copy, and they go back onto it.
+    const undone = at ? this.undone.map((entry) => (entry.cell === cell ? { cell: null, stroke: entry.stroke, at } : entry)) : this.undone;
+    this.undone = [...undone, { cell: at ? null : cell, stroke, ...(at ? { at } : {}) }];
     // The newest undone is this stroke: redo must not jump to a move behind it.
     this.redoStructure = null;
     this.touched = true;
@@ -2647,6 +2609,13 @@ export class EditorState {
       return;
     }
     this.undone = this.undone.slice(0, -1);
+    // Put back on a continuation, the stroke made a new copy: the strokes
+    // undone from this place after it go back onto that copy.
+    const made = this.activeCell;
+    if (made) {
+      this.undone = this.undone.map((entry) => (entry.cell === null && entry.at?.layer === this.activeLayer
+        && entry.at.frame === this.activeFrame ? { cell: made, stroke: entry.stroke } : entry));
+    }
     this.touched = true;
   }
 
@@ -2698,7 +2667,8 @@ export class EditorState {
    * missed everything.
    */
   applyMegaEraser(gesture: readonly number[], radius: number, layer = this.activeLayer, frame = this.activeFrame): void {
-    const cell = this.doc.layers[layer]?.frames[frame];
+    // A sweep over a continuation cuts what it shows, laid on a copy.
+    const cell = this.doc.layers[layer] && resolveCell(this.doc.layers[layer], frame);
     if (this.playing || !cell || !this.mayEdit([layer])) {
       return;
     }
@@ -2740,7 +2710,8 @@ export class EditorState {
     layer = this.activeLayer,
     frame = this.activeFrame,
   ): void {
-    const cell = this.doc.layers[layer]?.frames[frame];
+    // A fill on a continuation is laid on a copy of what it shows.
+    const cell = this.doc.layers[layer] && resolveCell(this.doc.layers[layer], frame);
     if (this.playing || !cell || !this.mayEdit([layer])) {
       return;
     }
@@ -2775,7 +2746,7 @@ export class EditorState {
    */
   mirrorSelectedLayers(axis: 'horizontal' | 'vertical'): void {
     const layers = this.visibleSelectedLayers
-      .filter((layer) => (this.doc.layers[layer].frames[this.activeFrame]?.strokes.length ?? 0) > 0);
+      .filter((layer) => resolveCell(this.doc.layers[layer], this.activeFrame).strokes.length > 0);
     if (this.playing || !this.mayEdit([this.activeLayer, ...layers]) || layers.length === 0) {
       return;
     }
@@ -2821,7 +2792,7 @@ export class EditorState {
     }
     const tools = this.doc.tools;
     const box = selectionBounds(layers.flatMap(
-      (layer) => this.doc.layers[layer].frames[this.activeFrame]?.strokes ?? [],
+      (layer) => resolveCell(this.doc.layers[layer], this.activeFrame).strokes,
     ), null, (stroke) => markReach(tools[stroke.tool_id]));
     if (this.playing || !box) {
       this.transform = null;
@@ -2857,7 +2828,7 @@ export class EditorState {
     const layers: number[] = [];
     const picked: LassoCut[] = [];
     for (const layer of this.visibleSelectedLayers) {
-      const cut = lassoCut(this.doc.layers[layer].frames[frame]?.strokes ?? [], loop, tools, (tool) =>
+      const cut = lassoCut(resolveCell(this.doc.layers[layer], frame).strokes, loop, tools, (tool) =>
         plugins.tools().find((entry) => entry.stroke?.kind === tool.kind)?.stroke?.cut);
       if (cut) {
         layers.push(layer);
@@ -3149,7 +3120,7 @@ export class EditorState {
     if (!this.beginPluginGesture() || !this.pluginGesture) {
       return false;
     }
-    const cells = this.pluginGesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    const cells = this.pluginGesture.snapshots.map(({ layer, frame }) => resolveCell(this.doc.layers[layer], frame));
     this.magnet = new MagnetSession(cells, this.doc.tools);
     this.magnet.grab(at, this.settings.magnetRadius * FIXED_POINT_SCALE, this.settings.magnetStrength / 100);
     return true;
@@ -3197,7 +3168,7 @@ export class EditorState {
   /** The strokes a plugin may rewrite: the current frame on the visible selected layers. */
   pluginStrokes(): PluginStroke[] {
     return this.visibleSelectedLayers.flatMap((layer) =>
-      this.doc.layers[layer].frames[this.activeFrame].strokes.map(
+      resolveCell(this.doc.layers[layer], this.activeFrame).strokes.map(
         (stroke) => ({ ...stroke, points: [...stroke.points] }),
       ));
   }
@@ -3219,9 +3190,10 @@ export class EditorState {
     // A plugin that throws from its own window's button would otherwise leave
     // this gesture open: the next edit joined a stale one, on a frame since
     // left, and never became a step of undo.
-    const cells = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
     // Put back whole if a write is refused: no half-written step.
-    const before = cells.slice();
+    const before = gesture.snapshots.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+    // A plugin sees a continuation as the drawing it shows; its edit lands on a copy.
+    const cells = gesture.snapshots.map(({ layer, frame }) => resolveCell(this.doc.layers[layer], frame));
     try {
       const next = editCells(cells, fn, this.doc.tools);
       gesture.snapshots.forEach(({ layer, frame }, i) => {

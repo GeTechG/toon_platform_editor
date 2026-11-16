@@ -4,7 +4,7 @@ import { FormatError, loadDocument, validateDocument } from './validate';
 
 function validDoc(): unknown {
   return {
-    schema_version: 7,
+    schema_version: 8,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -16,7 +16,7 @@ function validDoc(): unknown {
 /** The same document with one stroke's points replaced. */
 function docWithPoints(points: number[]): unknown {
   const doc = validDoc() as { layers: { frames: { strokes: { points: number[] }[] }[] }[] };
-  doc.layers[0].frames[0].strokes[0].points = points;
+  doc.layers[0].frames[0]!.strokes[0].points = points;
   return doc;
 }
 
@@ -97,7 +97,7 @@ describe('validateDocument', () => {
 describe('loadDocument', () => {
   it('returns a typed document for valid JSON', () => {
     const doc = loadDocument(validDoc());
-    expect(doc.schema_version).toBe(7);
+    expect(doc.schema_version).toBe(8);
     expect(doc.tools).toEqual([
       { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' },
     ]);
@@ -106,9 +106,9 @@ describe('loadDocument', () => {
   });
 
   it('throws FormatError with the issue list for invalid input', () => {
-    expect(() => loadDocument({ schema_version: 8 })).toThrow(FormatError);
+    expect(() => loadDocument({ schema_version: 9 })).toThrow(FormatError);
     try {
-      loadDocument({ schema_version: 8 });
+      loadDocument({ schema_version: 9 });
     } catch (e) {
       expect((e as FormatError).issues[0].category).toBe('unsupported-version');
     }
@@ -117,7 +117,7 @@ describe('loadDocument', () => {
 
 function layeredDoc(layers = 2, frames = 2): Record<string, unknown> {
   return {
-    schema_version: 7,
+    schema_version: 8,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -148,7 +148,7 @@ describe('validateDocument: layers', () => {
 
   it('rejects a tool_id outside the table in any layer', () => {
     const doc = layeredDoc(2, 2) as { layers: { frames: { strokes: unknown[] }[] }[] };
-    doc.layers[1].frames[0].strokes.push({ points: [1, 2], tool_id: 7 });
+    doc.layers[1].frames[0]!.strokes.push({ points: [1, 2], tool_id: 7 });
     const result = validateDocument(doc);
     expect(result.ok).toBe(false);
     expect(result.issues).toContainEqual(
@@ -183,7 +183,7 @@ describe('validateDocument: layers', () => {
   });
 
   it('rejects schema_version above the supported maximum', () => {
-    const result = validateDocument({ ...(layeredDoc() as object), schema_version: 8 });
+    const result = validateDocument({ ...(layeredDoc() as object), schema_version: 9 });
     expect(result.issues[0].category).toBe('unsupported-version');
   });
 });
@@ -191,7 +191,7 @@ describe('validateDocument: layers', () => {
 describe('cross-language parity: number spelling', () => {
   it('accepts an integer spelled as a float — JSON.parse erases the difference', () => {
     // `1e2` and `100` are the same JSON number, so both spellings are valid.
-    const doc = JSON.parse('{"schema_version":7,"width":1e2,"height":2400,"frame_rate":12,"tools":[],"layers":[{"hidden":false,"frames":[{"strokes":[]}]}]}');
+    const doc = JSON.parse('{"schema_version":8,"width":1e2,"height":2400,"frame_rate":12,"tools":[],"layers":[{"hidden":false,"frames":[{"strokes":[]}]}]}');
     expect(Number.isInteger(doc.width)).toBe(true);
     expect(validateDocument(doc).ok).toBe(true);
   });
@@ -200,7 +200,7 @@ describe('cross-language parity: number spelling', () => {
 describe('stroke pressure', () => {
   function withPressure(pressure: unknown, points = [10, 20, 30, 40]): unknown {
     const doc = docWithPoints(points) as { layers: { frames: { strokes: Record<string, unknown>[] }[] }[] };
-    doc.layers[0].frames[0].strokes[0].pressure = pressure;
+    doc.layers[0].frames[0]!.strokes[0].pressure = pressure;
     return doc;
   }
 
@@ -222,8 +222,8 @@ describe('stroke pressure', () => {
 
 it('a document with pressure survives the .toonop and draft round-trip (JSON and back)', () => {
   const doc = validDoc() as { layers: { frames: { strokes: Record<string, unknown>[] }[] }[] };
-  doc.layers[0].frames[0].strokes[0].pressure = [5, 95];
-  expect(loadDocument(JSON.parse(JSON.stringify(doc))).layers[0].frames[0].strokes[0].pressure).toEqual([5, 95]);
+  doc.layers[0].frames[0]!.strokes[0].pressure = [5, 95];
+  expect(loadDocument(JSON.parse(JSON.stringify(doc))).layers[0].frames[0]!.strokes[0].pressure).toEqual([5, 95]);
 });
 
 describe('tool opacity', () => {

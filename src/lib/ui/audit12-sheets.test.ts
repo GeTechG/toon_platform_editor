@@ -175,7 +175,7 @@ describe('плагин правит штрихи: документ остаёт�
 
   it('правка из окна плагина, упавшая посреди, закрывает свой жест', () => {
     const body = editorState.slice(editorState.indexOf('editPluginCells(fn'));
-    expect(body.slice(0, 1600)).toMatch(/try \{[^]*editCells\(cells, fn, this\.doc\.tools\)[^]*\} finally \{\s*if \(standalone\) \{\s*this\.endPluginGesture\(\);/);
+    expect(body.slice(0, 1900)).toMatch(/try \{[^]*editCells\(cells, fn, this\.doc\.tools\)[^]*\} finally \{\s*if \(standalone\) \{\s*this\.endPluginGesture\(\);/);
   });
 });
 
@@ -277,7 +277,7 @@ describe('Alt+L: журнал ошибок', () => {
 
 describe('экспорт', () => {
   it('GIF: второй проход ждёт воркер, а не копит все кадры в его очереди', () => {
-    expect(exportGif).toMatch(/send\(\{ type: 'frame', frame, hold: frameHold\(doc, sent\) \}, \[frame\.data\]\);\s*await caughtUp\(/);
+    expect(exportGif).toMatch(/send\(\{ type: 'frame', frame, hold: holds\?\.\[sent\] \?\? 1 \}, \[frame\.data\]\);\s*await caughtUp\(/);
   });
 
   it('видео не скачивается по плану для прежнего разрешения', () => {

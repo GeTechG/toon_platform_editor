@@ -2,6 +2,7 @@
 // stroke. Pure — the player asks how long the show is and
 // what stands on the sheet at a step, and draws that as it draws any frame.
 import type { ToonDocument } from '../format/types';
+import { stills } from '../model/stills';
 
 /** A stroke every tenth of a second (the owner, 2026-10-06). */
 export const REPLAY_FPS = 10;
@@ -10,7 +11,7 @@ function visibleStrokes(doc: ToonDocument): number {
   let count = 0;
   for (const layer of doc.layers) {
     if (!layer.hidden) {
-      count += layer.frames[0].strokes.length;
+      count += layer.frames[0]!.strokes.length;
     }
   }
   return count;
@@ -19,7 +20,8 @@ function visibleStrokes(doc: ToonDocument): number {
 /** What the player counts and how fast: frames of an animation, or steps of a
  *  drawing being replayed. */
 export function playLength(doc: ToonDocument): { frames: number; fps: number; replay: boolean } {
-  const frames = doc.layers[0].frames.length;
+  // Frames are the film's stills: a drawing held over continuations is one.
+  const frames = stills(doc).starts.length;
   // Layers lose the order strokes were drawn in: only a one-layer drawing
   // replays the way it was made (the owner, 2026-10-17).
   const strokes = frames === 1 && doc.layers.length === 1 ? visibleStrokes(doc) : 0;
@@ -37,7 +39,7 @@ export function replayAt(doc: ToonDocument, step: number): ToonDocument {
     if (layer.hidden) {
       return layer;
     }
-    const strokes = layer.frames[0].strokes.slice(0, Math.max(0, left));
+    const strokes = layer.frames[0]!.strokes.slice(0, Math.max(0, left));
     left -= strokes.length;
     return { ...layer, frames: [{ strokes }] };
   });

@@ -38,7 +38,7 @@ function layered() {
   for (let l = 0; l < 3; l++) addStroke(doc, l, 0, { points: [l, 0], width: 8, color: '#000000' });
   return doc;
 }
-const order = (doc: ReturnType<typeof layered>) => doc.layers.map((l) => l.frames[0].strokes[0].points[0]);
+const order = (doc: ReturnType<typeof layered>) => doc.layers.map((l) => l.frames[0]!.strokes[0].points[0]);
 
 describe('перенос слоя отменяется и возвращается', () => {
   it('снимок до переноса возвращает порядок, снимок после — повторяет его', () => {

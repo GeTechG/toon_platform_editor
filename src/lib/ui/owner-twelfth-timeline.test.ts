@@ -63,7 +63,7 @@ function grid(frames: number, layers: number) {
   return doc;
 }
 
-const xOf = (doc: ReturnType<typeof grid>, l: number, f: number) => doc.layers[l].frames[f].strokes[0]?.points[0];
+const xOf = (doc: ReturnType<typeof grid>, l: number, f: number) => doc.layers[l].frames[f]!.strokes[0]?.points[0];
 
 describe('the paste buffer is a snapshot of the copy', () => {
   it('a frame inserted in front of the block does not change what V pastes', () => {

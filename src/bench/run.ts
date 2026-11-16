@@ -134,7 +134,7 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
       frames: frameCount(doc),
       strokesPerFrame: cfg.strokesPerFrame,
       totalStrokes: doc.layers.reduce(
-        (n, layer) => n + layer.frames.reduce((m, cell) => m + cell.strokes.length, 0),
+        (n, layer) => n + layer.frames.reduce((m, cell) => m + (cell?.strokes.length ?? 0), 0),
         0,
       ),
     },

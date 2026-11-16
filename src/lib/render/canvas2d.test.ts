@@ -243,7 +243,7 @@ const sampleTools: ToolDescriptor[] = [
 
 function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
   return {
-    schema_version: 7,
+    schema_version: 8,
     width: 4800,
     height: 2400,
     frame_rate: 12,
@@ -578,7 +578,7 @@ describe('single-layer fast path', () => {
 describe('renderStrokesLayer (composited layer)', () => {
   it('does not clear a background (transparent layer for stacking)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().layers[0].frames[0], sampleTools, ctx, viewport);
+    renderStrokesLayer(sampleDoc().layers[0].frames[0]!, sampleTools, ctx, viewport);
     // No full-canvas background fill — only the doc transform + strokes.
     expect(ctx.log).not.toContain('fillRect(0,0,1200,600)');
     expect(ctx.log[0]).toBe('setTransform(0.25,0,0,0.25,0,0)');
@@ -586,7 +586,7 @@ describe('renderStrokesLayer (composited layer)', () => {
 
   it('tint overrides every stroke color (onion-skin neighbor)', () => {
     const ctx = new RecordingCtx();
-    renderStrokesLayer(sampleDoc().layers[0].frames[0], sampleTools, ctx, viewport, '#ff3b30');
+    renderStrokesLayer(sampleDoc().layers[0].frames[0]!, sampleTools, ctx, viewport, '#ff3b30');
     const log = ctx.log.join('\n');
     expect(log).toContain('strokeStyle=#ff3b30');
     expect(log).toContain('fillStyle=#ff3b30'); // the dot too

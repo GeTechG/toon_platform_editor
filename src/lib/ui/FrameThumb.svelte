@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveCell } from '../model/cells';
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
   import { cellStamp, fitThumb } from './thumb-size';
@@ -48,7 +49,7 @@
     // A layer's look changes the picture without touching a cell.
     let looks = '';
     for (const layer of doc.layers) {
-      const cell = layer.frames[frameIndex];
+      const cell = frameIndex < layer.frames.length ? resolveCell(layer, frameIndex) : undefined;
       stamp = (Math.imul(stamp, 31) + (layer.hidden || !cell ? -1 : cellStamp(cell))) | 0;
       if (!layer.hidden && (layer.opacity !== undefined || layer.blend)) looks += `${layer.opacity ?? ''}/${layer.blend ?? ''},`;
       else looks += ',';

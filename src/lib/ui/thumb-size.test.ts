@@ -51,19 +51,19 @@ describe('ninth audit: a cell thumbnail sees an edit that keeps the stroke count
 
   it('a mirrored cell stamps differently', () => {
     const d = doc() as never as Parameters<typeof mirrorCell>[0];
-    const before = cellStamp(d.layers[0].frames[0]);
+    const before = cellStamp(d.layers[0].frames[0]!);
     mirrorCell(d, 0, 0, 'horizontal');
-    expect(cellStamp(d.layers[0].frames[0])).not.toBe(before);
+    expect(cellStamp(d.layers[0].frames[0]!)).not.toBe(before);
   });
 
   it('the same drawing stamps the same, so a restored copy is not redrawn for nothing', () => {
-    expect(cellStamp(doc().layers[0].frames[0])).toBe(cellStamp(doc().layers[0].frames[0]));
+    expect(cellStamp(doc().layers[0].frames[0]!)).toBe(cellStamp(doc().layers[0].frames[0]!));
   });
 
   it('a stroke of a different tool stamps differently', () => {
     const other = doc();
-    other.layers[0].frames[0].strokes[0].tool_id = 1;
-    expect(cellStamp(other.layers[0].frames[0])).not.toBe(cellStamp(doc().layers[0].frames[0]));
+    other.layers[0].frames[0]!.strokes[0].tool_id = 1;
+    expect(cellStamp(other.layers[0].frames[0]!)).not.toBe(cellStamp(doc().layers[0].frames[0]!));
   });
 });
 

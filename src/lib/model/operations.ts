@@ -16,7 +16,6 @@ import {
   MAX_STROKES_PER_FRAME,
   MAX_DOCUMENT_WEIGHT,
   MAX_FRAMES,
-  MAX_HOLD,
   STROKE_WEIGHT,
   CELL_WEIGHT,
   SCHEMA_VERSION,
@@ -24,7 +23,8 @@ import {
   STROKE_COORD_MIN,
 } from '../format/constants';
 import { opacityOf } from '../format/types';
-import type { BlendMode, Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import type { BlendMode, Cell, Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import { keyOf, resolveCell } from './cells';
 
 /**
  * A write the format has no room for: the frame's stroke limit. Still a
@@ -139,18 +139,61 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
  * sheet nobody has touched from work worth holding the tab open for.
  */
 export function isEmptyDocument(doc: ToonDocument): boolean {
-  return doc.layers.every((layer) => layer.frames.every((frame) => frame.strokes.length === 0));
+  return doc.layers.every((layer) => layer.frames.every((frame) => !frame || frame.strokes.length === 0));
 }
 
 export function frameCount(doc: ToonDocument): number {
   return doc.layers[0].frames.length;
 }
 
-/** The cell of a layer at a frame. */
+/** The drawing a layer shows at a frame — for reading. */
 function cell(doc: ToonDocument, layerIndex: number, frameIndex: number): Frame {
   assertLayerIndex(doc, layerIndex);
   assertFrameIndex(doc, frameIndex);
-  return doc.layers[layerIndex].frames[frameIndex];
+  return resolveCell(doc.layers[layerIndex], frameIndex);
+}
+
+/**
+ * The cell of a layer at a frame, for writing: a continuation first becomes a
+ * copy of the drawing it shows, so a stroke lands on that copy and the drawing
+ * it continued stays as it was.
+ */
+function ownCell(doc: ToonDocument, layerIndex: number, frameIndex: number): Frame {
+  const shown = cell(doc, layerIndex, frameIndex);
+  const frames = doc.layers[layerIndex].frames;
+  const own = frames[frameIndex];
+  if (own) return own;
+  const copy = structuredClone(shown);
+  continued.set(copy, shown.strokes.length);
+  return (frames[frameIndex] = copy);
+}
+
+/**
+ * Copies a stroke made of a continuation, with the count of strokes they
+ * started with: undoing the last stroke drawn on one gives the continuation
+ * back, so Z after a stroke on a pause leaves the pause as it was.
+ */
+const continued = new WeakMap<Frame, number>();
+
+/** A copy of the drawing cell `index` of `frames` shows. */
+function shownCopy(frames: readonly Cell[], index: number): Frame {
+  return structuredClone(frames[keyOf(frames, index)] ?? emptyFrame());
+}
+
+/**
+ * Takes `count` cells from `from` out of `frames` and returns them. A
+ * continuation that stood right after them showing a drawing among them gets
+ * a copy of it, so it looks as it did; a taken run that opens on a
+ * continuation opens on a copy of what that showed.
+ */
+function takeCells(frames: Cell[], from: number, count: number): Cell[] {
+  const after = from + count;
+  const orphan = after < frames.length && frames[after] === null && keyOf(frames, after) >= from;
+  const lifted = frames[from] === null ? shownCopy(frames, from) : frames[from];
+  if (orphan) frames[after] = shownCopy(frames, after);
+  const taken = frames.splice(from, count);
+  taken[0] = lifted;
+  return taken;
 }
 
 /** Inserts an empty frame after afterIndex; returns the new frame's index. */
@@ -161,12 +204,9 @@ export function addFrame(doc: ToonDocument, afterIndex: number): number {
 
 /** A copy of the frame at index, in every layer, right after it; returns the copy's index. */
 export function duplicateFrame(doc: ToonDocument, index: number): number {
-  const at = addFrame(doc, index);
-  for (const layer of doc.layers) {
-    layer.frames[at] = structuredClone(layer.frames[index]);
-  }
-  spliceHolds(doc, at, 1, [frameHold(doc, index)]);
-  return at;
+  assertFrameIndex(doc, index);
+  copyFrames(doc, index, 1, index + 1);
+  return index + 1;
 }
 
 /** Inserts an empty frame in front of the frame at index (Ctrl+add); returns its index. */
@@ -179,42 +219,11 @@ function insertEmptyFrame(doc: ToonDocument, at: number): number {
   if (!frameFits(doc)) {
     throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
   }
+  // Put inside a pause, the new drawing is what the rest of the pause shows.
   for (const layer of doc.layers) {
     layer.frames.splice(at, 0, emptyFrame());
   }
-  spliceHolds(doc, at, 0, [1]);
   return at;
-}
-
-/** How many ticks frame `index` stays on screen. */
-export function frameHold(doc: ToonDocument, index: number): number {
-  return doc.holds?.[index] ?? 1;
-}
-
-/** Holds `count` frames from `from` on for `hold` ticks each, kept to 1–`MAX_HOLD`. */
-export function setFrameHolds(doc: ToonDocument, from: number, count: number, hold: number): void {
-  assertFrameIndex(doc, from);
-  assertFrameIndex(doc, from + count - 1);
-  const ticks = Math.min(MAX_HOLD, Math.max(1, Math.round(hold)));
-  spliceHolds(doc, from, count, Array.from({ length: count }, () => ticks));
-}
-
-/**
- * The holds' side of a frame splice: `remove` entries from `at` give way to
- * `insert`. The list is kept only while some frame is longer than a tick —
- * the one canonical form the format asks for.
- */
-function spliceHolds(doc: ToonDocument, at: number, remove: number, insert: readonly number[]): void {
-  if (!doc.holds && insert.every((hold) => hold === 1)) {
-    return;
-  }
-  const holds = doc.holds ?? Array.from({ length: frameCount(doc) - insert.length + remove }, () => 1);
-  holds.splice(at, remove, ...insert);
-  if (holds.every((hold) => hold === 1)) {
-    delete doc.holds;
-  } else {
-    doc.holds = holds;
-  }
 }
 
 /**
@@ -227,22 +236,20 @@ export function removeFrame(doc: ToonDocument, index: number, count = 1): void {
   assertFrameIndex(doc, index + count - 1);
   const all = count >= frameCount(doc);
   for (const layer of doc.layers) {
-    layer.frames.splice(index + (all ? 1 : 0), all ? count - 1 : count);
     if (all) {
-      layer.frames[0].strokes.length = 0;
+      layer.frames.splice(1);
+      layer.frames[0]!.strokes.length = 0;
+    } else {
+      takeCells(layer.frames, index, count);
     }
-  }
-  if (all) {
-    delete doc.holds;
-  } else {
-    spliceHolds(doc, index, count, []);
   }
 }
 
 /**
  * Carries `count` frames from `from` on, in every layer, so the first of them
  * lands at `to`; the frames in between shift over. The cells keep their
- * identity — copied marks and the undo history know them by it.
+ * identity — copied marks and the undo history know them by it — except a
+ * continuation that would lose its drawing, which gets a copy of it.
  */
 export function moveFrames(doc: ToonDocument, from: number, count: number, to: number): void {
   assertFrameIndex(doc, from);
@@ -250,10 +257,7 @@ export function moveFrames(doc: ToonDocument, from: number, count: number, to: n
   assertFrameIndex(doc, to);
   assertFrameIndex(doc, to + count - 1);
   for (const layer of doc.layers) {
-    layer.frames.splice(to, 0, ...layer.frames.splice(from, count));
-  }
-  if (doc.holds) {
-    doc.holds.splice(to, 0, ...doc.holds.splice(from, count));
+    layer.frames.splice(to, 0, ...takeCells(layer.frames, from, count));
   }
 }
 
@@ -270,11 +274,11 @@ export function copyFrames(doc: ToonDocument, from: number, count: number, to: n
   if (frameCount(doc) + count > MAX_FRAMES) {
     throw new RangeError(`document already has the maximum of ${MAX_FRAMES} frames`);
   }
-  const holds = Array.from({ length: count }, (_, i) => frameHold(doc, from + i));
   for (const layer of doc.layers) {
-    layer.frames.splice(to, 0, ...structuredClone(layer.frames.slice(from, from + count)));
+    const copies = structuredClone(layer.frames.slice(from, from + count));
+    if (copies[0] === null) copies[0] = shownCopy(layer.frames, from);
+    layer.frames.splice(to, 0, ...copies);
   }
-  spliceHolds(doc, to, 0, holds);
 }
 
 /**
@@ -415,7 +419,20 @@ export function removeLastStroke(
   layerIndex: number,
   frameIndex: number,
 ): boolean {
-  return cell(doc, layerIndex, frameIndex).strokes.pop() !== undefined;
+  assertLayerIndex(doc, layerIndex);
+  assertFrameIndex(doc, frameIndex);
+  const frames = doc.layers[layerIndex].frames;
+  const own = frames[frameIndex];
+  // A continuation holds no stroke of its own to take.
+  if (!own || own.strokes.pop() === undefined) return false;
+  // Back to the continuation it was made of — while it still stands where a
+  // continuation would show exactly it: moved to the start of the layer, or
+  // after another drawing, it stays a drawing.
+  if (continued.get(own) === own.strokes.length && frameIndex > 0
+    && sameStrokes(own.strokes, resolveCell(doc.layers[layerIndex], frameIndex - 1).strokes)) {
+    frames[frameIndex] = null;
+  }
+  return true;
 }
 
 /** Deep-copies a frame and its strokes' point arrays. */
@@ -443,14 +460,13 @@ export function addStroke(
   frameIndex: number,
   stroke: ResolvedStroke | BuiltStroke,
 ): void {
-  const target = cell(doc, layerIndex, frameIndex);
   assertStrokePoints(stroke.points);
-  if (target.strokes.length >= MAX_STROKES_PER_FRAME) {
+  if (cell(doc, layerIndex, frameIndex).strokes.length >= MAX_STROKES_PER_FRAME) {
     throw new FormatLimitError('strokes', `frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
   const resolved = 'tool' in stroke ? stroke : resolveLegacyStroke(stroke);
   assertTool(resolved.tool);
-  target.strokes.push({
+  ownCell(doc, layerIndex, frameIndex).strokes.push({
     points: resolved.points.slice(),
     tool_id: internTool(doc, resolved.tool),
     ...('tool' in stroke ? pressureOf(stroke) : {}),
@@ -563,7 +579,8 @@ export function documentWeight(doc: ToonDocument): number {
   let total = 0;
   for (const layer of doc.layers) {
     for (const frame of layer.frames) {
-      total += CELL_WEIGHT + strokesWeight(frame.strokes);
+      // A continuation weighs nothing: a pause never did.
+      if (frame) total += CELL_WEIGHT + strokesWeight(frame.strokes);
     }
   }
   return total;
@@ -654,6 +671,14 @@ function tailHolds(strokes: readonly ResolvedStroke[], tail: readonly ResolvedSt
   return tail.every((stroke, i) => strokeEquals(strokes[offset + i], stroke));
 }
 
+/** The same strokes in the same order: same tools, points and pressure. */
+function sameStrokes(a: readonly Stroke[], b: readonly Stroke[]): boolean {
+  const same = (x: readonly number[] | undefined, y: readonly number[] | undefined) =>
+    (x?.length ?? 0) === (y?.length ?? 0) && (x ?? []).every((v, i) => v === y![i]);
+  return a.length === b.length && a.every((stroke, i) => stroke.tool_id === b[i].tool_id
+    && same(stroke.points, b[i].points) && same(stroke.pressure, b[i].pressure));
+}
+
 function strokeEquals(a: ResolvedStroke, b: ResolvedStroke): boolean {
   return (
     a.points.length === b.points.length &&
@@ -713,7 +738,9 @@ function mapStrokes(
   map: (x: number, y: number) => [number, number],
   widthScale = 1,
 ): void {
-  const target = cell(doc, layerIndex, frameIndex);
+  const target = ownCell(doc, layerIndex, frameIndex);
+  // Moved, the copy is not the drawing it was made of any more.
+  continued.delete(target);
   const chosen = indices ?? target.strokes.map((_, i) => i);
   for (const index of chosen) {
     const stroke = target.strokes[index];

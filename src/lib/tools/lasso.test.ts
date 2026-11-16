@@ -300,7 +300,7 @@ describe('a lasso selection applied', () => {
   test('the cut lands with the move: the piece inside goes, the rest of its line stays', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [0, 0, 100, 0], width: 8, color: '#000000' });
-    const cut = lassoCut(doc.layers[0].frames[0].strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
+    const cut = lassoCut(doc.layers[0].frames[0]!.strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
     const before = JSON.stringify(doc);
     const baked = bakeTransform(doc, 0, {
       layers: [0],
@@ -309,7 +309,7 @@ describe('a lasso selection applied', () => {
       widthWithScale: false,
       picked: [cut],
     });
-    expect(baked.layers[0].frames[0].strokes.map((s) => s.points))
+    expect(baked.layers[0].frames[0]!.strokes.map((s) => s.points))
       .toEqual([[0, 0, 40, 0], [60, 0, 100, 0], [40, 30, 60, 30]]);
     expect(JSON.stringify(doc)).toBe(before);
   });
@@ -317,7 +317,7 @@ describe('a lasso selection applied', () => {
   test('a selection that was not moved cuts nothing', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [0, 0, 100, 0], width: 8, color: '#000000' });
-    const cut = lassoCut(doc.layers[0].frames[0].strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
+    const cut = lassoCut(doc.layers[0].frames[0]!.strokes, [40, -10, 60, -10, 60, 10, 40, 10], doc.tools)!;
     const open = { layers: [0], box: { x: 40, y: 0, width: 20, height: 0 }, session: { ...EMPTY_TRANSFORM }, widthWithScale: false, picked: [cut] };
     expect(bakeTransform(doc, 0, open)).toBe(doc);
   });

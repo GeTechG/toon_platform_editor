@@ -45,12 +45,12 @@ function frames(count: number) {
 /** A block edit as the store files it: what the cells were, and what it left. */
 function edit(doc: ReturnType<typeof createDocument>, at: number[], write: (frame: number) => void, layer = 0) {
   const step = at.map((frame) => {
-    const was = doc.layers[layer].frames[frame];
+    const was = doc.layers[layer].frames[frame]!;
     return { was, cell: was, layer, frame, strokes: was.strokes.map((s) => ({ ...s, points: [...s.points] })), after: 0, last: was.strokes[0] };
   });
   at.forEach(write);
   for (const s of step) {
-    s.cell = doc.layers[layer].frames[s.frame];
+    s.cell = doc.layers[layer].frames[s.frame]!;
     s.after = s.cell.strokes.length;
     s.last = s.cell.strokes[s.after - 1];
   }
@@ -59,13 +59,13 @@ function edit(doc: ReturnType<typeof createDocument>, at: number[], write: (fram
 
 describe('a block edit is found where its cells stand now', () => {
   const cut = (doc: ReturnType<typeof createDocument>, layer = 0) => (frame: number) =>
-    replaceStrokes(doc, layer, frame, doc.layers[layer].frames[frame].strokes.slice(0, 1));
+    replaceStrokes(doc, layer, frame, doc.layers[layer].frames[frame]!.strokes.slice(0, 1));
 
   it('a frame added in front does not close the way back', () => {
     const doc = frames(2);
     const erase = edit(doc, [1], cut(doc));
     insertFrameBefore(doc, 0);
-    expect(restorableBlock(doc, [erase], doc.layers[0].frames[2])).toBe(erase);
+    expect(restorableBlock(doc, [erase], doc.layers[0].frames[2]!)).toBe(erase);
     placeBlock(doc, erase);
     expect(erase[0].frame).toBe(2);
   });
@@ -74,7 +74,7 @@ describe('a block edit is found where its cells stand now', () => {
     const doc = frames(1);
     const erase = edit(doc, [0], cut(doc));
     addLayer(doc, 0);
-    expect(restorableBlock(doc, [erase], doc.layers[1].frames[0])).toBe(erase);
+    expect(restorableBlock(doc, [erase], doc.layers[1].frames[0]!)).toBe(erase);
     placeBlock(doc, erase);
     expect(erase[0].layer).toBe(1);
   });
@@ -83,7 +83,7 @@ describe('a block edit is found where its cells stand now', () => {
     const doc = frames(2);
     const paste = edit(doc, [0, 1], cut(doc));
     doc.layers[0].frames.splice(1, 1);
-    expect(restorableBlock(doc, [paste], doc.layers[0].frames[0])).toEqual([paste[0]]);
+    expect(restorableBlock(doc, [paste], doc.layers[0].frames[0]!)).toEqual([paste[0]]);
   });
 
   it('undo writes where the cells are found', () => {
@@ -97,19 +97,19 @@ describe('a delete put back leaves the first frame as it is now', () => {
   it('a paste undone since the delete does not come back with the frames', () => {
     const doc = frames(3);
     doc.layers[0].frames[0] = { strokes: [] };
-    const [paste] = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[1].strokes));
+    const [paste] = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[1]!.strokes));
     const snap = takeStructure(doc);
     removeFrame(doc, 2);
     snap.seal(doc);
     // Undo of the paste, as the store does it.
     replaceStrokes(doc, 0, 0, paste.strokes);
-    const restored = doc.layers[0].frames[0];
+    const restored = doc.layers[0].frames[0]!;
     recell(snap, paste.cell, restored, restored.strokes.length - paste.after);
     recell(snap, paste.was, restored);
     expect(structureIntact(doc, snap)).toBe(true);
     restoreStructure(doc, snap);
     expect(doc.layers[0].frames).toHaveLength(3);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
   });
 
   it('a delete that took every frame still gives the first one its strokes back', () => {
@@ -117,9 +117,9 @@ describe('a delete put back leaves the first frame as it is now', () => {
     const snap = takeStructure(doc);
     removeFrame(doc, 0, 3);
     snap.seal(doc);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
     restoreStructure(doc, snap);
-    expect(doc.layers[0].frames.map((cell) => cell.strokes.length)).toEqual([2, 2, 2]);
+    expect(doc.layers[0].frames.map((cell) => cell!.strokes.length)).toEqual([2, 2, 2]);
   });
 
   it('a move redone never refills a cell: its shape was not sealed by a delete', () => {
@@ -129,17 +129,17 @@ describe('a delete put back leaves the first frame as it is now', () => {
     const after = takeStructure(doc);
     moveLayer(doc, 1, 0);
     doc.layers[0].frames[0] = { strokes: [] };
-    after.frames[1][0] = doc.layers[0].frames[0];
+    after.frames[1][0] = doc.layers[0].frames[0]!;
     restoreStructure(doc, after);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(0);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(0);
   });
 });
 
 describe('a block edit knows its cell by more than the count', () => {
   it('a stroke drawn in place of one taken off the pasted cell is not taken with the paste', () => {
     const doc = frames(1);
-    const step = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame].strokes.slice(0, 1)));
-    const cell = doc.layers[0].frames[0];
+    const step = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame]!.strokes.slice(0, 1)));
+    const cell = doc.layers[0].frames[0]!;
     const taken = cell.strokes.pop()!;
     addStroke(doc, 0, 0, { points: [9, 9, 9, 9], width: 8, color: '#000000' });
     expect(cell.strokes).toHaveLength(step[0].after);
@@ -152,14 +152,14 @@ describe('a block edit knows its cell by more than the count', () => {
 
   it('a step re-pointed at a restored cell still tells a stroke drawn under a newer edit', () => {
     const doc = frames(1);
-    const paste = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame].strokes.slice(0, 1)));
-    doc.layers[0].frames[0].strokes.pop();
+    const paste = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, doc.layers[0].frames[frame]!.strokes.slice(0, 1)));
+    doc.layers[0].frames[0]!.strokes.pop();
     addStroke(doc, 0, 0, { points: [9, 9, 9, 9], width: 8, color: '#000000' });
     const [erase] = edit(doc, [0], (frame) => replaceStrokes(doc, 0, frame, []));
     // Undo of the erase, as the store does it: the paste is re-pointed at the new cell.
     replaceStrokes(doc, 0, 0, erase.strokes);
-    paste[0].cell = doc.layers[0].frames[0];
-    expect(restorableBlock(doc, [paste], doc.layers[0].frames[0])).toBeUndefined();
+    paste[0].cell = doc.layers[0].frames[0]!;
+    expect(restorableBlock(doc, [paste], doc.layers[0].frames[0]!)).toBeUndefined();
   });
 
   it('the store files the last stroke, and leaves it alone when it re-points the cell', () => {
@@ -204,14 +204,14 @@ describe('a step over several frames goes back frame by frame when one of them w
     const doc = frames(2);
     const step = paste(doc);
     addStroke(doc, 0, 1, { points: [9, 9, 9, 9], width: 8, color: '#000000' });
-    const own = restorableBlock(doc, [step], doc.layers[0].frames[0]);
+    const own = restorableBlock(doc, [step], doc.layers[0].frames[0]!);
     expect(own).toEqual([step[0]]);
     const left = dropCells([step], own!);
     expect(left).toEqual([[step[1]]]);
     // From the other frame the stroke goes first, then what is left of the paste.
-    expect(restorableBlock(doc, left, doc.layers[0].frames[1])).toBeUndefined();
-    doc.layers[0].frames[1].strokes.pop();
-    const rest = restorableBlock(doc, left, doc.layers[0].frames[1]);
+    expect(restorableBlock(doc, left, doc.layers[0].frames[1]!)).toBeUndefined();
+    doc.layers[0].frames[1]!.strokes.pop();
+    const rest = restorableBlock(doc, left, doc.layers[0].frames[1]!);
     expect(rest).toEqual([step[1]]);
     expect(dropCells(left, rest!)).toEqual([]);
   });
@@ -221,13 +221,13 @@ describe('a step over several frames goes back frame by frame when one of them w
     const step = paste(doc);
     addStroke(doc, 0, 0, { points: [9, 9, 9, 9], width: 8, color: '#000000' });
     addStroke(doc, 0, 1, { points: [9, 9, 9, 9], width: 8, color: '#000000' });
-    expect(restorableBlock(doc, [step], doc.layers[0].frames[0])).toBeUndefined();
+    expect(restorableBlock(doc, [step], doc.layers[0].frames[0]!)).toBeUndefined();
   });
 
   it('a step whole on every frame still goes back whole, and leaves the history whole', () => {
     const doc = frames(2);
     const step = paste(doc);
-    expect(restorableBlock(doc, [step], doc.layers[0].frames[0])).toBe(step);
+    expect(restorableBlock(doc, [step], doc.layers[0].frames[0]!)).toBe(step);
     const other = { snap: takeStructure(doc) };
     expect(dropCells([other, step], step)).toEqual([other]);
     // A step whose last cell went back alone is gone too: it would undo nothing.
@@ -255,16 +255,16 @@ describe('a step over several frames goes back frame by frame when one of them w
 describe('edits made in place are walked back one by one', () => {
   it('three transforms of one cell, three steps back', () => {
     const doc = frames(1);
-    const before = JSON.stringify(doc.layers[0].frames[0].strokes);
+    const before = JSON.stringify(doc.layers[0].frames[0]!.strokes);
     const steps = [1, 2, 3].map(() => edit(doc, [0], (frame) => transformStrokes(doc, 0, frame, null, [1, 0, 0, 1, 8, 0])));
     while (steps.length > 0) {
-      const step = restorableBlock(doc, steps, doc.layers[0].frames[0]);
+      const step = restorableBlock(doc, steps, doc.layers[0].frames[0]!);
       expect(step).toBe(steps[steps.length - 1]);
       steps.pop();
       replaceStrokes(doc, 0, 0, step![0].strokes);
-      repoint(steps, step![0], doc.layers[0].frames[0]);
+      repoint(steps, step![0], doc.layers[0].frames[0]!);
     }
-    expect(JSON.stringify(doc.layers[0].frames[0].strokes)).toBe(before);
+    expect(JSON.stringify(doc.layers[0].frames[0]!.strokes)).toBe(before);
   });
 });
 
@@ -280,18 +280,18 @@ function studio() {
   let edits: Step[] = [];
   const block = (frames: number[], write: (frame: number) => void) => {
     const step: Cell[] = frames.map((frame) => {
-      const was = doc.layers[0].frames[frame];
+      const was = doc.layers[0].frames[frame]!;
       return { was, cell: was, layer: 0, frame, strokes: was.strokes.map((s) => ({ ...s, points: [...s.points] })), after: 0 };
     });
     frames.forEach(write);
     // Only the cells it changed are the step; the others get their object back.
-    const changed = step.filter((s) => JSON.stringify(s.strokes) !== JSON.stringify(doc.layers[0].frames[s.frame].strokes));
+    const changed = step.filter((s) => JSON.stringify(s.strokes) !== JSON.stringify(doc.layers[0].frames[s.frame]!.strokes));
     step.filter((s) => !changed.includes(s)).forEach((s) => (doc.layers[0].frames[s.frame] = s.cell));
     if (changed.length === 0) {
       return;
     }
     for (const s of changed) {
-      s.cell = doc.layers[0].frames[s.frame];
+      s.cell = doc.layers[0].frames[s.frame]!;
       s.after = s.cell.strokes.length;
       s.last = s.cell.strokes[s.after - 1];
     }
@@ -316,13 +316,13 @@ function studio() {
         restoreStructure(doc, top.snap);
         return 'structure';
       }
-      const step = restorableBlock<Cell>(doc, edits, doc.layers[0].frames[frame]);
+      const step = restorableBlock<Cell>(doc, edits, doc.layers[0].frames[frame]!);
       if (step) {
         placeBlock(doc, step);
         edits = dropCells(edits, step);
         for (const s of step) {
           replaceStrokes(doc, 0, s.frame, s.strokes);
-          repoint(edits, s, doc.layers[0].frames[s.frame]);
+          repoint(edits, s, doc.layers[0].frames[s.frame]!);
         }
         return 'block';
       }
@@ -354,7 +354,7 @@ describe('undo against a model that knows cells by number and content', () => {
       const stacks = new Map<number, Entry[]>();
       const stack = (id: number) => stacks.get(id) ?? stacks.set(id, []).get(id)!;
       const text = (cell: Frame) => JSON.stringify(cell.strokes.map((x) => x.points));
-      const row = () => doc.layers[0].frames;
+      const row = () => doc.layers[0].frames as Frame[];
       const look = () => row().map((cell) => ({ id: ids.get(cell)!, text: text(cell) }));
       // A cell written anew takes the number of the one that stood there.
       const relink = (was: Frame[]) => row().forEach((cell, f) => {

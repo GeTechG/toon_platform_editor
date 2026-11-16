@@ -22,7 +22,7 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { createLostRelease, mainUp } from './lost-release';
-  import { MAX_HOLD } from '../format/constants';
+  import { keyOf } from '../model/cells';
   import { t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
 
@@ -39,19 +39,31 @@
   // keeps the cells and renumbers them. A frame that changes place slides
   // from where it stood instead of jumping there: the neighbours of a carried
   // frame make way (Procreate Dreams, Krita), and so they do for «Сдвинуть»,
-  // a delete, a duplicate, a hold that grew, an undo.
+  // a delete, a duplicate, an undo.
   let placed = new Map<Frame, number>();
   let placedPitch = 0;
+  /**
+   * What a column is known by while the strip moves: its first drawing, top
+   * to bottom of the stack. A column of continuations has none — every
+   * continuation is the same null — and is not slid.
+   */
+  function columnKey(i: number): Frame | undefined {
+    for (const layer of editor.doc.layers) {
+      const cell = layer.frames[i];
+      if (cell) return cell;
+    }
+    return undefined;
+  }
   $effect(() => {
     const now = editor.cellBounds;
-    const frames = editor.doc.layers[0].frames;
+    const frames = Array.from({ length: editor.doc.layers[0].frames.length }, (_, i) => columnKey(i));
     const pitch = thumbWidth + GRID_GAP;
     const at = timing;
     const was = counted;
     const before = placed;
     const samePitch = pitch === placedPitch;
     counted = now;
-    placed = new Map(frames.map((cell, i) => [cell, at.start(i) * pitch]));
+    placed = new Map(frames.flatMap((cell, i) => (cell ? [[cell, at.start(i) * pitch] as const] : [])));
     placedPitch = pitch;
     if (editor.playing) {
       arrived = null;
@@ -64,7 +76,7 @@
     }
     // A stroke rebuilds a cell and moves nothing, and a layer moved under
     // the others is all new cells in the same count: neither is a move.
-    const fresh = frames.filter((cell) => !before.has(cell));
+    const fresh = frames.filter((cell): cell is Frame => !!cell && !before.has(cell));
     if (fresh.length > 0 && now.frames <= was.frames) return;
     if (fresh.length > 0) arrived = { frames: new Set(fresh) };
     if (samePitch) untrack(() => slide(before));
@@ -78,12 +90,12 @@
     const look = getComputedStyle(strip);
     const duration = parseFloat(look.getPropertyValue('--dur')) * 1000 || 150;
     const easing = look.getPropertyValue('--ease-out').trim() || 'ease-out';
-    const frames = editor.doc.layers[0].frames;
     const pitch = thumbWidth + GRID_GAP;
     for (const i of built) {
       // The carried block is under the hand: it is where the hand is.
       if (carry && i >= carry.at && i < carry.at + carry.count) continue;
-      const was = before.get(frames[i]);
+      const key = columnKey(i);
+      const was = key && before.get(key);
       if (was === undefined) continue;
       const dx = was - timing.start(i) * pitch;
       if (dx === 0) continue;
@@ -366,12 +378,10 @@
   function onWindowUp(e: PointerEvent): void {
     endCellDrag();
     endCarry(e);
-    endGrip(e);
   }
 
   function onWindowMove(e: PointerEvent): void {
     onCarryMove(e);
-    onGripMove(e);
   }
 
   /**
@@ -612,9 +622,11 @@
       carry.at = carry.from;
       return;
     } else {
-      const cell = editor.doc.layers[0].frames[carry.at];
+      // Known by the rows as they stand: a refused move leaves every one as it was.
+      const rows = editor.doc.layers.map((layer) => [...layer.frames]);
       editor.moveFramesTo(carry.at, carry.count, to, carry.copy || carry.at !== carry.from);
-      if (editor.doc.layers[0].frames[to] !== cell) return; // refused: the frames stand where they were
+      if (editor.doc.layers.every((layer, l) => layer.frames.length === rows[l].length
+        && layer.frames.every((cell, f) => cell === rows[l][f]))) return; // refused: the frames stand where they were
     }
     carry.at = to;
     carried = true;
@@ -653,43 +665,6 @@
     editor.gestureHeld = false;
   }
 
-  // --- Holding a frame -------------------------------------------------------
-  // The right edge of a frame's number is its handle (Procreate Dreams' frame
-  // hold): dragged, the frame grows or shrinks by whole ticks, and a pause is
-  // one long frame rather than copies of it. Escape takes the hold back.
-  let grip = $state<{ pointerId: number; frame: number; startX: number; hold: number; changed: boolean } | null>(null);
-  const lostGrip = createLostRelease();
-
-  function onGripDown(e: PointerEvent, frame: number): void {
-    // The number under it is a carry and a column: neither starts here.
-    e.stopPropagation();
-    if (editor.playing || !e.isPrimary || e.button !== 0 || grip || carry) return;
-    e.preventDefault();
-    lostGrip.reset();
-    grip = { pointerId: e.pointerId, frame, startX: e.clientX, hold: timing.start(frame + 1) - timing.start(frame), changed: false };
-    editor.gestureHeld = true;
-  }
-
-  function onGripMove(e: PointerEvent): void {
-    if (!grip || e.pointerId !== grip.pointerId) return;
-    if (lostGrip(e, mainUp)) {
-      endGrip(e);
-      return;
-    }
-    const hold = Math.min(MAX_HOLD, Math.max(1, grip.hold + Math.round((e.clientX - grip.startX) / (thumbWidth + GRID_GAP))));
-    if (hold === timing.start(grip.frame + 1) - timing.start(grip.frame)) return;
-    editor.holdFrames(grip.frame, 1, hold, grip.changed);
-    grip.changed = true;
-    // The click that ends the drag lands on the number: it must not pick a column.
-    carried = true;
-  }
-
-  function endGrip(e?: PointerEvent): void {
-    if (!grip || (e && e.pointerId !== grip.pointerId)) return;
-    grip = null;
-    editor.gestureHeld = false;
-  }
-
   /** Escape: the frames go back where the carry found them. */
   function cancelCarry(): void {
     if (!carry) return;
@@ -703,14 +678,6 @@
   }
 
   function onCarryKey(e: KeyboardEvent): void {
-    if (grip && e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      if (grip.changed) editor.holdFrames(grip.frame, 1, grip.hold, true);
-      carried = false;
-      endGrip();
-      return;
-    }
     if (carry && e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -1029,7 +996,6 @@
       class="grid"
       class:carrying={carry !== null}
       class:copying={carry?.copy === true}
-      class:holding={grip !== null}
       role="group"
       aria-label={t('timeline.grid')}
       bind:this={strip}
@@ -1045,13 +1011,10 @@
         {#each built as i (i)}
           <!-- A handle for the pointer only: the keyboard moves frames by
                «Сдвинуть» in the frame menu. -->
-          {@const hold = timing.start(i + 1) - timing.start(i)}
           <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
           <span
             class="num"
-            class:held={hold > 1}
             class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
-            class:gripping={grip?.frame === i}
             data-col={i}
             style:width="{spanWidth(i)}px"
             class:onion={onionFrames.includes(i)}
@@ -1064,9 +1027,7 @@
             onpointercancel={cancelLongPress}
             onpointerleave={cancelLongPress}
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
-          >{i + 1}{#if hold > 1}<span class="ticks">×{hold}</span>{/if}<!-- The hold's handle, for the pointer: the frame menu's hold row is its keyboard and its non-drag way. -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <span class="grip" title={t('timeline.hold_grip')} onpointerdown={(e) => onGripDown(e, i)}></span></span>
+          >{i + 1}</span>
         {/each}
         {#if view.after > 0}
           <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
@@ -1084,11 +1045,11 @@
               style:height="{cell.h + 2}px"
               class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
               class:now={i === editor.displayedFrame}
-              class:held={timing.start(i + 1) - timing.start(i) > 1}
+              class:continued={editor.doc.layers[layerIndex].frames[i] === null}
               class:selected={isSelected(i, layerIndex)}
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
-              class:arrived={arrived?.frames?.has(editor.doc.layers[0].frames[i]) ?? false}
+              class:arrived={arrived?.frames?.has(columnKey(i) as Frame) ?? false}
               class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
               data-frame={i}
               tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
@@ -1106,10 +1067,16 @@
               onpointerleave={cancelLongPress}
               oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
-              aria-label={`${t(
-                editor.doc.layers[layerIndex].frames[i]?.strokes.length ? 'timeline.cell' : 'timeline.cell_empty',
-                { frame: i + 1, layer: editor.layerLabel(layerIndex) },
-              )}${editor.isCopiedCell(i, layerIndex) ? t('timeline.cell_copied') : ''}`}
+              aria-label={`${editor.doc.layers[layerIndex].frames[i] === null
+                ? t('timeline.cell_continued', {
+                  frame: i + 1,
+                  key: keyOf(editor.doc.layers[layerIndex].frames, i) + 1,
+                  layer: editor.layerLabel(layerIndex),
+                })
+                : t(
+                  editor.doc.layers[layerIndex].frames[i]?.strokes.length ? 'timeline.cell' : 'timeline.cell_empty',
+                  { frame: i + 1, layer: editor.layerLabel(layerIndex) },
+                )}${editor.isCopiedCell(i, layerIndex) ? t('timeline.cell_copied') : ''}`}
             >
               <LayerThumb
                 doc={editor.doc}
@@ -1151,19 +1118,6 @@
     <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canDuplicateFrames} onclick={() => run(() => editor.duplicateActiveFrame())}>
       <Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span)}</span>{@render key('duplicate')}
     </button>
-    <!-- The hold of the frame, or of every frame of the block, a tick at a
-         time: the handle's way without a drag (WCAG 2.5.7). The menu stays
-         open, so a long pause is a few presses. -->
-    <div class="hold-row" role="group" aria-label={t('timeline.hold')}>
-      <Icon name="timeline" size={16} /><span>{t('timeline.hold')}</span>
-      <button role="menuitem" aria-label={t('timeline.hold_shorter')} title={t('timeline.hold_shorter')} disabled={!editor.canNudgeHolds(-1)} onclick={() => editor.nudgeHolds(-1)}>
-        <Icon name="minus" size={16} />
-      </button>
-      <output aria-live="polite">×{editor.activeHold}</output>
-      <button role="menuitem" aria-label={t('timeline.hold_longer')} title={t('timeline.hold_longer')} disabled={!editor.canNudgeHolds(1)} onclick={() => editor.nudgeHolds(1)}>
-        <Icon name="plus" size={16} />
-      </button>
-    </div>
     <button role="menuitem" disabled={!editor.canShiftFrames(-1)} onclick={() => run(() => editor.shiftFrames(-1))}>
       <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_left')}</span>
     </button>
@@ -1331,49 +1285,8 @@
     box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px var(--accent-wash);
     box-shadow: inset 0 0 0 2px var(--accent), 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
   }
-  /* A held frame says how long it stays, beside its number. */
-  .num .ticks {
-    margin-left: 0.25em;
-    font-size: 0.85em;
-    font-weight: 400;
-    opacity: 0.8;
-  }
   .num {
     position: relative;
-  }
-  /* The hold's handle: the number's right edge, a line on hover. Under a
-     finger it is wider than it looks, and it takes the drag from the strip. */
-  .num .grip {
-    position: absolute;
-    top: 0;
-    right: -3px;
-    bottom: 0;
-    width: 8px;
-    cursor: ew-resize;
-    touch-action: none;
-  }
-  .num .grip::after {
-    content: '';
-    position: absolute;
-    top: 25%;
-    bottom: 25%;
-    left: 3px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--edge);
-    opacity: 0;
-  }
-  .num.held .grip::after {
-    opacity: 1;
-  }
-  @media (hover: hover) {
-    .num:hover .grip::after {
-      opacity: 1;
-    }
-  }
-  :global(:where(.studio.phone)) .num .grip {
-    right: -8px;
-    width: 16px;
   }
   /* The carried block is picked up, as in Procreate Dreams: a touch larger
      and over the strip, with the shadow of what is lifted off it. It settles
@@ -1400,15 +1313,6 @@
   }
   .num.lifted {
     scale: 1.08;
-  }
-  /* The hold's handle in hand: its line in the accent, the cursor on the whole strip. */
-  .num.gripping .grip::after {
-    opacity: 1;
-    background: var(--accent);
-  }
-  .grid.holding,
-  .grid.holding :is(.num, .cell) {
-    cursor: ew-resize;
   }
   .grid.carrying,
   .grid.carrying :is(.num, .cell) {
@@ -1451,11 +1355,22 @@
   }
   /* The drawing fades, not the button: faded whole, the active ring and the
      focus ring on a hidden layer were red at 35 % — 1.6:1 on white. */
-  /* A held frame's drawing stands at its start, as a cel does in Clip Studio;
-     the rest of the cell is the time it stays. */
-  .cell.held {
-    justify-items: start;
-    padding-left: 1px;
+  /* A continuation shows the drawing it continues, faded, under a dashed
+     line along its top: told apart from a drawing without its colour. */
+  .cell.continued {
+    position: relative;
+  }
+  .cell.continued > :global(canvas) {
+    opacity: 0.45;
+  }
+  .cell.continued::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    right: 3px;
+    border-top: 2px dashed currentColor;
+    pointer-events: none;
   }
   .cell.dim > :global(canvas) {
     opacity: 0.35;
@@ -1635,27 +1550,6 @@
   .frame-menu button:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: -3px;
-  }
-  .hold-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-left: 10px;
-  }
-  .hold-row > :global(svg) {
-    margin-right: 4px;
-  }
-  .frame-menu .hold-row button {
-    flex: none;
-    justify-content: center;
-    width: var(--key-h, 2.75rem);
-    padding: 0;
-  }
-  .hold-row output {
-    min-width: 2.2em;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
   }
   .frame-menu button:disabled {
     opacity: 0.4;

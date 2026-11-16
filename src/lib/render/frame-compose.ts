@@ -13,6 +13,7 @@
  * belongs to whoever is showing it, not to the frame.
  */
 
+import { resolveCell } from '../model/cells';
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
 import { blitLayer, hasLook, layLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from './canvas2d';
@@ -422,7 +423,8 @@ export class FrameComposer {
   }
 
   #cell(scene: FrameScene, layer: number): Frame | undefined {
-    const own = scene.doc.layers[layer]?.frames[scene.frame];
+    const row = scene.doc.layers[layer];
+    const own = row && scene.frame < row.frames.length ? resolveCell(row, scene.frame) : undefined;
     if (!scene.cellAt) {
       return own;
     }
@@ -709,7 +711,7 @@ export class FrameComposer {
     const keys: string[] = [];
     for (const index of layers) {
       const layer = scene.doc.layers[index];
-      const cell = layer?.frames[frame];
+      const cell = layer && frame < layer.frames.length ? resolveCell(layer, frame) : undefined;
       if (cell && !layer.hidden && cell.strokes.length > 0) {
         cells.push(cell);
         // The first and the last stroke too: undo one line and draw another,

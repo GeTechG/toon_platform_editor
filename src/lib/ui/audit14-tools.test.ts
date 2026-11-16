@@ -44,22 +44,22 @@ describe('a pixel mark is moved by what it covers, not by the corner it is stamp
     // mirrored instead, so the cell landed at 4000 — one cell off the sheet.
     const doc = pixelRow(20, [0, 20, 40]);
     mirrorCell(doc, 0, 0, 'horizontal');
-    expect(xsOf(doc.layers[0].frames[0].strokes[0].points)).toEqual([3940, 3960, 3980]);
+    expect(xsOf(doc.layers[0].frames[0]!.strokes[0].points)).toEqual([3940, 3960, 3980]);
   });
 
   it('mirrored twice, a row comes back to where it was', () => {
     const doc = pixelRow(20, [100, 120, 140]);
     mirrorCell(doc, 0, 0, 'vertical');
     mirrorCell(doc, 0, 0, 'vertical');
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([100, 0, 120, 0, 140, 0]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([100, 0, 120, 0, 140, 0]);
   });
 
   it('a half turn about the row keeps it on the cells it covered', () => {
     // Cells 0..60 across, 0..20 down: the middle is 30, 10.
     const doc = pixelRow(20, [0, 20, 40]);
     transformStrokes(doc, 0, 0, null, transformMatrix({ rotate: 180 }, 30, 10));
-    expect(xsOf(doc.layers[0].frames[0].strokes[0].points)).toEqual([0, 20, 40]);
-    expect(doc.layers[0].frames[0].strokes[0].points.filter((_, i) => i % 2)).toEqual([0, 0, 0]);
+    expect(xsOf(doc.layers[0].frames[0]!.strokes[0].points)).toEqual([0, 20, 40]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points.filter((_, i) => i % 2)).toEqual([0, 0, 0]);
   });
 
   it('the live preview of a transform places the cells the same way apply does', () => {

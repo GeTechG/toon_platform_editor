@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { FIXED_POINT_SCALE, MAX_BRUSH_SIZE_LOGICAL, MAX_STROKE_WIDTH } from '../format/constants';
-import schema from '../format/schema/toon-v7.schema.json';
+import schema from '../format/schema/toon-v8.schema.json';
 import { validateDocument } from '../format/validate';
 import { scaleToolWidth } from '../model/operations';
 import { storedStrokeWidth } from '../tools/profiles';
@@ -29,7 +29,7 @@ describe('the format holds the widest brush any preset may set', () => {
 
   it('a document with a 640 px line validates — the api reads the same schema', () => {
     const doc = {
-      schema_version: 7, width: 10240, height: 5760, frame_rate: 12,
+      schema_version: 8, width: 10240, height: 5760, frame_rate: 12,
       tools: [{ kind: 'pencil', geometry: 'smooth', width: widest, color: '#000000' }],
       layers: [{ hidden: false, frames: [{ strokes: [{ points: [10, 20, 30, 40], tool_id: 0 }] }] }],
     };

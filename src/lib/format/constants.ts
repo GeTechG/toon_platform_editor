@@ -3,8 +3,8 @@
  *
  */
 
-/** Version the editor writes; older ones are migrated on load. */
-export const SCHEMA_VERSION = 7;
+/** Version the editor writes. The one before it, 7, is translated on load (`v7.ts`). */
+export const SCHEMA_VERSION = 8;
 /** Highest schema version the loader accepts. */
 export const MAX_SUPPORTED_SCHEMA_VERSION = SCHEMA_VERSION;
 /** New documents take the reference Tonio canvas (toonio.ru draws 1280×720). */

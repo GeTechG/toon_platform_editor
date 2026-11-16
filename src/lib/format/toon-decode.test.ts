@@ -1,4 +1,5 @@
 import { SQUARE_STAMP } from './types';
+import type { Frame } from './types';
 import { describe, expect, it } from 'bun:test';
 import { STROKE_COORD_MAX, STROKE_COORD_MIN } from './constants';
 import { TOONIO_CANVAS_HEIGHT, TOONIO_CANVAS_WIDTH, decodeLegacyJson, decodeToon } from './toon-decode';
@@ -35,7 +36,7 @@ describe('decodeToon: version 5', () => {
     expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
     // Laid down for the shared reader the way the Tonio brush lays a line:
     // its first point repeated, so the curve starts where the reference's did.
-    expect(doc.layers[0].frames[0].strokes)
+    expect(doc.layers[0].frames[0]!.strokes)
       .toEqual([{ points: [80, 160, 80, 160, 240, 320], tool_id: 0 }]);
   });
 
@@ -55,7 +56,7 @@ describe('decodeToon: version 5', () => {
       0, 1, 0, 1, 10, 10, // frame 0: one line, one point
       1, // frame 1: clone of frame 0
     ])));
-    const [first, second] = doc.layers[0].frames;
+    const [first, second] = doc.layers[0].frames as Frame[];
     expect(second.strokes).toEqual(first.strokes);
     expect(second.strokes[0]).not.toBe(first.strokes[0]);
     second.strokes.push({ points: [0, 0], tool_id: 0 });
@@ -69,8 +70,8 @@ describe('decodeToon: version 5', () => {
       1, 0, 0, 0, // reference layer 1 (below): empty
     ])));
     expect(doc.layers).toHaveLength(2);
-    expect(doc.layers[0].frames[0].strokes).toHaveLength(0);
-    expect(doc.layers[1].frames[0].strokes).toHaveLength(1);
+    expect(doc.layers[0].frames[0]!.strokes).toHaveLength(0);
+    expect(doc.layers[1].frames[0]!.strokes).toHaveLength(1);
   });
 
   it('maps the feather and pixel tools, and refuses the mega eraser', () => {
@@ -163,7 +164,7 @@ describe('decodeToon: a point that flew off the canvas', () => {
       0, 2, 30000, 10, -30000, 20,
       0, 2, 1, 2, 3, 4,
     ])));
-    const [flown, intact] = doc.layers[0].frames[0].strokes;
+    const [flown, intact] = doc.layers[0].frames[0]!.strokes;
     expect(flown.points).toEqual([STROKE_COORD_MAX, 80, STROKE_COORD_MAX, 80, STROKE_COORD_MIN, 160]);
     expect(intact.points).toEqual([8, 16, 8, 16, 24, 32]);
     expect(validateDocument(doc).ok).toBe(true);
@@ -182,7 +183,7 @@ describe('decodeToon: legacy versions', () => {
       1, 30, 1, 40,
     ])));
     expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([80, -160, 80, -160, 240, 320]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([80, -160, 80, -160, 240, 320]);
   });
 });
 
@@ -206,9 +207,9 @@ describe('decodeLegacyJson', () => {
     ]);
     // Laid down for the shared reader the way the Tonio brush lays a line:
     // its first point repeated, so the curve starts where the reference's did.
-    expect(doc.layers[0].frames[0].strokes)
+    expect(doc.layers[0].frames[0]!.strokes)
       .toEqual([{ points: [80, 160, 80, 160, 240, 320], tool_id: 0 }]);
-    expect(doc.layers[0].frames[1].strokes).toEqual([{ points: [8, 16, 8, 16], tool_id: 1 }]);
+    expect(doc.layers[0].frames[1]!.strokes).toEqual([{ points: [8, 16, 8, 16], tool_id: 1 }]);
     expect(validateDocument(doc).ok).toBe(true);
   });
 
@@ -216,12 +217,12 @@ describe('decodeLegacyJson', () => {
     const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 1, y: 2 }, { x: 3, y: 4 }]]])));
     expect(doc.frame_rate).toBe(13);
     expect(doc.tools).toEqual([{ kind: 'pencil', geometry: 'smooth', width: 40, color: '#000000' }]);
-    expect(doc.layers[0].frames[0].strokes).toEqual([{ points: [8, 16, 8, 16, 24, 32], tool_id: 0 }]);
+    expect(doc.layers[0].frames[0]!.strokes).toEqual([{ points: [8, 16, 8, 16, 24, 32], tool_id: 0 }]);
   });
 
   it('clamps a point that flew off the canvas', () => {
     const doc = ok(decodeLegacyJson(JSON.stringify([[[{ x: 30000, y: 0 }]]])));
-    expect(doc.layers[0].frames[0].strokes[0].points).toEqual([STROKE_COORD_MAX, 0, STROKE_COORD_MAX, 0]);
+    expect(doc.layers[0].frames[0]!.strokes[0].points).toEqual([STROKE_COORD_MAX, 0, STROKE_COORD_MAX, 0]);
   });
 
   it('refuses text that is not JSON', () => {

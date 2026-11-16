@@ -197,7 +197,7 @@ describe('loadPalette', () => {
 describe('stealPalette', () => {
   /** A document whose tool table carries the colours to steal. */
   const doc = (tools: ToolDescriptor[]): ToonDocument => ({
-    schema_version: 7,
+    schema_version: 8,
     width: 10240,
     height: 5760,
     frame_rate: 12,
@@ -237,7 +237,7 @@ describe('a palette is a set: one swatch per colour', () => {
 
   it('stealPalette takes a colour used by two tools only once', () => {
     const doc: ToonDocument = {
-      schema_version: 7,
+      schema_version: 8,
       width: 10240,
       height: 5760,
       frame_rate: 12,
