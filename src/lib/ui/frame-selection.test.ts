@@ -30,6 +30,7 @@ import {
   frameMenuKey,
   selectionSpan,
   deleteReach,
+  columnsToKey,
 } from './frame-selection';
 import type { CellSelection } from './frame-selection';
 
@@ -743,5 +744,24 @@ describe('deleteReach — what Delete takes', () => {
 
   it('a block: its ticks in its layers', () => {
     expect(deleteReach({ frames: [2, 3, 4], layers: [0, 2] }, 3, 0)).toEqual({ layers: [0, 2], from: 2, count: 3 });
+  });
+});
+
+describe('columnsToKey — «+» on picked columns', () => {
+  it('a column picked by its number: its ticks in every unlocked layer', () => {
+    expect(columnsToKey({ frames: [5, 3, 4], layers: [0, 1, 2] }, 3, [false, true, false])).toEqual({ layers: [0, 2], from: 3, count: 3 });
+  });
+
+  it('a block short of a layer is not a column: «+» stays on the active layer', () => {
+    expect(columnsToKey({ frames: [3], layers: [1] }, 2, [])).toBeNull();
+    expect(columnsToKey({ frames: [3, 4], layers: [0, 1] }, 3, [])).toBeNull();
+  });
+
+  it('a film of one layer has no columns apart from its cells', () => {
+    expect(columnsToKey({ frames: [3], layers: [0] }, 1, [])).toBeNull();
+  });
+
+  it('the number\'s menu names the column even in a film of one layer', () => {
+    expect(columnsToKey({ frames: [3], layers: [0] }, 1, [], true)).toEqual({ layers: [0], from: 3, count: 1 });
   });
 });

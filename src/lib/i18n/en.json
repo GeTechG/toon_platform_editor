@@ -320,6 +320,7 @@
       "timeline": "Timeline",
       "transport": "Playback controls",
       "add_frame": "Add frame",
+      "key_columns": "New frame in every layer",
       "duplicate_frame": "Duplicate frame",
       "duplicate_frames": "Duplicate frames {{from}}–{{to}}",
       "shift_left": "Move left",
@@ -1022,7 +1023,8 @@
     "trackpad": "Two fingers on the trackpad",
     "layer_name": "2×LMB on a layer",
     "strip_zoom": "Ctrl + wheel over the strip",
-    "film_end": "LMB on the strip's end mark"
+    "film_end": "LMB on the strip's end mark",
+    "column_key": "LMB on a frame number, then «+»"
   },
   "mouse_does": {
     "shape_mods": "Even shape / from the centre",
@@ -1035,7 +1037,8 @@
     "trackpad": "Move the sheet",
     "layer_name": "Rename layer",
     "strip_zoom": "Zoom the strip",
-    "film_end": "Toon length"
+    "film_end": "Toon length",
+    "column_key": "New frame in every layer"
   },
   "gesture_does": {
     "shape_second": "Even shape",

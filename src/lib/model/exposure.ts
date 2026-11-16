@@ -106,6 +106,24 @@ export function putAfter(
   return at;
 }
 
+/**
+ * «+» on picked columns (new-key-on-all-layers): an empty drawing into each
+ * continuation of `count` columns from `from` in each of `layers`; drawings
+ * stay and nothing shifts. Returns whether a cell changed.
+ */
+export function keyColumns(doc: ToonDocument, layers: readonly number[], from: number, count: number): boolean {
+  let changed = false;
+  for (const l of layers) {
+    const frames = doc.layers[l].frames;
+    for (let i = from; i < from + count; i++) {
+      if (frames[i] !== null) continue;
+      frames[i] = emptyDrawing();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** Ctrl+«+»: an empty drawing in front of cell `i`, the tail pushed right. */
 export function putBefore(doc: ToonDocument, layers: readonly number[], i: number): number {
   insertCells(doc, layers, i, [emptyDrawing()]);

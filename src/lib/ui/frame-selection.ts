@@ -716,3 +716,23 @@ export function deleteReach(
   const to = selection.frames.length ? Math.max(...selection.frames) : activeFrame;
   return { layers: [...selection.layers], from, count: to - from + 1 };
 }
+
+/**
+ * What «+» keys when the selection is whole columns — every layer of its
+ * ticks (new-key-on-all-layers): those ticks in each layer not locked. Null
+ * when it is not: «+» goes on the active layer. With one layer a cell and its
+ column are the same selection, so «+» there stays the plain «+»; the
+ number's menu names the column outright (`named`) and keys it all the same.
+ */
+export function columnsToKey(
+  selection: CellSelection,
+  layerCount: number,
+  locks: readonly boolean[],
+  named = false,
+): { layers: number[]; from: number; count: number } | null {
+  if ((layerCount < 2 && !named) || selection.layers.length < layerCount || !selection.frames.length) return null;
+  const from = Math.min(...selection.frames);
+  const count = Math.max(...selection.frames) - from + 1;
+  const layers = Array.from({ length: layerCount }, (_, l) => l).filter((l) => !locks[l]);
+  return { layers, from, count };
+}

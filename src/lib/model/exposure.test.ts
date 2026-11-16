@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Cell, ToonDocument } from '../format/types';
 import { validateDocument } from '../format/validate';
 import { restoreStructure, structureIntact, takeStructure } from '../ui/structure-undo';
-import { placeCells, drawingsPast, setFilmLength, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
+import { keyColumns, placeCells, drawingsPast, setFilmLength, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
 
 /**
  * A layer as the specs write it: a letter is a drawing (its strokes say which
@@ -115,6 +115,36 @@ describe('«+» on a layer', () => {
   });
 });
 
+describe('«+» on a picked column', () => {
+  it('puts an empty drawing into each continuation of the column and leaves the drawings', () => {
+    const doc = docOf('F · · · ·', 'A B C D E');
+    expect(keyColumns(doc, [0, 1], 2, 1)).toBe(true);
+    expect(text(doc)).toBe('F · ○ · ·');
+    expect(text(doc, 1)).toBe('A B C D E');
+  });
+
+  it('changes nothing where every layer holds a drawing', () => {
+    const doc = docOf('F G', 'A B');
+    expect(keyColumns(doc, [0, 1], 1, 1)).toBe(false);
+    expect(text(doc)).toBe('F G');
+    expect(text(doc, 1)).toBe('A B');
+  });
+
+  it('keys every column of a run', () => {
+    const doc = docOf('F · · · · · ·', 'A · · · B · ·');
+    keyColumns(doc, [0, 1], 3, 3);
+    expect(text(doc)).toBe('F · · ○ ○ ○ ·');
+    expect(text(doc, 1)).toBe('A · · ○ B ○ ·');
+  });
+
+  it('leaves the layers it is not given — the locked ones', () => {
+    const doc = docOf('F · ·', 'A · ·');
+    keyColumns(doc, [1], 1, 1);
+    expect(text(doc)).toBe('F · ·');
+    expect(text(doc, 1)).toBe('A ○ ·');
+  });
+});
+
 describe('Delete on a layer', () => {
   it('turns a drawing into a continuation of the one before', () => {
     const doc = docOf('A B C');
@@ -187,6 +217,7 @@ describe('each operation is one step of undo', () => {
     ['a shorter film', ['A B C', 'F · G'], (doc) => setFilmLength(doc, 1)],
     ['cells carried', ['A · B'], (doc) => placeCells(doc, [0], 0, 1, 2)],
     ['cells copied', ['A · B', 'F · ·'], (doc) => placeCells(doc, [0], 1, 1, 3, true)],
+    ['a column keyed', ['A · ·', 'F · G'], (doc) => keyColumns(doc, [0, 1], 1, 2)],
     ['a column carried', ['A B · ·', 'F · G ·'], (doc) => placeCells(doc, [0, 1], 1, 1, 0)],
   ];
   for (const [name, layers, step] of steps) {

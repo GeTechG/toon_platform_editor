@@ -103,7 +103,7 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
         command('strip-zoom-out', 'strip_zoom_out'),
         command('strip-zoom-fit', 'strip_zoom_fit'),
       ],
-      mouse: [mouse('frame_menu'), mouse('layer_name'), mouse('strip_zoom'), mouse('film_end')],
+      mouse: [mouse('frame_menu'), mouse('layer_name'), mouse('strip_zoom'), mouse('film_end'), mouse('column_key')],
       gesture: [gesture('hold_frame'), gesture('hold_layer'), gesture('pinch_strip')],
     },
     {

@@ -58,6 +58,7 @@ import {
   deleteCell,
   deleteCells,
   drawingsPast,
+  keyColumns,
   nextIsDrawing,
   putAfter,
   putBefore,
@@ -95,6 +96,7 @@ import {
   type PickSource,
   frameMenuKey,
   deleteReach,
+  columnsToKey,
   MENU_COMMANDS,
   type FrameMenuAction,
 } from './frame-selection';
@@ -2076,6 +2078,10 @@ export class EditorState {
    * layers stand, but for a continuation more at the end when the film grows.
    */
   addFrameAfterActive(make?: (frames: readonly Cell[], i: number) => Cell): void {
+    if (!make && this.columnsToKey) {
+      this.keyPickedColumns();
+      return;
+    }
     if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
       return;
     }
@@ -2091,6 +2097,44 @@ export class EditorState {
     } else {
       put('all');
     }
+  }
+
+  /** The picked columns «+» keys — whole columns of the selection, unlocked layers — or null (see `columnsToKey`). */
+  get columnsToKey(): { layers: number[]; from: number; count: number } | null {
+    return this.keyReach(false);
+  }
+
+  /** `named`: the number's menu, which names the column even in a film of one layer. */
+  private keyReach(named: boolean): { layers: number[]; from: number; count: number } | null {
+    return columnsToKey(this.selection, this.doc.layers.length, this.layerLocks, named);
+  }
+
+  /** Whether «Новый кадр во всех слоях» (the number's menu) has a continuation to key. */
+  get canKeyColumns(): boolean {
+    const reach = this.keyReach(true);
+    return !this.playing && !!reach && reach.layers.some((l) => this.doc.layers[l].frames
+      .slice(reach.from, reach.from + reach.count).includes(null));
+  }
+
+  /**
+   * «+» on picked columns (new-key-on-all-layers): an empty drawing into each
+   * continuation of their ticks, hidden layers too, locked ones not; the
+   * drawings there stay and nothing shifts. The selection and the active
+   * cell stay; one step of undo, none when there is nothing to key.
+   */
+  keyPickedColumns(): void {
+    const reach = this.keyReach(true);
+    if (reach && !reach.layers.length && !this.playing) {
+      this.canvasHint = { text: t('canvas.locked_layer') };
+      return;
+    }
+    if (!reach || !this.canKeyColumns || !this.leaveTransform()) {
+      return;
+    }
+    const { layers, from, count } = reach;
+    this.structureStep(() => {
+      this.#write((doc) => keyColumns(doc, layers, from, count));
+    }, false);
   }
 
   /**

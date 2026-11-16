@@ -688,13 +688,21 @@
     editor.gestureHeld = true;
   }
 
+  /**
+   * Whether the selection already is whole columns through `frame`: the
+   * number's menu keeps it; one cell there is not the column the menu acts on.
+   */
+  function columnHeld(frame: number): boolean {
+    return editor.selection.frames.includes(frame) && editor.selection.layers.length === editor.doc.layers.length;
+  }
+
   /** Mouse and pen: the number in the head picks its frame up. */
   function onNumDown(e: PointerEvent, frame: number): void {
     longPressed = false;
     carried = false;
     if (editor.playing || !e.isPrimary || e.button !== 0) return;
     if (e.pointerType === 'touch') {
-      if (!editor.selection.frames.includes(frame)) editor.selectColumn(frame);
+      if (!columnHeld(frame)) editor.selectColumn(frame);
       startLongPress(e, frame, editor.activeLayer, false);
       return;
     }
@@ -1008,7 +1016,7 @@
     }
     // A press inside the block keeps it: the menu acts on what is selected.
     if (column) {
-      if (!editor.selection.frames.includes(frame)) editor.selectColumn(frame);
+      if (!columnHeld(frame)) editor.selectColumn(frame);
     } else if (!isSelected(frame, layer)) {
       editor.selectCell(frame, layer);
     }
@@ -1648,6 +1656,9 @@
     {/snippet}
     {#if menu.column}
       <!-- The frame's number: the column, in every layer. -->
+      <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={!editor.canKeyColumns} onclick={() => run(() => editor.keyPickedColumns())}>
+        <Icon name="plus" size={16} /><span>{t('panel.item.key_columns')}</span>{@render key('add')}
+      </button>
       <button role="menuitem" disabled={!editor.canShiftFrames(-1)} onclick={() => run(() => editor.shiftFrames(-1))}>
         <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_column_left')}</span>
       </button>

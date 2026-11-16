@@ -560,8 +560,9 @@ describe('tenth audit: menu items are named without their key letter', () => {
     // «Добавить кадрA» was the accessible name: the kbd text ran into it.
     const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
-    // The column's three, the cell's: add, duplicate, two shifts, delete, copy, paste, merge.
-    expect(items.length).toBe(11);
+    // The column's four (a new frame in every layer, two shifts, delete), the
+    // cell's: add, duplicate, two shifts, delete, copy, paste, merge.
+    expect(items.length).toBe(12);
     // «Сдвинуть» and the column's items have no key: Alt+←/→ is the browser's «back».
     for (const item of items.filter((i) => !/shift(Frames|Cells)|removeColumns/.test(i))) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
