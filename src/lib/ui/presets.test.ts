@@ -250,6 +250,10 @@ test('settings round-trip through the stored config', () => {
     fillWarning: false,
     magnetRadius: 120,
     magnetStrength: 80,
+    shapeKind: 'polygon' as const,
+    shapeSides: 6,
+    shapeFilled: true,
+    ruler: { on: true, x: 500, y: 300, angle: 0.5, length: 2000 },
     pluginCatalog: 'https://plugins.example/',
     onion: {
       back: { frames: 4, opacity: 45, tinted: true, colour: '#ff0000' },
@@ -273,6 +277,20 @@ test('the magnet starts at radius 40 and strength 50, and a stored one is held t
   expect(stored({ magnetRadius: 2, magnetStrength: 140 })).toMatchObject({ magnetRadius: 5, magnetStrength: 100 });
   expect(stored({ magnetRadius: 'big', magnetStrength: null })).toMatchObject({ magnetRadius: 40, magnetStrength: 50 });
   expect(stored({ magnetRadius: 63.6 })?.magnetRadius).toBe(64);
+});
+
+test('shapes start as an outlined rectangle of 3 sides, the ruler unlaid; a stored one is read back sane', () => {
+  const stored = (settings: unknown) => parseUiConfig(JSON.stringify({ preset: 'toonop', settings }))?.settings;
+
+  expect(DEFAULT_SETTINGS).toMatchObject({ shapeKind: 'rect', shapeSides: 3, shapeFilled: false, ruler: null });
+  expect(stored({ shapeKind: 'star', shapeSides: 40, shapeFilled: 'yes' }))
+    .toMatchObject({ shapeKind: 'rect', shapeSides: 12, shapeFilled: false });
+  expect(stored({ shapeSides: 1 })?.shapeSides).toBe(3);
+  // A ruler missing a number was never laid: it is laid afresh when switched on.
+  expect(stored({ ruler: { on: true, x: 1, y: 2, angle: 0 } })?.ruler).toBeNull();
+  expect(stored({ ruler: { on: false, x: 1, y: 2, angle: 0, length: -5 } })?.ruler).toBeNull();
+  expect(stored({ ruler: { on: 'no', x: 1, y: 2, angle: 0, length: 50 } })?.ruler)
+    .toEqual({ on: false, x: 1, y: 2, angle: 0, length: 50 });
 });
 
 test('a broken onion side falls back to the default, a wild one is held to the window', () => {

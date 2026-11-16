@@ -43,10 +43,10 @@ describe('a phone draws toonop’s desktop', () => {
   // A phone has no shelf and no arranger (owner, 2026-10-18: «давай тогда уже
   // показывать все инструменты как есть»): every tool is in hand.
   it('a tool on the shelf is a tool like any other: behind the key for the other tools, or in the row where it fits', () => {
-    // toonop's own shelf: the bucket, the distortion, the pixel brush.
-    expect(phoneLayout(base, base, keep).tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:distort', 'tool:pixel']);
+    // toonop's own shelf: the bucket, the shapes, the distortion, the pixel brush.
+    expect(phoneLayout(base, base, keep).tools).toEqual(['tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:shapes', 'tool:distort', 'tool:pixel']);
     const wide = phoneLayout(base, base, { ...keep, room: 12 });
-    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:distort', 'tool:pixel', 'tool-box', 'color-key']);
+    expect(wide.panels.top).toEqual(['publish', 'more', 'spring', 'tool:pencil', 'tool:eraser', 'tool:feather', 'tool:mega-eraser', 'tool:drag', 'tool:lasso', 'tool:loop', 'tool:magnet', 'tool:bucket', 'tool:shapes', 'tool:distort', 'tool:pixel', 'tool-box', 'color-key']);
     // One the profile does not draw stays out.
     expect(phoneLayout(movePanelItem(bareShelf, 'tool:pipette', 'hidden'), base, keep).tools).not.toContain('tool:pipette');
   });
@@ -93,7 +93,7 @@ describe('a phone draws toonop’s desktop', () => {
     expect(cut.more).toEqual([
       { id: 'frames', items: ['fps'] },
       { id: 'toon', items: ['save', 'export', 'drafts', 'saved'] },
-      { id: 'studio', items: ['settings', 'manual', 'fullscreen'] },
+      { id: 'studio', items: ['settings', 'manual', 'fullscreen', 'ruler'] },
     ]);
   });
 

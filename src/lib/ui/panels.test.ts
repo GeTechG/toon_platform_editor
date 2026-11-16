@@ -226,13 +226,13 @@ describe('the default layouts', () => {
     // transport's row holds its keys at the far end, «Отправить» last.
     expect(studio.top).toEqual([]);
     expect(studio.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+      ['fps', 'add-frame', 'transport', 'onion', 'ruler', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
       ['timeline'],
     ]);
     expect(studio.float).toEqual([]);
     expect(studio.hidden.slice().sort()).toEqual([
       'color', 'brush-sizes', 'delete-frame', 'copy', 'paste', 'merge',
-      toolItem('pixel'), toolItem('distort'), toolItem('bucket'), 'drafts', 'palette', 'brush', 'brush-key', 'brush-rail', 'color-key',
+      toolItem('pixel'), toolItem('distort'), toolItem('bucket'), toolItem('shapes'), 'drafts', 'palette', 'brush', 'brush-key', 'brush-rail', 'color-key',
     ].sort());
   });
 

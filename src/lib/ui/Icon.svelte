@@ -20,6 +20,12 @@
     | 'pixel'
     | 'mega-eraser'
     | 'magnet'
+    | 'shapes'
+    | 'ruler'
+    | 'shape-line'
+    | 'shape-rect'
+    | 'shape-ellipse'
+    | 'shape-polygon'
     | 'gear'
     | 'download'
     | 'send'
@@ -157,6 +163,15 @@
     'mega-eraser': 'M3 12h4M17 12h4M8.5 5.5h7v13h-7z',
     // A horseshoe magnet, its poles marked (Lucide's magnet): the tool that drags lines along.
     magnet: 'm6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15M5 8l4 4M12 15l4 4',
+    // A triangle, a square and a circle (Lucide's shapes): the shapes tool.
+    shapes: 'M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1zM3 14h7v7H3zM14 17.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0',
+    // A ruler lying across, its ticks along one edge (Lucide's ruler).
+    ruler: 'M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0zM14.5 12.5l2-2M11.5 9.5l2-2M8.5 6.5l2-2M17.5 15.5l2-2',
+    // The four shapes of the shapes box, as each is laid.
+    'shape-line': 'M5 19L19 5',
+    'shape-rect': 'M4 6h16v12H4z',
+    'shape-ellipse': 'M3 12a9 7 0 1 0 18 0a9 7 0 1 0-18 0',
+    'shape-polygon': 'M12 4l9 16H3z',
     // An open hand: the tool that drags the canvas about.
     hand: 'M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 12V4.5a1.5 1.5 0 0 1 3 0V12M14 12V6.5a1.5 1.5 0 0 1 3 0V13M17 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a1.5 1.5 0 0 1 2.6-1.5L8 15',
     // The frame taken in hand: a box with a handle at every corner.

@@ -30,6 +30,8 @@ import {
 } from './panels';
 import { movesOf, readMoves, withMoves, type PanelMove } from './panel-moves';
 import type { PickerModel } from './picker-model';
+import { clampSides, type ShapeKind } from '../tools/shapes';
+import type { Ruler } from '../tools/ruler';
 import { type UxProfile } from './ux-profile';
 import { t } from '../i18n';
 
@@ -263,6 +265,17 @@ export interface EditorSettings {
   magnetRadius: number;
   /** How much of the cursor's step the middle of the magnet passes on: percent, 1..100. */
   magnetStrength: number;
+  /** The shape the shapes tool draws. */
+  shapeKind: ShapeKind;
+  /** Sides of its polygon, 3..12. */
+  shapeSides: number;
+  /** A shape is laid filled (a feather) rather than outlined (a pencil); a line never is. */
+  shapeFilled: boolean;
+  /**
+   * The ruler on the sheet, the studio's alone (never in the document): where
+   * it was left and whether it is out. Null until it is first laid.
+   */
+  ruler: StoredRuler | null;
   /**
    * Where the plugin catalog is read from (see `plugin-catalog`). Empty means
    * there is no catalog: nothing can be installed from one and not a single
@@ -342,6 +355,26 @@ export const FILL_GAP_MAX = 20;
 export const MAGNET_RADIUS_MIN = 5;
 export const MAGNET_RADIUS_MAX = 500;
 
+/** The ruler as the settings keep it: where it lies, and whether it is out. */
+export interface StoredRuler extends Ruler {
+  readonly on: boolean;
+}
+
+const SHAPE_KINDS: readonly ShapeKind[] = ['line', 'rect', 'ellipse', 'polygon'];
+
+/** A stored ruler with every number in it, or null: a broken one is laid afresh. */
+function readRuler(value: unknown): StoredRuler | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const { on, x, y, angle, length } = value as Record<string, unknown>;
+  const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  if (!finite(x) || !finite(y) || !finite(angle) || !finite(length) || length <= 0) {
+    return null;
+  }
+  return { on: on === true, x, y, angle, length };
+}
+
 export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   mouseMode: false,
   penPressure: true,
@@ -364,6 +397,10 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   fillWarning: true,
   magnetRadius: 40,
   magnetStrength: 50,
+  shapeKind: 'rect',
+  shapeSides: 3,
+  shapeFilled: false,
+  ruler: null,
   pluginCatalog: PLUGIN_CATALOG,
   // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
   // Tinted from the start, blue behind and green ahead (owner, 2026-10-18).
@@ -646,6 +683,10 @@ function normalizeSettings(value: unknown): EditorSettings {
     fillWarning: flag('fillWarning'),
     magnetRadius: wholeIn(raw.magnetRadius, MAGNET_RADIUS_MIN, MAGNET_RADIUS_MAX, DEFAULT_SETTINGS.magnetRadius),
     magnetStrength: wholeIn(raw.magnetStrength, 1, 100, DEFAULT_SETTINGS.magnetStrength),
+    shapeKind: SHAPE_KINDS.includes(raw.shapeKind as ShapeKind) ? raw.shapeKind as ShapeKind : DEFAULT_SETTINGS.shapeKind,
+    shapeSides: typeof raw.shapeSides === 'number' ? clampSides(raw.shapeSides) : DEFAULT_SETTINGS.shapeSides,
+    shapeFilled: flag('shapeFilled'),
+    ruler: readRuler(raw.ruler),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),
     onion: normalizeOnion(raw.onion),

@@ -48,7 +48,7 @@
 {#if offered && spec && brush}
   <PopKey
     label={spec.label}
-    title={t(tool === 'bucket' ? 'tool.again_fill' : tool === 'magnet' ? 'tool.again_magnet' : 'tool.again_brush', { title: editor.keyHint(title, command) })}
+    title={t(tool === 'bucket' ? 'tool.again_fill' : tool === 'magnet' ? 'tool.again_magnet' : tool === 'shapes' ? 'tool.again_shapes' : 'tool.again_brush', { title: editor.keyHint(title, command) })}
     active={editor.tool === tool}
     gate={() => {
       if (editor.tool === tool) return true;

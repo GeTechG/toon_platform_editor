@@ -64,8 +64,9 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
         ...ctx.tools.filter((one) => !ELSEWHERE.has(one.id)).map((one) => tool(one.id)),
         command('brush-bigger', 'brush_bigger'),
         command('brush-smaller', 'brush_smaller'),
+        command('ruler', 'ruler'),
       ],
-      mouse: [...again.mouse, mouse('shift_drag')],
+      mouse: [...again.mouse, mouse('shift_drag'), mouse('shape_mods'), mouse('ruler')],
       gesture: again.gesture,
     },
     {

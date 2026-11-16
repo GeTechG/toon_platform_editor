@@ -69,6 +69,9 @@ const TOOLS: Readonly<Record<string, PluginTool>> = {
   },
   // On the shelf in toonop's start, behind the «+» (owner, 2026-10-16).
   bucket: { icon: 'bucket', title: t('tool.bucket.title'), label: t('tool.bucket.label'), key: 'N', cursor: 'crosshair' },
+  // Lines, frames, ellipses and polygons laid as strokes; the canvas runs
+  // the drag, the box picks the shape. On the shelf too (owner, 2026-11-16).
+  shapes: { icon: 'shapes', title: t('tool.shapes.title'), label: t('tool.shapes.label'), key: 'T', cursor: 'crosshair' },
   drag: { icon: 'hand', title: t('tool.hand.title'), label: t('tool.hand.label'), key: 'D', help: true },
   lasso: {
     icon: 'transform',
@@ -155,7 +158,10 @@ const TOONOP_PRESET: PluginPreset = {
       right: ['colours'],
       top: [],
       rows: [
-        ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+        // The ruler by the onion, the other guide drawn over the sheet
+        // (2026-11-16): the «+» holds tools only (owner, 2026-10-16), and in
+        // the left column it pushed the magnet behind a key on a laptop.
+        ['fps', 'add-frame', 'transport', 'onion', 'ruler', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
         ['timeline'],
       ],
     },

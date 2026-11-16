@@ -70,6 +70,8 @@
     type Stage,
   } from './viewport';
   import { brushWidthDoc } from '../tools/stroke-builder';
+  import { shapeStroke } from '../tools/shapes';
+  import { alongRuler, hitRuler, movedRuler, rulerAcross, turnedRuler, RULER_THICKNESS_PX, type Ruler, type RulerHit } from '../tools/ruler';
   import { colourDistance, distanceField, fillRegion, growRim, keyhole, lowestSeenSlot, oldFillsIn, pureOf, recolouredFill, smoothRing, traceRings } from '../tools/fill';
   import { applyMatrix, clampCoord } from '../model/geom';
   import { SIZE_TRACK, positionOfSize, sizeAtRail, sizeByKey, sizeFromDrag } from './size-scale';
@@ -254,6 +256,36 @@
     | null = null;
   /** Live mega-eraser gesture in document units, or null when idle. */
   let megaGesture = $state<number[] | null>(null);
+  /**
+   * The shapes tool's drag: where it was pressed and where the pointer is, in
+   * document units, and the modifiers last heard — Shift and Alt act from the
+   * moment they are held mid-drag (Krita). The cell is pinned like a line's.
+   */
+  // Raw: the layer and the cell are found again by identity, and a proxy is not them.
+  let shapeGesture = $state.raw<{
+    pointerId: number;
+    a: [number, number];
+    b: [number, number];
+    square: boolean;
+    fromCentre: boolean;
+    /** The right button lays it in the fill colour, as a line. */
+    swap: boolean;
+    layer: Layer | undefined;
+    cell: Frame | undefined;
+  } | null>(null);
+  /** The ruler while a hand drags or turns it; kept to the settings on release. */
+  let rulerLive = $state.raw<Ruler | null>(null);
+  /** The drag of the ruler: its body (from where), or an end. */
+  let rulerGrab: { pointerId: number; base: Ruler; from: [number, number]; end: 1 | -1 | null } | null = null;
+  /**
+   * A line begun beside the ruler's edge: every point of it is laid on the
+   * line through its press, parallel to the ruler (tools/ruler.ts).
+   */
+  let rulerLock: { pointerId: number; lay: (point: readonly [number, number]) => [number, number] } | null = null;
+  /** What a press would take of the ruler under the cursor now, for the cursor's shape. */
+  let rulerHover = $state<RulerHit['part'] | null>(null);
+  /** The ruler on the sheet now: the one in the hand, else the one laid; none during the preview. */
+  const shownRuler = $derived(editor.playing ? null : rulerLive ?? editor.ruler);
   /** The lasso's loop while it is being drawn, in document units. */
   let loopGesture = $state<number[] | null>(null);
   /** The cell the sweep began on, pinned like the line's. */
@@ -306,6 +338,22 @@
       ...editor.pluginBrush,
       width: brushWidthDoc(editor.brushSizeLogical),
     }), editor.brushOpacity);
+  }
+
+  /** The stroke the shapes drag would lay now, with the pencil's brush. */
+  function shapeNow(drag: NonNullable<typeof shapeGesture>) {
+    const brush = editor.pluginBrush;
+    return shapeStroke(editor.settings.shapeKind, drag.a, drag.b, {
+      square: drag.square,
+      fromCentre: drag.fromCentre,
+      sides: editor.settings.shapeSides,
+    }, {
+      width: brushWidthDoc(editor.brushSizeLogical),
+      color: drag.swap ? editor.fillColor : brush.color,
+      fill: drag.swap ? brush.color : brush.fill,
+      opacity: editor.brushOpacity,
+      filled: editor.settings.shapeFilled,
+    });
   }
 
   /**
@@ -1008,6 +1056,24 @@
         ),
       };
     }
+    if (shapeGesture && shapeGesture.cell === editor.activeCell) {
+      const drag = shapeGesture;
+      const stroke = shapeNow(drag);
+      if (!stroke) return null;
+      const tool = stroke.tool as LineToolDescriptor;
+      return {
+        id: nodeId(drag),
+        erase: false,
+        paint: (target) => {
+          target.globalAlpha = (opacityOf(tool).opacity ?? 100) / 100;
+          try {
+            renderResolvedPreview(stroke.points, tool, 'color' in tool ? tool.color : BACKGROUND_COLOR, target, viewport);
+          } finally {
+            target.globalAlpha = 1;
+          }
+        },
+      };
+    }
     const session = pointer.session;
     if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || strokeCell !== editor.activeCell) {
       return null;
@@ -1217,6 +1283,46 @@
   function canvasRect(): DOMRect {
     return canvasEl.getBoundingClientRect();
   }
+
+  /** Document units one CSS pixel of the screen spans at the zoom in hand. */
+  function unitsPerPx(): number {
+    return editor.doc.width / Math.max(1e-6, sheetWidth * editor.view.zoom);
+  }
+
+  /** What a press at the event would take of the ruler, if it is out. */
+  function rulerHitAt(e: { clientX: number; clientY: number }, rect?: DOMRect): RulerHit | null {
+    const ruler = shownRuler;
+    return ruler ? hitRuler(ruler, toDocUnits(e, rect), unitsPerPx()) : null;
+  }
+
+  /** The ruler's band, its ticks along one edge, in the overlay's CSS pixels. */
+  const rulerShape = $derived.by(() => {
+    const ruler = shownRuler;
+    if (!ruler) return null;
+    // Read the view so a zoom or a pan redraws it.
+    void editor.view.zoom, editor.view.panX, editor.view.panY, editor.view.angle, sheetWidth, sheetHeight;
+    const cos = Math.cos(ruler.angle);
+    const sin = Math.sin(ruler.angle);
+    const half = ruler.length / 2;
+    const [ax, ay] = toScreen(ruler.x - cos * half, ruler.y - sin * half);
+    const [bx, by] = toScreen(ruler.x + cos * half, ruler.y + sin * half);
+    const length = Math.hypot(bx - ax, by - ay);
+    if (length < 1) return null;
+    const ux = (bx - ax) / length;
+    const uy = (by - ay) / length;
+    const h = RULER_THICKNESS_PX / 2;
+    const [nx, ny] = [-uy * h, ux * h];
+    const band = [ax + nx, ay + ny, bx + nx, by + ny, bx - nx, by - ny, ax - nx, ay - ny];
+    // A tick every 12 px, every fifth one longer, standing in from the edge.
+    let ticks = '';
+    for (let i = 1, at = 12; at < length; i++, at += 12) {
+      const deep = (i % 5 === 0 ? 0.5 : 0.25) * RULER_THICKNESS_PX / h;
+      const px = ax + ux * at + nx;
+      const py = ay + uy * at + ny;
+      ticks += `M${px.toFixed(1)} ${py.toFixed(1)}l${(-nx * deep).toFixed(1)} ${(-ny * deep).toFixed(1)}`;
+    }
+    return { band: band.map((v) => v.toFixed(1)).join(' '), ticks };
+  });
 
   function toDocUnits(
     e: { clientX: number; clientY: number },
@@ -1572,6 +1678,11 @@
     }
     grab = null;
     megaGesture = null;
+    shapeGesture = null;
+    // A ruler let go of by a lost capture stays where the hand left it.
+    if (rulerGrab && rulerLive) editor.placeRuler(rulerLive);
+    rulerGrab = null;
+    rulerLive = null;
     loopGesture = null;
     releaseMagnet();
     releasePluginGrab();
@@ -1887,7 +1998,7 @@
    */
   function drawingBusy(): boolean {
     return pointer.session !== null || grab !== null || megaGesture !== null || loopGesture !== null || pluginGrab !== null
-      || magnetHeld || sizing !== null;
+      || shapeGesture !== null || rulerGrab !== null || magnetHeld || sizing !== null;
   }
 
   /** The pen (or mouse) is in the middle of something on the sheet. */
@@ -1916,6 +2027,43 @@
     for (const kind of kinds) window.addEventListener(kind, sideButtons.release, { capture: true });
     return () => {
       for (const kind of kinds) window.removeEventListener(kind, sideButtons.release, { capture: true });
+    };
+  });
+
+  // Shift and Alt pressed or let go mid-drag, the pointer still: the shape
+  // follows them at once. Alt is kept from the browser's menu meanwhile.
+  $effect(() => {
+    const modifiers = (e: KeyboardEvent) => {
+      if (!shapeGesture || (e.key !== 'Shift' && e.key !== 'Alt')) return;
+      if (e.key === 'Alt') e.preventDefault();
+      shapeGesture = { ...shapeGesture, square: e.shiftKey, fromCentre: e.altKey };
+      scheduleDraw();
+    };
+    window.addEventListener('keydown', modifiers, { capture: true });
+    window.addEventListener('keyup', modifiers, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', modifiers, { capture: true });
+      window.removeEventListener('keyup', modifiers, { capture: true });
+    };
+  });
+
+  // A ruler laid afresh goes across the part of the sheet in view: only the
+  // canvas knows which part that is.
+  $effect(() => {
+    editor.rulerPlacer = () => {
+      const rect = canvasRect();
+      const corners = [[rect.left, rect.top], [rect.right, rect.top], [rect.right, rect.bottom], [rect.left, rect.bottom]]
+        .map(([clientX, clientY]) => toDocUnits({ clientX, clientY }, rect));
+      const xs = corners.map(([x]) => x);
+      const ys = corners.map(([, y]) => y);
+      return rulerAcross(
+        { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) },
+        editor.doc.width,
+        editor.doc.height,
+      );
+    };
+    return () => {
+      editor.rulerPlacer = null;
     };
   });
 
@@ -1996,6 +2144,20 @@
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
+    rulerLock = null;
+    // The ruler is taken by any tool but the hand, which moves the sheet: its
+    // body moves it, an end turns it, and the strip by an edge lays a line
+    // along it (below). A live transform keeps the canvas to itself.
+    const rulerHit = editor.tool !== 'drag' && !editor.transform ? rulerHitAt(e) : null;
+    if (rulerHit && rulerHit.part !== 'edge' && shownRuler) {
+      rulerGrab = { pointerId: e.pointerId, base: shownRuler, from: toDocUnits(e), end: rulerHit.part === 'end' ? rulerHit.end : null };
+      rulerLive = shownRuler;
+      canvasEl.setPointerCapture(e.pointerId);
+      // The canvas's own gesture: a cancel or a lost capture drops it
+      // (dropOwnGesture), and a palm by the pen dragging it is a palm.
+      gesturePointerId = e.pointerId;
+      return;
+    }
     // Shift+drag sizes the brush wherever its ring is the cursor (Krita; the
     // owner: settings are a gesture in the editor). The mouse button or the
     // pen tip; a finger never, it has no Shift. No dot, no stroke.
@@ -2070,6 +2232,26 @@
       }
       return;
     }
+    // The shapes tool frames its shape by the drag and lays it on release.
+    // Shift held at the press already went to the brush size, above.
+    if (editor.tool === 'shapes') {
+      if (editor.mayEdit()) {
+        const [x, y] = toDocUnits(e);
+        shapeGesture = {
+          pointerId: e.pointerId,
+          a: [x, y],
+          b: [x, y],
+          square: false,
+          fromCentre: false,
+          swap: e.button === 2,
+          layer: editor.doc.layers[editor.activeLayer],
+          cell: editor.activeCell,
+        };
+        canvasEl.setPointerCapture(e.pointerId);
+        gesturePointerId = e.pointerId;
+      }
+      return;
+    }
     if (editor.tool === 'bucket') {
       // The table beside the sheet is nobody's area.
       if (!offSheet(e) && editor.mayEdit()) {
@@ -2126,6 +2308,9 @@
     strokeCell = editor.activeCell;
     // The eraser end (5) is the eraser itself, not a second button's colour.
     strokeButton = e.button === 5 ? 0 : e.button;
+    if (rulerHit?.part === 'edge' && shownRuler) {
+      rulerLock = { pointerId: e.pointerId, lay: alongRuler(shownRuler, toDocUnits(e)) };
+    }
     canvasEl.setPointerCapture(e.pointerId);
     pointer.pointerDown(toPointerSample(e, true));
     scheduleDraw();
@@ -2143,7 +2328,7 @@
     // gesture here, or the stroke follows the hover and refuses the next press.
     // A finger has no hover — its moves are always pressed.
     if (e.pointerType !== 'touch' && e.buttons === 0
-      && (pointer.session || grab || megaGesture || loopGesture || pluginGrab || magnetHeld || panning || sizing)) {
+      && (pointer.session || grab || megaGesture || shapeGesture || rulerGrab || loopGesture || pluginGrab || magnetHeld || panning || sizing)) {
       // Firefox on Windows sends a Wacom pen's light line one move with no
       // buttons while the tip stays down: the line goes on. Whether the pen
       // really left is told by its next press (onPointerDown).
@@ -2210,6 +2395,23 @@
     if (megaGesture && e.pointerId === gesturePointerId) {
       const [x, y] = toDocUnits(e, rect);
       megaGesture.push(Math.round(x), Math.round(y));
+      scheduleDraw();
+      return;
+    }
+    if (rulerGrab && e.pointerId === rulerGrab.pointerId) {
+      const at = toDocUnits(e, rect);
+      rulerLive = rulerGrab.end === null
+        ? movedRuler(rulerGrab.base, rulerGrab.from, at)
+        : turnedRuler(rulerGrab.base, rulerGrab.end, at, e.shiftKey);
+      return;
+    }
+    // Over the ruler with nothing held, the cursor says what a press would do.
+    if (e.buttons === 0 && !pointer.session) {
+      const part = editor.tool !== 'drag' ? rulerHitAt(e, rect)?.part ?? null : null;
+      if (part !== rulerHover) rulerHover = part;
+    }
+    if (shapeGesture && e.pointerId === shapeGesture.pointerId) {
+      shapeGesture = { ...shapeGesture, b: toDocUnits(e, rect), square: e.shiftKey, fromCentre: e.altKey };
       scheduleDraw();
       return;
     }
@@ -2379,6 +2581,31 @@
       }
       return;
     }
+    if (rulerGrab && e.pointerId === rulerGrab.pointerId) {
+      if (rulerLive) editor.placeRuler(rulerLive);
+      rulerGrab = null;
+      rulerLive = null;
+      gesturePointerId = -1;
+      return;
+    }
+    if (shapeGesture && e.pointerId === shapeGesture.pointerId) {
+      const drag = { ...shapeGesture, b: toDocUnits(e), square: e.shiftKey, fromCentre: e.altKey };
+      shapeGesture = null;
+      gesturePointerId = -1;
+      // A click lays nothing: a shape is a drag, past the threshold of one.
+      const stroke = press?.far ? shapeNow(drag) : null;
+      const layer = drag.layer ? editor.doc.layers.indexOf(drag.layer) : -1;
+      const frame = drag.cell ? editor.doc.layers[layer]?.frames.indexOf(drag.cell) ?? -1 : -1;
+      if (stroke && layer >= 0 && frame >= 0) {
+        try {
+          editor.commitStroke(layer, stroke, frame);
+        } catch (err) {
+          reportError(err);
+        }
+      }
+      scheduleDraw();
+      return;
+    }
     if (megaGesture && e.pointerId === gesturePointerId) {
       // The tap that put a popup away erases nothing either.
       if (onlyDismissed(e)) {
@@ -2505,7 +2732,11 @@
 
   function toPointerSample(e: PointerEvent, unpackCoalesced = false): PointerSample {
     const rect = canvasRect();
-    const [x, y] = toDocUnits(e, rect);
+    // Begun beside the ruler's edge, the line runs along it: every sample,
+    // the held-back ones too, goes onto the line through the press.
+    const lay = rulerLock?.pointerId === e.pointerId ? rulerLock.lay : null;
+    const place = (point: [number, number]): [number, number] => (lay ? lay(point) : point);
+    const [x, y] = place(toDocUnits(e, rect));
     // Only a pen knows how hard it is pressed: a mouse reports a constant, and
     // a finger whatever its screen guesses.
     const pressed = e.pointerType === 'pen' && editor.settings.penPressure;
@@ -2516,7 +2747,7 @@
     const coalesced = unpackCoalesced
       && !editor.settings.mouseMode
       ? e.getCoalescedEvents?.().map((sample) => {
-          const [sampleX, sampleY] = toDocUnits(sample, rect);
+          const [sampleX, sampleY] = place(toDocUnits(sample, rect));
           return {
             pointerId: sample.pointerId, isPrimary: sample.isPrimary, x: sampleX, y: sampleY,
             pressure: pressed ? sample.pressure : undefined,
@@ -2575,8 +2806,17 @@
     }}
     class:custom-cursor={!editor.playing && editor.tool !== 'pipette' && (!overlayCursor || crossOnly)}
     class:playing={editor.playing}
-    style:cursor={(!editor.playing && !crossOnly && overlayCursor) || null}
+    style:cursor={(!editor.playing && rulerHover === 'body' && 'move') || (!editor.playing && rulerHover === 'end' && 'grab')
+      || (!editor.playing && !crossOnly && overlayCursor) || null}
   ></canvas>
+  {#if rulerShape}
+    <!-- The ruler: a band on the sheet, the studio's alone. Purely visual too:
+         its presses are read off the canvas (rulerHitAt). -->
+    <svg class="overlay ruler" aria-hidden="true">
+      <polygon class="ruler-band" points={rulerShape.band} />
+      <path class="ruler-ticks" d={rulerShape.ticks} />
+    </svg>
+  {/if}
   <!-- Selection chrome. Purely visual: every gesture is read off the canvas
        itself, so pointer capture, touch and the keyboard path stay intact. -->
   {#if displayedHandles}
@@ -2755,6 +2995,18 @@
     width: 100%;
     height: 100%;
     pointer-events: none;
+  }
+  .ruler-band {
+    /* See-through, so the line it guides shows under it. */
+    fill: var(--canvas);
+    fill-opacity: 0.7;
+    stroke: var(--ink-2);
+    stroke-width: 1;
+  }
+  .ruler-ticks {
+    fill: none;
+    stroke: var(--ink-2);
+    stroke-width: 1;
   }
   .overlay .frame {
     fill: none;

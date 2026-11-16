@@ -143,6 +143,7 @@
     "again_brush": "{{title}}. Press again or right-click to open brush settings",
     "again_fill": "{{title}}. Press again or right-click to open fill settings",
     "again_magnet": "{{title}}. Press again or right-click to open magnet settings",
+    "again_shapes": "{{title}}. Press again or right-click to open shape settings",
     "box_key": "Tool settings",
     "box_short": "Settings",
     "pencil": {
@@ -169,6 +170,10 @@
     "bucket": {
       "label": "Fill",
       "title": "Fill (N) — fills the area under its lines"
+    },
+    "shapes": {
+      "label": "Shapes",
+      "title": "Shapes (T) — line, rectangle, ellipse, polygon"
     },
     "hand": {
       "label": "Hand",
@@ -299,6 +304,7 @@
       "widget": "Blocks"
     },
     "item": {
+      "ruler": "Ruler",
       "save": "Save to device",
       "history": "Undo / redo",
       "manual": "Manual",
@@ -761,6 +767,9 @@
     "change_keys": "Change keys"
   },
   "editor": {
+    "ruler_off": "Ruler (Alt+R) put away",
+    "ruler_on": "Ruler (Alt+R) on the sheet",
+    "ruler": "Ruler",
     "publish_over_budget": "The toon is over the publishing limit: {{percent}} full. Remove extra frames or lines and send it again — your drawing isn't going anywhere.",
     "save_failed_alert": "The draft didn't save on this device. Your drawing is still here — don't close the tab: free up space in “Drafts” and save again (Ctrl+S).",
     "software_render_hint": "Your browser is drawing without the graphics card, so the studio may be slow. Turn on hardware acceleration in the browser settings or update the graphics driver, and drawing will get faster.",
@@ -933,6 +942,8 @@
     "hold_layer": "Hold on a layer"
   },
   "mouse": {
+    "shape_mods": "Shift / Alt mid-drag of a shape",
+    "ruler": "LMB on the ruler",
     "tool_again": "RMB or 2×LMB on a tool",
     "frame_menu": "RMB on a frame",
     "shift_drag": "Shift + LMB on the sheet",
@@ -942,6 +953,8 @@
     "layer_name": "2×LMB on a layer"
   },
   "mouse_does": {
+    "shape_mods": "Even shape / from the centre",
+    "ruler": "Move it, by an end — turn it",
     "tool_again": "Tool settings",
     "frame_menu": "Frame menu",
     "shift_drag": "Brush size",
@@ -958,6 +971,7 @@
     "hold_layer": "Rename layer"
   },
   "key": {
+    "ruler": "Ruler",
     "pipette": "Eyedropper",
     "pick_fill": "Eyedropper or palette color — to fill",
     "swap": "Swap stroke and fill",
@@ -1048,5 +1062,21 @@
     "radius_value": "{{n}} px",
     "strength_value": "{{n}} %",
     "radius_title": "Radius {{size}} px"
+  },
+  "shapes": {
+    "box": "Shape settings",
+    "kind": "Shape",
+    "line": "Line",
+    "rect": "Rectangle",
+    "ellipse": "Ellipse",
+    "polygon": "Polygon",
+    "sides": "Sides",
+    "look": "Shape look",
+    "outline": "Outline",
+    "filled": "Filled",
+    "thickness": "Thickness",
+    "thickness_value": "{{n}} px",
+    "thickness_number": "Thickness, px",
+    "hint": "Shift mid-drag keeps it even, Alt draws from the centre"
   }
 }

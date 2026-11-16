@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The box of the tool in hand: the bucket's, the magnet's, or the brush's
+   * The box of the tool in hand: the bucket's, the magnet's, the shapes', or the brush's
    * for a tool that draws. One choice, for the tool's own key and for the
    * phone's settings key under the canvas.
    */
@@ -8,6 +8,7 @@
   import BrushPanel from './BrushPanel.svelte';
   import FillPanel from './FillPanel.svelte';
   import MagnetPanel from './MagnetPanel.svelte';
+  import ShapesPanel from './ShapesPanel.svelte';
 
   let { editor, tool }: { editor: EditorState; tool: string } = $props();
 </script>
@@ -16,6 +17,8 @@
   <FillPanel {editor} />
 {:else if tool === 'magnet'}
   <MagnetPanel {editor} />
+{:else if tool === 'shapes'}
+  <ShapesPanel {editor} />
 {:else}
   <BrushPanel {editor} />
 {/if}

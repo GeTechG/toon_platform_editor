@@ -329,6 +329,7 @@ export function studioCommands(tools: readonly ToolKeys[]): Command[] {
     held('add-layer-before', 'Ctrl+Shift+a', 'Ctrl+Shift+F7'),
     held('delete-layer', 'Shift+Delete', 'Shift+Backspace'),
     once('onion', 'k'),
+    once('ruler', 'Alt+r'),
     once('play', 'Space'),
     once('play-from-active', 'Shift+Space'),
     held('zoom-in', 'Ctrl++'),

@@ -140,6 +140,8 @@ function fixedItems(): readonly PanelItem[] {
   { id: 'add-frame', kind: 'action', label: t('panel.item.add_frame') },
   { id: 'delete-frame', kind: 'action', label: t('panel.item.delete_frame') },
   { id: 'onion', kind: 'action', label: t('panel.item.onion') },
+  // A guide on the sheet, the studio's alone (2026-11-16).
+  { id: 'ruler', kind: 'action', label: t('panel.item.ruler') },
   { id: 'fps', kind: 'widget', wide: true, label: t('panel.item.fps') },
   { id: 'audio', kind: 'widget', label: t('panel.item.audio') },
   { id: 'export', kind: 'action', label: t('panel.item.export') },

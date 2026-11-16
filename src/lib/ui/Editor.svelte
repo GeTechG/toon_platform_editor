@@ -1225,6 +1225,9 @@
       case 'onion':
         editor.toggleOnionSkin();
         break;
+      case 'ruler':
+        editor.toggleRuler();
+        break;
       // Reference: the X between the two swatches swaps outline and fill.
       case 'swap':
         editor.swapColors();
@@ -2696,6 +2699,20 @@
       {#snippet face()}<Icon name="onion" />{/snippet}
       <OnionPanel {editor} />
     </PopKey>
+  {:else if id === 'ruler'}
+    <!-- A guide on the sheet: out, a line begun by its edge runs along it. -->
+    <button
+      class="key"
+      class:active={editor.ruler !== null}
+      aria-pressed={editor.ruler !== null}
+      onclick={() => editor.toggleRuler()}
+      data-key={editor.keyLabel('ruler')}
+      aria-keyshortcuts={editor.keyAria('ruler')}
+      title={editor.keyHint(editor.ruler ? t('editor.ruler_on') : t('editor.ruler_off'), 'ruler')}
+      aria-label={t('editor.ruler')}
+    >
+      <Icon name="ruler" />
+    </button>
   {:else if id === 'onion'}
     <button
       class="key"

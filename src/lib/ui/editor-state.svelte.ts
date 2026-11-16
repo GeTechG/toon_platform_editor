@@ -108,6 +108,7 @@ import { filmTiming, type FilmTiming } from '../model/timing';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
 import { MagnetSession } from '../tools/magnet';
+import type { Ruler } from '../tools/ruler';
 import type { LassoCut, TransformSession } from '../tools/lasso';
 import { copyPart, eraseSelected, pastePart, type CopiedPart } from '../tools/selection-clipboard';
 import {
@@ -1632,6 +1633,42 @@ export class EditorState {
 
   toggleOnionSkin(): void {
     this.onionSkin = !this.onionSkin;
+  }
+
+  /**
+   * Where a ruler laid afresh goes: the canvas tells, it alone knows what part
+   * of the sheet is in view (rulerAcross). Null with no canvas mounted.
+   */
+  rulerPlacer: (() => Ruler) | null = null;
+
+  /** The ruler out on the sheet, or null: never in the document. */
+  get ruler(): Ruler | null {
+    const ruler = this.settings.ruler;
+    return ruler?.on ? ruler : null;
+  }
+
+  /**
+   * Alt+R: the ruler out or away. Away, it keeps its place; out again, it
+   * lies where it was left — unless that is off this sheet (another toon's
+   * bigger one), where it is laid afresh across the part in view.
+   */
+  toggleRuler(): void {
+    const ruler = this.settings.ruler;
+    if (ruler?.on) {
+      this.setSetting('ruler', { ...ruler, on: false });
+      return;
+    }
+    const onSheet = ruler && ruler.x >= 0 && ruler.y >= 0 && ruler.x <= this.doc.width && ruler.y <= this.doc.height;
+    const laid = onSheet ? ruler : this.rulerPlacer?.();
+    if (laid) {
+      this.placeRuler(laid);
+    }
+  }
+
+  /** The ruler moved or turned by hand, out and kept at once. */
+  placeRuler(ruler: Ruler): void {
+    const { x, y, angle, length } = ruler;
+    this.setSetting('ruler', { on: true, x, y, angle, length });
   }
 
   /** The zoom window: up with the hand, and for a moment after a wheel zoom. */

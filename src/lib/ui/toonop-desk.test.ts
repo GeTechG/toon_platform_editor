@@ -40,7 +40,7 @@ describe('toonop on a desk', () => {
   it('no bar over the canvas (owner: «убрать верхнее меню, всё куда-то разложить» — it was mostly empty): its keys stand at the far end of the transport’s row, «Отправить» last', () => {
     expect(base.top).toEqual([]);
     expect(base.rows).toEqual([
-      ['fps', 'add-frame', 'transport', 'onion', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
+      ['fps', 'add-frame', 'transport', 'onion', 'ruler', 'audio', 'spring', 'saved', 'save', 'export', 'settings', 'manual', 'fullscreen', 'publish'],
       ['timeline'],
     ]);
   });

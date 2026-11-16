@@ -170,8 +170,8 @@ const PHONE_SIDE: readonly string[] = ['brush-rail', 'history'];
 /** …and its bar under the canvas: a frame and the transport over the strip — the desk's row holds the studio's keys too. */
 const PHONE_ROWS: readonly (readonly string[])[] = [['add-frame', 'transport'], ['timeline']];
 
-/** What «⋯» holds on a phone whatever the arrangement: the toon's own keys. */
-const ALWAYS_BEHIND_MORE: readonly string[] = ['save', 'export', 'drafts'];
+/** What «⋯» holds on a phone whatever the arrangement: the toon's own keys, and the ruler (no shelf there to fetch it from). */
+const ALWAYS_BEHIND_MORE: readonly string[] = ['save', 'export', 'drafts', 'ruler'];
 
 export type MoreGroup = 'frames' | 'toon' | 'studio';
 
