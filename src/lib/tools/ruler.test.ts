@@ -49,7 +49,7 @@ describe('moving and turning', () => {
 
   test('an end dragged turns the ruler about the other end, its length kept', () => {
     // The −1 end is at (600, 1000); the +1 end is pulled straight up from it.
-    const turned = turnedRuler(flat, 1, [600, 0], false);
+    const turned = turnedRuler(flat, 1, [600, 0], 'free');
     expect(turned.angle).toBeCloseTo(-Math.PI / 2);
     expect(turned.length).toBe(800);
     expect(turned.x).toBeCloseTo(600);
@@ -58,14 +58,25 @@ describe('moving and turning', () => {
 
   test('the −1 end turns about the +1 end', () => {
     // The +1 end stays at (1400, 1000); the −1 end pulled to its right.
-    const turned = turnedRuler(flat, -1, [2000, 1000], false);
+    const turned = turnedRuler(flat, -1, [2000, 1000], 'free');
     expect(turned.x).toBeCloseTo(1800);
     expect(turned.y).toBeCloseTo(1000);
   });
 
+  test('a finger turning it is pulled onto a 15° step within 3° (it has no Shift), further off it is free', () => {
+    const deg = (d: number) => (d * Math.PI) / 180;
+    const end = (d: number): [number, number] => [600 + 800 * Math.cos(deg(d)), 1000 + 800 * Math.sin(deg(d))];
+    const byFinger = (d: number) => turnedRuler(flat, 1, end(d), 'pull').angle;
+    expect(byFinger(44)).toBeCloseTo(deg(45));
+    expect(byFinger(-2)).toBeCloseTo(0);
+    expect(byFinger(38)).toBeCloseTo(deg(38));
+    // A mouse or a pen turns it freely: the even angle is Shift's.
+    expect(turnedRuler(flat, 1, end(44), 'free').angle).toBeCloseTo(deg(44));
+  });
+
   test('with Shift the angle goes by 15°', () => {
     // Pulled to 40° below flat: laid at 45°.
-    const turned = turnedRuler(flat, 1, [600 + 766, 1000 + 643], true);
+    const turned = turnedRuler(flat, 1, [600 + 766, 1000 + 643], 'step');
     expect(turned.angle).toBeCloseTo(Math.PI / 4);
   });
 });

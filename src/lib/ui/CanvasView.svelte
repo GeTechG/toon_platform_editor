@@ -2402,7 +2402,7 @@
       const at = toDocUnits(e, rect);
       rulerLive = rulerGrab.end === null
         ? movedRuler(rulerGrab.base, rulerGrab.from, at)
-        : turnedRuler(rulerGrab.base, rulerGrab.end, at, e.shiftKey);
+        : turnedRuler(rulerGrab.base, rulerGrab.end, at, e.shiftKey ? 'step' : e.pointerType === 'touch' ? 'pull' : 'free');
       return;
     }
     // Over the ruler with nothing held, the cursor says what a press would do.

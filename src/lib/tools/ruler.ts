@@ -82,21 +82,33 @@ export function movedRuler(ruler: Ruler, from: Point, to: Point): Ruler {
   return { ...ruler, x: ruler.x + to[0] - from[0], y: ruler.y + to[1] - from[1] };
 }
 
-/** The step the ruler turns by with Shift held. */
+/** The step the ruler turns by with Shift held, and the angles a finger is pulled to. */
 const TURN_STEP = Math.PI / 12;
+/**
+ * How near a step a finger's angle is pulled onto it: a finger has no Shift
+ * (owner, 2026-11-16), and by hand 0° or 45° is never quite hit.
+ */
+const TURN_PULL = (3 * Math.PI) / 180;
+
+/**
+ * How a turn lands: `step` (Shift) lays the angle on 15°, `pull` (a finger)
+ * pulls it onto such a step within 3°, `free` (a mouse or a pen) leaves it be.
+ */
+export type TurnSnap = 'step' | 'pull' | 'free';
 
 /**
  * The ruler with its `end` dragged to `to`: it turns about the other end and
- * keeps its length. `stepped` (Shift) lays the angle on 15°.
+ * keeps its length, its angle landing as `snap` says.
  */
-export function turnedRuler(ruler: Ruler, end: 1 | -1, to: Point, stepped: boolean): Ruler {
+export function turnedRuler(ruler: Ruler, end: 1 | -1, to: Point, snap: TurnSnap): Ruler {
   const half = ruler.length / 2;
   const fixedX = ruler.x - end * half * Math.cos(ruler.angle);
   const fixedY = ruler.y - end * half * Math.sin(ruler.angle);
   // The way from the fixed end to the dragged one; the angle points to +1.
   let toward = Math.atan2(to[1] - fixedY, to[0] - fixedX);
-  if (stepped) {
-    toward = Math.round(toward / TURN_STEP) * TURN_STEP;
+  const nearest = Math.round(toward / TURN_STEP) * TURN_STEP;
+  if (snap === 'step' || (snap === 'pull' && Math.abs(toward - nearest) <= TURN_PULL)) {
+    toward = nearest;
   }
   const angle = end === 1 ? toward : toward + Math.PI;
   return {
