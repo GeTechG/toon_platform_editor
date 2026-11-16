@@ -698,3 +698,21 @@ export function stepColumn(shown: number, step: number, min: number, max: number
   const next = Math.round(Math.min(max, Math.max(min, shown + step)));
   return step < 0 ? Math.min(shown, next) : Math.max(shown, next);
 }
+
+/**
+ * What Delete takes: the active cell alone, or the picked ticks in every
+ * picked layer — a column picked by its number is one tick in all of them
+ * (owner, 2026-11-17: only the active layer's cell went).
+ */
+export function deleteReach(
+  selection: CellSelection,
+  activeFrame: number,
+  activeLayer: number,
+): { layers: number[]; from: number; count: number } {
+  if (selection.frames.length < 2 && selection.layers.length < 2) {
+    return { layers: [activeLayer], from: activeFrame, count: 1 };
+  }
+  const from = selection.frames.length ? Math.min(...selection.frames) : activeFrame;
+  const to = selection.frames.length ? Math.max(...selection.frames) : activeFrame;
+  return { layers: [...selection.layers], from, count: to - from + 1 };
+}

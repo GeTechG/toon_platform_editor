@@ -189,7 +189,7 @@ describe('a phone’s layer row fits its column', () => {
     // Eye, settings, handle and bin (1rem + 8px each), the 14 px tag and its
     // 1 px margins, five 4 px gaps, 3 + 3 padding and the column's border.
     expect(phoneStrip).toMatch(/\.layer-col \{[^}]*min-width: calc\(4rem \+ 75px\)/);
-    expect(phoneStrip).toMatch(/\.body \{[^}]*container: strip \/ inline-size/);
+    expect(phoneStrip).toMatch(/\.body \{[^}]*container: strip[ a-z]* \/ inline-size/);
   });
 
   it('where the keys would take more than half the strip, the drag handle folds away', () => {

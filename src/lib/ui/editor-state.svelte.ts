@@ -94,6 +94,7 @@ import {
   type OnionSide,
   type PickSource,
   frameMenuKey,
+  deleteReach,
   MENU_COMMANDS,
   type FrameMenuAction,
 } from './frame-selection';
@@ -2157,8 +2158,7 @@ export class EditorState {
     if (this.playing || !this.leaveTransform()) {
       return;
     }
-    const { from, count } = this.framesToRemove;
-    const layers = count > 1 ? [...this.selection.layers] : [this.activeLayer];
+    const { layers, from, count } = deleteReach(this.selection, this.activeFrame, this.activeLayer);
     const lost = layers.reduce((sum, l) => sum + this.doc.layers[l].frames.slice(from, from + count)
       .filter((cell) => cell !== null && cell.strokes.length > 0).length, 0);
     const go = () => this.structureStep(() => {

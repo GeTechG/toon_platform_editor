@@ -29,6 +29,7 @@ import {
   extendTarget,
   frameMenuKey,
   selectionSpan,
+  deleteReach,
 } from './frame-selection';
 import type { CellSelection } from './frame-selection';
 
@@ -728,5 +729,19 @@ describe('the onion goes by the drawings of the layer', () => {
   it('on the first drawing has nothing before it, the pause after it is no neighbour', () => {
     expect(onionByDrawings([A, null, null, { strokes: [] }], 0, (active, count) => onionSideLayers(active, count, onion))
       .map((l) => l.index)).toEqual([3]);
+  });
+});
+
+describe('deleteReach — what Delete takes', () => {
+  it('a column picked by its number: that tick in every picked layer (owner, 2026-11-17)', () => {
+    expect(deleteReach({ frames: [3], layers: [0, 1] }, 3, 1)).toEqual({ layers: [0, 1], from: 3, count: 1 });
+  });
+
+  it('one cell: the active one alone', () => {
+    expect(deleteReach({ frames: [3], layers: [1] }, 3, 1)).toEqual({ layers: [1], from: 3, count: 1 });
+  });
+
+  it('a block: its ticks in its layers', () => {
+    expect(deleteReach({ frames: [2, 3, 4], layers: [0, 2] }, 3, 0)).toEqual({ layers: [0, 2], from: 2, count: 3 });
   });
 });
