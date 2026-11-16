@@ -935,6 +935,7 @@
     "save": "Save"
   },
   "gesture": {
+    "shape_second": "A second finger while dragging a shape",
     "tool_again": "Tap the selected tool",
     "two_fingers": "Two fingers on the sheet",
     "hold_sheet": "Hold on the sheet",
@@ -964,6 +965,7 @@
     "layer_name": "Rename layer"
   },
   "gesture_does": {
+    "shape_second": "Even shape",
     "tool_again": "Tool settings",
     "two_fingers": "Move, zoom, rotate",
     "hold_sheet": "Pick color",
@@ -1064,6 +1066,7 @@
     "radius_title": "Radius {{size}} px"
   },
   "shapes": {
+    "from_centre": "From the centre",
     "box": "Shape settings",
     "kind": "Shape",
     "line": "Line",
@@ -1076,7 +1079,6 @@
     "filled": "Filled",
     "thickness": "Thickness",
     "thickness_value": "{{n}} px",
-    "thickness_number": "Thickness, px",
-    "hint": "Shift mid-drag keeps it even, Alt draws from the centre"
+    "thickness_number": "Thickness, px"
   }
 }

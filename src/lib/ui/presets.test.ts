@@ -253,6 +253,7 @@ test('settings round-trip through the stored config', () => {
     shapeKind: 'polygon' as const,
     shapeSides: 6,
     shapeFilled: true,
+    shapeFromCentre: true,
     ruler: { on: true, x: 500, y: 300, angle: 0.5, length: 2000 },
     pluginCatalog: 'https://plugins.example/',
     onion: {
@@ -282,7 +283,8 @@ test('the magnet starts at radius 40 and strength 50, and a stored one is held t
 test('shapes start as an outlined rectangle of 3 sides, the ruler unlaid; a stored one is read back sane', () => {
   const stored = (settings: unknown) => parseUiConfig(JSON.stringify({ preset: 'toonop', settings }))?.settings;
 
-  expect(DEFAULT_SETTINGS).toMatchObject({ shapeKind: 'rect', shapeSides: 3, shapeFilled: false, ruler: null });
+  expect(DEFAULT_SETTINGS).toMatchObject({ shapeKind: 'rect', shapeSides: 3, shapeFilled: false, shapeFromCentre: false, ruler: null });
+  expect(stored({ shapeFromCentre: 'yes' })?.shapeFromCentre).toBe(false);
   expect(stored({ shapeKind: 'star', shapeSides: 40, shapeFilled: 'yes' }))
     .toMatchObject({ shapeKind: 'rect', shapeSides: 12, shapeFilled: false });
   expect(stored({ shapeSides: 1 })?.shapeSides).toBe(3);

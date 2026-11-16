@@ -961,6 +961,7 @@
     "save": "Сохранить"
   },
   "gesture": {
+    "shape_second": "Второй палец, пока тянешь фигуру",
     "tool_again": "Тап по выбранному инструменту",
     "two_fingers": "Два пальца на листе",
     "hold_sheet": "Удержание на листе",
@@ -990,6 +991,7 @@
     "layer_name": "Переименовать слой"
   },
   "gesture_does": {
+    "shape_second": "Ровная фигура",
     "tool_again": "Настройки инструмента",
     "two_fingers": "Двигать, масштаб, поворот",
     "hold_sheet": "Взять цвет",
@@ -1090,6 +1092,7 @@
     "radius_title": "Радиус {{size}} px"
   },
   "shapes": {
+    "from_centre": "От центра",
     "box": "Настройки фигур",
     "kind": "Фигура",
     "line": "Прямая",
@@ -1102,7 +1105,6 @@
     "filled": "С заливкой",
     "thickness": "Толщина",
     "thickness_value": "{{n}} px",
-    "thickness_number": "Толщина, px",
-    "hint": "Shift посреди протяжки — ровная фигура, Alt — от центра"
+    "thickness_number": "Толщина, px"
   }
 }

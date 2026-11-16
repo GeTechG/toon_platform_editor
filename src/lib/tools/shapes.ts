@@ -21,7 +21,25 @@ export interface ShapeOptions {
   readonly fromCentre: boolean;
   /** Sides of the polygon. */
   readonly sides: number;
+  /**
+   * A finger's drag: the sheet units one screen pixel spans. A shape that is
+   * nearly even becomes even — a finger has no Shift (owner, 2026-11-16).
+   * Absent for a mouse or a pen, which are never pulled.
+   */
+  readonly pull?: number;
 }
+
+/** How near even a finger's shape is pulled to even, in screen pixels. */
+const SHAPE_PULL_PX = 24;
+/**
+ * A finger's line is pulled to level, upright and the diagonals — not to
+ * every 15° of Shift: those lie so close that a short line is always within
+ * the pixels of one — and never by more than this.
+ */
+const LINE_PULL_STEP = Math.PI / 4;
+const LINE_PULL_MAX = (5 * Math.PI) / 180;
+/** A frame is pulled even only when its sides differ by at most this share of the longer. */
+const FRAME_PULL_SHARE = 0.1;
 
 type Point = readonly [number, number];
 
@@ -151,10 +169,29 @@ function whole(points: number[]): number[] {
   return points.map((v) => clampCoord(Math.round(v)) || 0);
 }
 
+/** Whether a finger's drag is near enough to even to be laid even. */
+function pulledEven(kind: ShapeKind, a: Point, b: Point, unitsPerPx: number | undefined): boolean {
+  if (unitsPerPx === undefined) {
+    return false;
+  }
+  const reach = SHAPE_PULL_PX * unitsPerPx;
+  if (kind === 'line') {
+    const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const off = Math.abs(angle - Math.round(angle / LINE_PULL_STEP) * LINE_PULL_STEP);
+    // The end's distance from that direction, along the arc.
+    return off <= LINE_PULL_MAX && Math.hypot(b[0] - a[0], b[1] - a[1]) * off <= reach;
+  }
+  const [w, h] = [Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])];
+  // In pixels for a big frame, by a tenth for a small one: a 40×20 frame
+  // differs by 20 px and is plainly not meant square.
+  return Math.abs(w - h) <= Math.min(reach, FRAME_PULL_SHARE * Math.max(w, h));
+}
+
 export function shapePoints(kind: ShapeKind, a: Point, b: Point, options: ShapeOptions): number[] {
+  const even = options.square || pulledEven(kind, a, b, options.pull);
   const end = kind === 'line'
-    ? (options.square ? steppedEnd(a, b) : b)
-    : framedEnd(a, b, options.square);
+    ? (even ? steppedEnd(a, b) : b)
+    : framedEnd(a, b, even);
   // From the centre the press is the middle: the other end is the pointer
   // mirrored through it.
   const start: Point = options.fromCentre ? [2 * a[0] - end[0], 2 * a[1] - end[1]] : a;
@@ -166,7 +203,7 @@ export function shapePoints(kind: ShapeKind, a: Point, b: Point, options: ShapeO
     return whole(ellipseIn(box));
   }
   if (kind === 'polygon') {
-    return whole(polygonIn(box, options.sides, options.square));
+    return whole(polygonIn(box, options.sides, even));
   }
   const { left, top, right, bottom } = box;
   return whole([left, top, right, top, right, bottom, left, bottom, left, top]);

@@ -71,6 +71,14 @@
       >{t('shapes.filled')}</button>
     </div>
   {/if}
+  <!-- Alt's stand-in: a finger has no Alt (owner, 2026-11-16). -->
+  <button
+    type="button"
+    class="toggle"
+    class:active={editor.settings.shapeFromCentre}
+    aria-pressed={editor.settings.shapeFromCentre}
+    onclick={() => editor.setSetting('shapeFromCentre', !editor.settings.shapeFromCentre)}
+  >{t('shapes.from_centre')}</button>
   <h2>{t('shapes.thickness')}</h2>
   <!-- The brush box's logarithmic track: the thin lines get most of it. -->
   <input
@@ -98,7 +106,6 @@
       e.currentTarget.value = String(editor.brushSizeLogical);
     }}
   />
-  <p class="hint">{t('shapes.hint')}</p>
 </div>
 
 <style>
@@ -117,7 +124,7 @@
   }
   h2,
   .choice,
-  .hint {
+  .toggle {
     grid-column: 1 / 3;
     margin: 0;
   }
@@ -154,6 +161,25 @@
     font-size: 0.86rem;
     cursor: pointer;
   }
+  .toggle {
+    min-height: var(--key-h, 2.75rem);
+    text-align: center;
+    border: none;
+    border-radius: var(--r-sm);
+    background: var(--sub);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.86rem;
+    cursor: pointer;
+  }
+  .toggle.active {
+    background: var(--accent);
+    color: var(--canvas);
+  }
+  .toggle:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
   .choice button.active {
     background: var(--canvas);
     color: var(--accent);
@@ -162,10 +188,6 @@
   input:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
-  }
-  .hint {
-    font-size: 0.8rem;
-    color: var(--ink-2);
   }
   input[type='range'] {
     width: 100%;

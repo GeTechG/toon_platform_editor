@@ -270,6 +270,13 @@
     fromCentre: boolean;
     /** The right button lays it in the fill colour, as a line. */
     swap: boolean;
+    /** Drawn by a finger: a nearly even shape is pulled even (tools/shapes.ts). */
+    touch: boolean;
+    /**
+     * A second finger down meanwhile: it is the finger's Shift (Procreate's
+     * QuickShape) — no pinch begins, the shape is even while it lies.
+     */
+    second: number | null;
     layer: Layer | undefined;
     cell: Frame | undefined;
   } | null>(null);
@@ -344,9 +351,10 @@
   function shapeNow(drag: NonNullable<typeof shapeGesture>) {
     const brush = editor.pluginBrush;
     return shapeStroke(editor.settings.shapeKind, drag.a, drag.b, {
-      square: drag.square,
-      fromCentre: drag.fromCentre,
+      square: drag.square || drag.second !== null,
+      fromCentre: drag.fromCentre || editor.settings.shapeFromCentre,
       sides: editor.settings.shapeSides,
+      pull: drag.touch ? unitsPerPx() : undefined,
     }, {
       width: brushWidthDoc(editor.brushSizeLogical),
       color: drag.swap ? editor.fillColor : brush.color,
@@ -1616,6 +1624,19 @@
    * committed: two fingers mean navigation, and nothing must be drawn.
    */
   function startNavigation(e: PointerEvent): boolean {
+    // A second finger while a finger frames a shape is that finger's Shift:
+    // taken here, before it could make a pinch and drop the shape. Any more
+    // fingers meanwhile are swallowed too — none of them is in `touches`, so
+    // a third would otherwise have made the pair of a pinch.
+    if (e.pointerType === 'touch' && shapeGesture?.touch && e.pointerId !== shapeGesture.pointerId) {
+      if (shapeGesture.second === null) {
+        shapeGesture = { ...shapeGesture, second: e.pointerId };
+        // Held, so its lift off the canvas still comes here (endNavigation).
+        canvasEl.setPointerCapture(e.pointerId);
+        scheduleDraw();
+      }
+      return true;
+    }
     if (e.pointerType === 'touch') {
       // A palm resting while the pen works is not a gesture: it would move
       // or pinch the sheet under the nib.
@@ -2244,6 +2265,8 @@
           square: false,
           fromCentre: false,
           swap: e.button === 2,
+          touch: e.pointerType === 'touch',
+          second: null,
           layer: editor.doc.layers[editor.activeLayer],
           cell: editor.activeCell,
         };
@@ -2504,6 +2527,12 @@
   }
 
   function endNavigation(e: PointerEvent): boolean {
+    // The shape's second finger lifted (or lost): the shape follows the first again.
+    if (shapeGesture?.second === e.pointerId) {
+      shapeGesture = { ...shapeGesture, second: null };
+      scheduleDraw();
+      return true;
+    }
     const was = navigating();
     touches.delete(e.pointerId);
     // A third finger lifted: the pinch goes on with the two left, measured

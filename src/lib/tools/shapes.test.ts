@@ -81,6 +81,38 @@ describe('shapePoints', () => {
   });
 });
 
+describe('a finger pulls a shape even', () => {
+  // `pull` is the sheet units one screen pixel spans; a mouse or a pen passes none.
+  const finger = (unitsPerPx: number) => ({ ...free, pull: unitsPerPx });
+
+  test('a frame whose sides differ by no more than 24 screen px becomes even', () => {
+    expect(shapePoints('rect', [0, 0], [200, 190], finger(1))).toEqual([0, 0, 200, 0, 200, 200, 0, 200, 0, 0]);
+    expect(shapePoints('rect', [0, 0], [200, 120], finger(1))).toEqual([0, 0, 200, 0, 200, 120, 0, 120, 0, 0]);
+  });
+
+  test('and by no more than a tenth of the longer side: a small 40×20 frame stays', () => {
+    expect(shapePoints('rect', [0, 0], [40, 20], finger(1))).toEqual([0, 0, 40, 0, 40, 20, 0, 20, 0, 0]);
+    expect(shapePoints('rect', [0, 0], [40, 37], finger(1))).toEqual([0, 0, 40, 0, 40, 40, 0, 40, 0, 0]);
+  });
+
+  test('the threshold is the screen\'s: zoomed in four times the same frame is 40 px off, and stays', () => {
+    expect(shapePoints('rect', [0, 0], [200, 190], finger(0.25))).toEqual([0, 0, 200, 0, 200, 190, 0, 190, 0, 0]);
+  });
+
+  test('a line within 24 px and 5° of a level, upright or 45° direction lies on it', () => {
+    expect(shapePoints('line', [0, 0], [200, 15], finger(1))).toEqual([0, 0, 201, 0]);
+    // 11° off level and 34° off the diagonal: free.
+    expect(shapePoints('line', [0, 0], [200, 40], finger(1))).toEqual([0, 0, 200, 40]);
+    // A short line is pulled by the angle, not by the pixels alone: 8.5° is free.
+    expect(shapePoints('line', [0, 0], [40, 6], finger(1))).toEqual([0, 0, 40, 6]);
+    expect(shapePoints('line', [0, 0], [40, 3], finger(1))).toEqual([0, 0, 40, 0]);
+  });
+
+  test('a mouse or a pen is never pulled', () => {
+    expect(shapePoints('rect', [0, 0], [200, 190], free)).toEqual([0, 0, 200, 0, 200, 190, 0, 190, 0, 0]);
+  });
+});
+
 describe('the format range', () => {
   test('a shape framed past the int16 range is held inside it, as a brush stroke is', () => {
     // A Shift square near the edge of a 32767-wide sheet runs past it.

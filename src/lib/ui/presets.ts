@@ -271,6 +271,8 @@ export interface EditorSettings {
   shapeSides: number;
   /** A shape is laid filled (a feather) rather than outlined (a pencil); a line never is. */
   shapeFilled: boolean;
+  /** The press is the shape's centre, as with Alt held: a finger has no Alt (owner, 2026-11-16). */
+  shapeFromCentre: boolean;
   /**
    * The ruler on the sheet, the studio's alone (never in the document): where
    * it was left and whether it is out. Null until it is first laid.
@@ -400,6 +402,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   shapeKind: 'rect',
   shapeSides: 3,
   shapeFilled: false,
+  shapeFromCentre: false,
   ruler: null,
   pluginCatalog: PLUGIN_CATALOG,
   // Two frames each way at 0.3 and 0.15: near the 0.3 / 0.1 Toonop had.
@@ -686,6 +689,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     shapeKind: SHAPE_KINDS.includes(raw.shapeKind as ShapeKind) ? raw.shapeKind as ShapeKind : DEFAULT_SETTINGS.shapeKind,
     shapeSides: typeof raw.shapeSides === 'number' ? clampSides(raw.shapeSides) : DEFAULT_SETTINGS.shapeSides,
     shapeFilled: flag('shapeFilled'),
+    shapeFromCentre: flag('shapeFromCentre'),
     ruler: readRuler(raw.ruler),
     fillSource: FILL_SOURCES.includes(raw.fillSource as FillSource) ? raw.fillSource as FillSource : DEFAULT_SETTINGS.fillSource,
     pluginCatalog: readCatalogAddress(raw),

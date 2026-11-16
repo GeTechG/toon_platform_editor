@@ -67,7 +67,7 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
         command('ruler', 'ruler'),
       ],
       mouse: [...again.mouse, mouse('shift_drag'), mouse('shape_mods'), mouse('ruler')],
-      gesture: again.gesture,
+      gesture: [...again.gesture, gesture('shape_second')],
     },
     {
       id: 'colour',
