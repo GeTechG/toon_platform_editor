@@ -453,21 +453,18 @@
     onPinchUp(e);
     endCellDrag();
     endCarry(e);
-    endGrip(e);
     endMark(e);
   }
 
-  /** The window lost: no release will come — the drawing keeps the length it has, the end mark goes back. */
+  /** The window lost: no release will come — the end mark goes back. */
   function onWindowBlur(): void {
     closeMenu();
-    endGrip();
     endMark(undefined, true);
   }
 
   function onWindowMove(e: PointerEvent): void {
     if (onPinchMove(e)) return;
     onCarryMove(e);
-    onGripMove(e);
     onMarkMove(e);
   }
 
@@ -717,10 +714,13 @@
     const holds = Array.from({ length: total }, (_, i) => timing.start(i + 1) - timing.start(i));
     const to = carryTarget(holds, carry.at, carry.count, carry.grab, pointedTick(carry.lastX), putting ? total : total - carry.count, putting);
     if (to === carry.at) return;
-    if (carry.copy && !carry.copied) {
+    if (carry.copy && to !== carry.from) {
+      // Copies are put down afresh at every step: moved, a copy left copies of its own behind.
+      const before = editor.cellBounds.frames - (carry.copied ? carry.count : 0);
+      if (carry.copied) editor.withdrawFrames();
       editor.copyFramesTo(carry.from, carry.count, to);
-      if (editor.cellBounds.frames !== total + carry.count) return; // refused: no room, or a transform
-      carry.copied = true;
+      carry.copied = editor.cellBounds.frames === before + carry.count;
+      if (!carry.copied) return; // refused: no room, or a transform
     } else if (carry.copy && to === carry.from) {
       // Back where it began: the copies right before their originals would be
       // a copy nobody aimed — it goes, as Krita drops a frame onto itself.
@@ -729,11 +729,9 @@
       carry.at = carry.from;
       return;
     } else {
-      // Known by the rows as they stand: a refused move leaves every one as it was.
-      const rows = editor.doc.layers.map((layer) => [...layer.frames]);
-      editor.moveFramesTo(carry.at, carry.count, to, carry.copy || carry.at !== carry.from);
-      if (editor.doc.layers.every((layer, l) => layer.frames.length === rows[l].length
-        && layer.frames.every((cell, f) => cell === rows[l][f]))) return; // refused: the frames stand where they were
+      // Laid again from where the drag began: each layer's drawing of the tick
+      // goes exactly where it is let go (owner, 2026-11-17).
+      if (editor.moveColumnsTo(carry.from, carry.count, to, true) === null) return; // refused: a transform
     }
     carry.at = to;
     carried = true;
@@ -809,70 +807,21 @@
       // The drag's one step, taken back unfiled: everything as the carry found it.
       editor.withdrawGesture();
     } else {
-      editor.moveFramesTo(carry.at, carry.count, carry.from, true);
+      editor.withdrawGesture();
     }
     carried = false;
     endCarry();
   }
 
   function onCarryKey(e: KeyboardEvent): void {
-    if (e.key !== 'Escape' || !(carry || grip || mark)) return;
+    if (e.key !== 'Escape' || !(carry || mark)) return;
     e.preventDefault();
     e.stopPropagation();
     cancelCarry();
-    cancelGrip();
     endMark(undefined, true);
   }
 
-  // --- A drawing's duration, by the handle at the end of its band -----------
-  // The right edge of a drawing's last cell (its own or its pause's) is a
-  // handle: dragged right it lasts longer and the tail of its layer is
-  // pushed, dragged left shorter, never under a tick. One drag, one step of
-  // undo; Escape gives back the length it had. «Длительность −/+» in the
-  // frame menu is the same without a drag (WCAG 2.5.7).
-  let grip = $state<{ pointerId: number; startX: number; from: number; by: number } | null>(null);
-  /** A release outside the window sends no pointerup: the next move with no button ends the drag. */
-  const lostGrip = createLostRelease();
-
-  function onGripDown(e: PointerEvent, frame: number, layer: number): void {
-    if (editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
-    e.stopPropagation();
-    e.preventDefault();
-    // The drawing itself is taken: as its pause shortens, the cell pressed may stop being its.
-    editor.selectCell(keyOf(editor.doc.layers[layer].frames, frame), layer);
-    lostGrip.reset();
-    grip = { pointerId: e.pointerId, startX: e.clientX, from: editor.activeDuration, by: 0 };
-    editor.beginGesture();
-    editor.gestureHeld = true;
-  }
-
-  function onGripMove(e: PointerEvent): void {
-    if (!grip || e.pointerId !== grip.pointerId) return;
-    if (lostGrip(e, mainUp)) {
-      endGrip();
-      return;
-    }
-    // Counted from where the drag began: the drag's one step is laid again each time.
-    const by = Math.max(1, grip.from + Math.round((e.clientX - grip.startX) / pitch)) - grip.from;
-    if (by === grip.by) return;
-    grip.by = by;
-    editor.changeDuration(by, true);
-  }
-
-  function endGrip(e?: PointerEvent): void {
-    if (!grip || (e && e.pointerId !== grip.pointerId)) return;
-    grip = null;
-    carried = true;
-    editor.gestureHeld = false;
-  }
-
-  function cancelGrip(): void {
-    if (!grip) return;
-    editor.withdrawGesture();
-    endGrip();
-  }
-
-  /** Whether cell `i` of the layer is the last of its drawing's time: the handle stands on it. */
+  /** Whether cell `i` of the layer is the last of its drawing's time: its band ends there. */
   function endsDrawing(layer: number, i: number): boolean {
     const frames = editor.doc.layers[layer].frames;
     return i + 1 >= frames.length || frames[i + 1] !== null;
@@ -882,12 +831,14 @@
   // A mark after the last tick: dragged, the film is as long as where it is let
   // go. Longer continues every layer; shorter asks first when drawings go.
   let mark = $state<{ pointerId: number; startX: number; from: number; to: number } | null>(null);
+  /** A release outside the window sends no pointerup: the next move with no button ends the drag. */
+  const lostMark = createLostRelease();
 
   function onMarkDown(e: PointerEvent): void {
     if (editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
     e.stopPropagation();
     e.preventDefault();
-    lostGrip.reset();
+    lostMark.reset();
     mark = { pointerId: e.pointerId, startX: e.clientX, from: frameTotal, to: frameTotal };
     editor.gestureHeld = true;
   }
@@ -895,7 +846,7 @@
   function onMarkMove(e: PointerEvent): void {
     if (!mark || e.pointerId !== mark.pointerId) return;
     // Let go outside the window: the length is not asked for by a hand that is gone.
-    if (lostGrip(e, mainUp)) {
+    if (lostMark(e, mainUp)) {
       endMark(undefined, true);
       return;
     }
@@ -918,7 +869,7 @@
   // browser has not begun yet — pointer events have no say in it.
   $effect(() => {
     const still = (e: TouchEvent) => {
-      if (held || carry || pinch || grip || mark) e.preventDefault();
+      if (held || carry || pinch || mark) e.preventDefault();
     };
     document.addEventListener('touchmove', still, { passive: false });
     return () => {
@@ -1395,6 +1346,10 @@
         {#if view.after > 0}
           <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
         {/if}
+        <!-- The frame cursor (owner, 2026-11-17): a line on the left edge of the
+             tick on screen, down through every layer, as a playhead runs in an
+             editor of time. It follows the preview; it takes no press. -->
+        <span class="playhead" aria-hidden="true" style:left="{GRID_GAP + editor.displayedFrame * pitch - gap / 2}px"></span>
         <!-- The film's end: dragged, the film is as long as where it is let
              go. «Кадров» over the layers is the same with the keyboard. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1507,11 +1462,6 @@
               {:else if kind === 'blank'}
                 <span class="ring" aria-hidden="true"></span>
               {/if}
-              {#if endsDrawing(layerIndex, i) && !editor.playing}
-                <!-- The end of the drawing's time: dragged, it lasts longer or shorter. -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <span class="grip" aria-hidden="true" onpointerdown={(e) => onGripDown(e, i, layerIndex)}></span>
-              {/if}
             </button>
           {/each}
           {/if}
@@ -1558,18 +1508,6 @@
     <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canDuplicateFrames} onclick={() => run(() => editor.duplicateActiveFrame())}>
       <Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span)}</span>{@render key('duplicate')}
     </button>
-    <!-- How long the drawing lasts on its layer: «−» and «+» keep the menu
-         open, so a pause is set press by press (WCAG 2.5.7 for the handle). -->
-    <div class="duration" role="group" aria-label={t('timeline.duration')}>
-      <span>{t('timeline.duration')}</span>
-      <button role="menuitem" aria-label={t('timeline.duration_less')} title={t('timeline.duration_less')} disabled={!editor.canChangeDuration(-1)} onclick={() => editor.changeDuration(-1)}>
-        <Icon name="minus" size={16} />
-      </button>
-      <output aria-live="polite">{editor.activeDuration}</output>
-      <button role="menuitem" aria-label={t('timeline.duration_more')} title={t('timeline.duration_more')} disabled={!editor.canChangeDuration(1)} onclick={() => editor.changeDuration(1)}>
-        <Icon name="plus" size={16} />
-      </button>
-    </div>
     <button role="menuitem" disabled={!editor.canShiftCells(-1)} onclick={() => run(() => editor.shiftCells(-1))}>
       <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_left')}</span>
     </button>
@@ -1815,55 +1753,84 @@
     white-space: nowrap;
     pointer-events: none;
   }
+  /* --- The frame cursor -------------------------------------------------- */
+  /* No transition: it jumps with the frame, as the ring of the frame on
+     screen does — eased, it smeared across the strip under a preview. */
+  .playhead {
+    position: absolute;
+    top: 0;
+    width: 0;
+    height: 2.75rem;
+    pointer-events: none;
+    z-index: 3;
+  }
+  /* The line, through the rows below the head. */
+  .playhead::after {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0;
+    width: 2px;
+    height: 100vh;
+    background: var(--accent);
+  }
+  /* Its tab in the ruler: a point down onto the line. */
+  .playhead::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 0;
+    width: 10px;
+    height: 8px;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    background: var(--accent);
+  }
   /* --- The film's end ---------------------------------------------------- */
+  /* Not a line — a line is the cursor's (owner, 2026-11-17: the end read as
+     the cursor). Past the end the strip is hatched: there is no film there.
+     The handle is a bracket in the head that closes the frames. */
   .end-mark {
     position: absolute;
     bottom: 0;
-    height: 2.75rem;
-    width: 12px;
-    margin-left: -6px;
+    width: 14px;
+    height: 2rem;
     cursor: ew-resize;
     touch-action: none;
     z-index: 2;
   }
-  /* The line runs down through the rows; the grip is the head's part of it. */
+  /* The hatching past the end, down through the rows. */
   .end-mark::after {
     content: '';
     position: absolute;
-    left: 5px;
-    top: 0;
-    width: 2px;
+    left: 0;
+    top: 100%;
+    width: 48px;
     height: 100vh;
-    background: var(--ink-2);
-    opacity: 0.5;
+    background: repeating-linear-gradient(135deg, var(--hairline) 0 2px, transparent 2px 7px);
     pointer-events: none;
   }
+  /* The bracket: ] closing the frames' numbers. */
   .end-mark::before {
     content: '';
     position: absolute;
-    left: 2px;
-    top: 0.75rem;
-    width: 8px;
-    height: 1rem;
-    border-radius: 2px;
-    background: var(--ink-2);
-  }
-  .end-mark.dragging::after {
-    background: var(--accent);
-    opacity: 1;
+    left: 0;
+    top: 0.3rem;
+    bottom: 0.3rem;
+    width: 6px;
+    box-sizing: border-box;
+    border: 2px solid var(--ink-2);
+    border-left: none;
+    border-radius: 0 3px 3px 0;
   }
   .end-mark.dragging::before {
-    background: var(--accent);
+    border-color: var(--accent);
   }
   @media (hover: hover) {
-    .end-mark:hover::after {
-      background: var(--accent);
-      opacity: 1;
-    }
     .end-mark:hover::before {
-      background: var(--accent);
+      border-color: var(--accent);
     }
   }
+
   .cell {
     flex: none;
     box-sizing: border-box;
@@ -1937,38 +1904,6 @@
     width: min(10px, calc(100% - 4px));
     background: var(--ink);
   }
-  /* The end of a drawing's time: its handle, a hairline that shows on hover. */
-  /* Inside the cell, at its right edge: a drawing's cell clips what sticks out. */
-  .grip {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    width: 8px;
-    z-index: 1;
-    cursor: ew-resize;
-    touch-action: none;
-  }
-  .grip::after {
-    content: '';
-    position: absolute;
-    top: 20%;
-    bottom: 20%;
-    right: 1px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--accent);
-    opacity: 0;
-  }
-  @media (hover: hover) {
-    .cell:hover > .grip::after,
-    .grip:hover::after {
-      opacity: 1;
-    }
-  }
-  .cell.active > .grip::after {
-    opacity: 0.6;
-  }
   /* --- A long film as bands ---------------------------------------------- */
   .bands {
     flex: none;
@@ -2039,6 +1974,11 @@
     }
     .num.onion {
       text-decoration-thickness: 2px;
+    }
+    .playhead::after,
+    .playhead::before {
+      background: Highlight;
+      forced-color-adjust: none;
     }
     /* Told from the numbers under it by its shadow alone. */
     .pick-bar.shown {
@@ -2142,22 +2082,6 @@
   }
   .frame-menu span {
     flex: 1;
-  }
-  .frame-menu .duration {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-height: var(--key-h, 2.75rem);
-    padding: 0 4px 0 36px;
-  }
-  .frame-menu .duration button {
-    padding: 0 8px;
-  }
-  .frame-menu output {
-    min-width: 2ch;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
   }
   .frame-menu kbd {
     font: inherit;

@@ -33,7 +33,6 @@ import {
   documentWeight,
   mergeCells,
   copyFrames,
-  moveFrames,
   moveLayer,
   removeFrame,
   removeLastStroke,
@@ -54,27 +53,21 @@ import {
 } from '../model/operations';
 import {
   canStepCells,
+  placeCells,
   cellsFit,
-  copyCellsTo,
   deleteCell,
   deleteCells,
   drawingsPast,
-  durationOf,
-  lengthen,
-  moveCellsTo,
   nextIsDrawing,
   putAfter,
   putBefore,
   setFilmLength,
-  shorten,
-  stepCells,
   type Shift,
 } from '../model/exposure';
 import {
   activeFrameAfterRemove,
   activeLayerAfterMove,
   columnSelection,
-  frameAfterMove,
   framesToCarry,
   activeLayerAfterRemove,
   clampPlayerFps,
@@ -311,10 +304,10 @@ interface StructureEdit {
   framesMoved?: true;
   /** A change of a layer's opacity or blend mode: one drag of the slider folds into it. */
   looked?: true;
-  /** A drawing's duration changed: one drag of its handle folds into it. */
-  timed?: true;
   /** The block that was selected, for a carry taken back unfiled. */
   selection?: CellSelection;
+  /** The onion's history of visited frames, for a carry taken back or laid again. */
+  visited?: number[];
   /** What redo puts back after undo — a move only splices, so its shape is enough. */
   redo?: StructureEdit;
 }
@@ -2111,7 +2104,7 @@ export class EditorState {
     const layers = [...this.selection.layers];
     const inBlock = Math.min(count - 1, Math.max(0, this.activeFrame - from));
     this.structureStep(() => {
-      const at = this.#write((doc) => copyCellsTo(doc, layers, from, count, from + count));
+      const at = this.#write((doc) => placeCells(doc, layers, from, count, from + count, true));
       this.activeFrame = at + inBlock;
       this.selection = { frames: Array.from({ length: count }, (_, i) => at + i), layers };
     });
@@ -2210,49 +2203,6 @@ export class EditorState {
     }, t('ask.delete'));
   }
 
-  /** How many ticks the drawing the active cell shows lasts on its layer. */
-  get activeDuration(): number {
-    return durationOf(this.doc, this.activeLayer, this.activeFrame);
-  }
-
-  /** Whether «Длительность» may change by `by` ticks. */
-  canChangeDuration(by: number): boolean {
-    return !this.playing && (by > 0 ? cellsFit(this.doc, by) : this.activeDuration > 1);
-  }
-
-  /**
-   * «Длительность −/+», and the handle at the end of a drawing's band: the
-   * drawing the active cell shows lasts `by` ticks longer or shorter on its
-   * layer, never under one. `merge` folds the steps of one drag into one
-   * step of undo, and a drag brought back to where it began leaves none.
-   */
-  changeDuration(by: number, merge = false): void {
-    // A drag's step is taken back first: `by` counts from where the drag
-    // began, so out and back again leaves the film as it was.
-    const folded = merge ? this.gestureTop('timed') : undefined;
-    if (folded) {
-      this.edits = this.edits.slice(0, -1);
-      this.#write((doc) => restoreStructure(doc, folded.snap));
-      this.activeFrame = folded.activeFrame;
-      this.activeLayer = folded.activeLayer;
-      this.gestureStep = null;
-    }
-    if (by === 0 || !this.canChangeDuration(by) || !this.leaveTransform()) {
-      if (folded) this.touched = true;
-      return;
-    }
-    const layers = [this.activeLayer];
-    const before = folded ?? this.takeStructure();
-    const key = keyOf(this.doc.layers[this.activeLayer].frames, this.activeFrame);
-    this.#write((doc) => (by > 0 ? lengthen(doc, layers, this.activeFrame, by) : shorten(doc, layers, this.activeFrame, -by)));
-    // Still on the same drawing: a cell its pause gave up is the next one's.
-    this.activeFrame = Math.min(this.activeFrame, key + durationOf(this.doc, this.activeLayer, key) - 1);
-    before.timed = true;
-    before.redo = this.takeStructure();
-    this.pushStructure(before);
-    if (merge) this.gestureStep = before;
-  }
-
   /**
    * The step the drag under way has filed, while it is still the top of the
    * history and the document is what it left. A drag folds only into its own
@@ -2260,19 +2210,19 @@ export class EditorState {
    */
   private gestureStep: StructureEdit | null = null;
 
-  private gestureTop(kind: 'timed' | 'framesMoved'): StructureEdit | undefined {
+  private gestureTop(): StructureEdit | undefined {
     const top = this.edits[this.edits.length - 1];
-    return top && top === this.gestureStep && !Array.isArray(top) && top[kind] && structureIntact(this.doc, top.snap) ? top : undefined;
+    return top && top === this.gestureStep && !Array.isArray(top) && top.framesMoved && structureIntact(this.doc, top.snap) ? top : undefined;
   }
 
-  /** A drag of cells, a duration or the film's end begins: nothing it does folds into a step before it. */
+  /** A drag of cells begins: nothing it does folds into a step before it. */
   beginGesture(): void {
     this.gestureStep = null;
   }
 
   /** Escape on a drag: its step taken back, unfiled — everything as the drag found it. */
   withdrawGesture(): void {
-    const top = this.gestureTop('timed') ?? this.gestureTop('framesMoved');
+    const top = this.gestureTop();
     this.gestureStep = null;
     if (!top) return;
     this.edits = this.edits.slice(0, -1);
@@ -2280,6 +2230,7 @@ export class EditorState {
     this.activeFrame = top.activeFrame;
     this.activeLayer = top.activeLayer;
     if (top.selection) this.selection = top.selection;
+    if (top.visited) this.visitedFrames = top.visited;
     this.touched = true;
   }
 
@@ -2318,43 +2269,9 @@ export class EditorState {
   }
 
   /**
-   * Carries `count` frames from `from`, in every layer, so the first lands at
-   * `to` (owner, 2026-10-24). The active frame and the block ride along. One
-   * undo step with its redo, as a layer move: `merge` folds the steps of one
-   * drag into it, and a drag brought back to where it began leaves none.
-   */
-  moveFramesTo(from: number, count: number, to: number, merge = false): void {
-    if (this.playing || from === to || to < 0 || to + count > frameCount(this.doc) || !this.leaveTransform()) {
-      return;
-    }
-    const top = this.edits[this.edits.length - 1];
-    const folded = merge && top && !Array.isArray(top) && top.framesMoved && structureIntact(this.doc, top.snap)
-      ? top
-      : undefined;
-    const before = folded ?? this.takeStructure();
-    this.#write((doc) => moveFrames(doc, from, count, to));
-    const after = (i: number) => frameAfterMove(i, from, count, to);
-    this.activeFrame = after(this.activeFrame);
-    this.selection = { frames: this.selection.frames.map(after), layers: this.selection.layers };
-    this.visitedFrames = this.visitedFrames.map(after);
-    if (folded) {
-      this.edits = this.edits.slice(0, -1);
-      // The length too: copies put past the last frame leave every old cell in place.
-      if (folded.snap.frames.every((frames, l) => frames.length === this.doc.layers[l].frames.length
-        && frames.every((cell, i) => cell === this.doc.layers[l].frames[i]))) {
-        this.touched = true;
-        return;
-      }
-    }
-    before.framesMoved = true;
-    before.redo = this.takeStructure();
-    this.pushStructure(before);
-  }
-
-  /**
    * Ctrl+drag: copies of `count` frames from `from`, in every layer, put at
    * `to`; the originals stay and the copies become the block, which the
-   * carry then moves (`moveFramesTo` with `merge` folds into this step).
+   * carry puts down afresh at every step (withdrawn first).
    */
   copyFramesTo(from: number, count: number, to: number): void {
     if (this.playing || frameCount(this.doc) + count > MAX_FRAMES || !this.leaveTransform()) {
@@ -2385,6 +2302,7 @@ export class EditorState {
     this.activeFrame = top.activeFrame;
     this.activeLayer = top.activeLayer;
     if (top.selection) this.selection = top.selection;
+    if (top.visited) this.visitedFrames = top.visited;
     this.touched = true;
   }
 
@@ -2399,46 +2317,55 @@ export class EditorState {
     return !this.playing && (step < 0 ? from > 0 : from + count < frameCount(this.doc));
   }
 
-  /** «Сдвинуть влево/вправо»: the move a drag makes, without the drag (WCAG 2.5.7). */
+  /** «Сдвинуть столбец влево/вправо»: the move a drag of the number makes, without the drag (WCAG 2.5.7). */
   shiftFrames(step: -1 | 1): void {
     const { from, count } = this.framesToShift;
-    this.moveFramesTo(from, count, from + step);
+    if (this.canShiftFrames(step)) this.moveColumnsTo(from, count, from + step);
   }
 
   /**
-   * Carries `count` cells from `from` along the layers of the block, so they
-   * land near `to` (timeline-exposure-cells): the other layers stand, and
-   * the cells never land inside a pause. With `merge` this is a step of the
-   * drag under way: the drag's step is taken back first and the carry laid
-   * from where the drag began (`from` is that place), so no step of the way
-   * leaves a copy behind and a carry brought back leaves no step at all.
-   * Returns where the cells landed, or null when refused.
+   * Carries `count` cells from `from` along the layers of the block to tick
+   * `to` exactly (owner, 2026-11-17): they swap places with what stands
+   * there, the pause stays; the other layers stand. With `merge` this is a step of the drag under way: the drag's step
+   * is taken back first and the carry laid from where the drag began (`from`
+   * is that place), so a carry brought back leaves no step at all. Returns
+   * where the cells landed, or null when refused.
    */
   moveCellsInLayer(from: number, count: number, to: number, merge = false): number | null {
-    return this.carryCells(merge, (doc, layers) => moveCellsTo(doc, layers, from, count, to), from, count);
+    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to), from, count);
+  }
+
+  /**
+   * A column carried by its number (owner, 2026-11-17): in every layer a
+   * drawing of the tick goes exactly where it is let go (`placeCells`). As a
+   * drag's step it is laid again from where the drag began, as cells are.
+   */
+  moveColumnsTo(from: number, count: number, to: number, merge = false): number | null {
+    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to), from, count, true);
   }
 
   /** Ctrl+drag of cells: copies put near `to` in the block's layers, their tails pushed — as a drag's step, laid again from its start. */
   copyCellsInLayer(from: number, count: number, to: number, merge = false): number | null {
     if (!cellsFit(this.doc, count)) return null;
-    return this.carryCells(merge, (doc, layers) => copyCellsTo(doc, layers, from, count, to), from, count);
+    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to, true), from, count);
   }
 
   /** One step of a carry of cells: the drag's own step undone, then `write` from the start; the block and the active cell ride along. */
-  private carryCells(merge: boolean, write: (doc: ToonDocument, layers: number[]) => number, from: number, count: number): number | null {
+  private carryCells(merge: boolean, write: (doc: ToonDocument, layers: number[]) => number, from: number, count: number, every = false): number | null {
     if (this.playing || !this.leaveTransform()) {
       return null;
     }
-    const folded = merge ? this.gestureTop('framesMoved') : undefined;
+    const folded = merge ? this.gestureTop() : undefined;
     if (folded) {
       this.edits = this.edits.slice(0, -1);
       this.#write((doc) => restoreStructure(doc, folded.snap));
       this.activeFrame = folded.activeFrame;
       this.activeLayer = folded.activeLayer;
       if (folded.selection) this.selection = folded.selection;
+      if (folded.visited) this.visitedFrames = folded.visited;
       this.gestureStep = null;
     }
-    const layers = [...this.selection.layers];
+    const layers = every ? this.doc.layers.map((_, l) => l) : [...this.selection.layers];
     const before = folded ?? this.takeStructure();
     const landed = this.#write((doc) => write(doc, layers));
     this.activeFrame = landed + Math.min(count - 1, Math.max(0, this.activeFrame - from));
@@ -2457,14 +2384,14 @@ export class EditorState {
   /** Whether the cells of the block have a drawing to step over that way. */
   canShiftCells(step: -1 | 1): boolean {
     const { from, count } = this.framesToShift;
-    return !this.playing && this.selection.layers.some((l) => canStepCells(this.doc, l, from, count, step));
+    return !this.playing && canStepCells(this.doc, from, count, step);
   }
 
   /** «Сдвинуть влево/вправо» on cells: the block steps over the drawing next to it (WCAG 2.5.7). */
   shiftCells(step: -1 | 1): void {
     if (!this.canShiftCells(step) || !this.leaveTransform()) return;
     const { from, count } = this.framesToShift;
-    this.carryCells(false, (doc, layers) => stepCells(doc, layers, from, count, step), from, count);
+    this.carryCells(false, (doc, layers) => placeCells(doc, layers, from, count, from + step), from, count);
   }
 
   setFps(value: number): void {
@@ -2671,6 +2598,7 @@ export class EditorState {
       activeFrame: this.activeFrame,
       activeLayer: this.activeLayer,
       selection: { frames: [...this.selection.frames], layers: [...this.selection.layers] },
+      visited: [...this.visitedFrames],
     };
   }
 

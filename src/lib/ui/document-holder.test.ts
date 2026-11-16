@@ -27,7 +27,6 @@ const READ_ONLY = new Set([
   // The time of a layer, looked at (model/exposure.ts): nothing is written.
   'cellsFit',
   'nextIsDrawing',
-  'durationOf',
   'drawingsPast',
   'canStepCells',
   'sameShape',

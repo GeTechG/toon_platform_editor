@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Cell, ToonDocument } from '../format/types';
 import { validateDocument } from '../format/validate';
 import { restoreStructure, structureIntact, takeStructure } from '../ui/structure-undo';
-import { stepCells, copyCellsTo, moveCellsTo, drawingsPast, durationOf, lengthen, setFilmLength, shorten, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
+import { placeCells, drawingsPast, setFilmLength, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
 
 /**
  * A layer as the specs write it: a letter is a drawing (its strokes say which
@@ -155,41 +155,6 @@ describe('Delete on a layer', () => {
   });
 });
 
-describe('a drawing\'s duration', () => {
-  it('counts the cells to the next drawing, or to the end of the film', () => {
-    const doc = docOf('A · · B ·');
-    expect(durationOf(doc, 0, 1)).toBe(3);
-    expect(durationOf(doc, 0, 3)).toBe(2);
-  });
-
-  it('a pause for the character: the tail pushed, the film longer, the background continues', () => {
-    const doc = docOf('F', 'A B C');
-    doc.layers[0].frames.push(null, null);
-    lengthen(doc, [1], 1, 2);
-    expect(text(doc, 1)).toBe('A B · · C');
-    expect(text(doc, 0)).toBe('F · · · ·');
-  });
-
-  it('shortening pulls the tail and keeps the film as long', () => {
-    const doc = docOf('A · · B');
-    shorten(doc, [0], 0, 1);
-    expect(text(doc)).toBe('A · B ·');
-  });
-
-  it('never below one cell', () => {
-    const doc = docOf('A B');
-    shorten(doc, [0], 0, 5);
-    expect(text(doc)).toBe('A B');
-  });
-
-  it('the last drawing ends earlier on an empty one', () => {
-    const doc = docOf('A · ·', 'F · ·');
-    shorten(doc, [0], 0, 1);
-    expect(text(doc)).toBe('A · ○');
-    expect(durationOf(doc, 0, 0)).toBe(2);
-  });
-});
-
 describe('the film\'s length', () => {
   it('a longer film: every layer\'s last drawing lasts to the end', () => {
     const doc = docOf('A B · ·', 'F · · ·');
@@ -211,46 +176,6 @@ describe('the film\'s length', () => {
   });
 });
 
-describe('cells carried in their own layer', () => {
-  it('a cell goes along its layer, the others stand', () => {
-    const doc = docOf('F · · ·', 'A B C D');
-    expect(moveCellsTo(doc, [1], 1, 1, 3)).toBe(3);
-    expect(text(doc, 1)).toBe('A C D B');
-    expect(text(doc, 0)).toBe('F · · ·');
-  });
-
-  it('a drawing goes with its pause', () => {
-    const doc = docOf('A · · B');
-    expect(moveCellsTo(doc, [0], 0, 1, 3)).toBe(1);
-    expect(text(doc)).toBe('B A · ·');
-  });
-
-  it('never lands inside a pause: it stops at the nearest drawing\'s edge', () => {
-    const doc = docOf('A B · · · C');
-    expect(moveCellsTo(doc, [0], 0, 1, 2)).toBe(4);
-    expect(text(doc)).toBe('B · · · A C');
-  });
-
-  it('a continuation carried away takes a copy of what it showed', () => {
-    const doc = docOf('A · · B');
-    moveCellsTo(doc, [0], 1, 1, 3);
-    expect(text(doc)).toBe('A · B A');
-  });
-
-  it('a copy of a continuation is a copy of what it showed', () => {
-    const doc = docOf('A · B');
-    expect(copyCellsTo(doc, [0], 1, 1, 3)).toBe(3);
-    expect(text(doc)).toBe('A · B A');
-  });
-
-  it('a copy into the middle pushes the tail by the rule of the shift', () => {
-    const doc = docOf('A B · ·', 'F · · ·');
-    copyCellsTo(doc, [0], 0, 1, 1);
-    expect(text(doc)).toBe('A A B ·');
-    expect(text(doc, 1)).toBe('F · · ·');
-  });
-});
-
 describe('each operation is one step of undo', () => {
   const steps: [string, string[], (doc: ToonDocument) => void][] = [
     ['«+» past the end', ['A B', 'F ·'], (doc) => putAfter(doc, [0], 1, 'all')],
@@ -259,11 +184,10 @@ describe('each operation is one step of undo', () => {
     ['Delete on the first drawing', ['A B'], (doc) => deleteCell(doc, [0], 0)],
     ['Delete on a continuation', ['A · B'], (doc) => deleteCell(doc, [0], 1)],
     ['a block deleted', ['A B C'], (doc) => deleteCells(doc, [0], 0, 2)],
-    ['a longer drawing', ['A B', 'F ·'], (doc) => lengthen(doc, [0], 0, 3)],
-    ['a shorter drawing', ['A · ·'], (doc) => shorten(doc, [0], 0, 1)],
     ['a shorter film', ['A B C', 'F · G'], (doc) => setFilmLength(doc, 1)],
-    ['cells carried', ['A · B'], (doc) => moveCellsTo(doc, [0], 0, 1, 3)],
-    ['cells copied', ['A · B', 'F · ·'], (doc) => copyCellsTo(doc, [0], 1, 1, 3)],
+    ['cells carried', ['A · B'], (doc) => placeCells(doc, [0], 0, 1, 2)],
+    ['cells copied', ['A · B', 'F · ·'], (doc) => placeCells(doc, [0], 1, 1, 3, true)],
+    ['a column carried', ['A B · ·', 'F · G ·'], (doc) => placeCells(doc, [0, 1], 1, 1, 0)],
   ];
   for (const [name, layers, step] of steps) {
     it(name, () => {
@@ -280,75 +204,75 @@ describe('each operation is one step of undo', () => {
   }
 });
 
-describe('«Сдвинуть» on cells of a layer', () => {
-  it('right steps over the next drawing with its pause', () => {
-    const doc = docOf('A B · · C');
-    expect(stepCells(doc, [0], 0, 1, 1)).toBe(3);
-    expect(text(doc)).toBe('B · · A C');
+
+describe('a frame goes where it is let go', () => {
+  it('one tick on: the place left goes on showing the drawing before it', () => {
+    const doc = docOf('D ○ · · · ○');
+    expect(placeCells(doc, [0], 1, 1, 2)).toBe(2);
+    expect(text(doc)).toBe('D · ○ · · ○');
   });
 
-  it('left steps over the drawing before', () => {
-    const doc = docOf('A · B C');
-    expect(stepCells(doc, [0], 2, 1, -1)).toBe(0);
-    expect(text(doc)).toBe('B A · C');
+  it('forward into a pause: the pause does not travel with it', () => {
+    const doc = docOf('A B C · · · ·');
+    placeCells(doc, [0], 1, 1, 5);
+    expect(text(doc)).toBe('A · C · · B ·');
   });
 
-  it('a block from the menu', () => {
+  it('carried on past a neighbour, the neighbour goes back where it stood', () => {
     const doc = docOf('A B C D');
-    expect(stepCells(doc, [0], 1, 2, -1)).toBe(0);
-    expect(text(doc)).toBe('B C A D');
-  });
-});
-
-describe('a block of layers stays one block', () => {
-  it('lands at one edge in every layer, the others keep what they showed', () => {
-    const doc = docOf('A B · · C D', 'E F G H I J');
-    expect(moveCellsTo(doc, [0, 1], 0, 1, 2)).toBe(3);
-    expect(text(doc, 0)).toBe('B · · A C D');
-    expect(text(doc, 1)).toBe('F G H E I J');
+    placeCells(doc, [0], 0, 1, 2);
+    expect(text(doc)).toBe('C B A D');
   });
 
-  it('carries exactly the cells picked: a pause it leaves behind keeps showing its drawing', () => {
-    const doc = docOf('A B C D', 'E · · ·');
-    expect(moveCellsTo(doc, [0, 1], 0, 1, 2)).toBe(2);
-    expect(text(doc, 0)).toBe('B C A D');
-    expect(text(doc, 1)).toBe('E · E E');
+  it('two frames side by side swap at the first step', () => {
+    const doc = docOf('A B C ·');
+    expect(placeCells(doc, [0], 0, 1, 1)).toBe(1);
+    expect(text(doc)).toBe('B A C ·');
   });
 
-  it('a layer whose pause the edge falls in keeps showing it: the rest of the pause is a copy', () => {
-    const doc = docOf('A B C D', 'E · · ·');
-    moveCellsTo(doc, [0, 1], 3, 1, 1);
-    expect(text(doc, 0)).toBe('A D B C');
-    expect(text(doc, 1)).toBe('E E E ·');
+  it('back onto a drawing: the two swap places', () => {
+    const doc = docOf('A B C');
+    placeCells(doc, [0], 2, 1, 0);
+    expect(text(doc)).toBe('C B A');
   });
 
-  it('copies land at one edge too', () => {
-    const doc = docOf('A B · ·', 'E F G H');
-    expect(copyCellsTo(doc, [0, 1], 0, 1, 3)).toBe(4);
-    expect(text(doc, 0)).toBe('A B · · A');
-    expect(text(doc, 1)).toBe('E F G H E');
-  });
-});
-
-describe('a carry back to where it began', () => {
-  it('changes nothing, in a block of layers too', () => {
-    const doc = docOf('A B C D', 'E · · ·');
-    expect(moveCellsTo(doc, [0, 1], 0, 1, 0)).toBe(0);
-    expect(doc.layers[1].frames).toEqual(docOf('A', 'E · · ·').layers[1].frames);
-    // Snapped back onto its own place from a pointer a little off it.
-    const one = docOf('A B · · · C');
-    const before = one.layers[0].frames.slice();
-    expect(moveCellsTo(one, [0], 0, 1, 1)).toBe(0);
-    expect(one.layers[0].frames).toEqual(before);
-    expect(one.layers[0].frames.every((cell, i) => cell === before[i])).toBe(true);
+  it('a layer left opening on a continuation opens on an empty drawing', () => {
+    const doc = docOf('A · · B');
+    placeCells(doc, [0], 0, 1, 2);
+    expect(text(doc)).toBe('○ · A B');
+    // A block a tick on is rotated: it overlaps its own place.
+    const block = docOf('A B C ·');
+    placeCells(block, [0], 0, 2, 1);
+    expect(text(block)).toBe('C A B ·');
   });
 
-  it('a continuation or a cell before a pause, carried to its own place, stays as it was', () => {
-    const doc = docOf('A · · B', 'E F G H');
-    moveCellsTo(doc, [0, 1], 0, 1, 0);
-    expect(text(doc, 0)).toBe('A · · B');
-    const one = docOf('A · · B');
-    expect(moveCellsTo(one, [0], 1, 1, 1)).toBe(1);
-    expect(text(one)).toBe('A · · B');
+  it('let go where it was, nothing changes', () => {
+    const doc = docOf('A · · B');
+    const before = doc.layers[0].frames.slice();
+    expect(placeCells(doc, [0], 0, 1, 0)).toBe(0);
+    expect(doc.layers[0].frames.every((cell, i) => cell === before[i])).toBe(true);
+  });
+
+  it('a block keeps its shape and the other layers stand', () => {
+    const doc = docOf('A B · · · ·', 'F · · · · ·');
+    placeCells(doc, [0], 0, 2, 3);
+    expect(text(doc, 0)).toBe('○ · · A B ·');
+    expect(text(doc, 1)).toBe('F · · · · ·');
+  });
+
+  it('a column: every layer\'s drawing of the tick goes, a layer with only a continuation there stands', () => {
+    const doc = docOf('A B C · ·', 'F · · G ·');
+    placeCells(doc, [0, 1], 1, 1, 4);
+    expect(text(doc, 0)).toBe('A · C · B');
+    expect(text(doc, 1)).toBe('F · · G ·');
+  });
+
+  it('a copy goes where it is let go too, the original stays', () => {
+    const doc = docOf('A · B');
+    expect(placeCells(doc, [0], 1, 1, 3, true)).toBe(3);
+    expect(text(doc)).toBe('A · B A');
+    const two = docOf('A B · ·');
+    placeCells(two, [0], 0, 1, 1, true);
+    expect(text(two)).toBe('A A B ·');
   });
 });

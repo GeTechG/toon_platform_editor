@@ -588,18 +588,12 @@
     "pick": "Select frames",
     "pick_hint": "Tap a frame — the selection will extend to it",
     "clear_selection": "Clear selection",
-    "hold": "Duration",
-    "hold_shorter": "One beat shorter",
-    "hold_longer": "One beat longer",
     "pick_done": "Done",
     "picked": "Frames {{from}}–{{to}}",
     "picked_one": "Frame {{from}}",
     "picked_layers": "{{frames}}, layers: {{n}}",
     "seconds": "{{n}} s",
     "end_mark": "End of the toon: {{n}} — drag to change the length",
-    "duration": "Duration",
-    "duration_less": "One frame shorter",
-    "duration_more": "One frame longer",
     "length": "Frames",
     "length_title": "Length of the toon in frames",
     "continuation_tip": "Frame {{n}} shows here — draw, and a new one appears",
@@ -1022,7 +1016,6 @@
     "trackpad": "Two fingers on the trackpad",
     "layer_name": "2×LMB on a layer",
     "strip_zoom": "Ctrl + wheel over the strip",
-    "duration": "LMB on a frame's edge on the strip",
     "film_end": "LMB on the strip's end mark"
   },
   "mouse_does": {
@@ -1036,7 +1029,6 @@
     "trackpad": "Move the sheet",
     "layer_name": "Rename layer",
     "strip_zoom": "Zoom the strip",
-    "duration": "Frame duration",
     "film_end": "Toon length"
   },
   "gesture_does": {

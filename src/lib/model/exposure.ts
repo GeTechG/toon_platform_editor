@@ -145,52 +145,6 @@ export function deleteCells(doc: ToonDocument, layers: readonly number[], from: 
   }
 }
 
-/** Where the drawing cell `i` shows begins, and how many cells it lasts. */
-function spanOf(frames: readonly Cell[], i: number): { key: number; cells: number } {
-  const key = keyOf(frames, i);
-  let end = key + 1;
-  while (end < frames.length && frames[end] === null) end++;
-  return { key, cells: end - key };
-}
-
-/** How many cells the drawing cell `i` of the layer shows lasts — to its next drawing or the film's end. */
-export function durationOf(doc: ToonDocument, layer: number, i: number): number {
-  return spanOf(doc.layers[layer].frames, i).cells;
-}
-
-/** The drawing cell `i` shows lasts `by` cells longer in each of `layers`; the tails are pushed by the rule of the shift. */
-export function lengthen(doc: ToonDocument, layers: readonly number[], i: number, by: number): void {
-  for (const l of layers) {
-    const frames = doc.layers[l].frames;
-    const { key, cells } = spanOf(frames, i);
-    const at = key + cells;
-    frames.splice(at, 0, ...Array<Cell>(by).fill(null));
-    eatTail(frames, at + by, by);
-  }
-  evenOut(doc);
-}
-
-/**
- * The drawing cell `i` shows lasts up to `by` cells shorter, never under one:
- * the tail comes left and the layer ends on continuations. The last drawing
- * of a layer has no tail to pull — it ends earlier on an empty drawing.
- */
-export function shorten(doc: ToonDocument, layers: readonly number[], i: number, by: number): void {
-  for (const l of layers) {
-    const frames = doc.layers[l].frames;
-    const { key, cells } = spanOf(frames, i);
-    const take = Math.min(by, cells - 1);
-    if (take <= 0) continue;
-    const end = key + cells;
-    if (end < frames.length) {
-      frames.splice(end - take, take);
-      for (let k = 0; k < take; k++) frames.push(null);
-    } else {
-      frames[end - take] = emptyDrawing();
-    }
-  }
-}
-
 /** How many drawings with lines stand at cell `from` or later — what a film cut to `from` cells loses. */
 export function drawingsPast(doc: ToonDocument, from: number): number {
   return doc.layers.reduce((sum, layer) => sum + layer.frames.slice(from).filter((cell) => !!cell?.strokes.length).length, 0);
@@ -210,115 +164,59 @@ function shownCopy(frames: readonly Cell[], i: number): Frame {
 }
 
 /**
- * The edge between two drawings of a layer nearest to `to`: a cell put there
- * never splits a pause, so every continuation keeps showing what it showed.
+ * Carries (or, with `copy`, copies) `count` cells from `from` in each of
+ * `layers` to tick `to` (owner, 2026-11-17: a frame goes where it is let go).
+ * A carry swaps places with what stands there: the cells under the pointer go
+ * to the place left, and as the drag goes on (each step laid again from its
+ * start) the one swapped with goes back where it stood. A pause does not
+ * travel with its drawing. A run that overlaps its own place is rotated
+ * instead. A layer with no drawing among the cells is left as it is; a layer
+ * left opening on a continuation opens on an empty drawing. A copy lands on
+ * continuations where there are only continuations, and pushes the rest of
+ * the layer by the rule of the shift where a drawing stands. Returns where the
+ * cells landed.
  */
-function edgeNear(frames: readonly Cell[], to: number, forward = true): number {
-  const at = Math.max(0, Math.min(to, frames.length));
-  for (let d = 0; d <= frames.length; d++) {
-    for (const b of forward ? [at + d, at - d] : [at - d, at + d]) {
-      if (b >= 0 && b <= frames.length && (b === frames.length || frames[b] !== null)) return b;
-    }
-  }
-  return frames.length;
-}
-
-/**
- * Carries `count` cells from `from` along each of `layers`, so they land near
- * `to`; the cells between make way and the other layers stand. A drawing goes
- * with its pause — continuations right after the run go too — and a run that
- * opens on a continuation opens on a copy of what that showed. The block lands
- * at one edge, found in the first of `layers`, in every layer; returns it.
- */
-export function moveCellsTo(doc: ToonDocument, layers: readonly number[], from: number, count: number, to: number): number {
-  // One layer: a drawing goes with its pause. A block of layers carries
-  // exactly the cells picked — a pause of a different length in each layer
-  // would land the layers apart — and what it leaves of a pause keeps
-  // showing its drawing.
-  const own = layers.length === 1;
-  const runEnd = (frames: readonly Cell[]) => {
-    let end = from + count;
-    while (own && end < frames.length && frames[end] === null && keyOf(frames, end) >= from) end++;
-    return end;
-  };
-  // Where it would land, found before anything is touched: back on its own
-  // place, a carry changes nothing — not even the copies a move leaves.
-  if (to === from) return from;
-  const first = doc.layers[layers[0]].frames;
-  const rest: Cell[] = [...first.slice(0, from), ...first.slice(runEnd(first))];
-  // What a block leaves of a pause becomes a drawing, and so an edge.
-  if (rest[from] === null && keyOf(first, runEnd(first)) >= from) rest[from] = emptyDrawing();
-  if (edgeNear(rest, to, to >= from) === from) return from;
-  const rests = layers.map((l) => {
-    const frames = doc.layers[l].frames;
-    const end = runEnd(frames);
-    if (end < frames.length && frames[end] === null && keyOf(frames, end) >= from) frames[end] = shownCopy(frames, end);
-    const lifted = frames[from] === null ? shownCopy(frames, from) : frames[from];
-    const run = frames.splice(from, end - from);
-    run[0] = lifted;
-    return { frames, run };
-  });
-  // One edge for the whole block, found in its first layer; halfway between
-  // two, the run goes on the way it was going.
-  const at = edgeNear(rests[0].frames, to, to >= from);
-  for (const { frames, run } of rests) {
-    const place = Math.min(at, frames.length);
-    keepShown(frames, place);
-    frames.splice(place, 0, ...run);
-  }
-  return at;
-}
-
-/**
- * A continuation at `at` would go on showing whatever is put in front of it:
- * it becomes a copy of what it shows now. Another layer of a block lands at
- * the first layer's edge, which may be the middle of a pause of its own.
- */
-function keepShown(frames: Cell[], at: number): void {
-  if (at > 0 && at < frames.length && frames[at] === null) frames[at] = shownCopy(frames, at);
-}
-
-/**
- * Ctrl+drag of cells: copies of `count` cells from `from` put near `to` in each
- * of `layers`, the originals staying, the tail pushed by the rule of the shift.
- * The copies land at one edge, found in the first of `layers`; returns it.
- */
-export function copyCellsTo(doc: ToonDocument, layers: readonly number[], from: number, count: number, to: number): number {
-  const at = edgeNear(doc.layers[layers[0]].frames, to);
+export function placeCells(
+  doc: ToonDocument,
+  layers: readonly number[],
+  from: number,
+  count: number,
+  to: number,
+  copy = false,
+): number {
+  const total = length(doc);
+  const at = Math.max(0, Math.min(to, copy ? total : total - count));
+  if (!copy && at === from) return from;
   for (const l of layers) {
     const frames = doc.layers[l].frames;
-    const copies = structuredClone(frames.slice(from, from + count));
-    if (copies[0] === null) copies[0] = shownCopy(frames, from);
-    keepShown(frames, at);
-    frames.splice(at, 0, ...copies);
-    eatTail(frames, at + count, count);
+    if (!copy) {
+      if (frames.slice(from, from + count).every((cell) => cell === null)) continue;
+      if (Math.abs(at - from) >= count) {
+        const run = frames.slice(from, from + count);
+        const there = frames.slice(at, at + count);
+        run.forEach((cell, k) => (frames[at + k] = cell));
+        there.forEach((cell, k) => (frames[from + k] = cell));
+      } else {
+        frames.splice(at, 0, ...frames.splice(from, count));
+      }
+      if (frames[0] === null) frames[0] = emptyDrawing();
+      continue;
+    }
+    const run: Cell[] = structuredClone(frames.slice(from, from + count));
+    if (run[0] === null) run[0] = shownCopy(frames, from);
+    const free = at + count <= frames.length && frames.slice(at, at + count).every((cell) => cell === null);
+    if (free) {
+      run.forEach((cell, k) => (frames[at + k] = cell));
+    } else {
+      frames.splice(at, 0, ...run);
+      eatTail(frames, at + count, count);
+    }
   }
   evenOut(doc);
   return at;
 }
 
-/**
- * «Сдвинуть влево/вправо» for cells of a layer: the run steps over the whole
- * drawing next to it, pause and all. Returns where it landed in the first of
- * `layers`, or `from` when there is nothing to step over.
- */
-export function stepCells(doc: ToonDocument, layers: readonly number[], from: number, count: number, step: -1 | 1): number {
-  const frames = doc.layers[layers[0]].frames;
-  if (step < 0) {
-    if (from === 0) return from;
-    return moveCellsTo(doc, layers, from, count, keyOf(frames, from - 1));
-  }
-  let end = from + count;
-  while (end < frames.length && frames[end] === null) end++;
-  if (end >= frames.length) return from;
-  let next = end + 1;
-  while (next < frames.length && frames[next] === null) next++;
-  return moveCellsTo(doc, layers, from, count, from + (next - end));
-}
-
-/** Whether «Сдвинуть» has a drawing to step over that way. */
-export function canStepCells(doc: ToonDocument, layer: number, from: number, count: number, step: -1 | 1): boolean {
-  const frames = doc.layers[layer].frames;
-  if (step < 0) return from > 0;
-  return frames.slice(from + count).some((cell) => cell !== null);
+/** Whether «Сдвинуть» has room that way: a tick before, or a tick after the cells. */
+export function canStepCells(doc: ToonDocument, from: number, count: number, step: -1 | 1): boolean {
+  return step < 0 ? from > 0 : from + count < length(doc);
 }
