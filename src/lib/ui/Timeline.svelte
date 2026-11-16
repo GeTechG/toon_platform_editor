@@ -216,6 +216,14 @@
   // stand in for the rest so the scrollbar is the length it always was.
   /** The row's padding before its first cell, px (`.head`, `.cells` and `.wave`). */
   const GRID_GAP = 2;
+  /**
+   * Half the widest plate of the number on screen, px: four digits at the
+   * head's 0.74rem and the plate's 6 px a side — it grows with the text.
+   */
+  function plateHalf(): number {
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return Math.ceil(rem * 0.74 * 0.62 * 2 + 6 + 2);
+  }
   /** Room past the last tick, px: the end mark is dragged into it. */
   const END_ROOM = 48;
   let stripScroll = $state(0);
@@ -242,10 +250,15 @@
       stripScroll = strip.scrollLeft;
       // Where the frame sits is arithmetic: its cell may not be built.
       // The row's padding is the gap, so the last frame comes in ring and all.
-      const to = scrollToFrame(index, cellW, gap, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
-      if (to !== null) {
+      let to = scrollToFrame(index, cellW, gap, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing) ?? strip.scrollLeft;
+      // The number's plate is wider than a narrow cell: it comes into view whole too.
+      const mid = GRID_GAP + timing.start(index) * pitch + spanWidth(index) / 2;
+      const half = plateHalf();
+      if (mid - half < to) to = Math.max(0, mid - half);
+      else if (mid + half > to + strip.clientWidth) to = mid + half - strip.clientWidth;
+      if (to !== strip.scrollLeft) {
         strip.scrollLeft = to;
-        stripScroll = to;
+        stripScroll = strip.scrollLeft;
       }
     });
   });
@@ -1341,15 +1354,11 @@
             onpointercancel={cancelLongPress}
             onpointerleave={cancelLongPress}
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
-          >{#if (i + 1) % (fps * secondsEvery) === 0}<span class="sec" aria-hidden="true">{t('timeline.seconds', { n: (i + 1) / fps })}</span>{/if}{#if named(i)}{i + 1}{/if}</span>
+          >{#if (i + 1) % (fps * secondsEvery) === 0}<span class="sec" aria-hidden="true">{t('timeline.seconds', { n: (i + 1) / fps })}</span>{/if}{#if named(i)}<span class="n">{i + 1}</span>{/if}</span>
         {/each}
         {#if view.after > 0}
           <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
         {/if}
-        <!-- The frame cursor (owner, 2026-11-17): a line on the left edge of the
-             tick on screen, down through every layer, as a playhead runs in an
-             editor of time. It follows the preview; it takes no press. -->
-        <span class="playhead" aria-hidden="true" style:left="{GRID_GAP + editor.displayedFrame * pitch - gap / 2}px"></span>
         <!-- The film's end: dragged, the film is as long as where it is let
              go. «Кадров» over the layers is the same with the keyboard. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1665,10 +1674,26 @@
   .num.picked:not(.now) {
     transition: background-color var(--dur) var(--ease-out);
   }
+  /* The number on screen is a plate of its own over its tick, as wide as its
+     digits: inside a cell narrowed by the zoom it was cut to a sliver. */
   .num.now {
-    background: var(--accent) content-box;
-    color: var(--canvas);
+    background: none;
     text-decoration: none;
+  }
+  .num.now .n {
+    position: absolute;
+    z-index: 1;
+    left: 50%;
+    top: 0.3rem;
+    translate: -50% 0;
+    min-width: 1.4rem;
+    box-sizing: border-box;
+    padding: 0 6px;
+    line-height: 1.4rem;
+    border-radius: var(--r-pill);
+    background: var(--accent);
+    color: var(--canvas);
+    text-align: center;
   }
   .cells.current {
     background: var(--accent-tint);
@@ -1753,41 +1778,9 @@
     white-space: nowrap;
     pointer-events: none;
   }
-  /* --- The frame cursor -------------------------------------------------- */
-  /* No transition: it jumps with the frame, as the ring of the frame on
-     screen does — eased, it smeared across the strip under a preview. */
-  .playhead {
-    position: absolute;
-    top: 0;
-    width: 0;
-    height: 2.75rem;
-    pointer-events: none;
-    z-index: 3;
-  }
-  /* The line, through the rows below the head. */
-  .playhead::after {
-    content: '';
-    position: absolute;
-    left: -1px;
-    top: 0;
-    width: 2px;
-    height: 100vh;
-    background: var(--accent);
-  }
-  /* Its tab in the ruler: a point down onto the line. */
-  .playhead::before {
-    content: '';
-    position: absolute;
-    left: -5px;
-    top: 0;
-    width: 10px;
-    height: 8px;
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-    background: var(--accent);
-  }
   /* --- The film's end ---------------------------------------------------- */
-  /* Not a line — a line is the cursor's (owner, 2026-11-17: the end read as
-     the cursor). Past the end the strip is hatched: there is no film there.
+  /* Not a line (owner, 2026-11-17: a line at the end read as a cursor).
+     Past the end the strip is hatched: there is no film there.
      The handle is a bracket in the head that closes the frames. */
   .end-mark {
     position: absolute;
@@ -1975,9 +1968,10 @@
     .num.onion {
       text-decoration-thickness: 2px;
     }
-    .playhead::after,
-    .playhead::before {
+    /* The number on screen keeps its plate: the system's own highlight. */
+    .num.now .n {
       background: Highlight;
+      color: HighlightText;
       forced-color-adjust: none;
     }
     /* Told from the numbers under it by its shadow alone. */
