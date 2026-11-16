@@ -155,7 +155,7 @@ export function wheelOnStrip(
 }
 
 /** The cell's width the strip may be zoomed to, px (timeline-exposure-cells). */
-export const ZOOM_MIN = 4;
+export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 96;
 
 /**

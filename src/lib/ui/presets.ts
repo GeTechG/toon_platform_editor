@@ -691,7 +691,7 @@ function normalizeSettings(value: unknown): EditorSettings {
     removerTipShown: flag('removerTipShown'),
     megaEraserWarning: flag('megaEraserWarning'),
     whenNextTaken: raw.whenNextTaken === 'next' || raw.whenNextTaken === 'all' ? raw.whenNextTaken : 'ask',
-    timelineZoom: typeof raw.timelineZoom === 'number' && raw.timelineZoom >= 4 && raw.timelineZoom <= 96
+    timelineZoom: typeof raw.timelineZoom === 'number' && raw.timelineZoom >= 1 && raw.timelineZoom <= 96
       ? Math.round(raw.timelineZoom * 100) / 100
       : 0,
     continuationTipShown: flag('continuationTipShown'),

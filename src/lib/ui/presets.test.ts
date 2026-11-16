@@ -609,7 +609,8 @@ test('the strip\'s zoom is kept in its range, or is the cell\'s own', () => {
   const read = (timelineZoom: unknown) =>
     parseUiConfig(JSON.stringify({ preset: 'test.bar', settings: { timelineZoom } }))?.settings.timelineZoom;
   expect(read(20)).toBe(20);
-  expect(read(2)).toBe(0);
+  expect(read(2)).toBe(2);
+  expect(read(0.5)).toBe(0);
   expect(read(500)).toBe(0);
   expect(read('wide')).toBe(0);
 });

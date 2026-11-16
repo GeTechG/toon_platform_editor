@@ -500,7 +500,7 @@ describe('ninth audit: the transport says when there is nowhere to go', () => {
 describe('ninth audit: a narrower strip keeps the active frame in view', () => {
   it('the scroll-into-view effect hears the strip width', () => {
     const effect = timeline.match(/Keep the active frame in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
-    expect(effect).toContain('void stripWidth');
+    expect(effect).toContain('const view = stripWidth;');
   });
 });
 
@@ -578,7 +578,8 @@ describe('tenth audit: a frame added at the end stays in view', () => {
     // frame just added sat several cells past the right edge.
     const head = timeline.match(/<div\s+class="head"[\s\S]*?>/)?.[0] ?? '';
     expect(head).toMatch(/style:min-width=\{`\$\{stripExtent\}px`\}/);
-    expect(timeline).toMatch(/const stripExtent = \$derived\(timing\.total \* pitch \+ GRID_GAP \+ END_ROOM\)/);
+    // Every tick, or as far as the end mark is being dragged (2026-11-17), plus the room past the end.
+    expect(timeline).toMatch(/const stripExtent = \$derived\(\s*Math\.max\(timing\.total, mark\?\.reach \?\? heldReach\) \* pitch \+ GRID_GAP \+ END_ROOM/);
   });
 });
 

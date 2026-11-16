@@ -213,6 +213,8 @@
     if (from === strip) {
       // The window of frames the strip builds follows the scroll.
       stripScroll = strip.scrollLeft;
+      // The row the end mark left behind goes once it is out of sight.
+      if (heldReach && strip.scrollLeft + strip.clientWidth <= filmExtent) heldReach = 0;
     }
     // The menu opens by its cell and stays where it opened: a wheel or the
     // names carrying the rows away leaves it over some other cell. Its own
@@ -266,14 +268,23 @@
   // The film's shape and an opened draft are heard, not every write: hiding
   // a layer or a stroke replaces the document too, and the strip scrolled
   // away from where it was being looked at back to the active frame.
+  // The film made longer or shorter by its end mark or «Кадров» leaves the
+  // active frame where it was: the strip stays where the hand is (owner,
+  // 2026-11-17: stretching the end sent the strip back to the start).
+  let seenAt = { frame: -1, opens: -1, width: -1, view: -1, sets: 0 };
   $effect(() => {
     const index = editor.activeFrame;
-    void editor.docOpens;
+    const opens = editor.docOpens;
     void frameTotal;
     void filmTicks;
-    void cellW;
-    void stripWidth;
-    if (editor.playing || !strip) return;
+    const width = cellW;
+    const view = stripWidth;
+    // Only a length set by hand is let be: an insertion that keeps the
+    // active index (Ctrl+plus) still brings the frame into view.
+    const sets = editor.filmLengthSets;
+    const lengthOnly = sets !== seenAt.sets && index === seenAt.frame && opens === seenAt.opens && width === seenAt.width && view === seenAt.view;
+    seenAt = { frame: index, opens, width, view, sets };
+    if (editor.playing || !strip || lengthOnly) return;
     untrack(() => {
       if (!strip) return;
       stripScroll = strip.scrollLeft;
@@ -872,7 +883,7 @@
   // --- The end of the film, by its mark ---------------------------------------
   // A mark after the last tick: dragged, the film is as long as where it is let
   // go. Longer continues every layer; shorter asks first when drawings go.
-  let mark = $state<{ pointerId: number; startX: number; from: number; to: number } | null>(null);
+  let mark = $state<{ pointerId: number; startX: number; from: number; to: number; reach: number } | null>(null);
   /** A release outside the window sends no pointerup: the next move with no button ends the drag. */
   const lostMark = createLostRelease();
 
@@ -881,7 +892,13 @@
     e.stopPropagation();
     e.preventDefault();
     lostMark.reset();
-    mark = { pointerId: e.pointerId, startX: e.clientX, from: frameTotal, to: frameTotal };
+    // The row a previous drag left stays under this one too.
+    mark = { pointerId: e.pointerId, startX: e.clientX, from: frameTotal, to: frameTotal, reach: Math.max(frameTotal, heldReach) };
+    markX = e.clientX;
+    if (strip) {
+      const box = strip.getBoundingClientRect();
+      markGrab = e.clientX - box.left - strip.clientLeft + strip.scrollLeft - GRID_GAP;
+    }
     editor.gestureHeld = true;
   }
 
@@ -892,12 +909,66 @@
       endMark(undefined, true);
       return;
     }
-    mark.to = Math.max(1, mark.from + Math.round((e.clientX - mark.startX) / pitch));
+    markX = e.clientX;
+    placeMark();
+    markEdge(e.clientX);
   }
+
+  /** The tick under the hand is the film's new end; the strip's scroll counts. */
+  function placeMark(): void {
+    if (!mark || !strip) return;
+    const box = strip.getBoundingClientRect();
+    const x = markX - box.left - strip.clientLeft + strip.scrollLeft - GRID_GAP;
+    mark.to = Math.max(1, mark.from + Math.round((x - markGrab) / pitch));
+    mark.reach = Math.max(mark.reach, mark.to);
+  }
+  /** The ticks a finished drag of the end mark reached: the row stays that long until scrolled back. */
+  let heldReach = $state(0);
+  // Another draft opened: its row is its own.
+  $effect(() => {
+    void editor.docOpens;
+    untrack(() => (heldReach = 0));
+  });
+  /** Where in the row the mark was taken, so the film does not jump at the first move. */
+  let markGrab = 0;
+
+  // Held at the strip's edge — or at the zoom group, which stands over it —
+  // the strip runs on, so a film is made longer than the window is wide
+  // (owner, 2026-11-17: at 441 frames the group was in the way).
+  let markX = 0;
+  let markScroll = 0;
+  let markDirection: -1 | 0 | 1 = 0;
+  function markEdge(clientX: number): void {
+    if (!strip) return;
+    const box = strip.getBoundingClientRect();
+    const right = box.right - (zoomGroupW ? zoomGroupW + stripBar + ZOOM_INSET : 0);
+    const direction: -1 | 0 | 1 =
+      clientX - box.left < CARRY_EDGE ? -1 : right - clientX < CARRY_EDGE ? 1 : 0;
+    if (direction === markDirection) return;
+    stopMarkScroll();
+    if (direction === 0) return;
+    markDirection = direction;
+    markScroll = window.setInterval(() => {
+      strip?.scrollBy({ left: direction * Math.max(pitch * 2, 16) });
+      placeMark();
+    }, 50);
+  }
+
+  function stopMarkScroll(): void {
+    clearInterval(markScroll);
+    markScroll = 0;
+    markDirection = 0;
+  }
+  // The studio closed mid-drag: no release will reach the timer.
+  $effect(() => () => stopMarkScroll());
 
   function endMark(e?: PointerEvent, cancel = false): void {
     if (!mark || (e && e.pointerId !== mark.pointerId)) return;
     const to = mark.to;
+    stopMarkScroll();
+    // A film let go shorter than the drag reached keeps the row it had, so
+    // the scroll stays where the hand stopped (owner, 2026-11-17).
+    heldReach = mark.reach;
     mark = null;
     editor.gestureHeld = false;
     if (!cancel) editor.setFilmLength(to);
@@ -1075,7 +1146,16 @@
    * the end sat cells past the right edge. The header holds the width, so the
    * scroll extent is arithmetic too.
    */
-  const stripExtent = $derived(timing.total * pitch + GRID_GAP + END_ROOM);
+  // Past the end: room to drag the end mark into, and with a mouse the zoom
+  // group's width, so the mark scrolls out from under it; a dragged mark
+  // longer than the film takes the row with it — and keeps it as long as the
+  // drag lasts, so a step back left does not shrink the row under the scroll
+  // and throw the strip back (owner, 2026-11-17).
+  const stripExtent = $derived(
+    Math.max(timing.total, mark?.reach ?? heldReach) * pitch + GRID_GAP + END_ROOM + (zoomGroupW ? zoomGroupW + ZOOM_INSET : 0),
+  );
+  /** The row the film alone needs, past which a held reach is only slack. */
+  const filmExtent = $derived(timing.total * pitch + GRID_GAP + END_ROOM + (zoomGroupW ? zoomGroupW + ZOOM_INSET : 0));
 
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the

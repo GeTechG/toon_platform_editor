@@ -172,11 +172,11 @@ describe('the strip\'s zoom', () => {
     expect(zoomScroll(0, 10, 2, 20, 4)).toBe(0);
   });
 
-  it('a wheel notch widens the cells by a step, held to 4–96 px', () => {
+  it('a wheel notch widens the cells by a step, held to 1–96 px', () => {
     expect(zoomBy(40, -100)).toBeGreaterThan(40);
     expect(zoomBy(40, 100)).toBeLessThan(40);
     expect(zoomBy(95, -1000)).toBe(96);
-    expect(zoomBy(5, 1000)).toBe(4);
+    expect(zoomBy(2, 1000)).toBe(1);
   });
 
   it('shows thumbnails from 40 px, marks from 14, bands below', () => {
@@ -213,8 +213,13 @@ describe('fitZoom — «Весь фильм» (strip-zoom-keys)', () => {
     expect(w).toBeGreaterThan(13.9);
   });
 
+  it('fits a 441-tick film into a desktop strip — under the old 4 px floor (owner, 2026-11-17)', () => {
+    // 1160 px less 2 before and 180 for the end mark and the zoom group: 978 / 441 ≈ 2.21.
+    expect(fitZoom(1160, 441, 180)).toBeCloseTo(2.21, 2);
+  });
+
   it('is held to the range at either end', () => {
-    expect(fitZoom(600, 2000, 16)).toBe(4);
+    expect(fitZoom(600, 2000, 16)).toBe(1);
     expect(fitZoom(1400, 1, 16)).toBe(96);
   });
 });

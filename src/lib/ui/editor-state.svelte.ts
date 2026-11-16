@@ -605,6 +605,8 @@ export class EditorState {
    * the current frame (1 wider, -1 narrower) and 0 fits the film into it.
    */
   stripKeys: ((how: 1 | -1 | 0) => void) | null = null;
+  /** How many times the film's length was set (end mark, «Кадров»): the strip does not scroll for it. Not reactive. */
+  filmLengthSets = 0;
 
   /** Active UI preset id (persisted). */
   preset = $state(DEFAULT_PRESET);
@@ -2273,6 +2275,7 @@ export class EditorState {
       return;
     }
     const go = () => this.structureStep(() => {
+      this.filmLengthSets++;
       this.#write((doc) => setFilmLength(doc, to));
       this.activeFrame = Math.min(this.activeFrame, to - 1);
       this.collapseSelection();
