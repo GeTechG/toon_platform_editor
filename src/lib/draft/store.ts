@@ -6,6 +6,7 @@
  */
 
 import { parseDraft } from './restore';
+import { v7Tick } from '../format/v7';
 import { decodeToon } from '../format/toon-decode';
 import { packDocument, unpackDocument } from '../format/pack';
 import type { ToonDocument } from '../format/types';
@@ -148,7 +149,9 @@ function summarize(doc: unknown): DraftSummary | null {
     return null;
   }
   const { width, height, layers } = doc as ToonDocument;
-  return { width, height, frames: layers[0]?.frames?.length ?? 0, layers: layers.length };
+  // A version 7 record counts its pauses as the ticks they open into.
+  const columns = layers[0]?.frames?.length ?? 0;
+  return { width, height, frames: v7Tick(doc, columns), layers: layers.length };
 }
 
 /**
@@ -423,9 +426,17 @@ export async function listDraftCards(): Promise<DraftCard[]> {
  * The document of one draft, read and checked as any input is — once, when it
  * is opened. Null for a draft that is gone or does not read.
  */
-export async function readDraft(id: string): Promise<ToonDocument | null> {
+export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?: DraftState } | null> {
   const record = await rawRecord(id);
-  return record ? parseDraft(opened(record).doc, true) : null;
+  if (!record) {
+    return null;
+  }
+  const raw = opened(record).doc;
+  // A version 7 draft kept its frame as a column; its tick is read off the
+  // holds before the translation drops them.
+  const state = record.state && { ...record.state, frame: v7Tick(raw, record.state.frame) };
+  const doc = parseDraft(raw, true);
+  return doc ? { doc, ...(state ? { state } : {}) } : null;
 }
 
 /**

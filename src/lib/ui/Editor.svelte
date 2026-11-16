@@ -1821,8 +1821,8 @@
     }
     // The list holds cards: the document is read and checked here, once, and
     // before the question — a draft that will not open replaces nothing.
-    const doc = await readDraft(entry.id);
-    if (!doc) {
+    const draft = await readDraft(entry.id);
+    if (!draft) {
       void tell(t('editor.draft_open_failed'));
       return;
     }
@@ -1836,9 +1836,9 @@
         return;
       }
     }
-    editor.openDraft(doc);
-    if (entry.state) {
-      editor.restoreState(entry.state);
+    editor.openDraft(draft.doc);
+    if (draft.state) {
+      editor.restoreState(draft.state);
     }
     // Claimed before the restore, which is async: the effect must already know
     // this blob is the one on disk by the time the track is adopted.

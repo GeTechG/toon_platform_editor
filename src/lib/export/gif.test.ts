@@ -67,6 +67,15 @@ describe('encodeGif', () => {
     expect(gceOffsets(bytes).length).toBe(1);
   });
 
+  test('a still longer than a GIF delay holds is split, its whole length kept', () => {
+    // A GIF delay is 16 bits of centiseconds — 655.35 s. A drawing continued
+    // 10 000 ticks at 12 fps is 833.33 s: one frame would wrap it to 177.97 s.
+    const bytes = encodeGif([frame(4, 4, [255, 0, 0])], { fps: 12, holds: [10_000] });
+    const delays = gceOffsets(bytes).map((at) => gceDelay(bytes, at));
+    expect(delays.every((d) => d <= 0xffff)).toBe(true);
+    expect(delays.reduce((a, b) => a + b, 0)).toBe(83_333);
+  });
+
   test('delay follows fps', () => {
     const at24 = encodeGif([frame(2, 2, [0, 0, 0])], { fps: 24 });
     expect(gceDelay(at24, gceOffsets(at24)[0])).toBe(4); // round(100/24)

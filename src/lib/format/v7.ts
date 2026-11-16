@@ -61,3 +61,20 @@ export function fromV7(data: unknown): unknown {
 function refuse(message: string): never {
   throw new FormatError([{ category: 'semantic', path: '/holds', message }]);
 }
+
+/**
+ * The tick a column of a version 7 document starts on once its pauses are
+ * unrolled: a draft's saved frame was a column, and it is read before the
+ * document is translated (the translation drops the holds). The column
+ * itself for anything else, or for holds that do not read.
+ */
+export function v7Tick(data: unknown, column: number): number {
+  const doc = data as { schema_version?: unknown; holds?: unknown } | null;
+  if (doc?.schema_version !== 7 || !Array.isArray(doc.holds)) return column;
+  let tick = 0;
+  for (let i = 0; i < column && i < doc.holds.length; i++) {
+    const hold = doc.holds[i];
+    tick += Number.isInteger(hold) && hold >= 1 ? hold : 1;
+  }
+  return tick + Math.max(0, column - doc.holds.length);
+}

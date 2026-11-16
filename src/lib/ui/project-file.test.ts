@@ -151,8 +151,8 @@ describe('what the record holds and what comes back', () => {
   });
 
   it('puts the hand back when the draft is opened, and copes without a state', () => {
-    expect(editorUi).toContain('editor.restoreState(entry.state)');
-    expect(editorUi).toContain('if (entry.state)');
+    expect(editorUi).toContain('editor.restoreState(draft.state)');
+    expect(editorUi).toContain('if (draft.state)');
   });
 });
 

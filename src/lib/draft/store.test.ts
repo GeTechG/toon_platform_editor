@@ -667,7 +667,7 @@ describe('the list reads cards, not documents', () => {
     expect(card.id).toBe('a');
     expect(card.summary).toEqual({ width: written.width, height: written.height, frames: 1, layers: written.layers.length });
     expect(card.doc).toBeUndefined();
-    expect(await readDraft('a')).toEqual(written);
+    expect((await readDraft('a'))?.doc).toEqual(written);
   });
 
   it('a document spoilt after it was written still lists, and does not open', async () => {
@@ -748,11 +748,26 @@ describe('the list reads cards, not documents', () => {
     expect(cards.find((c) => c.id === 'b')!.doc).toBeUndefined();
   });
 
+  it('a version 7 draft opens on the drawing it was left on, its pauses unrolled before it', async () => {
+    // Held 3 ticks, then 1: the second drawing was column 1 and is tick 3 now.
+    setIndexedDB(fakeIndexedDB());
+    const cell = { strokes: [] };
+    const v7 = {
+      schema_version: 7, width: 4800, height: 2400, frame_rate: 12, tools: [],
+      layers: [{ hidden: false, frames: [cell, cell] }], holds: [3, 1],
+    };
+    await saveDraft('a', v7, { ...state, frame: 1 });
+    const opened = await readDraft('a');
+    expect(opened?.doc.layers[0].frames).toEqual([cell, null, null, cell]);
+    expect(opened?.state?.frame).toBe(3);
+    expect((await listDraftCards())[0].summary?.frames).toBe(4);
+  });
+
   it('a copy keeps the drawing without reading it', async () => {
     setIndexedDB(fakeIndexedDB());
     await saveDraft('a', drawn());
     const copy = await duplicateDraft('a');
-    expect(await readDraft(copy!)).toEqual(drawn());
+    expect((await readDraft(copy!))?.doc).toEqual(drawn());
     expect((await listDraftCards()).find((c) => c.id === copy)!.summary?.frames).toBe(1);
   });
 });

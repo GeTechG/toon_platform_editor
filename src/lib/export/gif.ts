@@ -38,6 +38,9 @@ const PALETTE_SAMPLE_MAX_PIXELS = 65536;
  * itself stores hundredths of a second, so the encoder rounds this to
  * centiseconds — that last step is the format's own, and the only tempo drift.
  */
+/** The longest delay one GIF frame holds: 0xFFFF centiseconds, in whole milliseconds the encoder does not round. */
+const GIF_DELAY_MAX_MS = 0xffff * 10;
+
 export function gifDelayMs(fps: number, hold = 1): number {
   return Math.max(1, Math.trunc((1000 * hold) / fps));
 }
@@ -120,15 +123,22 @@ export class GifStream {
       throw new Error('GifStream: begin() must run before the first frame');
     }
     const index = applyPalette(frame.data, palette);
-    const delay = gifDelayMs(this.#fps, hold);
-    this.#gif.writeFrame(
-      index,
-      frame.width,
-      frame.height,
-      // Palette on the first frame only: it becomes the global color table.
-      this.#written === 0 ? { palette, delay, repeat: 0 } : { delay },
-    );
-    this.#written++;
+    // A delay is 16 bits of centiseconds. A drawing continued past that
+    // (v8 has no ceiling of 99 ticks a pause) is the same picture written
+    // again, each piece within the field, the whole length kept.
+    let delay = gifDelayMs(this.#fps, hold);
+    do {
+      const piece = Math.min(delay, GIF_DELAY_MAX_MS);
+      delay -= piece;
+      this.#gif.writeFrame(
+        index,
+        frame.width,
+        frame.height,
+        // Palette on the first frame only: it becomes the global color table.
+        this.#written === 0 ? { palette, delay: piece, repeat: 0 } : { delay: piece },
+      );
+      this.#written++;
+    } while (delay > 0);
   }
 
   finish(): Uint8Array {
