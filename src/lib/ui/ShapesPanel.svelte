@@ -72,13 +72,14 @@
     </div>
   {/if}
   <!-- Alt's stand-in: a finger has no Alt (owner, 2026-11-16). -->
-  <button
-    type="button"
-    class="toggle"
-    class:active={editor.settings.shapeFromCentre}
-    aria-pressed={editor.settings.shapeFromCentre}
-    onclick={() => editor.setSetting('shapeFromCentre', !editor.settings.shapeFromCentre)}
-  >{t('shapes.from_centre')}</button>
+  <label class="check">
+    <input
+      type="checkbox"
+      checked={editor.settings.shapeFromCentre}
+      onchange={(e) => editor.setSetting('shapeFromCentre', e.currentTarget.checked)}
+    />
+    <span>{t('shapes.from_centre')}</span>
+  </label>
   <h2>{t('shapes.thickness')}</h2>
   <!-- The brush box's logarithmic track: the thin lines get most of it. -->
   <input
@@ -124,7 +125,7 @@
   }
   h2,
   .choice,
-  .toggle {
+  .check {
     grid-column: 1 / 3;
     margin: 0;
   }
@@ -161,24 +162,19 @@
     font-size: 0.86rem;
     cursor: pointer;
   }
-  .toggle {
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     min-height: var(--key-h, 2.75rem);
-    text-align: center;
-    border: none;
-    border-radius: var(--r-sm);
-    background: var(--sub);
-    color: var(--ink);
-    font: inherit;
     font-size: 0.86rem;
+    color: var(--ink);
     cursor: pointer;
   }
-  .toggle.active {
-    background: var(--accent);
-    color: var(--canvas);
-  }
-  .toggle:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 2px;
+  /* Drawn by the studio's own controls.css, as every checkbox is. */
+  .check input {
+    flex: none;
+    margin: 0;
   }
   .choice button.active {
     background: var(--canvas);
