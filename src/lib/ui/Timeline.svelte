@@ -161,7 +161,7 @@
   /** The whole film, the end mark clear of the group over the numbers, from its start. */
   function zoomFit(): void {
     if (!strip) return;
-    const to = fitZoom(strip.clientWidth, timing.total, END_MARK + (zoomGroupW ? zoomGroupW + 4 : 0));
+    const to = fitZoom(strip.clientWidth, timing.total, END_MARK + (zoomGroupW ? zoomGroupW + ZOOM_INSET + 4 : 0));
     editor.setSetting('timelineZoom', Math.abs(to - thumbWidth) < 0.01 ? 0 : to);
     void tick().then(() => {
       if (!strip) return;
@@ -1031,6 +1031,8 @@
   const pitch = $derived(cellW + gap);
   /** The cells' width as a share of their own (a frame's thumbnail): 100 % is unzoomed. */
   const zoomPercent = $derived(formatPercent(cellW / thumbWidth));
+  /** The group's breath from the strip's right edge, as from the head's top and bottom (owner, 2026-11-17). */
+  const ZOOM_INSET = 6;
   /** The group's width over the numbers (0 where there is none: a touch screen). */
   let zoomGroupW = $state(0);
   /** The strip's own scrollbar, which the group keeps clear of. */
@@ -1287,7 +1289,7 @@
        with the way out, only while picking. -->
   <!-- A block wider than one cell says what it is and what can be done to
        it (Procreate Dreams, FlipaClip): the frame menu's actions, in reach. -->
-  <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px" style:--zoom-room="{zoomGroupW ? zoomGroupW + stripBar + 6 : 0}px">
+  <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px" style:--zoom-room="{zoomGroupW ? zoomGroupW + stripBar + ZOOM_INSET + 6 : 0}px">
     <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
     {#if picking}
       <span class="pick-hint">{t('timeline.pick_hint')}</span>
@@ -1531,7 +1533,7 @@
       role="group"
       aria-label={t('timeline.zoom_group')}
       bind:clientWidth={zoomGroupW}
-      style:right="{stripBar}px"
+      style:right="{stripBar + ZOOM_INSET}px"
     >
       <button class="zoom-key" aria-disabled={cellW <= ZOOM_MIN} onclick={() => cellW <= ZOOM_MIN || zoomStep(-1)} title={t('timeline.zoom_out')} aria-label={t('timeline.zoom_out')}>
         <Icon name="minus" size={14} />
