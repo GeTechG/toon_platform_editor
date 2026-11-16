@@ -25,12 +25,14 @@ describe('eleventh audit: picking a block of frames', () => {
     // panels are arranged by hand, so what lies above is anyone's guess.
     const chip = style.match(/\.pick-bar\.shown \{[^}]*position: absolute;[^}]*\}/)?.[0] ?? '';
     expect(chip).not.toContain('bottom: calc(100%');
-    expect(chip).toMatch(/top: 0;/);
+    // In the head row, at the zoom group's height (owner, 2026-11-17).
+    expect(chip).toMatch(/top: calc\(\(2\.75rem - var\(--key-h\)/);
   });
 
   it('on a phone the chip is a row of its own: the panel grows to take it', () => {
     expect(phone).toMatch(/\.pick-bar\.shown \{[^}]*position: static;/);
-    expect(phone).toMatch(/\.pick-bar\.shown \{[^}]*box-shadow: none;/);
+    // Flat at every width since 2026-11-17: the chip has no shadow to drop.
+    expect(style).not.toMatch(/\.pick-bar\.shown \{[^}]*box-shadow/);
   });
 
   it('the chip keeps an edge in forced colours, where its shadow is dropped', () => {

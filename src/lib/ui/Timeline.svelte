@@ -1290,32 +1290,34 @@
   <!-- A block wider than one cell says what it is and what can be done to
        it (Procreate Dreams, FlipaClip): the frame menu's actions, in reach. -->
   <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px" style:--zoom-room="{zoomGroupW ? zoomGroupW + stripBar + ZOOM_INSET + 6 : 0}px">
+    <!-- The way out leads, as a selection's bar does in Material and in
+         Google Photos: «✕», what is picked, then what can be done to it. -->
+    {#if spanned && !editor.playing && !picking}
+      <button class="bar-key" title={t('timeline.clear_selection')} aria-label={t('timeline.clear_selection')} onclick={() => editor.collapseSelection()}>
+        <Icon name="x" size={16} />
+      </button>
+    {/if}
     <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
     {#if picking}
       <span class="pick-hint">{t('timeline.pick_hint')}</span>
     {/if}
     <!-- The keys stay one group: on a phone too narrow for the words and the
          keys in one row they go under the words together, not one by one. -->
-    <span class="pick-keys">
-    {#if spanned && !editor.playing}
-      <button class="key icon" title={duplicateTitle} aria-label={duplicateTitle} disabled={!editor.canDuplicateFrames} onclick={() => editor.duplicateActiveFrame()}>
-        <Icon name="duplicate" size={16} />
-      </button>
-      <button class="key icon" title={t('panel.item.copy')} aria-label={t('panel.item.copy')} onclick={() => editor.copySelection()}>
-        <Icon name="copy" size={16} />
-      </button>
-      <button class="key icon" title={t('panel.item.paste')} aria-label={t('panel.item.paste')} disabled={!editor.canPasteCells} onclick={() => editor.pasteSelection()}>
-        <Icon name="paste" size={16} />
-      </button>
-      <button class="key icon" title={t('panel.item.delete_frames', span)} aria-label={t('panel.item.delete_frames', span)} disabled={!editor.canRemoveFrame} onclick={() => editor.removeActiveFrame()}>
-        <Icon name="trash" size={16} />
-      </button>
-    {/if}
+    <span class="pick-keys" class:actions={spanned && !editor.playing && !picking}>
     {#if picking}
       <button class="key primary" onclick={endPicking}>{t('timeline.pick_done')}</button>
     {:else if spanned && !editor.playing}
-      <button class="key icon" title={t('timeline.clear_selection')} aria-label={t('timeline.clear_selection')} onclick={() => editor.collapseSelection()}>
-        <Icon name="x" size={16} />
+      <button class="bar-key" title={duplicateTitle} aria-label={duplicateTitle} disabled={!editor.canDuplicateFrames} onclick={() => editor.duplicateActiveFrame()}>
+        <Icon name="duplicate" size={16} />
+      </button>
+      <button class="bar-key" title={t('panel.item.copy')} aria-label={t('panel.item.copy')} onclick={() => editor.copySelection()}>
+        <Icon name="copy" size={16} />
+      </button>
+      <button class="bar-key" title={t('panel.item.paste')} aria-label={t('panel.item.paste')} disabled={!editor.canPasteCells} onclick={() => editor.pasteSelection()}>
+        <Icon name="paste" size={16} />
+      </button>
+      <button class="bar-key" title={t('panel.item.delete_frames', span)} aria-label={t('panel.item.delete_frames', span)} disabled={!editor.canRemoveFrame} onclick={() => editor.removeActiveFrame()}>
+        <Icon name="trash" size={16} />
       </button>
     {/if}
     </span>
@@ -1535,14 +1537,14 @@
       bind:clientWidth={zoomGroupW}
       style:right="{stripBar + ZOOM_INSET}px"
     >
-      <button class="zoom-key" aria-disabled={cellW <= ZOOM_MIN} onclick={() => cellW <= ZOOM_MIN || zoomStep(-1)} title={t('timeline.zoom_out')} aria-label={t('timeline.zoom_out')}>
+      <button class="bar-key" aria-disabled={cellW <= ZOOM_MIN} onclick={() => cellW <= ZOOM_MIN || zoomStep(-1)} title={t('timeline.zoom_out')} aria-label={t('timeline.zoom_out')}>
         <Icon name="minus" size={14} />
       </button>
-      <button class="zoom-key value" onclick={() => zoomKeep(thumbWidth)} title={t('timeline.zoom_reset')} aria-label={t('timeline.zoom_value', { percent: zoomPercent })}>{zoomPercent}</button>
-      <button class="zoom-key" aria-disabled={cellW >= ZOOM_MAX} onclick={() => cellW >= ZOOM_MAX || zoomStep(1)} title={t('timeline.zoom_in')} aria-label={t('timeline.zoom_in')}>
+      <button class="bar-key value" onclick={() => zoomKeep(thumbWidth)} title={t('timeline.zoom_reset')} aria-label={t('timeline.zoom_value', { percent: zoomPercent })}>{zoomPercent}</button>
+      <button class="bar-key" aria-disabled={cellW >= ZOOM_MAX} onclick={() => cellW >= ZOOM_MAX || zoomStep(1)} title={t('timeline.zoom_in')} aria-label={t('timeline.zoom_in')}>
         <Icon name="plus" size={14} />
       </button>
-      <button class="zoom-key" onclick={zoomFit} title={t('timeline.zoom_fit')} aria-label={t('timeline.zoom_fit')}>
+      <button class="bar-key" onclick={zoomFit} title={t('timeline.zoom_fit')} aria-label={t('timeline.zoom_fit')}>
         <Icon name="fit-width" size={14} />
       </button>
     </div>
@@ -2075,7 +2077,7 @@
       font-size: 0.75rem;
     }
   }
-  .zoom-key {
+  .bar-key {
     flex: none;
     display: grid;
     place-items: center;
@@ -2089,16 +2091,17 @@
     font: inherit;
     cursor: pointer;
   }
-  .zoom-key.value {
+  .bar-key.value {
     min-width: 3.2rem;
     font-variant-numeric: tabular-nums;
   }
   @media (hover: hover) {
-    .zoom-key:hover:not([aria-disabled='true']) {
+    .bar-key:hover:not([aria-disabled='true'], :disabled) {
       background: var(--hairline-soft);
     }
   }
-  .zoom-key[aria-disabled='true'] {
+  .bar-key[aria-disabled='true'],
+  .bar-key:disabled {
     opacity: 0.4;
     cursor: default;
   }
@@ -2106,7 +2109,7 @@
      in it): the scale gives way to the frames it
      would cover; the steps and the whole film stay. */
   @container zoom (width < 30rem) {
-    .zoom-key.value {
+    .bar-key.value {
       display: none;
     }
   }
@@ -2120,47 +2123,56 @@
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  /* A chip over the frame numbers rather than a row: the panel is often only
-     a row of cells tall, and a row taken from it hid the cells being picked.
-     Not above the strip either — there it hid the transport keys (WCAG
-     2.4.11), and what lies above is whatever the panels were arranged into.
-     Its own header's height, so the cells stay clear, and short of the layer
-     column. A drop, so it takes the menu shadow. */
+  /* The strip's toolbar, one language with the zoom group beside it (owner,
+     2026-11-17: the white chip with the menu shadow and its white discs
+     looked pasted on): paper tone, no shadow, the same 28 px keys, laid in
+     the head row at the group's height. Over the numbers rather than a row
+     of its own: the panel is often only a row of cells tall, and a row taken
+     from it hid the cells being picked. Not above the strip either — there
+     it hid the transport keys (WCAG 2.4.11). Short of the layer column. */
   .pick-bar.shown {
     /* The Dense-Timeline Rule: a key in the strip is 24 px and up. */
-    --key-h: 28px;
+    --key-h: 1.75rem;
     position: absolute;
     /* Left of the zoom group, which it would otherwise cover. */
     right: var(--zoom-room, 0px);
-    top: 0;
+    top: calc((2.75rem - var(--key-h) - 4px) / 2);
     /* Over the strip's own layers (the sticky head, the carried cells), but
        under what opens from a key: on the phone a layer's settings opened
        up across it and the chip lay over them (owner, 2026-11-17). */
     z-index: var(--z-float);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 2px;
     max-width: calc(100% - var(--col, 0px) - var(--zoom-room, 0px) - 8px);
     box-sizing: border-box;
-    padding: 2px 2px 2px 12px;
-    border-radius: var(--r-pill);
+    padding: 2px;
+    border-radius: var(--r-md);
     background: var(--paper);
-    box-shadow: var(--shadow-menu);
-    /* Up from the cells it names, as a menu comes from its key. */
-    --pop-from: 4px;
-    animation: studio-pop var(--dur-enter) var(--ease-out);
+    font-size: 0.75rem;
+    animation: fade-in var(--dur-enter) var(--ease-out);
   }
   .pick-keys {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 2px;
     margin-left: auto;
   }
+  /* What is picked and what can be done to it, parted by a hair. */
+  .pick-keys.actions {
+    padding-left: 4px;
+    border-left: 1px solid var(--hairline);
+  }
   .pick-bar p {
-    margin: 0;
+    margin: 0 6px 0 2px;
     white-space: nowrap;
-    font-weight: 700;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
     color: var(--accent-ink);
+  }
+  /* Picking has no «✕» to lead: the words take the edge's breath instead. */
+  .pick-bar p:first-child {
+    margin-left: 8px;
   }
   .pick-hint {
     flex: 1;
@@ -2315,13 +2327,18 @@
     position: static;
     max-width: none;
     margin-bottom: 6px;
-    padding: 0 0 0 12px;
-    box-shadow: none;
+    padding: 2px;
+    font-size: 0.875rem;
     /* Words and five finger keys are wider than a 390 px phone: the keys
        go under the words rather than off the edge (owner, 2026-11-17), and
        at a large text size they wrap among themselves too. */
     flex-wrap: wrap;
     row-gap: 4px;
+  }
+  /* Wrapped under the words, a hair at the keys' left would stand alone. */
+  :global(:where(.studio.phone)) .pick-keys.actions {
+    padding-left: 0;
+    border-left: none;
   }
   :global(:where(.studio.phone)) .pick-keys {
     flex-wrap: wrap;
