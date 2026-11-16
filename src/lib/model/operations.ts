@@ -24,7 +24,7 @@ import {
   STROKE_COORD_MIN,
 } from '../format/constants';
 import { opacityOf } from '../format/types';
-import type { Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import type { BlendMode, Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
 
 /**
  * A write the format has no room for: the frame's stroke limit. Still a
@@ -332,6 +332,24 @@ export function moveLayer(doc: ToonDocument, from: number, to: number): void {
 export function setLayerHidden(doc: ToonDocument, index: number, hidden: boolean): void {
   assertLayerIndex(doc, index);
   doc.layers[index].hidden = hidden;
+}
+
+/**
+ * How strongly a layer shows, in whole percent 0–100. Opaque is no field at
+ * all (one canonical form); 0 is invisible, not hidden.
+ */
+export function setLayerOpacity(doc: ToonDocument, index: number, percent: number): void {
+  assertLayerIndex(doc, index);
+  const value = Math.min(100, Math.max(0, Math.round(percent)));
+  if (value >= 100) delete doc.layers[index].opacity;
+  else doc.layers[index].opacity = value;
+}
+
+/** How a layer is laid over what lies under it; normal is no field at all. */
+export function setLayerBlend(doc: ToonDocument, index: number, blend: BlendMode | 'normal'): void {
+  assertLayerIndex(doc, index);
+  if (blend === 'normal') delete doc.layers[index].blend;
+  else doc.layers[index].blend = blend;
 }
 
 /**

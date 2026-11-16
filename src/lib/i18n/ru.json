@@ -364,7 +364,49 @@
     "rename_hint": "Двойное нажатие, удержание или F2 — переименовать",
     "drag": "Перетащить слой (Alt+↑ / Alt+↓)",
     "remove": "Удалить «{{name}}»",
-    "remove_title": "Удалить слой"
+    "remove_title": "Удалить слой",
+    "settings": "Настройки «{{name}}»: {{blend}}, {{opacity}}",
+    "settings_title": "Настройки слоя",
+    "opacity": "Непрозрачность",
+    "blend": "Режим",
+    "lock": "Закрепить",
+    "locked_mark": "закреплён",
+    "blend_name": {
+      "normal": "Обычный",
+      "multiply": "Умножение",
+      "color-burn": "Затемнение основы",
+      "darken": "Замена тёмным",
+      "screen": "Экран",
+      "color-dodge": "Осветление основы",
+      "lighten": "Замена светлым",
+      "overlay": "Перекрытие",
+      "soft-light": "Мягкий свет",
+      "hard-light": "Жёсткий свет",
+      "difference": "Разница",
+      "exclusion": "Исключение",
+      "hue": "Цветовой тон",
+      "saturation": "Насыщенность",
+      "color": "Цветность",
+      "luminosity": "Яркость"
+    },
+    "blend_short": {
+      "normal": "О",
+      "multiply": "У",
+      "color-burn": "Зо",
+      "darken": "Зт",
+      "screen": "Э",
+      "color-dodge": "Оо",
+      "lighten": "Зс",
+      "overlay": "П",
+      "soft-light": "Мс",
+      "hard-light": "Жс",
+      "difference": "Р",
+      "exclusion": "И",
+      "hue": "Т",
+      "saturation": "Н",
+      "color": "Ц",
+      "luminosity": "Я"
+    }
   },
   "play": {
     "play": "Проиграть",
@@ -481,7 +523,8 @@
     "budget_tight": "Мульт заполнен на {{percent}} — скоро не получится опубликовать",
     "budget_over": "Мульт заполнен на {{percent}} — больше лимита, опубликовать не получится",
     "label": "Холст: кадр {{frame}} из {{total}}",
-    "label_layer": ", {{layer}}"
+    "label_layer": ", {{layer}}",
+    "locked_layer": "Слой закреплён — сними замок в настройках слоя, чтобы править"
   },
   "frame": {
     "delete_confirm": "Удалить кадр {{n}}?",

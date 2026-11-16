@@ -15,7 +15,7 @@
 
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
-import { blitLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type PlacedStroke } from './canvas2d';
+import { blitLayer, hasLook, layLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from './canvas2d';
 import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
@@ -104,6 +104,50 @@ export interface FrameScene {
    * filled solid, blitted at `alpha`, lets them show through.
    */
   readonly blend?: boolean;
+  /**
+   * The colour of the paper the frame will lie on. A layer with a blend mode
+   * is laid over the paper too, so where one is shown the frame starts with
+   * it; absent, every mode is laid over transparency.
+   */
+  readonly paper?: string;
+}
+
+/** Part of the stack drawn in one buffer and laid in one blit, with the look of its one layer if it has one. */
+interface Chunk {
+  readonly buffer: ComposeBuffer;
+  readonly look: LayerLook | undefined;
+  readonly ink: boolean;
+}
+
+/**
+ * Splits layers into what can be flattened ahead: plain and translucent
+ * layers together (an alpha over what is laid before it is still the same
+ * picture whatever lies under), each blended layer alone — its mode needs
+ * what lies under it, which is known only when the frame is composed.
+ */
+function chunked(cells: readonly Frame[], looks: readonly LayerLook[]): { cells: Frame[]; looks: (LayerLook | undefined)[]; look?: LayerLook }[] {
+  const groups: { cells: Frame[]; looks: (LayerLook | undefined)[]; look?: LayerLook }[] = [];
+  let run: { cells: Frame[]; looks: (LayerLook | undefined)[] } | null = null;
+  for (const [i, cell] of cells.entries()) {
+    const look = looks[i];
+    if (look.blend) {
+      groups.push({ cells: [cell], looks: [undefined], look });
+      run = null;
+      continue;
+    }
+    if (!run) {
+      run = { cells: [], looks: [] };
+      groups.push(run);
+    }
+    run.cells.push(cell);
+    run.looks.push(hasLook(look) ? look : undefined);
+  }
+  return groups;
+}
+
+/** Whether `doc` shows a blended layer: then its frame is laid over the paper. */
+function showsBlend(doc: ToonDocument): boolean {
+  return doc.layers.some((layer) => !layer.hidden && layer.blend !== undefined);
 }
 
 /**
@@ -137,9 +181,16 @@ function domBuffer(): ComposeBuffer {
 
 export class FrameComposer {
   readonly #make: BufferFactory;
-  #below: ComposeBuffer | undefined;
+  /** Buffers of the layers below the active one, a chunk each; the first is made before any other. */
+  #belowBuffers: ComposeBuffer[] = [];
   #active: ComposeBuffer | undefined;
-  #above: ComposeBuffer | undefined;
+  #aboveBuffers: ComposeBuffer[] = [];
+  #belowChunks: Chunk[] = [];
+  #aboveChunks: Chunk[] = [];
+  /** The active layer's look, laid with it; undefined when it is plain. */
+  #activeLook: LayerLook | undefined;
+  /** The active layer with the end of the line under the hand, before it is laid with its look. */
+  #looked: ComposeBuffer | undefined;
   /** One layer is rasterized here before it lands on a stack buffer. */
   #scratch: ComposeBuffer | undefined;
   /** The active layer plus the settled part of the line under the hand. */
@@ -171,9 +222,8 @@ export class FrameComposer {
    * spent compositing it.
    */
   #belowInk = false;
-  #aboveInk = false;
-  /** What each buffer was last painted from, and the view it was painted under. */
-  readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[]; standIn: boolean }>();
+  /** What each buffer was last painted from, the view it was painted under and the looks it was laid with. */
+  readonly #ink = new WeakMap<ComposeBuffer, { view: string; ink: readonly (readonly unknown[])[]; standIn: boolean; looks: string }>();
   /** Cells rasterized before, by what they hold; absent when none are kept. */
   readonly #cells: CellCache | undefined;
   /**
@@ -209,13 +259,17 @@ export class FrameComposer {
    * starts from nothing, as a new one would.
    */
   dispose(): void {
-    const buffers = [this.#below, this.#active, this.#above, this.#scratch, this.#live, this.#composite,
-      this.#under, ...this.#ghosts.drain()];
+    const buffers = [...this.#belowBuffers, this.#active, ...this.#aboveBuffers, this.#looked, this.#scratch,
+      this.#live, this.#composite, this.#under, ...this.#ghosts.drain()];
     this.#cells?.dispose();
     for (const buffer of buffers) {
       buffer?.size(0, 0);
     }
-    this.#below = this.#active = this.#above = this.#scratch = this.#live = this.#composite = this.#under = undefined;
+    this.#active = this.#looked = this.#scratch = this.#live = this.#composite = this.#under = undefined;
+    this.#belowBuffers = [];
+    this.#aboveBuffers = [];
+    this.#belowChunks = [];
+    this.#aboveChunks = [];
     this.#underSeed = '';
     this.#stale = true;
     this.#width = 0;
@@ -225,14 +279,21 @@ export class FrameComposer {
   }
 
   /**
-   * The three buffers of the stack as they were last composed, for a caller
-   * that has to read the frame back rather than show it — the pipette takes
-   * the colour of the canvas off them. Null before the first frame.
+   * The buffers of the stack as they were last composed, bottom-up, each with
+   * the look it is laid with, for a caller that has to read the frame back
+   * rather than show it — the pipette takes the colour of the canvas off
+   * them. `active` is the active layer as it is drawn, without its look. Null
+   * before the first frame.
    */
-  get layers(): { below: CanvasImageSource; active: CanvasImageSource; above: CanvasImageSource } | null {
-    return this.#below && this.#active && this.#above
-      ? { below: this.#below.image, active: this.#active.image, above: this.#above.image }
-      : null;
+  get layers(): {
+    below: { image: CanvasImageSource; look?: LayerLook }[];
+    active: CanvasImageSource;
+    activeLook?: LayerLook;
+    above: { image: CanvasImageSource; look?: LayerLook }[];
+  } | null {
+    if (!this.#active) return null;
+    const parts = (chunks: readonly Chunk[]) => chunks.filter((c) => c.ink).map((c) => ({ image: c.buffer.image, look: c.look }));
+    return { below: parts(this.#belowChunks), active: this.#active.image, activeLook: this.#activeLook, above: parts(this.#aboveChunks) };
   }
 
   /**
@@ -248,9 +309,27 @@ export class FrameComposer {
     }
     const active = this.#withLive(scene, width, height);
     const alpha = scene.alpha ?? 1;
-    // Blended, the ghosts lie under the whole frame and the layers below stay
-    // in it; otherwise they lie over those layers, and the two are one blit.
-    const under = this.#flatten(scene, width, height, !scene.blend);
+    const paper = !scene.blend && scene.paper !== undefined && showsBlend(scene.doc) ? scene.paper : undefined;
+    // The layers below flatten with the ghosts when they are one plain buffer;
+    // a blended one among them is laid over the paper at compose time, and the
+    // ghosts go over it after. Blended, the ghosts lie under the whole frame.
+    const oneBelow = this.#belowChunks.length <= 1 && !this.#belowChunks[0]?.look;
+    const under = this.#flatten(scene, width, height, !scene.blend && oneBelow);
+    const stack = (into: ComposeTarget, ghosts: boolean): void => {
+      if (paper !== undefined) {
+        into.setTransform(1, 0, 0, 1, 0, 0);
+        into.fillStyle = paper;
+        into.fillRect(0, 0, width, height);
+      }
+      if (ghosts && under && oneBelow) {
+        blitLayer(under.image, into);
+      } else {
+        this.#layChunks(this.#belowChunks, into);
+        if (ghosts && under) blitLayer(under.image, into);
+      }
+      this.#layActive(active, into, scene, width, height);
+      this.#layChunks(this.#aboveChunks, into);
+    };
     if (alpha < 1) {
       // The profile's alpha applies to the whole frame, so the stack has to be
       // composited before it is blitted rather than layer by layer.
@@ -258,53 +337,85 @@ export class FrameComposer {
       composite.size(width, height);
       composite.clear();
       const cctx = composite.ctx as ComposeTarget;
-      if (scene.blend) {
-        if (under) blitLayer(under.image, target);
-        if (this.#belowInk) blitLayer(this.#below!.image, cctx);
-      } else if (under) {
-        blitLayer(under.image, cctx);
-      } else if (this.#belowInk) {
-        blitLayer(this.#below!.image, cctx);
-      }
-      blitLayer(active.image, cctx);
-      this.#paintLiveTail(cctx, scene);
-      if (this.#aboveInk) blitLayer(this.#above!.image, cctx);
+      if (scene.blend && under) blitLayer(under.image, target);
+      stack(cctx, !scene.blend);
       target.globalAlpha = alpha;
       blitLayer(composite.image, target);
       target.globalAlpha = 1;
       return;
     }
-    if (under) blitLayer(under.image, target);
-    else if (this.#belowInk) blitLayer(this.#below!.image, target);
-    blitLayer(active.image, target);
-    this.#paintLiveTail(target, scene);
-    if (this.#aboveInk) blitLayer(this.#above!.image, target);
+    stack(target, true);
   }
 
-  /** Rasterizes the frame into the three buffers of the stack. */
+  #layChunks(chunks: readonly Chunk[], into: ComposeTarget): void {
+    for (const chunk of chunks) {
+      if (chunk.ink) layLayer(chunk.buffer.image, into, chunk.look);
+    }
+  }
+
+  /** The active layer and the end of the line under the hand, together with its look. */
+  #layActive(active: ComposeBuffer, into: ComposeTarget, scene: FrameScene, width: number, height: number): void {
+    const look = this.#activeLook;
+    if (!look) {
+      blitLayer(active.image, into);
+      this.#paintLiveTail(into, scene);
+      return;
+    }
+    const looked = (this.#looked ??= this.#make());
+    looked.size(width, height);
+    looked.clear();
+    blitLayer(active.image, looked.ctx);
+    this.#paintLiveTail(looked.ctx as ComposeTarget, scene);
+    layLayer(looked.image, into, look);
+  }
+
+  /** Rasterizes the frame into the buffers of the stack. */
   #rebuild(scene: FrameScene, width: number, height: number): void {
     const layers = scene.doc.layers;
     const below: Frame[] = [];
+    const belowLooks: LayerLook[] = [];
     const above: Frame[] = [];
+    const aboveLooks: LayerLook[] = [];
     for (let l = 0; l < layers.length; l++) {
       const cell = this.#cell(scene, l);
       if (!cell || layers[l].hidden || l === scene.activeLayer) {
         continue;
       }
-      (l < scene.activeLayer ? below : above).push(cell);
+      if (l < scene.activeLayer) {
+        below.push(cell);
+        belowLooks.push(layers[l]);
+      } else {
+        above.push(cell);
+        aboveLooks.push(layers[l]);
+      }
     }
-    this.#below ??= this.#make();
+    // Made in this order before anything else: below, active, above.
+    this.#belowBuffers[0] ??= this.#make();
     this.#active ??= this.#make();
-    this.#above ??= this.#make();
-    if (this.#paint(this.#below, below, scene, width, height)) {
+    this.#aboveBuffers[0] ??= this.#make();
+    const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.strokes.length > 0);
+    const paint = (groups: ReturnType<typeof chunked>, pool: ComposeBuffer[]): { chunks: Chunk[]; painted: boolean } => {
+      let painted = false;
+      // An empty side still paints its first buffer empty, so nothing stale is left on it.
+      const shown = groups.length > 0 ? groups : [{ cells: [], looks: [] }];
+      const chunks = shown.map((group, i) => {
+        const buffer = (pool[i] ??= this.#make());
+        if (this.#paint(buffer, group.cells, scene, width, height, false, group.looks)) painted = true;
+        return { buffer, look: 'look' in group ? group.look : undefined, ink: inked(group.cells) };
+      });
+      return { chunks, painted };
+    };
+    const lower = paint(chunked(below, belowLooks), this.#belowBuffers);
+    if (lower.painted) {
       this.#belowSerial += 1;
     }
-    this.#paint(this.#above, above, scene, width, height);
-    const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.strokes.length > 0);
-    this.#belowInk = inked(below);
-    this.#aboveInk = inked(above);
+    this.#belowChunks = lower.chunks;
+    this.#aboveChunks = paint(chunked(above, aboveLooks), this.#aboveBuffers).chunks;
+    this.#belowInk = this.#belowChunks.some((c) => c.ink);
     const cell = this.#cell(scene, scene.activeLayer);
-    const visible = cell && !layers[scene.activeLayer]?.hidden ? [cell] : [];
+    const own = layers[scene.activeLayer];
+    const visible = cell && !own?.hidden ? [cell] : [];
+    this.#activeLook = own && hasLook(own) ? { opacity: own.opacity, blend: own.blend } : undefined;
     if (this.#paint(this.#active, visible, scene, width, height)) {
       this.#serial += 1;
     }
@@ -337,8 +448,12 @@ export class FrameComposer {
     width: number,
     height: number,
     afresh = false,
+    /** Each cell's look, by position, for a buffer that lays some layers translucent. */
+    looks?: readonly (LayerLook | undefined)[],
   ): boolean {
     const { viewport } = scene;
+    const lookKey = looks?.map((look) => (hasLook(look) ? `${look!.opacity ?? ''}/${look!.blend ?? ''}` : '')).join(',') ?? '';
+    const plain = !looks?.some(hasLook);
     const view = `${width}x${height}@${viewport.scale}:${viewport.dpr}:${viewport.panX ?? 0}:${viewport.panY ?? 0}`;
     // A stroke is its points, its tool and its pressure: an edit in place
     // (the distort brush) swaps the points of a stroke that stays where it was.
@@ -347,16 +462,19 @@ export class FrameComposer {
     // two, and a stand-in cell is never kept.
     const ink = cells.map((cell) => cell.strokes.flatMap((s) =>
       [s.points, scene.tools[s.tool_id], (s as PlacedStroke).place ?? s.pressure]));
-    const was = afresh ? undefined : this.#ink.get(buffer);
+    const held = afresh ? undefined : this.#ink.get(buffer);
+    // Laid with other looks, what the buffer holds is no start for these.
+    const was = held && held.looks === lookKey ? held : undefined;
     // Not until it is painted: a stroke that throws half-way leaves a buffer
     // that holds neither what it had nor what it was asked for.
     this.#ink.delete(buffer);
     // What a buffer held in place of the document's cell — a selection being
     // moved — is no cell to come back to: kept, every move cost a sheet of the
     // cache and pushed a real cell out of it. Nor is it repainted by area.
-    const keepable = was !== undefined && !was.standIn;
-    const painted = this.#lay(buffer, cells, scene, width, height, was?.view === view ? was.ink : undefined, ink, keepable);
-    this.#ink.set(buffer, { view, ink, standIn: cells.some((cell) => this.#standIns.has(cell)) });
+    // A buffer laid with a look holds no cell's own pixels, nor takes lines on top.
+    const keepable = was !== undefined && !was.standIn && plain;
+    const painted = this.#lay(buffer, cells, scene, width, height, was?.view === view ? was.ink : undefined, ink, keepable, looks);
+    this.#ink.set(buffer, { view, ink, standIn: cells.some((cell) => this.#standIns.has(cell)), looks: lookKey });
     return painted;
   }
 
@@ -369,6 +487,7 @@ export class FrameComposer {
     was: readonly (readonly unknown[])[] | undefined,
     ink: readonly (readonly unknown[])[],
     keepable: boolean,
+    looks?: readonly (LayerLook | undefined)[],
   ): boolean {
     const kept = was !== undefined && was.length === ink.length
       && was.every((old, c) => old.length <= ink[c].length && old.every((part, i) => part === ink[c][i]));
@@ -379,7 +498,7 @@ export class FrameComposer {
     // A few lines more go on top; a cell put whole (a file opened over an
     // empty one) goes through the cache, so it is kept like any other.
     const grown = (ink[0]?.length ?? 0) - had;
-    if (kept && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
+    if (kept && !looks?.some(hasLook) && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
       const added = { strokes: cells[0].strokes.slice(was[0].length / 3) };
       renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport, undefined, STUDIO_PATHS);
       return true;
@@ -414,7 +533,7 @@ export class FrameComposer {
       // Each cell from the kept ones, or rasterized into one and kept: a cell
       // in its own buffer is a layer apart, so an eraser cuts only its own.
       const kept = this.#cells;
-      for (const cell of cells) {
+      for (const [c, cell] of cells.entries()) {
         if (cell.strokes.length === 0) {
           continue; // nothing to lay, and no room to spend on it
         }
@@ -423,18 +542,18 @@ export class FrameComposer {
           ? null
           : kept.take(cell, scene.tools, scene.viewport, width, height, own);
         if (pixels) {
-          blitLayer(pixels.image, buffer.ctx);
+          layLayer(pixels.image, buffer.ctx, looks?.[c]);
         } else {
           const scratch = apart();
           own(scratch);
-          blitLayer(scratch.image, buffer.ctx);
+          layLayer(scratch.image, buffer.ctx, looks?.[c]);
         }
       }
       return true;
     }
     // Layers that erase nothing go straight onto the buffer; one that erases
     // above another is rasterized apart, so its eraser cuts only its own.
-    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart, STUDIO_PATHS);
+    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart, STUDIO_PATHS, looks);
     return true;
   }
 
@@ -563,7 +682,7 @@ export class FrameComposer {
     under.size(width, height);
     under.clear();
     const ctx = under.ctx as ComposeTarget;
-    if (below) blitLayer(this.#below!.image, ctx);
+    if (below) blitLayer(this.#belowChunks[0].buffer.image, ctx);
     for (const { buffer, alpha } of shown) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = alpha;

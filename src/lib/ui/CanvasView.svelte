@@ -17,6 +17,7 @@
     STUDIO_PATHS,
     type BlitTarget,
     type Canvas2DLike,
+    type LayerLook,
   } from '../render/canvas2d';
   import { CELL_CACHE_BYTES, FrameComposer, type LiveLine } from '../render/frame-compose';
   import { PlaybackFrames, playbackKeeps } from './playback-frames';
@@ -828,6 +829,7 @@
             // blend it half through over its ghosts.
             alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
             blend: editor.onionBlends,
+            paper: BACKGROUND_COLOR,
           });
           // The hand at rest: the frames it goes to next are made ready. A
           // line under the hand stops it; the frame it lands on starts it over.
@@ -1379,7 +1381,7 @@
     const by = (uy / FIXED_POINT_SCALE) * lastRaster.level;
     // Inside the buffers read, not the canvas: a stage resized in the middle
     // of a gesture has a canvas of the new size over layers of the old.
-    const read = layers.active as HTMLCanvasElement;
+    const read = layers.active as unknown as HTMLCanvasElement;
     const px = Math.min(read.width - 1, Math.max(0, Math.floor(bx)));
     const py = Math.min(read.height - 1, Math.max(0, Math.floor(by)));
     // One pixel is all it reads, so one pixel is all it flattens: the layers
@@ -1392,21 +1394,45 @@
     if (!pctx) {
       return undefined;
     }
-    pctx.setTransform(1, 0, 0, 1, 0, 0);
-    pctx.clearRect(0, 0, 1, 1);
-    if (source === 'canvas') {
-      pctx.drawImage(layers.below, -px, -py);
-    }
-    pctx.drawImage(layers.active, -px, -py);
-    if (source === 'canvas') {
-      pctx.drawImage(layers.above, -px, -py);
-    }
-    const [r, g, b, a] = (pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, 1, 1).data;
+    // Each part with the look it is laid with — but the layer alone without
+    // its own: "Layer" reads what is drawn on it.
+    const lay = (image: CanvasImageSource, look?: LayerLook): void => {
+      pctx.globalAlpha = (look?.opacity ?? 100) / 100;
+      pctx.globalCompositeOperation = look?.blend ?? 'source-over';
+      pctx.drawImage(image, -px, -py);
+      pctx.globalAlpha = 1;
+      pctx.globalCompositeOperation = 'source-over';
+    };
+    const flatten = (paper: boolean): number[] => {
+      pctx.setTransform(1, 0, 0, 1, 0, 0);
+      pctx.clearRect(0, 0, 1, 1);
+      if (paper) {
+        pctx.fillStyle = BACKGROUND_COLOR;
+        pctx.fillRect(0, 0, 1, 1);
+      }
+      if (source === 'canvas') {
+        for (const part of layers.below) lay(part.image, part.look);
+        lay(layers.active, layers.activeLook);
+        for (const part of layers.above) lay(part.image, part.look);
+      } else {
+        lay(layers.active);
+      }
+      return [...(pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, 1, 1).data];
+    };
+    const seen = source === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
     // Reference: only a fully opaque pixel carries a colour. The soft rim of
     // a stroke reads as emptiness, so the pipette never picks a washed-out
     // version of the line it was aimed at — but a translucent line is a
     // colour, the one it is seen as on the paper.
-    return colourOfPixel([r, g, b, a], editor.doc.tools);
+    const picked = colourOfPixel(flatten(false), editor.doc.tools, undefined, seen.flatMap((layer) => layer.opacity ?? []));
+    // Over nothing a blended layer is its own colour; on the canvas it is laid
+    // over the paper. Whether there is ink is read above, the colour there off
+    // the frame on the paper — opaque already, so not mixed with it again.
+    if (picked === null || !seen.some((layer) => layer.blend)) {
+      return picked;
+    }
+    const [r, g, b] = flatten(true);
+    return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
   }
 
   /**
@@ -1456,19 +1482,37 @@
     const viewport = { scale: level / FIXED_POINT_SCALE, dpr: 1 };
     const { tools } = editor.doc;
     clear();
-    const cells = editor.settings.fillSource === 'canvas'
-      ? editor.doc.layers.filter((layer) => !layer.hidden).map((layer) => layer.frames[editor.activeFrame])
-      : [cell];
-    // A layer that erases is drawn apart, so its eraser cuts its own lines alone.
+    const shown = editor.settings.fillSource === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
+    const cells = shown.length > 0 ? shown.map((layer) => layer.frames[editor.activeFrame]) : [cell];
+    // A layer that erases is drawn apart, so its eraser cuts its own lines
+    // alone; one with a look is laid with it — the colour seen is the one filled.
     renderLayersStacked(cells, tools, ctx, viewport, () => {
       const own = buffer(null, w, h);
       return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
-    }, STUDIO_PATHS);
+    }, STUDIO_PATHS, shown.length > 0 ? shown : undefined);
     const rgba = plain.getImageData(0, 0, w, h).data;
+    // A blended layer is seen over the paper, not over nothing: the colours the
+    // fill compares are those of the frame laid on the paper, as the renderers
+    // lay it. Where ink is and where the paper is bare is still read above.
+    let seen = rgba;
+    if (shown.some((layer) => layer.blend)) {
+      const onPaperEl = buffer(null, w, h);
+      const pctx = onPaperEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx | null;
+      if (pctx) {
+        pctx.fillStyle = BACKGROUND_COLOR;
+        pctx.fillRect(0, 0, w, h);
+        renderLayersStacked(cells, tools, pctx, viewport, () => {
+          const own = buffer(null, w, h);
+          return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
+        }, STUDIO_PATHS, shown, true);
+        seen = (pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, w, h).data;
+        onPaperEl.width = onPaperEl.height = 0;
+      }
+    }
     const [ux, uy] = toDocUnits(e);
     const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
     const y = Math.min(h - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * level)));
-    const distance = colourDistance(rgba, w, h, x, y, PAPER);
+    const distance = colourDistance(seen, w, h, x, y, PAPER);
     // Only an empty place runs out through a break in its border: ink ends where
     // it was drawn, and a line's own narrow places are no breaks to hold at.
     const onPaper = rgba[(y * w + x) * 4 + 3] === 0;

@@ -79,7 +79,7 @@ describe('при просмотре холст не обещает нажати�
 describe('пипетка читает внутри буфера композитора', () => {
   it('координата ограничена размером слоёв, а не холста', () => {
     const pick = handler('pickColor');
-    expect(pick).toContain('const read = layers.active as HTMLCanvasElement;');
+    expect(pick).toContain('const read = layers.active as unknown as HTMLCanvasElement;');
     expect(pick).toContain('read.width - 1');
     expect(pick).toContain('read.height - 1');
     expect(pick).not.toContain('canvasEl.width - 1');

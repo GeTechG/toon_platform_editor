@@ -868,10 +868,10 @@
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the
   // column keeps its CSS width, so the phone layout stays narrow on its own.
-  /** The floor is a row without its name: eye, tag, handle, delete, the
-   *  padding and the gaps — 117 px at 100 % text (`.layer-col` holds it in rem).
+  /** The floor is a row without its name: eye, tag, settings, handle, delete,
+   *  the padding and the gaps — 145 px at 100 % text (`.layer-col` holds it in rem).
    *  To the pixel: one over showed a sliver of the name. */
-  const COL_MIN = 117;
+  const COL_MIN = 145;
   const COL_MAX = 320;
   /** Keyboard step, in px (WCAG 2.2 AA 2.5.7 — no drag required). */
   const COL_STEP = 16;
@@ -1215,14 +1215,15 @@
        delete and four gaps — so 11rem left 39 for the name and «Слой 1» needs
        45. The editor's own default name did not fit the editor's own default
        column; the divider is for long names, not for that. */
-    /* Never narrower than the row's keys (LayerRows): eye, handle and bin at
-       1rem + 8px, the tag's 16, the padding's 13 and four 4 px gaps. The name
-       gives way down to nothing; the keys do not leave the column. */
-    min-width: calc(3rem + 69px);
+    /* Never narrower than the row's keys (LayerRows): eye, settings, handle
+       and bin at 1rem + 8px, the tag's 16, the padding's 13 and five 4 px
+       gaps. The name gives way down to nothing; the keys do not leave it. */
+    min-width: calc(4rem + 81px);
     /* 10rem at 200 % text on a 320 px phone is the whole strip: not one
        cell was left to press. The names give way before the frames do. */
     max-width: 50%;
-    width: 12.5rem;
+    /* 165 of furniture with the settings key, and «Слой 1» needs 45. */
+    width: 14rem;
     min-height: 0;
   }
   /* The splitter's own 24 px between the names and the grid (WCAG 2.2 2.5.8).
@@ -1711,8 +1712,8 @@
     /* Never narrower than its row's keys (LayerRows): eye, handle and bin
        at 1rem + 8px, the tag's 16, four gaps, the padding and the border.
        Under half the strip before, at 200 % text the bin was scrolled out. */
-    min-width: calc(3rem + 63px);
-    width: 10rem;
+    min-width: calc(4rem + 75px);
+    width: 11.5rem;
   }
   /* One layer has nothing to be moved past and cannot be deleted: its handle
      and its bin are gone (LayerRows) and the column is as wide as what is
@@ -1740,9 +1741,9 @@
   }
   /* The keys would take more than half the strip: the handle folds away
      (LayerRows), and the column holds the three keys left. */
-  @container strip (width < calc(6rem + 126px)) {
+  @container strip (width < calc(8rem + 150px)) {
     .layer-col {
-      min-width: calc(2rem + 51px);
+      min-width: calc(3rem + 63px);
     }
   }
   /* Safari 16.0 and 16.1 have no color-mix(): with a var() in it the value is

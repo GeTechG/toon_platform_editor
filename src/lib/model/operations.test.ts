@@ -30,6 +30,8 @@ import {
   replaceCells,
   setFrameRate,
   setLayerHidden,
+  setLayerOpacity,
+  setLayerBlend,
   replaceStrokes,
   transformStrokes,
   mirrorCell,
@@ -298,6 +300,38 @@ describe('layer operations', () => {
     expect(doc.layers[0].hidden).toBe(true);
     setLayerHidden(doc, 0, false);
     expect(doc.layers[0].hidden).toBe(false);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('a layer keeps its opacity as a stored percent, and opaque is no field at all', () => {
+    const doc = createDocument();
+    setLayerOpacity(doc, 0, 40);
+    expect(doc.layers[0].opacity).toBe(40);
+    expect(validateDocument(doc).ok).toBe(true);
+    setLayerOpacity(doc, 0, 0);
+    expect(doc.layers[0].opacity).toBe(0);
+    setLayerOpacity(doc, 0, 100);
+    expect('opacity' in doc.layers[0]).toBe(false);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
+  it('an opacity is rounded to a whole percent within 0–100', () => {
+    const doc = createDocument();
+    setLayerOpacity(doc, 0, 33.6);
+    expect(doc.layers[0].opacity).toBe(34);
+    setLayerOpacity(doc, 0, 140);
+    expect('opacity' in doc.layers[0]).toBe(false);
+    setLayerOpacity(doc, 0, -5);
+    expect(doc.layers[0].opacity).toBe(0);
+  });
+
+  it('a layer keeps its blend mode, and normal is no field at all', () => {
+    const doc = createDocument();
+    setLayerBlend(doc, 0, 'multiply');
+    expect(doc.layers[0].blend).toBe('multiply');
+    expect(validateDocument(doc).ok).toBe(true);
+    setLayerBlend(doc, 0, 'normal');
+    expect('blend' in doc.layers[0]).toBe(false);
     expect(validateDocument(doc).ok).toBe(true);
   });
 });

@@ -356,7 +356,49 @@
     "rename_hint": "Double-click, long press or F2 to rename",
     "drag": "Drag layer (Alt+↑ / Alt+↓)",
     "remove": "Delete “{{name}}”",
-    "remove_title": "Delete layer"
+    "remove_title": "Delete layer",
+    "settings": "«{{name}}» settings: {{blend}}, {{opacity}}",
+    "settings_title": "Layer settings",
+    "opacity": "Opacity",
+    "blend": "Blend mode",
+    "lock": "Lock",
+    "locked_mark": "locked",
+    "blend_name": {
+      "normal": "Normal",
+      "multiply": "Multiply",
+      "color-burn": "Color Burn",
+      "darken": "Darken",
+      "screen": "Screen",
+      "color-dodge": "Color Dodge",
+      "lighten": "Lighten",
+      "overlay": "Overlay",
+      "soft-light": "Soft Light",
+      "hard-light": "Hard Light",
+      "difference": "Difference",
+      "exclusion": "Exclusion",
+      "hue": "Hue",
+      "saturation": "Saturation",
+      "color": "Color",
+      "luminosity": "Luminosity"
+    },
+    "blend_short": {
+      "normal": "N",
+      "multiply": "M",
+      "color-burn": "Cb",
+      "darken": "D",
+      "screen": "S",
+      "color-dodge": "Cd",
+      "lighten": "L",
+      "overlay": "O",
+      "soft-light": "Sl",
+      "hard-light": "Hl",
+      "difference": "Di",
+      "exclusion": "E",
+      "hue": "H",
+      "saturation": "Sa",
+      "color": "C",
+      "luminosity": "Lu"
+    }
   },
   "play": {
     "play": "Play",
@@ -473,7 +515,8 @@
     "budget_tight": "Toon is {{percent}} full — soon it can't be published",
     "budget_over": "Toon is {{percent}} full — over the limit, can't be published",
     "label": "Canvas: frame {{frame}} of {{total}}",
-    "label_layer": ", {{layer}}"
+    "label_layer": ", {{layer}}",
+    "locked_layer": "Layer is locked — unlock it in the layer settings to edit"
   },
   "frame": {
     "delete_confirm": "Delete frame {{n}}?",

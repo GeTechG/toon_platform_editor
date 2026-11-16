@@ -26,6 +26,8 @@ const READ_ONLY = new Set([
   'frameFits',
   'documentWeight',
   'isEmptyDocument',
+  // Why an edit is refused (layer-locks.ts): it looks, and writes nothing.
+  'editRefusal',
   // Whether the sheet may still be resized: it looks, and writes nothing.
   'sheetOpen',
   'copyCells',

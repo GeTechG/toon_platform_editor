@@ -108,7 +108,7 @@ describe('the colour tag is pickable', () => {
     expect(rows).toContain('ondblclick={(e) => startRename(e, layerIndex)}');
     // The name is a button too now — the one that picks the layer — and a
     // double click on it is exactly the rename.
-    expect(fn('startRename')).toContain("closest('button:not(.name), .handle')");
+    expect(fn('startRename')).toContain("closest('button:not(.name), .handle, .pop-plate')");
   });
 
   it('the colours follow their layers through add, delete and reorder', () => {
@@ -139,8 +139,8 @@ const layerRows = await Bun.file(new URL('./LayerRows.svelte', import.meta.url))
 describe('the layer column fits the name the editor gives a layer', () => {
   /** «Слой 1» at 0.85rem, measured in the browser. */
   const DEFAULT_NAME = 45;
-  /** Eye, tag, handle, delete, the row's padding and its four gaps. */
-  const FURNITURE = 117;
+  /** Eye, tag, settings, handle, delete, the row's padding and its five gaps. */
+  const FURNITURE = 145;
 
 
   /** `11rem` / `176px` → 176. */
@@ -167,12 +167,12 @@ describe('the layer column fits the name the editor gives a layer', () => {
   });
 
   it('the divider stops at the keys: the column is never narrower than its furniture', () => {
-    /** Padding 8 + 5, eye, handle and bin at 24, the tag's 16 and four 4 px gaps. */
-    const KEYS = 117;
+    /** Padding 8 + 5, eye, settings, handle and bin at 24, the tag's 16 and five 4 px gaps. */
+    const KEYS = 145;
     expect(Number(timeline.match(/const COL_MIN = (\d+);/)?.[1])).toBeGreaterThanOrEqual(KEYS);
     // The keys are in rem: at larger text the px stop alone is too short.
     const floor = timeline.match(/\n  \.layer-col \{[^}]*\n    min-width:\s*([^;]+);/s)?.[1];
-    expect(floor).toBe('calc(3rem + 69px)');
+    expect(floor).toBe('calc(4rem + 81px)');
   });
 
   // Eye 28, handle 30, bin 26 around 16 px glyphs, with 6 px gaps: 19 px of

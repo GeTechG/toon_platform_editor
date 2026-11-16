@@ -212,7 +212,7 @@ describe('the pipette over emptiness', () => {
     // Reference: alpha ≠ 255 is "no colour here", including the antialiased
     // rim of a stroke — not the background colour. The rule itself is
     // `colourOfPixel` (pipette-pixel.test.ts), which a translucent line bends.
-    expect(handler('pickColor')).toContain('colourOfPixel([r, g, b, a], editor.doc.tools)');
+    expect(handler('pickColor')).toContain('colourOfPixel(flatten(false), editor.doc.tools,');
     expect(source).toContain('function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null');
   });
 

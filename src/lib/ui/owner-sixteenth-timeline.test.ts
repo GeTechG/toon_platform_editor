@@ -22,7 +22,7 @@ describe('после шестнадцатого аудита: удержание
   });
 
   it('клавиши строки (глаз, цвет, ручка, корзина) удержанием не переименовывают', () => {
-    expect(fn(rows, 'onRowDown')).toMatch(/closest\('button:not\(\.name\), \.handle'\)/);
+    expect(fn(rows, 'onRowDown')).toMatch(/closest\('button:not\(\.name\), \.handle(, \.pop-plate)?'\)/);
   });
 
   it('поле открывается на отпускании, внутри жеста: iOS не даёт клавиатуру фокусу из таймера', () => {

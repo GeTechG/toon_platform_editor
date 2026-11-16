@@ -50,7 +50,7 @@ describe('the layer list is one Tab stop', () => {
   it('only one control of the whole list is in the Tab order', () => {
     for (const cls of ['eye', 'tag', 'name', 'kill']) {
       const button = rows.match(new RegExp(`<button\\s+class="${cls}"[\\s\\S]*?>`))?.[0] ?? '';
-      expect(button).toMatch(/tabindex=\{stop\(layerIndex, \d\)\}/);
+      expect(button).toMatch(/tabindex=\{stop\(layerIndex, (\d|[A-Z_]+)\)\}/);
     }
   });
 

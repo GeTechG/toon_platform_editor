@@ -14,8 +14,11 @@
   import { dragTargetIndex, layerGridStep } from './frame-selection';
   import { rowHeight, rowHeightCss } from './thumb-size';
   import Icon from './Icon.svelte';
+  import PopKey from './PopKey.svelte';
+  import Dropdown from './Dropdown.svelte';
+  import { BLEND_MODES, type BlendMode } from '../format/types';
   import { createLostRelease, mainUp } from './lost-release';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
 
   // No thumbnail per row: the timeline beside it already shows every cell.
   let { editor }: { editor: EditorState } = $props();
@@ -62,7 +65,40 @@
   const NAME_COL = 2;
   let col = $state(NAME_COL);
   /** Columns a row can focus: the bin is disabled, so unreachable, on the last layer. */
-  const cols = $derived(canRemove ? 4 : 3);
+  const cols = $derived(canRemove ? 5 : 4);
+  const SETTINGS_COL = 3;
+  const BIN_COL = 4;
+
+  // --- Settings -------------------------------------------------------------
+  // The layer's look and its lock behind one key, the letter of its blend mode
+  // as Procreate has it (layer-settings): pressed, a white box under the key.
+  /** The modes in the order the list shows them: normal, then darken, lighten, contrast, difference, colour. */
+  const blendOptions = $derived(
+    (['normal', ...BLEND_MODES] as const).map((mode) => ({ value: mode as BlendMode | 'normal', label: t(`layer.blend_name.${mode}`) })),
+  );
+
+  function blendOf(layerIndex: number): BlendMode | 'normal' {
+    return editor.doc.layers[layerIndex]?.blend ?? 'normal';
+  }
+
+  function opacityOf(layerIndex: number): number {
+    return editor.doc.layers[layerIndex]?.opacity ?? 100;
+  }
+
+  /** The key's name: the layer, its mode and how strongly it shows. */
+  function settingsLabel(layerIndex: number): string {
+    const name = t('layer.settings', {
+      name: editor.layerLabel(layerIndex),
+      blend: t(`layer.blend_name.${blendOf(layerIndex)}`),
+      opacity: formatPercent(opacityOf(layerIndex) / 100),
+    });
+    return editor.layerLocked(layerIndex) ? `${name}, ${t('layer.locked_mark')}` : name;
+  }
+
+  /** Whether the layer is laid otherwise than plainly: its letter stands out. */
+  function looked(layerIndex: number): boolean {
+    return blendOf(layerIndex) !== 'normal' || opacityOf(layerIndex) < 100;
+  }
 
   function stop(layerIndex: number, c: number): 0 | -1 {
     return layerIndex === editor.activeLayer && c === Math.min(col, cols - 1) ? 0 : -1;
@@ -89,7 +125,7 @@
    * those twice quickly is two presses, not a rename.
    */
   function startRename(e: MouseEvent | null, layerIndex: number): void {
-    if (e && (e.target as HTMLElement).closest('button:not(.name), .handle')) {
+    if (e && (e.target as HTMLElement).closest('button:not(.name), .handle, .pop-plate')) {
       return;
     }
     // A double click inside the open field selects a word; reopening it threw
@@ -117,7 +153,7 @@
   function onRowDown(e: PointerEvent, layerIndex: number): void {
     cancelRowHold();
     // A mouse has the double click; the row's own keys are presses of their own.
-    if (e.pointerType === 'mouse' || !e.isPrimary || (e.target as HTMLElement).closest('button:not(.name), .handle')) {
+    if (e.pointerType === 'mouse' || !e.isPrimary || (e.target as HTMLElement).closest('button:not(.name), .handle, .pop-plate')) {
       return;
     }
     rowHold = window.setTimeout(() => {
@@ -608,6 +644,51 @@
         {/if}
         </span>
 
+        <span class="cell set" role="gridcell">
+        <PopKey
+          label={settingsLabel(layerIndex)}
+          title={t('layer.settings_title')}
+          attrs={{ 'data-col': String(SETTINGS_COL), tabindex: stop(layerIndex, SETTINGS_COL) }}
+        >
+          {#snippet face()}
+            <span class="letter" class:looked={looked(layerIndex)} aria-hidden="true">{t(`layer.blend_short.${blendOf(layerIndex)}`)}</span>
+            {#if editor.layerLocked(layerIndex)}
+              <span class="lock" aria-hidden="true"><Icon name="lock" size={10} /></span>
+            {/if}
+          {/snippet}
+          <div class="layer-box">
+            <label class="field" for="layer-opacity-{layerIndex}">
+              <span>{t('layer.opacity')}</span>
+              <output>{formatPercent(opacityOf(layerIndex) / 100)}</output>
+            </label>
+            <input
+              id="layer-opacity-{layerIndex}"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={opacityOf(layerIndex)}
+              aria-valuetext={formatPercent(opacityOf(layerIndex) / 100)}
+              oninput={(e) => editor.setLayerOpacity(layerIndex, e.currentTarget.valueAsNumber)}
+            />
+            <Dropdown
+              label={t('layer.blend')}
+              value={blendOf(layerIndex)}
+              options={blendOptions}
+              onpick={(mode) => editor.setLayerBlend(layerIndex, mode)}
+            />
+            <label class="check">
+              <input
+                type="checkbox"
+                checked={editor.layerLocked(layerIndex)}
+                onchange={(e) => editor.setLayerLocked(layerIndex, e.currentTarget.checked)}
+              />
+              <span>{t('layer.lock')}</span>
+            </label>
+          </div>
+        </PopKey>
+        </span>
+
         <!-- The pointer's way to reorder; the keyboard's is Alt+↑/↓ on any cell. -->
         <span
           class="handle"
@@ -619,8 +700,8 @@
         <span class="cell" role="gridcell">
         <button
           class="kill"
-          data-col="3"
-          tabindex={stop(layerIndex, 3)}
+          data-col={BIN_COL}
+          tabindex={stop(layerIndex, BIN_COL)}
           aria-keyshortcuts="Delete Backspace"
           disabled={!canRemove}
           aria-disabled={editor.playing || undefined}
@@ -846,6 +927,67 @@
     opacity: 0.4;
     cursor: default;
   }
+  /* The settings key: the letter of the mode in the eye's size and press floor.
+     Heavier than the studio's shared key vocabulary (Editor.svelte), which
+     would make it a 44 px pill. */
+  .list .row .set :global(.key.icon) {
+    flex: none;
+    width: calc(1rem + 8px);
+    min-width: 0;
+    height: calc(1rem + 8px);
+    padding: 0;
+    border-radius: var(--r-sm, 7px);
+    background: transparent;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .letter {
+    font-size: 0.7rem;
+    line-height: 1;
+  }
+  /* Laid otherwise than plainly: the letter in ink and heavy — by weight, not
+     by the signal red, which is for drawing. */
+  .letter.looked {
+    font-weight: 800;
+    color: var(--ink);
+  }
+  .lock {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    color: var(--ink);
+  }
+  .layer-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    width: 225px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 10px;
+    cursor: default;
+  }
+  .layer-box .field {
+    display: contents;
+    color: var(--ink-2);
+  }
+  .layer-box output {
+    font-variant-numeric: tabular-nums;
+  }
+  .layer-box input[type='range'],
+  .layer-box :global(.trigger),
+  .layer-box :global(select),
+  .layer-box .check {
+    grid-column: 1 / 3;
+  }
+  .layer-box .check {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
   .kill {
     display: grid;
     place-items: center;
@@ -903,7 +1045,7 @@
   /* Where the keys would take more than half the strip (200 % text on a
      phone standing up), the drag handle folds away: the bin and the eye stay
      in reach, and the frames keep a cell. Alt+↑/↓ still moves a layer. */
-  @container strip (width < calc(6rem + 126px)) {
+  @container strip (width < calc(8rem + 150px)) {
     .handle {
       display: none;
     }

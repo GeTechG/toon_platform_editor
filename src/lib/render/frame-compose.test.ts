@@ -46,7 +46,8 @@ class Recorder implements ComposeBuffer {
   fill(): void { this.log.push(`fill ${this.fillStyle}`); }
   drawImage(image: CanvasImageSource): void {
     const from = (image as unknown as { recorder?: Recorder }).recorder;
-    this.log.push(`blit ${from?.name ?? '?'}${this.globalAlpha < 1 ? ` @${this.globalAlpha}` : ''}`);
+    const op = this.globalCompositeOperation === 'source-over' ? '' : ` ~${this.globalCompositeOperation}`;
+    this.log.push(`blit ${from?.name ?? '?'}${this.globalAlpha < 1 ? ` @${this.globalAlpha}` : ''}${op}`);
   }
 }
 
@@ -741,3 +742,114 @@ describe('a moved selection taken away', () => {
     expect(after[0]).toBe('clear');
   });
 });
+
+describe('the composer lays each layer with its look', () => {
+  const paper = '#ffffff';
+  const named = (made: readonly Recorder[], name: string) => made.find((buffer) => buffer.name === name)!;
+  /** The buffers whose blit onto `into` carries `suffix`. */
+  const laidWith = (into: Recorder, suffix: string) => into.log.filter((entry) => entry.startsWith('blit') && entry.endsWith(suffix));
+
+  it('lays a translucent active layer at its opacity, with the line under the hand in it', () => {
+    const built = doc(2);
+    built.layers[1].opacity = 50;
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools, paper,
+      live: { id: 1, points: [0, 0, 100, 100, 200, 200, 300, 300, 400, 400, 500, 500, 600, 600, 700, 700], width: 40, color: '#ff0000' },
+    });
+    // The tail is not painted over the frame at full strength: it is in the layer.
+    expect(target.log.some((entry) => entry.startsWith('stroke'))).toBe(false);
+    const [laid] = laidWith(target, ' @0.5');
+    expect(laid).toBeDefined();
+    const look = named(made, laid.split(' ')[1]);
+    expect(look.log.some((entry) => entry.startsWith('stroke #ff0000'))).toBe(true);
+    // Opacity alone asks for no paper.
+    expect(target.log.some((entry) => entry.startsWith('fillRect'))).toBe(false);
+  });
+
+  it('a plain active layer still has the tail painted straight over the frame', () => {
+    const built = doc(2);
+    const { instance } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools, paper,
+      live: { id: 1, points: [0, 0, 100, 100], width: 40, color: '#ff0000' },
+    });
+    expect(target.log.some((entry) => entry.startsWith('stroke #ff0000'))).toBe(true);
+  });
+
+  it('keeps a translucent layer below the active one in the one buffer below, laid apart inside it', () => {
+    const built = doc(3);
+    built.layers[0].opacity = 40;
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, { doc: built, frame: 0, activeLayer: 2, viewport, tools: built.tools, paper });
+    expect(target.log).toEqual(['blit b0', 'blit b1']);
+    expect(laidWith(named(made, 'b0'), ' @0.4')).toHaveLength(1);
+  });
+
+  it('lays a blended layer above the active one over the paper and everything under it, apart from the plain ones', () => {
+    const built = doc(3);
+    built.layers[2].blend = 'multiply';
+    const { instance } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, { doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools, paper });
+    // Paper, the active layer, the plain layer above it, then the multiplied one onto all of that.
+    expect(target.log[0]).toBe('fillRect source-over #ffffff');
+    const blits = target.log.filter((entry) => entry.startsWith('blit'));
+    expect(blits).toHaveLength(3);
+    expect(blits[2]).toEndWith(' ~multiply');
+    expect(blits.slice(0, 2).every((entry) => !entry.includes('~'))).toBe(true);
+  });
+
+  it('lays a blended layer below the active one over the paper, not inside a transparent buffer', () => {
+    const built = doc(3);
+    built.layers[1].blend = 'screen';
+    const { instance } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, { doc: built, frame: 0, activeLayer: 2, viewport, tools: built.tools, paper });
+    expect(target.log[0]).toBe('fillRect source-over #ffffff');
+    const blits = target.log.filter((entry) => entry.startsWith('blit'));
+    expect(blits.map((entry) => entry.endsWith(' ~screen'))).toEqual([false, true, false]);
+  });
+
+  it('lays the paper under no blend while the onion shows through the frame', () => {
+    const built = doc(2);
+    built.layers[1].blend = 'multiply';
+    const { instance } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 0, activeLayer: 0, viewport, tools: built.tools, paper, alpha: 0.5, blend: true,
+    });
+    expect(target.log.some((entry) => entry.startsWith('fillRect'))).toBe(false);
+  });
+
+  it('paints a layer again when its look changes', () => {
+    const built = doc(2);
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    const scene = { doc: built, frame: 0, activeLayer: 1, viewport, tools: built.tools, paper };
+    instance.compose(target.ctx, 100, 50, scene);
+    built.layers[0].opacity = 30;
+    instance.invalidate();
+    instance.compose(target.ctx, 100, 50, scene);
+    expect(laidWith(named(made, 'b0'), ' @0.3')).toHaveLength(1);
+  });
+
+  it('draws the ghosts without the looks of their layers', () => {
+    const built = doc(1);
+    built.layers[0].opacity = 20;
+    addFrame(built, 0);
+    addStroke(built, 0, 1, line(300));
+    const { instance, made } = composer();
+    const target = new Recorder('target');
+    instance.compose(target.ctx, 100, 50, {
+      doc: built, frame: 1, activeLayer: 0, viewport, tools: built.tools, paper,
+      ghosts: { frames: [{ index: 0, alpha: 0.3 }], layers: [0] },
+    });
+    const ghost = ghostIn(made);
+    expect(ghost.log.some((entry) => entry.includes('@0.2'))).toBe(false);
+  });
+});
+

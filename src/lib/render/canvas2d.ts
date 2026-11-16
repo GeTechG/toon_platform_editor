@@ -5,7 +5,7 @@
 
 import { BACKGROUND_COLOR } from '../format/constants';
 import { opacityOf } from '../format/types';
-import type { Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import type { BlendMode, Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitGeometry, emitGeometryFrom, type PathSink } from './smoothing';
 import type { StrokeGeometry } from './smoothing';
@@ -51,6 +51,12 @@ export interface Canvas2DLike extends PathSink {
 export interface BlitTarget {
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void;
   drawImage(image: CanvasImageSource, dx: number, dy: number): void;
+}
+
+/** A blit target that can lay a layer translucent or blended. */
+export interface LookTarget {
+  globalAlpha: number;
+  globalCompositeOperation: GlobalCompositeOperation;
 }
 
 /** Copies a cached committed-frame layer onto the visible canvas 1:1. */
@@ -99,15 +105,17 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
   render(doc: ToonDocument, frameIndex: number, target: Canvas2DLike, viewport: Viewport): void {
     clearToBackground(target, viewport.background);
     const cells: Frame[] = [];
+    const looks: LayerLook[] = [];
     for (const layer of doc.layers) {
       const cell = layer.frames[frameIndex];
       if (!layer.hidden && cell) {
         cells.push(cell);
+        looks.push(layer);
       }
     }
     // Nothing can bleed between layers when there is only one and it does not
     // erase — draw it straight into the target (identical result, no buffer).
-    if (cells.length <= 1 && !cells.some((cell) => hasEraser(cell, doc.tools))) {
+    if (cells.length <= 1 && !cells.some((cell) => hasEraser(cell, doc.tools)) && !looks.some(hasLook)) {
       if (cells.length === 1) {
         renderStrokesLayer(cells[0], doc.tools, target, viewport);
       } else {
@@ -116,8 +124,14 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
       return;
     }
     const { width, height } = target.canvas;
+    // A blend mode is laid over the paper too: the stack is built on the
+    // target the paper is on, not in a transparent buffer laid over it.
+    if (viewport.background !== null && looks.some((look) => look.blend)) {
+      renderLayersStacked(cells, doc.tools, target, viewport, () => this.#cleared(1, width, height), undefined, looks, true);
+      return;
+    }
     const frame = this.#cleared(0, width, height);
-    renderLayersStacked(cells, doc.tools, frame.ctx, viewport, () => this.#cleared(1, width, height));
+    renderLayersStacked(cells, doc.tools, frame.ctx, viewport, () => this.#cleared(1, width, height), undefined, looks);
     blitLayer(frame.image, target);
   }
 
@@ -133,12 +147,27 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
   }
 }
 
+/** What a layer looks like when it is laid: how strongly it shows and how it blends. */
+export interface LayerLook {
+  readonly opacity?: number;
+  readonly blend?: BlendMode;
+}
+
+/** A layer that is not laid plainly: translucent, or with a blend mode. */
+export function hasLook(look: LayerLook | undefined): boolean {
+  return look !== undefined && (look.opacity !== undefined || look.blend !== undefined);
+}
+
 /**
  * Layers bottom-up onto a transparent target that holds nothing yet. A buffer
  * per layer was a clear and a blit of the whole sheet per layer — a third of a
  * frame of five layers rendered in software. Only a layer that erases needs
  * one, so its eraser cuts its own alpha alone, and not the bottom layer:
- * nothing is under it. `apart` hands that buffer out, cleared.
+ * nothing is under it. A layer with a look needs one too, wherever it lies:
+ * its alpha is the whole layer's, so its own lines do not darken where they
+ * cross, and its mode is laid over what is under it. `apart` hands that
+ * buffer out, cleared. `onPaper`: the target holds the paper already, so even
+ * the bottom layer's eraser would cut into it.
  */
 export function renderLayersStacked(
   cells: readonly Frame[],
@@ -148,16 +177,33 @@ export function renderLayersStacked(
   apart: () => ScratchLayer,
   /** Where the strokes' paths are kept to be drawn again; none kept without. */
   paths?: PathKeeper<StrokePaths>,
+  /** Each cell's layer look, by position; absent — every layer plain. */
+  looks?: readonly (LayerLook | undefined)[],
+  onPaper = false,
 ): void {
   for (const [index, cell] of cells.entries()) {
-    if (index === 0 || !hasEraser(cell, tools)) {
+    const look = looks?.[index];
+    if (!hasLook(look) && ((index === 0 && !onPaper) || !hasEraser(cell, tools))) {
       renderStrokesLayer(cell, tools, target, viewport, undefined, paths);
       continue;
     }
     const own = apart();
     renderStrokesLayer(cell, tools, own.ctx, viewport, undefined, paths);
-    blitLayer(own.image, target);
+    layLayer(own.image, target, look);
   }
+}
+
+/** Lays a layer's buffer onto the target with its look, and leaves the target plain again. */
+export function layLayer(source: CanvasImageSource, target: BlitTarget & LookTarget, look: LayerLook | undefined): void {
+  if (!hasLook(look)) {
+    blitLayer(source, target);
+    return;
+  }
+  target.globalAlpha = (look!.opacity ?? 100) / 100;
+  if (look!.blend) target.globalCompositeOperation = look!.blend;
+  blitLayer(source, target);
+  target.globalAlpha = 1;
+  if (look!.blend) target.globalCompositeOperation = 'source-over';
 }
 
 function hasEraser(frame: Frame, tools: readonly ToolDescriptor[]): boolean {

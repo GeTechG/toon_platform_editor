@@ -28,6 +28,18 @@ describe('the colour the pipette reads off a pixel', () => {
   it('the rim of a translucent line, fainter than the line itself, is still emptiness', () => {
     expect(colourOfPixel([51, 102, 204, 40], [faint])).toBeNull();
   });
+
+  it('a line on a translucent layer gives the colour it is seen as, as strong as the layer lets it', () => {
+    // Black on a 50 % layer over white.
+    expect(colourOfPixel([0, 0, 0, 128], [opaque], undefined, [50])).toBe('#7f7f7f');
+    // A faint line on a faint layer: 40 % of 50 %.
+    expect(colourOfPixel([51, 102, 204, 51], [faint], undefined, [50])).toBe('#d6e0f5');
+  });
+
+  it('a layer at nought percent is no reason to read emptiness as a colour', () => {
+    expect(colourOfPixel([0, 0, 0, 0], [opaque], undefined, [0])).toBeNull();
+    expect(colourOfPixel([0, 0, 0, 128], [opaque], undefined, [0])).toBeNull();
+  });
 });
 
 describe('the pipette leaves the brush as strong as it was', () => {

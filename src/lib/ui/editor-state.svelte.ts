@@ -6,7 +6,7 @@
 import { sessionErrors } from './error-log';
 import { AudioTrackState } from '../audio/state.svelte';
 import type { DraftState } from '../draft/store';
-import type { Frame, Stroke, ToonDocument } from '../format/types';
+import type { BlendMode, Frame, Stroke, ToonDocument } from '../format/types';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
@@ -48,6 +48,8 @@ import {
   markReach,
   setFrameRate,
   setLayerHidden,
+  setLayerOpacity,
+  setLayerBlend,
   type CellBuffer,
   type CellRange,
   type ResolvedStroke,
@@ -104,6 +106,7 @@ import { IDENTITY_VIEW, clampPan, fitView, rotateAt, zoomAt, type Stage, type Vi
 import { resizeSheet, sheetOpen } from './sheet-size';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
+import { editRefusal, normalizeLayerLocks } from './layer-locks';
 import { filmTiming, type FilmTiming } from '../model/timing';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
@@ -279,6 +282,7 @@ interface CellSnapshot {
 interface StructureEdit {
   snap: StructureSnapshot;
   layerColors: number[];
+  layerLocks: boolean[];
   activeFrame: number;
   activeLayer: number;
   /** A layer move: where the layer stood and where it went (the reader is told). */
@@ -487,6 +491,12 @@ export class EditorState {
    * in the draft record and not in a published document.
    */
   layerColors = $state<number[]>(defaultLayerColors(1));
+  /**
+   * Which layers are locked against new edits, bottom-up like `doc.layers`.
+   * A habit of the desk (layer-locks.ts): it travels in the draft beside the
+   * colour tags and never in the toon.
+   */
+  layerLocks = $state<boolean[]>([false]);
   /**
    * Studio bottom-panel height in CSS px (persisted), set by dragging the
    * divider on its top edge. The timeline is the row that grows with it.
@@ -1298,11 +1308,14 @@ export class EditorState {
    * in the canvas's live line; the undo stack stays as it was. Adding,
    * deleting, moving and showing layers and frames are not edits of a cell.
    */
-  mayEdit(layers: readonly number[] = [this.activeLayer]): boolean {
-    if (!layers.some((layer) => this.doc.layers[layer]?.hidden)) {
+  mayEdit(layers: readonly number[] = [this.activeLayer], history = false): boolean {
+    // A locked layer refuses what is new but takes its own history back
+    // and forth (layer-locks.ts); a hidden one refuses both.
+    const refusal = editRefusal(this.doc, this.layerLocks, layers, history);
+    if (refusal === null) {
       return true;
     }
-    this.canvasHint = { text: t('canvas.hidden_layer') };
+    this.canvasHint = { text: t(refusal === 'hidden' ? 'canvas.hidden_layer' : 'canvas.locked_layer') };
     return false;
   }
 
@@ -1381,6 +1394,7 @@ export class EditorState {
     const before = this.takeStructure();
     this.activeLayer = this.#write((doc) => addLayer(doc, at));
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
+    this.layerLocks.splice(at, 0, false);
     this.layerCounter++;
     this.#write((doc) => renameLayer(doc, at, t('layer.default_name', { n: this.layerCounter })));
     // The selection holds layer numbers, and every one from `at` up has just
@@ -1412,6 +1426,7 @@ export class EditorState {
       const before = this.takeStructure();
       this.#write((doc) => removeLayer(doc, removed));
       this.layerColors.splice(removed, 1);
+      this.layerLocks.splice(removed, 1);
       this.activeLayer = activeLayerAfterRemove(this.activeLayer, removed, this.doc.layers.length);
       this.collapseSelection();
       this.pushStructure(before);
@@ -1440,6 +1455,7 @@ export class EditorState {
     const before = folded ?? this.takeStructure();
     this.#write((doc) => moveLayer(doc, from, to));
     this.layerColors.splice(to, 0, ...this.layerColors.splice(from, 1));
+    this.layerLocks.splice(to, 0, ...this.layerLocks.splice(from, 1));
     this.activeLayer = activeLayerAfterMove(this.activeLayer, from, to);
     this.collapseSelection();
     if (folded) {
@@ -1475,6 +1491,40 @@ export class EditorState {
     }
     this.#write((doc) => setLayerHidden(doc, index, !layer.hidden));
     this.touched = true;
+  }
+
+  /** How strongly a layer shows, percent; a document change, not an undo step, as hiding is. */
+  setLayerOpacity(index: number, percent: number): void {
+    const layer = this.doc.layers[index];
+    if (!layer || (layer.opacity ?? 100) === Math.min(100, Math.max(0, Math.round(percent)))) {
+      return;
+    }
+    this.#write((doc) => setLayerOpacity(doc, index, percent));
+    this.touched = true;
+  }
+
+  /** How a layer is laid over what is under it; a document change, not an undo step. */
+  setLayerBlend(index: number, blend: BlendMode | 'normal'): void {
+    const layer = this.doc.layers[index];
+    if (!layer || (layer.blend ?? 'normal') === blend) {
+      return;
+    }
+    this.#write((doc) => setLayerBlend(doc, index, blend));
+    this.touched = true;
+  }
+
+  /** Locks a layer against new edits, or frees it; desk state, kept in the draft. */
+  setLayerLocked(index: number, locked: boolean): void {
+    if (!this.doc.layers[index]) {
+      return;
+    }
+    while (this.layerLocks.length < this.doc.layers.length) this.layerLocks.push(false);
+    this.layerLocks[index] = locked;
+    this.touched = true;
+  }
+
+  layerLocked(index: number): boolean {
+    return this.layerLocks[index] === true;
   }
 
   setPickSource(source: PickSource): void {
@@ -1773,6 +1823,7 @@ export class EditorState {
       fill: this.fillColor,
       palette: this.palette.slice(),
       layerColors: this.layerColors.slice(),
+      layerLocks: this.layerLocks.slice(),
     };
   }
 
@@ -1804,6 +1855,7 @@ export class EditorState {
       this.replacePalette(saved.palette);
     }
     this.layerColors = normalizeLayerColors(saved.layerColors, this.doc.layers.length);
+    this.layerLocks = normalizeLayerLocks(saved.layerLocks, this.doc.layers.length);
     this.selectFrame(saved.frame ?? 0);
     this.selectLayer(saved.layer ?? 0);
     // The frame first, then the tool: the lasso takes the frame it is picked
@@ -1848,6 +1900,7 @@ export class EditorState {
     this.doc = doc;
     this.docOpens += 1;
     this.layerColors = defaultLayerColors(doc.layers.length);
+    this.layerLocks = normalizeLayerLocks(undefined, doc.layers.length);
     this.resetView();
     this.activeFrame = 0;
     this.activeLayer = 0;
@@ -2360,6 +2413,7 @@ export class EditorState {
     return {
       snap: takeStructure(this.doc),
       layerColors: this.layerColors.slice(),
+      layerLocks: this.layerLocks.slice(),
       activeFrame: this.activeFrame,
       activeLayer: this.activeLayer,
       selection: { frames: [...this.selection.frames], layers: [...this.selection.layers] },
@@ -2448,6 +2502,7 @@ export class EditorState {
       this.edits = this.edits.slice(0, -1);
       this.#write((doc) => restoreStructure(doc, structure.snap));
       this.layerColors = structure.layerColors.slice();
+      this.layerLocks = structure.layerLocks.slice();
       this.activeFrame = structure.activeFrame;
       this.activeLayer = structure.activeLayer;
       this.collapseSelection();
@@ -2468,7 +2523,7 @@ export class EditorState {
     if (edit) {
       // A frame or a layer added since has moved the cells along.
       placeBlock(this.doc, edit);
-      if (!this.mayEdit(edit.map((snapshot) => snapshot.layer))) {
+      if (!this.mayEdit(edit.map((snapshot) => snapshot.layer), true)) {
         return;
       }
       // What a cut took may not fit any more: lines drawn elsewhere since
@@ -2502,7 +2557,7 @@ export class EditorState {
       return;
     }
     const cell = this.activeCell!;
-    if (!this.mayEdit()) {
+    if (!this.mayEdit(undefined, true)) {
       return;
     }
     const stroke = cell.strokes[cell.strokes.length - 1];
@@ -2531,6 +2586,7 @@ export class EditorState {
       this.redoStructure = null;
       this.#write((doc) => restoreStructure(doc, after.snap));
       this.layerColors = after.layerColors.slice();
+      this.layerLocks = after.layerLocks.slice();
       this.activeFrame = after.activeFrame;
       this.activeLayer = after.activeLayer;
       this.collapseSelection();
@@ -2542,7 +2598,7 @@ export class EditorState {
       this.touched = true;
       return;
     }
-    if (!this.canRedo || !this.mayEdit()) {
+    if (!this.canRedo || !this.mayEdit(undefined, true)) {
       return;
     }
     const { stroke } = this.undone[this.undone.length - 1];
@@ -2691,7 +2747,7 @@ export class EditorState {
   mirrorSelectedLayers(axis: 'horizontal' | 'vertical'): void {
     const layers = this.visibleSelectedLayers
       .filter((layer) => (this.doc.layers[layer].frames[this.activeFrame]?.strokes.length ?? 0) > 0);
-    if (this.playing || !this.mayEdit() || layers.length === 0) {
+    if (this.playing || !this.mayEdit([this.activeLayer, ...layers]) || layers.length === 0) {
       return;
     }
     this.selection = { frames: [this.activeFrame], layers: this.selection.layers };
@@ -2727,11 +2783,13 @@ export class EditorState {
    * opens nothing, so the caller can leave the tool where it was.
    */
   beginTransform(): boolean {
-    if (!this.playing && !this.mayEdit()) {
+    const layers = this.visibleSelectedLayers;
+    // Every layer it would move, not the active one alone: a locked one among
+    // them refuses now, not at Enter with the move already made.
+    if (!this.playing && !this.mayEdit([this.activeLayer, ...layers])) {
       this.transform = null;
       return false;
     }
-    const layers = this.visibleSelectedLayers;
     const tools = this.doc.tools;
     const box = selectionBounds(layers.flatMap(
       (layer) => this.doc.layers[layer].frames[this.activeFrame]?.strokes ?? [],
@@ -2762,7 +2820,7 @@ export class EditorState {
    * selection let go untouched leaves every line whole.
    */
   beginLassoTransform(loop: readonly number[]): boolean {
-    if (this.playing || !this.mayEdit() || !this.leaveTransform()) {
+    if (this.playing || !this.mayEdit([this.activeLayer, ...this.visibleSelectedLayers]) || !this.leaveTransform()) {
       return false;
     }
     const frame = this.activeFrame;
@@ -3032,7 +3090,7 @@ export class EditorState {
    */
   beginPluginGesture(): boolean {
     const layers = this.visibleSelectedLayers;
-    if (this.playing || !this.mayEdit() || layers.length === 0) {
+    if (this.playing || !this.mayEdit([this.activeLayer, ...layers]) || layers.length === 0) {
       return false;
     }
     this.pluginGesture = { snapshots: this.snapshotCells({ frames: [this.activeFrame], layers }), wrote: false };

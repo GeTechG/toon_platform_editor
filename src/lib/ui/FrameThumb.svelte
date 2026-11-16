@@ -45,11 +45,15 @@
       return;
     }
     let stamp = 0;
+    // A layer's look changes the picture without touching a cell.
+    let looks = '';
     for (const layer of doc.layers) {
       const cell = layer.frames[frameIndex];
       stamp = (Math.imul(stamp, 31) + (layer.hidden || !cell ? -1 : cellStamp(cell))) | 0;
+      if (!layer.hidden && (layer.opacity !== undefined || layer.blend)) looks += `${layer.opacity ?? ''}/${layer.blend ?? ''},`;
+      else looks += ',';
     }
-    const cells = `${stamp}:${box.w}x${box.h}`;
+    const cells = `${stamp}:${looks}:${box.w}x${box.h}`;
     if (cells === painted) {
       return;
     }

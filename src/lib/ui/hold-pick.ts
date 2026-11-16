@@ -54,10 +54,15 @@ export function colourOfPixel(
   [r, g, b, a]: readonly number[],
   tools: readonly ToolDescriptor[],
   paper = BACKGROUND_COLOR,
+  /** The opacities of the translucent layers shown, percent: a line on one is as faint as the layer. */
+  layers: readonly number[] = [],
 ): string | null {
   const hex = (rgb: readonly number[]): string => '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('');
   if (a === 255) return hex([r, g, b]);
-  const faint = tools.flatMap((tool) => opacityOf(tool).opacity ?? []);
+  const lines = tools.flatMap((tool) => opacityOf(tool).opacity ?? []);
+  // A layer at nought shows nothing, so it is no faintest line.
+  const shown = layers.filter((layer) => layer > 0);
+  const faint = [...lines, ...shown, ...lines.flatMap((line) => shown.map((layer) => (line * layer) / 100))];
   if (faint.length === 0 || a < Math.min(...faint) * 2.55 - 2) return null;
   return hex([r, g, b].map((v, i) => Math.round((v * a + parseInt(paper.slice(1 + 2 * i, 3 + 2 * i), 16) * (255 - a)) / 255)));
 }

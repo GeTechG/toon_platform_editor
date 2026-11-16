@@ -464,6 +464,77 @@ describe('layer composition', () => {
   });
 });
 
+describe('layer settings', () => {
+  const black: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 32, color: '#000000' };
+  const red: ToolDescriptor = { kind: 'pencil', geometry: 'smooth', width: 400, color: '#ff0000' };
+  const wide = [0, 1200, 4800, 1200];
+  const line = (tool_id: number): Frame => ({ strokes: [{ points: wide, tool_id }] });
+
+  /** Renders `doc`, each scratch buffer named in the order it was made. */
+  function render(doc: ToonDocument): { target: string[]; buffers: string[][] } {
+    const ctx = new RecordingCtx();
+    const buffers: string[][] = [];
+    new Canvas2DFrameRenderer(() => {
+      const scratch = new RecordingCtx();
+      buffers.push(scratch.log);
+      return { ctx: scratch, image: { id: `scratch${buffers.length}` } as unknown as CanvasImageSource };
+    }).render(doc, 0, ctx, viewport);
+    return { target: ctx.log, buffers };
+  }
+
+  /** The lines around each blit of `image` in a log: what alpha and operation it was laid with. */
+  function blitOf(log: string[], image: string): { alpha: number; op: string } {
+    const at = log.indexOf(`drawImage(${image},0,0)`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    let alpha = 1;
+    let op = 'source-over';
+    for (const entry of log.slice(0, at)) {
+      if (entry.startsWith('globalAlpha=')) alpha = Number(entry.slice('globalAlpha='.length));
+      if (entry.startsWith('globalCompositeOperation=')) op = entry.slice('globalCompositeOperation='.length);
+    }
+    return { alpha, op };
+  }
+
+  it('a translucent single layer is rasterized apart and laid at its alpha, not stroke by stroke', () => {
+    const doc = docOf([black], [line(0)]);
+    doc.layers[0].opacity = 50;
+    const { target, buffers } = render(doc);
+    expect(buffers.length).toBeGreaterThanOrEqual(1);
+    expect(target).not.toContain('strokeStyle=#000000');
+    const own = `scratch${buffers.findIndex((log) => log.includes('strokeStyle=#000000')) + 1}`;
+    const host = [target, ...buffers].find((log) => log.includes(`drawImage(${own},0,0)`))!;
+    expect(blitOf(host, own)).toEqual({ alpha: 0.5, op: 'source-over' });
+    // The alpha does not stay on for whatever is laid next.
+    expect(host.slice(host.indexOf(`drawImage(${own},0,0)`))).toContain('globalAlpha=1');
+  });
+
+  it('a layer with a blend mode is laid over the paper and the layers under it with that operation', () => {
+    const doc = docOf([black, red], [line(1)], [line(0)]);
+    doc.layers[1].blend = 'difference';
+    const { target, buffers } = render(doc);
+    // The paper is in the picture the mode is laid onto: the stack is built on the target itself.
+    expect(target.slice(0, 3)).toEqual(['setTransform(1,0,0,1,0,0)', 'fillStyle=#ffffff', 'fillRect(0,0,1200,600)']);
+    expect(target).toContain('strokeStyle=#ff0000');
+    const own = `scratch${buffers.findIndex((log) => log.includes('strokeStyle=#000000')) + 1}`;
+    expect(blitOf(target, own)).toEqual({ alpha: 1, op: 'difference' });
+    expect(target[target.length - 1]).toBe('globalCompositeOperation=source-over');
+  });
+
+  it('a mode and an opacity act together', () => {
+    const doc = docOf([black, red], [line(1)], [line(0)]);
+    Object.assign(doc.layers[1], { blend: 'multiply', opacity: 30 });
+    const { target, buffers } = render(doc);
+    const own = `scratch${buffers.findIndex((log) => log.includes('strokeStyle=#000000')) + 1}`;
+    expect(blitOf(target, own)).toEqual({ alpha: 0.3, op: 'multiply' });
+  });
+
+  it('a hidden layer with settings is not drawn at all', () => {
+    const doc = docOf([black, red], [line(1)], [line(0)]);
+    Object.assign(doc.layers[1], { blend: 'multiply', opacity: 30, hidden: true });
+    expect(rasterSignature(doc)).toBe(rasterSignature(docOf([black, red], [line(1)])));
+  });
+});
+
 describe('single-layer fast path', () => {
   it('draws straight into the target, without a scratch layer', () => {
     const ctx = new RecordingCtx();

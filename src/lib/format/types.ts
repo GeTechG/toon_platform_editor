@@ -143,12 +143,34 @@ export interface Frame {
   strokes: Stroke[];
 }
 
+/**
+ * The blend modes a layer may take: W3C Compositing and Blending Level 1, in
+ * the order the layer box lists them — darken, lighten, contrast, difference,
+ * colour. The names are canvas `globalCompositeOperation` values as they are.
+ */
+export const BLEND_MODES = [
+  'multiply', 'color-burn', 'darken',
+  'screen', 'color-dodge', 'lighten',
+  'overlay', 'soft-light', 'hard-light',
+  'difference', 'exclusion',
+  'hue', 'saturation', 'color', 'luminosity',
+] as const;
+
+export type BlendMode = (typeof BLEND_MODES)[number];
+
 /** A layer: named, hideable, one cell per frame. */
 export interface Layer {
   /** Hidden layers are skipped by every renderer; always present (one canonical form). */
   hidden: boolean;
   /** Display name, 1–`MAX_LAYER_NAME` characters; absent means "name by position". */
   name?: string;
+  /**
+   * How strongly the whole layer shows, an integer percent 0–99. Absent — opaque;
+   * 100 is never stored (one canonical form). 0 is invisible, not hidden.
+   */
+  opacity?: number;
+  /** How the layer is laid over what lies under it, paper included. Absent — normal, never stored. */
+  blend?: BlendMode;
   /** Cells in frame order; every layer of a document has the same length. */
   frames: Frame[];
 }

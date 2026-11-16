@@ -32,8 +32,9 @@ describe('nothing edits a hidden layer', () => {
   const guard = member(state, 'mayEdit');
 
   it('one guard: a hidden layer among those an edit touches refuses it, with the eye hint', () => {
-    expect(guard).toContain('.hidden');
-    expect(guard).toContain("t('canvas.hidden_layer')");
+    // The refusal itself is layer-locks.ts `editRefusal`, which says «hidden» first.
+    expect(guard).toContain('editRefusal(');
+    expect(guard).toContain("'canvas.hidden_layer'");
     expect(guard).toContain('this.canvasHint');
   });
 
@@ -58,7 +59,7 @@ describe('nothing edits a hidden layer', () => {
     // The step stays on the stack: the guard comes before anything is sliced off.
     const block = undo.slice(undo.indexOf('const edit = this.restorableEdit'));
     expect(block.indexOf('this.mayEdit(')).toBeLessThan(block.indexOf('this.edits = dropCells(this.edits, edit)'));
-    expect(undo.indexOf('this.mayEdit()')).toBeGreaterThan(undo.indexOf('const cell = this.activeCell'));
+    expect(undo.indexOf('this.mayEdit(undefined, true)')).toBeGreaterThan(undo.indexOf('const cell = this.activeCell'));
     const structure = undo.slice(0, undo.indexOf('const edit = this.restorableEdit'));
     expect(structure).not.toContain('mayEdit');
   });

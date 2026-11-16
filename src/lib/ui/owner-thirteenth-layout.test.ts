@@ -186,16 +186,16 @@ describe('a phone’s layer row fits its column', () => {
   });
 
   it('the column is never narrower than the keys of its row', () => {
-    // Eye, handle and bin (1rem + 8px each), the 14 px tag and its 1 px
-    // margins, four 4 px gaps, 3 + 3 padding and the column's border.
-    expect(phoneStrip).toMatch(/\.layer-col \{[^}]*min-width: calc\(3rem \+ 63px\)/);
+    // Eye, settings, handle and bin (1rem + 8px each), the 14 px tag and its
+    // 1 px margins, five 4 px gaps, 3 + 3 padding and the column's border.
+    expect(phoneStrip).toMatch(/\.layer-col \{[^}]*min-width: calc\(4rem \+ 75px\)/);
     expect(phoneStrip).toMatch(/\.body \{[^}]*container: strip \/ inline-size/);
   });
 
   it('where the keys would take more than half the strip, the drag handle folds away', () => {
-    const narrow = /@container strip \(width < calc\(6rem \+ 126px\)\)/;
+    const narrow = /@container strip \(width < calc\(8rem \+ 150px\)\)/;
     expect(layerRows).toMatch(new RegExp(narrow.source + String.raw`\s*\{[^]*?\.handle \{\s*display: none`));
-    expect(timeline).toMatch(new RegExp(narrow.source + String.raw`\s*\{[^]*?\.layer-col \{\s*min-width: calc\(2rem \+ 51px\)`));
+    expect(timeline).toMatch(new RegExp(narrow.source + String.raw`\s*\{[^]*?\.layer-col \{\s*min-width: calc\(3rem \+ 63px\)`));
   });
 
   it('there «+ Слой» keeps its plus and its name, the word only for the reader', () => {
