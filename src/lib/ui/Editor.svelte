@@ -1250,6 +1250,9 @@
       case 'strip-zoom-out':
         editor.zoomStrip(-1);
         break;
+      case 'strip-zoom-fit':
+        editor.fitStrip();
+        break;
       // Reference: the X between the two swatches swaps outline and fill.
       case 'swap':
         editor.swapColors();

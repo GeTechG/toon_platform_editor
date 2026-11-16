@@ -332,6 +332,7 @@ export function studioCommands(tools: readonly ToolKeys[]): Command[] {
     once('ruler', 'Alt+r'),
     held('strip-zoom-in', 'Alt++'),
     held('strip-zoom-out', 'Alt+-'),
+    once('strip-zoom-fit', 'Alt+0'),
     once('play', 'Space'),
     once('play-from-active', 'Shift+Space'),
     held('zoom-in', 'Ctrl++'),

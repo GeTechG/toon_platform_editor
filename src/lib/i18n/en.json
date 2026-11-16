@@ -575,6 +575,12 @@
     "delete": "Delete selection (Delete)"
   },
   "timeline": {
+    "zoom_group": "Strip zoom",
+    "zoom_out": "Narrower frames",
+    "zoom_in": "Wider frames",
+    "zoom_value": "Strip zoom {{percent}}. Back to 100 %",
+    "zoom_reset": "Back to 100 %",
+    "zoom_fit": "Whole film",
     "col_width": "Layer column width",
     "col_width_title": "Layer column width (← / →)",
     "grid": "Frames and layers",
@@ -1101,7 +1107,8 @@
     "export": "Export",
     "error_log": "Download error log",
     "strip_zoom_in": "Wider frames on the strip",
-    "strip_zoom_out": "Narrower frames on the strip"
+    "strip_zoom_out": "Narrower frames on the strip",
+    "strip_zoom_fit": "Whole film on the strip"
   },
   "onion": {
     "box": "Onion skin",

@@ -599,6 +599,11 @@ export class EditorState {
   onStop: (() => void) | null = null;
   /** Stops the running preview: set by the transport that started it, for the sheet to call. */
   stopPreview: (() => void) | null = null;
+  /**
+   * Set by the timeline while it is on screen: the strip's keys zoom about
+   * the current frame (1 wider, -1 narrower) and 0 fits the film into it.
+   */
+  stripKeys: ((how: 1 | -1 | 0) => void) | null = null;
 
   /** Active UI preset id (persisted). */
   preset = $state(DEFAULT_PRESET);
@@ -2239,8 +2244,17 @@ export class EditorState {
    * step wider or narrower; the strip keeps the active frame in view.
    */
   zoomStrip(direction: 1 | -1): void {
+    if (this.stripKeys) {
+      this.stripKeys(direction);
+      return;
+    }
     const own = cellSize(this.doc.width, this.doc.height).w + 2;
     this.setSetting('timelineZoom', Math.round(zoomBy(this.settings.timelineZoom || own, -direction * 150) * 100) / 100);
+  }
+
+  /** «Весь фильм» (Alt+0): the strip zoomed so the whole film is in it, scrolled to its start. */
+  fitStrip(): void {
+    this.stripKeys?.(0);
   }
 
   /** The film's length in ticks — «Кадров: N». */

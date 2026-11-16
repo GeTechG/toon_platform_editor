@@ -174,6 +174,32 @@ export function zoomBy(width: number, deltaY: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, width * Math.exp(-deltaY / 500)));
 }
 
+/**
+ * Where in the strip's box a key's zoom keeps its point: the current frame's
+ * middle while any of it is in view, the strip's middle otherwise.
+ * `start`/`width` are the frame's place in the row (strip-zoom-keys).
+ */
+export function zoomAnchor(scrollLeft: number, view: number, start: number, width: number): number {
+  const seen = start + width > scrollLeft && start < scrollLeft + view;
+  return seen ? start + width / 2 - scrollLeft : view / 2;
+}
+
+/** A cell this wide and up has a gap after it; under it the bands run unbroken (Timeline.svelte). */
+const GAP_FROM = 14;
+const GAP = 2;
+
+/**
+ * «Весь фильм»: the cell's width that lays `ticks` ticks, the 2 px before the
+ * first and `room` px for the end mark into `view` px of strip, held to the
+ * zoom's range. A width that would earn a gap it has no room for stays just
+ * under the gap's threshold (strip-zoom-keys).
+ */
+export function fitZoom(view: number, ticks: number, room: number): number {
+  const each = (view - GAP - room) / Math.max(1, ticks);
+  const width = each - GAP >= GAP_FROM ? each - GAP : Math.min(each, GAP_FROM - 0.01);
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.floor(width * 100 + 1e-6) / 100));
+}
+
 /** What a cell shows at a width: its drawing, a mark of its kind, or only a band of the drawing's time. */
 export function stripLevel(width: number): 'thumbs' | 'marks' | 'bands' {
   return width >= 40 ? 'thumbs' : width >= 14 ? 'marks' : 'bands';

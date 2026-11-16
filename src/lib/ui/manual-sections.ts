@@ -101,6 +101,7 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
         command('extend-down', 'extend_down'),
         command('strip-zoom-in', 'strip_zoom_in'),
         command('strip-zoom-out', 'strip_zoom_out'),
+        command('strip-zoom-fit', 'strip_zoom_fit'),
       ],
       mouse: [mouse('frame_menu'), mouse('layer_name'), mouse('strip_zoom'), mouse('film_end')],
       gesture: [gesture('hold_frame'), gesture('hold_layer'), gesture('pinch_strip')],

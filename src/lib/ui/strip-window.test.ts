@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { filmTiming } from '../model/timing';
-import { numberEvery, scrollToFrame, stripLevel, stripWindow, wheelOnStrip, zoomBy, zoomScroll } from './strip-window';
+import { fitZoom, numberEvery, zoomAnchor, scrollToFrame, stripLevel, stripWindow, wheelOnStrip, zoomBy, zoomScroll } from './strip-window';
 
 const CELL = 46;
 const GAP = 2;
@@ -191,5 +191,41 @@ describe('the strip\'s zoom', () => {
     expect(numberEvery(12)).toBe(5);
     expect(numberEvery(4)).toBe(10);
     expect(numberEvery(2)).toBe(50);
+  });
+});
+
+describe('fitZoom — «Весь фильм» (strip-zoom-keys)', () => {
+  // The row: 2 px before the first cell, then a pitch a tick, then room for the end mark.
+  it('narrows a long film into the strip, without gaps once a cell is under 14 px', () => {
+    // 600 px of strip, 60 ticks, 16 px for the bracket: 582 / 60 = 9.7.
+    expect(fitZoom(600, 60, 16)).toBeCloseTo(9.7, 2);
+  });
+
+  it('keeps the gap between cells wide enough to have one', () => {
+    // 982 / 20 = 49.1 a tick, less the 2 px gap.
+    expect(fitZoom(1000, 20, 16)).toBeCloseTo(47.1, 2);
+  });
+
+  it('stays under the gap threshold where a cell would get a gap it has no room for', () => {
+    // 15 px a tick: a 15 px cell has a gap and overflows, a 13 px one with a gap is short — under 14, gapless.
+    const w = fitZoom(60 * 15 + 2 + 16, 60, 16);
+    expect(w).toBeLessThan(14);
+    expect(w).toBeGreaterThan(13.9);
+  });
+
+  it('is held to the range at either end', () => {
+    expect(fitZoom(600, 2000, 16)).toBe(4);
+    expect(fitZoom(1400, 1, 16)).toBe(96);
+  });
+});
+
+describe('zoomAnchor — the point a key zooms about (strip-zoom-keys)', () => {
+  it('is the current frame when it is in view', () => {
+    // Frame from 300 to 346 px of row, strip scrolled 200 and 500 wide: its middle at 123 px of the box.
+    expect(zoomAnchor(200, 500, 300, 46)).toBe(123);
+  });
+
+  it('is the middle of the strip when the current frame is scrolled away', () => {
+    expect(zoomAnchor(2000, 500, 300, 46)).toBe(250);
   });
 });

@@ -8,7 +8,7 @@
   import type { Frame, Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
-  import { numberEvery, scrollToFrame, stripLevel, stripTabStop, stripTail, stripWindow, wheelOnStrip, zoomBy, zoomScroll, ZOOM_MAX, ZOOM_MIN } from './strip-window';
+  import { fitZoom, numberEvery, scrollToFrame, stripLevel, stripTabStop, stripTail, stripWindow, wheelOnStrip, zoomAnchor, zoomBy, zoomScroll, ZOOM_MAX, ZOOM_MIN } from './strip-window';
   import {
     carryTarget,
     framesToCarry,
@@ -23,7 +23,7 @@
   import Icon from './Icon.svelte';
   import { createLostRelease, mainUp } from './lost-release';
   import { keyOf } from '../model/cells';
-  import { t } from '../i18n';
+  import { formatPercent, t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
 
   let { editor }: { editor: EditorState } = $props();
@@ -131,15 +131,16 @@
    * The cells made `width` wide, the tick under `clientX` (the strip's middle
    * when none) staying under it. Kept on the device (`timelineZoom`).
    */
-  function zoomAt(width: number, clientX?: number): void {
+  function zoomAt(width: number, clientX?: number, at?: number): void {
     if (!strip) return;
     const to = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, width));
     if (Math.abs(to - cellW) < 0.01) return;
     const box = strip.getBoundingClientRect();
-    const x = clientX === undefined ? strip.clientWidth / 2 : clientX - box.left - strip.clientLeft;
+    const x = at ?? (clientX === undefined ? strip.clientWidth / 2 : clientX - box.left - strip.clientLeft);
     const toGap = to >= 14 ? GRID_GAP : 0;
     const left = zoomScroll(strip.scrollLeft, x, GRID_GAP, pitch, to + toGap);
-    editor.setSetting('timelineZoom', Math.round(to * 100) / 100);
+    // The cell's own width is kept as none, so a new sheet's size still sets it.
+    editor.setSetting('timelineZoom', Math.abs(to - thumbWidth) < 0.01 ? 0 : Math.round(to * 100) / 100);
     // The row is only as long as the new pitch once it is laid out.
     void tick().then(() => {
       if (!strip) return;
@@ -148,6 +149,32 @@
     });
   }
 
+  // --- The strip's zoom keys (strip-zoom-keys) ------------------------------
+  // The keys and the mouse's group keep the current frame where it is while
+  // it is in view, the strip's middle otherwise.
+  function zoomKeep(width: number): void {
+    if (!strip) return;
+    const frame = editor.displayedFrame;
+    zoomAt(width, undefined, zoomAnchor(strip.scrollLeft, strip.clientWidth, GRID_GAP + timing.start(frame) * pitch, spanWidth(frame)));
+  }
+  const zoomStep = (direction: 1 | -1) => zoomKeep(zoomBy(cellW, -direction * 150));
+  /** The whole film, the end mark clear of the group over the numbers, from its start. */
+  function zoomFit(): void {
+    if (!strip) return;
+    const to = fitZoom(strip.clientWidth, timing.total, END_MARK + (zoomGroupW ? zoomGroupW + 4 : 0));
+    editor.setSetting('timelineZoom', Math.abs(to - thumbWidth) < 0.01 ? 0 : to);
+    void tick().then(() => {
+      if (!strip) return;
+      strip.scrollLeft = 0;
+      stripScroll = 0;
+    });
+  }
+  $effect(() => {
+    editor.stripKeys = (how) => (how === 0 ? zoomFit() : zoomStep(how));
+    return () => {
+      editor.stripKeys = null;
+    };
+  });
   // --- A pinch on the strip zooms it ----------------------------------------
   // Two fingers on the cells: their spread is the cell's width, the point
   // between them stays put. One finger still scrolls and holds as before.
@@ -226,6 +253,8 @@
   }
   /** Room past the last tick, px: the end mark is dragged into it. */
   const END_ROOM = 48;
+  /** The end mark's bracket and a breath after it, which «Весь фильм» keeps in view. */
+  const END_MARK = 16;
   let stripScroll = $state(0);
   let stripWidth = $state(0);
 
@@ -1000,6 +1029,13 @@
   const cellW = $derived(editor.settings.timelineZoom || thumbWidth);
   const gap = $derived(cellW >= 14 ? GRID_GAP : 0);
   const pitch = $derived(cellW + gap);
+  /** The cells' width as a share of their own (a frame's thumbnail): 100 % is unzoomed. */
+  const zoomPercent = $derived(formatPercent(cellW / thumbWidth));
+  /** The group's width over the numbers (0 where there is none: a touch screen). */
+  let zoomGroupW = $state(0);
+  /** The strip's own scrollbar, which the group keeps clear of. */
+  const stripBar = $derived(strip && stripWidth ? strip.offsetWidth - strip.clientWidth : 0);
+
   /** What a cell shows at this width (strip-window.ts `stripLevel`). */
   const level = $derived(stripLevel(cellW));
   /** Which numbers the head writes: every one, or every fifth, tenth… */
@@ -1251,11 +1287,14 @@
        with the way out, only while picking. -->
   <!-- A block wider than one cell says what it is and what can be done to
        it (Procreate Dreams, FlipaClip): the frame menu's actions, in reach. -->
-  <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px">
+  <div class="pick-bar" class:shown={picking || (spanned && !editor.playing)} style:--col="{colPx}px" style:--zoom-room="{zoomGroupW ? zoomGroupW + stripBar + 6 : 0}px">
     <p role="status" aria-live="polite">{spanned || picking ? spanText : ''}</p>
     {#if picking}
       <span class="pick-hint">{t('timeline.pick_hint')}</span>
     {/if}
+    <!-- The keys stay one group: on a phone too narrow for the words and the
+         keys in one row they go under the words together, not one by one. -->
+    <span class="pick-keys">
     {#if spanned && !editor.playing}
       <button class="key icon" title={duplicateTitle} aria-label={duplicateTitle} disabled={!editor.canDuplicateFrames} onclick={() => editor.duplicateActiveFrame()}>
         <Icon name="duplicate" size={16} />
@@ -1277,6 +1316,7 @@
         <Icon name="x" size={16} />
       </button>
     {/if}
+    </span>
   </div>
   <!-- The names and the cells are two scrollers side by side; a scroll in one
        is a scroll in the other, or the rows stop meaning the same layer.
@@ -1481,6 +1521,29 @@
       {/each}
       {@render wave(cellW)}
     </div>
+    <!-- The strip's zoom for a mouse (strip-zoom-keys), as the sheet's own
+         (ScaleMenu): narrower, the scale — pressed, back to 100 % — wider,
+         the whole film. Over the right end of the numbers, as Animate keeps
+         its slider in the timeline's head; out of the row, so the row's
+         arithmetic is untouched. A touch screen has the pinch and no group. -->
+    <div
+      class="zoom-group"
+      role="group"
+      aria-label={t('timeline.zoom_group')}
+      bind:clientWidth={zoomGroupW}
+      style:right="{stripBar}px"
+    >
+      <button class="zoom-key" aria-disabled={cellW <= ZOOM_MIN} onclick={() => cellW <= ZOOM_MIN || zoomStep(-1)} title={t('timeline.zoom_out')} aria-label={t('timeline.zoom_out')}>
+        <Icon name="minus" size={14} />
+      </button>
+      <button class="zoom-key value" onclick={() => zoomKeep(thumbWidth)} title={t('timeline.zoom_reset')} aria-label={t('timeline.zoom_value', { percent: zoomPercent })}>{zoomPercent}</button>
+      <button class="zoom-key" aria-disabled={cellW >= ZOOM_MAX} onclick={() => cellW >= ZOOM_MAX || zoomStep(1)} title={t('timeline.zoom_in')} aria-label={t('timeline.zoom_in')}>
+        <Icon name="plus" size={14} />
+      </button>
+      <button class="zoom-key" onclick={zoomFit} title={t('timeline.zoom_fit')} aria-label={t('timeline.zoom_fit')}>
+        <Icon name="fit-width" size={14} />
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1553,6 +1616,10 @@
     min-height: 0;
   }
   .body {
+    /* The zoom group stands over the numbers' right end, and knows how
+       narrow the panel is wherever the panels were arranged. */
+    position: relative;
+    container: zoom / inline-size;
     display: flex;
     flex: 1;
     min-height: 0;
@@ -1984,6 +2051,63 @@
       forced-color-adjust: none;
     }
   }
+  /* --- The strip's zoom (strip-zoom-keys) -------------------------------- */
+  /* The head row's height, over its right end: the numbers under it are the
+     ones past the strip's edge anyway. A mouse's only: a touch screen pinches. */
+  .zoom-group {
+    display: none;
+  }
+  @media (any-pointer: fine) {
+    .zoom-group {
+      /* The Dense-Timeline Rule: a key in the strip is 24 px and up. */
+      --key-h: 1.75rem;
+      position: absolute;
+      top: calc((2.75rem - var(--key-h) - 4px) / 2);
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 2px;
+      border-radius: var(--r-md);
+      background: var(--paper);
+      font-size: 0.75rem;
+    }
+  }
+  .zoom-key {
+    flex: none;
+    display: grid;
+    place-items: center;
+    min-width: var(--key-h);
+    min-height: var(--key-h);
+    padding: 0;
+    border: none;
+    border-radius: calc(var(--r-md) - 2px);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .zoom-key.value {
+    min-width: 3.2rem;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (hover: hover) {
+    .zoom-key:hover:not([aria-disabled='true']) {
+      background: var(--hairline-soft);
+    }
+  }
+  .zoom-key[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: default;
+  }
+  /* A narrow window with a mouse (the panel under 480 px, the layer column
+     in it): the scale gives way to the frames it
+     would cover; the steps and the whole film stay. */
+  @container zoom (width < 30rem) {
+    .zoom-key.value {
+      display: none;
+    }
+  }
   /* --- Picking bar ------------------------------------------------------- */
   /* Out of sight but read out when not picking; a row over the strip when it is. */
   .pick-bar:not(.shown) {
@@ -2004,13 +2128,17 @@
     /* The Dense-Timeline Rule: a key in the strip is 24 px and up. */
     --key-h: 28px;
     position: absolute;
-    right: 0;
+    /* Left of the zoom group, which it would otherwise cover. */
+    right: var(--zoom-room, 0px);
     top: 0;
-    z-index: var(--z-menu);
+    /* Over the strip's own layers (the sticky head, the carried cells), but
+       under what opens from a key: on the phone a layer's settings opened
+       up across it and the chip lay over them (owner, 2026-11-17). */
+    z-index: var(--z-float);
     display: flex;
     align-items: center;
     gap: 10px;
-    max-width: calc(100% - var(--col, 0px) - 8px);
+    max-width: calc(100% - var(--col, 0px) - var(--zoom-room, 0px) - 8px);
     box-sizing: border-box;
     padding: 2px 2px 2px 12px;
     border-radius: var(--r-pill);
@@ -2019,6 +2147,12 @@
     /* Up from the cells it names, as a menu comes from its key. */
     --pop-from: 4px;
     animation: studio-pop var(--dur-enter) var(--ease-out);
+  }
+  .pick-keys {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
   }
   .pick-bar p {
     margin: 0;
@@ -2170,7 +2304,7 @@
     width: max-content;
   }
   :global(:where(.studio.phone)) .body {
-    container: strip / inline-size;
+    container: strip zoom / inline-size;
   }
   /* The phone panel grows to its contents, so here the chip is a row of
      its own, a finger's keys and the hint in full. */
@@ -2181,6 +2315,16 @@
     margin-bottom: 6px;
     padding: 0 0 0 12px;
     box-shadow: none;
+    /* Words and five finger keys are wider than a 390 px phone: the keys
+       go under the words rather than off the edge (owner, 2026-11-17), and
+       at a large text size they wrap among themselves too. */
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  :global(:where(.studio.phone)) .pick-keys {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 4px;
   }
   :global(:where(.studio.phone)) .pick-hint {
     white-space: normal;

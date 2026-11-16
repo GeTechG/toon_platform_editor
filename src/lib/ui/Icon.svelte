@@ -5,6 +5,7 @@
   export type IconName =
     | 'plus'
     | 'minus'
+    | 'fit-width'
     | 'x'
     | 'swap'
     | 'lock'
@@ -241,6 +242,8 @@
     // Two stacked sheets folding into one — the merge of buffer over cell.
     merge: 'M4 5h9v9H4zM11 10h9v9h-9zM13 5v5h-2v4h4v-4',
     expand: 'M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5',
+    // Two arrows out to two walls: the whole film laid between the strip's ends.
+    'fit-width': 'M3 5v14M21 5v14M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3',
     drafts: 'M3 14h18M3 14l2-8h14l2 8M3 14v5a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-5M7 17h.01M11 17h.01',
     // Three dots in a row: everything else, the small screen's last tab.
     more: 'M5 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM19 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z',
