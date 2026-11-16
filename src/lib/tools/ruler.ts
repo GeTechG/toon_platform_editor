@@ -85,29 +85,39 @@ export function movedRuler(ruler: Ruler, from: Point, to: Point): Ruler {
 /** The step the ruler turns by with Shift held, and the angles a finger is pulled to. */
 const TURN_STEP = Math.PI / 12;
 /**
- * How near a step a finger's angle is pulled onto it: a finger has no Shift
- * (owner, 2026-11-16), and by hand 0° or 45° is never quite hit.
+ * How near a step a finger is pulled onto it, in screen pixels where the
+ * finger is: a finger has no Shift (owner, 2026-11-16), and by hand 0° or 45°
+ * is never quite hit. In pixels, not degrees, so the pull under the finger is
+ * the same at every zoom (owner, the same day) — but never more than
+ * `TURN_PULL_MAX`, or a finger near the fixed end would always land on a step.
  */
-const TURN_PULL = (3 * Math.PI) / 180;
+const TURN_PULL_PX = 40;
+const TURN_PULL_MAX = (5 * Math.PI) / 180;
 
 /**
  * How a turn lands: `step` (Shift) lays the angle on 15°, `pull` (a finger)
- * pulls it onto such a step within 3°, `free` (a mouse or a pen) leaves it be.
+ * pulls it onto such a step when it is within `TURN_PULL_PX` of it, `free` (a
+ * mouse or a pen) leaves it be.
  */
 export type TurnSnap = 'step' | 'pull' | 'free';
 
 /**
  * The ruler with its `end` dragged to `to`: it turns about the other end and
- * keeps its length, its angle landing as `snap` says.
+ * keeps its length, its angle landing as `snap` says. `unitsPerPx` — sheet
+ * units one screen pixel spans at the zoom in hand — measures the pull.
  */
-export function turnedRuler(ruler: Ruler, end: 1 | -1, to: Point, snap: TurnSnap): Ruler {
+export function turnedRuler(ruler: Ruler, end: 1 | -1, to: Point, snap: TurnSnap, unitsPerPx = 1): Ruler {
   const half = ruler.length / 2;
   const fixedX = ruler.x - end * half * Math.cos(ruler.angle);
   const fixedY = ruler.y - end * half * Math.sin(ruler.angle);
   // The way from the fixed end to the dragged one; the angle points to +1.
   let toward = Math.atan2(to[1] - fixedY, to[0] - fixedX);
   const nearest = Math.round(toward / TURN_STEP) * TURN_STEP;
-  if (snap === 'step' || (snap === 'pull' && Math.abs(toward - nearest) <= TURN_PULL)) {
+  // The finger's distance from the fixed end, on the screen: an angle off by
+  // so much puts it that many pixels times the angle away from the step.
+  const reach = Math.hypot(to[0] - fixedX, to[1] - fixedY) / unitsPerPx;
+  const pull = Math.min(TURN_PULL_MAX, TURN_PULL_PX / Math.max(reach, 1));
+  if (snap === 'step' || (snap === 'pull' && Math.abs(toward - nearest) <= pull)) {
     toward = nearest;
   }
   const angle = end === 1 ? toward : toward + Math.PI;

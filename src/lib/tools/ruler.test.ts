@@ -63,15 +63,20 @@ describe('moving and turning', () => {
     expect(turned.y).toBeCloseTo(1000);
   });
 
-  test('a finger turning it is pulled onto a 15° step within 3° (it has no Shift), further off it is free', () => {
+  test('a finger is pulled onto a 15° step when it is within 40 screen px of it, at most 5° (it has no Shift)', () => {
     const deg = (d: number) => (d * Math.PI) / 180;
-    const end = (d: number): [number, number] => [600 + 800 * Math.cos(deg(d)), 1000 + 800 * Math.sin(deg(d))];
-    const byFinger = (d: number) => turnedRuler(flat, 1, end(d), 'pull').angle;
-    expect(byFinger(44)).toBeCloseTo(deg(45));
-    expect(byFinger(-2)).toBeCloseTo(0);
-    expect(byFinger(38)).toBeCloseTo(deg(38));
+    // The finger `r` sheet units from the fixed end at (600, 1000), at `d` degrees.
+    const at = (d: number, r: number): [number, number] => [600 + r * Math.cos(deg(d)), 1000 + r * Math.sin(deg(d))];
+    // 800 px out, 1° off 45° is 14 px: pulled. 7° off is 98 px: free.
+    expect(turnedRuler(flat, 1, at(44, 800), 'pull', 1).angle).toBeCloseTo(deg(45));
+    expect(turnedRuler(flat, 1, at(38, 800), 'pull', 1).angle).toBeCloseTo(deg(38));
+    // Zoomed in four times the same finger is 3200 px out: 1° off is 56 px, free.
+    expect(turnedRuler(flat, 1, at(44, 800), 'pull', 0.25).angle).toBeCloseTo(deg(44));
+    // 200 px out, 40 px would be 11°; the pull stops at 5°: 4° off is pulled, 6° is not.
+    expect(turnedRuler(flat, 1, at(41, 200), 'pull', 1).angle).toBeCloseTo(deg(45));
+    expect(turnedRuler(flat, 1, at(39, 200), 'pull', 1).angle).toBeCloseTo(deg(39));
     // A mouse or a pen turns it freely: the even angle is Shift's.
-    expect(turnedRuler(flat, 1, end(44), 'free').angle).toBeCloseTo(deg(44));
+    expect(turnedRuler(flat, 1, at(44, 800), 'free', 1).angle).toBeCloseTo(deg(44));
   });
 
   test('with Shift the angle goes by 15°', () => {
