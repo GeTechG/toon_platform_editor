@@ -24,6 +24,13 @@ const READ_ONLY = new Set([
   'frameCount',
   'frameHold',
   'frameFits',
+  // The time of a layer, looked at (model/exposure.ts): nothing is written.
+  'cellsFit',
+  'nextIsDrawing',
+  'durationOf',
+  'drawingsPast',
+  'canStepCells',
+  'sameShape',
   'documentWeight',
   'isEmptyDocument',
   // Why an edit is refused (layer-locks.ts): it looks, and writes nothing.

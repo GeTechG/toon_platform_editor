@@ -337,7 +337,11 @@
       "settings": "Settings",
       "publish": "Publish",
       "brush_rail": "Brush: side sliders",
-      "spring": "Spring: everything after it goes to the far edge"
+      "spring": "Spring: everything after it goes to the far edge",
+      "shift_column_left": "Move column left",
+      "shift_column_right": "Move column right",
+      "delete_column": "Delete column",
+      "delete_columns": "Delete columns {{from}}–{{to}}"
     }
   },
   "layer": {
@@ -523,7 +527,11 @@
     "delete_block_confirm_one": "Delete frames {{from}}–{{to}} ({{count}} frame)?",
     "delete_block_confirm_other": "Delete frames {{from}}–{{to}} ({{count}} frames)?",
     "replace_confirm": "Something's already drawn there. Replace?",
-    "affects_confirm": "This will affect frames: {{frames}}, layers: {{layers}}. Continue?"
+    "affects_confirm": "This will affect frames: {{frames}}, layers: {{layers}}. Continue?",
+    "delete_column_confirm": "Delete column {{n}} in every layer?",
+    "delete_columns_confirm": "Delete columns {{from}}–{{to}} in every layer?",
+    "shorten_confirm_one": "Remove {{count}} frame?",
+    "shorten_confirm_other": "Remove {{count}} frames?"
   },
   "picker": {
     "title": "Pick color: {{label}}",
@@ -586,7 +594,20 @@
     "pick_done": "Done",
     "picked": "Frames {{from}}–{{to}}",
     "picked_one": "Frame {{from}}",
-    "picked_layers": "{{frames}}, layers: {{n}}"
+    "picked_layers": "{{frames}}, layers: {{n}}",
+    "seconds": "{{n}} s",
+    "end_mark": "End of the toon: {{n}} — drag to change the length",
+    "duration": "Duration",
+    "duration_less": "One frame shorter",
+    "duration_more": "One frame longer",
+    "length": "Frames",
+    "length_title": "Length of the toon in frames",
+    "continuation_tip": "Frame {{n}} shows here — draw, and a new one appears",
+    "shift_title": "The next frame is taken",
+    "shift_text": "Where should frame {{n}} go?",
+    "shift_next": "Move only the next one",
+    "shift_all": "Move everything after",
+    "shift_remember": "Remember"
   },
   "palette": {
     "default_name": "Default",
@@ -807,7 +828,11 @@
     "catalog_field": "Catalog address",
     "catalog_placeholder": "empty — no catalog",
     "done": "Done",
-    "change_keys": "Change keys"
+    "change_keys": "Change keys",
+    "when_next_taken": "When the next frame is taken",
+    "when_next_taken_ask": "Ask",
+    "when_next_taken_next": "Move only the next one",
+    "when_next_taken_all": "Move everything after"
   },
   "editor": {
     "ruler_off": "Ruler (Alt+R) put away",
@@ -983,7 +1008,8 @@
     "two_fingers": "Two fingers on the sheet",
     "hold_sheet": "Hold on the sheet",
     "hold_frame": "Hold on a frame",
-    "hold_layer": "Hold on a layer"
+    "hold_layer": "Hold on a layer",
+    "pinch_strip": "Two fingers on the strip"
   },
   "mouse": {
     "shape_mods": "Shift / Alt mid-drag of a shape",
@@ -994,7 +1020,10 @@
     "middle": "MMB",
     "wheel": "Wheel, Ctrl + wheel",
     "trackpad": "Two fingers on the trackpad",
-    "layer_name": "2×LMB on a layer"
+    "layer_name": "2×LMB on a layer",
+    "strip_zoom": "Ctrl + wheel over the strip",
+    "duration": "LMB on a frame's edge on the strip",
+    "film_end": "LMB on the strip's end mark"
   },
   "mouse_does": {
     "shape_mods": "Even shape / from the centre",
@@ -1005,7 +1034,10 @@
     "middle": "Move the sheet, Shift — rotate",
     "wheel": "Zoom",
     "trackpad": "Move the sheet",
-    "layer_name": "Rename layer"
+    "layer_name": "Rename layer",
+    "strip_zoom": "Zoom the strip",
+    "duration": "Frame duration",
+    "film_end": "Toon length"
   },
   "gesture_does": {
     "shape_second": "Even shape",
@@ -1013,7 +1045,8 @@
     "two_fingers": "Move, zoom, rotate",
     "hold_sheet": "Pick color",
     "hold_frame": "Frame menu",
-    "hold_layer": "Rename layer"
+    "hold_layer": "Rename layer",
+    "pinch_strip": "Zoom the strip"
   },
   "key": {
     "ruler": "Ruler",
@@ -1074,7 +1107,9 @@
     "save": "Save on device",
     "download_project": "Download project (.toonop)",
     "export": "Export",
-    "error_log": "Download error log"
+    "error_log": "Download error log",
+    "strip_zoom_in": "Wider frames on the strip",
+    "strip_zoom_out": "Narrower frames on the strip"
   },
   "onion": {
     "box": "Onion skin",

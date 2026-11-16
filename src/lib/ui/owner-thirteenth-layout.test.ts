@@ -201,7 +201,7 @@ describe('a phone’s layer row fits its column', () => {
   it('there «+ Слой» keeps its plus and its name, the word only for the reader', () => {
     expect(layerRows).toContain('<Icon name="plus" size={16} /> <span class="add-word">{t(\'layer.add\')}</span>');
     const narrow = layerRows.slice(layerRows.indexOf('@container strip'));
-    expect(narrow).toMatch(/\.add-word \{[^}]*clip-path: inset\(50%\)/);
+    expect(narrow).toMatch(/\.add-word,\s*\.length-word \{[^}]*clip-path: inset\(50%\)/);
   });
 });
 

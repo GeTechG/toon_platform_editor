@@ -93,10 +93,12 @@ describe('a frame added is taken back by Z (owner, 2026-10-13)', () => {
     // as the audits hold it; the live run presses «+» and Z.
     const state = await read('editor-state.svelte.ts');
     for (const add of ['addFrameAfterActive', 'duplicateActiveFrame', 'addFrameBeforeActive']) {
-      const body = state.slice(state.indexOf(`  ${add}(): void {`), state.indexOf('\n  }\n', state.indexOf(`  ${add}(): void {`)));
-      expect(body.indexOf('const before = this.takeStructure();')).toBeGreaterThan(-1);
-      expect(body.indexOf('this.pushStructure(before);')).toBeGreaterThan(body.indexOf('this.#write('));
+      const body = state.slice(state.indexOf(`  ${add}(`), state.indexOf('\n  }\n', state.indexOf(`  ${add}(`)));
+      expect(body).toContain('this.structureStep(');
     }
+    const step = state.slice(state.indexOf('  private structureStep('), state.indexOf('\n  }\n', state.indexOf('  private structureStep(')));
+    expect(step.indexOf('const before = this.takeStructure();')).toBeGreaterThan(-1);
+    expect(step.indexOf('this.pushStructure(before);')).toBeGreaterThan(step.indexOf('change()'));
   });
 });
 

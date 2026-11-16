@@ -153,3 +153,37 @@ export function wheelOnStrip(
   const y = e.deltaY * unit;
   return x === 0 && (!rows || e.shiftKey) ? { x: y, y: 0 } : { x, y };
 }
+
+/** The cell's width the strip may be zoomed to, px (timeline-exposure-cells). */
+export const ZOOM_MIN = 4;
+export const ZOOM_MAX = 96;
+
+/**
+ * The scroll that keeps the tick under the pointer under it when a tick's
+ * pitch goes from `from` to `to` — as the sheet's zoom keeps its point
+ * (`viewport.ts`). `x` is the pointer in the strip's box, `pad` the row's
+ * padding before the first cell.
+ */
+export function zoomScroll(scrollLeft: number, x: number, pad: number, from: number, to: number): number {
+  const tick = (scrollLeft + x - pad) / from;
+  return Math.max(0, tick * to + pad - x);
+}
+
+/** A wheel's turn as a new width: continuous, a notch (100) about a fifth, held to the range. */
+export function zoomBy(width: number, deltaY: number): number {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, width * Math.exp(-deltaY / 500)));
+}
+
+/** What a cell shows at a width: its drawing, a mark of its kind, or only a band of the drawing's time. */
+export function stripLevel(width: number): 'thumbs' | 'marks' | 'bands' {
+  return width >= 40 ? 'thumbs' : width >= 14 ? 'marks' : 'bands';
+}
+
+/** Which frame numbers the head names at a pitch: every one, every fifth, every tenth — the fewest that leave room for four digits. */
+export function numberEvery(pitch: number): number {
+  const room = 28;
+  for (const every of [1, 5, 10, 50, 100, 500, 1000, 5000, 10000]) {
+    if (every * pitch >= room) return every;
+  }
+  return 10000;
+}

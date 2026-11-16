@@ -7,7 +7,7 @@
   // so moving an unnamed layer renumbers its row. The colour tag is a display
   // aid — six of them, picked per layer, never written to the document.
   import { flushSync, onDestroy, tick, untrack } from 'svelte';
-  import { MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
+  import { MAX_FRAMES, MAX_LAYER_NAME, MAX_LAYERS } from '../format/constants';
   import { budgetLabel } from './format-limit';
   import type { EditorState } from './editor-state.svelte';
   import type { Layer } from '../format/types';
@@ -545,6 +545,29 @@
   >
     <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>
+  <!-- The film's length in ticks (Clip Studio, Harmony): typed here, or the
+       strip's end mark dragged. Shorter, it asks before drawings go. -->
+  <label class="length" title={t('timeline.length_title')}>
+    <span class="length-word">{t('timeline.length')}</span>
+    <input
+      type="number"
+      inputmode="numeric"
+      min="1"
+      max={MAX_FRAMES}
+      value={editor.filmLength}
+      aria-disabled={editor.playing || undefined}
+      onchange={(e) => {
+        const field = e.currentTarget;
+        editor.setFilmLength(Number(field.value));
+        // Until a question is answered the film is as long as it was.
+        field.value = String(editor.filmLength);
+      }}
+      onkeydown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        e.stopPropagation();
+      }}
+    />
+  </label>
   <!-- The one limit of a mult, where its frames and layers are counted. It
        limits publishing, not drawing, so it is said only from 80 %, where it
        warns: a bare «0 %» beside «+ Слой» read as the layer's opacity. -->
@@ -899,18 +922,43 @@
     user-select: none;
     color: var(--ink-2);
   }
-  /* The strip's frame numbers are 2rem too: the rows under both start level. */
+  /* As tall as the strip's head beside it — its seconds' ruler over the
+     frame numbers: the rows under both start level. */
   .head {
     display: flex;
     align-items: center;
     flex: none;
     box-sizing: border-box;
-    height: 2rem;
+    height: 2.75rem;
     padding: 0 0.3rem;
     border-bottom: 1px solid var(--hairline);
   }
-  .budget {
+  .length {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .length input {
+    box-sizing: border-box;
+    width: 4.2em;
+    height: 1.625rem;
+    padding: 0 0.25rem;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--canvas);
+    color: var(--ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  .length input[aria-disabled='true'] {
+    opacity: 0.5;
+  }
+  .budget {
+    margin-left: 0.3rem;
     padding: 0 0.3rem;
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
@@ -1063,7 +1111,8 @@
     }
     /* «+ Слой» ran past the column over the frames' numbers: the plus stays,
        the word stays the key's name for a reader. */
-    .add-word {
+    .add-word,
+    .length-word {
       position: absolute;
       width: 1px;
       height: 1px;

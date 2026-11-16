@@ -64,11 +64,12 @@ describe('the editor deletes the selected block', () => {
     expect(remove).toContain('this.whenConfirmed(');
     expect(remove).toContain("'frame.delete_block_confirm'");
     expect(remove.match(/this\.#write\(/g)).toHaveLength(1);
-    expect(remove).toContain('removeFrame(doc, from, count)');
+    expect(remove).toContain('deleteCells(doc, layers, from, count)');
   });
 
-  it('under Toonio refuses a block that would take every frame', () => {
-    expect(member(state, 'canRemoveFrame')).toMatch(/frameCount\(this\.doc\) > count/);
+  it('«Удалить столбец» under Toonio refuses a block that would take every frame', () => {
+    expect(member(state, 'canRemoveColumn')).toMatch(/frameCount\(this\.doc\) > count/);
+    expect(member(state, 'removeColumns')).toContain('removeFrame(doc, from, count)');
   });
 
   it('the menu says which frames go', () => {

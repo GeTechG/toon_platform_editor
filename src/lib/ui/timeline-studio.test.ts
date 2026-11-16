@@ -508,7 +508,7 @@ describe('tenth audit: the strip keeps what is active in view', () => {
   const effect = timeline.match(/Keep the active frame in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
 
   it('the last frame is scrolled in with the row padding, ring and all', () => {
-    expect(effect).toMatch(/scrollToFrame\(index, thumbWidth, GRID_GAP, strip\.scrollLeft, strip\.clientWidth, GRID_GAP, timing\)/);
+    expect(effect).toMatch(/scrollToFrame\(index, cellW, gap, strip\.scrollLeft, strip\.clientWidth, GRID_GAP, timing\)/);
   });
 
   it('the active row is scrolled in under the sticky frame numbers', () => {
@@ -560,9 +560,10 @@ describe('tenth audit: menu items are named without their key letter', () => {
     // «Добавить кадрA» was the accessible name: the kbd text ran into it.
     const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
-    expect(items.length).toBe(8);
-    // «Сдвинуть» has no key: Alt+←/→ is the browser's «back».
-    for (const item of items.filter((i) => !i.includes('shiftFrames'))) {
+    // The column's three, the cell's: add, duplicate, «Длительность» −/+, two shifts, delete, copy, paste, merge.
+    expect(items.length).toBe(13);
+    // «Сдвинуть», «Длительность» and the column's items have no key: Alt+←/→ is the browser's «back».
+    for (const item of items.filter((i) => !/shift(Frames|Cells)|changeDuration|removeColumns/.test(i))) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
       expect(item).toContain('{@render key(');
     }
@@ -577,7 +578,7 @@ describe('tenth audit: a frame added at the end stays in view', () => {
     // frame just added sat several cells past the right edge.
     const head = timeline.match(/<div\s+class="head"[\s\S]*?>/)?.[0] ?? '';
     expect(head).toMatch(/style:min-width=\{`\$\{stripExtent\}px`\}/);
-    expect(timeline).toMatch(/const stripExtent = \$derived\(timing\.total \* \(thumbWidth \+ GRID_GAP\) \+ GRID_GAP\)/);
+    expect(timeline).toMatch(/const stripExtent = \$derived\(timing\.total \* pitch \+ GRID_GAP \+ END_ROOM\)/);
   });
 });
 
@@ -641,7 +642,7 @@ describe('owner answers: picking a block of frames by finger', () => {
 describe('owner answers: a long-pressed menu opens clear of the finger', () => {
   it('opens above the finger, so the lift does not press the item under it', () => {
     // The menu opened at the finger and the release clicked «Добавить кадр».
-    expect(timeline).toMatch(/showMenu\(cell, frame, layer, at, true\)/);
+    expect(timeline).toMatch(/showMenu\(cell, frame, layer, at, true, !cells\)/);
     const show = timeline.match(/function showMenu[\s\S]*?\n  }/)?.[0] ?? '';
     expect(show).toMatch(/finger[\s\S]*FINGER_GAP/);
   });

@@ -7,7 +7,9 @@ import { sessionErrors } from './error-log';
 import { AudioTrackState } from '../audio/state.svelte';
 import type { DraftState } from '../draft/store';
 import type { BlendMode, Cell, Frame, Stroke, ToonDocument } from '../format/types';
-import { resolveCell } from '../model/cells';
+import { keyOf, resolveCell } from '../model/cells';
+import { cellSize } from './thumb-size';
+import { zoomBy } from './strip-window';
 import {
   DEFAULT_BRUSH_COLOR,
   DEFAULT_FILL_COLOR,
@@ -20,7 +22,6 @@ import {
   ONION_SKIN_ALPHAS,
 } from '../format/constants';
 import {
-  addFrame,
   addLayer,
   pasteNeedsConfirm,
   renameLayer,
@@ -30,7 +31,6 @@ import {
   frameCount,
   frameFits,
   documentWeight,
-  insertFrameBefore,
   mergeCells,
   copyFrames,
   moveFrames,
@@ -52,6 +52,24 @@ import {
   type CellRange,
   type ResolvedStroke,
 } from '../model/operations';
+import {
+  canStepCells,
+  cellsFit,
+  copyCellsTo,
+  deleteCell,
+  deleteCells,
+  drawingsPast,
+  durationOf,
+  lengthen,
+  moveCellsTo,
+  nextIsDrawing,
+  putAfter,
+  putBefore,
+  setFilmLength,
+  shorten,
+  stepCells,
+  type Shift,
+} from '../model/exposure';
 import {
   activeFrameAfterRemove,
   activeLayerAfterMove,
@@ -293,10 +311,24 @@ interface StructureEdit {
   framesMoved?: true;
   /** A change of a layer's opacity or blend mode: one drag of the slider folds into it. */
   looked?: true;
+  /** A drawing's duration changed: one drag of its handle folds into it. */
+  timed?: true;
   /** The block that was selected, for a carry taken back unfiled. */
   selection?: CellSelection;
   /** What redo puts back after undo — a move only splices, so its shape is enough. */
   redo?: StructureEdit;
+}
+
+/** Whether the document stands exactly as the snapshot took it: every layer's cells, by identity. */
+function sameShape(snap: StructureSnapshot, doc: ToonDocument): boolean {
+  return snap.frames.length === doc.layers.length && snap.frames.every((frames, l) => frames.length === doc.layers[l].frames.length
+    && frames.every((cell, i) => cell === doc.layers[l].frames[i]));
+}
+
+/** The shift window's answer: which cells make way, and whether to stop asking. */
+export interface ShiftAnswer {
+  shift: Shift;
+  remember: boolean;
 }
 
 export class EditorState {
@@ -1394,7 +1426,7 @@ export class EditorState {
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
     // One undo step, as a new frame is (critique, 2026-10-18): Z takes it back.
     const before = this.takeStructure();
-    this.activeLayer = this.#write((doc) => addLayer(doc, at));
+    this.activeLayer = this.#write((doc) => addLayer(doc, at, true));
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerLocks.splice(at, 0, false);
     this.layerCounter++;
@@ -1990,7 +2022,7 @@ export class EditorState {
 
   /** Whether «Дублировать» has room for the copies of the frame or the block. */
   get canDuplicateFrames(): boolean {
-    return !this.playing && frameCount(this.doc) + this.framesToShift.count <= MAX_FRAMES;
+    return !this.playing && cellsFit(this.doc, this.framesToShift.count);
   }
 
   /** Whether the schema has room for one more frame. */
@@ -1998,74 +2030,113 @@ export class EditorState {
     return frameFits(this.doc);
   }
 
-  addFrameAfterActive(): void {
-    if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
+  /**
+   * How the shift window answers: what the settings remember, or the window
+   * itself (Editor.svelte points this at it). Nothing asks in tests: the
+   * whole tail is pushed. Null is the window put away — nothing happens.
+   */
+  askShift: () => ShiftAnswer | null | Promise<ShiftAnswer | null> = () => ({ shift: 'all', remember: false });
+
+  /** `then` with the shift to make: remembered, or asked; a remembered «Запомнить» goes into the settings. */
+  private whenShift(then: (shift: Shift) => void): void {
+    const kept = this.settings.whenNextTaken;
+    if (kept !== 'ask') {
+      then(kept);
       return;
     }
-    const left = this.activeFrame;
-    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
-    const before = this.takeStructure();
-    this.activeFrame = this.#write((doc) => addFrame(doc, this.activeFrame));
-    // The reference adds a frame by *selecting* it (`bundle:8584-8600`), so
-    // the frame it came from goes into the onion history like any other move.
-    // Without this the fresh cell showed no ghost of the drawing it follows.
-    this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
-    this.collapseSelection();
-    this.pushStructure(before);
-    this.touched = true;
+    const go = (answer: ShiftAnswer | null) => {
+      if (!answer || this.playing) return;
+      if (answer.remember) this.setSetting('whenNextTaken', answer.shift);
+      then(answer.shift);
+    };
+    const answer = this.askShift();
+    if (answer instanceof Promise) void answer.then(go);
+    else go(answer);
   }
 
   /**
-   * The frame, or the selected block, once more right after itself: the next
-   * drawing begins from this one (owner, 2026-10-08), and a cycle repeats in
-   * one press instead of frame by frame (owner, 2026-10-24). The copies
-   * become the block, so a second press repeats them again.
+   * One step of the timeline's structure: undone and redone whole (owner,
+   * 2026-10-13: Z takes the frame back). `change` writes and moves the active
+   * cell; the frame it left goes into the onion history like any other move.
+   */
+  private structureStep(change: () => void, ghost = true): void {
+    const left = this.activeFrame;
+    const before = this.takeStructure();
+    change();
+    if (ghost) this.visitedFrames = pushVisited(this.visitedFrames.filter((i) => i < frameCount(this.doc)), left, this.activeFrame);
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+  }
+
+  /**
+   * «+» on the active layer (timeline-exposure-cells): an empty drawing into
+   * the continuation it stands on, or into the next cell — and when that cell
+   * holds a drawing, the shift window says how the tail makes way. The other
+   * layers stand, but for a continuation more at the end when the film grows.
+   */
+  addFrameAfterActive(make?: (frames: readonly Cell[], i: number) => Cell): void {
+    if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
+      return;
+    }
+    const layers = [this.activeLayer];
+    const at = this.activeFrame;
+    const put = (shift: Shift) => this.structureStep(() => {
+      this.activeFrame = this.#write((doc) => putAfter(doc, layers, at, shift, make));
+      this.collapseSelection();
+    });
+    const frames = this.doc.layers[this.activeLayer].frames;
+    if ((make || frames[at] !== null) && nextIsDrawing(this.doc, this.activeLayer, at)) {
+      this.whenShift(put);
+    } else {
+      put('all');
+    }
+  }
+
+  /**
+   * The drawing the cell shows, or the selected block, once more right after
+   * itself: the next drawing begins from this one (owner, 2026-10-08), and a
+   * cycle repeats in one press (owner, 2026-10-24). One cell goes by the rules
+   * of «+»; a block's copies push the tails of its layers and become the block.
    */
   duplicateActiveFrame(): void {
-    if (this.playing || !this.canDuplicateFrames || !this.leaveTransform()) {
+    if (this.playing || !this.canDuplicateFrames) {
       return;
     }
     const { from, count } = this.framesToShift;
-    const at = from + count;
-    const left = this.activeFrame;
-    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frames back.
-    const before = this.takeStructure();
-    this.#write((doc) => copyFrames(doc, from, count, at));
-    this.activeFrame = at + Math.min(count - 1, Math.max(0, left - from));
-    // The frames past the block moved along by its width, and their ghosts with them.
-    this.visitedFrames = pushVisited(this.visitedFrames.map((i) => (i >= at ? i + count : i)), left, this.activeFrame);
-    this.selection = { frames: Array.from({ length: count }, (_, i) => at + i), layers: this.selection.layers };
-    this.pushStructure(before);
-    this.touched = true;
+    if (count === 1 && this.selection.layers.length === 1) {
+      this.addFrameAfterActive((frames, i) => frames[keyOf(frames, i)]);
+      return;
+    }
+    if (!this.leaveTransform()) return;
+    const layers = [...this.selection.layers];
+    const inBlock = Math.min(count - 1, Math.max(0, this.activeFrame - from));
+    this.structureStep(() => {
+      const at = this.#write((doc) => copyCellsTo(doc, layers, from, count, from + count));
+      this.activeFrame = at + inBlock;
+      this.selection = { frames: Array.from({ length: count }, (_, i) => at + i), layers };
+    });
   }
 
-  /** Ctrl+add in the reference: a new empty frame in front of the current one. */
+  /** Ctrl+«+»: an empty drawing in front of the current cell of the active layer, its tail pushed. */
   addFrameBeforeActive(): void {
     if (this.playing || !this.canAddFrame || !this.leaveTransform()) {
       return;
     }
+    const layers = [this.activeLayer];
     const left = this.activeFrame;
-    // One undo step, as a delete is (owner, 2026-10-13): Z takes the frame back.
-    const before = this.takeStructure();
-    this.activeFrame = this.#write((doc) => insertFrameBefore(doc, this.activeFrame));
-    // `AddHistory(prev, ctrl)`: the frame left goes in first, then every entry
-    // shifts, because the insert pushed those cells one to the right. The cell
-    // that was under `left` now lives at `left + 1` — where its ghost belongs.
-    const recorded = pushVisited(this.visitedFrames, left);
-    this.visitedFrames = shiftVisited(recorded, this.activeFrame);
-    this.collapseSelection();
-    this.pushStructure(before);
-    this.touched = true;
+    this.structureStep(() => {
+      this.activeFrame = this.#write((doc) => putBefore(doc, layers, left));
+      // `AddHistory(prev, ctrl)`: the frame left goes in first, then every
+      // entry shifts — the cell that was under `left` now lives at `left + 1`.
+      const recorded = pushVisited(this.visitedFrames, left);
+      this.visitedFrames = shiftVisited(recorded, this.activeFrame);
+      this.collapseSelection();
+    }, false);
   }
 
-  /**
-   * Whether Delete may take the frame. Toonio refuses the last one outright
-   * (`bundle:8619-8644`), and so a block that would take every frame; the
-   * other presets clear the one left instead.
-   */
+  /** Delete always has something to do: no cell leaves the film. «Удалить столбец» is asked by `canRemoveColumn`. */
   get canRemoveFrame(): boolean {
-    const { count } = this.framesToRemove;
-    return this.ux.playbackRange === 'selection' ? frameCount(this.doc) > count : true;
+    return !this.playing;
   }
 
   /** What Delete takes: the selected block of frames, or the active frame alone. */
@@ -2078,29 +2149,172 @@ export class EditorState {
     return { from, count: Math.max(...frames) - from + 1 };
   }
 
-  /** Owner: a block goes whole, after one question that names the range. */
+  /**
+   * Delete on the active layer (timeline-exposure-cells): a drawing becomes a
+   * continuation of the one before, a continuation leaves the layer and the
+   * tail comes left; a block leaves its layers. The film keeps its length.
+   * Asked only when a drawing with lines goes.
+   */
   removeActiveFrame(): void {
-    if (this.playing || !this.canRemoveFrame || !this.leaveTransform()) {
+    if (this.playing || !this.leaveTransform()) {
+      return;
+    }
+    const { from, count } = this.framesToRemove;
+    const layers = count > 1 ? [...this.selection.layers] : [this.activeLayer];
+    const lost = layers.reduce((sum, l) => sum + this.doc.layers[l].frames.slice(from, from + count)
+      .filter((cell) => cell !== null && cell.strokes.length > 0).length, 0);
+    const go = () => this.structureStep(() => {
+      this.#write((doc) => (count > 1 ? deleteCells(doc, layers, from, count) : deleteCell(doc, layers, from)));
+      this.collapseSelection();
+    });
+    if (lost === 0) {
+      go();
+      return;
+    }
+    const question = count > 1
+      ? t('frame.delete_block_confirm', { from: from + 1, to: from + count, count })
+      : t('frame.delete_confirm', { n: from + 1 });
+    this.whenConfirmed(question, go, t('ask.delete'));
+  }
+
+  /**
+   * Whether «Удалить столбец» may go. Toonio refuses the last one outright
+   * (`bundle:8619-8644`), and so a block that would take every frame; the
+   * other presets clear the one left instead.
+   */
+  get canRemoveColumn(): boolean {
+    const { count } = this.framesToRemove;
+    return !this.playing && (this.ux.playbackRange === 'selection' ? frameCount(this.doc) > count : true);
+  }
+
+  /** «Удалить столбец»: the tick leaves every layer, the film a tick shorter. After one question that names the range. */
+  removeColumns(): void {
+    if (this.playing || !this.canRemoveColumn || !this.leaveTransform()) {
       return;
     }
     const { from, count } = this.framesToRemove;
     const question = count > 1
-      ? t('frame.delete_block_confirm', { from: from + 1, to: from + count, count })
-      : t('frame.delete_confirm', { n: from + 1 });
+      ? t('frame.delete_columns_confirm', { from: from + 1, to: from + count, count })
+      : t('frame.delete_column_confirm', { n: from + 1 });
     this.whenConfirmed(question, () => {
-      const left = this.activeFrame;
-      const before = this.takeStructure();
       // Taking every frame keeps the first cell object but empties it: its
       // copied mark would outlive what was copied.
       if (count >= frameCount(this.doc)) {
         this.copiedMarks = new Set();
       }
-      this.#write((doc) => removeFrame(doc, from, count));
-      this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
-      this.visitedFrames = pushVisited(this.visitedFrames, left, this.activeFrame);
-      this.collapseSelection();
-      this.pushStructure(before);
+      this.structureStep(() => {
+        this.#write((doc) => removeFrame(doc, from, count));
+        this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
+        this.collapseSelection();
+      });
     }, t('ask.delete'));
+  }
+
+  /** How many ticks the drawing the active cell shows lasts on its layer. */
+  get activeDuration(): number {
+    return durationOf(this.doc, this.activeLayer, this.activeFrame);
+  }
+
+  /** Whether «Длительность» may change by `by` ticks. */
+  canChangeDuration(by: number): boolean {
+    return !this.playing && (by > 0 ? cellsFit(this.doc, by) : this.activeDuration > 1);
+  }
+
+  /**
+   * «Длительность −/+», and the handle at the end of a drawing's band: the
+   * drawing the active cell shows lasts `by` ticks longer or shorter on its
+   * layer, never under one. `merge` folds the steps of one drag into one
+   * step of undo, and a drag brought back to where it began leaves none.
+   */
+  changeDuration(by: number, merge = false): void {
+    // A drag's step is taken back first: `by` counts from where the drag
+    // began, so out and back again leaves the film as it was.
+    const folded = merge ? this.gestureTop('timed') : undefined;
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      this.#write((doc) => restoreStructure(doc, folded.snap));
+      this.activeFrame = folded.activeFrame;
+      this.activeLayer = folded.activeLayer;
+      this.gestureStep = null;
+    }
+    if (by === 0 || !this.canChangeDuration(by) || !this.leaveTransform()) {
+      if (folded) this.touched = true;
+      return;
+    }
+    const layers = [this.activeLayer];
+    const before = folded ?? this.takeStructure();
+    const key = keyOf(this.doc.layers[this.activeLayer].frames, this.activeFrame);
+    this.#write((doc) => (by > 0 ? lengthen(doc, layers, this.activeFrame, by) : shorten(doc, layers, this.activeFrame, -by)));
+    // Still on the same drawing: a cell its pause gave up is the next one's.
+    this.activeFrame = Math.min(this.activeFrame, key + durationOf(this.doc, this.activeLayer, key) - 1);
+    before.timed = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+    if (merge) this.gestureStep = before;
+  }
+
+  /**
+   * The step the drag under way has filed, while it is still the top of the
+   * history and the document is what it left. A drag folds only into its own
+   * step: one begun before (`beginGesture`) is never reached.
+   */
+  private gestureStep: StructureEdit | null = null;
+
+  private gestureTop(kind: 'timed' | 'framesMoved'): StructureEdit | undefined {
+    const top = this.edits[this.edits.length - 1];
+    return top && top === this.gestureStep && !Array.isArray(top) && top[kind] && structureIntact(this.doc, top.snap) ? top : undefined;
+  }
+
+  /** A drag of cells, a duration or the film's end begins: nothing it does folds into a step before it. */
+  beginGesture(): void {
+    this.gestureStep = null;
+  }
+
+  /** Escape on a drag: its step taken back, unfiled — everything as the drag found it. */
+  withdrawGesture(): void {
+    const top = this.gestureTop('timed') ?? this.gestureTop('framesMoved');
+    this.gestureStep = null;
+    if (!top) return;
+    this.edits = this.edits.slice(0, -1);
+    this.#write((doc) => restoreStructure(doc, top.snap));
+    this.activeFrame = top.activeFrame;
+    this.activeLayer = top.activeLayer;
+    if (top.selection) this.selection = top.selection;
+    this.touched = true;
+  }
+
+  /**
+   * The strip's keys (WCAG 2.5.7 for Ctrl+wheel and the pinch): its cells a
+   * step wider or narrower; the strip keeps the active frame in view.
+   */
+  zoomStrip(direction: 1 | -1): void {
+    const own = cellSize(this.doc.width, this.doc.height).w + 2;
+    this.setSetting('timelineZoom', Math.round(zoomBy(this.settings.timelineZoom || own, -direction * 150) * 100) / 100);
+  }
+
+  /** The film's length in ticks — «Кадров: N». */
+  get filmLength(): number {
+    return frameCount(this.doc);
+  }
+
+  /**
+   * «Кадров: N» and the end mark: the film made `cells` long. A longer film
+   * continues every layer's last drawing; a shorter one that would lose
+   * drawings asks first, naming how many. One step of undo.
+   */
+  setFilmLength(cells: number): void {
+    const to = Math.min(MAX_FRAMES, Math.max(1, Math.round(cells)));
+    if (this.playing || !Number.isFinite(cells) || to === frameCount(this.doc) || !this.leaveTransform()) {
+      return;
+    }
+    const go = () => this.structureStep(() => {
+      this.#write((doc) => setFilmLength(doc, to));
+      this.activeFrame = Math.min(this.activeFrame, to - 1);
+      this.collapseSelection();
+    });
+    const lost = drawingsPast(this.doc, to);
+    if (lost === 0) go();
+    else this.whenConfirmed(t('frame.shorten_confirm', { count: lost }), go, t('ask.delete'));
   }
 
   /**
@@ -2189,6 +2403,68 @@ export class EditorState {
   shiftFrames(step: -1 | 1): void {
     const { from, count } = this.framesToShift;
     this.moveFramesTo(from, count, from + step);
+  }
+
+  /**
+   * Carries `count` cells from `from` along the layers of the block, so they
+   * land near `to` (timeline-exposure-cells): the other layers stand, and
+   * the cells never land inside a pause. With `merge` this is a step of the
+   * drag under way: the drag's step is taken back first and the carry laid
+   * from where the drag began (`from` is that place), so no step of the way
+   * leaves a copy behind and a carry brought back leaves no step at all.
+   * Returns where the cells landed, or null when refused.
+   */
+  moveCellsInLayer(from: number, count: number, to: number, merge = false): number | null {
+    return this.carryCells(merge, (doc, layers) => moveCellsTo(doc, layers, from, count, to), from, count);
+  }
+
+  /** Ctrl+drag of cells: copies put near `to` in the block's layers, their tails pushed — as a drag's step, laid again from its start. */
+  copyCellsInLayer(from: number, count: number, to: number, merge = false): number | null {
+    if (!cellsFit(this.doc, count)) return null;
+    return this.carryCells(merge, (doc, layers) => copyCellsTo(doc, layers, from, count, to), from, count);
+  }
+
+  /** One step of a carry of cells: the drag's own step undone, then `write` from the start; the block and the active cell ride along. */
+  private carryCells(merge: boolean, write: (doc: ToonDocument, layers: number[]) => number, from: number, count: number): number | null {
+    if (this.playing || !this.leaveTransform()) {
+      return null;
+    }
+    const folded = merge ? this.gestureTop('framesMoved') : undefined;
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      this.#write((doc) => restoreStructure(doc, folded.snap));
+      this.activeFrame = folded.activeFrame;
+      this.activeLayer = folded.activeLayer;
+      if (folded.selection) this.selection = folded.selection;
+      this.gestureStep = null;
+    }
+    const layers = [...this.selection.layers];
+    const before = folded ?? this.takeStructure();
+    const landed = this.#write((doc) => write(doc, layers));
+    this.activeFrame = landed + Math.min(count - 1, Math.max(0, this.activeFrame - from));
+    this.selection = { frames: Array.from({ length: count }, (_, i) => landed + i), layers };
+    if (sameShape(before.snap, this.doc)) {
+      this.touched = true;
+      return landed;
+    }
+    before.framesMoved = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
+    this.gestureStep = before;
+    return landed;
+  }
+
+  /** Whether the cells of the block have a drawing to step over that way. */
+  canShiftCells(step: -1 | 1): boolean {
+    const { from, count } = this.framesToShift;
+    return !this.playing && this.selection.layers.some((l) => canStepCells(this.doc, l, from, count, step));
+  }
+
+  /** «Сдвинуть влево/вправо» on cells: the block steps over the drawing next to it (WCAG 2.5.7). */
+  shiftCells(step: -1 | 1): void {
+    if (!this.canShiftCells(step) || !this.leaveTransform()) return;
+    const { from, count } = this.framesToShift;
+    this.carryCells(false, (doc, layers) => stepCells(doc, layers, from, count, step), from, count);
   }
 
   setFps(value: number): void {

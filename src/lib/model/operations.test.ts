@@ -322,6 +322,15 @@ describe('layer operations', () => {
     expect(validateDocument(doc).ok).toBe(true);
   });
 
+  it('addLayer with `whole` lays one empty drawing over the whole film', () => {
+    const doc = createDocument();
+    addFrame(doc, 0);
+    addFrame(doc, 1);
+    addLayer(doc, 1, true);
+    expect(doc.layers[1].frames).toEqual([{ strokes: [] }, null, null]);
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+
   it('addLayer can slide a layer in underneath the bottom one', () => {
     const doc = createDocument();
     addStroke(doc, 0, 0, { points: [1, 2], width: 8, color: '#000000' });

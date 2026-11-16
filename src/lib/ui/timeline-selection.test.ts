@@ -123,10 +123,9 @@ describe('overwrite confirmation (Toonio parity)', () => {
   });
 
   it('deleting a frame asks, and Toonio refuses to delete the last one', () => {
-    expect(member(state, 'canRemoveFrame')).toContain("this.ux.playbackRange === 'selection'");
-    const remove = member(state, 'removeActiveFrame');
-    expect(remove).toContain('this.canRemoveFrame');
-    expect(remove).toContain('this.whenConfirmed(');
+    expect(member(state, 'canRemoveColumn')).toContain("this.ux.playbackRange === 'selection'");
+    expect(member(state, 'removeColumns')).toContain('this.canRemoveColumn');
+    expect(member(state, 'removeActiveFrame')).toContain('this.whenConfirmed(');
   });
 
   it('deleting a layer asks by name, through the same path', () => {
@@ -209,7 +208,8 @@ describe('adding or removing a frame leaves a ghost behind', () => {
   // (`bundle:8584-8600`, `8622-8645`). Skipping it left the new frame with no
   // onion of the frame it was created from.
   it('adding a frame after the active one records the frame left', () => {
-    expect(member(state, 'addFrameAfterActive')).toContain('pushVisited(');
+    expect(member(state, 'addFrameAfterActive')).toContain('this.structureStep(');
+    expect(member(state, 'structureStep')).toContain('pushVisited(');
   });
 
   it('inserting before records it and then shifts the whole history', () => {
@@ -221,7 +221,7 @@ describe('adding or removing a frame leaves a ghost behind', () => {
   });
 
   it('removing a frame records it too', () => {
-    expect(member(state, 'removeActiveFrame')).toContain('pushVisited(');
+    expect(member(state, 'removeActiveFrame')).toContain('this.structureStep(');
   });
 });
 

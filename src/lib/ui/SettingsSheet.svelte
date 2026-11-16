@@ -426,6 +426,17 @@
           </span>
         </label>
 
+        <!-- The shift window's answer, remembered or asked again. -->
+        <div class="row">
+          <span class="row-label">{t('settings.when_next_taken')}</span>
+          <Dropdown
+            label={t('settings.when_next_taken')}
+            value={editor.settings.whenNextTaken}
+            options={(['ask', 'next', 'all'] as const).map((value) => ({ value, label: t(`settings.when_next_taken_${value}`) }))}
+            onpick={(value) => editor.setSetting('whenNextTaken', value)}
+          />
+        </div>
+
         <h3 class="sheet-hint">{t('settings.saved_palettes')}</h3>
         {@render act(t('settings.download_palettes'), 'download', () => download('palettes.json', editor.exportSavedPalettes()))}
         {@render act(t('settings.load_palettes'), 'chevron-right', () => paletteFile?.click())}

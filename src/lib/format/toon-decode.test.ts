@@ -1,5 +1,4 @@
 import { SQUARE_STAMP } from './types';
-import type { Frame } from './types';
 import { describe, expect, it } from 'bun:test';
 import { STROKE_COORD_MAX, STROKE_COORD_MIN } from './constants';
 import { TOONIO_CANVAS_HEIGHT, TOONIO_CANVAS_WIDTH, decodeLegacyJson, decodeToon } from './toon-decode';
@@ -49,18 +48,27 @@ describe('decodeToon: version 5', () => {
     expect(doc.layers[0].hidden).toBe(true);
   });
 
-  it('unrolls a clone frame into an independent copy', () => {
+  it('reads a clone frame as a continuation: the drawing is not written twice', () => {
+    const doc = ok(decodeToon(encode([
+      ...header(1, 10), 1, ...PENCIL,
+      1, 0,
+      0, 1, 0, 1, 10, 10, // frame 0: one line, one point
+      1, 1, 1, 1, 1, 1, 1, 1, 1, // frames 1-9: clones
+    ])));
+    const frames = doc.layers[0].frames;
+    expect(frames).toHaveLength(10);
+    expect(frames[0]!.strokes).toHaveLength(1);
+    expect(frames.slice(1).every((cell) => cell === null)).toBe(true);
+  });
+
+  it('opens a layer whose first frame is a clone on an empty drawing', () => {
     const doc = ok(decodeToon(encode([
       ...header(1, 2), 1, ...PENCIL,
       1, 0,
-      0, 1, 0, 1, 10, 10, // frame 0: one line, one point
-      1, // frame 1: clone of frame 0
+      1, // frame 0: a clone of nothing
+      1,
     ])));
-    const [first, second] = doc.layers[0].frames as Frame[];
-    expect(second.strokes).toEqual(first.strokes);
-    expect(second.strokes[0]).not.toBe(first.strokes[0]);
-    second.strokes.push({ points: [0, 0], tool_id: 0 });
-    expect(first.strokes).toHaveLength(1);
+    expect(doc.layers[0].frames).toEqual([{ strokes: [] }, null]);
   });
 
   it('puts the reference top layer last — its layer 0 draws on top, ours draws first', () => {

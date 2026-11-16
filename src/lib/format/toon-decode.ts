@@ -126,9 +126,8 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
   if (layerCount < 1 || layerCount > MAX_LAYERS || frameCount < 1) {
     throw new Refusal(t('file.bad_header'));
   }
-  // A clone frame is one word in the file and a whole copy in memory: a small
-  // crafted file would otherwise build millions of points before anything
-  // got to say no. This guards the tab's memory, not the publish budget — a
+  // A small crafted file could otherwise build millions of points before
+  // anything got to say no. This guards the tab's memory, not the publish budget — a
   // mult heavier than the budget opens like any other.
   // ponytail: ten budgets, a guess; raise it if an honest file ever hits it.
   const ceiling = 10 * MAX_DOCUMENT_WEIGHT;
@@ -159,16 +158,10 @@ function read(reader: Reader): { doc: ToonDocument; original: string } {
     const frames: Layer['frames'] = [];
     for (let f = 0; f < frameCount; f++) {
       if (version >= 4 && reader.next() === 1) {
-        // A clone frame shares its predecessor's object in the reference; our
-        // frames are independent, so it becomes a copy.
-        const previous = frames[f - 1];
-        tally(previous?.strokes ?? []);
-        frames.push({
-          strokes: (previous?.strokes ?? []).map((stroke) => ({
-            points: stroke.points.slice(),
-            tool_id: stroke.tool_id,
-          })),
-        });
+        // A clone frame shares its predecessor's object in the reference: here
+        // it is a continuation, which shows that drawing and weighs nothing.
+        // A layer opens with a drawing, so a clone of nothing is an empty one.
+        frames.push(f === 0 ? { strokes: [] } : null);
         continue;
       }
       const strokes = readStrokes(reader, version, tools);

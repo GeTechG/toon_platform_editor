@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { filmTiming } from '../model/timing';
-import { scrollToFrame, stripWindow, wheelOnStrip } from './strip-window';
+import { numberEvery, scrollToFrame, stripLevel, stripWindow, wheelOnStrip, zoomBy, zoomScroll } from './strip-window';
 
 const CELL = 46;
 const GAP = 2;
@@ -155,5 +155,41 @@ describe('лента с длительностями кадров', () => {
     expect(scrollToFrame(2, 40, 2, 0, 100, 0, timing)).toBe(252 + 40 - 100);
     // Кадр 1 шириной 5 тактов: 5·42 − 2 = 208.
     expect(scrollToFrame(1, 40, 2, 0, 100, 0, timing)).toBe(42 + 208 - 100);
+  });
+});
+
+describe('the strip\'s zoom', () => {
+  it('keeps the tick under the pointer where it was', () => {
+    // Tick 30 (from 0) under the pointer 100 px into a strip scrolled to 500, 20 px a tick.
+    const pitch = 20;
+    const x = 30 * pitch + 2 - 500 + 5;
+    const left = zoomScroll(500, x, 2, pitch, 40);
+    expect(Math.floor((left + x - 2) / 40)).toBe(30);
+    expect((left + x - 2) / 40).toBeCloseTo((500 + x - 2) / 20, 6);
+  });
+
+  it('never scrolls before the start', () => {
+    expect(zoomScroll(0, 10, 2, 20, 4)).toBe(0);
+  });
+
+  it('a wheel notch widens the cells by a step, held to 4–96 px', () => {
+    expect(zoomBy(40, -100)).toBeGreaterThan(40);
+    expect(zoomBy(40, 100)).toBeLessThan(40);
+    expect(zoomBy(95, -1000)).toBe(96);
+    expect(zoomBy(5, 1000)).toBe(4);
+  });
+
+  it('shows thumbnails from 40 px, marks from 14, bands below', () => {
+    expect(stripLevel(40)).toBe('thumbs');
+    expect(stripLevel(39)).toBe('marks');
+    expect(stripLevel(14)).toBe('marks');
+    expect(stripLevel(13)).toBe('bands');
+  });
+
+  it('thins the frame numbers so they never overlap: every fifth, then every tenth', () => {
+    expect(numberEvery(48)).toBe(1);
+    expect(numberEvery(12)).toBe(5);
+    expect(numberEvery(4)).toBe(10);
+    expect(numberEvery(2)).toBe(50);
   });
 });

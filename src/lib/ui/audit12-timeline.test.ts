@@ -16,8 +16,8 @@ describe('twelfth audit: four-digit frame numbers', () => {
     // At 200 % text «1485» is 54 px over a 48 px cell, and a portrait
     // document's 28 px cell overflows at 100 %: the header read
     // «14851486148714881489». Past the cell's width the digits stop growing.
-    expect(timeline).toMatch(/class="head"[^>]*style:--pitch="\{thumbWidth\}px"/);
-    expect(style).toMatch(/\.num \{[^}]*font-size: min\(0\.74rem, calc\(var\(--pitch\) \* 0\.42\)\);/);
+    expect(timeline).toMatch(/class="head"[^>]*style:--pitch="\{cellW\}px"/);
+    expect(style).toMatch(/\.num \{[^}]*font-size: min\(0\.74rem, max\(0\.7rem, calc\(var\(--pitch\) \* 0\.42\)\)\);/);
   });
 });
 

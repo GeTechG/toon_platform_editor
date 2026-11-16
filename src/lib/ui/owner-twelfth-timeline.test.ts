@@ -137,7 +137,7 @@ describe('the editor keeps the mark by cell', () => {
   });
 
   it('deleting every frame empties the first cell in place, so the mark goes too', () => {
-    expect(member(state, 'removeActiveFrame')).toContain('this.copiedMarks = new Set()');
+    expect(member(state, 'removeColumns')).toContain('this.copiedMarks = new Set()');
   });
 
   it('the strip asks by cell, the header by column', () => {

@@ -345,7 +345,11 @@
       "settings": "Настройки",
       "publish": "Опубликовать",
       "brush_rail": "Кисть: ползунки сбоку",
-      "spring": "Пружина: всё после неё — у дальнего края"
+      "spring": "Пружина: всё после неё — у дальнего края",
+      "shift_column_left": "Сдвинуть столбец влево",
+      "shift_column_right": "Сдвинуть столбец вправо",
+      "delete_column": "Удалить столбец",
+      "delete_columns": "Удалить столбцы {{from}}–{{to}}"
     }
   },
   "layer": {
@@ -533,7 +537,13 @@
     "delete_block_confirm_many": "Удалить кадры {{from}}–{{to}} ({{count}} кадров)?",
     "delete_block_confirm_other": "Удалить кадры {{from}}–{{to}} ({{count}} кадра)?",
     "replace_confirm": "Там уже нарисовано. Заменить?",
-    "affects_confirm": "Это затронет кадров: {{frames}}, слоёв: {{layers}}. Продолжить?"
+    "affects_confirm": "Это затронет кадров: {{frames}}, слоёв: {{layers}}. Продолжить?",
+    "delete_column_confirm": "Удалить столбец {{n}} во всех слоях?",
+    "delete_columns_confirm": "Удалить столбцы {{from}}–{{to}} во всех слоях?",
+    "shorten_confirm_one": "Убрать {{count}} кадр?",
+    "shorten_confirm_few": "Убрать {{count}} кадра?",
+    "shorten_confirm_many": "Убрать {{count}} кадров?",
+    "shorten_confirm_other": "Убрать {{count}} кадра?"
   },
   "picker": {
     "title": "Выбор цвета: {{label}}",
@@ -596,7 +606,20 @@
     "pick_done": "Готово",
     "picked": "Кадры {{from}}–{{to}}",
     "picked_one": "Кадр {{from}}",
-    "picked_layers": "{{frames}}, слоёв: {{n}}"
+    "picked_layers": "{{frames}}, слоёв: {{n}}",
+    "seconds": "{{n}} с",
+    "end_mark": "Конец мульта: {{n}} — потяни, чтобы изменить длину",
+    "duration": "Длительность",
+    "duration_less": "Короче на кадр",
+    "duration_more": "Длиннее на кадр",
+    "length": "Кадров",
+    "length_title": "Длина мульта в кадрах",
+    "continuation_tip": "Здесь виден кадр {{n}} — нарисуй, и тут появится новый",
+    "shift_title": "Следующий кадр занят",
+    "shift_text": "Куда деть кадр {{n}}?",
+    "shift_next": "Сдвинуть только следующий",
+    "shift_all": "Сдвинуть все дальше",
+    "shift_remember": "Запомнить"
   },
   "palette": {
     "default_name": "По умолчанию",
@@ -831,7 +854,11 @@
     "catalog_field": "Адрес каталога",
     "catalog_placeholder": "пусто — каталога нет",
     "done": "Готово",
-    "change_keys": "Поменять клавиши"
+    "change_keys": "Поменять клавиши",
+    "when_next_taken": "Когда следующий кадр занят",
+    "when_next_taken_ask": "Спрашивать",
+    "when_next_taken_next": "Сдвигать только следующий",
+    "when_next_taken_all": "Сдвигать все дальше"
   },
   "editor": {
     "ruler_off": "Линейка (Alt+R) убрана",
@@ -1009,7 +1036,8 @@
     "two_fingers": "Два пальца на листе",
     "hold_sheet": "Удержание на листе",
     "hold_frame": "Удержание на кадре",
-    "hold_layer": "Удержание на слое"
+    "hold_layer": "Удержание на слое",
+    "pinch_strip": "Два пальца на ленте"
   },
   "mouse": {
     "shape_mods": "Shift / Alt посреди протяжки фигуры",
@@ -1020,7 +1048,10 @@
     "middle": "СКМ",
     "wheel": "Колесо, Ctrl + колесо",
     "trackpad": "Два пальца на тачпаде",
-    "layer_name": "2×ЛКМ по слою"
+    "layer_name": "2×ЛКМ по слою",
+    "strip_zoom": "Ctrl + колесо по ленте",
+    "duration": "ЛКМ по краю кадра на ленте",
+    "film_end": "ЛКМ по метке конца ленты"
   },
   "mouse_does": {
     "shape_mods": "Ровная фигура / от центра",
@@ -1031,7 +1062,10 @@
     "middle": "Двигать лист, Shift — повернуть",
     "wheel": "Масштаб",
     "trackpad": "Двигать лист",
-    "layer_name": "Переименовать слой"
+    "layer_name": "Переименовать слой",
+    "strip_zoom": "Масштаб ленты",
+    "duration": "Длительность кадра",
+    "film_end": "Длина мульта"
   },
   "gesture_does": {
     "shape_second": "Ровная фигура",
@@ -1039,7 +1073,8 @@
     "two_fingers": "Двигать, масштаб, поворот",
     "hold_sheet": "Взять цвет",
     "hold_frame": "Меню кадра",
-    "hold_layer": "Переименовать слой"
+    "hold_layer": "Переименовать слой",
+    "pinch_strip": "Масштаб ленты"
   },
   "key": {
     "ruler": "Линейка",
@@ -1100,7 +1135,9 @@
     "save": "Сохранить на устройстве",
     "download_project": "Скачать проект (.toonop)",
     "export": "Экспорт",
-    "error_log": "Скачать лог ошибок"
+    "error_log": "Скачать лог ошибок",
+    "strip_zoom_in": "Шире кадры на ленте",
+    "strip_zoom_out": "Уже кадры на ленте"
   },
   "onion": {
     "box": "Калька",

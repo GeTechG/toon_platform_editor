@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick, untrack, type Snippet } from 'svelte';
-  import { EditorState } from './editor-state.svelte';
+  import { EditorState, type ShiftAnswer } from './editor-state.svelte';
   import CanvasView from './CanvasView.svelte';
   import BrushPanel from './BrushPanel.svelte';
   import ColoursPanel from './ColoursPanel.svelte';
@@ -181,6 +181,22 @@
   const tell = async (message: string): Promise<void> => void (await put('tell', message, t('ask.ok')));
   const askText = async (message: string, value: string): Promise<string | null> =>
     (await put('text', message, t('ask.save'), value)) ? typed : null;
+  // The shift window (timeline-exposure-cells): «+» before a cell that holds
+  // a drawing asks how the layer makes way. Esc and «Отмена» change nothing.
+  let shiftAsk = $state<{ n: number; remember: boolean; done: (answer: ShiftAnswer | null) => void } | null>(null);
+  let shiftDialog = $state<HTMLDialogElement | undefined>();
+  $effect(() => {
+    shiftDialog?.showModal();
+  });
+  function askShift(): Promise<ShiftAnswer | null> {
+    shiftAsk?.done(null);
+    return new Promise((done) => (shiftAsk = { n: editor.activeFrame + 2, remember: false, done }));
+  }
+  function answerShift(shift: ShiftAnswer['shift'] | null): void {
+    const asked = shiftAsk;
+    shiftAsk = null;
+    asked?.done(shift ? { shift, remember: asked.remember } : null);
+  }
   // A tool's warning on its first pick (the mega-eraser, the bucket): a
   // dialog, not alert(), so it can carry «Больше не показывать» — a reload
   // used to bring the alert back for good.
@@ -1228,6 +1244,12 @@
       case 'ruler':
         editor.toggleRuler();
         break;
+      case 'strip-zoom-in':
+        editor.zoomStrip(1);
+        break;
+      case 'strip-zoom-out':
+        editor.zoomStrip(-1);
+        break;
       // Reference: the X between the two swatches swaps outline and fill.
       case 'swap':
         editor.swapColors();
@@ -1732,6 +1754,7 @@
     editor.askNow = (message: string) => confirm(message);
     editor.tell = tell;
     editor.askText = askText;
+    editor.askShift = askShift;
     // The transport defers a write until the preview is over and tells us here.
     editor.onStop = saveQueued;
     await refreshDrafts();
@@ -3376,6 +3399,32 @@
     </dialog>
   {/if}
 
+  {#if shiftAsk}
+    <dialog
+      bind:this={shiftDialog}
+      class="sheet sheet-dialog ask shift"
+      aria-labelledby="shift-title"
+      aria-describedby="shift-text"
+      onclose={() => answerShift(null)}
+    >
+      <header class="sheet-head">
+        <h2 id="shift-title">{t('timeline.shift_title')}</h2>
+      </header>
+      <div class="sheet-body">
+        <p id="shift-text">{t('timeline.shift_text', { n: shiftAsk.n })}</p>
+        <label class="mute-warning">
+          <input type="checkbox" bind:checked={shiftAsk.remember} />
+          {t('timeline.shift_remember')}
+        </label>
+      </div>
+      <footer class="sheet-foot">
+        <button class="key primary" type="button" onclick={() => answerShift('next')}>{t('timeline.shift_next')}</button>
+        <button class="key" type="button" onclick={() => answerShift('all')}>{t('timeline.shift_all')}</button>
+        <button class="key" type="button" onclick={() => answerShift(null)}>{t('ask.no')}</button>
+      </footer>
+    </dialog>
+  {/if}
+
   {#if toolWarn}
     {@const mega = toolWarn === 'mega-eraser'}
     {@const setting = mega ? 'megaEraserWarning' : 'fillWarning'}
@@ -4882,6 +4931,14 @@
   }
   /* The studio's question: the shared sheet, with a form between it and its
      body and foot — which steps aside so the two stay the sheet's own rows. */
+  /* Three answers of a few words each: one under another, the whole width. */
+  .editor :global(.sheet.shift .sheet-foot) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .editor :global(.sheet.shift .sheet-foot > :last-child) {
+    margin-inline-start: 0;
+  }
   .ask form {
     display: contents;
   }

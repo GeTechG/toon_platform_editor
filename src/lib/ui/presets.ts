@@ -252,6 +252,16 @@ export interface EditorSettings {
   /** The one-off hint on first entering the palette's remover mode has been shown. */
   /** The mega-eraser warns on its first pick of a session, until «Больше не показывать». */
   megaEraserWarning: boolean;
+  /**
+   * What «+» does when the next cell holds a drawing: ask, or the answer the
+   * shift window was told to remember — push the next drawing alone, or the
+   * whole tail of the layer (timeline-exposure-cells).
+   */
+  whenNextTaken: 'ask' | 'next' | 'all';
+  /** The strip's cell width, px, as Ctrl+wheel or a pinch left it on this device; 0 is the cell's own. */
+  timelineZoom: number;
+  /** The one fading word on a continuation — «here frame N shows» — has been said. */
+  continuationTipShown: boolean;
   removerTipShown: boolean;
   /** The bucket's tolerance: a break in a line this many logical pixels wide holds it, 0..`FILL_GAP_MAX`. */
   fillGap: number;
@@ -393,6 +403,9 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   keymap: {},
   removerTipShown: false,
   megaEraserWarning: true,
+  whenNextTaken: 'ask',
+  timelineZoom: 0,
+  continuationTipShown: false,
   fillGap: 4,
   fillSource: 'layer',
   fillTolerance: 10,
@@ -677,6 +690,11 @@ function normalizeSettings(value: unknown): EditorSettings {
     keymap: readOverrides(raw.keymap),
     removerTipShown: flag('removerTipShown'),
     megaEraserWarning: flag('megaEraserWarning'),
+    whenNextTaken: raw.whenNextTaken === 'next' || raw.whenNextTaken === 'all' ? raw.whenNextTaken : 'ask',
+    timelineZoom: typeof raw.timelineZoom === 'number' && raw.timelineZoom >= 4 && raw.timelineZoom <= 96
+      ? Math.round(raw.timelineZoom * 100) / 100
+      : 0,
+    continuationTipShown: flag('continuationTipShown'),
     fillGap: typeof raw.fillGap === 'number' && Number.isFinite(raw.fillGap)
       ? Math.min(FILL_GAP_MAX, Math.max(0, Math.round(raw.fillGap)))
       : DEFAULT_SETTINGS.fillGap,

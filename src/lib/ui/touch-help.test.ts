@@ -19,7 +19,7 @@ const kindsIn = (input: ManualContext['input'], section: string) =>
   manualSections(context(input)).find((one) => one.id === section)!.rows.map((row) => row.kind);
 
 it('the manual names the gestures a finger has — and the repeat press on a tool (critique 2026-10-13)', () => {
-  expect(Object.keys(ru.gesture).sort()).toEqual(['hold_frame', 'hold_layer', 'hold_sheet', 'shape_second', 'tool_again', 'two_fingers']);
+  expect(Object.keys(ru.gesture).sort()).toEqual(['hold_frame', 'hold_layer', 'hold_sheet', 'pinch_strip', 'shape_second', 'tool_again', 'two_fingers']);
 });
 
 it('under a finger the gestures come before the keys', () => {

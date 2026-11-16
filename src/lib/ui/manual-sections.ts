@@ -99,9 +99,11 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
         command('extend-right', 'extend_right'),
         command('extend-up', 'extend_up'),
         command('extend-down', 'extend_down'),
+        command('strip-zoom-in', 'strip_zoom_in'),
+        command('strip-zoom-out', 'strip_zoom_out'),
       ],
-      mouse: [mouse('frame_menu'), mouse('layer_name')],
-      gesture: [gesture('hold_frame'), gesture('hold_layer')],
+      mouse: [mouse('frame_menu'), mouse('layer_name'), mouse('strip_zoom'), mouse('duration'), mouse('film_end')],
+      gesture: [gesture('hold_frame'), gesture('hold_layer'), gesture('pinch_strip')],
     },
     {
       id: 'edit',

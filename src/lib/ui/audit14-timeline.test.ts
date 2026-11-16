@@ -45,12 +45,12 @@ describe('четырнадцатый аудит: строка слоя раст�
 });
 
 describe('четырнадцатый аудит: имена слоёв стоят вровень со своими ячейками', () => {
-  it('шапка кадров той же высоты, что шапка «+ Слой» (2rem)', () => {
+  it('шапка кадров той же высоты, что шапка «+ Слой» (2.75rem: линейка секунд над номерами)', () => {
     // Шапка кадров была 32 px, а «+ Слой» 2rem: при 150 % текста все имена
     // съезжали на 16 px вниз от своих ячеек, при 200 % — на 32.
-    expect(timelineStyle).toMatch(/\.head \{[^}]*height: 2rem;/);
+    expect(timelineStyle).toMatch(/\.head \{[^}]*height: 2\.75rem;/);
     expect(timelineStyle).toMatch(/\.num \{[^}]*line-height: 2rem;/);
-    expect(rowsStyle).toMatch(/\.head \{[^}]*box-sizing: border-box;[^}]*height: 2rem;/);
+    expect(rowsStyle).toMatch(/\.head \{[^}]*box-sizing: border-box;[^}]*height: 2\.75rem;/);
   });
 });
 
@@ -242,7 +242,8 @@ describe('четырнадцатый аудит: читалка слышит с�
   it('имя ячейки называет её скопированной', async () => {
     const ru = await Bun.file(UI + '../i18n/ru.json').json();
     expect(ru.timeline.cell_copied).toBe(', скопирован');
-    expect(timeline).toMatch(/aria-label=\{`\$\{[\s\S]*?\)\}\$\{editor\.isCopiedCell\(i, layerIndex\) \? t\('timeline\.cell_copied'\) : ''\}`\}/);
+    expect(timeline).toMatch(/aria-label=\{cellLabel\(layerIndex, i\)\}/);
+    expect(timeline).toMatch(/function cellLabel[\s\S]*?editor\.isCopiedCell\(i, layer\) \? t\('timeline\.cell_copied'\) : ''/);
   });
 });
 

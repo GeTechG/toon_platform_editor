@@ -8,7 +8,7 @@
   import type { Frame, Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
   import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
-  import { scrollToFrame, stripTabStop, stripTail, stripWindow, wheelOnStrip } from './strip-window';
+  import { numberEvery, scrollToFrame, stripLevel, stripTabStop, stripTail, stripWindow, wheelOnStrip, zoomBy, zoomScroll, ZOOM_MAX, ZOOM_MIN } from './strip-window';
   import {
     carryTarget,
     framesToCarry,
@@ -57,7 +57,6 @@
   $effect(() => {
     const now = editor.cellBounds;
     const frames = Array.from({ length: editor.doc.layers[0].frames.length }, (_, i) => columnKey(i));
-    const pitch = thumbWidth + GRID_GAP;
     const at = timing;
     const was = counted;
     const before = placed;
@@ -90,7 +89,6 @@
     const look = getComputedStyle(strip);
     const duration = parseFloat(look.getPropertyValue('--dur')) * 1000 || 150;
     const easing = look.getPropertyValue('--ease-out').trim() || 'ease-out';
-    const pitch = thumbWidth + GRID_GAP;
     for (const i of built) {
       // The carried block is under the hand: it is where the hand is.
       if (carry && i >= carry.at && i < carry.at + carry.count) continue;
@@ -111,14 +109,74 @@
   /**
    * The wheel over the names or the cells moves the strip (the names follow
    * it), and never the page under the studio — at either end as well
-   * (owner, 2026-10-18). Ctrl+wheel stays the browser's zoom.
+   * (owner, 2026-10-18). Ctrl+wheel over the cells zooms the strip to the
+   * pointer (timeline-exposure-cells); over the names it is left alone.
    */
   function wheelAlong(e: WheelEvent): void {
-    if (!strip || e.ctrlKey) return;
+    if (!strip) return;
+    if (e.ctrlKey || e.metaKey) {
+      if (!strip.contains(e.target as Node)) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? strip.clientWidth : 1;
+      zoomAt(zoomBy(cellW, e.deltaY * unit), e.clientX);
+      return;
+    }
     e.preventDefault();
     const by = wheelOnStrip(e, strip.scrollHeight > strip.clientHeight, strip.clientWidth);
     strip.scrollLeft += by.x;
     strip.scrollTop += by.y;
+  }
+
+  /**
+   * The cells made `width` wide, the tick under `clientX` (the strip's middle
+   * when none) staying under it. Kept on the device (`timelineZoom`).
+   */
+  function zoomAt(width: number, clientX?: number): void {
+    if (!strip) return;
+    const to = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, width));
+    if (Math.abs(to - cellW) < 0.01) return;
+    const box = strip.getBoundingClientRect();
+    const x = clientX === undefined ? strip.clientWidth / 2 : clientX - box.left - strip.clientLeft;
+    const toGap = to >= 14 ? GRID_GAP : 0;
+    const left = zoomScroll(strip.scrollLeft, x, GRID_GAP, pitch, to + toGap);
+    editor.setSetting('timelineZoom', Math.round(to * 100) / 100);
+    // The row is only as long as the new pitch once it is laid out.
+    void tick().then(() => {
+      if (!strip) return;
+      strip.scrollLeft = left;
+      stripScroll = strip.scrollLeft;
+    });
+  }
+
+  // --- A pinch on the strip zooms it ----------------------------------------
+  // Two fingers on the cells: their spread is the cell's width, the point
+  // between them stays put. One finger still scrolls and holds as before.
+  const fingers = new Map<number, number>();
+  let pinch: { spread: number; width: number } | null = null;
+
+  function onPinchDown(e: PointerEvent): void {
+    if (e.pointerType !== 'touch') return;
+    fingers.set(e.pointerId, e.clientX);
+    if (fingers.size === 2) {
+      const [a, b] = [...fingers.values()];
+      pinch = { spread: Math.max(8, Math.abs(a - b)), width: cellW };
+      cancelLongPress();
+      held = null;
+    }
+  }
+
+  function onPinchMove(e: PointerEvent): boolean {
+    if (!fingers.has(e.pointerId)) return false;
+    fingers.set(e.pointerId, e.clientX);
+    if (!pinch || fingers.size !== 2) return false;
+    const [a, b] = [...fingers.values()];
+    zoomAt(pinch.width * (Math.max(8, Math.abs(a - b)) / pinch.spread), (a + b) / 2);
+    return true;
+  }
+
+  function onPinchUp(e: PointerEvent): void {
+    fingers.delete(e.pointerId);
+    if (fingers.size < 2) pinch = null;
   }
   let body = $state<HTMLDivElement | undefined>();
 
@@ -156,8 +214,10 @@
   // frames on five layers is fifteen hundred buttons with a canvas inside. The
   // strip builds what is in view plus a screen either side, and two spacers
   // stand in for the rest so the scrollbar is the length it always was.
-  /** The gap between cells of a row — `.head`, `.cells` and `.wave` share it. */
+  /** The row's padding before its first cell, px (`.head`, `.cells` and `.wave`). */
   const GRID_GAP = 2;
+  /** Room past the last tick, px: the end mark is dragged into it. */
+  const END_ROOM = 48;
   let stripScroll = $state(0);
   let stripWidth = $state(0);
 
@@ -174,7 +234,7 @@
     void editor.docOpens;
     void frameTotal;
     void filmTicks;
-    void thumbWidth;
+    void cellW;
     void stripWidth;
     if (editor.playing || !strip) return;
     untrack(() => {
@@ -182,7 +242,7 @@
       stripScroll = strip.scrollLeft;
       // Where the frame sits is arithmetic: its cell may not be built.
       // The row's padding is the gap, so the last frame comes in ring and all.
-      const to = scrollToFrame(index, thumbWidth, GRID_GAP, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
+      const to = scrollToFrame(index, cellW, gap, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
       if (to !== null) {
         strip.scrollLeft = to;
         stripScroll = to;
@@ -251,6 +311,20 @@
     // menu's first item — the arrows walked the layers under an open menu.
     void tick().then(() => {
       if (!menu) strip?.querySelector<HTMLElement>('.cell.active')?.focus();
+    });
+  });
+
+  // The first visit to a continuation says, once, what it is: the sheet shows
+  // a drawing the strip has no box for (design, «Новичок не понимает…»).
+  $effect(() => {
+    const frame = editor.activeFrame;
+    const layer = editor.activeLayer;
+    if (editor.playing || editor.settings.continuationTipShown) return;
+    const frames = editor.doc.layers[layer]?.frames;
+    if (!frames || frames[frame] !== null) return;
+    untrack(() => {
+      editor.canvasHint = { text: t('timeline.continuation_tip', { n: keyOf(frames, frame) + 1 }) };
+      editor.setSetting('continuationTipShown', true);
     });
   });
 
@@ -344,7 +418,7 @@
     // the reference does; Ctrl there toggles a layer on the click.
     const copy = e.ctrlKey || e.metaKey;
     if (isSelected(frame, layer)) {
-      startCarry(e, frame, copy);
+      startCarry(e, frame, copy, true);
       return;
     }
     if (copy) {
@@ -376,12 +450,25 @@
   }
 
   function onWindowUp(e: PointerEvent): void {
+    onPinchUp(e);
     endCellDrag();
     endCarry(e);
+    endGrip(e);
+    endMark(e);
+  }
+
+  /** The window lost: no release will come — the drawing keeps the length it has, the end mark goes back. */
+  function onWindowBlur(): void {
+    closeMenu();
+    endGrip();
+    endMark(undefined, true);
   }
 
   function onWindowMove(e: PointerEvent): void {
+    if (onPinchMove(e)) return;
     onCarryMove(e);
+    onGripMove(e);
+    onMarkMove(e);
   }
 
   /**
@@ -392,7 +479,7 @@
    * there starts a scroll, and while picking it would undo the block.
    */
   function resetSelection(e: PointerEvent): void {
-    if (editor.playing || picking || e.pointerType === 'touch' || (e.target as HTMLElement).closest('.cell')) {
+    if (editor.playing || picking || e.pointerType === 'touch' || (e.target as HTMLElement).closest('.cell, .bands')) {
       return;
     }
     // The strip's own scrollbar is where a block is carried to far frames.
@@ -430,8 +517,20 @@
     cell: HTMLElement;
     /** Where the strip stood when the menu was placed. */
     scroll: { left: number; top: number } | null;
+    /** Opened on a frame's number: what it offers acts on the column, in every layer. */
+    column: boolean;
   } | null>(null);
   let menuEl = $state<HTMLDivElement | undefined>();
+
+  /** A right press on a frame's number: the column's menu. */
+  function openColumnMenu(e: MouseEvent, frame: number): void {
+    e.preventDefault();
+    if (menu) return;
+    const el = e.currentTarget as HTMLElement;
+    const box = el.getBoundingClientRect();
+    const keyed = e.button !== 2 || (!e.clientX && !e.clientY);
+    showMenu(el, frame, editor.activeLayer, keyed ? { x: box.left, y: box.bottom, above: box.top } : { x: e.clientX, y: e.clientY, above: e.clientY }, false, true);
+  }
 
   function openMenu(e: MouseEvent, frame: number, layer: number): void {
     e.preventDefault();
@@ -464,7 +563,7 @@
   // would open a menu over a strip that is not there.
   $effect(() => cancelLongPress);
 
-  function startLongPress(e: PointerEvent, frame: number, layer: number): void {
+  function startLongPress(e: PointerEvent, frame: number, layer: number, cells = true): void {
     cancelLongPress();
     const cell = e.currentTarget as HTMLElement;
     const at = { x: e.clientX, y: e.clientY, above: e.clientY };
@@ -473,10 +572,10 @@
       longPress = 0;
       if (menu || editor.playing) return;
       longPressed = true;
-      showMenu(cell, frame, layer, at, true);
+      showMenu(cell, frame, layer, at, true, !cells);
       // Procreate Dreams' hold: the finger that opened the menu and moves on
       // without lifting picks the frame up instead.
-      if (pointerType === 'touch') held = { pointerId, x: at.x, y: at.y, frame, startX: at.x };
+      if (pointerType === 'touch') held = { pointerId, x: at.x, y: at.y, frame, startX: at.x, cells };
     }, LONG_PRESS_MS);
   }
 
@@ -495,7 +594,7 @@
   /** How far a held finger travels before the hold becomes a carry, in px. */
   const CARRY_SLOP = 8;
   const CARRY_EDGE = 32;
-  let held: { pointerId: number; x: number; y: number; frame: number; startX: number } | null = null;
+  let held: { pointerId: number; x: number; y: number; frame: number; startX: number; cells: boolean } | null = null;
   let carry = $state<{
     pointerId: number;
     lastX: number;
@@ -508,6 +607,8 @@
     /** Ctrl: the carry puts copies down, and whether it has put them yet. */
     copy: boolean;
     copied: boolean;
+    /** Cells of the block's layers, not columns: the other layers stand (timeline-exposure-cells). */
+    cells: boolean;
   } | null>(null);
   /** The click that ends a carry must not collapse the block it carried. */
   let carried = $state(false);
@@ -515,7 +616,7 @@
   let carryScroll = 0;
   let carryDirection: -1 | 0 | 1 = 0;
 
-  function startCarry(e: { pointerId: number; clientX: number }, frame: number, copy = false): void {
+  function startCarry(e: { pointerId: number; clientX: number }, frame: number, copy = false, cells = false): void {
     if (editor.playing || carry || !strip) return;
     const { from, count } = framesToCarry(editor.selection, frame);
     lostCarry.reset();
@@ -528,8 +629,10 @@
       grab: frame - from,
       copy,
       copied: false,
+      cells,
     };
     carried = false;
+    editor.beginGesture();
     // The studio's keys wait, as they do for a layer drag: Z mid-carry
     // changed the strip the carry counts in.
     editor.gestureHeld = true;
@@ -542,7 +645,7 @@
     if (editor.playing || !e.isPrimary || e.button !== 0) return;
     if (e.pointerType === 'touch') {
       if (!editor.selection.frames.includes(frame)) editor.selectColumn(frame);
-      startLongPress(e, frame, editor.activeLayer);
+      startLongPress(e, frame, editor.activeLayer, false);
       return;
     }
     e.preventDefault();
@@ -574,10 +677,10 @@
   function onCarryMove(e: PointerEvent): void {
     if (held && e.pointerId === held.pointerId && !carry) {
       if (Math.hypot(e.clientX - held.x, e.clientY - held.y) < CARRY_SLOP) return;
-      const { frame, startX } = held;
+      const { frame, startX, cells } = held;
       held = null;
       closeMenu();
-      startCarry({ pointerId: e.pointerId, clientX: startX }, frame);
+      startCarry({ pointerId: e.pointerId, clientX: startX }, frame, false, cells);
     }
     if (!carry || e.pointerId !== carry.pointerId) return;
     if (lostCarry(e, mainUp)) {
@@ -594,7 +697,7 @@
     if (!strip) return 0;
     const box = strip.getBoundingClientRect();
     const x = clientX - box.left - strip.clientLeft + strip.scrollLeft - GRID_GAP;
-    return Math.floor(x / (thumbWidth + GRID_GAP));
+    return Math.floor(x / pitch);
   }
 
   /**
@@ -604,6 +707,10 @@
    */
   function stepCarry(): void {
     if (!carry || !strip) return;
+    if (carry.cells) {
+      stepCellCarry();
+      return;
+    }
     const total = editor.cellBounds.frames;
     // Copies not yet put down will lengthen the strip: they may land past its end.
     const putting = carry.copy && !carry.copied;
@@ -635,6 +742,33 @@
     if (menu) closeMenu();
   }
 
+  /** A carry of cells: the block goes where the pointer is, along its own layers only. */
+  function stepCellCarry(): void {
+    if (!carry) return;
+    const want = Math.max(0, pointedTick(carry.lastX) - carry.grab);
+    // Asked before the place is compared: a copy snapped onto the place it left stands there too.
+    if (carry.copy && carry.copied && want === carry.from) {
+      // Back where it began: no copy stays (Krita drops a frame onto itself).
+      editor.withdrawGesture();
+      carry.copied = false;
+      carry.at = carry.from;
+      return;
+    }
+    if (want === carry.at) return;
+    // Laid again from where the drag began, every step: no step leaves anything behind.
+    const landed = carry.copy
+      ? editor.copyCellsInLayer(carry.from, carry.count, want, true)
+      : editor.moveCellsInLayer(carry.from, carry.count, want, true);
+    if (landed === null) return;
+    // A copy put down is the carry's even where it lands on the place it left.
+    carry.copied = carry.copy;
+    if (landed === carry.at) return;
+    carry.at = landed;
+    carried = true;
+    cancelLongPress();
+    if (menu) closeMenu();
+  }
+
   function carryEdge(clientX: number): void {
     if (!strip) return;
     const box = strip.getBoundingClientRect();
@@ -645,7 +779,7 @@
     if (direction === 0) return;
     carryDirection = direction;
     carryScroll = window.setInterval(() => {
-      strip?.scrollBy({ left: (direction * (thumbWidth + GRID_GAP)) / 2 });
+      strip?.scrollBy({ left: (direction * Math.max(pitch, 16)) / 2 });
       // The pointer may stand still at the edge: the place is counted here too.
       stepCarry();
     }, 80);
@@ -669,7 +803,11 @@
   function cancelCarry(): void {
     if (!carry) return;
     if (carry.copy) {
-      if (carry.copied) editor.withdrawFrames();
+      if (carry.copied && carry.cells) editor.withdrawGesture();
+      else if (carry.copied) editor.withdrawFrames();
+    } else if (carry.cells) {
+      // The drag's one step, taken back unfiled: everything as the carry found it.
+      editor.withdrawGesture();
     } else {
       editor.moveFramesTo(carry.at, carry.count, carry.from, true);
     }
@@ -678,19 +816,109 @@
   }
 
   function onCarryKey(e: KeyboardEvent): void {
-    if (carry && e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      cancelCarry();
-    }
+    if (e.key !== 'Escape' || !(carry || grip || mark)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelCarry();
+    cancelGrip();
+    endMark(undefined, true);
   }
+
+  // --- A drawing's duration, by the handle at the end of its band -----------
+  // The right edge of a drawing's last cell (its own or its pause's) is a
+  // handle: dragged right it lasts longer and the tail of its layer is
+  // pushed, dragged left shorter, never under a tick. One drag, one step of
+  // undo; Escape gives back the length it had. «Длительность −/+» in the
+  // frame menu is the same without a drag (WCAG 2.5.7).
+  let grip = $state<{ pointerId: number; startX: number; from: number; by: number } | null>(null);
+  /** A release outside the window sends no pointerup: the next move with no button ends the drag. */
+  const lostGrip = createLostRelease();
+
+  function onGripDown(e: PointerEvent, frame: number, layer: number): void {
+    if (editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    // The drawing itself is taken: as its pause shortens, the cell pressed may stop being its.
+    editor.selectCell(keyOf(editor.doc.layers[layer].frames, frame), layer);
+    lostGrip.reset();
+    grip = { pointerId: e.pointerId, startX: e.clientX, from: editor.activeDuration, by: 0 };
+    editor.beginGesture();
+    editor.gestureHeld = true;
+  }
+
+  function onGripMove(e: PointerEvent): void {
+    if (!grip || e.pointerId !== grip.pointerId) return;
+    if (lostGrip(e, mainUp)) {
+      endGrip();
+      return;
+    }
+    // Counted from where the drag began: the drag's one step is laid again each time.
+    const by = Math.max(1, grip.from + Math.round((e.clientX - grip.startX) / pitch)) - grip.from;
+    if (by === grip.by) return;
+    grip.by = by;
+    editor.changeDuration(by, true);
+  }
+
+  function endGrip(e?: PointerEvent): void {
+    if (!grip || (e && e.pointerId !== grip.pointerId)) return;
+    grip = null;
+    carried = true;
+    editor.gestureHeld = false;
+  }
+
+  function cancelGrip(): void {
+    if (!grip) return;
+    editor.withdrawGesture();
+    endGrip();
+  }
+
+  /** Whether cell `i` of the layer is the last of its drawing's time: the handle stands on it. */
+  function endsDrawing(layer: number, i: number): boolean {
+    const frames = editor.doc.layers[layer].frames;
+    return i + 1 >= frames.length || frames[i + 1] !== null;
+  }
+
+  // --- The end of the film, by its mark ---------------------------------------
+  // A mark after the last tick: dragged, the film is as long as where it is let
+  // go. Longer continues every layer; shorter asks first when drawings go.
+  let mark = $state<{ pointerId: number; startX: number; from: number; to: number } | null>(null);
+
+  function onMarkDown(e: PointerEvent): void {
+    if (editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    lostGrip.reset();
+    mark = { pointerId: e.pointerId, startX: e.clientX, from: frameTotal, to: frameTotal };
+    editor.gestureHeld = true;
+  }
+
+  function onMarkMove(e: PointerEvent): void {
+    if (!mark || e.pointerId !== mark.pointerId) return;
+    // Let go outside the window: the length is not asked for by a hand that is gone.
+    if (lostGrip(e, mainUp)) {
+      endMark(undefined, true);
+      return;
+    }
+    mark.to = Math.max(1, mark.from + Math.round((e.clientX - mark.startX) / pitch));
+  }
+
+  function endMark(e?: PointerEvent, cancel = false): void {
+    if (!mark || (e && e.pointerId !== mark.pointerId)) return;
+    const to = mark.to;
+    mark = null;
+    editor.gestureHeld = false;
+    if (!cancel) editor.setFilmLength(to);
+  }
+
+  /** Where the end mark stands: the film's end, or where the hand has it. */
+  const markAt = (): number => (mark?.to ?? frameTotal) * pitch + GRID_GAP - gap / 2;
 
   // The finger that holds or carries must not scroll the strip under it. The
   // strip pans by touch, and only a cancelled touchmove stops a pan that the
   // browser has not begun yet — pointer events have no say in it.
   $effect(() => {
     const still = (e: TouchEvent) => {
-      if (held || carry) e.preventDefault();
+      if (held || carry || pinch || grip || mark) e.preventDefault();
     };
     document.addEventListener('touchmove', still, { passive: false });
     return () => {
@@ -709,15 +937,18 @@
     layer: number,
     at: { x: number; y: number; above: number },
     finger = false,
+    column = false,
   ): void {
     if (editor.playing) {
       return;
     }
     // A press inside the block keeps it: the menu acts on what is selected.
-    if (!isSelected(frame, layer)) {
+    if (column) {
+      if (!editor.selection.frames.includes(frame)) editor.selectColumn(frame);
+    } else if (!isSelected(frame, layer)) {
       editor.selectCell(frame, layer);
     }
-    menu = { x: at.x, y: at.y, cell, scroll: null };
+    menu = { x: at.x, y: at.y, cell, scroll: null, column };
     void tick().then(() => {
       if (!menu || !menuEl) return;
       // The strip sits at the bottom: a menu that would run off the screen opens up/left instead.
@@ -797,6 +1028,18 @@
   const cell = $derived(cellSize(editor.doc.width, editor.doc.height));
   const row = $derived(rowHeight(editor.doc));
   const thumbWidth = $derived(cell.w + 2);
+  /**
+   * The cell's width as zoomed (Ctrl+wheel, a pinch, the keys), the cell's
+   * own until then; the gap between cells goes where they are too narrow for
+   * it, so the bands of a long film run on unbroken.
+   */
+  const cellW = $derived(editor.settings.timelineZoom || thumbWidth);
+  const gap = $derived(cellW >= 14 ? GRID_GAP : 0);
+  const pitch = $derived(cellW + gap);
+  /** What a cell shows at this width (strip-window.ts `stripLevel`). */
+  const level = $derived(stripLevel(cellW));
+  /** Which numbers the head writes: every one, or every fifth, tenth… */
+  const every = $derived(numberEvery(pitch));
   /** Where each frame starts in ticks: a held frame is as wide as its ticks. */
   const timing = $derived(editor.timing);
   // Numbers, so the scroll-into-view effects hear the film change shape and
@@ -804,16 +1047,16 @@
   const filmTicks = $derived(timing.total);
   const layerTotal = $derived(editor.doc.layers.length);
   /** A frame's width on the strip: a cell a tick, and the gaps between them. */
-  const spanWidth = (frame: number) => (timing.start(frame + 1) - timing.start(frame)) * (thumbWidth + GRID_GAP) - GRID_GAP;
+  const spanWidth = (frame: number) => (timing.start(frame + 1) - timing.start(frame)) * pitch - gap;
   /** The frames built right now — the ones in view, plus a screen either side. */
-  const view = $derived(stripWindow(frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth, timing));
+  const view = $derived(stripWindow(frameTotal, cellW, gap, stripScroll, stripWidth, timing));
   // Numbers, so a scroll that keeps the window's edges rebuilds no list:
   // every scroll event made a new `view`, and every row diffed its cells.
   const firstBuilt = $derived(view.first);
   const countBuilt = $derived(view.count);
   const built = $derived(Array.from({ length: countBuilt }, (_, k) => firstBuilt + k));
   /** The frame of the strip's one Tab stop: the active cell, or the first in view when the scroll unbuilt it. */
-  const tabFrame = $derived(stripTabStop(editor.displayedFrame, frameTotal, thumbWidth, GRID_GAP, stripScroll, stripWidth, timing));
+  const tabFrame = $derived(stripTabStop(editor.displayedFrame, frameTotal, cellW, gap, stripScroll, stripWidth, timing));
   /**
    * The wave's bars, for the track, the rate and the cell's width. Read in the
    * markup it was a pass over the whole track on every stroke: a write
@@ -822,7 +1065,7 @@
   const fps = $derived(editor.doc.frame_rate);
   // A track this browser could not read has no length and no levels: a flat
   // lane would say «quiet here» about sound nobody has heard.
-  const waveBars = $derived(editor.audio.hasTrack && editor.audio.duration > 0 ? editor.audio.bars(fps, barsPerFrame(thumbWidth)) : null);
+  const waveBars = $derived(editor.audio.hasTrack && editor.audio.duration > 0 ? editor.audio.bars(fps, barsPerFrame(cellW)) : null);
   /**
    * Every frame's width plus the row padding (a gap each end). The window
    * swaps cells for a wider spacer in steps, and a layout between them saw a
@@ -830,7 +1073,7 @@
    * the end sat cells past the right edge. The header holds the width, so the
    * scroll extent is arithmetic too.
    */
-  const stripExtent = $derived(timing.total * (thumbWidth + GRID_GAP) + GRID_GAP);
+  const stripExtent = $derived(timing.total * pitch + GRID_GAP + END_ROOM);
 
   // --- Layer column width ---------------------------------------------------
   // The divider between the layer list and the grid. Until it is dragged the
@@ -889,6 +1132,122 @@
     }
   }
 
+
+  /** Whether the head writes the number of tick `i`: thinned out, but the first and the one on screen always. */
+  function named(i: number): boolean {
+    return every === 1 || i === 0 || i === editor.displayedFrame || (i + 1) % every === 0;
+  }
+  /** Every how many seconds the ruler is marked: as often as its words have room. */
+  const secondsEvery = $derived([1, 2, 5, 10, 30, 60, 300].find((k) => k * fps * pitch >= 36) ?? 600);
+
+  /** What a cell is, read out: a drawing, an empty one, or the drawing a continuation shows. */
+  function cellLabel(layer: number, i: number): string {
+    const frames = editor.doc.layers[layer].frames;
+    const own = frames[i];
+    const base = own === null
+      ? t('timeline.cell_continued', { frame: i + 1, key: keyOf(frames, i) + 1, layer: editor.layerLabel(layer) })
+      : t(own.strokes.length ? 'timeline.cell' : 'timeline.cell_empty', { frame: i + 1, layer: editor.layerLabel(layer) });
+    return `${base}${editor.isCopiedCell(i, layer) ? t('timeline.cell_copied') : ''}`;
+  }
+
+  /** The tick under a press on a row's canvas of bands. */
+  function tickOf(e: MouseEvent): number {
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    return Math.min(frameTotal - 1, Math.max(0, firstBuilt + Math.floor((e.clientX - box.left) / pitch)));
+  }
+
+  /** A drag over the bands spans the block, as over cells. */
+  function onBandHover(e: PointerEvent, layer: number): void {
+    if (!dragging || e.pointerType === 'touch') return;
+    if (lostCell(e, mainUp)) {
+      dragging = false;
+      return;
+    }
+    editor.selectCell(tickOf(e), layer, 'range');
+  }
+
+  /**
+   * What a cell is: a drawing, an empty one, or a continuation. Read through
+   * the document each time: a stroke grows a cell in place, and a value held
+   * from the same array would never hear it.
+   */
+  function kindOf(layer: number, i: number): 'drawing' | 'blank' | 'continued' {
+    const own = editor.doc.layers[layer].frames[i];
+    return own === null ? 'continued' : own.strokes.length > 0 ? 'drawing' : 'blank';
+  }
+
+  interface Bands {
+    /** The document the frames are of: a new one is a reason to paint again. */
+    doc: unknown;
+    frames: readonly (Frame | null)[];
+    first: number;
+    count: number;
+    pitch: number;
+    height: number;
+    now: number;
+    selected: readonly number[];
+  }
+
+  /**
+   * A row of bands on one canvas: each drawing a bar as long as it lasts, an
+   * empty drawing hollow, the frame on screen a column of the accent. The
+   * colours are the studio's own, read off the strip.
+   */
+  function drawBands(canvas: HTMLCanvasElement, bands: Bands) {
+    const paint = (b: Bands) => {
+      const ratio = devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(b.count * b.pitch));
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(b.height * ratio);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const look = getComputedStyle(canvas);
+      const ink = look.getPropertyValue('--ink-2').trim() || '#555';
+      const accent = look.getPropertyValue('--accent').trim() || '#d22';
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, b.height);
+      const top = b.height * 0.25;
+      const tall = b.height * 0.5;
+      const picked = new Set(b.selected);
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.14;
+      for (const i of picked) {
+        if (i >= b.first && i < b.first + b.count) ctx.fillRect((i - b.first) * b.pitch, 0, b.pitch, b.height);
+      }
+      ctx.globalAlpha = 1;
+      const end = Math.min(b.frames.length, b.first + b.count);
+      for (let i = b.first; i < end;) {
+        const key = keyOf(b.frames as (Frame | null)[], i);
+        let stop = i + 1;
+        while (stop < end && b.frames[stop] === null) stop++;
+        const x = (i - b.first) * b.pitch;
+        const w = Math.max(1, (stop - i) * b.pitch - 1);
+        const drawing = b.frames[key];
+        if (drawing && drawing.strokes.length > 0) {
+          ctx.fillStyle = ink;
+          ctx.globalAlpha = 0.6;
+          ctx.fillRect(x, top, w, tall);
+          ctx.globalAlpha = 1;
+          // The drawing's own tick is darker: where it begins reads at a glance.
+          if (b.frames[i] !== null) {
+            ctx.fillRect(x, top, Math.min(w, Math.max(1, b.pitch - 1)), tall);
+          }
+        } else {
+          ctx.strokeStyle = ink;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, top + 0.5, Math.max(0, w - 1), tall - 1);
+        }
+        i = stop;
+      }
+      if (b.now >= b.first && b.now < b.first + b.count) {
+        ctx.fillStyle = accent;
+        ctx.fillRect((b.now - b.first) * b.pitch, 0, Math.max(1, b.pitch), 2);
+        ctx.fillRect((b.now - b.first) * b.pitch, b.height - 2, Math.max(1, b.pitch), 2);
+      }
+    };
+    paint(bands);
+    return { update: paint };
+  }
 </script>
 
 {#snippet wave(cellWidth: number)}
@@ -920,7 +1279,7 @@
 
 <!-- The release may land anywhere — outside the grid, outside the window —
      so the drag always ends on the window rather than on a cell. -->
-<svelte:window onpointerup={onWindowUp} onpointercancel={onWindowUp} onpointermove={onWindowMove} onkeydowncapture={onCarryKey} onpointerdown={onWindowDown} onblur={() => closeMenu()} onresize={() => closeMenu(true, true)} />
+<svelte:window onpointerup={onWindowUp} onpointercancel={onWindowUp} onpointermove={onWindowMove} onkeydowncapture={onCarryKey} onpointerdown={onWindowDown} onblur={onWindowBlur} onresize={() => closeMenu(true, true)} />
 
 <!-- The bottom panel owns the height; the timeline fills the row it is given. -->
 <div class="board">
@@ -1000,21 +1359,24 @@
       aria-label={t('timeline.grid')}
       bind:this={strip}
       bind:clientWidth={stripWidth}
+      style:--gap="{gap}px"
+      onpointerdowncapture={onPinchDown}
       onpointerdown={resetSelection}
       onfocusin={(e) => (lastCell = (e.target as HTMLElement).closest('.cell'))}
       onanimationend={() => (arrived = null)}
     >
-      <div class="head" style:min-width={`${stripExtent}px`} style:--pitch="{thumbWidth}px">
+      <div class="head" style:min-width={`${stripExtent}px`} style:--pitch="{cellW}px">
         {#if view.before > 0}
           <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
         {/if}
         {#each built as i (i)}
           <!-- A handle for the pointer only: the keyboard moves frames by
-               «Сдвинуть» in the frame menu. -->
+               «Сдвинуть» in the frame menu, and the column's menu opens on a
+               right press or a held finger. -->
           <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
           <span
             class="num"
-            class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
+            class:lifted={carried && carry !== null && !carry.cells && i >= carry.at && i < carry.at + carry.count}
             data-col={i}
             style:width="{spanWidth(i)}px"
             class:onion={onionFrames.includes(i)}
@@ -1023,34 +1385,95 @@
             class:picked={editor.selection.frames.includes(i)}
             onpointerdown={(e) => onNumDown(e, i)}
             onclick={(e) => onNumClick(e, i)}
+            oncontextmenu={(e) => openColumnMenu(e, i)}
             onpointerup={cancelLongPress}
             onpointercancel={cancelLongPress}
             onpointerleave={cancelLongPress}
             title={onionFrames.includes(i) ? t('timeline.frame_onion', { n: i + 1 }) : t('timeline.frame', { n: i + 1 })}
-          >{i + 1}</span>
+          >{#if (i + 1) % (fps * secondsEvery) === 0}<span class="sec" aria-hidden="true">{t('timeline.seconds', { n: (i + 1) / fps })}</span>{/if}{#if named(i)}{i + 1}{/if}</span>
         {/each}
         {#if view.after > 0}
           <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
         {/if}
+        <!-- The film's end: dragged, the film is as long as where it is let
+             go. «Кадров» over the layers is the same with the keyboard. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <span
+          class="end-mark"
+          class:dragging={mark !== null}
+          style:left="{markAt()}px"
+          title={t('timeline.end_mark', { n: mark?.to ?? frameTotal })}
+          onpointerdown={onMarkDown}
+        ></span>
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
         <div class="cells" style:height={rowHeightCss(editor.doc)} class:current={layerIndex === editor.activeLayer} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
           {#if view.before > 0}
             <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
           {/if}
+          {#if level === 'bands'}
+            <!-- A long film at a glance: each drawing a band as long as it
+                 lasts, the whole row one canvas — a button a tick was
+                 thousands of them. The active cell keeps a button of its own,
+                 the strip's Tab stop. -->
+            <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+            <canvas
+              class="bands"
+              class:dim={editor.doc.layers[layerIndex].hidden}
+              style:width="{countBuilt * pitch}px"
+              style:height="{cell.h + 2}px"
+              use:drawBands={{ frames: editor.doc.layers[layerIndex].frames, doc: editor.doc, first: firstBuilt, count: countBuilt, pitch, height: cell.h + 2, now: editor.displayedFrame, selected: editor.selection.layers.includes(layerIndex) ? editor.selection.frames : [] }}
+              onpointerdown={(e) => onCellDown(e, tickOf(e), layerIndex)}
+              onpointermove={(e) => onBandHover(e, layerIndex)}
+              onclick={(e) => onCellClick(e, tickOf(e), layerIndex)}
+              oncontextmenu={(e) => openMenu(e, tickOf(e), layerIndex)}
+              onpointerup={cancelLongPress}
+              onpointercancel={cancelLongPress}
+              onpointerleave={cancelLongPress}
+            ></canvas>
+            {#if layerIndex === editor.activeLayer && tabFrame >= firstBuilt && tabFrame < firstBuilt + countBuilt}
+              <!-- The strip's one Tab stop: the active cell, or the first in view when the scroll left it behind. -->
+              <button
+                class="cell band-cell"
+                class:active={tabFrame === editor.displayedFrame}
+                class:now={tabFrame === editor.displayedFrame}
+                style:left="{GRID_GAP + tabFrame * pitch}px"
+                style:width="{Math.max(cellW, 4)}px"
+                style:height="{cell.h + 2}px"
+                data-frame={tabFrame}
+                tabindex="0"
+                aria-current={tabFrame === editor.displayedFrame ? 'true' : undefined}
+                aria-disabled={editor.playing}
+                onkeydown={onStripKey}
+                onpointerdown={(e) => onCellDown(e, tabFrame, layerIndex)}
+                onpointerup={cancelLongPress}
+                onpointercancel={cancelLongPress}
+                onpointerleave={cancelLongPress}
+                onclick={(e) => onCellClick(e, tabFrame, layerIndex)}
+                oncontextmenu={(e) => openMenu(e, tabFrame, layerIndex)}
+                aria-label={cellLabel(layerIndex, tabFrame)}
+              ></button>
+            {/if}
+          {:else}
           {#each built as i (i)}
+            {@const kind = kindOf(layerIndex, i)}
             <button
               class="cell"
               style:width="{spanWidth(i)}px"
               style:height="{cell.h + 2}px"
               class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
               class:now={i === editor.displayedFrame}
-              class:continued={editor.doc.layers[layerIndex].frames[i] === null}
+              class:continued={kind === 'continued'}
+              class:blank={kind === 'blank'}
+              class:held={kind !== 'continued' && !endsDrawing(layerIndex, i)}
+              class:closes={kind === 'continued' && endsDrawing(layerIndex, i)}
+              class:marks={level === 'marks'}
               class:selected={isSelected(i, layerIndex)}
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
               class:arrived={arrived?.frames?.has(columnKey(i) as Frame) ?? false}
-              class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count}
+              class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count
+                && (!carry.cells || editor.selection.layers.includes(layerIndex))}
               data-frame={i}
               tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
               aria-disabled={editor.playing}
@@ -1067,32 +1490,37 @@
               onpointerleave={cancelLongPress}
               oncontextmenu={(e) => openMenu(e, i, layerIndex)}
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
-              aria-label={`${editor.doc.layers[layerIndex].frames[i] === null
-                ? t('timeline.cell_continued', {
-                  frame: i + 1,
-                  key: keyOf(editor.doc.layers[layerIndex].frames, i) + 1,
-                  layer: editor.layerLabel(layerIndex),
-                })
-                : t(
-                  editor.doc.layers[layerIndex].frames[i]?.strokes.length ? 'timeline.cell' : 'timeline.cell_empty',
-                  { frame: i + 1, layer: editor.layerLabel(layerIndex) },
-                )}${editor.isCopiedCell(i, layerIndex) ? t('timeline.cell_copied') : ''}`}
+              aria-label={cellLabel(layerIndex, i)}
             >
-              <LayerThumb
-                doc={editor.doc}
-                {layerIndex}
-                frameIndex={i}
-                maxW={CELL_BOX.w}
-                maxH={CELL_BOX.h}
-              />
+              {#if kind === 'drawing'}
+                {#if level === 'thumbs'}
+                  <LayerThumb
+                    doc={editor.doc}
+                    {layerIndex}
+                    frameIndex={i}
+                    maxW={Math.min(CELL_BOX.w, cellW - 2)}
+                    maxH={CELL_BOX.h}
+                  />
+                {:else}
+                  <span class="dot" aria-hidden="true"></span>
+                {/if}
+              {:else if kind === 'blank'}
+                <span class="ring" aria-hidden="true"></span>
+              {/if}
+              {#if endsDrawing(layerIndex, i) && !editor.playing}
+                <!-- The end of the drawing's time: dragged, it lasts longer or shorter. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="grip" aria-hidden="true" onpointerdown={(e) => onGripDown(e, i, layerIndex)}></span>
+              {/if}
             </button>
           {/each}
+          {/if}
           {#if view.after > 0}
             <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
           {/if}
         </div>
       {/each}
-      {@render wave(thumbWidth)}
+      {@render wave(cellW)}
     </div>
   </div>
 </div>
@@ -1112,16 +1540,40 @@
       {@const k = menuKey(action)}
       {#if k}<kbd aria-hidden="true">{k.label}</kbd>{/if}
     {/snippet}
+    {#if menu.column}
+      <!-- The frame's number: the column, in every layer. -->
+      <button role="menuitem" disabled={!editor.canShiftFrames(-1)} onclick={() => run(() => editor.shiftFrames(-1))}>
+        <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_column_left')}</span>
+      </button>
+      <button role="menuitem" disabled={!editor.canShiftFrames(1)} onclick={() => run(() => editor.shiftFrames(1))}>
+        <Icon name="chevron-right" size={16} /><span>{t('panel.item.shift_column_right')}</span>
+      </button>
+      <button role="menuitem" disabled={!editor.canRemoveColumn} onclick={() => run(() => editor.removeColumns())}>
+        <Icon name="trash" size={16} /><span>{span.from === span.to ? t('panel.item.delete_column') : t('panel.item.delete_columns', span)}</span>
+      </button>
+    {:else}
     <button role="menuitem" aria-keyshortcuts={menuKey('add')?.aria} disabled={!editor.canAddFrame} onclick={() => run(() => editor.addFrameAfterActive())}>
       <Icon name="plus" size={16} /><span>{t('panel.item.add_frame')}</span>{@render key('add')}
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canDuplicateFrames} onclick={() => run(() => editor.duplicateActiveFrame())}>
       <Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span)}</span>{@render key('duplicate')}
     </button>
-    <button role="menuitem" disabled={!editor.canShiftFrames(-1)} onclick={() => run(() => editor.shiftFrames(-1))}>
+    <!-- How long the drawing lasts on its layer: «−» and «+» keep the menu
+         open, so a pause is set press by press (WCAG 2.5.7 for the handle). -->
+    <div class="duration" role="group" aria-label={t('timeline.duration')}>
+      <span>{t('timeline.duration')}</span>
+      <button role="menuitem" aria-label={t('timeline.duration_less')} title={t('timeline.duration_less')} disabled={!editor.canChangeDuration(-1)} onclick={() => editor.changeDuration(-1)}>
+        <Icon name="minus" size={16} />
+      </button>
+      <output aria-live="polite">{editor.activeDuration}</output>
+      <button role="menuitem" aria-label={t('timeline.duration_more')} title={t('timeline.duration_more')} disabled={!editor.canChangeDuration(1)} onclick={() => editor.changeDuration(1)}>
+        <Icon name="plus" size={16} />
+      </button>
+    </div>
+    <button role="menuitem" disabled={!editor.canShiftCells(-1)} onclick={() => run(() => editor.shiftCells(-1))}>
       <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_left')}</span>
     </button>
-    <button role="menuitem" disabled={!editor.canShiftFrames(1)} onclick={() => run(() => editor.shiftFrames(1))}>
+    <button role="menuitem" disabled={!editor.canShiftCells(1)} onclick={() => run(() => editor.shiftCells(1))}>
       <Icon name="chevron-right" size={16} /><span>{t('panel.item.shift_right')}</span>
     </button>
     <button role="menuitem" aria-keyshortcuts={menuKey('delete')?.aria} disabled={!editor.canRemoveFrame} onclick={() => run(() => editor.removeActiveFrame())}>
@@ -1139,6 +1591,7 @@
     <button role="menuitemcheckbox" aria-checked={picking} onclick={() => run(() => (picking = !picking))}>
       <Icon name="expand" size={16} /><span>{t('timeline.pick')}</span>
     </button>
+    {/if}
   </div>
 {/if}
 
@@ -1211,14 +1664,17 @@
     flex: 1;
     min-width: 0;
     overflow: auto;
+    /* Two fingers zoom the strip (a pinch), not the page under the studio. */
+    touch-action: pan-x pan-y;
   }
   .head {
     box-sizing: border-box;
     display: flex;
-    gap: 2px;
-    /* 2rem, as the layer list's «+ Слой» header beside it: at 32 px the names
-       sat 16 px below their cells with 150 % text, 32 px with 200 %. */
-    height: 2rem;
+    align-items: flex-end;
+    gap: var(--gap, 2px);
+    /* As tall as the layer list's head beside it (LayerRows): the seconds'
+       ruler over the numbers, which keep their 2rem. */
+    height: 2.75rem;
     padding: 0 2px;
     border-bottom: 1px solid var(--hairline);
     position: sticky;
@@ -1231,9 +1687,15 @@
      read «14851486…». 0.42 of the pitch is four digits and a hair of air. */
   .num {
     flex: none;
+    box-sizing: border-box;
+    height: 2rem;
     text-align: center;
-    font-size: min(0.74rem, calc(var(--pitch) * 0.42));
+    /* Thinned to every fifth or tenth number when the cells are narrow, so
+       a number takes the room of four digits whatever the cell's width. */
+    font-size: min(0.74rem, max(0.7rem, calc(var(--pitch) * 0.42)));
     line-height: 2rem;
+    white-space: nowrap;
+    overflow: visible;
     font-variant-numeric: tabular-nums;
     color: var(--ink-2);
     /* The number is the frame's handle: it is taken, not selected as text. */
@@ -1332,10 +1794,75 @@
     margin-left: 1px;
   }
   .cells {
+    position: relative;
     display: flex;
-    gap: 2px;
+    gap: var(--gap, 2px);
     padding: 2px;
     align-items: center;
+  }
+  /* --- The seconds' ruler ------------------------------------------------ */
+  /* A tick at the end of every whole second, its word above the numbers. */
+  .sec {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    padding-right: 2px;
+    border-right: 1px solid var(--ink-2);
+    font-size: 0.7rem;
+    line-height: 0.75rem;
+    font-weight: 400;
+    color: var(--ink-2);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  /* --- The film's end ---------------------------------------------------- */
+  .end-mark {
+    position: absolute;
+    bottom: 0;
+    height: 2.75rem;
+    width: 12px;
+    margin-left: -6px;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 2;
+  }
+  /* The line runs down through the rows; the grip is the head's part of it. */
+  .end-mark::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 0;
+    width: 2px;
+    height: 100vh;
+    background: var(--ink-2);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .end-mark::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 0.75rem;
+    width: 8px;
+    height: 1rem;
+    border-radius: 2px;
+    background: var(--ink-2);
+  }
+  .end-mark.dragging::after {
+    background: var(--accent);
+    opacity: 1;
+  }
+  .end-mark.dragging::before {
+    background: var(--accent);
+  }
+  @media (hover: hover) {
+    .end-mark:hover::after {
+      background: var(--accent);
+      opacity: 1;
+    }
+    .end-mark:hover::before {
+      background: var(--accent);
+    }
   }
   .cell {
     flex: none;
@@ -1357,20 +1884,111 @@
      focus ring on a hidden layer were red at 35 % — 1.6:1 on white. */
   /* A continuation shows the drawing it continues, faded, under a dashed
      line along its top: told apart from a drawing without its colour. */
-  .cell.continued {
+  /* Three kinds, told apart without colour (WCAG 1.4.1): a drawing is its
+     thumbnail (a dot when the cells are narrow), an empty drawing a hollow
+     ring, a continuation no box at all — only the band of its drawing's time,
+     running on from the drawing across the gaps. */
+  .cell {
     position: relative;
   }
-  .cell.continued > :global(canvas) {
-    opacity: 0.45;
+  .cell.continued {
+    overflow: visible;
+    border-color: transparent;
+    background: transparent;
   }
-  .cell.continued::before {
+  .cell.continued::before,
+  .cell.held::before {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
-    right: 3px;
-    border-top: 2px dashed currentColor;
+    top: 50%;
+    height: 6px;
+    translate: 0 -50%;
+    background: var(--ink-2);
+    opacity: 0.4;
     pointer-events: none;
+  }
+  /* From the drawing's middle to its edge, under its lines. */
+  .cell.held::before {
+    left: 50%;
+    right: -1px;
+  }
+  .cell.continued::before {
+    left: calc(-1px - var(--gap, 2px));
+    right: -1px;
+  }
+  .cell.continued.closes::before {
+    right: 25%;
+    border-radius: 0 3px 3px 0;
+  }
+  .ring,
+  .dot {
+    position: relative;
+    box-sizing: border-box;
+    width: min(12px, calc(100% - 4px));
+    aspect-ratio: 1;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .ring {
+    border: 2px solid var(--ink-2);
+    background: var(--canvas);
+  }
+  .dot {
+    width: min(10px, calc(100% - 4px));
+    background: var(--ink);
+  }
+  /* The end of a drawing's time: its handle, a hairline that shows on hover. */
+  /* Inside the cell, at its right edge: a drawing's cell clips what sticks out. */
+  .grip {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    z-index: 1;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+  .grip::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    bottom: 20%;
+    right: 1px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0;
+  }
+  @media (hover: hover) {
+    .cell:hover > .grip::after,
+    .grip:hover::after {
+      opacity: 1;
+    }
+  }
+  .cell.active > .grip::after {
+    opacity: 0.6;
+  }
+  /* --- A long film as bands ---------------------------------------------- */
+  .bands {
+    flex: none;
+    display: block;
+    /* The site's sheet caps every canvas at its box (app.css): a row of bands is wider by design. */
+    max-width: none;
+    cursor: pointer;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .bands.dim {
+    opacity: 0.35;
+  }
+  /* The active cell over its band: the strip's Tab stop, a ring and no fill. */
+  .band-cell {
+    position: absolute;
+    top: 2px;
+    min-width: 4px;
+    background: transparent;
   }
   .cell.dim > :global(canvas) {
     opacity: 0.35;
@@ -1525,6 +2143,22 @@
   .frame-menu span {
     flex: 1;
   }
+  .frame-menu .duration {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: var(--key-h, 2.75rem);
+    padding: 0 4px 0 36px;
+  }
+  .frame-menu .duration button {
+    padding: 0 8px;
+  }
+  .frame-menu output {
+    min-width: 2ch;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
   .frame-menu kbd {
     font: inherit;
     font-size: 0.75rem;
@@ -1565,7 +2199,7 @@
   .wave {
     box-sizing: border-box;
     display: flex;
-    gap: 2px;
+    gap: var(--gap, 2px);
     height: 20px;
     margin-top: 2px;
     padding: 2px;

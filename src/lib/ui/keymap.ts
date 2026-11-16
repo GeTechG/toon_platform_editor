@@ -330,6 +330,8 @@ export function studioCommands(tools: readonly ToolKeys[]): Command[] {
     held('delete-layer', 'Shift+Delete', 'Shift+Backspace'),
     once('onion', 'k'),
     once('ruler', 'Alt+r'),
+    held('strip-zoom-in', 'Alt++'),
+    held('strip-zoom-out', 'Alt+-'),
     once('play', 'Space'),
     once('play-from-active', 'Shift+Space'),
     held('zoom-in', 'Ctrl++'),

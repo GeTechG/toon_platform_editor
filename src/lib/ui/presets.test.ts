@@ -244,6 +244,9 @@ test('settings round-trip through the stored config', () => {
     keymap: { undo: ['u', 'Ctrl+z'] },
     removerTipShown: true,
     megaEraserWarning: false,
+    whenNextTaken: 'next' as const,
+    timelineZoom: 12.5,
+    continuationTipShown: true,
     fillGap: 9,
     fillSource: 'canvas' as const,
     fillTolerance: 35,
@@ -591,4 +594,22 @@ describe('the onion tint follows the default until it is chosen', () => {
     config.settings.onion.back.tinted = false;
     expect(parseUiConfig(JSON.stringify(config))!.settings.onion.back.tinted).toBe(false);
   });
+});
+
+test('the shift window\'s answer is kept, and anything unknown asks again', () => {
+  const read = (whenNextTaken: unknown) =>
+    parseUiConfig(JSON.stringify({ preset: 'test.bar', settings: { whenNextTaken } }))?.settings.whenNextTaken;
+  expect(read('all')).toBe('all');
+  expect(read('next')).toBe('next');
+  expect(read('sometimes')).toBe('ask');
+  expect(read(undefined)).toBe('ask');
+});
+
+test('the strip\'s zoom is kept in its range, or is the cell\'s own', () => {
+  const read = (timelineZoom: unknown) =>
+    parseUiConfig(JSON.stringify({ preset: 'test.bar', settings: { timelineZoom } }))?.settings.timelineZoom;
+  expect(read(20)).toBe(20);
+  expect(read(2)).toBe(0);
+  expect(read(500)).toBe(0);
+  expect(read('wide')).toBe(0);
 });

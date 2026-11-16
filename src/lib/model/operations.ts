@@ -285,14 +285,19 @@ export function copyFrames(doc: ToonDocument, from: number, count: number, to: n
  * Inserts an empty layer at `at`, which may be anywhere from under the bottom
  * layer (0) to one past the top (`layers.length`); returns that index.
  */
-export function addLayer(doc: ToonDocument, at: number): number {
+export function addLayer(doc: ToonDocument, at: number, whole = false): number {
   if (!Number.isInteger(at) || at < 0 || at > doc.layers.length) {
     throw new RangeError(`layer index ${at} is out of range 0..${doc.layers.length}`);
   }
   if (doc.layers.length >= MAX_LAYERS) {
     throw new RangeError(`document already has the maximum of ${MAX_LAYERS} layers`);
   }
-  const frames = Array.from({ length: frameCount(doc) }, emptyFrame);
+  // `whole`: one empty drawing lasting the whole film (timeline-exposure-cells)
+  // — a drawing a tick weighed a cell each, and a line drawn on a tick lands
+  // on a drawing of its own there anyway.
+  const frames: Cell[] = whole
+    ? [emptyFrame(), ...Array<Cell>(frameCount(doc) - 1).fill(null)]
+    : Array.from({ length: frameCount(doc) }, emptyFrame);
   doc.layers.splice(at, 0, { hidden: false, frames });
   return at;
 }

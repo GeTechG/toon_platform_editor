@@ -243,14 +243,14 @@ describe('.toon: огромный или подделанный файл', () =>
   const v5 = (layers: number, frames: number) => [layers, frames, 12, 999, 5, 0, 1, 1, 5, 0, 0, 0];
   const encode = (words: number[]) => new Int16Array(words).buffer as ArrayBuffer;
 
-  it('клоны кадров не раздувают точки без предела — отказ, как только точек больше лимита', () => {
+  it('клоны кадров не раздувают точки: клон — продолжение, рисунок в памяти один', () => {
     const points = 15000;
     const frame0 = [0, 1, 0, points, ...Array.from({ length: points * 2 }, (_, i) => i % 100)];
     const clones = Array.from({ length: 4095 }, () => 1);
-    // Two layers promised, one written: without a running count the reader
-    // copies 61M points first and only then trips on the missing layer.
-    const result = decodeToon(encode([...v5(2, 4096), 1, 0, ...frame0, ...clones]));
-    expect(result).toEqual({ ok: false, error: t('file.over_limits') });
+    const result = decodeToon(encode([...v5(1, 4096), 1, 0, ...frame0, ...clones]));
+    if (!result.ok) throw new Error(result.error);
+    const frames = result.doc.layers[0].frames;
+    expect(frames.filter((cell) => cell !== null)).toHaveLength(1);
   });
 });
 
