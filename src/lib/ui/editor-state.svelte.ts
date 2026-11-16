@@ -106,7 +106,7 @@ import { IDENTITY_VIEW, clampPan, fitView, rotateAt, zoomAt, type Stage, type Vi
 import { resizeSheet, sheetOpen } from './sheet-size';
 import { parseColourInput } from './color-model';
 import { LAYER_TAGS, defaultLayerColors, normalizeLayerColors } from './layer-colors';
-import { editRefusal, normalizeLayerLocks } from './layer-locks';
+import { deskAfter, editRefusal, normalizeLayerLocks } from './layer-locks';
 import { filmTiming, type FilmTiming } from '../model/timing';
 import { dropCells, placeBlock, repoint, restorableBlock, restoreStructure, structureIntact, takeStructure, type StructureSnapshot } from './structure-undo';
 import { eraseStrokes, strokesChanged } from '../tools/mega-eraser';
@@ -291,6 +291,8 @@ interface StructureEdit {
   framesMoved?: true;
   /** A change of holds: one drag of the handle folds into it. */
   framesHeld?: true;
+  /** A change of a layer's opacity or blend mode: one drag of the slider folds into it. */
+  looked?: true;
   /** The block that was selected, for a carry taken back unfiled. */
   selection?: CellSelection;
   /** What redo puts back after undo — a move only splices, so its shape is enough. */
@@ -1494,23 +1496,52 @@ export class EditorState {
   }
 
   /** How strongly a layer shows, percent; a document change, not an undo step, as hiding is. */
-  setLayerOpacity(index: number, percent: number): void {
+  /**
+   * How strongly a layer shows, percent: a step of undo with its redo, as a
+   * layer move (owner, 2026-11-16). `merge` folds it into the step on top —
+   * one drag of the slider is one step.
+   */
+  setLayerOpacity(index: number, percent: number, merge = false): void {
     const layer = this.doc.layers[index];
     if (!layer || (layer.opacity ?? 100) === Math.min(100, Math.max(0, Math.round(percent)))) {
       return;
     }
-    this.#write((doc) => setLayerOpacity(doc, index, percent));
-    this.touched = true;
+    this.#writeLook((doc) => setLayerOpacity(doc, index, percent), merge);
   }
 
-  /** How a layer is laid over what is under it; a document change, not an undo step. */
+  /** How a layer is laid over what is under it: a step of undo with its redo. */
   setLayerBlend(index: number, blend: BlendMode | 'normal'): void {
     const layer = this.doc.layers[index];
     if (!layer || (layer.blend ?? 'normal') === blend) {
       return;
     }
-    this.#write((doc) => setLayerBlend(doc, index, blend));
-    this.touched = true;
+    this.#writeLook((doc) => setLayerBlend(doc, index, blend));
+  }
+
+  /** A change of a layer's look, filed as a structure step (the snapshot keeps every look). */
+  #writeLook(change: (doc: ToonDocument) => void, merge = false): void {
+    if (this.playing || !this.leaveTransform()) {
+      return;
+    }
+    const top = this.edits[this.edits.length - 1];
+    const folded = merge && top && !Array.isArray(top) && top.looked && structureIntact(this.doc, top.snap)
+      ? top
+      : undefined;
+    const before = folded ?? this.takeStructure();
+    this.#write(change);
+    if (folded) {
+      this.edits = this.edits.slice(0, -1);
+      // The drag came back to where it started: no step is left.
+      const back = this.doc.layers.every((layer, l) =>
+        layer.opacity === folded.snap.looks[l]?.opacity && layer.blend === folded.snap.looks[l]?.blend);
+      if (back) {
+        this.touched = true;
+        return;
+      }
+    }
+    before.looked = true;
+    before.redo = this.takeStructure();
+    this.pushStructure(before);
   }
 
   /** Locks a layer against new edits, or frees it; desk state, kept in the draft. */
@@ -2501,8 +2532,7 @@ export class EditorState {
     if (structure) {
       this.edits = this.edits.slice(0, -1);
       this.#write((doc) => restoreStructure(doc, structure.snap));
-      this.layerColors = structure.layerColors.slice();
-      this.layerLocks = structure.layerLocks.slice();
+      ({ layerColors: this.layerColors, layerLocks: this.layerLocks } = deskAfter(structure, this));
       this.activeFrame = structure.activeFrame;
       this.activeLayer = structure.activeLayer;
       this.collapseSelection();
@@ -2585,8 +2615,7 @@ export class EditorState {
       const after = edit.redo!;
       this.redoStructure = null;
       this.#write((doc) => restoreStructure(doc, after.snap));
-      this.layerColors = after.layerColors.slice();
-      this.layerLocks = after.layerLocks.slice();
+      ({ layerColors: this.layerColors, layerLocks: this.layerLocks } = deskAfter({ ...after, looked: edit.looked }, this));
       this.activeFrame = after.activeFrame;
       this.activeLayer = after.activeLayer;
       this.collapseSelection();

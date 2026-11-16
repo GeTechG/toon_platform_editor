@@ -27,3 +27,20 @@ export function editRefusal(
   if (!history && layers.some((layer) => locks[layer] === true)) return 'locked';
   return null;
 }
+
+/** The studio's own per-layer state: the colour tags and the locks. */
+export interface Desk {
+  layerColors: number[];
+  layerLocks: boolean[];
+}
+
+/**
+ * What the colour tags and the locks are after a structure step is taken back
+ * or redone. A delete or a move changes the layers, so the step brings back
+ * the desk of its layers; a look changes no layer, so the desk stays as it is
+ * now — a lock set after the slider stays set.
+ */
+export function deskAfter(step: Desk & { looked?: true }, now: Desk): Desk {
+  const desk = step.looked ? now : step;
+  return { layerColors: desk.layerColors.slice(), layerLocks: desk.layerLocks.slice() };
+}

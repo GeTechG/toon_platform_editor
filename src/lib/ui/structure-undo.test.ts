@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { addFrame, addLayer, addStroke, copyFrames, createDocument, moveFrames, setFrameHolds, removeFrame, removeLayer, renameLayer } from '../model/operations';
+import { addFrame, addLayer, addStroke, copyFrames, createDocument, moveFrames, setFrameHolds, removeFrame, removeLayer, renameLayer, setLayerBlend, setLayerOpacity } from '../model/operations';
 import { restoreStructure, structureIntact, takeStructure } from './structure-undo';
 
 // Владелец после одиннадцатого аудита: удаление кадров и слоёв отменяется.
@@ -142,5 +142,49 @@ describe('редактор', () => {
 
   it('отмена сначала смотрит на снимок структуры', () => {
     expect(state).toMatch(/undo\(\): void \{[^]*?restorableStructure[^]*?restorableEdit/);
+  });
+});
+
+describe('отмена вида слоя', () => {
+  it('возвращает непрозрачность и режим слоя, какими они были', () => {
+    const d = doc(1, 2);
+    setLayerOpacity(d, 1, 40);
+    const snap = takeStructure(d);
+    setLayerOpacity(d, 1, 70);
+    setLayerBlend(d, 1, 'multiply');
+    snap.seal(d);
+    restoreStructure(d, snap);
+    expect(d.layers[1].opacity).toBe(40);
+    expect('blend' in d.layers[1]).toBe(false);
+  });
+
+  it('снимает поле, которого не было, а не ставит его по умолчанию', () => {
+    const d = doc(1);
+    const snap = takeStructure(d);
+    setLayerOpacity(d, 0, 30);
+    snap.seal(d);
+    restoreStructure(d, snap);
+    expect('opacity' in d.layers[0]).toBe(false);
+  });
+
+  it('вид, изменённый после шага, закрывает его отмену', () => {
+    const d = doc(1, 2);
+    const snap = takeStructure(d);
+    setLayerBlend(d, 0, 'screen');
+    snap.seal(d);
+    expect(structureIntact(d, snap)).toBe(true);
+    setLayerOpacity(d, 0, 20);
+    expect(structureIntact(d, snap)).toBe(false);
+  });
+
+  it('удаление слоя возвращает его с его видом', () => {
+    const d = doc(1, 2);
+    setLayerOpacity(d, 1, 25);
+    setLayerBlend(d, 1, 'overlay');
+    const snap = takeStructure(d);
+    removeLayer(d, 1);
+    snap.seal(d);
+    restoreStructure(d, snap);
+    expect(d.layers[1]).toMatchObject({ opacity: 25, blend: 'overlay' });
   });
 });

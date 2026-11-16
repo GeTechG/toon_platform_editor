@@ -14,7 +14,9 @@ export interface StructureSnapshot {
   firstStrokes: Stroke[][];
   /** The frames' holds, copied: a hold changes in place. */
   holds: number[] | undefined;
-  after: { layers: Layer[]; frames: Frame[][]; counts: number[][]; holds: string } | null;
+  /** Each layer's opacity and blend mode, copied: they change in place on the layer. */
+  looks: { opacity?: number; blend?: Layer['blend'] }[];
+  after: { layers: Layer[]; frames: Frame[][]; counts: number[][]; holds: string; looks: string } | null;
   /** Records the shape the delete left; call it right after the write. */
   seal(doc: ToonDocument): void;
 }
@@ -26,6 +28,7 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
     frames: doc.layers.map((l) => [...l.frames]),
     firstStrokes: doc.layers.map((l) => [...(l.frames[0]?.strokes ?? [])]),
     holds: doc.holds ? [...doc.holds] : undefined,
+    looks: doc.layers.map((layer) => ({ opacity: layer.opacity, blend: layer.blend })),
     after: null,
     seal(d) {
       // Only a delete that took every frame empties the first cells. Kept for
@@ -37,6 +40,7 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
         frames: d.layers.map((l) => [...l.frames]),
         counts: d.layers.map((l) => l.frames.map((f) => f.strokes.length)),
         holds: String(d.holds ?? ''),
+        looks: looksOf(d),
       };
     },
   };
@@ -44,9 +48,15 @@ export function takeStructure(doc: ToonDocument): StructureSnapshot {
 
 // ponytail: walks every cell on each check (20 layers × 4096 frames at most);
 // keep a version counter on the document if canUndo ever shows in a profile.
+/** The layers' looks as one string, to tell whether any changed. */
+function looksOf(doc: ToonDocument): string {
+  return doc.layers.map((layer) => `${layer.opacity ?? ''}/${layer.blend ?? ''}`).join(',');
+}
+
 export function structureIntact(doc: ToonDocument, snap: StructureSnapshot): boolean {
   const after = snap.after;
-  if (!after || doc.layers.length !== after.layers.length || String(doc.holds ?? '') !== after.holds) {
+  if (!after || doc.layers.length !== after.layers.length || String(doc.holds ?? '') !== after.holds
+    || looksOf(doc) !== after.looks) {
     return false;
   }
   return doc.layers.every((layer, l) =>
@@ -235,6 +245,12 @@ export function restoreStructure(doc: ToonDocument, snap: StructureSnapshot): vo
   }
   snap.layers.forEach((layer, l) => {
     layer.frames = [...snap.frames[l]];
+    // One canonical form: a look that was not there is no field, not a default.
+    const { opacity, blend } = snap.looks[l];
+    if (opacity === undefined) delete layer.opacity;
+    else layer.opacity = opacity;
+    if (blend === undefined) delete layer.blend;
+    else layer.blend = blend;
     const first = layer.frames[0];
     // Sealed by a delete only: the shape a move is redone to empties nothing.
     if (snap.after && first && first.strokes.length === 0 && snap.firstStrokes[l].length > 0) {

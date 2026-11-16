@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { createDocument, addLayer, setLayerHidden } from '../model/operations';
-import { editRefusal, normalizeLayerLocks } from './layer-locks';
+import { deskAfter, editRefusal, normalizeLayerLocks } from './layer-locks';
 
 describe('layer locks read back from a draft', () => {
   it('a draft written before locks existed opens with nothing locked', () => {
@@ -52,5 +52,18 @@ describe('an edit of several layers asks for every one of them', () => {
     for (const name of ['mirrorSelectedLayers', 'beginPluginGesture', 'beginTransform', 'beginLassoTransform']) {
       expect(body(name)).toMatch(/this\.mayEdit\(\[this\.activeLayer, \.\.\.(layers|this\.visibleSelectedLayers)\]\)/);
     }
+  });
+});
+
+describe('what undo leaves of the desk', () => {
+  const step = { layerColors: [0, 1], layerLocks: [false, false] };
+  const now = { layerColors: [3, 4], layerLocks: [false, true] };
+
+  it('a look taken back leaves the locks and tags as they are now: the layers are the same', () => {
+    expect(deskAfter({ ...step, looked: true }, now)).toEqual(now);
+  });
+
+  it('a delete or a move taken back brings the locks and tags of its layers back', () => {
+    expect(deskAfter(step, now)).toEqual(step);
   });
 });

@@ -77,6 +77,13 @@
     (['normal', ...BLEND_MODES] as const).map((mode) => ({ value: mode as BlendMode | 'normal', label: t(`layer.blend_name.${mode}`) })),
   );
 
+  /**
+   * Inside one drag of the opacity slider: every value after the first folds
+   * into the same step of undo. `change` ends the drag; a key's step is a
+   * drag of its own (it fires both).
+   */
+  let sliding = false;
+
   function blendOf(layerIndex: number): BlendMode | 'normal' {
     return editor.doc.layers[layerIndex]?.blend ?? 'normal';
   }
@@ -669,7 +676,12 @@
               step="1"
               value={opacityOf(layerIndex)}
               aria-valuetext={formatPercent(opacityOf(layerIndex) / 100)}
-              oninput={(e) => editor.setLayerOpacity(layerIndex, e.currentTarget.valueAsNumber)}
+              onpointerdown={() => (sliding = false)}
+              oninput={(e) => {
+                editor.setLayerOpacity(layerIndex, e.currentTarget.valueAsNumber, sliding);
+                sliding = true;
+              }}
+              onchange={() => (sliding = false)}
             />
             <Dropdown
               label={t('layer.blend')}
