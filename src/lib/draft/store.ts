@@ -216,7 +216,7 @@ export function newDraftId(): string {
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
-      reject(new Error('IndexedDB unavailable'));
+      reject(new DOMException('IndexedDB unavailable', 'StorageUnavailable'));
       return;
     }
     const req = indexedDB.open(DB_NAME, VERSION);
@@ -242,7 +242,7 @@ function openDb(): Promise<IDBDatabase> {
     req.onerror = () => reject(req.error);
     // Another tab still holds the previous version: the upgrade never runs, so
     // give up instead of leaving the caller's promise pending forever.
-    req.onblocked = () => reject(new Error('another tab holds an older draft database'));
+    req.onblocked = () => reject(new DOMException('another tab holds an older draft database', 'UpgradeBlocked'));
   });
 }
 
@@ -294,13 +294,14 @@ function connection(): Promise<IDBDatabase> {
  * then failed every autosave until a reload. It is given up and opened once
  * more. Null: no storage at all (`connection` refused) — a quiet degradation.
  */
-async function transaction(mode: IDBTransactionMode): Promise<IDBTransaction | null> {
+async function transaction(mode: IDBTransactionMode, unavailable?: (error: unknown) => void): Promise<IDBTransaction | null> {
   for (let attempt = 0; ; attempt++) {
     const pending = connection();
     let db: IDBDatabase;
     try {
       db = await pending;
     } catch (err) {
+      unavailable?.(err);
       console.warn('draft storage unavailable:', err);
       return null;
     }
@@ -493,6 +494,29 @@ function told(id: string): void {
   }
 }
 
+type DraftOperation = 'draft save' | 'draft audio save' | 'draft credits save' | 'draft screenshot save' | 'draft import' | 'draft duplicate' | 'draft card';
+type DraftListener = (operation: DraftOperation, cause: string) => void;
+const draftListeners = new Set<DraftListener>();
+const failing = new Set<DraftOperation>();
+const storageErrors = new Set(['QuotaExceededError', 'AbortError', 'SecurityError', 'DataCloneError', 'DataError',
+  'ConstraintError', 'InvalidStateError', 'NotFoundError', 'ReadOnlyError', 'TransactionInactiveError',
+  'UnknownError', 'VersionError', 'TypeError', 'RangeError', 'StorageUnavailable', 'UpgradeBlocked']);
+
+export function onDraftFailure(listener: DraftListener): () => void {
+  draftListeners.add(listener);
+  return () => { draftListeners.delete(listener); };
+}
+
+function draftFailed(operation: DraftOperation, error: unknown): void {
+  if (failing.has(operation) || !draftListeners.size) return;
+  failing.add(operation);
+  const name = error instanceof Error || error instanceof DOMException ? error.name : '';
+  const cause = storageErrors.has(name) ? name : 'unknown';
+  for (const listener of draftListeners) {
+    try { listener(operation, cause); } catch { /* Reporting must not interrupt the write queue. */ }
+  }
+}
+
 /**
  * Read-modify-write of one record in a single transaction, so an autosave
  * never drops the track and attaching a track never rewinds the document.
@@ -506,14 +530,14 @@ function told(id: string): void {
  */
 async function updateDraft(
   id: string,
-  what: string,
+  what: DraftOperation,
   mutate: (previous: DraftRecord | undefined) => DraftRecord | null,
   /** What the record turned out to weigh — the write already knows. */
   wrote?: (bytes: number) => void,
 ): Promise<boolean> {
-  drafts();
   try {
-    const tx = await transaction('readwrite');
+    drafts();
+    const tx = await transaction('readwrite', (error) => draftFailed(what, error));
     if (!tx) {
       return true;
     }
@@ -536,10 +560,13 @@ async function updateDraft(
         return true;
       };
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = (event) => {
+        // A request's error bubbles before the transaction starts aborting.
+        reject((event?.target as IDBRequest | null)?.error ?? tx.error);
+      };
       // A full quota aborts the commit: `abort` fires, `error` never does,
       // and a promise left pending here held up every write queued after it.
-      tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
+      tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
       const remembered = known.get(id);
       if (remembered) {
         // A transaction asked for nothing has nothing to complete with.
@@ -551,12 +578,13 @@ async function updateDraft(
       const request = store.get(id);
       request.onsuccess = () => {
         read = request.result as DraftRecord | undefined;
-        write(read);
+        try { write(read); } catch (error) { reject(error); }
       };
     });
     // Told only once the transaction has landed: a `put` that was handed over
     // may still be thrown out with it, and its size is then nobody's.
     if (written) {
+      failing.delete(what);
       known.set(id, written);
       told(id);
     } else if (read) {
@@ -569,6 +597,7 @@ async function updateDraft(
   } catch (err) {
     // What landed is not known: the next write reads it.
     known.delete(id);
+    draftFailed(what, err);
     console.warn(`${what} failed:`, err);
     return false;
   }
@@ -697,7 +726,7 @@ async function removeDraft(id: string): Promise<void> {
       tx.onerror = () => reject(tx.error);
       // A full quota aborts the commit: `abort` fires, `error` never does,
       // and a promise left pending here held up every write queued after it.
-      tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
+      tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
     });
     told(id);
   } catch (err) {

@@ -8,6 +8,7 @@ import {
   listDraftCards,
   listDrafts,
   newDraftId,
+  onDraftFailure,
   readDraft,
   saveDraft,
   setDraftAudio,
@@ -377,7 +378,7 @@ describe('saveDraft reports whether the write landed', () => {
   });
 
   it('says no when a write into working storage fails', async () => {
-    setIndexedDB({
+    const broken = () => setIndexedDB({
       open() {
         const req = new FakeReq();
         req.result = {
@@ -389,7 +390,10 @@ describe('saveDraft reports whether the write landed', () => {
                   const r = new FakeReq();
                   queueMicrotask(() => {
                     r.onsuccess?.();
-                    (tx.onerror as (() => void) | null)?.();
+                    const failure = new DOMException('private draft name', 'QuotaExceededError');
+                    (tx.onerror as (event: unknown) => void)({ target: { error: failure } });
+                    tx.error = failure;
+                    (tx.onabort as () => void)();
                   });
                   return r;
                 },
@@ -397,7 +401,7 @@ describe('saveDraft reports whether the write landed', () => {
               }),
               oncomplete: null,
               onerror: null,
-              error: new Error('quota exceeded'),
+              error: null,
             };
             return tx;
           },
@@ -407,13 +411,23 @@ describe('saveDraft reports whether the write landed', () => {
         return req;
       },
     });
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause) => heard.push([operation, cause]));
+    broken();
     const original = console.warn;
     console.warn = mock(() => {});
     try {
       // Nothing landed, so nothing is weighed: a size here would be shown
       // as the size of a draft that is not on disk.
       expect(await saveDraft('a', doc(1))).toEqual({ ok: false, bytes: 0 });
+      await saveDraft('a', doc(1));
+      setIndexedDB(fakeIndexedDB());
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      broken();
+      await saveDraft('a', doc(1));
+      expect(heard).toEqual([['draft save', 'QuotaExceededError'], ['draft save', 'QuotaExceededError']]);
     } finally {
+      stop();
       console.warn = original;
     }
   });
