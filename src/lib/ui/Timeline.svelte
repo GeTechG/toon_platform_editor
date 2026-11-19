@@ -2324,17 +2324,16 @@
     right: 1px;
     width: 2px;
     border-radius: 1px;
-    background: var(--accent);
-    opacity: 0.4;
+    background: var(--edge);
   }
   @media (hover: hover) {
     .cell:hover > .grip::after,
     .grip:hover::after {
-      opacity: 1;
+      background: var(--accent);
     }
   }
   .cell.active > .grip::after {
-    opacity: 0.6;
+    background: var(--accent);
   }
   @media (pointer: coarse) and (orientation: portrait) and (max-width: 767px) {
     .cell .grip { width: min(24px, 45%); }
@@ -2351,7 +2350,7 @@
     transform: translateX(-100%);
   }
   .band-grip::after {
-    opacity: 1;
+    background: var(--accent);
   }
   .duration-preview {
     position: absolute;
