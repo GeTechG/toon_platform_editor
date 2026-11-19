@@ -149,7 +149,16 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 99
+        },
+        "buildup": {
+          "description": "False combines consecutive strokes of matching paint at one opacity. Absent means each stroke builds up.",
+          "const": false
         }
+      },
+      "dependentRequired": {
+        "buildup": [
+          "opacity"
+        ]
       }
     },
     "eraser": {
@@ -208,7 +217,16 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 99
+        },
+        "buildup": {
+          "description": "False combines consecutive strokes of matching paint at one opacity. Absent means each stroke builds up.",
+          "const": false
         }
+      },
+      "dependentRequired": {
+        "buildup": [
+          "opacity"
+        ]
       }
     },
     "contour-eraser": {
@@ -324,7 +342,16 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 99
+        },
+        "buildup": {
+          "description": "False combines consecutive strokes of matching paint at one opacity. Absent means each stroke builds up.",
+          "const": false
         }
+      },
+      "dependentRequired": {
+        "buildup": [
+          "opacity"
+        ]
       }
     },
     "stamp": {
@@ -372,7 +399,16 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 99
+        },
+        "buildup": {
+          "description": "False combines consecutive strokes of matching paint at one opacity. Absent means each stroke builds up.",
+          "const": false
         }
+      },
+      "dependentRequired": {
+        "buildup": [
+          "opacity"
+        ]
       }
     }
   }

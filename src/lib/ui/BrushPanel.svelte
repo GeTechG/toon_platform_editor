@@ -363,6 +363,15 @@
   {#if editor.brushPaints}
     {@render heading(t('brush.opacity'), t('brush.opacity_hint'))}
     {@render slider(t('brush.opacity'), 1, 100, editor.brushOpacity, (v) => editor.setBrushOpacity(v))}
+    <label class="toggle">
+      <span>{t('brush.buildup')}</span>
+      <input
+        type="checkbox"
+        role="switch"
+        checked={editor.brush.buildup !== false}
+        onchange={(e) => editor.setBrushBuildup(e.currentTarget.checked)}
+      />
+    </label>
   {/if}
   <!-- One switch for every brush: it says whether the pen's pressure is
        listened to at all, and it is where the line is set up, not in the

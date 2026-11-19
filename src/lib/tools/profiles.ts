@@ -169,10 +169,12 @@ export function swapStrokeColours(tool: LineToolDescriptor, fill: string): LineT
  * paints carries it, at 100 it carries none. An eraser, which has no colour,
  * is left alone — it cuts whole.
  */
-export function withOpacity<T extends ToolDescriptor>(tool: T, opacity: number): T {
+export function withOpacity<T extends ToolDescriptor>(tool: T, opacity: number, buildup = true): T {
   if (!('color' in tool)) return tool;
-  const { opacity: _was, ...bare } = tool;
-  return (opacity < 100 ? { ...bare, opacity: Math.max(1, Math.round(opacity)) } : bare) as T;
+  const { opacity: _was, buildup: _mode, ...bare } = tool;
+  if (!(opacity < 100)) return bare as T;
+  const paint = { ...bare, opacity: Math.max(1, Math.round(opacity)) };
+  return (buildup ? paint : { ...paint, buildup: false }) as T;
 }
 
 export function appendStrokeEvent(session: StrokeSession, event: PointerSample): void {
@@ -215,9 +217,9 @@ export function commitStrokeSession(session: StrokeSession): ResolvedStroke {
     const stroke = commit(session.rawPoints, session.descriptor);
     // The rule builds its own tool and knows nothing of the opacity the
     // brush was drawn at: the stroke lands as faint as it was under the hand.
-    const { opacity } = opacityOf(session.descriptor);
+    const { opacity, buildup } = opacityOf(session.descriptor);
     const faint = opacity !== undefined && typeof stroke?.tool === 'object' && stroke.tool !== null
-      ? { ...stroke, tool: withOpacity(stroke.tool, opacity) }
+      ? { ...stroke, tool: withOpacity(stroke.tool, opacity, buildup) }
       : stroke;
     return withPressure(faint, session);
   }

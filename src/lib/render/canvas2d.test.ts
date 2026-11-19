@@ -829,6 +829,36 @@ describe('tool opacity', () => {
     expect(alphas).toEqual(['globalAlpha=0.4', 'stroke()', 'globalAlpha=1', 'stroke()', 'stroke()']);
   });
 
+  it('paints 1,000 alternating flat dots without clearing or blitting a mask', () => {
+    const paint = { kind: 'pencil', geometry: 'line', width: 8, opacity: 50, buildup: false } as const;
+    const tools = [{ ...paint, color: '#ff6600' }, { ...paint, color: '#1133aa' }];
+    const strokes = Array.from({ length: 1000 }, (_, i) => ({ tool_id: i % 2, points: [i, 4] }));
+    const ctx = new RecordingCtx();
+    const mask = new RecordingCtx();
+    renderStrokesLayer({ strokes }, tools, ctx, viewport, undefined, undefined,
+      () => ({ ctx: mask, image: {} as CanvasImageSource }));
+    expect(mask.log.length).toBe(0);
+    expect(ctx.log.filter((entry) => entry === 'globalAlpha=0.5')).toHaveLength(1000);
+    expect(ctx.log.filter((entry) => entry === 'fill()')).toHaveLength(1000);
+    expect(ctx.log.some((entry) => entry.startsWith('drawImage'))).toBe(false);
+  });
+
+  it('uses a mask only once a flat feather can enclose paint, including with pressure', () => {
+    const feather = { kind: 'feather', geometry: 'line', width: 8, opacity: 50, buildup: false, fill: '#0000ff' } as const;
+    const tools = [{ ...feather, color: '#ff6600' }, { ...feather, color: '#1133aa' }];
+    const dots = Array.from({ length: 1000 }, (_, i) => ({ tool_id: i % 2, points: [i, 4], pressure: [50] }));
+    const strokes = [...dots,
+      { tool_id: 0, points: [0, 0, 4, 4, 8, 8], pressure: [20, 40, 60] },
+      { tool_id: 1, points: [0, 0, 4, 8, 8, 0], pressure: [20, 40, 60] },
+    ];
+    const ctx = new RecordingCtx();
+    const mask = new RecordingCtx();
+    renderStrokesLayer({ strokes }, tools, ctx, viewport, undefined, undefined,
+      () => ({ ctx: mask, image: {} as CanvasImageSource }));
+    expect(ctx.log.filter((entry) => entry.startsWith('drawImage')).length).toBe(1);
+    expect(mask.log.filter((entry) => entry.startsWith('clearRect')).length).toBe(1);
+  });
+
   it('a ghost keeps the stroke as faint as it is: the tint changes the colour only', () => {
     const ctx = new RecordingCtx();
     renderStrokesLayer(frame, tools, ctx, viewport, '#ff3b30');

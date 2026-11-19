@@ -1,0 +1,4 @@
+{
+  "canonical": "{\"frame_rate\":12,\"height\":800,\"layers\":[{\"frames\":[{\"strokes\":[{\"points\":[80,200,600,200],\"tool_id\":0},{\"points\":[320,80,320,400],\"tool_id\":0},{\"points\":[400,80,400,400],\"tool_id\":1}]}],\"hidden\":false}],\"schema_version\":8,\"tools\":[{\"buildup\":false,\"color\":\"#ff8822\",\"geometry\":\"line\",\"kind\":\"pencil\",\"opacity\":50,\"width\":32},{\"color\":\"#ff8822\",\"geometry\":\"line\",\"kind\":\"pencil\",\"opacity\":50,\"width\":32}],\"width\":800}",
+  "sha256": "86da5e5f82534948eb826370629824fdf6e8665e18b0c108a11ce258d82d47af"
+}

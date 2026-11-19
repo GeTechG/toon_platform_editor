@@ -1,3 +1,6 @@
+import type { ToolDescriptor } from '../format/types';
+import { extendsFlatRun } from '../render/dispatch';
+
 /**
  * Thumbnail box for a document: the canvas max-fitted into the frame, its own
  * proportions kept. The frame's caps are the same for every project, so a
@@ -103,8 +106,9 @@ type ThumbStroke = { readonly points: readonly number[]; readonly tool_id: numbe
 export function thumbStep(
   was: readonly ThumbStroke[] | null,
   now: readonly ThumbStroke[],
+  tools: readonly ToolDescriptor[] = [],
 ): { whole: true } | { whole: false; from: number } {
-  if (!was || was.length > now.length) {
+  if (!was || was.length > now.length || extendsFlatRun(now, was.length, tools)) {
     return { whole: true };
   }
   for (let i = 0; i < was.length; i++) {

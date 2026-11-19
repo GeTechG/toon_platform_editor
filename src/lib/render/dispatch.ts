@@ -75,3 +75,38 @@ export function emitPathForTool(
 ): void {
   emitGeometry(points, descriptor.geometry, isContourTool(descriptor), sink);
 }
+
+export type FlatPaint = Extract<ToolDescriptor, { color: string }> & { opacity: number; buildup: false };
+
+export function isFlatPaint(tool: ToolDescriptor | undefined): tool is FlatPaint {
+  return tool !== undefined && 'color' in tool && tool.buildup === false && tool.opacity !== undefined;
+}
+
+/** The width and geometry can change without starting another coat of the same paint. */
+export function sameFlatPaint(a: ToolDescriptor | undefined, b: ToolDescriptor | undefined): boolean {
+  return isFlatPaint(a) && isFlatPaint(b) && a.opacity === b.opacity && a.color === b.color
+    && ('fill' in a ? a.fill : a.color) === ('fill' in b ? b.fill : b.color);
+}
+
+/** A feather's fill can overlap its outline only if its points can enclose an area. */
+export function hasInteriorPaint(tool: ToolDescriptor, points: readonly number[]): boolean {
+  if (!isFilledLineTool(tool) || points.length < 6) return false;
+  const [x, y] = points;
+  let second = 2;
+  while (second < points.length && points[second] === x && points[second + 1] === y) second += 2;
+  if (second === points.length) return false;
+  const dx = points[second] - x;
+  const dy = points[second + 1] - y;
+  for (let i = second + 2; i < points.length; i += 2) {
+    if (dx * (points[i + 1] - y) !== dy * (points[i] - x)) return true;
+  }
+  return false;
+}
+
+/** The first new stroke belongs to the same coat as the last stroke on the cached prefix. */
+export function extendsFlatRun(
+  strokes: readonly Pick<Stroke, 'tool_id'>[], start: number, tools: readonly ToolDescriptor[],
+): boolean {
+  return start > 0 && start < strokes.length
+    && sameFlatPaint(tools[strokes[start - 1].tool_id], tools[strokes[start].tool_id]);
+}

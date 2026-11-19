@@ -344,6 +344,10 @@ export interface PluginBrushType {
  * cuts only what was drawn before it in the same cell.
  */
 export interface PluginCanvas {
+  /** Optional for command sinks: draw a group opaque, then composite it at alpha (0–1). */
+  withOpacityGroup?(alpha: number, draw: () => void): void;
+  /** Legacy command sinks without groups receive opacity per stroke. */
+  globalAlpha?: number;
   globalCompositeOperation: string;
   lineWidth: number;
   strokeStyle: string;

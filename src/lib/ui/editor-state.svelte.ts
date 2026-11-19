@@ -843,6 +843,10 @@ export class EditorState {
     return this.brush.opacity ?? 100;
   }
 
+  setBrushBuildup(buildup: boolean): void {
+    this.editBrush({ buildup });
+  }
+
   setBrushOpacity(value: number): void {
     this.editBrush({ opacity: Math.min(100, Math.max(1, Math.round(value))) });
   }

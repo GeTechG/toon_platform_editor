@@ -27,7 +27,7 @@
   import { CellWarmer } from '../render/cell-warm';
   import { cellCrew } from '../render/cell-crew';
   import { studioCells } from '../render/studio-cells';
-  import { isFilledLineTool } from '../render/dispatch';
+  import { isFlatPaint, isFilledLineTool } from '../render/dispatch';
   import { cursorShape, pickSource } from './frame-selection';
   import {
     hitMode,
@@ -347,7 +347,7 @@
     return withOpacity((toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
       ...editor.pluginBrush,
       width: brushWidthDoc(editor.brushSizeLogical),
-    }), editor.brushOpacity);
+    }), editor.brushOpacity, editor.brush.buildup);
   }
 
   /** The stroke the shapes drag would lay now, with the pencil's brush. */
@@ -363,6 +363,7 @@
       color: drag.swap ? editor.fillColor : brush.color,
       fill: drag.swap ? brush.color : brush.fill,
       opacity: editor.brushOpacity,
+      buildup: editor.brush.buildup,
       filled: editor.settings.shapeFilled,
     });
   }
@@ -1099,9 +1100,11 @@
       const tool = stroke.tool as LineToolDescriptor;
       return {
         id: nodeId(drag),
+        flat: isFlatPaint(tool) ? tool : undefined,
+        points: stroke.points,
         erase: false,
         paint: (target) => {
-          target.globalAlpha = (opacityOf(tool).opacity ?? 100) / 100;
+          if (!isFlatPaint(tool)) target.globalAlpha = (opacityOf(tool).opacity ?? 100) / 100;
           try {
             renderResolvedPreview(stroke.points, tool, 'color' in tool ? tool.color : BACKGROUND_COLOR, target, viewport);
           } finally {
@@ -1124,10 +1127,13 @@
       && opacityOf(session.descriptor).opacity === undefined
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
+      const points = session.rules.previewGeometry === 'line' ? session.rawPoints : previewStrokeSession(session);
       return {
         id: nodeId(session),
+        flat: isFlatPaint(session.descriptor) ? session.descriptor : undefined,
+        points,
         erase,
-        paint: (target) => renderSessionPreview(session, target, viewport, color),
+        paint: (target) => renderSessionPreview(session, target, viewport, color, points),
       };
     }
     return {
@@ -1147,10 +1153,11 @@
     target: Canvas2DLike,
     viewport: Viewport,
     color: string,
+    points: readonly number[],
   ): void {
-    target.globalAlpha = (opacityOf(session.descriptor).opacity ?? 100) / 100;
+    if (!isFlatPaint(session.descriptor)) target.globalAlpha = (opacityOf(session.descriptor).opacity ?? 100) / 100;
     try {
-      paintSessionPreview(session, target, viewport, color);
+      paintSessionPreview(session, target, viewport, color, points);
     } finally {
       target.globalAlpha = 1;
     }
@@ -1161,9 +1168,9 @@
     target: Canvas2DLike,
     viewport: Viewport,
     color: string,
+    points: readonly number[],
   ): void {
     const raw = session.rules.previewGeometry === 'line';
-    const points = raw ? session.rawPoints : previewStrokeSession(session);
     const pressure = previewStrokePressure(session, points);
     if (pressure) {
       // The pen's line under the hand has the width it will land with.
@@ -1184,7 +1191,7 @@
         isFilledLineTool(session.descriptor) ? session.descriptor.fill : undefined,
       );
     } else {
-      renderResolvedPreview(previewStrokeSession(session), session.descriptor, color, target, viewport);
+      renderResolvedPreview(points, session.descriptor, color, target, viewport);
     }
   }
 

@@ -216,6 +216,7 @@ export interface ShapeBrush {
   readonly fill: string;
   /** Percent 1–100. */
   readonly opacity: number;
+  readonly buildup?: boolean;
   /** Laid filled (a feather) rather than outlined; a line never is. */
   readonly filled: boolean;
 }
@@ -242,5 +243,5 @@ export function shapeStroke(
   const outline: PencilToolDescriptor = { kind: 'pencil', geometry: 'line', width: brush.width, color: brush.color };
   const filled: FeatherToolDescriptor = { ...outline, kind: 'feather', fill: brush.fill };
   const tool = brush.filled && kind !== 'line' ? filled : outline;
-  return { points, tool: withOpacity(tool, brush.opacity) };
+  return { points, tool: withOpacity(tool, brush.opacity, brush.buildup) };
 }

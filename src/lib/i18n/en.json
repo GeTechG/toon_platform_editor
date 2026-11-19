@@ -104,7 +104,8 @@
     "simplify_slider": "Simplify — minimum distance between points",
     "number_of": "{{label}}, number",
     "opacity": "Opacity",
-    "opacity_hint": "Less — the line is more transparent: you can see what's under it. It doesn't darken over itself, but two lines over each other do",
+    "opacity_hint": "Lower opacity lets the paint underneath show through. Turn off stroke buildup to keep consecutive strokes of the same colour and opacity even where they overlap.",
+    "buildup": "Stroke buildup",
     "pen_pressure": "Pen pressure"
   },
   "plugin": {

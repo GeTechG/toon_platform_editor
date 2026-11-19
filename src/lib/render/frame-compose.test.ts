@@ -98,6 +98,72 @@ describe('the composer stacks a frame', () => {
     expect(target.log).toEqual(['blit b0', 'blit b1', 'blit b2']);
   });
 
+  it('draws a single live pencil stroke directly at its opacity', () => {
+    const { instance, made } = composer();
+    const built = doc(1);
+    const flat = { kind: 'pencil', geometry: 'line', width: 4, color: '#ff8822', opacity: 50, buildup: false } as const;
+    let paintedAt = 0;
+    instance.compose(new Recorder('target').ctx, 100, 50, {
+      doc: built, activeLayer: 0, frame: 0, tools: built.tools, viewport,
+      live: { id: 1, flat, paint: (ctx) => { paintedAt = ctx.globalAlpha; ctx.stroke(); } },
+    });
+    expect(paintedAt).toBe(0.5);
+    expect(made.some((buffer) => buffer.log.some((op) => op.endsWith('@0.5')))).toBe(false);
+  });
+
+  it('isolates a live feather when its line gains an interior', () => {
+    const { instance } = composer();
+    const doc = createDocument();
+    const flat = { kind: 'feather', fill: '#112233', geometry: 'line', width: 8, color: '#ff8800', opacity: 50, buildup: false } as const;
+    const points = [4, 4];
+    const alphas: number[] = [];
+    const scene = { doc, frame: 0, activeLayer: 0, tools: doc.tools, viewport,
+      live: { id: 1, flat, points, paint: (ctx: ComposeTarget) => { alphas.push(ctx.globalAlpha); } } };
+    const ctx = new Recorder('target').ctx;
+    instance.compose(ctx, 20, 20, scene);
+    points.push(8, 8, 12, 12);
+    instance.compose(ctx, 20, 20, scene);
+    points.push(4, 12);
+    instance.compose(ctx, 20, 20, scene);
+    expect(alphas).toEqual([0.5, 0.5, 1]);
+  });
+
+  it('paints a live crossing and its committed strokes at one opacity', () => {
+    // Sample the intersection: every stroke in this scene covers this pixel.
+    class Pixel extends Recorder {
+      alpha = 0;
+      clear() { this.alpha = 0; }
+      clearRect() { this.clear(); }
+      stroke() { this.alpha += (1 - this.alpha) * this.globalAlpha; }
+      drawImage(image: CanvasImageSource) {
+        const source = (image as unknown as { recorder: Pixel }).recorder;
+        this.alpha += (1 - this.alpha) * source.alpha * this.globalAlpha;
+      }
+    }
+    const composer = new FrameComposer(() => new Pixel(''));
+    const target = new Pixel('');
+    const doc = createDocument();
+    const tool = { kind: 'pencil', geometry: 'line', width: 4, color: '#ff8822', opacity: 50, buildup: false } as const;
+    const first = { points: [0, 10, 20, 10], tool };
+    const crossing = { points: [10, 0, 10, 20], tool };
+    const scene = { doc, frame: 0, activeLayer: 0, viewport, tools: doc.tools };
+    addStroke(doc, 0, 0, first);
+    composer.compose(target.ctx, 20, 20, { ...scene, live: {
+      id: 1, flat: tool, paint: (ctx) => ctx.stroke(),
+    } });
+    expect(target.alpha).toBe(0.5);
+    addStroke(doc, 0, 0, crossing);
+    target.clear();
+    composer.invalidate();
+    composer.compose(target.ctx, 20, 20, scene);
+    expect(target.alpha).toBe(0.5);
+    addStroke(doc, 0, 0, { ...crossing, tool: { ...tool, color: '#0000ff' } });
+    target.clear();
+    composer.invalidate();
+    composer.compose(target.ctx, 20, 20, scene);
+    expect(target.alpha).toBe(0.75);
+  });
+
   it('puts the ghosts between the layers below and the active one', () => {
     const built = doc(3);
     addFrame(built, 0);

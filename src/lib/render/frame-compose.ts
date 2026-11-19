@@ -16,7 +16,8 @@
 import { resolveCell } from '../model/cells';
 import type { Frame, ToolDescriptor, ToonDocument } from '../format/types';
 import { BufferRing } from '../ui/buffer-ring';
-import { blitLayer, hasLook, layLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from './canvas2d';
+import { blitLayer, hasLook, renderOpaqueRun, layLayer, renderLayersStacked, renderLivePart, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from './canvas2d';
+import { extendsFlatRun, hasInteriorPaint, isFlatPaint, sameFlatPaint, type FlatPaint } from './dispatch';
 import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
@@ -75,9 +76,11 @@ export interface LiveLine {
   readonly id: number;
   /** Set when the line cuts the alpha of its layer instead of painting on it. */
   readonly erase?: boolean;
+  /** paint() uses the alpha supplied by the composer, which applies opacity once per coat. */
+  readonly flat?: FlatPaint;
   /** Paints the line whole onto a target. Absent means it can be added to. */
   readonly paint?: (target: Canvas2DLike) => void;
-  /** The points of a line that can be added to, and how they are read. */
+  /** Points of an incremental line, or the outline a flat stroke may fill. */
   readonly points?: readonly number[];
   readonly geometry?: StrokeGeometry;
   readonly width?: number;
@@ -194,6 +197,12 @@ export class FrameComposer {
   #looked: ComposeBuffer | undefined;
   /** One layer is rasterized here before it lands on a stack buffer. */
   #scratch: ComposeBuffer | undefined;
+  #mask: ComposeBuffer | undefined;
+  /** When a live line extends a coat, keep the underlying pixels and its opaque marks apart. */
+  #coatBase: ComposeBuffer | undefined;
+  #coatMarks: ComposeBuffer | undefined;
+  #extendsCoat = false;
+
   /** The active layer plus the settled part of the line under the hand. */
   #live: ComposeBuffer | undefined;
   /** The whole frame, when it is blitted at an alpha below one. */
@@ -260,13 +269,14 @@ export class FrameComposer {
    * starts from nothing, as a new one would.
    */
   dispose(): void {
-    const buffers = [...this.#belowBuffers, this.#active, ...this.#aboveBuffers, this.#looked, this.#scratch,
+    const buffers = [...this.#belowBuffers, this.#active, ...this.#aboveBuffers, this.#looked, this.#scratch, this.#mask, this.#coatBase, this.#coatMarks,
       this.#live, this.#composite, this.#under, ...this.#ghosts.drain()];
     this.#cells?.dispose();
     for (const buffer of buffers) {
       buffer?.size(0, 0);
     }
     this.#active = this.#looked = this.#scratch = this.#live = this.#composite = this.#under = undefined;
+    this.#mask = this.#coatBase = this.#coatMarks = undefined;
     this.#belowBuffers = [];
     this.#aboveBuffers = [];
     this.#belowChunks = [];
@@ -480,6 +490,12 @@ export class FrameComposer {
     return painted;
   }
 
+  #paintMask(width: number, height: number): ComposeBuffer {
+    const mask = this.#mask ??= this.#make();
+    mask.size(width, height);
+    return mask;
+  }
+
   #lay(
     buffer: ComposeBuffer,
     cells: readonly Frame[],
@@ -500,10 +516,15 @@ export class FrameComposer {
     // A few lines more go on top; a cell put whole (a file opened over an
     // empty one) goes through the cache, so it is kept like any other.
     const grown = (ink[0]?.length ?? 0) - had;
+    const mask = () => this.#paintMask(width, height);
     if (kept && !looks?.some(hasLook) && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
-      const added = { strokes: cells[0].strokes.slice(was[0].length / 3) };
-      renderStrokesLayer(added, scene.tools, buffer.ctx, scene.viewport, undefined, STUDIO_PATHS);
-      return true;
+      const strokes = cells[0].strokes;
+      const start = had / 3;
+      // A matching tail is already translucent on the buffer. Rebuild its coat together.
+      if (!extendsFlatRun(strokes, start, scene.tools)) {
+        renderStrokesLayer({ strokes: strokes.slice(start) }, scene.tools, buffer.ctx, scene.viewport, undefined, STUDIO_PATHS, mask);
+        return true;
+      }
     }
     // The area a stroke took is read off its points; a moved one stood where
     // its matrix put it, so a buffer that held a moved selection is drawn whole.
@@ -539,7 +560,7 @@ export class FrameComposer {
         if (cell.strokes.length === 0) {
           continue; // nothing to lay, and no room to spend on it
         }
-        const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart, STUDIO_PATHS);
+        const own = (target: ComposeBuffer) => renderLayersStacked([cell], scene.tools, target.ctx, scene.viewport, apart, STUDIO_PATHS, undefined, false, mask);
         const pixels = this.#standIns.has(cell)
           ? null
           : kept.take(cell, scene.tools, scene.viewport, width, height, own);
@@ -555,7 +576,7 @@ export class FrameComposer {
     }
     // Layers that erase nothing go straight onto the buffer; one that erases
     // above another is rasterized apart, so its eraser cuts only its own.
-    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart, STUDIO_PATHS, looks);
+    renderLayersStacked(cells, scene.tools, buffer.ctx, scene.viewport, apart, STUDIO_PATHS, looks, false, mask);
     return true;
   }
 
@@ -581,6 +602,46 @@ export class FrameComposer {
       buffer.clear();
       ctx.drawImage(this.#active!.image, 0, 0);
     };
+    if (live.flat && live.paint) {
+      const tool = live.flat;
+      const coatSeed = seed + ':' + tool.color + ':' + tool.opacity + ':' + ('fill' in tool ? tool.fill : '');
+      if (this.#liveSeed !== coatSeed) {
+        const strokes = this.#cell(scene, scene.activeLayer)?.strokes ?? [];
+        let start = strokes.length;
+        while (start > 0 && sameFlatPaint(tool, scene.tools[strokes[start - 1].tool_id])) start--;
+        this.#extendsCoat = start < strokes.length;
+        if (this.#extendsCoat) {
+          const base = this.#coatBase ??= this.#make();
+          base.size(width, height);
+          base.clear();
+          renderStrokesLayer({ strokes: strokes.slice(0, start) }, scene.tools, base.ctx, viewport,
+            undefined, STUDIO_PATHS, () => this.#paintMask(width, height));
+          const marks = this.#coatMarks ??= this.#make();
+          marks.size(width, height);
+          marks.clear();
+          renderOpaqueRun(strokes, start, strokes.length, scene.tools, marks.ctx, viewport, undefined, STUDIO_PATHS);
+        }
+        this.#liveSeed = coatSeed;
+      }
+      if (!this.#extendsCoat && !hasInteriorPaint(tool, live.points ?? [])) {
+        reseed();
+        ctx.globalAlpha = tool.opacity / 100;
+        try {
+          live.paint(ctx);
+        } finally {
+          ctx.globalAlpha = 1;
+        }
+        return buffer;
+      }
+      const mask = this.#paintMask(width, height);
+      mask.clear();
+      if (this.#extendsCoat) blitLayer(this.#coatMarks!.image, mask.ctx);
+      live.paint(mask.ctx);
+      buffer.clear();
+      blitLayer((this.#extendsCoat ? this.#coatBase! : this.#active!).image, ctx);
+      layLayer(mask.image, ctx, tool);
+      return buffer;
+    }
     if (live.paint) {
       reseed();
       this.#liveSeed = '';
@@ -800,6 +861,8 @@ function repaintTaken(
   if (typeof clipper.clip !== 'function' || now.length >= was.length) {
     return false;
   }
+  // Removing even a distant separator can join two coats elsewhere on the sheet.
+  if (was.some((part, index) => index % 3 === 1 && isFlatPaint(part as ToolDescriptor))) return false;
   // Was = now with some strokes taken out, the rest in the same order.
   let j = 0;
   let x0 = Infinity;

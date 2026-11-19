@@ -98,6 +98,14 @@ describe('a cell thumbnail does not walk the whole cell again', () => {
     expect(reads.count).toBe(read);
   });
 
+  it('redraws the thumbnail when an added stroke extends a translucent coat', () => {
+    const tool = { kind: 'pencil', geometry: 'line', width: 8, color: '#ffaa00', opacity: 30, buildup: false } as const;
+    const a = { points: [1, 1], tool_id: 0 };
+    const b = { points: [2, 2], tool_id: 1 };
+    expect(thumbStep([a], [a, b], [tool, { ...tool, width: 16 }])).toEqual({ whole: true });
+    expect(thumbStep([a], [a, b], [tool, { ...tool, opacity: 50 }])).toEqual({ whole: false, from: 1 });
+  });
+
   it('adds the strokes put at the end, and draws the cell anew otherwise', () => {
     const a = { points: [1, 1], tool_id: 0 };
     const b = { points: [2, 2], tool_id: 0 };

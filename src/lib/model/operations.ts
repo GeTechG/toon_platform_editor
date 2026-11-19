@@ -80,6 +80,7 @@ export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): numbe
 
 function toolEquals(left: ToolDescriptor, right: ToolDescriptor): boolean {
   if (left.kind !== right.kind || left.geometry !== right.geometry
+    || ('color' in left && 'color' in right && left.buildup !== right.buildup)
     || opacityOf(left).opacity !== opacityOf(right).opacity) {
     return false;
   }

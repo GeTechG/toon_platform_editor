@@ -13,16 +13,21 @@ import type { StrokeGeometry } from '../render/smoothing';
 
 export type { StrokeGeometry };
 
-export interface PencilToolDescriptor {
-  readonly kind: 'pencil';
-  readonly geometry: StrokeGeometry;
-  readonly width: number;
-  readonly color: string;
+interface PaintOpacity {
   /**
    * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
    * 100 is never stored, so one look has one descriptor.
    */
   readonly opacity?: number;
+  /** False applies the opacity once to consecutive strokes of the same paint. */
+  readonly buildup?: false;
+}
+
+export interface PencilToolDescriptor extends PaintOpacity {
+  readonly kind: 'pencil';
+  readonly geometry: StrokeGeometry;
+  readonly width: number;
+  readonly color: string;
 }
 
 export interface EraserToolDescriptor {
@@ -36,15 +41,10 @@ export interface EraserToolDescriptor {
  * ring, and the thickness is baked into it. No width — `kind` says the path is
  * closed and filled, whichever geometry reads the points.
  */
-export interface ContourToolDescriptor {
+export interface ContourToolDescriptor extends PaintOpacity {
   readonly kind: 'contour';
   readonly geometry: StrokeGeometry;
   readonly color: string;
-  /**
-   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
-   * 100 is never stored, so one look has one descriptor.
-   */
-  readonly opacity?: number;
 }
 
 export interface ContourEraserToolDescriptor {
@@ -57,17 +57,12 @@ export interface ContourEraserToolDescriptor {
  * `fill` before being stroked with `color`. Tonio invented it, but the curve
  * under it is whichever the brush in hand draws, so it takes any geometry.
  */
-export interface FeatherToolDescriptor {
+export interface FeatherToolDescriptor extends PaintOpacity {
   readonly kind: 'feather';
   readonly geometry: StrokeGeometry;
   readonly width: number;
   readonly color: string;
   readonly fill: string;
-  /**
-   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
-   * 100 is never stored, so one look has one descriptor.
-   */
-  readonly opacity?: number;
 }
 
 /**
@@ -83,17 +78,12 @@ export interface FeatherToolDescriptor {
  * The polygon is closed implicitly and given on the unit square: `[0,0, 1,0,
  * 1,1, 0,1]` is the pixel cell.
  */
-export interface StampToolDescriptor {
+export interface StampToolDescriptor extends PaintOpacity {
   readonly kind: 'stamp';
   readonly geometry: 'line';
   readonly width: number;
   readonly color: string;
   readonly shape: readonly number[];
-  /**
-   * How strongly the stroke paints, a whole percent 1–99. Absent — opaque:
-   * 100 is never stored, so one look has one descriptor.
-   */
-  readonly opacity?: number;
 }
 
 /** The unit square — what the pixel-style stamp lays down. */
@@ -119,9 +109,9 @@ export type ToolDescriptor =
  * A tool's opacity, as a spread — or nothing for an opaque one and for a tool
  * that paints nothing: 100 is the absent field, in one place.
  */
-export function opacityOf(tool: ToolDescriptor): { opacity?: number } {
-  const opacity = 'color' in tool ? tool.opacity : undefined;
-  return opacity !== undefined && opacity < 100 ? { opacity } : {};
+export function opacityOf(tool: ToolDescriptor): PaintOpacity {
+  if (!('color' in tool) || tool.opacity === undefined || tool.opacity >= 100) return {};
+  return tool.buildup === false ? { opacity: tool.opacity, buildup: false } : { opacity: tool.opacity };
 }
 
 export interface Stroke {

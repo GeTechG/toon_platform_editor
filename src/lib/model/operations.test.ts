@@ -1127,6 +1127,17 @@ describe('tool opacity', () => {
       .toEqual({ kind: 'contour', geometry: 'line', color: '#ff0000', opacity: 20 });
   });
 
+  it('keeps the buildup choice on each new stroke even when the paint otherwise matches', () => {
+    const doc = createDocument();
+    const tool = { ...pencil, opacity: 50 };
+    const flat = { ...tool, buildup: false } as const;
+    const layeredId = internTool(doc, tool);
+    const flatId = internTool(doc, flat);
+    expect(flatId).not.toBe(layeredId);
+    expect(doc.tools[flatId]).toEqual(flat);
+    expect(internTool(doc, tool)).toBe(layeredId);
+  });
+
   it('an opaque tool carries no opacity at all', () => {
     expect('opacity' in copyTool(pencil)).toBe(false);
   });

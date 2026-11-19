@@ -127,7 +127,7 @@
       canvasEl.height = height;
     }
     const whole = resized || shape !== paintedBox || thumbPaints.waiting(me);
-    const step = whole ? { whole: true as const } : thumbStep(onThumb, cell.strokes);
+    const step = whole ? { whole: true as const } : thumbStep(onThumb, cell.strokes, doc.tools);
     painted = stamp;
     paintedBox = shape;
     if (!step.whole) {

@@ -71,6 +71,18 @@ describe('the scene a format reads', () => {
     ]);
   });
 
+  test('a vector exporter can wrap consecutive flat strokes in one opacity group', () => {
+    const canvas = recorder();
+    const groups: number[] = [];
+    canvas.withOpacityGroup = (alpha, draw) => { groups.push(alpha); draw(); };
+    const film = doc();
+    film.tools[0] = { kind: 'pencil', geometry: 'line', width: 4, color: '#ff0000', opacity: 50, buildup: false };
+    film.layers[0].frames[0]!.strokes.push({ points: [0, 80, 80, 0], tool_id: 0 });
+    makeScene(film, 0).draw(0, 0, canvas);
+    expect(groups).toEqual([0.5]);
+    expect(canvas.calls.filter((call) => call.startsWith('stroke '))).toHaveLength(2);
+  });
+
   test('a hidden layer is not there: the second visible one is the top one', () => {
     const canvas = recorder();
 

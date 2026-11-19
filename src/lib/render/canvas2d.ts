@@ -13,6 +13,9 @@ import type { StrokeGeometry } from './smoothing';
 import { interpolatePixelLine } from '../tools/pixel';
 import {
   emitPathForTool,
+  isFlatPaint,
+  extendsFlatRun,
+  hasInteriorPaint,
   isContourTool,
   isEraserTool,
   isFilledLineTool,
@@ -29,6 +32,8 @@ import { cellBudget } from './cell-cache';
  * recording implementation.
  */
 export interface Canvas2DLike extends PathSink {
+  /** A vector export sink can accept the same group without a bitmap. */
+  withOpacityGroup?(alpha: number, draw: () => void): void;
   readonly canvas: { width: number; height: number };
   globalCompositeOperation: GlobalCompositeOperation;
   globalAlpha: number;
@@ -115,11 +120,12 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
         looks.push(layer);
       }
     }
+    const mask = () => this.#cleared(2, target.canvas.width, target.canvas.height);
     // Nothing can bleed between layers when there is only one and it does not
     // erase — draw it straight into the target (identical result, no buffer).
     if (cells.length <= 1 && !cells.some((cell) => hasEraser(cell, doc.tools)) && !looks.some(hasLook)) {
       if (cells.length === 1) {
-        renderStrokesLayer(cells[0], doc.tools, target, viewport);
+        renderStrokesLayer(cells[0], doc.tools, target, viewport, undefined, undefined, mask);
       } else {
         applyDocTransform(target, viewport);
       }
@@ -129,11 +135,11 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     // A blend mode is laid over the paper too: the stack is built on the
     // target the paper is on, not in a transparent buffer laid over it.
     if (viewport.background !== null && looks.some((look) => look.blend)) {
-      renderLayersStacked(cells, doc.tools, target, viewport, () => this.#cleared(1, width, height), undefined, looks, true);
+      renderLayersStacked(cells, doc.tools, target, viewport, () => this.#cleared(1, width, height), undefined, looks, true, mask);
       return;
     }
     const frame = this.#cleared(0, width, height);
-    renderLayersStacked(cells, doc.tools, frame.ctx, viewport, () => this.#cleared(1, width, height), undefined, looks);
+    renderLayersStacked(cells, doc.tools, frame.ctx, viewport, () => this.#cleared(1, width, height), undefined, looks, false, mask);
     blitLayer(frame.image, target);
   }
 
@@ -182,15 +188,16 @@ export function renderLayersStacked(
   /** Each cell's layer look, by position; absent — every layer plain. */
   looks?: readonly (LayerLook | undefined)[],
   onPaper = false,
+  mask?: () => ScratchLayer,
 ): void {
   for (const [index, cell] of cells.entries()) {
     const look = looks?.[index];
     if (!hasLook(look) && ((index === 0 && !onPaper) || !hasEraser(cell, tools))) {
-      renderStrokesLayer(cell, tools, target, viewport, undefined, paths);
+      renderStrokesLayer(cell, tools, target, viewport, undefined, paths, mask);
       continue;
     }
     const own = apart();
-    renderStrokesLayer(cell, tools, own.ctx, viewport, undefined, paths);
+    renderStrokesLayer(cell, tools, own.ctx, viewport, undefined, paths, mask);
     layLayer(own.image, target, look);
   }
 }
@@ -309,40 +316,66 @@ export function renderStrokesLayer(
    * (the player, exports, thumbnails) would only hold memory.
    */
   paths?: PathKeeper<StrokePaths>,
+  makeMask?: () => ScratchLayer,
+): void {
+  let mask: ScratchLayer | undefined;
+  applyDocTransform(target, viewport);
+  for (let i = 0; i < frame.strokes.length;) {
+    const stroke = frame.strokes[i];
+    const tool = resolveTool(tools, stroke);
+    // A single paint command already applies its alpha once. Only a matching
+    // neighbour or a feather's overlapping fill and outline need isolation.
+    const next = i + 1;
+    if (isFlatPaint(tool)
+      && (extendsFlatRun(frame.strokes, next, tools)
+        || hasInteriorPaint(tool, stroke.points)
+        || (target.withOpacityGroup && target.globalAlpha === undefined))
+      && (target.withOpacityGroup || (target.canvas && typeof target.drawImage === 'function'))) {
+      let end = next;
+      while (extendsFlatRun(frame.strokes, end, tools)) end++;
+      const draw = (ctx: Canvas2DLike) => renderOpaqueRun(frame.strokes, i, end, tools, ctx, viewport, tint, paths);
+      if (target.withOpacityGroup) {
+        target.withOpacityGroup(tool.opacity / 100, () => draw(target));
+      } else {
+        mask ??= makeMask?.() ?? domScratch(target.canvas.width, target.canvas.height);
+        mask.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        mask.ctx.clearRect(0, 0, target.canvas.width, target.canvas.height);
+        draw(mask.ctx);
+        layLayer(mask.image, target, tool);
+        applyDocTransform(target, viewport);
+      }
+      i = end;
+      continue;
+    }
+
+    const erase = isEraserTool(tool);
+    const { opacity } = opacityOf(tool);
+    if (erase) target.globalCompositeOperation = 'destination-out';
+    if (opacity !== undefined) target.globalAlpha = opacity / 100;
+    drawPlacedStroke(stroke, tool, target, viewport, tint, paths);
+    if (opacity !== undefined) target.globalAlpha = 1;
+    if (erase) target.globalCompositeOperation = 'source-over';
+    i++;
+  }
+}
+
+export function renderOpaqueRun(
+  strokes: Frame['strokes'], start: number, end: number, tools: readonly ToolDescriptor[],
+  target: Canvas2DLike, viewport: Viewport, tint?: string, paths?: PathKeeper<StrokePaths>,
 ): void {
   applyDocTransform(target, viewport);
-  for (const stroke of frame.strokes) {
-    const { place } = stroke as PlacedStroke;
-    if (place) {
-      placeTransform(target, viewport, place);
-    }
-    const tool = resolveTool(tools, stroke);
-    const erase = isEraserTool(tool);
-    if (erase) {
-      target.globalCompositeOperation = 'destination-out';
-    }
-    // A translucent tool paints its stroke in one pass at its alpha: the
-    // line does not darken where it crosses itself, two lines do where they
-    // meet. A ghost's tint changes the colour and leaves the stroke as faint.
-    // ponytail: a feather is two passes, so the inner half of its outline
-    // lies over its fill; a buffer per translucent feather if that shows.
-    const { opacity } = opacityOf(tool);
-    if (opacity !== undefined) {
-      target.globalAlpha = opacity / 100;
-    }
-    drawResolvedStroke(
-      target, stroke.points, tool, erase ? ERASE_PAINT : (tint ?? toolColor(tool)), stroke.pressure, paths,
-    );
-    if (opacity !== undefined) {
-      target.globalAlpha = 1;
-    }
-    if (erase) {
-      target.globalCompositeOperation = 'source-over';
-    }
-    if (place) {
-      applyDocTransform(target, viewport);
-    }
+  for (let i = start; i < end; i++) {
+    drawPlacedStroke(strokes[i], resolveTool(tools, strokes[i]), target, viewport, tint, paths);
   }
+}
+
+function drawPlacedStroke(
+  stroke: PlacedStroke, tool: ToolDescriptor, target: Canvas2DLike, viewport: Viewport,
+  tint?: string, paths?: PathKeeper<StrokePaths>,
+): void {
+  if (stroke.place) placeTransform(target, viewport, stroke.place);
+  drawResolvedStroke(target, stroke.points, tool, tint && !isEraserTool(tool) ? tint : toolColor(tool), stroke.pressure, paths);
+  if (stroke.place) applyDocTransform(target, viewport);
 }
 
 /**
