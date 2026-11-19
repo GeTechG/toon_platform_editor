@@ -40,7 +40,7 @@ describe('thirteenth audit: a hidden layer dims its drawing, not the rings', () 
     // keyboard's outline on a hidden layer were red at 35 % — about 1.6:1 on
     // white, under the 3:1 a focus indicator needs (WCAG 1.4.11, 2.4.7).
     expect(style).not.toMatch(/\.cell\.dim \{[^}]*opacity/);
-    expect(style).toMatch(/\.cell\.dim > :global\(canvas\) \{[^}]*opacity: 0\.35;/);
+    expect(style).toMatch(/\.exposure-clip\.dim \.clip-thumbnail \{[^}]*opacity: 0\.35;/);
   });
 });
 

@@ -154,8 +154,8 @@ describe('the copied marker', () => {
 const timelineUi = await Bun.file(new URL('./Timeline.svelte', import.meta.url)).text();
 
 describe('the studio grid selects by dragging (Toonio parity)', () => {
-  it('a pointer held across cells paints a rectangle of them', () => {
-    expect(timelineUi).toContain('onpointerdown');
+  it('Shift-drag spans a rectangle, while a plain press can carry the clip', () => {
+    expect(timelineUi).toMatch(/if \(e\.shiftKey\) \{\s*lostCell\.reset\(\);\s*dragging = true/);
     expect(timelineUi).toContain('onpointerenter');
     expect(timelineUi).toContain("editor.selectCell(frame, layer, 'range')");
   });

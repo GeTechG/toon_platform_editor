@@ -28,7 +28,7 @@ const READ_ONLY = new Set([
   'cellsFit',
   'nextIsDrawing',
   'drawingsPast',
-  'canStepCells',
+  'exposurePack',
   'sameShape',
   'documentWeight',
   'isEmptyDocument',

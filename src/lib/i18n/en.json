@@ -602,6 +602,10 @@
     "picked_layers": "{{frames}}, layers: {{n}}",
     "seconds": "{{n}} s",
     "end_mark": "End of the toon: {{n}} — drag to change the length",
+    "duration_drag": "Drag the edge to change frame duration",
+    "duration": "Duration",
+    "duration_less": "One frame shorter",
+    "duration_more": "One frame longer",
     "length": "Frames",
     "length_title": "Length of the toon in frames",
     "continuation_tip": "Frame {{n}} shows here — draw, and a new one appears",
@@ -1024,6 +1028,7 @@
     "trackpad": "Two fingers on the trackpad",
     "layer_name": "2×LMB on a layer",
     "strip_zoom": "Ctrl + wheel over the strip",
+    "duration": "LMB on a frame's edge on the strip",
     "film_end": "LMB on the strip's end mark",
     "column_key": "LMB on a frame number, then «+»"
   },
@@ -1038,6 +1043,7 @@
     "trackpad": "Move the sheet",
     "layer_name": "Rename layer",
     "strip_zoom": "Zoom the strip",
+    "duration": "Frame duration",
     "film_end": "Toon length",
     "column_key": "New frame in every layer"
   },

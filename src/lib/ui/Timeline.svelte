@@ -7,7 +7,7 @@
   import { tick, untrack } from 'svelte';
   import type { Frame, Layer } from '../format/types';
   import type { EditorState } from './editor-state.svelte';
-  import { CELL_BOX, cellSize, rowHeight, rowHeightCss } from './thumb-size';
+  import { cellSize, rowHeight, rowHeightCss } from './thumb-size';
   import { fitZoom, numberEvery, scrollToFrame, stripLevel, stripTabStop, stripTail, stripWindow, wheelOnStrip, zoomAnchor, zoomBy, zoomScroll, ZOOM_MAX, ZOOM_MIN } from './strip-window';
   import {
     carryTarget,
@@ -22,6 +22,8 @@
   import LayerThumb from './LayerThumb.svelte';
   import Icon from './Icon.svelte';
   import { createLostRelease, mainUp } from './lost-release';
+  import { snappedDuration, touchDuration, timelineClips, type ClipResize } from './timeline-clips';
+  import { packOffset, type ExposurePack } from '../model/exposure';
   import { keyOf } from '../model/cells';
   import { formatPercent, t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
@@ -35,18 +37,8 @@
   // Raw: a proxy of a cell or a layer would never equal the one it stands for.
   let arrived = $state.raw<{ frames?: ReadonlySet<Frame>; layer?: Layer } | null>(null);
   let counted: { frames: number; layers: number } | null = null;
-  // Where each frame stood at the last layout, by its bottom cell — a move
-  // keeps the cells and renumbers them. A frame that changes place slides
-  // from where it stood instead of jumping there: the neighbours of a carried
-  // frame make way (Procreate Dreams, Krita), and so they do for «Сдвинуть»,
-  // a delete, a duplicate, an undo.
-  let placed = new Map<Frame, number>();
-  let placedPitch = 0;
-  /**
-   * What a column is known by while the strip moves: its first drawing, top
-   * to bottom of the stack. A column of continuations has none — every
-   * continuation is the same null — and is not slid.
-   */
+  let previousDrawings = new Set<Frame>();
+  /** A newly added column takes its arrival cue from its first drawing. */
   function columnKey(i: number): Frame | undefined {
     for (const layer of editor.doc.layers) {
       const cell = layer.frames[i];
@@ -57,53 +49,25 @@
   $effect(() => {
     const now = editor.cellBounds;
     const frames = Array.from({ length: editor.doc.layers[0].frames.length }, (_, i) => columnKey(i));
-    const at = timing;
     const was = counted;
-    const before = placed;
-    const samePitch = pitch === placedPitch;
+    const before = previousDrawings;
     counted = now;
-    placed = new Map(frames.flatMap((cell, i) => (cell ? [[cell, at.start(i) * pitch] as const] : [])));
-    placedPitch = pitch;
+    previousDrawings = new Set(frames.filter((cell): cell is Frame => !!cell));
     if (editor.playing) {
       arrived = null;
       return;
     }
-    if (!was) return;
+    // The carried drawing already has a visible thumbnail. A copy crossing a
+    // tick must stay visible too, even when it grows the film.
+    if (!was || untrack(() => carry !== null)) return;
     if (now.layers === was.layers + 1 && now.frames === was.frames) {
       arrived = { layer: untrack(() => editor.doc.layers[editor.activeLayer]) };
       return;
     }
-    // A stroke rebuilds a cell and moves nothing, and a layer moved under
-    // the others is all new cells in the same count: neither is a move.
+    if (now.frames <= was.frames) return;
     const fresh = frames.filter((cell): cell is Frame => !!cell && !before.has(cell));
-    if (fresh.length > 0 && now.frames <= was.frames) return;
     if (fresh.length > 0) arrived = { frames: new Set(fresh) };
-    if (samePitch) untrack(() => slide(before));
   });
-
-  /** A slide covers a few cells at most: a frame sent across the strip arrives, it does not streak. */
-  const SLIDE_REACH = 4;
-
-  function slide(before: ReadonlyMap<Frame, number>): void {
-    if (!strip || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const look = getComputedStyle(strip);
-    const duration = parseFloat(look.getPropertyValue('--dur')) * 1000 || 150;
-    const easing = look.getPropertyValue('--ease-out').trim() || 'ease-out';
-    for (const i of built) {
-      // The carried block is under the hand: it is where the hand is.
-      if (carry && i >= carry.at && i < carry.at + carry.count) continue;
-      const key = columnKey(i);
-      const was = key && before.get(key);
-      if (was === undefined) continue;
-      const dx = was - timing.start(i) * pitch;
-      if (dx === 0) continue;
-      const from = Math.sign(dx) * Math.min(Math.abs(dx), SLIDE_REACH * pitch);
-      for (const el of strip.querySelectorAll(`[data-frame="${i}"], [data-col="${i}"]`)) {
-        for (const running of el.getAnimations()) if (running.id === 'slide') running.cancel();
-        el.animate([{ translate: `${from}px 0` }, { translate: '0 0' }], { duration, easing, id: 'slide' });
-      }
-    }
-  }
 
   let strip = $state<HTMLDivElement | undefined>();
   /**
@@ -114,6 +78,10 @@
    */
   function wheelAlong(e: WheelEvent): void {
     if (!strip) return;
+    if (grip) {
+      e.preventDefault();
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       if (!strip.contains(e.target as Node)) return;
       e.preventDefault();
@@ -132,7 +100,7 @@
    * when none) staying under it. Kept on the device (`timelineZoom`).
    */
   function zoomAt(width: number, clientX?: number, at?: number): void {
-    if (!strip) return;
+    if (!strip || grip || carry) return;
     const to = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, width));
     if (Math.abs(to - cellW) < 0.01) return;
     const box = strip.getBoundingClientRect();
@@ -160,7 +128,7 @@
   const zoomStep = (direction: 1 | -1) => zoomKeep(zoomBy(cellW, -direction * 150));
   /** The whole film, the end mark clear of the group over the numbers, from its start. */
   function zoomFit(): void {
-    if (!strip) return;
+    if (!strip || grip) return;
     const to = fitZoom(strip.clientWidth, timing.total, END_MARK + (zoomGroupW ? zoomGroupW + ZOOM_INSET + 4 : 0));
     editor.setSetting('timelineZoom', Math.abs(to - thumbWidth) < 0.01 ? 0 : to);
     void tick().then(() => {
@@ -185,6 +153,9 @@
     if (e.pointerType !== 'touch') return;
     fingers.set(e.pointerId, e.clientX);
     if (fingers.size === 2) {
+      touchPan = null;
+      cancelCarry();
+      endGrip();
       const [a, b] = [...fingers.values()];
       pinch = { spread: Math.max(8, Math.abs(a - b)), width: cellW };
       cancelLongPress();
@@ -286,7 +257,8 @@
     seenAt = { frame: index, opens, width, view, sets };
     if (editor.playing || !strip || lengthOnly) return;
     untrack(() => {
-      if (!strip) return;
+      // Selecting a partially visible handle must leave its tick under the pointer.
+      if (!strip || grip || touchPan || held || carry) return;
       stripScroll = strip.scrollLeft;
       // Where the frame sits is arithmetic: its cell may not be built.
       // The row's padding is the gap, so the last frame comes in ring and all.
@@ -395,6 +367,10 @@
     return editor.selection.frames.includes(frame) && editor.selection.layers.includes(layer);
   }
 
+  function inSelectedClip(frame: number, layer: number): boolean {
+    return editor.selectedPack.rows.some(row => row.layer === layer && frame >= row.start && frame < row.end);
+  }
+
   function onCellClick(e: MouseEvent, frame: number, layer: number): void {
     // The long press that opened the menu ends in a click: it must not
     // collapse the block the menu is about to act on.
@@ -463,25 +439,22 @@
     }
     // The right button is the frame menu's: it must not collapse the block,
     // and while picking a press is a tap that spans it.
-    if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0 || e.shiftKey) {
+    if (picking || e.pointerType === 'touch' || !e.isPrimary || e.button !== 0) {
       return;
     }
-    // A selected cell is a handle, as in Krita: it carries its frames, and
-    // with Ctrl it carries copies. A press elsewhere still spans a block, as
-    // the reference does; Ctrl there toggles a layer on the click.
+    if (e.shiftKey) {
+      lostCell.reset();
+      dragging = true;
+      editor.selectCell(frame, layer, 'range');
+      return;
+    }
     const copy = e.ctrlKey || e.metaKey;
-    if (isSelected(frame, layer)) {
-      startCarry(e, frame, copy, true);
-      return;
+    if (copy && !isSelected(frame, layer)) return;
+    if (!copy && !inSelectedClip(frame, layer)) {
+      editor.selectCell(frame, layer);
+      if (!isSelected(frame, layer)) return;
     }
-    if (copy) {
-      return;
-    }
-    lostCell.reset();
-    dragging = true;
-    // The anchor is the cell pressed: `selectCell` moves the active cell
-    // there, and every later 'range' spans from it.
-    editor.selectCell(frame, layer);
+    startCarry(e, frame, copy, true);
   }
 
   function onCellEnter(e: PointerEvent, frame: number, layer: number): void {
@@ -504,19 +477,43 @@
 
   function onWindowUp(e: PointerEvent): void {
     onPinchUp(e);
+    if (touchPan?.pointerId === e.pointerId) {
+      cancelLongPress();
+      touchPan = null;
+    }
     endCellDrag();
+    if (e.type === 'pointercancel' && carry?.pointerId === e.pointerId) cancelCarry();
     endCarry(e);
+    if (grip && e.pointerId === grip.pointerId) {
+      if (e.type === 'pointerup') placeGrip(e.clientX);
+      endGrip(e.type === 'pointerup');
+    }
     endMark(e);
   }
 
   /** The window lost: no release will come — the end mark goes back. */
   function onWindowBlur(): void {
+    cancelLongPress();
+    touchPan = null;
+    held = null;
+    fingers.clear();
+    pinch = null;
+    cancelCarry();
     closeMenu();
+    endGrip();
     endMark(undefined, true);
   }
 
   function onWindowMove(e: PointerEvent): void {
-    if (onPinchMove(e)) return;
+    if (onPinchMove(e) || panBeforeHold(e)) return;
+    if (grip && e.pointerId === grip.pointerId) {
+      if (lostGrip(e, mainUp)) endGrip();
+      else {
+        placeGrip(e.clientX);
+        if (!grip.relative) markEdge(e.clientX);
+      }
+      return;
+    }
     onCarryMove(e);
     onMarkMove(e);
   }
@@ -575,7 +572,7 @@
   /** A right press on a frame's number: the column's menu. */
   function openColumnMenu(e: MouseEvent, frame: number): void {
     e.preventDefault();
-    if (menu) return;
+    if (menu || fingers.size) return;
     const el = e.currentTarget as HTMLElement;
     const box = el.getBoundingClientRect();
     const keyed = e.button !== 2 || (!e.clientX && !e.clientY);
@@ -584,8 +581,9 @@
 
   function openMenu(e: MouseEvent, frame: number, layer: number): void {
     e.preventDefault();
-    // Android long-presses into a contextmenu too: the menu is already up.
-    if (menu) {
+    // A touch can send contextmenu before the hold timer. The timer opens
+    // the menu and arms the drag together.
+    if (menu || fingers.size) {
       return;
     }
     const cell = e.currentTarget as HTMLElement;
@@ -605,10 +603,31 @@
   // --- The frame menu under a finger ----------------------------------------
   // In «Toonop» delete, copy, paste and merge live only in this menu, and iOS
   // sends no contextmenu for a held finger — so a long press opens it. A move
-  // is a scroll (the browser cancels the pointer), a lift is a tap.
+  // before the hold scrolls the strip, a lift is a tap.
   const LONG_PRESS_MS = 500;
   let longPress = 0;
   let longPressed = false;
+  // The browser chooses touch-action at pointerdown. On clip hit targets
+  // we therefore resolve swipe versus hold ourselves, for this same finger.
+  let touchPan: { pointerId: number; x: number; y: number; left: number; top: number; moving: boolean } | null = null;
+
+  function panBeforeHold(e: PointerEvent): boolean {
+    const pan = touchPan;
+    if (!strip || !pan || pan.pointerId !== e.pointerId) return false;
+    const dx = e.clientX - pan.x;
+    const dy = e.clientY - pan.y;
+    if (!pan.moving) {
+      if (Math.hypot(dx, dy) < CARRY_SLOP) return true;
+      cancelLongPress();
+      pan.moving = true;
+      strip.setPointerCapture(e.pointerId);
+      carried = true;
+    }
+    strip.scrollLeft = pan.left - dx;
+    strip.scrollTop = pan.top - dy;
+    return true;
+  }
+
   // A held finger when the strip goes (the layout steps down to the phone's)
   // would open a menu over a strip that is not there.
   $effect(() => cancelLongPress);
@@ -618,14 +637,20 @@
     const cell = e.currentTarget as HTMLElement;
     const at = { x: e.clientX, y: e.clientY, above: e.clientY };
     const { pointerId, pointerType } = e;
+    if (pointerType === 'touch' && strip) {
+      touchPan = { pointerId, x: at.x, y: at.y, left: strip.scrollLeft, top: strip.scrollTop, moving: false };
+    }
     longPress = window.setTimeout(() => {
       longPress = 0;
       if (menu || editor.playing) return;
+      if (pointerType === 'touch') {
+        if (!strip || !fingers.has(pointerId)) return;
+        touchPan = null;
+        held = { pointerId, x: at.x, y: at.y, frame, startX: at.x, cells };
+        strip.setPointerCapture(pointerId);
+      }
       longPressed = true;
       showMenu(cell, frame, layer, at, true, !cells);
-      // Procreate Dreams' hold: the finger that opened the menu and moves on
-      // without lifting picks the frame up instead.
-      if (pointerType === 'touch') held = { pointerId, x: at.x, y: at.y, frame, startX: at.x, cells };
     }, LONG_PRESS_MS);
   }
 
@@ -654,6 +679,10 @@
     count: number;
     /** Which frame of the block the pointer took it by. */
     grab: number;
+    pack: ExposurePack | null;
+    startX: number;
+    startScroll: number;
+    lifted: boolean;
     /** Ctrl: the carry puts copies down, and whether it has put them yet. */
     copy: boolean;
     copied: boolean;
@@ -668,7 +697,8 @@
 
   function startCarry(e: { pointerId: number; clientX: number }, frame: number, copy = false, cells = false): void {
     if (editor.playing || carry || !strip) return;
-    const { from, count } = framesToCarry(editor.selection, frame);
+    const pack = cells && !copy ? editor.selectedPack : null;
+    const { from, count } = pack ?? framesToCarry(editor.selection, frame);
     lostCarry.reset();
     carry = {
       pointerId: e.pointerId,
@@ -677,11 +707,16 @@
       at: from,
       count,
       grab: frame - from,
+      pack,
+      startX: e.clientX,
+      startScroll: strip.scrollLeft,
+      lifted: false,
       copy,
       copied: false,
       cells,
     };
     carried = false;
+    arrived = null;
     editor.beginGesture();
     // The studio's keys wait, as they do for a layer drag: Z mid-carry
     // changed the strip the carry counts in.
@@ -700,12 +735,13 @@
   function onNumDown(e: PointerEvent, frame: number): void {
     longPressed = false;
     carried = false;
-    if (editor.playing || !e.isPrimary || e.button !== 0) return;
+    if (!e.isPrimary || e.button !== 0) return;
     if (e.pointerType === 'touch') {
-      if (!columnHeld(frame)) editor.selectColumn(frame);
+      if (!editor.playing && !columnHeld(frame)) editor.selectColumn(frame);
       startLongPress(e, frame, editor.activeLayer, false);
       return;
     }
+    if (editor.playing) return;
     e.preventDefault();
     // Shift spans the frames from the active one, on the click.
     if (e.shiftKey) return;
@@ -744,6 +780,12 @@
     if (lostCarry(e, mainUp)) {
       endCarry(e);
       return;
+    }
+    if (carry.pack && !carry.lifted) {
+      if (Math.abs(e.clientX - carry.startX) < 3) return;
+      carry.lifted = true;
+      carried = true;
+      cancelLongPress();
     }
     carry.lastX = e.clientX;
     carryEdge(e.clientX);
@@ -804,7 +846,10 @@
   /** A carry of cells: the block goes where the pointer is, along its own layers only. */
   function stepCellCarry(): void {
     if (!carry) return;
-    const want = Math.max(0, pointedTick(carry.lastX) - carry.grab);
+    const pointed = pointedTick(carry.lastX) - carry.grab;
+    const want = carry.pack
+      ? carry.from + packOffset(carry.pack, pointed - carry.from)
+      : Math.max(0, pointed);
     // Asked before the place is compared: a copy snapped onto the place it left stands there too.
     if (carry.copy && carry.copied && want === carry.from) {
       // Back where it began: no copy stays (Krita drops a frame onto itself).
@@ -814,10 +859,15 @@
       return;
     }
     if (want === carry.at) return;
+    if (carry.pack && want === carry.from) {
+      editor.withdrawGesture();
+      carry.at = want;
+      return;
+    }
     // Laid again from where the drag began, every step: no step leaves anything behind.
-    const landed = carry.copy
-      ? editor.copyCellsInLayer(carry.from, carry.count, want, true)
-      : editor.moveCellsInLayer(carry.from, carry.count, want, true);
+    const landed = carry.pack
+      ? editor.moveCellsInLayer(carry.pack, want - carry.from, true)
+      : editor.copyCellsInLayer(carry.from, carry.count, want, true);
     if (landed === null) return;
     // A copy put down is the carry's even where it lands on the place it left.
     carry.copied = carry.copy;
@@ -827,6 +877,29 @@
     cancelLongPress();
     if (menu) closeMenu();
   }
+
+  // The document snaps at clip boundaries. Between them, the lifted artwork
+  // tracks the hand while each transparent hit target stays on its own tick.
+  const lifting = $derived(!!carry?.pack && carry.lifted);
+  const liftTravel = $derived.by(() => {
+    if (!carry?.pack || !carry.lifted) return 0;
+    const { offsets } = carry.pack;
+    const travel = carry.lastX - carry.startX + stripScroll - carry.startScroll;
+    const distance = Math.max(offsets[0] * pitch, Math.min(offsets[offsets.length - 1] * pitch, travel));
+    return distance - (carry.at - carry.from) * pitch;
+  });
+
+  function liftedSpan(layer: number) {
+    if (!carry?.pack || !carry.lifted) return;
+    const row = carry.pack.rows.find(row => row.layer === layer);
+    if (!row) return;
+    const by = carry.at - carry.from;
+    return { start: row.start + by, end: row.end + by };
+  }
+
+  let dropping = $state(false);
+  let dropTimer: ReturnType<typeof setTimeout>;
+  $effect(() => () => clearTimeout(dropTimer));
 
   function carryEdge(clientX: number): void {
     if (!strip) return;
@@ -854,6 +927,11 @@
     if (held && (!e || e.pointerId === held.pointerId)) held = null;
     if (!carry || (e && e.pointerId !== carry.pointerId)) return;
     stopCarryScroll();
+    if (carry.lifted) {
+      dropping = true;
+      clearTimeout(dropTimer);
+      dropTimer = setTimeout(() => { dropping = false; }, 160);
+    }
     carry = null;
     editor.gestureHeld = false;
   }
@@ -875,11 +953,75 @@
   }
 
   function onCarryKey(e: KeyboardEvent): void {
-    if (e.key !== 'Escape' || !(carry || mark)) return;
+    if (e.key !== 'Escape' || !(carry || grip || mark)) return;
     e.preventDefault();
     e.stopPropagation();
     cancelCarry();
+    endGrip();
     endMark(undefined, true);
+  }
+
+  // Preview the new span under the pointer. Only a release writes the document,
+  // so Escape and a cancelled touch also preserve the existing redo history.
+  let grip = $state.raw<{
+    pointerId: number; origin: number; pitch: number; relative: boolean; frame: number; layer: number;
+    doc: EditorState['doc']; range: EditorState['activeExposure'];
+  } | null>(null);
+  let gripDuration = $state(1);
+  const previewTicks = $derived(grip
+    ? frameTotal + Math.max(0, gripDuration - grip.range.duration - grip.range.spare)
+    : frameTotal);
+  let settlingLayer = $state<number | null>(null);
+  let settleTimer: ReturnType<typeof setTimeout>;
+  $effect(() => () => clearTimeout(settleTimer));
+  let gripX = 0;
+  const lostGrip = createLostRelease();
+
+  function onGripDown(e: PointerEvent, frame: number, layer: number): void {
+    if (!strip || editor.gestureHeld || pinch || picking || editor.playing || editor.layerLocked(layer)
+      || !e.isPrimary || e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    e.stopPropagation();
+    e.preventDefault();
+    closeMenu();
+    editor.selectCell(frame, layer);
+    if (editor.activeFrame !== frame || editor.activeLayer !== layer) return;
+    const range = editor.activeExposure;
+    // Touch resizing measures only the finger's movement.
+    // On a narrow strip, resting near its edge used to keep resizing the clip.
+    const relative = e.pointerType === 'touch';
+    const origin = e.clientX + (relative ? 0 : strip.scrollLeft);
+    grip = { pointerId: e.pointerId, origin, pitch, relative, frame, layer, doc: editor.doc, range };
+    gripDuration = range.duration;
+    settlingLayer = null;
+    gripX = e.clientX;
+    lostGrip.reset();
+    strip.setPointerCapture(e.pointerId);
+    editor.gestureHeld = true;
+  }
+
+  function placeGrip(clientX: number): void {
+    if (!grip || !strip) return;
+    gripX = clientX;
+    const { duration, maxDuration } = grip.range;
+    gripDuration = grip.relative
+      ? touchDuration(duration, maxDuration, clientX - grip.origin, grip.pitch, gripDuration)
+      : snappedDuration(duration, maxDuration, clientX + strip.scrollLeft - grip.origin, grip.pitch);
+  }
+
+  function endGrip(commit = false): void {
+    if (!grip) return;
+    const target = grip;
+    settlingLayer = target.layer;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { settlingLayer = null; }, 200);
+    grip = null;
+    stopMarkScroll();
+    if (strip?.hasPointerCapture(target.pointerId)) strip.releasePointerCapture(target.pointerId);
+    editor.gestureHeld = false;
+    carried = true;
+    if (commit && editor.doc === target.doc && editor.activeLayer === target.layer && editor.activeFrame === target.frame) {
+      editor.setExposureDuration(gripDuration);
+    }
   }
 
   /** Whether cell `i` of the layer is the last of its drawing's time: its band ends there. */
@@ -896,7 +1038,7 @@
   const lostMark = createLostRelease();
 
   function onMarkDown(e: PointerEvent): void {
-    if (editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
+    if (grip || editor.playing || !e.isPrimary || (e.pointerType !== 'touch' && e.button !== 0)) return;
     e.stopPropagation();
     e.preventDefault();
     lostMark.reset();
@@ -949,7 +1091,7 @@
   function markEdge(clientX: number): void {
     if (!strip) return;
     const box = strip.getBoundingClientRect();
-    const right = box.right - (zoomGroupW ? zoomGroupW + stripBar + ZOOM_INSET : 0);
+    const right = box.right - (!grip && zoomGroupW ? zoomGroupW + stripBar + ZOOM_INSET : 0);
     const direction: -1 | 0 | 1 =
       clientX - box.left < CARRY_EDGE ? -1 : right - clientX < CARRY_EDGE ? 1 : 0;
     if (direction === markDirection) return;
@@ -958,7 +1100,8 @@
     markDirection = direction;
     markScroll = window.setInterval(() => {
       strip?.scrollBy({ left: direction * Math.max(pitch * 2, 16) });
-      placeMark();
+      if (grip) placeGrip(gripX);
+      else placeMark();
     }, 50);
   }
 
@@ -983,19 +1126,21 @@
   }
 
   /** Where the end mark stands: the film's end, or where the hand has it. */
-  const markAt = (): number => (mark?.to ?? frameTotal) * pitch + GRID_GAP - gap / 2;
+  const markAt = (): number => (mark?.to ?? previewTicks) * pitch + GRID_GAP - gap / 2;
 
-  // The finger that holds or carries must not scroll the strip under it. The
-  // strip pans by touch, and only a cancelled touchmove stops a pan that the
-  // browser has not begun yet — pointer events have no say in it.
+  // Native pan is available in the gaps. A pinch or an editing gesture owns
+  // the strip until its fingers lift.
   $effect(() => {
+    const grid = strip;
+    if (!grid) return;
     const still = (e: TouchEvent) => {
-      if (held || carry || pinch || mark) e.preventDefault();
+      if (e.cancelable && (held || carry || pinch || grip || mark)) e.preventDefault();
     };
-    document.addEventListener('touchmove', still, { passive: false });
+    grid.addEventListener('touchmove', still, { passive: false, capture: true });
     return () => {
-      document.removeEventListener('touchmove', still);
+      grid.removeEventListener('touchmove', still, true);
       stopCarryScroll();
+      endGrip();
       if (carry) editor.gestureHeld = false;
     };
   });
@@ -1017,7 +1162,7 @@
     // A press inside the block keeps it: the menu acts on what is selected.
     if (column) {
       if (!columnHeld(frame)) editor.selectColumn(frame);
-    } else if (!isSelected(frame, layer)) {
+    } else if (!isSelected(frame, layer) && !(finger && spanned && inSelectedClip(frame, layer))) {
       editor.selectCell(frame, layer);
     }
     menu = { x: at.x, y: at.y, cell, scroll: null, column };
@@ -1029,7 +1174,7 @@
       // it opens above the fingertip (below, if there is no room): opened
       // under it, the lift clicked the item it landed on.
       menu.y = frameMenuTop(at, menuEl.offsetHeight, innerHeight, finger ? FINGER_GAP : 0);
-      menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
+      menuEl.querySelector<HTMLElement>('button:not(:disabled)')?.focus({ preventScroll: finger });
       if (strip) menu.scroll = { left: strip.scrollLeft, top: strip.scrollTop };
     });
   }
@@ -1133,6 +1278,9 @@
   const view = $derived(stripWindow(frameTotal, cellW, gap, stripScroll, stripWidth, timing));
   // Numbers, so a scroll that keeps the window's edges rebuilds no list:
   // every scroll event made a new `view`, and every row diffed its cells.
+  const clipView = $derived(grip
+    ? stripWindow(previewTicks, cellW, gap, stripScroll, stripWidth)
+    : view);
   const firstBuilt = $derived(view.first);
   const countBuilt = $derived(view.count);
   const built = $derived(Array.from({ length: countBuilt }, (_, k) => firstBuilt + k));
@@ -1160,7 +1308,7 @@
   // drag lasts, so a step back left does not shrink the row under the scroll
   // and throw the strip back (owner, 2026-11-17).
   const stripExtent = $derived(
-    Math.max(timing.total, mark?.reach ?? heldReach) * pitch + GRID_GAP + END_ROOM + (zoomGroupW ? zoomGroupW + ZOOM_INSET : 0),
+    Math.max(timing.total, mark?.reach ?? heldReach, previewTicks) * pitch + GRID_GAP + END_ROOM + (zoomGroupW ? zoomGroupW + ZOOM_INSET : 0),
   );
   /** The row the film alone needs, past which a held reach is only slack. */
   const filmExtent = $derived(timing.total * pitch + GRID_GAP + END_ROOM + (zoomGroupW ? zoomGroupW + ZOOM_INSET : 0));
@@ -1266,6 +1414,24 @@
     return own === null ? 'continued' : own.strokes.length > 0 ? 'drawing' : 'blank';
   }
 
+  function previewResize(layer: number): ClipResize | undefined {
+    return grip?.layer === layer
+      ? { start: grip.range.start, duration: grip.range.duration, to: gripDuration }
+      : undefined;
+  }
+
+  // All previews are absolutely positioned. Give them a stable DOM order:
+  // re-inserting a keyed node during a swap cancels its CSS transition.
+  const paintOrder = new WeakMap<Frame, number>();
+  let nextOrder = 0;
+  function clipPreviews(frames: readonly (Frame | null)[], first: number, end: number, resize?: ClipResize) {
+    const clips = timelineClips(frames, first, end, resize);
+    for (const { frame } of clips) {
+      if (frame && !paintOrder.has(frame)) paintOrder.set(frame, nextOrder++);
+    }
+    return clips.sort((a, b) => (a.frame ? paintOrder.get(a.frame)! : -1) - (b.frame ? paintOrder.get(b.frame)! : -1));
+  }
+
   interface Bands {
     /** The document the frames are of: a new one is a reason to paint again. */
     doc: unknown;
@@ -1276,6 +1442,9 @@
     height: number;
     now: number;
     selected: readonly number[];
+    resize?: ClipResize;
+    lifted?: { start: number; end: number };
+    tone: string;
   }
 
   /**
@@ -1284,7 +1453,12 @@
    * colours are the studio's own, read off the strip.
    */
   function drawBands(canvas: HTMLCanvasElement, bands: Bands) {
+    const motion = matchMedia('(prefers-reduced-motion: no-preference)');
+    let positions = new Map<Frame, number>();
+    let wasLifted = false;
+    let raf = 0;
     const paint = (b: Bands) => {
+      cancelAnimationFrame(raf);
       const ratio = devicePixelRatio || 1;
       const width = Math.max(1, Math.round(b.count * b.pitch));
       canvas.width = Math.round(width * ratio);
@@ -1295,48 +1469,58 @@
       const ink = look.getPropertyValue('--ink-2').trim() || '#555';
       const accent = look.getPropertyValue('--accent').trim() || '#d22';
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.clearRect(0, 0, width, b.height);
-      const top = b.height * 0.25;
-      const tall = b.height * 0.5;
-      const picked = new Set(b.selected);
-      ctx.fillStyle = accent;
-      ctx.globalAlpha = 0.14;
-      for (const i of picked) {
-        if (i >= b.first && i < b.first + b.count) ctx.fillRect((i - b.first) * b.pitch, 0, b.pitch, b.height);
-      }
-      ctx.globalAlpha = 1;
-      const end = Math.min(b.frames.length, b.first + b.count);
-      for (let i = b.first; i < end;) {
-        const key = keyOf(b.frames as (Frame | null)[], i);
-        let stop = i + 1;
-        while (stop < end && b.frames[stop] === null) stop++;
-        const x = (i - b.first) * b.pitch;
-        const w = Math.max(1, (stop - i) * b.pitch - 1);
-        const drawing = b.frames[key];
-        if (drawing && drawing.strokes.length > 0) {
-          ctx.fillStyle = ink;
-          ctx.globalAlpha = 0.6;
+      const tall = b.height - 4;
+      const tone = look.getPropertyValue(b.tone).trim() || ink;
+      const easing = motion.matches && (b.lifted || wasLifted);
+      wasLifted = !!b.lifted;
+      const spans = timelineClips(b.frames, b.first, b.first + b.count, b.resize).map(clip => {
+        const held = !!b.lifted && clip.key >= b.lifted.start && clip.key < b.lifted.end;
+        const from = easing && !held && clip.frame ? positions.get(clip.frame) ?? clip.start : clip.start;
+        return { clip, held, from };
+      });
+      // Paint the raised clip last as its neighbors pass underneath.
+      if (b.lifted) spans.sort((a, b) => Number(a.held) - Number(b.held));
+      positions = new Map();
+      const moving = spans.some(({ from, clip }) => from !== clip.start);
+      const start = performance.now();
+      const cssTime = look.getPropertyValue('--dur-fast').trim();
+      const duration = parseFloat(cssTime) * (cssTime.endsWith('ms') ? 1 : 1000);
+      const draw = (now: number) => {
+        const progress = moving && duration > 0 ? Math.min(1, Math.max(0, now - start) / duration) : 1;
+        const remaining = (1 - progress) ** 3;
+        ctx.clearRect(0, 0, width, b.height);
+        for (const { clip, held, from } of spans) {
+          const pos = clip.start + (from - clip.start) * remaining;
+          if (clip.frame) positions.set(clip.frame, pos);
+          const top = held ? 0 : 2;
+          const x = (pos - b.first) * b.pitch;
+          const w = Math.max(1, (clip.end - clip.start) * b.pitch - 1);
+          if (held) ctx.clearRect(x, top, w, tall);
+          ctx.fillStyle = tone;
+          ctx.globalAlpha = clip.frame?.strokes.length ? 0.22 : 0.08;
           ctx.fillRect(x, top, w, tall);
           ctx.globalAlpha = 1;
-          // The drawing's own tick is darker: where it begins reads at a glance.
-          if (b.frames[i] !== null) {
-            ctx.fillRect(x, top, Math.min(w, Math.max(1, b.pitch - 1)), tall);
-          }
-        } else {
-          ctx.strokeStyle = ink;
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = held ? accent : ink;
           ctx.strokeRect(x + 0.5, top + 0.5, Math.max(0, w - 1), tall - 1);
+          if (clip.frame?.strokes.length) ctx.fillRect(x + 1, top + 1, Math.min(w - 1, b.pitch - 1), tall - 2);
         }
-        i = stop;
-      }
-      if (b.now >= b.first && b.now < b.first + b.count) {
         ctx.fillStyle = accent;
-        ctx.fillRect((b.now - b.first) * b.pitch, 0, Math.max(1, b.pitch), 2);
-        ctx.fillRect((b.now - b.first) * b.pitch, b.height - 2, Math.max(1, b.pitch), 2);
-      }
+        ctx.globalAlpha = 0.14;
+        for (const i of b.selected) {
+          if (i >= b.first && i < b.first + b.count) ctx.fillRect((i - b.first) * b.pitch, 0, b.pitch, b.height);
+        }
+        ctx.globalAlpha = 1;
+        if (b.now >= b.first && b.now < b.first + b.count) {
+          ctx.fillStyle = accent;
+          ctx.fillRect((b.now - b.first) * b.pitch, 0, Math.max(1, b.pitch), 2);
+          ctx.fillRect((b.now - b.first) * b.pitch, b.height - 2, Math.max(1, b.pitch), 2);
+        }
+        if (progress < 1) raf = requestAnimationFrame(draw);
+      };
+      draw(start);
     };
     paint(bands);
-    return { update: paint };
+    return { update: paint, destroy: () => cancelAnimationFrame(raf) };
   }
 </script>
 
@@ -1366,6 +1550,17 @@
   {/if}
 {/snippet}
 
+
+{#snippet durationGrip(frame: number, layer: number, bandEdge?: number)}
+  {#if !editor.playing && !editor.layerLocked(layer) && !picking}
+    <!-- The menu offers the same change by keyboard or tap. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span class="grip" class:band-grip={bandEdge !== undefined}
+      style:left={bandEdge === undefined ? undefined : `${bandEdge}px`}
+      aria-hidden="true" title={t('timeline.duration_drag')}
+      onpointerdown={(e) => onGripDown(e, frame, layer)}></span>
+  {/if}
+{/snippet}
 
 <!-- The release may land anywhere — outside the grid, outside the window —
      so the drag always ends on the window rather than on a cell. -->
@@ -1450,6 +1645,8 @@
     <div
       class="grid"
       class:carrying={carry !== null}
+      class:dropping={dropping && !carry}
+      style:--carry-travel="{liftTravel}px"
       class:copying={carry?.copy === true}
       role="group"
       aria-label={t('timeline.grid')}
@@ -1472,13 +1669,12 @@
           <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
           <span
             class="num"
-            class:lifted={carried && carry !== null && !carry.cells && i >= carry.at && i < carry.at + carry.count}
             data-col={i}
             style:width="{spanWidth(i)}px"
             class:onion={onionFrames.includes(i)}
             class:copied={editor.isCopiedFrame(i)}
             class:now={i === editor.displayedFrame}
-            class:picked={editor.selection.frames.includes(i)}
+            class:picked={!lifting && editor.selection.frames.includes(i)}
             onpointerdown={(e) => onNumDown(e, i)}
             onclick={(e) => onNumClick(e, i)}
             oncontextmenu={(e) => openColumnMenu(e, i)}
@@ -1503,9 +1699,16 @@
         ></span>
       </div>
       {#each rows as layerIndex (editor.doc.layers[layerIndex])}
-        <div class="cells" style:height={rowHeightCss(editor.doc)} class:current={layerIndex === editor.activeLayer} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
-          {#if view.before > 0}
-            <span class="gap" style:width="{view.before}px" aria-hidden="true"></span>
+        {@const resize = previewResize(layerIndex)}
+        {@const lifted = liftedSpan(layerIndex)}
+        {@const visible = resize ? clipView : view}
+        {@const slots = level === 'bands' ? visible : view}
+        {@const tone = `--layer-tag-${editor.layerColor(layerIndex)}`}
+        <div class="cells" style:height={rowHeightCss(editor.doc)} class:resizing={!!resize} class:lifting={!!lifted}
+          class:settling={!carry && (layerIndex === settlingLayer || (!!menu && !menu.column && layerIndex === editor.activeLayer))}
+          style:--clip-tone={`var(${tone})`} class:current={layerIndex === editor.activeLayer} class:arrived={arrived?.layer === editor.doc.layers[layerIndex]}>
+          {#if slots.before > 0}
+            <span class="gap" style:width="{slots.before}px" aria-hidden="true"></span>
           {/if}
           {#if level === 'bands'}
             <!-- A long film at a glance: each drawing a band as long as it
@@ -1516,9 +1719,9 @@
             <canvas
               class="bands"
               class:dim={editor.doc.layers[layerIndex].hidden}
-              style:width="{countBuilt * pitch}px"
+              style:width="{visible.count * pitch}px"
               style:height="{cell.h + 2}px"
-              use:drawBands={{ frames: editor.doc.layers[layerIndex].frames, doc: editor.doc, first: firstBuilt, count: countBuilt, pitch, height: cell.h + 2, now: editor.displayedFrame, selected: editor.selection.layers.includes(layerIndex) ? editor.selection.frames : [] }}
+              use:drawBands={{ frames: editor.doc.layers[layerIndex].frames, doc: editor.doc, first: visible.first, count: visible.count, pitch, height: cell.h + 2, now: editor.displayedFrame, resize, tone, lifted, selected: !lifting && editor.selection.layers.includes(layerIndex) ? editor.selection.frames : [] }}
               onpointerdown={(e) => onCellDown(e, tickOf(e), layerIndex)}
               onpointermove={(e) => onBandHover(e, layerIndex)}
               onclick={(e) => onCellClick(e, tickOf(e), layerIndex)}
@@ -1550,26 +1753,56 @@
                 aria-label={cellLabel(layerIndex, tabFrame)}
               ></button>
             {/if}
+            {#if layerIndex === editor.activeLayer}
+              {@const range = editor.activeExposure}
+              {@const end = range.start + range.duration}
+              {#if end > firstBuilt && end <= firstBuilt + countBuilt}
+                {#if !resize}
+                  {@render durationGrip(end - 1, layerIndex, GRID_GAP + end * pitch)}
+                {/if}
+              {/if}
+            {/if}
+            {#if resize}
+              <span class="duration-preview overview-duration" aria-hidden="true"
+                style:left="{GRID_GAP + (resize.start + resize.to) * pitch}px">{gripDuration}</span>
+            {/if}
           {:else}
+          {#each clipPreviews(editor.doc.layers[layerIndex].frames, visible.first, visible.first + visible.count, resize) as clip (clip.frame ?? clip.key)}
+            {@const editing = resize?.start === clip.key}
+            <div class="exposure-clip" class:editing class:lifted={lifted && clip.key >= lifted.start && clip.key < lifted.end} data-clip={clip.key}
+              class:arrived={clip.frame !== null && !!arrived?.frames?.has(clip.frame)}
+              class:dim={editor.doc.layers[layerIndex].hidden}
+              aria-hidden="true"
+              style:transform={`translateX(calc(${GRID_GAP + clip.start * pitch}px + var(--clip-travel)))`} style:width="{(clip.end - clip.start) * pitch - gap}px"
+              style:height="{cell.h + 2}px">
+              <span class="clip-thumbnail" style:width="{cellW}px">
+                {#if clip.frame?.strokes.length}
+                  <LayerThumb doc={editor.doc} {layerIndex} frameIndex={clip.key}
+                    maxW={cellW} maxH={cell.h + 2} />
+                {:else}
+                  <span class="ring"></span>
+                {/if}
+              </span>
+              {#if editing}
+                <span class="duration-preview">{gripDuration}</span>
+              {/if}
+            </div>
+          {/each}
           {#each built as i (i)}
             {@const kind = kindOf(layerIndex, i)}
             <button
-              class="cell"
+              class="cell clip-hit"
               style:width="{spanWidth(i)}px"
               style:height="{cell.h + 2}px"
               class:active={i === editor.displayedFrame && layerIndex === editor.activeLayer}
               class:now={i === editor.displayedFrame}
               class:continued={kind === 'continued'}
               class:blank={kind === 'blank'}
-              class:held={kind !== 'continued' && !endsDrawing(layerIndex, i)}
-              class:closes={kind === 'continued' && endsDrawing(layerIndex, i)}
               class:marks={level === 'marks'}
               class:selected={isSelected(i, layerIndex)}
               class:copied={editor.isCopiedCell(i, layerIndex)}
               class:dim={editor.doc.layers[layerIndex].hidden}
               class:arrived={arrived?.frames?.has(columnKey(i) as Frame) ?? false}
-              class:lifted={carried && carry !== null && i >= carry.at && i < carry.at + carry.count
-                && (!carry.cells || editor.selection.layers.includes(layerIndex))}
               data-frame={i}
               tabindex={i === tabFrame && layerIndex === editor.activeLayer ? 0 : -1}
               aria-disabled={editor.playing}
@@ -1588,26 +1821,14 @@
               title={t('timeline.cell', { frame: i + 1, layer: editor.layerLabel(layerIndex) })}
               aria-label={cellLabel(layerIndex, i)}
             >
-              {#if kind === 'drawing'}
-                {#if level === 'thumbs'}
-                  <LayerThumb
-                    doc={editor.doc}
-                    {layerIndex}
-                    frameIndex={i}
-                    maxW={Math.min(CELL_BOX.w, cellW - 2)}
-                    maxH={CELL_BOX.h}
-                  />
-                {:else}
-                  <span class="dot" aria-hidden="true"></span>
-                {/if}
-              {:else if kind === 'blank'}
-                <span class="ring" aria-hidden="true"></span>
+              {#if endsDrawing(layerIndex, i)}
+                {@render durationGrip(i, layerIndex)}
               {/if}
             </button>
           {/each}
           {/if}
-          {#if view.after > 0}
-            <span class="gap" style:width="{view.after}px" aria-hidden="true"></span>
+          {#if slots.after > 0}
+            <span class="gap" style:width="{slots.after}px" aria-hidden="true"></span>
           {/if}
         </div>
       {/each}
@@ -1675,6 +1896,20 @@
     <button role="menuitem" aria-keyshortcuts={menuKey('duplicate')?.aria} disabled={!editor.canDuplicateFrames} onclick={() => run(() => editor.duplicateActiveFrame())}>
       <Icon name="duplicate" size={16} /><span>{span.from === span.to ? t('panel.item.duplicate_frame') : t('panel.item.duplicate_frames', span)}</span>{@render key('duplicate')}
     </button>
+    {#if !spanned}
+      {@const range = editor.activeExposure}
+      {@const locked = editor.playing || editor.layerLocked(editor.activeLayer)}
+      <div class="duration" role="group" aria-label={t('timeline.duration')}>
+        <span>{t('timeline.duration')}</span>
+        <button role="menuitem" aria-label={t('timeline.duration_less')} title={t('timeline.duration_less')} disabled={locked || range.duration <= 1} onclick={() => editor.setExposureDuration(range.duration - 1)}>
+          <Icon name="minus" size={16} />
+        </button>
+        <output aria-live="polite">{range.duration}</output>
+        <button role="menuitem" aria-label={t('timeline.duration_more')} title={t('timeline.duration_more')} disabled={locked || range.duration >= range.maxDuration} onclick={() => editor.setExposureDuration(range.duration + 1)}>
+          <Icon name="plus" size={16} />
+        </button>
+      </div>
+    {/if}
     <button role="menuitem" disabled={!editor.canShiftCells(-1)} onclick={() => run(() => editor.shiftCells(-1))}>
       <Icon name="chevron-left" size={16} /><span>{t('panel.item.shift_left')}</span>
     </button>
@@ -1875,31 +2110,14 @@
   .num {
     position: relative;
   }
-  /* The carried block is picked up, as in Procreate Dreams: a touch larger
-     and over the strip, with the shadow of what is lifted off it. It settles
-     back when let go. Only the scale moves — a cell has no other transition,
-     so nothing of it smears under a preview. */
-  .cell,
-  .num {
-    transition: scale var(--dur-fast) var(--ease-out);
+  /* Carrying inserts whole clips at their boundaries. The ruler and the transparent
+     hit targets keep their geometry throughout the gesture. */
+  .grid :is(.cell, .num, .bands) {
+    touch-action: none;
   }
-  .cell.lifted {
-    position: relative;
-    z-index: 2;
-    scale: 1.06;
-    box-shadow: var(--shadow-lift);
-  }
-  /* Over the column's band and the active ring alike: the lift is the one
-     shadow a cell casts, and the active ring stays inside it. */
-  .cell.lifted.now {
-    box-shadow: var(--shadow-lift);
-  }
-  .cell.lifted.active,
-  .cell.lifted.now.active {
-    box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-lift);
-  }
-  .num.lifted {
-    scale: 1.08;
+  .grid.carrying {
+    -webkit-user-select: none;
+    user-select: none;
   }
   .grid.carrying,
   .grid.carrying :is(.num, .cell) {
@@ -1919,6 +2137,7 @@
     margin-left: 1px;
   }
   .cells {
+    --clip-radius: 5px;
     position: relative;
     display: flex;
     gap: var(--gap, 2px);
@@ -2002,62 +2221,170 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  /* The drawing fades, not the button: faded whole, the active ring and the
-     focus ring on a hidden layer were red at 35 % — 1.6:1 on white. */
-  /* A continuation shows the drawing it continues, faded, under a dashed
-     line along its top: told apart from a drawing without its colour. */
-  /* Three kinds, told apart without colour (WCAG 1.4.1): a drawing is its
-     thumbnail (a dot when the cells are narrow), an empty drawing a hollow
-     ring, a continuation no box at all — only the band of its drawing's time,
-     running on from the drawing across the gaps. */
-  .cell {
-    position: relative;
+  /* One visual clip per drawing. Per-tick buttons above it retain the
+     editor's hit targets, keyboard navigation and selection semantics. */
+  .exposure-clip {
+    --clip-travel: 0px;
+    position: absolute;
+    left: 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    overflow: hidden;
+    pointer-events: none;
+    border-radius: var(--clip-radius);
+    background: color-mix(in srgb, var(--clip-tone) 13%, var(--canvas));
   }
-  .cell.continued {
-    overflow: visible;
-    border-color: transparent;
-    background: transparent;
-  }
-  .cell.continued::before,
-  .cell.held::before {
+  .exposure-clip::before {
     content: '';
     position: absolute;
-    top: 50%;
-    height: 6px;
-    translate: 0 -50%;
-    background: var(--ink-2);
-    opacity: 0.4;
-    pointer-events: none;
+    inset: 0;
+    z-index: 1;
+    border: 1px solid color-mix(in srgb, var(--clip-tone) 52%, var(--edge));
+    border-radius: inherit;
   }
-  /* From the drawing's middle to its edge, under its lines. */
-  .cell.held::before {
-    left: 50%;
-    right: -1px;
+  .exposure-clip.lifted {
+    --clip-travel: var(--carry-travel);
+    z-index: 2;
+    box-shadow: 0 3px 6px color-mix(in srgb, var(--ink) 22%, transparent);
   }
-  .cell.continued::before {
-    left: calc(-1px - var(--gap, 2px));
-    right: -1px;
+  .exposure-clip.lifted::before { border: 2px solid var(--accent); }
+  .cells.lifting .cell { opacity: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .exposure-clip {
+      transition: translate var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+    }
+    .exposure-clip.lifted { translate: 0 -3px; }
+    .cells.lifting .exposure-clip:not(.lifted),
+    .grid.dropping .exposure-clip {
+      transition-property: translate, box-shadow, transform;
+    }
   }
-  .cell.continued.closes::before {
-    right: 25%;
-    border-radius: 0 3px 3px 0;
+  .exposure-clip.editing::before { border: 2px solid var(--accent); }
+  .clip-thumbnail {
+    flex: none;
+    display: grid;
+    place-items: center;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    background: var(--canvas);
   }
-  .ring,
-  .dot {
-    position: relative;
-    box-sizing: border-box;
-    width: min(12px, calc(100% - 4px));
-    aspect-ratio: 1;
-    border-radius: 50%;
+  .exposure-clip.dim .clip-thumbnail { opacity: 0.35; }
+  /* The current tick sits inside its clip. Other layers share just the
+     column wash; the outline belongs to the one frame under the playhead. */
+  .cells .clip-hit.now {
+    box-shadow: none;
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+  .cells .clip-hit.active {
+    box-shadow: none;
+    border: 0;
+    background: transparent;
+  }
+  .clip-hit.active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--accent);
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
     pointer-events: none;
   }
   .ring {
-    border: 2px solid var(--ink-2);
-    background: var(--canvas);
-  }
-  .dot {
+    box-sizing: border-box;
     width: min(10px, calc(100% - 4px));
-    background: var(--ink);
+    aspect-ratio: 1;
+    border: 2px solid var(--ink-2);
+    border-radius: 50%;
+  }
+  .cell.clip-hit {
+    position: relative;
+    border-radius: var(--clip-radius);
+    background: transparent;
+    border-color: transparent;
+  }
+  /* A visible edge for the drawing, with room to take it by mouse or finger. */
+  /* Inside the cell, at its right edge: a drawing's cell clips what sticks out. */
+  .grip {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: min(12px, 35%);
+    z-index: 1;
+    cursor: ew-resize;
+    touch-action: none;
+  }
+  .grip::after {
+    content: '';
+    position: absolute;
+    top: 20%;
+    bottom: 20%;
+    right: 1px;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+    opacity: 0.4;
+  }
+  @media (hover: hover) {
+    .cell:hover > .grip::after,
+    .grip:hover::after {
+      opacity: 1;
+    }
+  }
+  .cell.active > .grip::after {
+    opacity: 0.6;
+  }
+  @media (pointer: coarse) and (orientation: portrait) and (max-width: 767px) {
+    .cell .grip { width: min(24px, 45%); }
+    .grip::after { width: 4px; right: 2px; border-radius: var(--r-pill); }
+  }
+  /* At overview zoom the active drawing gets one handle below the band.
+     The middle of the canvas remains available for selecting a tick. */
+  .grip.band-grip {
+    top: auto;
+    bottom: 2px;
+    right: auto;
+    width: 12px;
+    height: 35%;
+    transform: translateX(-100%);
+  }
+  .band-grip::after {
+    opacity: 1;
+  }
+  .duration-preview {
+    position: absolute;
+    inset-inline-end: 4px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--accent);
+    color: var(--canvas);
+    font-size: 0.7rem;
+    line-height: 1.25;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .overview-duration {
+    inset-inline-end: auto;
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
+  .cells.resizing .cell { opacity: 0; }
+  .exposure-clip.editing::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    height: 60%;
+    width: 2px;
+    background: var(--accent);
+  }
+  /* Only editing animates geometry. Both the end and the next clip target
+     the same tick on each step; zooming and playback stay immediate. */
+  @media (prefers-reduced-motion: no-preference) {
+    .cells:is(.resizing, .settling) .exposure-clip {
+      transition: width var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+    }
   }
   /* --- A long film as bands ---------------------------------------------- */
   .bands {
@@ -2080,9 +2407,6 @@
     min-width: 4px;
     background: transparent;
   }
-  .cell.dim > :global(canvas) {
-    opacity: 0.35;
-  }
   /* Active is a solid ring, the selection a dashed one, the copied block a
      dotted one — three shapes, so colour is never the only signal. */
   .cell.selected {
@@ -2098,6 +2422,7 @@
     border-color: var(--accent);
     box-shadow: inset 0 0 0 2px var(--accent);
   }
+  .clip-hit.copied:not(.active) { border-color: var(--ink-2); }
   .cell:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
@@ -2110,6 +2435,7 @@
      frames a second. What moves is the one frame or layer that has just
      come (`arrived`), once, so the eye finds where it landed. A layer comes
      as a row, in one piece: its cells one by one were a strip of them. */
+  .exposure-clip.arrived { animation: fade-in var(--dur-enter) var(--ease-out); }
   .cell.arrived {
     animation: cell-in var(--dur-enter) var(--ease-out);
   }
@@ -2121,6 +2447,7 @@
      selection keeps its dashes in Highlight, and the onion numbers, whose
      blue is gone, keep a heavier dotted underline. */
   @media (forced-colors: active) {
+    .clip-hit.active::after { border-color: Highlight; }
     .cell.active {
       border: 3px solid Highlight;
     }
@@ -2316,6 +2643,22 @@
   .frame-menu span {
     flex: 1;
   }
+  .frame-menu .duration {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: var(--key-h, 2.75rem);
+    padding: 0 4px 0 36px;
+  }
+  .frame-menu .duration button {
+    padding: 0 8px;
+  }
+  .frame-menu output {
+    min-width: 2ch;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+  }
   .frame-menu kbd {
     font: inherit;
     font-size: 0.75rem;
@@ -2468,15 +2811,10 @@
       opacity: 0;
     }
   }
-  /* What came still says so by its tone; it does not travel, and what is
-     carried is shown by its shadow, not by growing. */
+  /* Newly added frames can still appear by tone alone. */
   @media (prefers-reduced-motion: reduce) {
     .cell.arrived {
       animation-name: fade-in;
-    }
-    .cell.lifted,
-    .num.lifted {
-      scale: none;
     }
   }
 </style>

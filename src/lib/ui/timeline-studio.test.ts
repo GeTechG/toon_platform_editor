@@ -226,8 +226,8 @@ describe('the frame menu on a right press', () => {
     expect(timeline).toContain('disabled={!editor.canPasteCells}');
   });
 
-  it('a cell outside the selection becomes the selection first', () => {
-    expect(timeline).toMatch(/if \(!isSelected\(frame, layer\)\) \{\s*editor\.selectCell\(frame, layer\)/);
+  it('selects the pressed cell and preserves a multi-clip pack under a held finger', () => {
+    expect(timeline).toMatch(/if \(!isSelected\(frame, layer\) && !\(finger && spanned && inSelectedClip\(frame, layer\)\)\) \{\s*editor\.selectCell\(frame, layer\)/);
   });
 });
 
@@ -561,10 +561,10 @@ describe('tenth audit: menu items are named without their key letter', () => {
     const menu = timeline.match(/class="frame-menu"[\s\S]*?\n  <\/div>\n\{\/if\}/)?.[0] ?? '';
     const items = [...menu.matchAll(/<button role="menuitem"[\s\S]*?<\/button>/g)].map((m) => m[0]);
     // The column's four (a new frame in every layer, two shifts, delete), the
-    // cell's: add, duplicate, two shifts, delete, copy, paste, merge.
-    expect(items.length).toBe(12);
+    // cell's: add, duplicate, duration −/+, two shifts, delete, copy, paste, merge.
+    expect(items.length).toBe(14);
     // «Сдвинуть» and the column's items have no key: Alt+←/→ is the browser's «back».
-    for (const item of items.filter((i) => !/shift(Frames|Cells)|removeColumns/.test(i))) {
+    for (const item of items.filter((i) => !/shift(Frames|Cells)|setExposureDuration|removeColumns/.test(i))) {
       expect(item).toMatch(/aria-keyshortcuts=\{/);
       expect(item).toContain('{@render key(');
     }
@@ -580,7 +580,7 @@ describe('tenth audit: a frame added at the end stays in view', () => {
     const head = timeline.match(/<div\s+class="head"[\s\S]*?>/)?.[0] ?? '';
     expect(head).toMatch(/style:min-width=\{`\$\{stripExtent\}px`\}/);
     // Every tick, or as far as the end mark is being dragged (2026-11-17), plus the room past the end.
-    expect(timeline).toMatch(/const stripExtent = \$derived\(\s*Math\.max\(timing\.total, mark\?\.reach \?\? heldReach\) \* pitch \+ GRID_GAP \+ END_ROOM/);
+    expect(timeline).toMatch(/const stripExtent = \$derived\(\s*Math\.max\(timing\.total, mark\?\.reach \?\? heldReach, previewTicks\) \* pitch \+ GRID_GAP \+ END_ROOM/);
   });
 });
 

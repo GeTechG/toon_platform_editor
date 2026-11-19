@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import { MAX_FRAMES } from '../format/constants';
 import type { Cell, ToonDocument } from '../format/types';
 import { validateDocument } from '../format/validate';
 import { restoreStructure, structureIntact, takeStructure } from '../ui/structure-undo';
-import { keyColumns, placeCells, drawingsPast, setFilmLength, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
+import { exposurePack, moveExposurePack, packOffset, resizeExposure, keyColumns, placeCells, drawingsPast, setFilmLength, deleteCell, deleteCells, insertCells, nextIsDrawing, putAfter, putBefore } from './exposure';
 
 /**
  * A layer as the specs write it: a letter is a drawing (its strokes say which
@@ -35,6 +36,43 @@ function text(doc: ToonDocument, layer = 0): string {
     return stroke ? String.fromCharCode(stroke.points[0]) : '○';
   }).join(' ');
 }
+
+describe('moving complete timeline clips', () => {
+  it('inserts the two-tick clip at tick 9 before tick 6, keeping ticks 6–8 in order', () => {
+    const doc = docOf('P · · · · A ○ B C · D');
+    const pack = exposurePack(doc, [0], 8, 1);
+    moveExposurePack(doc, pack, packOffset(pack, -3));
+    expect(text(doc)).toBe('P · · · · C · A ○ B D');
+  });
+
+  it('takes both partially selected clips, including their full holds, to the end', () => {
+    const doc = docOf('A · · B · C · D', 'F · · · · · · ·');
+    const pack = exposurePack(doc, [0], 2, 2);
+    expect([pack.from, pack.count]).toEqual([0, 5]);
+    const offset = packOffset(pack, 20);
+    moveExposurePack(doc, pack, offset);
+    expect(text(doc)).toBe('C · D A · · B ·');
+    expect(text(doc, 1)).toBe('F · · · · · · ·');
+  });
+
+  it('snaps to whole neighbors when carrying left from a continuation', () => {
+    const doc = docOf('A · B C · ·');
+    const pack = exposurePack(doc, [0], 5, 1);
+    expect(pack.offsets).toEqual([-3, -1, 0]);
+    moveExposurePack(doc, pack, packOffset(pack, -3));
+    expect(text(doc)).toBe('C · · A · B');
+  });
+
+  it('moves differently sized exposures on selected layers by the same number of ticks', () => {
+    const doc = docOf('A B · C · D', 'E · F G · H', 'I · · · · ·');
+    const pack = exposurePack(doc, [0, 1], 2, 1);
+    expect(pack.offsets).toEqual([0, 2, 3]);
+    moveExposurePack(doc, pack, packOffset(pack, 2));
+    expect(text(doc)).toBe('A C · B · D');
+    expect(text(doc, 1)).toBe('E · G · F H');
+    expect(text(doc, 2)).toBe('I · · · · ·');
+  });
+});
 
 describe('insertCells — the shift of a layer', () => {
   it('eats a continuation at the end of the layer', () => {
@@ -145,6 +183,38 @@ describe('«+» on a picked column', () => {
   });
 });
 
+describe('resizing a drawing on its layer', () => {
+  it('shortens to one tick and brings later drawings on that layer forward', () => {
+    const doc = docOf('A · · B · C', 'F · G · H ·');
+    resizeExposure(doc, 0, 2, 0);
+    expect(text(doc)).toBe('A B · C · ·');
+    expect(text(doc, 1)).toBe('F · G · H ·');
+  });
+
+  it('ends the last drawing with a blank while the other layer keeps playing', () => {
+    const doc = docOf('A B · ·', 'F · G H');
+    resizeExposure(doc, 0, 3, 2);
+    expect(text(doc)).toBe('A B · ○');
+    expect(text(doc, 1)).toBe('F · G H');
+  });
+
+  it('can still extend at the film limit when a later drawing has time to spare', () => {
+    const doc = docOf('A B');
+    setFilmLength(doc, MAX_FRAMES);
+    resizeExposure(doc, 0, 0, MAX_FRAMES);
+    expect(doc.layers[0].frames).toHaveLength(MAX_FRAMES);
+    expect(doc.layers[0].frames.at(-1)?.strokes[0].points[0]).toBe('B'.charCodeAt(0));
+  });
+
+  it('extends a held drawing, consuming spare time at the end before growing the film', () => {
+    const doc = docOf('A · B C ·', 'F G · H ·');
+    resizeExposure(doc, 0, 1, 4);
+    expect(text(doc)).toBe('A · · · B C');
+    expect(text(doc, 1)).toBe('F G · H · ·');
+    expect(validateDocument(doc).ok).toBe(true);
+  });
+});
+
 describe('Delete on a layer', () => {
   it('turns a drawing into a continuation of the one before', () => {
     const doc = docOf('A B C');
@@ -214,6 +284,7 @@ describe('each operation is one step of undo', () => {
     ['Delete on the first drawing', ['A B'], (doc) => deleteCell(doc, [0], 0)],
     ['Delete on a continuation', ['A · B'], (doc) => deleteCell(doc, [0], 1)],
     ['a block deleted', ['A B C'], (doc) => deleteCells(doc, [0], 0, 2)],
+    ['a stretched drawing', ['A B', 'F G'], (doc) => resizeExposure(doc, 0, 0, 4)],
     ['a shorter film', ['A B C', 'F · G'], (doc) => setFilmLength(doc, 1)],
     ['cells carried', ['A · B'], (doc) => placeCells(doc, [0], 0, 1, 2)],
     ['cells copied', ['A · B', 'F · ·'], (doc) => placeCells(doc, [0], 1, 1, 3, true)],

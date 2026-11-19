@@ -52,12 +52,16 @@ import {
   type ResolvedStroke,
 } from '../model/operations';
 import {
-  canStepCells,
+  exposurePack,
+  moveExposurePack,
+  type ExposurePack,
   placeCells,
   cellsFit,
   deleteCell,
   deleteCells,
   drawingsPast,
+  exposureRange,
+  resizeExposure,
   keyColumns,
   nextIsDrawing,
   putAfter,
@@ -607,7 +611,7 @@ export class EditorState {
    * the current frame (1 wider, -1 narrower) and 0 fits the film into it.
    */
   stripKeys: ((how: 1 | -1 | 0) => void) | null = null;
-  /** How many times the film's length was set (end mark, «Кадров»): the strip does not scroll for it. Not reactive. */
+  /** How many times the film's length was set by hand (end mark, exposure, «Кадров»): the strip does not scroll for it. Not reactive. */
   filmLengthSets = 0;
 
   /** Active UI preset id (persisted). */
@@ -2307,6 +2311,24 @@ export class EditorState {
     this.stripKeys?.(0);
   }
 
+  get activeExposure() {
+    return exposureRange(this.doc.layers[this.activeLayer].frames, this.activeFrame);
+  }
+
+  /** Both the edge handle and the menu commit one undoable layer edit. */
+  setExposureDuration(duration: number): void {
+    if (this.playing || this.layerLocked(this.activeLayer) || !Number.isInteger(duration)) return;
+    const range = this.activeExposure;
+    if (duration < 1 || duration > range.maxDuration || duration === range.duration || !this.leaveTransform()) return;
+    this.structureStep(() => {
+      const length = this.filmLength;
+      this.#write((doc) => resizeExposure(doc, this.activeLayer, this.activeFrame, duration));
+      if (this.filmLength !== length) this.filmLengthSets++;
+      this.activeFrame = Math.min(this.activeFrame, range.start + duration - 1);
+      this.collapseSelection();
+    });
+  }
+
   /** The film's length in ticks — «Кадров: N». */
   get filmLength(): number {
     return frameCount(this.doc);
@@ -2388,16 +2410,17 @@ export class EditorState {
     if (this.canShiftFrames(step)) this.moveColumnsTo(from, count, from + step);
   }
 
-  /**
-   * Carries `count` cells from `from` along the layers of the block to tick
-   * `to` exactly (owner, 2026-11-17): they swap places with what stands
-   * there, the pause stays; the other layers stand. With `merge` this is a step of the drag under way: the drag's step
-   * is taken back first and the carry laid from where the drag began (`from`
-   * is that place), so a carry brought back leaves no step at all. Returns
-   * where the cells landed, or null when refused.
-   */
-  moveCellsInLayer(from: number, count: number, to: number, merge = false): number | null {
-    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to), from, count);
+  readonly selectedPack = $derived.by(() => {
+    const { from, count } = this.framesToShift;
+    return exposurePack(this.doc, this.selection.layers, from, count);
+  });
+
+  /** Replay each drag position from the original clip boundaries, in one undo step. */
+  moveCellsInLayer(pack: ExposurePack, by: number, merge = false): number | null {
+    return this.carryCells(merge, (doc) => {
+      moveExposurePack(doc, pack, by);
+      return pack.from + by;
+    }, pack.from, pack.count, 'clips');
   }
 
   /**
@@ -2406,7 +2429,7 @@ export class EditorState {
    * drag's step it is laid again from where the drag began, as cells are.
    */
   moveColumnsTo(from: number, count: number, to: number, merge = false): number | null {
-    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to), from, count, true);
+    return this.carryCells(merge, (doc, layers) => placeCells(doc, layers, from, count, to), from, count, 'columns');
   }
 
   /** Ctrl+drag of cells: copies put near `to` in the block's layers, their tails pushed — as a drag's step, laid again from its start. */
@@ -2416,7 +2439,7 @@ export class EditorState {
   }
 
   /** One step of a carry of cells: the drag's own step undone, then `write` from the start; the block and the active cell ride along. */
-  private carryCells(merge: boolean, write: (doc: ToonDocument, layers: number[]) => number, from: number, count: number, every = false): number | null {
+  private carryCells(merge: boolean, write: (doc: ToonDocument, layers: number[]) => number, from: number, count: number, target: 'cells' | 'columns' | 'clips' = 'cells'): number | null {
     if (this.playing || !this.leaveTransform()) {
       return null;
     }
@@ -2430,11 +2453,14 @@ export class EditorState {
       if (folded.visited) this.visitedFrames = folded.visited;
       this.gestureStep = null;
     }
-    const layers = every ? this.doc.layers.map((_, l) => l) : [...this.selection.layers];
+    const layers = target === 'columns' ? this.doc.layers.map((_, l) => l) : [...this.selection.layers];
     const before = folded ?? this.takeStructure();
     const landed = this.#write((doc) => write(doc, layers));
     this.activeFrame = landed + Math.min(count - 1, Math.max(0, this.activeFrame - from));
-    this.selection = { frames: Array.from({ length: count }, (_, i) => landed + i), layers };
+    const frames = target === 'clips'
+      ? this.selection.frames.map(i => i + landed - from)
+      : Array.from({ length: count }, (_, i) => landed + i);
+    this.selection = { frames, layers };
     if (sameShape(before.snap, this.doc)) {
       this.touched = true;
       return landed;
@@ -2448,15 +2474,16 @@ export class EditorState {
 
   /** Whether the cells of the block have a drawing to step over that way. */
   canShiftCells(step: -1 | 1): boolean {
-    const { from, count } = this.framesToShift;
-    return !this.playing && canStepCells(this.doc, from, count, step);
+    const { offsets } = this.selectedPack;
+    return !this.playing && (step < 0 ? offsets[0] < 0 : offsets[offsets.length - 1] > 0);
   }
 
-  /** «Сдвинуть влево/вправо» on cells: the block steps over the drawing next to it (WCAG 2.5.7). */
+  /** The menu moves to the next complete clip boundary, as a drag does. */
   shiftCells(step: -1 | 1): void {
-    if (!this.canShiftCells(step) || !this.leaveTransform()) return;
-    const { from, count } = this.framesToShift;
-    this.carryCells(false, (doc, layers) => placeCells(doc, layers, from, count, from + step), from, count);
+    if (!this.canShiftCells(step)) return;
+    const pack = this.selectedPack;
+    const home = pack.offsets.indexOf(0);
+    this.moveCellsInLayer(pack, pack.offsets[home + step]);
   }
 
   setFps(value: number): void {

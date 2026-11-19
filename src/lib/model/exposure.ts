@@ -163,6 +163,38 @@ export function deleteCells(doc: ToonDocument, layers: readonly number[], from: 
   }
 }
 
+/** A drawing lasts until its layer's next key or the end of the film. */
+export function exposureRange(frames: readonly Cell[], i: number) {
+  const start = keyOf(frames, i);
+  let end = i + 1;
+  while (end < frames.length && frames[end] === null) end++;
+  const duration = end - start;
+  // Only a later drawing's trailing continuations can absorb a shift.
+  const spare = end === frames.length ? 0 : frames.length - 1 - keyOf(frames, frames.length - 1);
+  return { start, duration, spare, maxDuration: duration + spare + MAX_FRAMES - frames.length };
+}
+
+export function resizeExposure(doc: ToonDocument, layer: number, i: number, duration: number): void {
+  const frames = doc.layers[layer].frames;
+  const range = exposureRange(frames, i);
+  const by = Math.min(range.maxDuration, Math.max(1, Math.round(duration))) - range.duration;
+  if (!Number.isFinite(by) || by === 0) return;
+  const end = range.start + range.duration;
+  if (by > 0) {
+    // A film can hold 100,000 ticks. Concatenate the pause without spreading
+    // a potentially film-sized array into splice arguments.
+    const extended = frames.slice(0, end).concat(Array<Cell>(by).fill(null), frames.slice(end));
+    eatTail(extended, end + by, by);
+    doc.layers[layer].frames = extended;
+    evenOut(doc);
+  } else if (end < frames.length) {
+    frames.copyWithin(end + by, end);
+    frames.fill(null, frames.length + by);
+  } else {
+    frames[end + by] = emptyDrawing();
+  }
+}
+
 /** How many drawings with lines stand at cell `from` or later — what a film cut to `from` cells loses. */
 export function drawingsPast(doc: ToonDocument, from: number): number {
   return doc.layers.reduce((sum, layer) => sum + layer.frames.slice(from).filter((cell) => !!cell?.strokes.length).length, 0);
@@ -234,7 +266,61 @@ export function placeCells(
   return at;
 }
 
-/** Whether «Сдвинуть» has room that way: a tick before, or a tick after the cells. */
-export function canStepCells(doc: ToonDocument, from: number, count: number, step: -1 | 1): boolean {
-  return step < 0 ? from > 0 : from + count < length(doc);
+/** Whole clips touched by a cell selection, measured before a drag starts. */
+export function exposurePack(doc: ToonDocument, layers: readonly number[], from: number, count: number) {
+  const total = length(doc);
+  const rows = layers.map((layer) => {
+    const frames = doc.layers[layer].frames;
+    const start = keyOf(frames, from);
+    let end = from + count;
+    while (end < total && frames[end] === null) end++;
+    return { layer, start, end };
+  });
+  // A rectangular selection can follow the part shared by all selected rows.
+  const start = Math.max(...rows.map(row => row.start));
+  const end = Math.min(...rows.map(row => row.end));
+  const first = -Math.min(...rows.map(row => row.start));
+  const last = total - Math.max(...rows.map(row => row.end));
+  const offsets: number[] = [];
+  for (let by = first; by <= last; by++) {
+    // The far edge must clear a whole neighbor in every participating row.
+    if (by === 0 || rows.every(row => {
+      const edge = (by < 0 ? row.start : row.end) + by;
+      return edge === total || doc.layers[row.layer].frames[edge] !== null;
+    })) offsets.push(by);
+  }
+  return { rows, from: start, count: end - start, offsets };
+}
+
+export type ExposurePack = ReturnType<typeof exposurePack>;
+
+/** The nearest landing to the pointer, measured in ticks from the original pack. */
+export function packOffset({ offsets }: ExposurePack, by: number): number {
+  let lo = 0;
+  let hi = offsets.length - 1;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (offsets[mid] < by) lo = mid + 1;
+    else hi = mid;
+  }
+  const right = offsets[lo];
+  const left = offsets[Math.max(0, lo - 1)];
+  const diff = Math.abs(by - left) - Math.abs(right - by);
+  return diff < 0 || (diff === 0 && by < 0) ? left : right;
+}
+
+/** Insert the pack at its snapped landing, shifting the intervening clips in order. */
+export function moveExposurePack(doc: ToonDocument, pack: ExposurePack, by: number): void {
+  if (by === 0) return;
+  for (const { layer, start, end } of pack.rows) {
+    const frames = doc.layers[layer].frames;
+    const carried = frames.slice(start, end);
+    const landing = start + by;
+    if (by < 0) {
+      frames.copyWithin(end + by, landing, start);
+    } else {
+      frames.copyWithin(start, end, end + by);
+    }
+    carried.forEach((cell, i) => { frames[landing + i] = cell; });
+  }
 }
