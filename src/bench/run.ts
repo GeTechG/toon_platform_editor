@@ -9,7 +9,10 @@ import type { ToonDocument } from '../lib/format/types';
 import { LoopPlayer } from '../lib/player/player';
 import { brushWidthDoc } from '../lib/tools/stroke-builder';
 import type { BenchConfig } from './config';
-import { CELL_CACHE_BYTES, FrameComposer, type ComposeTarget, type LiveLine } from '../lib/render/frame-compose';
+import { CELL_CACHE_BYTES, type LiveLine } from '../lib/render/frame-compose';
+import { Canvas2DSheetComposer, type SheetComposer } from '../lib/render/sheet-composer';
+import { acquireStudioWebGL2, type RenderBackendReason } from '../lib/render/webgl/probe';
+import { WebGL2SheetComposer } from '../lib/render/webgl/composer';
 import { onionLayers } from '../lib/ui/frame-selection';
 import { frameCount } from '../lib/model/operations';
 import { buildCorpus, syntheticRawPoints } from './corpus';
@@ -26,6 +29,8 @@ export interface MetricResult {
 
 export interface BenchResult {
   config: BenchConfig;
+  actualBackend: 'canvas2d' | 'webgl2';
+  backendFallbackReason?: RenderBackendReason;
   corpus: { layers: number; frames: number; strokesPerFrame: number; totalStrokes: number };
   metrics: MetricResult[];
   overall: 'PASS' | 'FAIL';
@@ -43,26 +48,71 @@ function usedHeap(): number | null {
  * buffers, the same live line. What the editor puts over it — the paper, the
  * clip to the sheet, a tool's grid — is not the frame and is not measured.
  */
-class BenchCanvas {
-  readonly #ctx: ComposeTarget;
-  readonly #composer = new FrameComposer(undefined, { cellBytes: CELL_CACHE_BYTES });
+class WebGL2BenchFallbackError extends Error {
+  constructor(readonly reason: RenderBackendReason) {
+    super(`WebGL2 benchmark fallback: ${reason}`);
+  }
+}
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
+class BenchCanvas {
+  readonly #composer: SheetComposer;
+  readonly #glComposer: WebGL2SheetComposer | null = null;
+  readonly #glCanvas: HTMLCanvasElement | null = null;
+  readonly #glContext: WebGL2RenderingContext | null = null;
+  readonly #origDisplay: string;
+  readonly actualBackend: 'canvas2d' | 'webgl2';
+  readonly fallbackReason?: RenderBackendReason;
+
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    backend: 'canvas2d' | 'webgl2' = 'canvas2d',
+    fallbackReason?: RenderBackendReason,
+  ) {
+    this.#origDisplay = canvas.style.display;
+    this.fallbackReason = fallbackReason;
+    if (backend === 'webgl2') {
+      // Probe WebGL2 on a dedicated sibling canvas so a rejected WebGL2 context
+      // never locks the primary `canvas` out of `getContext('2d')`. When valid,
+      // mount and display it in place of `canvas` so browser presentation is timed fairly.
+      const candidate = document.createElement('canvas');
+      candidate.width = canvas.width;
+      candidate.height = canvas.height;
+      candidate.style.width = canvas.style.width;
+      candidate.style.height = canvas.style.height;
+      candidate.className = canvas.className;
+      const acquired = acquireStudioWebGL2(candidate, Math.max(2048, canvas.width, canvas.height));
+      if (acquired.gl && acquired.capability.webgl2Eligible && acquired.capability.fboFormats) {
+        this.#glCanvas = candidate;
+        this.#glContext = acquired.gl;
+        if (canvas.parentNode) {
+          canvas.style.display = 'none';
+          canvas.parentNode.insertBefore(candidate, canvas);
+        }
+        const glComp = new WebGL2SheetComposer(acquired.gl, {
+          formats: acquired.capability.fboFormats,
+          budgetBytes: CELL_CACHE_BYTES,
+        });
+        this.#glComposer = glComp;
+        this.#composer = glComp;
+        this.actualBackend = 'webgl2';
+        return;
+      }
+      candidate.width = 0;
+      candidate.height = 0;
+      this.fallbackReason = acquired.capability.reason;
+    }
+    if (!canvas.getContext('2d')) {
       throw new Error('2D context unavailable');
     }
-    this.#ctx = ctx as unknown as ComposeTarget;
+    this.#composer = new Canvas2DSheetComposer(canvas, { cellBytes: CELL_CACHE_BYTES });
+    this.actualBackend = 'canvas2d';
   }
 
   compose(doc: ToonDocument, frame: number, onion: boolean, live: LiveLine | null): void {
     const { width, height } = this.canvas;
     // dpr folded into the pixel count: k = scale × dpr = width / doc.width.
     const viewport = { scale: width / doc.width, dpr: 1 };
-    this.#ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.#ctx.fillStyle = BACKGROUND_COLOR;
-    this.#ctx.fillRect(0, 0, width, height);
-    this.#composer.compose(this.#ctx, width, height, {
+    const scene = {
       doc,
       frame,
       activeLayer: 0,
@@ -72,12 +122,46 @@ class BenchCanvas {
         ? { frames: onionLayers(frame, frameCount(doc), ONION_SKIN_ALPHAS), layers: [0] }
         : undefined,
       live,
+      paper: BACKGROUND_COLOR,
+    };
+    const ok = this.#composer.composeAndPresent(width, height, scene, {
+      stageWidth: width,
+      stageHeight: height,
+      sheetX: 0,
+      sheetY: 0,
+      sheetW: width,
+      sheetH: height,
+      angle: 0,
+      stretch: 1,
+      paper: BACKGROUND_COLOR,
+      gridStep: 0,
     });
+    if (!ok) {
+      if (this.#glComposer) {
+        throw new WebGL2BenchFallbackError(this.#glComposer.lastFailure ?? 'context-lost');
+      }
+      throw new Error(`Benchmark render failed on ${this.actualBackend} backend`);
+    }
   }
 
   /** The frame changed: the stack the composer holds is stale. */
   invalidate(): void {
     this.#composer.invalidate();
+  }
+
+  dispose(): void {
+    this.#composer.dispose();
+    try {
+      this.#glContext?.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      // Context already lost.
+    }
+    if (this.#glCanvas) {
+      this.#glCanvas.remove();
+      this.#glCanvas.width = 0;
+      this.#glCanvas.height = 0;
+      this.canvas.style.display = this.#origDisplay;
+    }
   }
 }
 
@@ -89,10 +173,44 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
     pointsPerStroke: cfg.pointsPerStroke,
     mixedEvery: cfg.mixedEvery,
   });
-  const compositor = new BenchCanvas(canvas);
+  const measure = async (
+    backend: 'canvas2d' | 'webgl2',
+    fallbackReason?: RenderBackendReason,
+  ): Promise<{
+    actualBackend: 'canvas2d' | 'webgl2';
+    fallbackReason?: RenderBackendReason;
+    latencies: number[];
+    intervals: number[];
+    heap: HeapSample[];
+  }> => {
+    const compositor = new BenchCanvas(canvas, backend, fallbackReason);
+    try {
+      const latencies = await probeLatency(compositor, doc, cfg);
+      const { intervals, heap } = await probePlayback(compositor, doc, cfg);
+      return {
+        actualBackend: compositor.actualBackend,
+        fallbackReason: compositor.fallbackReason,
+        latencies,
+        intervals,
+        heap,
+      };
+    } finally {
+      compositor.dispose();
+    }
+  };
 
-  const latencies = await probeLatency(compositor, doc, cfg);
-  const { intervals, heap } = await probePlayback(compositor, doc, cfg);
+  let measured: Awaited<ReturnType<typeof measure>>;
+  try {
+    measured = await measure(cfg.backend);
+  } catch (err) {
+    if (err instanceof WebGL2BenchFallbackError) {
+      // WebGL2 failed mid-run (e.g. budget rejection or context loss): restart cleanly on Canvas 2D.
+      measured = await measure('canvas2d', err.reason);
+    } else {
+      throw err;
+    }
+  }
+  const { actualBackend, fallbackReason, latencies, intervals, heap } = measured;
 
   const p95 = percentile(latencies, 95);
   const timing = frameTiming(intervals, 1000 / cfg.targetFps, cfg.frameToleranceFactor);
@@ -129,6 +247,8 @@ export async function runBench(canvas: HTMLCanvasElement, cfg: BenchConfig): Pro
 
   return {
     config: cfg,
+    actualBackend,
+    backendFallbackReason: fallbackReason,
     corpus: {
       layers: doc.layers.length,
       frames: frameCount(doc),

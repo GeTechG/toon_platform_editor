@@ -19,9 +19,22 @@
     STUDIO_PATHS,
     type BlitTarget,
     type Canvas2DLike,
-    type LayerLook,
   } from '../render/canvas2d';
-  import { CELL_CACHE_BYTES, FrameComposer, type LiveLine } from '../render/frame-compose';
+  import { CELL_CACHE_BYTES, type FrameScene, type LiveLine } from '../render/frame-compose';
+  import {
+    Canvas2DSheetComposer,
+    type DeclarativeLiveStroke,
+    type SheetComposer,
+    type StagePresentParams,
+  } from '../render/sheet-composer';
+  import {
+    acquireStudioWebGL2,
+    MIN_WEBGL2_DIMENSION,
+    validateWebGL2Candidate,
+    type AtlasFormats,
+    type RenderBackendReason,
+  } from '../render/webgl/probe';
+  import { WebGL2SheetComposer } from '../render/webgl/composer';
   import { PlaybackFrames, playbackKeeps } from './playback-frames';
   import { playbackWindow } from '../render/playback-window';
   import { CellWarmer } from '../render/cell-warm';
@@ -113,7 +126,86 @@
       putImageData(data: ImageData, x: number, y: number): void;
     };
 
+  let captureStageEl: HTMLDivElement;
   let canvasEl: HTMLCanvasElement;
+  let glCanvasEl = $state<HTMLCanvasElement | undefined>();
+  /** True only once the live WebGL2 context has successfully rendered the current scene. */
+  let webglVisible = $state(false);
+  /** Bumped only when manually re-enabling hardwareRender so a fresh canvas is created. */
+  let glMountKey = $state(0);
+  let glContext: WebGL2RenderingContext | null = null;
+  let glComposer: WebGL2SheetComposer | null = null;
+  let glFormats: AtlasFormats | null = null;
+  let glProbed = false;
+  let glSoftwareBrowser = false;
+  let glContextLost = false;
+  let glRestorePending = false;
+  let glIntentionalLose = false;
+  let glLossTimes: number[] = [];
+  let glSessionRetired: RenderBackendReason | null = null;
+  /** Monotonic token discarding async warm/bitmap callbacks from a retired backend. */
+  let backendGeneration = 0;
+
+  function capturePointer(pointerId: number): void {
+    (captureStageEl ?? canvasEl).setPointerCapture(pointerId);
+  }
+
+  function retireWebGL(reason: RenderBackendReason, loseContext = true): void {
+    backendGeneration += 1;
+    webglVisible = false;
+    navShot = null;
+    lastDrawn = null;
+    glComposer?.dispose();
+    glComposer = null;
+    if (loseContext && glContext) {
+      const doomed = glContext;
+      glContext = null;
+      glFormats = null;
+      glIntentionalLose = true;
+      try {
+        doomed.getExtension('WEBGL_lose_context')?.loseContext();
+      } catch {
+        // Context already lost.
+      } finally {
+        queueMicrotask(() => { glIntentionalLose = false; });
+      }
+    }
+    if (reason === 'oom' || reason === 'context-lost') {
+      glSessionRetired = reason;
+    }
+    editor.renderBackend = {
+      active: 'canvas2d',
+      reason,
+      isSoftwareBrowser: reason === 'software-browser' || glSoftwareBrowser,
+    };
+  }
+
+  /**
+   * Unified recoverable WebGL2 context-loss handler shared by synchronous `draw()`
+   * detection and the asynchronous DOM `webglcontextlost` event so the first loss
+   * always allows restoration and is never double-counted.
+   */
+  function handleRecoverableContextLoss(): void {
+    if (glSessionRetired) return;
+    backendGeneration += 1;
+    webglVisible = false;
+    navShot = null;
+    lastDrawn = null;
+    glComposer?.dispose();
+    glComposer = null;
+    glRestorePending = false;
+    if (!glContextLost) {
+      glContextLost = true;
+      const now = Date.now();
+      glLossTimes = glLossTimes.filter((t) => now - t < 60_000);
+      glLossTimes.push(now);
+      if (glLossTimes.length >= 2) {
+        retireWebGL('context-lost', true);
+        return;
+      }
+    }
+    editor.renderBackend = { active: 'canvas2d', reason: 'context-lost', isSoftwareBrowser: false };
+  }
   let wrapWidth = $state(CANVAS_LOGICAL_WIDTH);
   let wrapHeight = $state(0);
   let cursorX = $state(0);
@@ -229,8 +321,16 @@
       studioCells.current = undefined;
     }
     composer.dispose();
+    glComposer?.dispose();
+    glComposer = null;
+    try {
+      glContext?.getExtension('WEBGL_lose_context')?.loseContext();
+    } catch {
+      // Context already gone.
+    }
+    glContext = null;
     played.release();
-    for (const spare of [shotCanvas, sheetEl, pickEl, canvasEl]) {
+    for (const spare of [shotCanvas, canvasEl, glCanvasEl]) {
       if (spare) {
         spare.width = 0;
         spare.height = 0;
@@ -425,12 +525,50 @@
     return frames.indexOf(mark.cell);
   }
 
+  /** How many sheets a playback holds ready on this device (`playback-window.ts`). */
+  const playWindow = (sheet: { width: number; height: number }): number => playbackWindow(
+    typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+    sheet.width,
+    sheet.height,
+  );
+  /** The frames of the playback under way, composed once each (playback-frames.ts). */
+  const played = new PlaybackFrames<ImageData | ImageBitmap>((pixels) => {
+    if ('close' in pixels) pixels.close();
+  }, playWindow);
+  /** What a played frame is kept as, by the browser (playback-frames.ts). */
+  const keepAs = playbackKeeps(navigator.userAgent, typeof createImageBitmap === 'function');
   /**
-   * The frame itself: the layers around the active one, the ghosts of the
-   * onion between them and the line under the hand. The same composer the
-   * benchmark runs, so what is measured there is what is drawn here.
+   * Canvas 2D SheetComposer adapter over FrameComposer — shares the exact same
+   * contract as `WebGL2SheetComposer` and `bench/run.ts`.
    */
-  const composer = new FrameComposer(undefined, { cellBytes: CELL_CACHE_BYTES });
+  const composer = new Canvas2DSheetComposer(() => canvasEl, {
+    cellBytes: CELL_CACHE_BYTES,
+    playback: {
+      get: (doc, width, height, key) => played.get(doc, { width, height }, key),
+      keep: (doc, width, height, key, total, sheetCanvas, sheetCtx) => {
+        const gen = backendGeneration;
+        const size = { width, height };
+        if (keepAs === 'bitmap') {
+          createImageBitmap(sheetCanvas).then((bitmap) => {
+            if (gen === backendGeneration && editor.playing && editor.doc === doc) {
+              played.keep(doc, size, key, bitmap, total);
+            } else {
+              bitmap.close();
+            }
+          }, () => {
+            // Drawn live, as before.
+          });
+        } else {
+          try {
+            played.keep(doc, size, key, sheetCtx.getImageData(0, 0, width, height), total);
+          } catch {
+            // Drawn live, as before.
+          }
+        }
+      },
+      release: () => played.release(),
+    },
+  });
   /** Rasterizes the cells of the frames around this one while the studio idles (cell-warm.ts). */
   const crew = cellCrew();
   studioCells.current = composer.cells;
@@ -445,21 +583,6 @@
     return () => clearTimeout(id);
   }, crew);
   let warmTimer: ReturnType<typeof setTimeout> | undefined;
-  /** The frames of the playback under way, composed once each (playback-frames.ts). */
-  /** How many sheets a playback holds ready on this device (`playback-window.ts`). */
-  const playWindow = (sheet: { width: number; height: number }): number => playbackWindow(
-    typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
-    sheet.width,
-    sheet.height,
-  );
-  const played = new PlaybackFrames<ImageData | ImageBitmap>((pixels) => {
-    if ('close' in pixels) pixels.close();
-  }, playWindow);
-  /** What a played frame is kept as, by the browser (playback-frames.ts). */
-  const keepAs = playbackKeeps(navigator.userAgent, typeof createImageBitmap === 'function');
-  /** The paper and its shadow, and the shape they were drawn for. */
-  /** Scratch the pipette flattens the frame into before reading a pixel back. */
-  let pickEl: HTMLCanvasElement | null = null;
   /** Scratch the bucket reads the active layer back from. */
   let fillEl: HTMLCanvasElement | null = null;
   /** The paper the bucket sees the colours on: BACKGROUND_COLOR. */
@@ -468,8 +591,6 @@
   const RIM_STEPS = 3;
   /** Colours nobody draws with, to see where a fill would be seen. */
   const PROBES = ['#ff00fe', '#00fe01', '#0100fe', '#fefe01'];
-  /** The sheet's bitmap: the frame is composed into it, and the view stretches it. */
-  let sheetEl: HTMLCanvasElement | null = null;
   /** The sheet's bitmap the composer's buffers hold; the pipette reads them by it. */
   let lastRaster: SheetRaster | null = null;
   let rafPending = false;
@@ -536,6 +657,9 @@
   function settleCovers(): void {
     if (coversStale) {
       measureCovers();
+    }
+    if (glRestorePending && !drawingBusy()) {
+      scheduleDraw();
     }
   }
   // A cover appears (the first finger), goes (display: none) or is resized
@@ -689,10 +813,9 @@
   const NAV_COMPOSE_MS = 100;
 
   function takeNavShot(): void {
-    // Nor while a frame is waiting to be drawn: the canvas still shows what
-    // that frame is to replace — the line of a pinch's first finger, just
-    // discarded, stayed on the sheet for the whole pinch. `draw` takes it then.
-    if (!canvasEl || !lastDrawn || navShot || rafPending) {
+    // WebGL2 presents live GPU textures directly without copying the hidden 2D
+    // canvas, which WebGL2 draws leave stale.
+    if (webglVisible || !canvasEl || !lastDrawn || navShot || rafPending) {
       return;
     }
     // Nor through the preview: nobody shows it there (`draw`), and every frame
@@ -772,187 +895,178 @@
     const perPixel = (sheet.w * FIXED_POINT_SCALE) / editor.doc.width;
     const raster = sheetRaster(editor.doc);
     const viewport = { scale: raster.level / FIXED_POINT_SCALE, dpr: 1 };
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, pxWidth, pxHeight);
-    // The sheet's own axes, `k` canvas pixels to one of its units: it lies on
-    // the table turned as the view has it, about its top-left corner.
-    const lay = (k: number): void => turned(ctx, k, editor.view.angle, sheet.x, sheet.y);
-    // The paper lies flat on the table: white on the table's tone, no shadow
-    // and no edge drawn round it (owner, 2026-10-05).
-    lay(1);
-    ctx.fillStyle = BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, sheet.w, sheet.h);
-    // Everything drawn stays on the paper — a stroke that runs off the edge
-    // is cut by it, the way it is on export.
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, sheet.w, sheet.h);
-    ctx.clip();
-    // Whatever throws below (a buffer Safari refused, a broken stroke), the
-    // clip goes with it: left saved, every later frame was cut to the old
-    // sheet's rectangle, and the save stack grew by one per frame.
-    try {
-      const drawn: DrawnView = { ...editor.view, dpr };
-      // While the hand pans or pinches, the picture is the one it grabbed, moved:
-      // nothing in it changes until it lets go, and rebuilding every layer and
-      // ghost per animation frame was what the gesture stuttered on.
-      // But the shot is the table as it was: the part of a magnified sheet the
-      // hand has brought in since is not on it, and lay there as bare paper
-      // until the hand let go. Then the frame is composed afresh — every
-      // NAV_COMPOSE_MS, not every animation frame — and is the shot from there.
-      const uncovered = navShot !== null && !shotCovers(navShot.view, drawn, stage);
-      if (navShot && uncovered && performance.now() - navShot.at >= NAV_COMPOSE_MS) {
-        navShot = null;
+    const stretch = perPixel / raster.level;
+    const ghosts = editor.showOnionSkin
+      ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
+      : undefined;
+    const live = liveLine(viewport);
+    const still = editor.playing && !ghosts && !live;
+    const playKey = still ? stillStart(editor.doc, frame) : frame;
+    const scene: FrameScene = {
+      doc: editor.doc,
+      frame,
+      activeLayer: editor.activeLayer,
+      viewport,
+      tools: previewTools,
+      cellAt: stackCell,
+      ghosts,
+      live,
+      alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
+      blend: editor.onionBlends,
+      paper: BACKGROUND_COLOR,
+    };
+    const present: StagePresentParams = {
+      stageWidth: pxWidth,
+      stageHeight: pxHeight,
+      sheetX: sheet.x,
+      sheetY: sheet.y,
+      sheetW: sheet.w,
+      sheetH: sheet.h,
+      angle: editor.view.angle,
+      stretch,
+      paper: BACKGROUND_COLOR,
+      gridStep: toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing ? cursorDiameter * dpr : 0,
+    };
+    const playArg = still ? { doc: editor.doc, key: playKey, total: frameCount(editor.doc) } : undefined;
+
+    // Hardware WebGL2 path: validate and promote the real candidate context,
+    // keeping Canvas 2D visible until the actual current scene renders cleanly.
+    if (editor.settings.hardwareRender && glCanvasEl && !glSessionRetired && !glContextLost) {
+      if (glRestorePending && glContext && !drawingBusy()) {
+        glRestorePending = false;
+        const minDim = Math.max(MIN_WEBGL2_DIMENSION, raster.width, raster.height, pxWidth, pxHeight);
+        const reval = validateWebGL2Candidate(glContext, minDim);
+        if (reval.ok && reval.fboFormats) {
+          glFormats = reval.fboFormats;
+          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: CELL_CACHE_BYTES });
+        } else {
+          retireWebGL('context-lost', true);
+        }
+      } else if (!glComposer && !glProbed && !glRestorePending) {
+        const minDim = Math.max(MIN_WEBGL2_DIMENSION, raster.width, raster.height, pxWidth, pxHeight);
+        const acquired = acquireStudioWebGL2(glCanvasEl, minDim);
+        glProbed = true;
+        glSoftwareBrowser = acquired.capability.isSoftwareBrowser;
+        if (acquired.gl && acquired.capability.webgl2Eligible && acquired.capability.fboFormats) {
+          glContext = acquired.gl;
+          glFormats = acquired.capability.fboFormats;
+          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: CELL_CACHE_BYTES });
+        } else {
+          editor.renderBackend = {
+            active: 'canvas2d',
+            reason: acquired.capability.reason,
+            isSoftwareBrowser: acquired.capability.isSoftwareBrowser,
+          };
+        }
       }
-      const shot = navShot && navigating() && !editor.playing ? navShot : null;
-      // Too soon: asked again, so a hand that stops is not left with the gap.
-      if (uncovered && shot) {
-        scheduleDraw();
+
+      if (glComposer && glCanvasEl && glContext) {
+        if (glCanvasEl.width !== pxWidth) glCanvasEl.width = pxWidth;
+        if (glCanvasEl.height !== pxHeight) glCanvasEl.height = pxHeight;
+        const lostNow = glContext.isContextLost();
+        const maxTex = lostNow ? 0 : Number(glContext.getParameter(glContext.MAX_TEXTURE_SIZE));
+        const fitsSurface = !lostNow
+          && glContext.drawingBufferWidth === pxWidth
+          && glContext.drawingBufferHeight === pxHeight
+          && raster.width <= maxTex
+          && raster.height <= maxTex;
+        if (!fitsSurface) {
+          webglVisible = false;
+          navShot = null;
+          lastDrawn = null;
+          if (lostNow) {
+            handleRecoverableContextLoss();
+          } else {
+            editor.renderBackend = { active: 'canvas2d', reason: 'budget-exceeded', isSoftwareBrowser: false };
+          }
+        } else {
+          const ok = glComposer.composeAndPresent(raster.width, raster.height, scene, present, playArg);
+          if (ok) {
+            lastDrawn = { ...editor.view, dpr };
+            lastRaster = raster;
+            navShot = null;
+            if (!webglVisible) {
+              // Invalidate outgoing Canvas 2D async callbacks & playback stills upon promotion.
+              backendGeneration += 1;
+              played.release();
+              webglVisible = true;
+            }
+            if (editor.renderBackend.active !== 'webgl2') {
+              editor.renderBackend = { active: 'webgl2', reason: 'webgl2', isSoftwareBrowser: false };
+            }
+            clearTimeout(warmTimer);
+            warmer.stop();
+            return;
+          }
+          webglVisible = false;
+          const failure = glComposer.lastFailure;
+          if (failure === 'oom') {
+            retireWebGL('oom', true);
+          } else if (failure === 'budget-exceeded') {
+            navShot = null;
+            lastDrawn = null;
+            editor.renderBackend = { active: 'canvas2d', reason: 'budget-exceeded', isSoftwareBrowser: false };
+          } else {
+            handleRecoverableContextLoss();
+          }
+        }
       }
-      if (shot) {
+    } else if (webglVisible) {
+      webglVisible = false;
+      navShot = null;
+      lastDrawn = null;
+    }
+
+    const drawn: DrawnView = { ...editor.view, dpr };
+    const uncovered = navShot !== null && !shotCovers(navShot.view, drawn, stage);
+    if (navShot && uncovered && performance.now() - navShot.at >= NAV_COMPOSE_MS) {
+      navShot = null;
+    }
+    const shot = navShot && navigating() && !editor.playing ? navShot : null;
+    if (uncovered && shot) {
+      scheduleDraw();
+    }
+    if (shot) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, pxWidth, pxHeight);
+      turned(ctx, 1, editor.view.angle, sheet.x, sheet.y);
+      ctx.fillStyle = BACKGROUND_COLOR;
+      ctx.fillRect(0, 0, sheet.w, sheet.h);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, sheet.w, sheet.h);
+      ctx.clip();
+      try {
         const to = reprojection(shot.view, drawn);
         turned(ctx, to.scale, to.turn, to.x, to.y);
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(shot.canvas, 0, 0);
-      } else {
-        sheetEl = buffer(sheetEl, raster.width, raster.height);
-        const sheetCtx = sheetEl.getContext('2d') as unknown as ViewCtx | null;
-        if (!sheetCtx) {
-          return;
-        }
-        sheetCtx.setTransform(1, 0, 0, 1, 0, 0);
-        sheetCtx.clearRect(0, 0, raster.width, raster.height);
-        lastDrawn = drawn;
-        lastRaster = raster;
-        const ghosts = editor.showOnionSkin
-          ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
-          : undefined;
-        const live = liveLine(viewport);
-        // Played, a frame is what it was the last time round: nothing is drawn
-        // while the film plays.
-        const still = editor.playing && !ghosts && !live;
-        // Kept by the tick its still begins on: a pause is one picture, not one per tick.
-        const playKey = still ? stillStart(editor.doc, frame) : frame;
-        const kept = still ? played.get(editor.doc, raster, playKey) : undefined;
-        if (kept) {
-          if ('close' in kept) {
-            sheetCtx.drawImage(kept, 0, 0);
-          } else {
-            sheetCtx.putImageData(kept, 0, 0);
-          }
-        } else {
-          composer.compose(sheetCtx, raster.width, raster.height, {
-            doc: editor.doc,
-            frame,
-            activeLayer: editor.activeLayer,
-            viewport,
-            tools: previewTools,
-            cellAt: stackCell,
-            ghosts,
-            live,
-            // The profile's active alpha (Multator: 0.8, its containerSprite)
-            // applies to the whole current frame; toonop's onion window can
-            // blend it half through over its ghosts.
-            alpha: editor.playing ? 1 : editor.onionBlends ? ONION_BLEND_ALPHA : editor.ux.activeFrameAlpha,
-            blend: editor.onionBlends,
-            paper: BACKGROUND_COLOR,
-          });
-          // The hand at rest: the frames it goes to next are made ready. A
-          // line under the hand stops it; the frame it lands on starts it over.
-          clearTimeout(warmTimer);
-          if (live) {
-            warmer.stop();
-          } else {
-            const scene = {
-              doc: editor.doc, frame, tools: editor.doc.tools, viewport,
-              width: raster.width, height: raster.height,
-              ahead: editor.playing ? playWindow(raster) : undefined,
-            };
-            warmTimer = setTimeout(() => warmer.request(scene), editor.playing ? 0 : 150);
-          }
-          if (still) {
-            // A device out of memory keeps no more frames: the rest are composed.
-            const doc = editor.doc;
-            if (keepAs === 'bitmap' && sheetEl) {
-              createImageBitmap(sheetEl).then((bitmap) => {
-                // Stopped meanwhile: nobody will show it.
-                if (editor.playing && editor.doc === doc) {
-                  played.keep(doc, raster, playKey, bitmap, frameCount(doc));
-                } else {
-                  bitmap.close();
-                }
-              }, () => {
-                // Drawn live, as before.
-              });
-            } else {
-              try {
-                played.keep(doc, raster, playKey, sheetCtx.getImageData(0, 0, raster.width, raster.height), frameCount(doc));
-              } catch {
-                // Drawn live, as before.
-              }
-            }
-          }
-        }
-        // Magnified past its own pixels the sheet shows them, squares and
-        // all; anything less is smoothed.
-        const stretch = perPixel / raster.level;
-        lay(stretch);
-        ctx.imageSmoothingEnabled = stretch < 2;
-        // A 1080p sheet on a phone is shrunk several times over: the
-        // default filter drops lines thinner than the step it samples at.
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(sheetEl, 0, 0);
-
-        // The grid is a drawing aid, not part of the picture: the preview shows
-        // the frames as they will be exported.
-        if (toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing) {
-          lay(1);
-          drawPixelGrid(ctx, sheet, dpr);
-        }
+      } finally {
+        ctx.restore();
       }
-    } finally {
-      ctx.restore();
+    } else {
+      if (!composer.composeAndPresent(raster.width, raster.height, scene, present, playArg)) {
+        return;
+      }
+      lastDrawn = drawn;
+      lastRaster = raster;
+      clearTimeout(warmTimer);
+      if (live) {
+        warmer.stop();
+      } else {
+        const warmScene = {
+          doc: editor.doc, frame, tools: editor.doc.tools, viewport,
+          width: raster.width, height: raster.height,
+          ahead: editor.playing ? playWindow(raster) : undefined,
+        };
+        warmTimer = setTimeout(() => warmer.request(warmScene), editor.playing ? 0 : 150);
+      }
     }
     // A frame composed under a moving hand — no shot could be taken when it
     // took hold, or what the shot showed has changed since — is the shot now.
     if (navigating() && !editor.playing) {
       takeNavShot();
     }
-  }
-
-  /**
-   * The pixel tool's grid, one line per cell (reference `tools.js:346-357`).
-   * `difference` keeps it visible over both the white page and a black
-   * stroke without a colour of its own.
-   */
-  function drawPixelGrid(
-    ctx: ViewCtx,
-    sheet: { x: number; y: number; w: number; h: number },
-    dpr: number,
-  ): void {
-    const step = cursorDiameter * dpr;
-    if (step < 4) {
-      // Denser than this the grid is a grey wash, not a guide.
-      return;
-    }
-    // In the sheet's own axes (the caller laid them): the cells turn with it.
-    ctx.globalCompositeOperation = 'difference';
-    ctx.strokeStyle = '#303030';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    // On a canvas pixel while the sheet lies upright; turned, there is no
-    // pixel row to keep to.
-    const crisp = (at: number, origin: number): number => Math.round(origin + at) + 0.5 - origin;
-    for (let x = 0; x < sheet.w; x += step) {
-      ctx.moveTo(crisp(x, sheet.x), 0);
-      ctx.lineTo(crisp(x, sheet.x), sheet.h);
-    }
-    for (let y = 0; y < sheet.h; y += step) {
-      ctx.moveTo(0, crisp(y, sheet.y));
-      ctx.lineTo(sheet.w, crisp(y, sheet.y));
-    }
-    ctx.stroke();
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   /**
@@ -1079,14 +1193,16 @@
     // a finger made active meanwhile.
     if (megaGesture && megaGesture.length >= 2 && megaAt.cell && stillActive(megaAt.cell)) {
       const gesture = megaGesture;
+      const width = brushWidthDoc(editor.brushSizeLogical);
       return {
         id: nodeId(gesture),
         erase: true,
+        spec: { kind: 'raw-polyline', points: gesture, width, color: BACKGROUND_COLOR },
         paint: (target) => renderRawPolyline(
           gesture,
           // The width the gesture really cuts with: the cut on release takes
           // the same normalised radius, and so does the cursor ring.
-          brushWidthDoc(editor.brushSizeLogical),
+          width,
           BACKGROUND_COLOR,
           target,
           viewport,
@@ -1098,15 +1214,18 @@
       const stroke = shapeNow(drag);
       if (!stroke) return null;
       const tool = stroke.tool as LineToolDescriptor;
+      const color = 'color' in tool ? tool.color : BACKGROUND_COLOR;
+      const alpha = isFlatPaint(tool) ? 1 : (opacityOf(tool).opacity ?? 100) / 100;
       return {
         id: nodeId(drag),
         flat: isFlatPaint(tool) ? tool : undefined,
         points: stroke.points,
         erase: false,
+        spec: { kind: 'resolved', points: stroke.points, tool, color, alpha },
         paint: (target) => {
-          if (!isFlatPaint(tool)) target.globalAlpha = (opacityOf(tool).opacity ?? 100) / 100;
+          if (!isFlatPaint(tool)) target.globalAlpha = alpha;
           try {
-            renderResolvedPreview(stroke.points, tool, 'color' in tool ? tool.color : BACKGROUND_COLOR, target, viewport);
+            renderResolvedPreview(stroke.points, tool, color, target, viewport);
           } finally {
             target.globalAlpha = 1;
           }
@@ -1128,11 +1247,40 @@
       && (geometry === 'line' || geometry === 'smooth');
     if (!grows) {
       const points = session.rules.previewGeometry === 'line' ? session.rawPoints : previewStrokeSession(session);
+      const raw = session.rules.previewGeometry === 'line';
+      const pressure = previewStrokePressure(session, points);
+      const alpha = isFlatPaint(session.descriptor) ? 1 : (opacityOf(session.descriptor).opacity ?? 100) / 100;
+      const spec: DeclarativeLiveStroke = pressure
+        ? {
+            kind: 'resolved',
+            points,
+            tool: raw ? { ...session.descriptor, geometry: 'line' as const } : session.descriptor,
+            color,
+            pressure,
+            alpha,
+          }
+        : raw
+          ? {
+              kind: 'raw-polyline',
+              points: session.rawPoints.length >= 4 ? session.rawPoints : [],
+              width: session.descriptor.width,
+              color,
+              fill: isFilledLineTool(session.descriptor) ? session.descriptor.fill : undefined,
+              alpha,
+            }
+          : {
+              kind: 'resolved',
+              points,
+              tool: session.descriptor,
+              color,
+              alpha,
+            };
       return {
         id: nodeId(session),
         flat: isFlatPaint(session.descriptor) ? session.descriptor : undefined,
         points,
         erase,
+        spec,
         paint: (target) => renderSessionPreview(session, target, viewport, color, points),
       };
     }
@@ -1258,7 +1406,67 @@
     void editor.view;
     void editor.transform;
     composer.invalidate();
+    glComposer?.invalidate();
     scheduleDraw();
+  });
+
+  // Live toggle between hardware WebGL2 and software Canvas 2D without losing the canvas state.
+  let prevHardwarePref: boolean | undefined;
+  $effect(() => {
+    const want = editor.settings.hardwareRender;
+    if (prevHardwarePref === undefined) {
+      prevHardwarePref = want;
+      if (!want) {
+        editor.renderBackend = { active: 'canvas2d', reason: 'disabled', isSoftwareBrowser: glSoftwareBrowser };
+      }
+      return;
+    }
+    if (want === prevHardwarePref) return;
+    prevHardwarePref = want;
+    if (!want) {
+      retireWebGL('disabled', true);
+      glProbed = false;
+      glSessionRetired = null;
+      glContextLost = false;
+      glRestorePending = false;
+      scheduleDraw();
+    } else {
+      // Fresh candidate canvas while Canvas 2D stays visible until first WebGL2 draw succeeds.
+      glSessionRetired = null;
+      glProbed = false;
+      glContextLost = false;
+      glRestorePending = false;
+      glLossTimes = [];
+      navShot = null;
+      lastDrawn = null;
+      glMountKey += 1;
+      scheduleDraw();
+    }
+  });
+
+  // Listen to WebGL2 context loss & restoration on the mounted glCanvasEl without unmounting it.
+  $effect(() => {
+    const el = glCanvasEl;
+    if (!el) return;
+    const onLost = (e: Event): void => {
+      // Ignore intentional loseContext() triggered during probe rejection or manual disable.
+      if (glIntentionalLose || (!glContext && !glContextLost)) return;
+      if (!glSessionRetired) e.preventDefault();
+      handleRecoverableContextLoss();
+      scheduleDraw();
+    };
+    const onRestored = (): void => {
+      if (glSessionRetired || !editor.settings.hardwareRender) return;
+      glContextLost = false;
+      glRestorePending = true;
+      scheduleDraw();
+    };
+    el.addEventListener('webglcontextlost', onLost);
+    el.addEventListener('webglcontextrestored', onRestored);
+    return () => {
+      el.removeEventListener('webglcontextlost', onLost);
+      el.removeEventListener('webglcontextrestored', onRestored);
+    };
   });
 
   // The shot is the picture as the hand grabbed it. What it is made of changed
@@ -1297,6 +1505,7 @@
   $effect(() => {
     if (!editor.playing) {
       played.release();
+      glComposer?.clearPlayback();
     }
   });
 
@@ -1307,6 +1516,7 @@
     let query: MediaQueryList;
     const moved = (): void => {
       composer.invalidate();
+      glComposer?.invalidate();
       scheduleDraw();
       watch();
     };
@@ -1324,7 +1534,7 @@
    * for a rectangle that cannot have moved between them.
    */
   function canvasRect(): DOMRect {
-    return canvasEl.getBoundingClientRect();
+    return (captureStageEl ?? canvasEl).getBoundingClientRect();
   }
 
   /** Document units one CSS pixel of the screen spans at the zoom in hand. */
@@ -1399,73 +1609,39 @@
    * memory). Emptiness arms the eraser; not being able to look must not.
    */
   function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null | undefined {
+    if (!lastRaster) {
+      return undefined;
+    }
     const source = pickSource(editor.pickSource, e.altKey);
-    // The frame as it was composed, off the composer's own buffers: no paper
-    // under it, no onion over it and no line under the hand.
-    const layers = composer.layers;
-    if (!layers || !lastRaster) {
-      return undefined;
-    }
-    // Those buffers hold the sheet's bitmap, not the screen: the
-    // pixel is read where that spot of the sheet lies in them, whatever the
-    // view has done since.
+    const activeComposer: SheetComposer = webglVisible && glComposer ? glComposer : composer;
     const [ux, uy] = toDocUnits(e);
-    const bx = (ux / FIXED_POINT_SCALE) * lastRaster.level;
-    const by = (uy / FIXED_POINT_SCALE) * lastRaster.level;
-    // Inside the buffers read, not the canvas: a stage resized in the middle
-    // of a gesture has a canvas of the new size over layers of the old.
-    const read = layers.active as unknown as HTMLCanvasElement;
-    const px = Math.min(read.width - 1, Math.max(0, Math.floor(bx)));
-    const py = Math.min(read.height - 1, Math.max(0, Math.floor(by)));
-    // One pixel is all it reads, so one pixel is all it flattens: the layers
-    // land shifted onto a 1×1 scratch. A stage-sized copy was three full blits
-    // every 100 ms of the preview and megabytes held for the rest of the session.
-    pickEl = buffer(pickEl, 1, 1);
-    // Made for reading: the preview reads a pixel back every 100 ms, and a
-    // GPU-backed scratch paid a full readback for each.
-    const pctx = pickEl.getContext('2d', { willReadFrequently: true }) as unknown as ViewCtx | null;
-    if (!pctx) {
+    const px = Math.min(lastRaster.width - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * lastRaster.level)));
+    const py = Math.min(lastRaster.height - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * lastRaster.level)));
+    const seen = source === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
+    const handleGlSampleFailure = (): void => {
+      if (activeComposer !== glComposer || !glComposer?.lastFailure) return;
+      if (glComposer.lastFailure === 'oom') {
+        retireWebGL('oom', true);
+      } else {
+        handleRecoverableContextLoss();
+      }
+      scheduleDraw();
+    };
+    const raw = activeComposer.samplePixel({ px, py, source, onPaper: false, paper: BACKGROUND_COLOR });
+    if (!raw) {
+      handleGlSampleFailure();
       return undefined;
     }
-    // Each part with the look it is laid with — but the layer alone without
-    // its own: "Layer" reads what is drawn on it.
-    const lay = (image: CanvasImageSource, look?: LayerLook): void => {
-      pctx.globalAlpha = (look?.opacity ?? 100) / 100;
-      pctx.globalCompositeOperation = look?.blend ?? 'source-over';
-      pctx.drawImage(image, -px, -py);
-      pctx.globalAlpha = 1;
-      pctx.globalCompositeOperation = 'source-over';
-    };
-    const flatten = (paper: boolean): number[] => {
-      pctx.setTransform(1, 0, 0, 1, 0, 0);
-      pctx.clearRect(0, 0, 1, 1);
-      if (paper) {
-        pctx.fillStyle = BACKGROUND_COLOR;
-        pctx.fillRect(0, 0, 1, 1);
-      }
-      if (source === 'canvas') {
-        for (const part of layers.below) lay(part.image, part.look);
-        lay(layers.active, layers.activeLook);
-        for (const part of layers.above) lay(part.image, part.look);
-      } else {
-        lay(layers.active);
-      }
-      return [...(pctx as unknown as CanvasRenderingContext2D).getImageData(0, 0, 1, 1).data];
-    };
-    const seen = source === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
-    // Reference: only a fully opaque pixel carries a colour. The soft rim of
-    // a stroke reads as emptiness, so the pipette never picks a washed-out
-    // version of the line it was aimed at — but a translucent line is a
-    // colour, the one it is seen as on the paper.
-    const picked = colourOfPixel(flatten(false), editor.doc.tools, undefined, seen.flatMap((layer) => layer.opacity ?? []));
-    // Over nothing a blended layer is its own colour; on the canvas it is laid
-    // over the paper. Whether there is ink is read above, the colour there off
-    // the frame on the paper — opaque already, so not mixed with it again.
+    const picked = colourOfPixel(raw, editor.doc.tools, undefined, seen.flatMap((layer) => layer.opacity ?? []));
     if (picked === null || !seen.some((layer) => layer.blend)) {
       return picked;
     }
-    const [r, g, b] = flatten(true);
-    return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    const onPaper = activeComposer.samplePixel({ px, py, source, onPaper: true, paper: BACKGROUND_COLOR });
+    if (!onPaper) {
+      handleGlSampleFailure();
+      return undefined;
+    }
+    return '#' + [onPaper[0], onPaper[1], onPaper[2]].map((v) => v.toString(16).padStart(2, '0')).join('');
   }
 
   /**
@@ -1639,7 +1815,7 @@
       dropNavShot();
     }
     try {
-      canvasEl.setPointerCapture(pointerId);
+      capturePointer(pointerId);
     } catch {
       // The finger left in the same tick; its pointerup ends nothing.
     }
@@ -1710,7 +1886,7 @@
       if (shapeGesture.second === null) {
         shapeGesture = { ...shapeGesture, second: e.pointerId };
         // Held, so its lift off the canvas still comes here (endNavigation).
-        canvasEl.setPointerCapture(e.pointerId);
+        capturePointer(e.pointerId);
         scheduleDraw();
       }
       return true;
@@ -1756,7 +1932,7 @@
           ? { dir: aroundTable(e), angle: editor.view.angle, twisted: 0 }
           : undefined,
       };
-      canvasEl.setPointerCapture(e.pointerId);
+      capturePointer(e.pointerId);
       takeNavShot();
       return true;
     }
@@ -1855,7 +2031,7 @@
   }
 
   function zoomTo(zoom: number, clientX: number, clientY: number): void {
-    const rect = canvasEl.getBoundingClientRect();
+    const rect = canvasRect();
     // Unsnapped: the notches are for the keys, not for fingers or the wheel.
     editor.view = zoomAt(editor.view, zoom, clientX - rect.left, clientY - rect.top, stage, false);
   }
@@ -2251,7 +2427,7 @@
     if (rulerHit && rulerHit.part !== 'edge' && shownRuler) {
       rulerGrab = { pointerId: e.pointerId, base: shownRuler, from: toDocUnits(e), end: rulerHit.part === 'end' ? rulerHit.end : null };
       rulerLive = shownRuler;
-      canvasEl.setPointerCapture(e.pointerId);
+      capturePointer(e.pointerId);
       // The canvas's own gesture: a cancel or a lost capture drops it
       // (dropOwnGesture), and a palm by the pen dragging it is a palm.
       gesturePointerId = e.pointerId;
@@ -2264,7 +2440,7 @@
       && editor.tool !== 'pipette' && !overlayCursor) {
       const size = editor.brushSizeLogical;
       sizing = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, start: size, size, magnet };
-      canvasEl.setPointerCapture(e.pointerId);
+      capturePointer(e.pointerId);
       return;
     }
     // A live transform owns the canvas: a handle scales, the ring outside a
@@ -2275,7 +2451,7 @@
       hoverMode = mode;
       if (mode !== 'none') {
         grab = { pointerId: e.pointerId, mode, base: editor.transform.session, x, y, axis: null, moved: false };
-        canvasEl.setPointerCapture(e.pointerId);
+        capturePointer(e.pointerId);
         return;
       }
     }
@@ -2285,7 +2461,7 @@
       if (editor.mayEdit() && editor.leaveTransform()) {
         const [x, y] = toDocUnits(e);
         loopGesture = [Math.round(x), Math.round(y)];
-        canvasEl.setPointerCapture(e.pointerId);
+        capturePointer(e.pointerId);
         gesturePointerId = e.pointerId;
       }
       return;
@@ -2317,7 +2493,7 @@
       }
       // Pinned: a hotkey mid-drag changes the tool in hand, not this gesture.
       pluginGrab = { pointerId: e.pointerId, spec };
-      canvasEl.setPointerCapture(e.pointerId);
+      capturePointer(e.pointerId);
       gesturePointerId = e.pointerId;
       return;
     }
@@ -2326,7 +2502,7 @@
     if (editor.tool === 'magnet') {
       if (editor.beginMagnet(toDocUnits(e))) {
         magnetHeld = true;
-        canvasEl.setPointerCapture(e.pointerId);
+        capturePointer(e.pointerId);
         gesturePointerId = e.pointerId;
       }
       return;
@@ -2348,7 +2524,7 @@
           layer: editor.doc.layers[editor.activeLayer],
           cell: markActive(),
         };
-        canvasEl.setPointerCapture(e.pointerId);
+        capturePointer(e.pointerId);
         gesturePointerId = e.pointerId;
       }
       return;
@@ -2366,7 +2542,7 @@
       // when the finger lifts (owner, 2026-10-13).
       if (e.pointerType === 'touch') {
         try {
-          canvasEl.setPointerCapture(e.pointerId);
+          capturePointer(e.pointerId);
         } catch {
           // The finger left in the same tick; its pointerup ends nothing.
         }
@@ -2396,7 +2572,7 @@
       const [x, y] = toDocUnits(e);
       megaGesture = [Math.round(x), Math.round(y)];
       megaAt = { layer: editor.doc.layers[editor.activeLayer], cell: markActive() };
-      canvasEl.setPointerCapture(e.pointerId);
+      capturePointer(e.pointerId);
       gesturePointerId = e.pointerId;
       scheduleDraw();
       return;
@@ -2412,7 +2588,7 @@
     if (rulerHit?.part === 'edge' && shownRuler) {
       rulerLock = { pointerId: e.pointerId, lay: alongRuler(shownRuler, toDocUnits(e)) };
     }
-    canvasEl.setPointerCapture(e.pointerId);
+    (captureStageEl ?? canvasEl).setPointerCapture(e.pointerId);
     pointer.pointerDown(toPointerSample(e, true));
     scheduleDraw();
   }
@@ -2727,6 +2903,7 @@
       megaGesture = null;
       gesturePointerId = -1;
       composer.invalidate();
+      glComposer?.invalidate();
       scheduleDraw();
       return;
     }
@@ -2874,14 +3051,12 @@
   bind:clientHeight={wrapHeight}
   onwheel={onWheel}
 >
-  <!-- ARIA in HTML allows any role on <canvas>; `img` is the honest one for a
-       surface that renders a picture, and without it the drawing is an
-       anonymous box in the accessibility tree. -->
-  <!-- svelte-ignore a11y_no_interactive_element_to_noninteractive_role -->
-  <!-- The right button picks the fill colour and draws with it, so the
-       browser menu never opens over the canvas. -->
-  <canvas
-    bind:this={canvasEl}
+  <!-- Permanent pointer-capture stage container: the Canvas 2D and WebGL2
+       surfaces sit inside it as non-interactive siblings so backend switches
+       and context loss never interrupt an active stroke or lasso drag. -->
+  <div
+    class="stage"
+    bind:this={captureStageEl}
     role="img"
     aria-label={canvasLabel}
     style:width="{stage.width}px"
@@ -2915,7 +3090,22 @@
     class:playing={editor.playing}
     style:cursor={(!editor.playing && rulerHover === 'body' && 'move') || (!editor.playing && rulerHover === 'end' && 'grab')
       || (!editor.playing && !crossOnly && overlayCursor) || null}
-  ></canvas>
+  >
+    <canvas
+      bind:this={canvasEl}
+      class="surface"
+      class:hidden={webglVisible}
+      aria-hidden="true"
+    ></canvas>
+    {#key glMountKey}
+      <canvas
+        bind:this={glCanvasEl}
+        class="surface"
+        class:hidden={!webglVisible}
+        aria-hidden="true"
+      ></canvas>
+    {/key}
+  </div>
   {#if rulerShape}
     <!-- The ruler: a band on the sheet, the studio's alone. Purely visual too:
          its presses are read off the canvas (rulerHitAt). -->
@@ -3073,22 +3263,33 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  canvas {
+  .stage {
+    position: relative;
     display: block;
-    /* The worktable itself: the sheet, its edge and its shadow are painted
-       into the canvas, wherever the view has put it. */
     background: transparent;
     /* Page scroll/zoom must not hijack drawing. */
     touch-action: none;
     cursor: crosshair;
   }
-  canvas.custom-cursor {
+  .stage.custom-cursor {
     cursor: none;
   }
   /* Through the preview a press does nothing: no ring, no swatch, no cross
      promising otherwise — the system's own arrow. */
-  canvas.playing {
+  .stage.playing {
     cursor: default;
+  }
+  .surface {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: transparent;
+    pointer-events: none;
+  }
+  .surface.hidden {
+    visibility: hidden;
   }
   .overlay {
     position: absolute;

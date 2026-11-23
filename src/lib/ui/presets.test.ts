@@ -240,6 +240,7 @@ test('settings round-trip through the stored config', () => {
     showDraftsOnStart: false,
     pickerModel: 'wheel' as const,
     altLayout: true,
+    hardwareRender: false,
     letterKeys: false,
     keymap: { undo: ['u', 'Ctrl+z'] },
     removerTipShown: true,

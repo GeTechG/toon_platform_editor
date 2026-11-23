@@ -36,6 +36,8 @@ export interface BenchConfig {
   heapGrowthMaxBytes: number;
   /** Warm-up before heap sampling starts (ms). */
   heapWarmupMs: number;
+  /** Render backend to benchmark: 'canvas2d' (default) or 'webgl2'. */
+  backend: 'canvas2d' | 'webgl2';
 }
 
 export const DEFAULT_CONFIG: BenchConfig = {
@@ -59,6 +61,7 @@ export const DEFAULT_CONFIG: BenchConfig = {
   // 2 GB Android device (see tasks 5.2). Left as a knob.
   heapGrowthMaxBytes: 8 * 1024 * 1024,
   heapWarmupMs: 1000,
+  backend: 'canvas2d',
 };
 
 /** Reads overrides from a query string, falling back to `base` per field. */
@@ -70,9 +73,15 @@ export function configFromQuery(search: string, base: BenchConfig = DEFAULT_CONF
     if (raw === null) {
       continue;
     }
+    if (key === 'backend') {
+      if (raw === 'canvas2d' || raw === 'webgl2') {
+        result.backend = raw;
+      }
+      continue;
+    }
     const v = Number(raw);
     if (Number.isFinite(v)) {
-      result[key] = v;
+      (result as Record<string, unknown>)[key] = v;
     }
   }
   return result;

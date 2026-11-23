@@ -16,16 +16,21 @@ function handler(name: string): string {
 }
 
 describe('пипетка, которой нечего прочесть', () => {
-  it('без контекста 1×1 (Safari упёрся в память холстов) не падает в обработчике нажатия', () => {
-    const pick = handler('pickColor');
-    const ctxAt = pick.indexOf("getContext('2d'");
+  it('без контекста 1×1 (Safari упёрся в память холстов) не падает в обработчике нажатия', async () => {
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    const sample = adapter.slice(adapter.indexOf('samplePixel('));
+    const ctxAt = sample.indexOf("getContext('2d'");
     expect(ctxAt).toBeGreaterThan(-1);
-    expect(pick.slice(ctxAt)).toMatch(/if \(!pctx\) \{?\s*return undefined;?/);
+    expect(sample.slice(ctxAt)).toMatch(/if \(!pctx\) return null;/);
+    expect(handler('pickColor')).toMatch(/if \(!raw\) \{[^}]*return undefined;/);
   });
 
-  it('«не прочла» — не «пусто»: кадр ещё не собран или контекста нет — ластик не берётся', () => {
+  it('«не прочла» — не «пусто»: кадр ещё не собран или контекста нет — ластик не берётся', async () => {
     const pick = handler('pickColor');
-    expect(pick).toMatch(/if \(!layers \|\| !lastRaster\) \{?\s*return undefined;?/);
+    expect(pick).toMatch(/if \(!lastRaster\) \{?\s*return undefined;?/);
+    expect(pick).toMatch(/if \(!raw\) \{[^}]*return undefined;/);
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('if (!layers) return null;');
     const take = handler('takeColour');
     expect(take).toMatch(/picked === undefined/);
     expect(take.indexOf('picked === undefined')).toBeLessThan(take.indexOf("selectTool('eraser')"));

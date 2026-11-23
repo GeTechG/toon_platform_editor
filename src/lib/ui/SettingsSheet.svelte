@@ -494,6 +494,18 @@
             dialogEl?.close();
           })}
         {/if}
+        <label class="toggle">
+          <span class="toggle-label stacked">
+            {t('settings.hardware_render')}
+            <small>{t(`settings.render_status_${editor.renderBackend.reason}`)}</small>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={editor.settings.hardwareRender}
+            onchange={(e) => editor.setSetting('hardwareRender', e.currentTarget.checked)}
+          />
+        </label>
       {:else if tab === 'saving'}
         <!-- A div, not a label: the list's button names itself (Dropdown). -->
         <div class="row">

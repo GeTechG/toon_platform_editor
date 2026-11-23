@@ -114,7 +114,7 @@ describe('снимок панорамы не переживает то, из ч�
   // Второй палец щипка сбрасывает линию первого и просит кадр без неё — а
   // снимок брался тут же, с холста, где линия ещё нарисована.
   it('пока кадр ждёт отрисовки, снимок с холста не берётся: на нём ещё старое', () => {
-    expect(handler('takeNavShot')).toMatch(/if \(!canvasEl \|\| !lastDrawn \|\| navShot \|\| rafPending\)/);
+    expect(handler('takeNavShot')).toMatch(/if \((?:webglVisible \|\| )?!canvasEl \|\| !lastDrawn \|\| navShot \|\| rafPending\)/);
   });
 });
 

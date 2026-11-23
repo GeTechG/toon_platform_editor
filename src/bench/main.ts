@@ -42,7 +42,10 @@ root.append(status, canvas);
 runBench(canvas, cfg)
   .then((result) => {
     window.__BENCH_RESULT__ = result;
-    status.textContent = `Overall: ${result.overall} — corpus ${result.corpus.layers} layers × ${result.corpus.frames} frames × ${result.corpus.strokesPerFrame} strokes (${result.corpus.totalStrokes} total), dpr ${dpr}`;
+    const backendLabel = result.backendFallbackReason
+      ? `${result.actualBackend} (fallback: ${result.backendFallbackReason})`
+      : result.actualBackend;
+    status.textContent = `Overall: ${result.overall} [${backendLabel}] — corpus ${result.corpus.layers} layers × ${result.corpus.frames} frames × ${result.corpus.strokesPerFrame} strokes (${result.corpus.totalStrokes} total), dpr ${dpr}`;
     root.append(renderTable(result));
     root.dataset.benchState = 'done';
   })

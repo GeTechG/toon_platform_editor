@@ -251,6 +251,7 @@ import {
   type SideId,
   type BrushRecord,
 } from './presets';
+import type { RenderBackendStatus } from '../render/webgl/probe';
 import { t } from '../i18n';
 import { formatLimitHint } from './format-limit';
 import { whenYes, type Answer } from './ask';
@@ -393,6 +394,12 @@ export class EditorState {
    * Everything here applies the moment it changes.
    */
   settings = $state<EditorSettings>({ ...DEFAULT_SETTINGS });
+  /** Active studio canvas backend and why it was picked; updated by CanvasView. */
+  renderBackend = $state<RenderBackendStatus>({
+    active: 'canvas2d',
+    reason: 'disabled',
+    isSoftwareBrowser: false,
+  });
   /**
    * Reference "paranoid mode": instead of applying an unfinished transform on
    * the way out, block the move until it is applied or dropped.

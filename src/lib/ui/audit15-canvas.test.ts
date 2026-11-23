@@ -37,16 +37,23 @@ function counted(log: { paints: number }[]): () => ComposeBuffer {
 }
 
 describe('сбой посреди кадра не копит клип', () => {
-  it('save() кадра закрывается restore() в finally: иначе после одного исключения клип старого листа режет все следующие кадры', () => {
+  it('save() кадра закрывается restore() в finally: иначе после одного исключения клип старого листа режет все следующие кадры', async () => {
     const draw = handler('draw');
     const save = draw.indexOf('ctx.save()');
     const tryAt = draw.indexOf('try {', save);
     const finallyAt = draw.indexOf('} finally {', tryAt);
     expect(save).toBeGreaterThan(-1);
     expect(tryAt).toBeGreaterThan(save);
-    expect(draw.indexOf('composer.compose(')).toBeGreaterThan(tryAt);
-    expect(finallyAt).toBeGreaterThan(draw.indexOf('composer.compose('));
     expect(draw.indexOf('ctx.restore()', finallyAt)).toBeGreaterThan(finallyAt);
+
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    const aSave = adapter.indexOf('ctx.save()');
+    const aTry = adapter.indexOf('try {', aSave);
+    const aFin = adapter.indexOf('} finally {', aTry);
+    expect(aSave).toBeGreaterThan(-1);
+    expect(aTry).toBeGreaterThan(aSave);
+    expect(aFin).toBeGreaterThan(aTry);
+    expect(adapter.indexOf('ctx.restore()', aFin)).toBeGreaterThan(aFin);
   });
 
   it('контекста нет (Safari упёрся в память холстов) — кадр не рисуется, а не падает в каждом rAF', () => {

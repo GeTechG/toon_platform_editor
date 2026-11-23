@@ -230,8 +230,8 @@ describe('the rules that used `:has()` keep working without it', () => {
   it('a settings label with a note under it says so by a class', () => {
     const withNote = [...settings.matchAll(/<span class="toggle-label([^"]*)">[^<]*<small/g)];
     // The transform lock's came (critique 2026-10-08); the pen pressure's
-    // left for the brush box with its switch.
-    expect(withNote.length).toBe(3);
+    // left for the brush box with its switch; hardwareRender added its status note.
+    expect(withNote.length).toBe(4);
     for (const m of withNote) expect(m[1]).toBe(' stacked');
     expect(styleOf('SettingsSheet.svelte', settings)).toMatch(/\.toggle \.toggle-label\.stacked \{[^}]*flex-direction: column/);
   });

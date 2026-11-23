@@ -86,7 +86,7 @@ export class CellWarmer {
       this.#cancel = this.#schedule(() => {
         this.#cancel = null;
         if (generation !== this.#generation) return;
-        void this.#run(job, scene).then(() => {
+        void this.#run(job, scene, generation).then(() => {
           if (generation === this.#generation) next();
         });
       });
@@ -129,23 +129,33 @@ export class CellWarmer {
     return jobs;
   }
 
-  async #run(cell: Frame, scene: WarmScene): Promise<void> {
+  async #run(cell: Frame, scene: WarmScene, generation: number): Promise<void> {
     const { tools, viewport, width, height } = scene;
-    if (this.#cache.has(cell, tools, viewport, width, height)) {
+    if (generation !== this.#generation || this.#cache.has(cell, tools, viewport, width, height)) {
       return;
     }
     if (this.#crew) {
       try {
         const done = await this.#crew.draw({ strokes: cell.strokes, tools, viewport, width, height });
         if (done) {
+          if (generation !== this.#generation) {
+            done.free();
+            return;
+          }
           this.#cache.put(cell, tools, viewport, width, height, done.image, done.free);
           return;
         }
       } catch {
         // Fall to the page below.
       }
+      if (generation !== this.#generation) {
+        return;
+      }
       // The crew could not draw: the page does it, now and from here on.
       this.#crew = undefined;
+    }
+    if (generation !== this.#generation) {
+      return;
     }
     this.#cache.take(cell, tools, viewport, width, height, (buffer) => {
       renderStrokesLayer(cell, tools, buffer.ctx, viewport, undefined, STUDIO_PATHS);

@@ -47,7 +47,8 @@
     "test": "bun test src examples",
     "test:watch": "bun test --watch src",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "schema": "bun run scripts/build-schema-validator.ts"
+    "schema": "bun run scripts/build-schema-validator.ts",
+    "verify:webgl2": "node scripts/verify-webgl2.mjs"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",

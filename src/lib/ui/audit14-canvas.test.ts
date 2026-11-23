@@ -118,12 +118,13 @@ describe('холст уходит — память уходит с ним', () =
     expect(made).toBe(3);
   });
 
-  it('при размонтировании холст отменяет кадр, освобождает композитор, снимок и пипетку', () => {
+  it('при размонтировании холст отменяет кадр, освобождает композитор, снимок и пипетку', async () => {
     const destroy = source.match(/onDestroy\(\(\) => \{[^]*?\n  \}\);/)![0];
     expect(destroy).toContain('cancelAnimationFrame(rafId)');
     expect(destroy).toContain('composer.dispose()');
     expect(destroy).toContain('shotCanvas');
-    expect(destroy).toContain('pickEl');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('#pickEl');
     expect(handler('scheduleDraw')).toContain('rafId = requestAnimationFrame(');
     expect(handler('draw')).toContain('destroyed');
   });

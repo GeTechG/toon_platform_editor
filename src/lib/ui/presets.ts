@@ -242,6 +242,8 @@ export interface EditorSettings {
   pickerModel: PickerModel;
   /** Panels left of the canvas, tool rail on the right (wide screens only). */
   altLayout: boolean;
+  /** Use hardware-accelerated WebGL2 rendering for the studio canvas when available. */
+  hardwareRender: boolean;
   /**
    * Bare letters, digits and signs are hotkeys (B, E, +, …), as in the
    * reference editors. Off, only chords and non-character keys act — the way
@@ -400,6 +402,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   showDraftsOnStart: true,
   pickerModel: 'hsv',
   altLayout: false,
+  hardwareRender: true,
   letterKeys: true,
   keymap: {},
   removerTipShown: false,
@@ -687,6 +690,7 @@ function normalizeSettings(value: unknown): EditorSettings {
       ? raw.pickerModel as PickerModel
       : DEFAULT_SETTINGS.pickerModel,
     altLayout: flag('altLayout'),
+    hardwareRender: flag('hardwareRender'),
     letterKeys: flag('letterKeys'),
     keymap: readOverrides(raw.keymap),
     removerTipShown: flag('removerTipShown'),

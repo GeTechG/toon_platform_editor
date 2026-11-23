@@ -21,6 +21,7 @@ import { extendsFlatRun, hasInteriorPaint, isFlatPaint, sameFlatPaint, type Flat
 import { CellCache, cellBudget, type Ink } from './cell-cache';
 import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
+import type { DeclarativeLiveStroke } from './sheet-composer';
 
 /** What the composed frame is painted onto. */
 export interface ComposeTarget extends Canvas2DLike {
@@ -80,6 +81,8 @@ export interface LiveLine {
   readonly flat?: FlatPaint;
   /** Paints the line whole onto a target. Absent means it can be added to. */
   readonly paint?: (target: Canvas2DLike) => void;
+  /** Declarative equivalent of `paint` for non-Canvas2D backends (WebGL2). */
+  readonly spec?: DeclarativeLiveStroke;
   /** Points of an incremental line, or the outline a flat stroke may fill. */
   readonly points?: readonly number[];
   readonly geometry?: StrokeGeometry;

@@ -39,6 +39,6 @@ describe('холст собирает кадр в битмап листа', () =
     expect(viewport).not.toContain('zoom');
     expect(viewport).not.toContain('pan');
     expect(draw).toContain('sheetRaster(editor.doc)');
-    expect(draw).toContain('composer.compose(sheetCtx, raster.width, raster.height');
+    expect(draw).toContain('composer.composeAndPresent(raster.width, raster.height');
   });
 });

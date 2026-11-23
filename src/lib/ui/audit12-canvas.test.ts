@@ -57,9 +57,11 @@ describe('the pipette', () => {
     expect(pipette).toContain('offSheet(');
   });
 
-  it('reads one pixel through a 1×1 scratch, not a stage-sized copy of the frame', () => {
+  it('reads one pixel through a 1×1 scratch, not a stage-sized copy of the frame', async () => {
     const pick = handler('pickColor');
-    expect(pick).toContain('buffer(pickEl, 1, 1)');
-    expect(pick).toContain('-px, -py');
+    expect(pick).toContain('.samplePixel(');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('ensureCanvasSize(this.#pickEl, 1, 1)');
+    expect(adapter).toContain('-px, -py');
   });
 });

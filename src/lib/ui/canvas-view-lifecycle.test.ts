@@ -212,7 +212,7 @@ describe('the pipette over emptiness', () => {
     // Reference: alpha ≠ 255 is "no colour here", including the antialiased
     // rim of a stroke — not the background colour. The rule itself is
     // `colourOfPixel` (pipette-pixel.test.ts), which a translucent line bends.
-    expect(handler('pickColor')).toContain('colourOfPixel(flatten(false), editor.doc.tools,');
+    expect(handler('pickColor')).toContain('colourOfPixel(raw, editor.doc.tools,');
     expect(source).toContain('function pickColor(e: { clientX: number; clientY: number; altKey: boolean }): string | null');
   });
 
@@ -250,10 +250,12 @@ describe('the cursor over the canvas', () => {
     expect(source).toContain('(size * sheetWidth * editor.view.zoom)');
   });
 
-  it('squares the cursor and lays a difference grid under the pixel tool', () => {
+  it('squares the cursor and lays a difference grid under the pixel tool', async () => {
     expect(source).toContain('class:square=');
-    expect(handler('draw')).toContain("drawPixelGrid(");
-    expect(handler('drawPixelGrid')).toContain("'difference'");
+    expect(handler('draw')).toContain('gridStep:');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('drawCanvasPixelGrid(');
+    expect(adapter).toContain("'difference'");
   });
 
   it('takes the grid away while the preview plays', () => {
@@ -371,7 +373,7 @@ describe('the sheet lies on a worktable', () => {
     expect(source).toContain('sheetWidth');
   });
 
-  it('paints the paper where the view puts it and keeps the drawing on it', () => {
+  it('paints the paper where the view puts it and keeps the drawing on it', async () => {
     const draw = handler('draw');
     // The table shows through around the sheet instead of a full-bleed fill.
     expect(draw).toContain('clearRect(0, 0, pxWidth, pxHeight)');
@@ -379,8 +381,11 @@ describe('the sheet lies on a worktable', () => {
     // The paper is a flat fill where the sheet lands — no shadow to buffer.
     expect(draw).toContain('fillStyle = BACKGROUND_COLOR');
     // …in the sheet's own axes, turned as the view has it.
-    expect(draw).toContain('lay(1);');
+    expect(draw).toContain('turned(ctx, 1, editor.view.angle, sheet.x, sheet.y)');
     expect(draw).toContain('fillRect(0, 0, sheet.w, sheet.h)');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('setTurnedTransform(ctx, 1, present.angle, present.sheetX, present.sheetY)');
+    expect(adapter).toContain('ctx.fillRect(0, 0, present.sheetW, present.sheetH)');
   });
 
   it('reads pointer positions against the sheet, not the workspace', () => {
@@ -434,7 +439,7 @@ describe('a navigation gesture moves the picture instead of rebuilding it', () =
   it('while the hand moves, draw shows the shot through the reprojection', () => {
     const draw = handler('draw');
     expect(draw).toContain('reprojection(');
-    expect(draw.indexOf('reprojection(')).toBeLessThan(draw.indexOf('composer.compose('));
+    expect(draw.indexOf('reprojection(')).toBeLessThan(draw.indexOf('composer.composeAndPresent('));
   });
 
   it('letting go drops the shot and composes once at full density', () => {
@@ -457,10 +462,11 @@ describe('the cursor follows the pointer on the compositor', () => {
 // Tenth audit: what the canvas still did wrong with a pen, a wheel during the
 // preview, a readback per pipette move and a window dragged to another screen.
 describe('the canvas after the tenth audit', () => {
-  it('the pipette reads back from a context made for reading', () => {
+  it('the pipette reads back from a context made for reading', async () => {
     // Chrome warned on every hover: each getImageData pulled the scratch off
     // the GPU.
-    expect(handler('pickColor')).toContain('willReadFrequently: true');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('willReadFrequently: true');
   });
 
   it('takes the wheel even while the preview plays', () => {

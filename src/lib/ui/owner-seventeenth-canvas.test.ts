@@ -72,17 +72,18 @@ describe('при просмотре холст не обещает нажати�
   it('мыши — обычный системный курсор', () => {
     expect(source).toMatch(/class:custom-cursor=\{!editor\.playing && editor\.tool !== 'pipette' && \(!overlayCursor \|\| crossOnly\)\}/);
     expect(source).toMatch(/class:playing=\{editor\.playing\}/);
-    expect(source).toMatch(/canvas\.playing \{\s*cursor: default;/);
+    expect(source).toMatch(/\.stage\.playing \{\s*cursor: default;/);
   });
 });
 
 describe('пипетка читает внутри буфера композитора', () => {
-  it('координата ограничена размером слоёв, а не холста', () => {
+  it('координата ограничена размером слоёв, а не холста', async () => {
     const pick = handler('pickColor');
-    expect(pick).toContain('const read = layers.active as unknown as HTMLCanvasElement;');
-    expect(pick).toContain('read.width - 1');
-    expect(pick).toContain('read.height - 1');
     expect(pick).not.toContain('canvasEl.width - 1');
+    const adapter = await Bun.file(new URL('../render/sheet-composer.ts', import.meta.url)).text();
+    expect(adapter).toContain('const read = layers.active as unknown as HTMLCanvasElement;');
+    expect(adapter).toContain('read.width - 1');
+    expect(adapter).toContain('read.height - 1');
   });
 });
 

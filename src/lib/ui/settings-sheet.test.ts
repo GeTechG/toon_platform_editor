@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { buildKeymap, chordLabel, studioCommands } from './keymap';
 import { manualSections, type ManualContext } from './manual-sections';
-import { AUTOSAVE_INTERVALS, autosaveLabel, SETTINGS_TABS, stepTab } from './presets';
+import { AUTOSAVE_INTERVALS, autosaveLabel, DEFAULT_SETTINGS, parseUiConfig, SETTINGS_TABS, stepTab } from './presets';
 import { t } from '../i18n';
 
 // EditorState and the sheets are runes/Svelte, so they are asserted as source
@@ -238,7 +238,7 @@ describe('the settings sheet', () => {
     const home: Record<string, string[]> = {
       drawing: ['mouseMode', 'crossCursor', 'lockTransform', 'megaEraserWarning'],
       palette: ['browserPipette', 'paletteAutoAdd', 'paletteLimit'],
-      view: ['altLayout', 'letterKeys'],
+      view: ['altLayout', 'letterKeys', 'hardwareRender'],
       saving: ['autosaveMs', 'showDraftsOnStart'],
       more: ['pluginCatalog'],
     };
@@ -305,6 +305,18 @@ describe('the settings sheet', () => {
   it('the gear popover is the way in', () => {
     expect(editorUi).toContain('SettingsSheet');
     expect(editorUi).toContain('settingsSheetOpen');
+  });
+
+  it('hardware render switch binds directly to saved hardwareRender and shows actual backend status', () => {
+    const view = pane('view');
+    expect(view).toContain('checked={editor.settings.hardwareRender}');
+    expect(view).toContain("editor.setSetting('hardwareRender'");
+    expect(view).toContain('editor.renderBackend');
+    expect(DEFAULT_SETTINGS.hardwareRender).toBe(true);
+    const parsedFalse = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { hardwareRender: false } }));
+    expect(parsedFalse?.settings.hardwareRender).toBe(false);
+    const parsedBroken = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { hardwareRender: 'nope' } }));
+    expect(parsedBroken?.settings.hardwareRender).toBe(true);
   });
 });
 

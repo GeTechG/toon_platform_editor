@@ -11,10 +11,15 @@
 
 /**
  * Renderers that are the processor under a video card's name: Chrome's
- * SwiftShader, Mesa's llvmpipe/softpipe, Windows' Basic Render Driver (no
- * driver installed — Chrome's software_rendering_list.json entry 74).
+ * SwiftShader, Mesa's llvmpipe/softpipe/lavapipe, Windows' Basic Render Driver
+ * (no driver installed — Chrome's software_rendering_list.json entry 74).
  */
-const SOFTWARE = /SwiftShader|llvmpipe|softpipe|Basic Render|Software Rasterizer|Software Adapter/i;
+const SOFTWARE = /SwiftShader|llvmpipe|softpipe|lavapipe|Basic Render|Software Rasterizer|Software Adapter/i;
+
+/** Whether a reported GL renderer string names a CPU software rasterizer. */
+export function isSoftwareRendererName(renderer: string | null): boolean {
+  return renderer !== null && SOFTWARE.test(renderer);
+}
 
 /**
  * Whether the browser draws on the processor: it has no WebGL at all, refused

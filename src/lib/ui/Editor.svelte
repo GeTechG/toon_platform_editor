@@ -1630,8 +1630,12 @@
     softwareAsked = true;
     const idle = globalThis.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 2000));
     idle(() => {
-      const probe = webglProbe();
-      if (drawsInSoftware(probe.renderer, probe.caveat) && softwareHintDue(localStorage)) {
+      const software = editor.renderBackend.isSoftwareBrowser
+        || (!editor.settings.hardwareRender && (() => {
+          const probe = webglProbe();
+          return drawsInSoftware(probe.renderer, probe.caveat);
+        })());
+      if (software && softwareHintDue(localStorage)) {
         void tell(t('editor.software_render_hint'));
       }
     });
