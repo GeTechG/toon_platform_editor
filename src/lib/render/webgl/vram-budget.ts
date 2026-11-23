@@ -12,6 +12,32 @@ import type { AtlasFormats } from './probe';
 
 const MB = 1024 * 1024;
 
+/**
+ * Computes the studio WebGL2 VRAM budget.
+ *
+ * Browsers that omit `navigator.deviceMemory` (Firefox, Waterfox, Safari)
+ * would otherwise fall into the 64 MiB mobile tier (256x256 coverage atlas,
+ * 4 MiB VBO), splitting heavy strokes into 4x more atlas batches and tiled
+ * passes on desktop GPUs. When `deviceMemory` is unavailable on a desktop-class
+ * GPU (`maxTextureSize >= 8192` and not a coarse-pointer device), use the
+ * 128 MiB tier (512x512 atlas, 8 MiB VBO).
+ */
+export function studioVramBudget(params: {
+  readonly deviceMemory: number | undefined;
+  readonly maxTextureSize: number;
+  readonly coarsePointer: boolean;
+}): number {
+  if (params.deviceMemory !== undefined) {
+    if (params.deviceMemory >= 8) return 256 * MB;
+    if (params.deviceMemory >= 4) return 128 * MB;
+    return 64 * MB;
+  }
+  if (!params.coarsePointer && params.maxTextureSize >= 8192) {
+    return 128 * MB;
+  }
+  return 64 * MB;
+}
+
 /** Logical side length of the coverage atlas for a given VRAM budget tier and supersample factor. */
 export function atlasLogicalSizeForTier(budgetBytes: number, supersample: number): number {
   if (supersample <= 2) {

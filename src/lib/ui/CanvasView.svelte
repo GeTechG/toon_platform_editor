@@ -35,6 +35,7 @@
     type RenderBackendReason,
   } from '../render/webgl/probe';
   import { WebGL2SheetComposer } from '../render/webgl/composer';
+  import { studioVramBudget } from '../render/webgl/vram-budget';
   import { PlaybackFrames, playbackKeeps } from './playback-frames';
   import { playbackWindow } from '../render/playback-window';
   import { CellWarmer } from '../render/cell-warm';
@@ -136,6 +137,8 @@
   let glContext: WebGL2RenderingContext | null = null;
   let glComposer: WebGL2SheetComposer | null = null;
   let glFormats: AtlasFormats | null = null;
+  /** Cached MAX_TEXTURE_SIZE read once on acquire/restore to avoid per-frame sync WebGL IPC. */
+  let glMaxTextureSize = 0;
   let glProbed = false;
   let glSoftwareBrowser = false;
   let glContextLost = false;
@@ -161,6 +164,7 @@
       const doomed = glContext;
       glContext = null;
       glFormats = null;
+      glMaxTextureSize = 0;
       glIntentionalLose = true;
       try {
         doomed.getExtension('WEBGL_lose_context')?.loseContext();
@@ -932,13 +936,21 @@
     // Hardware WebGL2 path: validate and promote the real candidate context,
     // keeping Canvas 2D visible until the actual current scene renders cleanly.
     if (editor.settings.hardwareRender && glCanvasEl && !glSessionRetired && !glContextLost) {
+      const budgetForContext = (ctx: WebGL2RenderingContext): number => {
+        glMaxTextureSize = Number(ctx.getParameter(ctx.MAX_TEXTURE_SIZE)) || 0;
+        return studioVramBudget({
+          deviceMemory: typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+          maxTextureSize: glMaxTextureSize,
+          coarsePointer: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+        });
+      };
       if (glRestorePending && glContext && !drawingBusy()) {
         glRestorePending = false;
         const minDim = Math.max(MIN_WEBGL2_DIMENSION, raster.width, raster.height, pxWidth, pxHeight);
         const reval = validateWebGL2Candidate(glContext, minDim);
         if (reval.ok && reval.fboFormats) {
           glFormats = reval.fboFormats;
-          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: CELL_CACHE_BYTES });
+          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: budgetForContext(glContext) });
         } else {
           retireWebGL('context-lost', true);
         }
@@ -950,7 +962,7 @@
         if (acquired.gl && acquired.capability.webgl2Eligible && acquired.capability.fboFormats) {
           glContext = acquired.gl;
           glFormats = acquired.capability.fboFormats;
-          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: CELL_CACHE_BYTES });
+          glComposer = new WebGL2SheetComposer(glContext, { formats: glFormats, budgetBytes: budgetForContext(glContext) });
         } else {
           editor.renderBackend = {
             active: 'canvas2d',
@@ -964,7 +976,7 @@
         if (glCanvasEl.width !== pxWidth) glCanvasEl.width = pxWidth;
         if (glCanvasEl.height !== pxHeight) glCanvasEl.height = pxHeight;
         const lostNow = glContext.isContextLost();
-        const maxTex = lostNow ? 0 : Number(glContext.getParameter(glContext.MAX_TEXTURE_SIZE));
+        const maxTex = lostNow ? 0 : glMaxTextureSize;
         const fitsSurface = !lostNow
           && glContext.drawingBufferWidth === pxWidth
           && glContext.drawingBufferHeight === pxHeight

@@ -13,6 +13,7 @@ import { CELL_CACHE_BYTES, type LiveLine } from '../lib/render/frame-compose';
 import { Canvas2DSheetComposer, type SheetComposer } from '../lib/render/sheet-composer';
 import { acquireStudioWebGL2, type RenderBackendReason } from '../lib/render/webgl/probe';
 import { WebGL2SheetComposer } from '../lib/render/webgl/composer';
+import { studioVramBudget } from '../lib/render/webgl/vram-budget';
 import { onionLayers } from '../lib/ui/frame-selection';
 import { frameCount } from '../lib/model/operations';
 import { buildCorpus, syntheticRawPoints } from './corpus';
@@ -88,9 +89,14 @@ class BenchCanvas {
           canvas.style.display = 'none';
           canvas.parentNode.insertBefore(candidate, canvas);
         }
+        const maxTex = Number(acquired.gl.getParameter(acquired.gl.MAX_TEXTURE_SIZE)) || 0;
         const glComp = new WebGL2SheetComposer(acquired.gl, {
           formats: acquired.capability.fboFormats,
-          budgetBytes: CELL_CACHE_BYTES,
+          budgetBytes: studioVramBudget({
+            deviceMemory: typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
+            maxTextureSize: maxTex,
+            coarsePointer: typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+          }),
         });
         this.#glComposer = glComp;
         this.#composer = glComp;

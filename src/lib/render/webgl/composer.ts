@@ -70,6 +70,7 @@ interface TextureTarget {
   width: number;
   height: number;
   mipmapped: boolean;
+  immutableMips: boolean;
 }
 
 interface PaintOp extends AtlasOp {
@@ -107,12 +108,19 @@ function createTarget(gl: WebGL2RenderingContext, width: number, height: number,
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  let immutableMips = false;
+  if (mipmapped && typeof gl.texStorage2D === 'function') {
+    const levels = Math.floor(Math.log2(Math.max(1, width, height))) + 1;
+    gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, width, height);
+    immutableMips = true;
+  } else {
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  return { tex, fbo, width, height, mipmapped };
+  return { tex, fbo, width, height, mipmapped, immutableMips };
 }
 
 function deleteTarget(gl: WebGL2RenderingContext, target: TextureTarget | null): void {
@@ -133,13 +141,59 @@ function showsBlend(scene: FrameScene): boolean {
   return scene.doc.layers.some((layer) => !layer.hidden && layer.blend !== undefined);
 }
 
-/** Builds column-major mat3 for GLSL from a 2D affine `[a, b, c, d, e, f]`. */
-function affineToMat3(a: number, b: number, c: number, d: number, e: number, f: number): Float32Array {
-  return new Float32Array([
-    a, b, 0,
-    c, d, 0,
-    e, f, 1,
-  ]);
+function writeAffineMat3(
+  out: Float32Array,
+  offset: number,
+  a: number, b: number, c: number, d: number, e: number, f: number,
+): void {
+  out[offset] = a; out[offset + 1] = b; out[offset + 2] = 0;
+  out[offset + 3] = c; out[offset + 4] = d; out[offset + 5] = 0;
+  out[offset + 6] = e; out[offset + 7] = f; out[offset + 8] = 1;
+}
+
+interface CovLocs {
+  uMatrices: WebGLUniformLocation | null;
+  uSupersample: WebGLUniformLocation | null;
+  uAtlasPhys: WebGLUniformLocation | null;
+}
+
+interface CoverLocs {
+  uAtlasPhys: WebGLUniformLocation | null;
+}
+
+interface CompLocs {
+  uDstSize: WebGLUniformLocation | null;
+  uMaskPhysSize: WebGLUniformLocation | null;
+  uSampleMode: WebGLUniformLocation | null;
+  uMask: WebGLUniformLocation | null;
+}
+
+interface BlitLocs {
+  uTex: WebGLUniformLocation | null;
+  uAlpha: WebGLUniformLocation | null;
+  uTintMode: WebGLUniformLocation | null;
+  uTint: WebGLUniformLocation | null;
+  uUvOrigin: WebGLUniformLocation | null;
+  uUvSpan: WebGLUniformLocation | null;
+}
+
+interface BlendLocs {
+  uDst: WebGLUniformLocation | null;
+  uSrc: WebGLUniformLocation | null;
+  uOpacity: WebGLUniformLocation | null;
+  uMode: WebGLUniformLocation | null;
+  uUvOrigin: WebGLUniformLocation | null;
+  uUvSpan: WebGLUniformLocation | null;
+}
+
+interface PresentLocs {
+  uSheet: WebGLUniformLocation | null;
+  uStageSize: WebGLUniformLocation | null;
+  uSheetOrigin: WebGLUniformLocation | null;
+  uSheetSize: WebGLUniformLocation | null;
+  uCosSin: WebGLUniformLocation | null;
+  uPaper: WebGLUniformLocation | null;
+  uGridStep: WebGLUniformLocation | null;
 }
 
 function transformBounds(
@@ -186,16 +240,27 @@ export class WebGL2SheetComposer implements SheetComposer {
   readonly #budget: VramBudget;
   readonly #meshes: GeometryKeeper;
 
-  // Compiled GL programs (blend program is compiled lazily on first blended layer).
+  // Compiled GL programs (blend program is compiled lazily on first blended layer)
+  // and their cached uniform locations.
   #covProg: WebGLProgram | null = null;
+  #covLocs: CovLocs | null = null;
   #coverQuadProg: WebGLProgram | null = null;
+  #coverLocs: CoverLocs | null = null;
   #compProg: WebGLProgram | null = null;
+  #compLocs: CompLocs | null = null;
   #blitProg: WebGLProgram | null = null;
+  #blitLocs: BlitLocs | null = null;
   #blendProg: WebGLProgram | null = null;
+  #blendLocs: BlendLocs | null = null;
   #presentProg: WebGLProgram | null = null;
+  #presentLocs: PresentLocs | null = null;
 
-  // Shared streaming VBOs + static quad VBOs.
+  // Shared streaming VBO (ring-buffered via WebGL2 bufferSubData) + static quad VBOs.
   #streamVbo: WebGLBuffer | null = null;
+  #streamVboBytes = 0;
+  #streamVboCursor = 0;
+  #streamScratch: Float32Array | null = null;
+  readonly #matrices = new Float32Array(18);
   #quadVbo: WebGLBuffer | null = null;
   #unitQuadVbo: WebGLBuffer | null = null;
 
@@ -237,6 +302,8 @@ export class WebGL2SheetComposer implements SheetComposer {
 
   #disposed = false;
   #lastFailure: RenderBackendReason | null = null;
+  /** True whenever GPU memory was allocated/grown since the last `gl.getError()` check. */
+  #needsErrorCheck = false;
 
   constructor(gl: WebGL2RenderingContext, options: WebGL2ComposerOptions) {
     this.#gl = gl;
@@ -349,6 +416,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         if (copy) deleteTarget(this.#gl, copy);
         this.#playbackTextures.delete(playbackKey.key);
       })) {
+        this.#needsErrorCheck = true;
         copy = createTarget(this.#gl, sheetWidth, sheetHeight, needsMipmap);
         if (copy) {
           this.#blitTex(this.#slotA.tex, copy, 1, null, false);
@@ -447,7 +515,7 @@ export class WebGL2SheetComposer implements SheetComposer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.#pickTex.fbo);
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    if (!this.#checkHealthy()) return null;
+    if (!this.#checkHealthy(true)) return null;
     return unpremultiplyRgba(buf[0], buf[1], buf[2], buf[3]);
   }
 
@@ -480,6 +548,9 @@ export class WebGL2SheetComposer implements SheetComposer {
     if (this.#quadVbo) gl.deleteBuffer(this.#quadVbo);
     if (this.#unitQuadVbo) gl.deleteBuffer(this.#unitQuadVbo);
     this.#streamVbo = this.#quadVbo = this.#unitQuadVbo = null;
+    this.#streamVboBytes = 0;
+    this.#streamVboCursor = 0;
+    this.#streamScratch = null;
 
     if (this.#covProg) gl.deleteProgram(this.#covProg);
     if (this.#coverQuadProg) gl.deleteProgram(this.#coverQuadProg);
@@ -488,6 +559,7 @@ export class WebGL2SheetComposer implements SheetComposer {
     if (this.#blendProg) gl.deleteProgram(this.#blendProg);
     if (this.#presentProg) gl.deleteProgram(this.#presentProg);
     this.#covProg = this.#coverQuadProg = this.#compProg = this.#blitProg = this.#blendProg = this.#presentProg = null;
+    this.#covLocs = this.#coverLocs = this.#compLocs = this.#blitLocs = this.#blendLocs = this.#presentLocs = null;
 
     this.#meshes.clear();
     if (this.#refCanvas) {
@@ -497,19 +569,22 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
   }
 
-  #checkHealthy(): boolean {
+  #checkHealthy(forceErrorCheck = false): boolean {
     const gl = this.#gl;
     if (gl.isContextLost()) {
       this.#lastFailure = 'context-lost';
       this.dispose();
       return false;
     }
-    const err = gl.getError();
-    if (err === gl.OUT_OF_MEMORY) {
-      this.#lastFailure = 'oom';
-      this.#budget.markOutOfMemory();
-      this.dispose();
-      return false;
+    if (forceErrorCheck || this.#needsErrorCheck) {
+      this.#needsErrorCheck = false;
+      const err = gl.getError();
+      if (err === gl.OUT_OF_MEMORY) {
+        this.#lastFailure = 'oom';
+        this.#budget.markOutOfMemory();
+        this.dispose();
+        return false;
+      }
     }
     return true;
   }
@@ -526,6 +601,37 @@ export class WebGL2SheetComposer implements SheetComposer {
         this.#lastFailure = 'webgl2-unavailable';
         return false;
       }
+      this.#covLocs = {
+        uMatrices: gl.getUniformLocation(this.#covProg, 'uMatrices'),
+        uSupersample: gl.getUniformLocation(this.#covProg, 'uSupersample'),
+        uAtlasPhys: gl.getUniformLocation(this.#covProg, 'uAtlasPhys'),
+      };
+      this.#coverLocs = {
+        uAtlasPhys: gl.getUniformLocation(this.#coverQuadProg, 'uAtlasPhys'),
+      };
+      this.#compLocs = {
+        uDstSize: gl.getUniformLocation(this.#compProg, 'uDstSize'),
+        uMaskPhysSize: gl.getUniformLocation(this.#compProg, 'uMaskPhysSize'),
+        uSampleMode: gl.getUniformLocation(this.#compProg, 'uSampleMode'),
+        uMask: gl.getUniformLocation(this.#compProg, 'uMask'),
+      };
+      this.#blitLocs = {
+        uTex: gl.getUniformLocation(this.#blitProg, 'uTex'),
+        uAlpha: gl.getUniformLocation(this.#blitProg, 'uAlpha'),
+        uTintMode: gl.getUniformLocation(this.#blitProg, 'uTintMode'),
+        uTint: gl.getUniformLocation(this.#blitProg, 'uTint'),
+        uUvOrigin: gl.getUniformLocation(this.#blitProg, 'uUvOrigin'),
+        uUvSpan: gl.getUniformLocation(this.#blitProg, 'uUvSpan'),
+      };
+      this.#presentLocs = {
+        uSheet: gl.getUniformLocation(this.#presentProg, 'uSheet'),
+        uStageSize: gl.getUniformLocation(this.#presentProg, 'uStageSize'),
+        uSheetOrigin: gl.getUniformLocation(this.#presentProg, 'uSheetOrigin'),
+        uSheetSize: gl.getUniformLocation(this.#presentProg, 'uSheetSize'),
+        uCosSin: gl.getUniformLocation(this.#presentProg, 'uCosSin'),
+        uPaper: gl.getUniformLocation(this.#presentProg, 'uPaper'),
+        uGridStep: gl.getUniformLocation(this.#presentProg, 'uGridStep'),
+      };
       this.#streamVbo = gl.createBuffer();
       this.#quadVbo = gl.createBuffer();
       this.#unitQuadVbo = gl.createBuffer();
@@ -538,6 +644,7 @@ export class WebGL2SheetComposer implements SheetComposer {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.#unitQuadVbo);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      this.#needsErrorCheck = true;
     }
 
     if (!this.#atlas || this.#atlas.logicalSide !== atlasSide) {
@@ -549,6 +656,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         this.dispose();
         return false;
       }
+      this.#needsErrorCheck = true;
     }
 
     if (!this.#slotA || this.#slotA.width !== w || this.#slotA.height !== h || this.#slotA.mipmapped !== needsMipmap) {
@@ -579,6 +687,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         this.dispose();
         return false;
       }
+      this.#needsErrorCheck = true;
     } else if (hasGhosts && !this.#underTex) {
       this.#underTex = createTarget(gl, w, h, false);
       if (!this.#underTex) {
@@ -587,15 +696,77 @@ export class WebGL2SheetComposer implements SheetComposer {
         this.dispose();
         return false;
       }
+      this.#needsErrorCheck = true;
     }
-    return this.#checkHealthy();
+    if (gl.isContextLost()) {
+      this.#lastFailure = 'context-lost';
+      this.dispose();
+      return false;
+    }
+    return true;
   }
 
   #ensureBlendProgram(): WebGLProgram | null {
     if (!this.#blendProg) {
-      this.#blendProg = compileProgram(this.#gl, BLIT_VS, BLEND_FS);
+      const gl = this.#gl;
+      this.#needsErrorCheck = true;
+      this.#blendProg = compileProgram(gl, BLIT_VS, BLEND_FS);
+      if (this.#blendProg) {
+        this.#blendLocs = {
+          uDst: gl.getUniformLocation(this.#blendProg, 'uDst'),
+          uSrc: gl.getUniformLocation(this.#blendProg, 'uSrc'),
+          uOpacity: gl.getUniformLocation(this.#blendProg, 'uOpacity'),
+          uMode: gl.getUniformLocation(this.#blendProg, 'uMode'),
+          uUvOrigin: gl.getUniformLocation(this.#blendProg, 'uUvOrigin'),
+          uUvSpan: gl.getUniformLocation(this.#blendProg, 'uUvSpan'),
+        };
+      }
     }
     return this.#blendProg;
+  }
+
+  /** Returns a reusable CPU Float32Array of at least `minFloats` (capped to VBO tier budget). */
+  #ensureStreamScratch(minFloats: number): Float32Array {
+    const maxFloats = Math.floor(vboBudgetForTier(this.#budget.budget) / 4);
+    const needed = Math.min(minFloats, maxFloats);
+    if (!this.#streamScratch || this.#streamScratch.length < needed) {
+      let next = this.#streamScratch ? this.#streamScratch.length : 16_384;
+      while (next < needed) next *= 2;
+      this.#streamScratch = new Float32Array(Math.min(next, maxFloats));
+    }
+    return this.#streamScratch;
+  }
+
+  /**
+   * Ring-uploads `floatsCount` elements from `#streamScratch[0..floatsCount)` into
+   * `#streamVbo` via WebGL2 `bufferSubData(target, dstByteOffset, src, 0, length)`.
+   * Never allocates temporary TypedArrays or `subarray()` views, and caps `#streamVbo`
+   * strictly within `vboBudgetForTier`. Returns the byte offset inside `#streamVbo`.
+   */
+  #uploadStream(floatsCount: number): number {
+    const gl = this.#gl;
+    const bytes = floatsCount * 4;
+    const maxVboBytes = vboBudgetForTier(this.#budget.budget);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
+    if (bytes > this.#streamVboBytes) {
+      let nextCap = this.#streamVboBytes > 0 ? this.#streamVboBytes : 64 * 1024;
+      while (nextCap < bytes) nextCap *= 2;
+      this.#streamVboBytes = Math.min(nextCap, maxVboBytes);
+      this.#needsErrorCheck = true;
+      gl.bufferData(gl.ARRAY_BUFFER, this.#streamVboBytes, gl.DYNAMIC_DRAW);
+      this.#streamVboCursor = 0;
+    } else if (this.#streamVboCursor + bytes > this.#streamVboBytes) {
+      if (this.#streamVboBytes < maxVboBytes) {
+        this.#streamVboBytes = Math.min(maxVboBytes, Math.max(bytes, this.#streamVboBytes * 2));
+      }
+      this.#needsErrorCheck = true;
+      gl.bufferData(gl.ARRAY_BUFFER, this.#streamVboBytes, gl.DYNAMIC_DRAW);
+      this.#streamVboCursor = 0;
+    }
+    const offset = this.#streamVboCursor;
+    gl.bufferSubData(gl.ARRAY_BUFFER, offset, this.#streamScratch!, 0, floatsCount);
+    this.#streamVboCursor = offset + bytes;
+    return offset;
   }
 
   #cell(scene: FrameScene, layerIndex: number): Frame | undefined {
@@ -617,6 +788,7 @@ export class WebGL2SheetComposer implements SheetComposer {
     })) {
       return null;
     }
+    this.#needsErrorCheck = true;
     target = createTarget(this.#gl, w, h, false);
     if (!target) {
       this.#budget.release(key);
@@ -714,7 +886,12 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#aboveInk = res.complete ? nextAboveInk : undefined;
     }
 
-    return this.#checkHealthy();
+    if (this.#gl.isContextLost()) {
+      this.#lastFailure = 'context-lost';
+      this.dispose();
+      return false;
+    }
+    return true;
   }
 
   #releaseChunks(prefix: string, chunks: LayerChunkTex[]): void {
@@ -945,14 +1122,21 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
 
     // Update mipmaps for high-quality minification when `stretch < 1`.
+    // When storage is mutable (`texImage2D` fallback), `generateMipmap` can allocate/redefine levels.
     if (slotA.mipmapped) {
       const gl = this.#gl;
+      if (!slotA.immutableMips) this.#needsErrorCheck = true;
       gl.bindTexture(gl.TEXTURE_2D, slotA.tex);
       gl.generateMipmap(gl.TEXTURE_2D);
       gl.bindTexture(gl.TEXTURE_2D, null);
     }
 
-    return this.#checkHealthy();
+    if (this.#gl.isContextLost()) {
+      this.#lastFailure = 'context-lost';
+      this.dispose();
+      return false;
+    }
+    return true;
   }
 
   #renderGhostsInto(
@@ -1290,17 +1474,18 @@ export class WebGL2SheetComposer implements SheetComposer {
     const ox = (viewport.panX ?? 0) * viewport.dpr;
     const oy = (viewport.panY ?? 0) * viewport.dpr;
 
-    const viewMat = affineToMat3(k, 0, 0, k, ox, oy);
-    const placedMat = placeMatrix
-      ? affineToMat3(
-          k * placeMatrix[0], k * placeMatrix[1],
-          k * placeMatrix[2], k * placeMatrix[3],
-          k * placeMatrix[4] + ox, k * placeMatrix[5] + oy,
-        )
-      : viewMat;
-    const matrices = new Float32Array(18);
-    matrices.set(viewMat, 0);
-    matrices.set(placedMat, 9);
+    const matrices = this.#matrices;
+    writeAffineMat3(matrices, 0, k, 0, 0, k, ox, oy);
+    if (placeMatrix) {
+      writeAffineMat3(
+        matrices, 9,
+        k * placeMatrix[0], k * placeMatrix[1],
+        k * placeMatrix[2], k * placeMatrix[3],
+        k * placeMatrix[4] + ox, k * placeMatrix[5] + oy,
+      );
+    } else {
+      writeAffineMat3(matrices, 9, k, 0, 0, k, ox, oy);
+    }
 
     // Split reference-mask ops cleanly so exact stroke order is preserved.
     let i = 0;
@@ -1365,37 +1550,35 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
 
     const bindCovProgram = (): void => {
+      const locs = this.#covLocs!;
       gl.useProgram(this.#covProg!);
-      gl.uniformMatrix3fv(gl.getUniformLocation(this.#covProg!, 'uMatrices'), false, matrices);
-      gl.uniform1f(gl.getUniformLocation(this.#covProg!, 'uSupersample'), ss);
-      gl.uniform1f(gl.getUniformLocation(this.#covProg!, 'uAtlasPhys'), atlas.physSide);
+      gl.uniformMatrix3fv(locs.uMatrices, false, matrices);
+      gl.uniform1f(locs.uSupersample, ss);
+      gl.uniform1f(locs.uAtlasPhys, atlas.physSide);
     };
 
     const maxVboBytes = vboBudgetForTier(this.#budget.budget);
     // Coverage vertex = 5 floats (20 bytes); triangle = 3 vertices (15 floats = 60 bytes).
     const maxCovFloats = Math.max(15, Math.floor(maxVboBytes / 60) * 15);
 
-    const uploadAndDraw = (data: Float32Array): void => {
-      if (data.length === 0) return;
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
-      gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+    const uploadAndDraw = (floatsCount: number): void => {
+      if (floatsCount === 0) return;
+      const offset = this.#uploadStream(floatsCount);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 20, offset);
+      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, offset + 8);
+      gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 20, offset + 16);
+      gl.drawArrays(gl.TRIANGLES, 0, floatsCount / 5);
+    };
+
+    // Streams coverage triangles in bounded chunks <= vboBudgetForTier via the
+    // reused scratch buffer + WebGL2 bufferSubData (zero per-batch Float32Array
+    // or subarray() allocations).
+    const drawCoverageChunked = (mode: 'union' | 'nonzero', totalFloats: number): void => {
+      const cap = Math.min(totalFloats, maxCovFloats);
+      const buf = this.#ensureStreamScratch(cap);
       gl.enableVertexAttribArray(0);
       gl.enableVertexAttribArray(1);
       gl.enableVertexAttribArray(2);
-      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 20, 0);
-      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 20, 8);
-      gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 20, 16);
-      gl.drawArrays(gl.TRIANGLES, 0, data.length / 5);
-      gl.disableVertexAttribArray(0);
-      gl.disableVertexAttribArray(1);
-      gl.disableVertexAttribArray(2);
-    };
-
-    // Streams coverage triangles in bounded chunks <= vboBudgetForTier so even a
-    // 32,768-point stroke never exceeds the preflight VBO VRAM allowance (F2).
-    const drawCoverageChunked = (mode: 'union' | 'nonzero', totalFloats: number): void => {
-      const cap = Math.min(totalFloats, maxCovFloats);
-      const buf = new Float32Array(cap);
       let o = 0;
       for (const slot of batch.slots) {
         if (slot.op.mode !== mode) continue;
@@ -1407,7 +1590,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         // so chunk boundaries never split a triangle.
         for (let k = 0; k + 5 < verts.length; k += 6) {
           if (o + 15 > cap) {
-            uploadAndDraw(buf.subarray(0, o));
+            uploadAndDraw(o);
             o = 0;
           }
           buf[o++] = verts[k]; buf[o++] = verts[k + 1]; buf[o++] = dx; buf[o++] = dy; buf[o++] = mat;
@@ -1416,8 +1599,11 @@ export class WebGL2SheetComposer implements SheetComposer {
         }
       }
       if (o > 0) {
-        uploadAndDraw(buf.subarray(0, o));
+        uploadAndDraw(o);
       }
+      gl.disableVertexAttribArray(0);
+      gl.disableVertexAttribArray(1);
+      gl.disableVertexAttribArray(2);
     };
 
     if (unionFloats > 0) {
@@ -1438,26 +1624,26 @@ export class WebGL2SheetComposer implements SheetComposer {
 
       // Cover pass into R8 atlas (chunked within VBO cap: 12 floats = 48 bytes per slot).
       const maxCoverSlots = Math.max(1, Math.floor(maxVboBytes / 48));
-      const coverBuf = new Float32Array(Math.min(nonzeroCount, maxCoverSlots) * 12);
+      const coverCap = Math.min(nonzeroCount, maxCoverSlots) * 12;
+      const coverBuf = this.#ensureStreamScratch(coverCap);
       gl.colorMask(true, true, true, true);
       gl.stencilFunc(gl.NOTEQUAL, 0, 0xff);
       gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
       gl.useProgram(this.#coverQuadProg!);
-      gl.uniform1f(gl.getUniformLocation(this.#coverQuadProg!, 'uAtlasPhys'), atlas.physSide);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
+      gl.uniform1f(this.#coverLocs!.uAtlasPhys, atlas.physSide);
       gl.enableVertexAttribArray(0);
 
       let co = 0;
       const flushCover = (): void => {
         if (co === 0) return;
-        gl.bufferData(gl.ARRAY_BUFFER, coverBuf.subarray(0, co), gl.DYNAMIC_DRAW);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+        const offset = this.#uploadStream(co);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, offset);
         gl.drawArrays(gl.TRIANGLES, 0, co / 2);
         co = 0;
       };
       for (const slot of batch.slots) {
         if (slot.op.mode !== 'nonzero') continue;
-        if (co + 12 > coverBuf.length) flushCover();
+        if (co + 12 > coverCap) flushCover();
         const px0 = slot.atlasX * ss;
         const py0 = slot.atlasY * ss;
         const px1 = (slot.atlasX + slot.w) * ss;
@@ -1494,45 +1680,48 @@ export class WebGL2SheetComposer implements SheetComposer {
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     }
 
-    const compData = new Float32Array(batch.slots.length * 6 * 8);
+    const compLocs = this.#compLocs!;
+    gl.useProgram(this.#compProg!);
+    gl.uniform2f(compLocs.uDstSize, dst.width, dst.height);
+    gl.uniform2f(compLocs.uMaskPhysSize, atlas.physSide, atlas.physSide);
+    gl.uniform1i(compLocs.uSampleMode, ss === 2 ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, atlas.texture);
+    gl.uniform1i(compLocs.uMask, 0);
+
+    // 6 vertices * 8 floats = 48 floats (192 bytes) per composite slot.
+    const maxCompSlots = Math.max(1, Math.floor(maxVboBytes / 192));
+    const compCap = Math.min(batch.slots.length, maxCompSlots) * 48;
+    const compData = this.#ensureStreamScratch(compCap);
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+    gl.enableVertexAttribArray(2);
     let cp = 0;
+    const flushComp = (): void => {
+      if (cp === 0) return;
+      const offset = this.#uploadStream(cp);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 32, offset);
+      gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, offset + 8);
+      gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, offset + 16);
+      gl.drawArrays(gl.TRIANGLES, 0, cp / 8);
+      cp = 0;
+    };
     for (const slot of batch.slots) {
+      if (cp + 48 > compCap) flushComp();
       const [r, g, b] = slot.op.color;
       const a = slot.op.alpha;
       const dx0 = slot.sheetX, dy0 = slot.sheetY;
       const dx1 = slot.sheetX + slot.w, dy1 = slot.sheetY + slot.h;
       const sx0 = slot.atlasX, sy0 = slot.atlasY;
       const sx1 = slot.atlasX + slot.w, sy1 = slot.atlasY + slot.h;
-      const pushV = (dx: number, dy: number, sx: number, sy: number) => {
-        compData[cp++] = dx; compData[cp++] = dy;
-        compData[cp++] = sx; compData[cp++] = sy;
-        compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
-      };
-      pushV(dx0, dy0, sx0, sy0);
-      pushV(dx1, dy0, sx1, sy0);
-      pushV(dx1, dy1, sx1, sy1);
-      pushV(dx0, dy0, sx0, sy0);
-      pushV(dx1, dy1, sx1, sy1);
-      pushV(dx0, dy1, sx0, sy1);
+      compData[cp++] = dx0; compData[cp++] = dy0; compData[cp++] = sx0; compData[cp++] = sy0; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
+      compData[cp++] = dx1; compData[cp++] = dy0; compData[cp++] = sx1; compData[cp++] = sy0; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
+      compData[cp++] = dx1; compData[cp++] = dy1; compData[cp++] = sx1; compData[cp++] = sy1; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
+      compData[cp++] = dx0; compData[cp++] = dy0; compData[cp++] = sx0; compData[cp++] = sy0; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
+      compData[cp++] = dx1; compData[cp++] = dy1; compData[cp++] = sx1; compData[cp++] = sy1; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
+      compData[cp++] = dx0; compData[cp++] = dy1; compData[cp++] = sx0; compData[cp++] = sy1; compData[cp++] = r; compData[cp++] = g; compData[cp++] = b; compData[cp++] = a;
     }
-
-    gl.useProgram(this.#compProg!);
-    gl.uniform2f(gl.getUniformLocation(this.#compProg!, 'uDstSize'), dst.width, dst.height);
-    gl.uniform2f(gl.getUniformLocation(this.#compProg!, 'uMaskPhysSize'), atlas.physSide, atlas.physSide);
-    gl.uniform1i(gl.getUniformLocation(this.#compProg!, 'uSampleMode'), ss === 2 ? 1 : 0);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, atlas.texture);
-    gl.uniform1i(gl.getUniformLocation(this.#compProg!, 'uMask'), 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
-    gl.bufferData(gl.ARRAY_BUFFER, compData, gl.DYNAMIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.enableVertexAttribArray(1);
-    gl.enableVertexAttribArray(2);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 32, 0);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 8);
-    gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
-    gl.drawArrays(gl.TRIANGLES, 0, compData.length / 8);
+    flushComp();
     gl.disableVertexAttribArray(0);
     gl.disableVertexAttribArray(1);
     gl.disableVertexAttribArray(2);
@@ -1622,6 +1811,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         }
         if (!anyAlpha) continue;
 
+        this.#needsErrorCheck = true;
         const tex = this.#atlas!.uploadNativeRgba(premul, tw, th);
         if (!tex) return;
 
@@ -1638,14 +1828,15 @@ export class WebGL2SheetComposer implements SheetComposer {
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(op.erase ? gl.ZERO : gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
+        const blitLocs = this.#blitLocs!;
         gl.useProgram(this.#blitProg!);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.uniform1i(gl.getUniformLocation(this.#blitProg!, 'uTex'), 0);
-        gl.uniform1f(gl.getUniformLocation(this.#blitProg!, 'uAlpha'), blitAlpha);
-        gl.uniform1i(gl.getUniformLocation(this.#blitProg!, 'uTintMode'), 0);
-        gl.uniform2f(gl.getUniformLocation(this.#blitProg!, 'uUvOrigin'), 0, 0);
-        gl.uniform2f(gl.getUniformLocation(this.#blitProg!, 'uUvSpan'), 1, 1);
+        gl.uniform1i(blitLocs.uTex, 0);
+        gl.uniform1f(blitLocs.uAlpha, blitAlpha);
+        gl.uniform1i(blitLocs.uTintMode, 0);
+        gl.uniform2f(blitLocs.uUvOrigin, 0, 0);
+        gl.uniform2f(blitLocs.uUvSpan, 1, 1);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.#quadVbo);
         gl.enableVertexAttribArray(0);
@@ -1704,17 +1895,18 @@ export class WebGL2SheetComposer implements SheetComposer {
     } else {
       gl.disable(gl.BLEND);
     }
+    const blitLocs = this.#blitLocs!;
     gl.useProgram(this.#blitProg!);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
-    gl.uniform1i(gl.getUniformLocation(this.#blitProg!, 'uTex'), 0);
-    gl.uniform1f(gl.getUniformLocation(this.#blitProg!, 'uAlpha'), alpha);
-    gl.uniform1i(gl.getUniformLocation(this.#blitProg!, 'uTintMode'), tint ? 1 : 0);
+    gl.uniform1i(blitLocs.uTex, 0);
+    gl.uniform1f(blitLocs.uAlpha, alpha);
+    gl.uniform1i(blitLocs.uTintMode, tint ? 1 : 0);
     if (tint) {
-      gl.uniform3f?.(gl.getUniformLocation(this.#blitProg!, 'uTint'), tint[0], tint[1], tint[2]);
+      gl.uniform3f?.(blitLocs.uTint, tint[0], tint[1], tint[2]);
     }
-    gl.uniform2f(gl.getUniformLocation(this.#blitProg!, 'uUvOrigin'), u0, v0);
-    gl.uniform2f(gl.getUniformLocation(this.#blitProg!, 'uUvSpan'), du, dv);
+    gl.uniform2f(blitLocs.uUvOrigin, u0, v0);
+    gl.uniform2f(blitLocs.uUvSpan, du, dv);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#quadVbo);
     gl.enableVertexAttribArray(0);
@@ -1743,17 +1935,18 @@ export class WebGL2SheetComposer implements SheetComposer {
     gl.disable(gl.BLEND);
     gl.disable(gl.STENCIL_TEST);
     gl.disable(gl.SCISSOR_TEST);
+    const blendLocs = this.#blendLocs!;
     gl.useProgram(prog);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, dstTex);
-    gl.uniform1i(gl.getUniformLocation(prog, 'uDst'), 0);
+    gl.uniform1i(blendLocs.uDst, 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
-    gl.uniform1i(gl.getUniformLocation(prog, 'uSrc'), 1);
-    gl.uniform1f(gl.getUniformLocation(prog, 'uOpacity'), opacity);
-    gl.uniform1i(gl.getUniformLocation(prog, 'uMode'), blendModeId(mode));
-    gl.uniform2f(gl.getUniformLocation(prog, 'uUvOrigin'), u0, v0);
-    gl.uniform2f(gl.getUniformLocation(prog, 'uUvSpan'), du, dv);
+    gl.uniform1i(blendLocs.uSrc, 1);
+    gl.uniform1f(blendLocs.uOpacity, opacity);
+    gl.uniform1i(blendLocs.uMode, blendModeId(mode));
+    gl.uniform2f(blendLocs.uUvOrigin, u0, v0);
+    gl.uniform2f(blendLocs.uUvSpan, du, dv);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#quadVbo);
     gl.enableVertexAttribArray(0);
@@ -1809,14 +2002,15 @@ export class WebGL2SheetComposer implements SheetComposer {
 
     const rad = (present.angle * Math.PI) / 180;
     const [pr, pg, pb] = parseHexRgb(present.paper);
+    const presentLocs = this.#presentLocs!;
     gl.useProgram(this.#presentProg!);
-    gl.uniform1i(gl.getUniformLocation(this.#presentProg!, 'uSheet'), 0);
-    gl.uniform2f(gl.getUniformLocation(this.#presentProg!, 'uStageSize'), present.stageWidth, present.stageHeight);
-    gl.uniform2f(gl.getUniformLocation(this.#presentProg!, 'uSheetOrigin'), present.sheetX, present.sheetY);
-    gl.uniform2f(gl.getUniformLocation(this.#presentProg!, 'uSheetSize'), present.sheetW, present.sheetH);
-    gl.uniform2f(gl.getUniformLocation(this.#presentProg!, 'uCosSin'), Math.cos(rad), Math.sin(rad));
-    gl.uniform3f?.(gl.getUniformLocation(this.#presentProg!, 'uPaper'), pr, pg, pb);
-    gl.uniform1f(gl.getUniformLocation(this.#presentProg!, 'uGridStep'), present.gridStep);
+    gl.uniform1i(presentLocs.uSheet, 0);
+    gl.uniform2f(presentLocs.uStageSize, present.stageWidth, present.stageHeight);
+    gl.uniform2f(presentLocs.uSheetOrigin, present.sheetX, present.sheetY);
+    gl.uniform2f(presentLocs.uSheetSize, present.sheetW, present.sheetH);
+    gl.uniform2f(presentLocs.uCosSin, Math.cos(rad), Math.sin(rad));
+    gl.uniform3f?.(presentLocs.uPaper, pr, pg, pb);
+    gl.uniform1f(presentLocs.uGridStep, present.gridStep);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#unitQuadVbo);
     gl.enableVertexAttribArray(0);

@@ -5,6 +5,7 @@ import {
   planSceneVram,
   sheetTextureBytes,
   atlasBytes,
+  studioVramBudget,
 } from './vram-budget';
 
 const MB = 1024 * 1024;
@@ -98,5 +99,21 @@ describe('VRAM budget and scene preflight', () => {
     expect(budget.oom).toBe(true);
     expect(freed).toEqual(['a', 'b', 'c']);
     expect(budget.tryRetain('d', 1 * MB, () => {})).toBe(false);
+  });
+
+  it('promotes desktop browsers without navigator.deviceMemory (Firefox/Waterfox/Safari) to 128 MiB / 512x512 atlas while keeping mobile/small GPUs at 64 MiB', () => {
+    // Explicit deviceMemory always follows the 64 / 128 / 256 MiB tiers.
+    expect(studioVramBudget({ deviceMemory: 8, maxTextureSize: 16384, coarsePointer: false })).toBe(256 * MB);
+    expect(studioVramBudget({ deviceMemory: 4, maxTextureSize: 16384, coarsePointer: false })).toBe(128 * MB);
+    expect(studioVramBudget({ deviceMemory: 2, maxTextureSize: 16384, coarsePointer: false })).toBe(64 * MB);
+
+    // Firefox / Waterfox / Safari desktop (deviceMemory === undefined, fine pointer, >= 8192 texture limit):
+    const desktopNoMem = studioVramBudget({ deviceMemory: undefined, maxTextureSize: 16384, coarsePointer: false });
+    expect(desktopNoMem).toBe(128 * MB);
+    expect(atlasLogicalSizeForTier(desktopNoMem, 4)).toBe(512);
+
+    // Mobile / tablet or older GPU without deviceMemory stays conservative at 64 MiB.
+    expect(studioVramBudget({ deviceMemory: undefined, maxTextureSize: 16384, coarsePointer: true })).toBe(64 * MB);
+    expect(studioVramBudget({ deviceMemory: undefined, maxTextureSize: 4096, coarsePointer: false })).toBe(64 * MB);
   });
 });

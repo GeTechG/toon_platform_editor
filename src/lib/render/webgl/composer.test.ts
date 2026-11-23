@@ -537,11 +537,19 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     composer.dispose();
   });
 
-  it('bounds every bufferData upload within the tier VBO allowance even for a 32,768-point stroke (F2)', () => {
+  it('bounds every bufferData allocation and bufferSubData upload within the tier VBO allowance even for a 32,768-point stroke (F2)', () => {
     const uploadSizes: number[] = [];
     const mock = createRecordingWebGL2({
-      bufferData: (_target: number, data: ArrayBufferView) => {
-        if (data && 'byteLength' in data) uploadSizes.push(data.byteLength);
+      bufferData: (_target: number, dataOrSize: number | ArrayBufferView) => {
+        if (typeof dataOrSize === 'number') uploadSizes.push(dataOrSize);
+        else if (dataOrSize && 'byteLength' in dataOrSize) uploadSizes.push(dataOrSize.byteLength);
+      },
+      bufferSubData: (_target: number, _offset: number, data: ArrayBufferView, _srcOffset?: number, length?: number) => {
+        if (data instanceof Float32Array) {
+          uploadSizes.push((length ?? data.length) * 4);
+        } else if (data && 'byteLength' in data) {
+          uploadSizes.push(data.byteLength);
+        }
       },
     });
     const composer = new WebGL2SheetComposer(mock.gl, {
@@ -564,10 +572,11 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
   it('applies brush opacity on raw-polyline live strokes and uses alpha=1 only for flat-coat masks (F3)', () => {
     const compAlphas: number[] = [];
     const mock = createRecordingWebGL2({
-      bufferData: (_target: number, data: ArrayBufferView) => {
-        // Composite buffer has 8 floats per vertex (stride 32), alpha at offset 7.
-        if (data instanceof Float32Array && data.length > 0 && data.length % 48 === 0) {
-          for (let i = 7; i < data.length; i += 8) compAlphas.push(data[i]);
+      bufferSubData: (_target: number, _offset: number, data: ArrayBufferView, srcOffset = 0, length?: number) => {
+        // Composite buffer has 8 floats per vertex (stride 32), 6 vertices = 48 floats per slot, alpha at offset 7.
+        const count = length ?? (data instanceof Float32Array ? data.length - srcOffset : 0);
+        if (data instanceof Float32Array && count > 0 && count % 48 === 0) {
+          for (let i = 7; i < count; i += 8) compAlphas.push(data[srcOffset + i]);
         }
       },
     });
@@ -916,6 +925,261 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
       composer.dispose();
     } finally {
       (globalThis as unknown as { document: unknown }).document = prevDoc;
+    }
+  });
+
+  it('reuses a single streaming Float32Array via WebGL2 bufferSubData without subarray allocations and caches uniform locations', () => {
+    const subDataViews: ArrayBufferView[] = [];
+    const subDataLengths: number[] = [];
+    const subDataOffsets: number[] = [];
+    let uniformLookups = 0;
+    let streamBufferDataCalls = 0;
+    const mock = createRecordingWebGL2({
+      getUniformLocation: (_p: unknown, name: string) => {
+        uniformLookups++;
+        return { name };
+      },
+      bufferData: (_target: number, dataOrSize: number | ArrayBufferView) => {
+        if (typeof dataOrSize === 'number') {
+          streamBufferDataCalls++;
+        }
+      },
+      bufferSubData: (
+        _target: number,
+        dstByteOffset: number,
+        srcData: ArrayBufferView,
+        srcOffset?: number,
+        length?: number,
+      ) => {
+        subDataViews.push(srcData);
+        subDataOffsets.push(dstByteOffset);
+        subDataLengths.push(length ?? 0);
+        expect(srcOffset).toBe(0);
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [
+      { kind: 'pencil', geometry: 'line', width: 40, color: '#112233' },
+      { kind: 'contour', geometry: 'line', color: '#336699' },
+    ];
+    const doc1 = simpleDoc(tools, [
+      { points: [80, 80, 400, 80], tool_id: 0 },
+      { points: [80, 160, 400, 160, 400, 320, 80, 320], tool_id: 1 },
+    ]);
+    const doc2 = simpleDoc(tools, [
+      { points: [160, 80, 480, 80], tool_id: 0 },
+      { points: [160, 160, 480, 160, 480, 320, 160, 320], tool_id: 1 },
+    ]);
+    const viewport = { scale: 1 / 8, dpr: 1 };
+
+    expect(composer.composeAndPresent(1280, 720, { doc: doc1, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    const lookupsAfterFirstFrame = uniformLookups;
+    expect(subDataViews.length).toBeGreaterThanOrEqual(3); // union/nonzero coverage + cover quad + composite
+    expect(streamBufferDataCalls).toBe(1); // allocated stream VBO once
+
+    // Second frame with new strokes: zero additional uniform lookups, same backing ArrayBuffer, no reallocations.
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { doc: doc2, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(uniformLookups).toBe(lookupsAfterFirstFrame);
+    expect(streamBufferDataCalls).toBe(1);
+    const uniqueViews = new Set(subDataViews);
+    expect(uniqueViews.size).toBe(1);
+    expect(subDataLengths.every((len) => len > 0)).toBe(true);
+    // Ring cursor advances across uploads within the preallocated VBO rather than overwriting offset 0 every batch.
+    expect(new Set(subDataOffsets).size).toBeGreaterThan(1);
+
+    composer.dispose();
+  });
+
+  it('avoids per-frame gl.getError() sync IPC on steady-state renders while still catching OOM on later allocations', () => {
+    let getErrorCalls = 0;
+    let errorCode = 0;
+    const mock = createRecordingWebGL2({
+      getError: () => {
+        getErrorCalls++;
+        const e = errorCode;
+        errorCode = 0;
+        return e;
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+    const doc: ToonDocument = {
+      schema_version: 8,
+      width: 1280 * 8,
+      height: 720 * 8,
+      frame_rate: 12,
+      tools,
+      layers: [{
+        hidden: false,
+        frames: [
+          { strokes: [{ points: [80, 80, 320, 80], tool_id: 0 }] },
+          { strokes: [{ points: [80, 160, 320, 160], tool_id: 0 }] },
+        ],
+      }],
+    };
+    const viewport = { scale: 1 / 8, dpr: 1 };
+
+    // First frame allocates core resources -> at most 1 getError() check.
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(getErrorCalls).toBeLessThanOrEqual(1);
+
+    // Steady-state frame switch (no new GL textures allocated) -> 0 getError() sync IPC calls.
+    getErrorCalls = 0;
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 1, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(getErrorCalls).toBe(0);
+
+    // Playback cache hit -> 0 getError() sync IPC calls.
+    const playKey = { doc, key: 0, total: 2 };
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT, playKey)).toBe(true);
+    getErrorCalls = 0;
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT, playKey)).toBe(true);
+    expect(getErrorCalls).toBe(0);
+
+    // Later allocation (enabling onion skin allocates #underTex) -> must still check & catch GL_OUT_OF_MEMORY.
+    errorCode = 0x0505;
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, {
+      doc,
+      frame: 1,
+      activeLayer: 0,
+      viewport,
+      tools,
+      ghosts: { frames: [{ index: 0, alpha: 0.3, tint: '#1b5cff' }], layers: [0] },
+      paper: '#ffffff',
+    }, PRESENT)).toBe(false);
+    expect(composer.lastFailure).toBe('oom');
+  });
+
+  it('catches GL_OUT_OF_MEMORY on VBO ring wrap at cap, failed optional allocations, and mutable mipmap generation', () => {
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 32, color: '#000000' }];
+    const viewport = { scale: 1 / 8, dpr: 1 };
+
+    // 1. VBO ring wrap at cap (64 MiB tier -> 4 MiB VBO cap) on a steady-state frame must still check & catch OOM.
+    {
+      let armOomOnCapWrap = false;
+      let err = 0;
+      const mock = createRecordingWebGL2({
+        bufferData: (_target: number, dataOrSize: number | ArrayBufferView) => {
+          if (armOomOnCapWrap && dataOrSize === 4 * 1024 * 1024) {
+            err = 0x0505;
+          }
+        },
+        getError: () => {
+          const e = err;
+          err = 0;
+          return e;
+        },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 64 * 1024 * 1024,
+      });
+      const pts: number[] = [];
+      for (let i = 0; i < 32_768; i++) pts.push(80 + (i % 16) * 4, 80 + ((i >> 4) % 16) * 4);
+      const doc = simpleDoc(tools, [{ points: pts, tool_id: 0 }]);
+      const smallPresent = { ...PRESENT, stageWidth: 256, stageHeight: 256, sheetW: 256, sheetH: 256 };
+      // First frame grows VBO to the 4 MiB cap and consumes the initial error check.
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, smallPresent)).toBe(true);
+      // Second frame (steady-state textures, VBO already at 4 MiB cap) wraps the ring -> must catch OOM!
+      armOomOnCapWrap = true;
+      composer.invalidate();
+      const doc2 = simpleDoc(tools, [{ points: pts.slice(), tool_id: 0 }]);
+      expect(composer.composeAndPresent(256, 256, { doc: doc2, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, smallPresent)).toBe(false);
+      expect(composer.lastFailure).toBe('oom');
+    }
+
+    // 2. Failed optional allocation (playback copy createFramebuffer returns null after OOM) must still poison generation.
+    {
+      let fboCount = 0;
+      let failNextFbo = false;
+      let err = 0;
+      const mock = createRecordingWebGL2({
+        createFramebuffer: () => {
+          if (failNextFbo) {
+            err = 0x0505;
+            return null;
+          }
+          fboCount++;
+          return { id: fboCount };
+        },
+        getError: () => {
+          const e = err;
+          err = 0;
+          return e;
+        },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 64 * 1024 * 1024,
+      });
+      const doc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+      failNextFbo = true;
+      expect(composer.composeAndPresent(
+        256, 256,
+        { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' },
+        PRESENT,
+        { doc, key: 0, total: 1 },
+      )).toBe(false);
+      expect(composer.lastFailure).toBe('oom');
+    }
+
+    // 3a. Mutable mipmap texture (no texStorage2D): steady-state generateMipmap must check & catch OOM.
+    {
+      let mipCalls = 0;
+      let err = 0;
+      const mock = createRecordingWebGL2({
+        generateMipmap: () => {
+          mipCalls++;
+          if (mipCalls === 2) err = 0x0505;
+        },
+        getError: () => {
+          const e = err;
+          err = 0;
+          return e;
+        },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 64 * 1024 * 1024,
+      });
+      const doc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+      const mini = { ...PRESENT, stretch: 0.5 };
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, mini)).toBe(true);
+      composer.invalidate();
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, mini)).toBe(false);
+      expect(composer.lastFailure).toBe('oom');
+    }
+
+    // 3b. Immutable mipmap storage (texStorage2D present): preallocates mip chain once and runs steady-state minified frames with 0 getError calls.
+    {
+      const storageLevels: number[] = [];
+      let getErrorCalls = 0;
+      const mock = createRecordingWebGL2({
+        texStorage2D: (_target: number, levels: number) => { storageLevels.push(levels); },
+        getError: () => { getErrorCalls++; return 0; },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 64 * 1024 * 1024,
+      });
+      const doc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+      const mini = { ...PRESENT, stretch: 0.5 };
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, mini)).toBe(true);
+      expect(storageLevels).toEqual([9]); // log2(256) + 1 = 9 mip levels preallocated
+      getErrorCalls = 0;
+      composer.invalidate();
+      expect(composer.composeAndPresent(256, 256, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, mini)).toBe(true);
+      expect(getErrorCalls).toBe(0);
+      composer.dispose();
     }
   });
 });
