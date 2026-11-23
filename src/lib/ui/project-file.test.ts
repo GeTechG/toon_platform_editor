@@ -216,7 +216,7 @@ describe('persistent storage', () => {
 describe('the drafts list', () => {
   it('shows the screenshot, the track and the weight of every record', () => {
     expect(editorUi).toContain('entry.screenshot');
-    expect(editorUi).toContain('entry.audio');
+    expect(hubUi).toContain('entry.audio');
     expect(hubUi).toContain('formatFileSize(entry.bytes');
     expect(editorUi).toContain('navigator.storage?.estimate');
   });

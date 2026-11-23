@@ -19,6 +19,17 @@ const LEGACY_STORE = 'draft';
 const LEGACY_KEY = 'current';
 const VERSION = 2;
 
+/**
+ * Separate IndexedDB database for soundtrack bytes (`draft-audio`), keyed by
+ * `audioMeta.key`. Keeping large audio out of `drafts` means listing cards and
+ * autosaving drawings never touch megabytes of audio, and leaving `toon-editor`
+ * at version 2 (with `audio` absent on new records) keeps older tabs and
+ * rollbacks from hitting `VersionError` or dereferencing `audio.blob.size`.
+ */
+const MEDIA_DB_NAME = 'toon-editor-media';
+const MEDIA_STORE = 'draft-audio';
+const MEDIA_VERSION = 1;
+
 /** An mp3/ogg/wav attached to a session, with the credits the reference asks for. */
 export interface DraftAudio {
   blob: Blob;
@@ -97,24 +108,116 @@ export interface DraftSummary {
   layers: number;
 }
 
+/** Lightweight track metadata shown on a draft card without loading audio bytes. */
+export interface DraftAudioMeta {
+  name: string;
+  author: string;
+  sync?: boolean;
+  bytes?: number;
+}
+
 /**
  * A draft as the list shows it: no document, except for a card that has no
- * screenshot yet — its first frame is drawn from the document.
+ * screenshot yet — its first frame is drawn from the document. Audio stays as
+ * metadata only until the draft is opened (`readDraft`) or exported.
  */
 export interface DraftCard {
   id: string;
   updated: number;
   summary: DraftSummary;
-  audio?: DraftAudio;
+  audio?: DraftAudioMeta;
   state?: DraftState;
   screenshot?: Blob;
   bytes?: number;
   doc?: ToonDocument;
 }
 
+/** Binary payload as kept in IndexedDB — WebKit on iOS fails `put` on Blob values (`UnknownError`). */
+interface StoredBytes {
+  bytes: Uint8Array<ArrayBuffer>;
+  type: string;
+}
+
+/** Stored track metadata pointing at a payload in `toon-editor-media` (`draft-audio`). */
+interface StoredAudioMeta extends DraftAudioMeta {
+  key: string;
+  bytes: number;
+}
+
+/** Audio record stored in `toon-editor-media` (`draft-audio`). */
+interface MediaAudioRecord {
+  id: string;
+  data: Uint8Array<ArrayBuffer>;
+  type: string;
+}
+
+/** Record as kept in IndexedDB (`drafts`) and in `known`. */
+interface StoredDraftRecord extends Omit<DraftRecord, 'audio' | 'screenshot'> {
+  /** Legacy audio (pre-media-store); never written by new saves so older tabs never dereference `audio.blob.size`. */
+  audio?: DraftAudio;
+  /** Lightweight metadata for audio stored in `toon-editor-media` (`draft-audio`). */
+  audioMeta?: StoredAudioMeta;
+  /** Legacy screenshot Blob; never written by new saves. */
+  screenshot?: Blob;
+  /** Screenshot bytes kept as raw Uint8Array (avoids WebKit Blob `UnknownError`). */
+  screenshotData?: StoredBytes;
+}
+
+async function toStoredBytes(blob: Blob): Promise<StoredBytes> {
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), type: blob.type };
+}
+
+function buildAudioMeta(key: string, meta: DraftAudioMeta, byteLength: number): StoredAudioMeta {
+  const stored: StoredAudioMeta = {
+    key,
+    name: meta.name,
+    author: meta.author,
+    bytes: meta.bytes ?? byteLength,
+  };
+  if (meta.sync !== undefined) {
+    stored.sync = meta.sync;
+  }
+  return stored;
+}
+
+function cardAudioMeta(record: StoredDraftRecord): DraftAudioMeta | undefined {
+  if (record.audioMeta) {
+    const { name, author, sync, bytes } = record.audioMeta;
+    return { name, author, ...(sync !== undefined ? { sync } : {}), ...(bytes !== undefined ? { bytes } : {}) };
+  }
+  if (record.audio) {
+    const { name, author, sync, bytes, blob } = record.audio;
+    const size = bytes ?? blob?.size;
+    return { name, author, ...(sync !== undefined ? { sync } : {}), ...(size !== undefined ? { bytes: size } : {}) };
+  }
+  return undefined;
+}
+
+function restoreScreenshot(record: StoredDraftRecord): Blob | undefined {
+  if (record.screenshotData) {
+    return new Blob([record.screenshotData.bytes], { type: record.screenshotData.type });
+  }
+  return record.screenshot;
+}
+
+function hasLegacyBlob(record: StoredDraftRecord | undefined): boolean {
+  return Boolean(record && (record.screenshot !== undefined || record.audio?.blob !== undefined));
+}
+
+function sameLegacySnapshot(a: StoredDraftRecord, b: StoredDraftRecord): boolean {
+  return (
+    a.updated === b.updated
+    && a.bytes === b.bytes
+    && (a.screenshot !== undefined) === (b.screenshot !== undefined)
+    && (a.audio?.blob !== undefined) === (b.audio?.blob !== undefined)
+  );
+}
+
 /** What the track and the screenshot add to a record. */
-function blobBytes(record: DraftRecord): number {
-  return (record.audio?.blob.size ?? 0) + (record.screenshot?.size ?? 0);
+function blobBytes(record: StoredDraftRecord): number {
+  const audioSize = record.audioMeta?.bytes ?? record.audio?.blob?.size ?? 0;
+  const shotSize = record.screenshotData?.bytes.byteLength ?? record.screenshot?.size ?? 0;
+  return audioSize + shotSize;
 }
 
 /**
@@ -129,19 +232,28 @@ function encodeDoc(doc: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(isDocument ? packDocument(doc as ToonDocument) : doc ?? null));
 }
 
-/** A record as the rest of the studio reads it: the document in `doc`, however it was kept. */
-function opened(record: DraftRecord): DraftRecord {
-  if (!record.packed) {
-    return record;
+/** A record as the rest of the studio reads it: the document in `doc`, screenshot restored from bytes. */
+function opened(record: StoredDraftRecord, audio?: DraftAudio): DraftRecord {
+  const { packed, screenshotData, audioMeta: _meta, audio: legacyAudio, screenshot, ...rest } = record;
+  let doc: unknown = rest.doc;
+  if (packed) {
+    doc = null;
+    try {
+      doc = unpackDocument(JSON.parse(new TextDecoder().decode(packed)));
+    } catch {
+      // Bytes that do not read: the record lists with no document, as a broken one did.
+    }
   }
-  const { packed, ...rest } = record;
-  let doc: unknown = null;
-  try {
-    doc = unpackDocument(JSON.parse(new TextDecoder().decode(packed)));
-  } catch {
-    // Bytes that do not read: the record lists with no document, as a broken one did.
-  }
-  return { ...rest, doc };
+  const resolvedAudio = audio ?? legacyAudio;
+  const restoredScreenshot = screenshotData
+    ? new Blob([screenshotData.bytes], { type: screenshotData.type })
+    : screenshot;
+  return {
+    ...rest,
+    doc,
+    ...(resolvedAudio ? { audio: resolvedAudio } : {}),
+    ...(restoredScreenshot ? { screenshot: restoredScreenshot } : {}),
+  };
 }
 
 function summarize(doc: unknown): DraftSummary | null {
@@ -159,7 +271,7 @@ function summarize(doc: unknown): DraftSummary | null {
  * a copy, an import. A write that kept the document it read (the screenshot,
  * the track, its credits) keeps its bytes as they are.
  */
-function pack(record: DraftRecord): void {
+function pack(record: StoredDraftRecord): void {
   // A record marked broken stays as it lay: its document did not read, so a
   // card counted from it would list it, and packing a tree that is not a
   // document can throw inside the write. A save clears the mark.
@@ -169,7 +281,7 @@ function pack(record: DraftRecord): void {
       record.summary = summary;
     }
     record.packed = encodeDoc(record.doc);
-    delete (record as Partial<DraftRecord>).doc;
+    delete (record as Partial<StoredDraftRecord>).doc;
   }
 }
 
@@ -178,7 +290,7 @@ function pack(record: DraftRecord): void {
  * that kept the bytes it read carries their share over instead of weighing
  * them again.
  */
-function recordBytes(record: DraftRecord, previous: DraftRecord | undefined): number {
+function recordBytes(record: StoredDraftRecord, previous: StoredDraftRecord | undefined): number {
   if (previous && record.packed !== undefined && record.packed === previous.packed && previous.bytes !== undefined) {
     return previous.bytes - blobBytes(previous) + blobBytes(record);
   }
@@ -287,35 +399,248 @@ function connection(): Promise<IDBDatabase> {
   return db;
 }
 
+function errorName(error: unknown): string {
+  return error instanceof Error || error instanceof DOMException ? error.name : '';
+}
+
+function isRetriableStorageError(error: unknown): boolean {
+  const name = errorName(error);
+  return name === 'UnknownError' || name === 'InvalidStateError';
+}
+
+function resetConnection(pending: Promise<IDBDatabase> | undefined): void {
+  if (!pending || shared?.db !== pending) {
+    return;
+  }
+  shared = null;
+  known.clear();
+  void pending.then((db) => {
+    try { db.close(); } catch { /* already closed */ }
+  }).catch(() => {});
+}
+
 /**
  * A transaction on the page's connection. Safari drops the connection of a tab
  * left in the background («Connection to Indexed Database server lost») and
- * says nothing until `transaction()` throws; the connection kept for the page
- * then failed every autosave until a reload. It is given up and opened once
- * more. Null: no storage at all (`connection` refused) — a quiet degradation.
+ * says nothing until `transaction()` throws — or fails `open` / an active
+ * transaction asynchronously with `UnknownError`. The connection kept for the
+ * page is given up, closed, and opened once more. Null: no storage at all
+ * (`connection` refused) — a quiet degradation (unless `throwOnOpenFailure`
+ * is set because we are reopening after a failed write).
  */
-async function transaction(mode: IDBTransactionMode, unavailable?: (error: unknown) => void): Promise<IDBTransaction | null> {
+async function transaction(
+  mode: IDBTransactionMode,
+  unavailable?: (error: unknown, retried: boolean) => void,
+  throwOnOpenFailure = false,
+): Promise<IDBTransaction | null> {
   for (let attempt = 0; ; attempt++) {
     const pending = connection();
     let db: IDBDatabase;
     try {
       db = await pending;
     } catch (err) {
-      unavailable?.(err);
+      if (shared?.db === pending) {
+        shared = null;
+      }
+      if (attempt === 0 && errorName(err) === 'UnknownError') {
+        continue;
+      }
+      if (throwOnOpenFailure) {
+        throw err;
+      }
+      unavailable?.(err, attempt > 0);
       console.warn('draft storage unavailable:', err);
       return null;
     }
     try {
       return db.transaction(STORE, mode);
     } catch (err) {
-      if (shared?.db === pending) {
-        shared = null;
-      }
+      resetConnection(pending);
       if (attempt > 0) {
         throw err;
       }
     }
   }
+}
+
+function openMediaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new DOMException('IndexedDB unavailable', 'StorageUnavailable'));
+      return;
+    }
+    const req = indexedDB.open(MEDIA_DB_NAME, MEDIA_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(MEDIA_STORE)) {
+        db.createObjectStore(MEDIA_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new DOMException('another tab holds an older draft media database', 'UpgradeBlocked'));
+  });
+}
+
+let mediaShared: { factory: unknown; db: Promise<IDBDatabase> } | null = null;
+
+function mediaConnection(): Promise<IDBDatabase> {
+  const factory = typeof indexedDB === 'undefined' ? undefined : indexedDB;
+  if (mediaShared && mediaShared.factory === factory) {
+    return mediaShared.db;
+  }
+  const db = openMediaDb().then((openedDb) => {
+    openedDb.onversionchange = () => {
+      openedDb.close();
+      if (mediaShared?.db === db) {
+        mediaShared = null;
+      }
+    };
+    openedDb.onclose = () => {
+      if (mediaShared?.db === db) {
+        mediaShared = null;
+      }
+    };
+    return openedDb;
+  });
+  db.catch(() => {
+    if (mediaShared?.db === db) {
+      mediaShared = null;
+    }
+  });
+  mediaShared = { factory, db };
+  return db;
+}
+
+function resetMediaConnection(pending: Promise<IDBDatabase> | undefined): void {
+  if (!pending || mediaShared?.db !== pending) {
+    return;
+  }
+  mediaShared = null;
+  void pending.then((db) => {
+    try { db.close(); } catch { /* already closed */ }
+  }).catch(() => {});
+}
+
+async function mediaTransaction(mode: IDBTransactionMode, throwOnOpenFailure = false): Promise<IDBTransaction | null> {
+  for (let attempt = 0; ; attempt++) {
+    const pending = mediaConnection();
+    let db: IDBDatabase;
+    try {
+      db = await pending;
+    } catch (err) {
+      if (mediaShared?.db === pending) {
+        mediaShared = null;
+      }
+      if (attempt === 0 && errorName(err) === 'UnknownError') {
+        continue;
+      }
+      if (throwOnOpenFailure) {
+        throw err;
+      }
+      return null;
+    }
+    try {
+      return db.transaction(MEDIA_STORE, mode);
+    } catch (err) {
+      resetMediaConnection(pending);
+      if (attempt > 0) {
+        throw err;
+      }
+    }
+  }
+}
+
+async function putMediaAudio(key: string, payload: StoredBytes): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const tx = await mediaTransaction('readwrite', true);
+    if (!tx) {
+      throw new DOMException('IndexedDB unavailable', 'StorageUnavailable');
+    }
+    const used = mediaShared?.db;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const record: MediaAudioRecord = { id: key, data: payload.bytes, type: payload.type };
+        tx.objectStore(MEDIA_STORE).put(record);
+        tx.oncomplete = () => resolve();
+        tx.onerror = (event) => reject((event?.target as IDBRequest | null)?.error ?? tx.error);
+        tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
+      });
+      return;
+    } catch (err) {
+      if (isRetriableStorageError(err)) {
+        resetMediaConnection(used);
+        if (attempt === 0) {
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+}
+
+async function getMediaAudio(key: string): Promise<MediaAudioRecord | undefined> {
+  for (let attempt = 0; ; attempt++) {
+    const tx = await mediaTransaction('readonly');
+    if (!tx) {
+      return undefined;
+    }
+    const used = mediaShared?.db;
+    try {
+      return await new Promise<MediaAudioRecord | undefined>((resolve, reject) => {
+        const req = tx.objectStore(MEDIA_STORE).get(key);
+        req.onsuccess = () => resolve(req.result as MediaAudioRecord | undefined);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (err) {
+      if (isRetriableStorageError(err)) {
+        resetMediaConnection(used);
+        if (attempt === 0) {
+          continue;
+        }
+      }
+      console.warn('draft audio read failed:', err);
+      return undefined;
+    }
+  }
+}
+
+async function deleteMediaAudio(key: string): Promise<void> {
+  try {
+    const tx = await mediaTransaction('readwrite');
+    if (!tx) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      tx.objectStore(MEDIA_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
+    });
+  } catch (err) {
+    console.warn('draft audio delete failed:', err);
+  }
+}
+
+async function loadRecordAudio(record: StoredDraftRecord): Promise<DraftAudio | undefined> {
+  if (record.audioMeta) {
+    const media = await getMediaAudio(record.audioMeta.key);
+    if (!media) {
+      return undefined;
+    }
+    const blob = new Blob([media.data], { type: media.type });
+    const restored: DraftAudio = {
+      blob,
+      name: record.audioMeta.name,
+      author: record.audioMeta.author,
+      bytes: record.audioMeta.bytes,
+    };
+    if (record.audioMeta.sync !== undefined) {
+      restored.sync = record.audioMeta.sync;
+    }
+    return restored;
+  }
+  return record.audio;
 }
 
 /**
@@ -325,7 +650,8 @@ async function transaction(mode: IDBTransactionMode, unavailable?: (error: unkno
  */
 export async function listDrafts(ids?: readonly string[]): Promise<DraftRecord[]> {
   try {
-    const all = (await rawRecords()).filter((record) => !ids || ids.includes(record.id)).map(opened);
+    const picked = (await rawRecords()).filter((record) => !ids || ids.includes(record.id));
+    const all = await Promise.all(picked.map(async (record) => opened(record, await loadRecordAudio(record))));
     return all.sort((a, b) => b.updated - a.updated);
   } catch (err) {
     console.warn('draft list failed:', err);
@@ -334,7 +660,7 @@ export async function listDrafts(ids?: readonly string[]): Promise<DraftRecord[]
 }
 
 /** Every record as it lies in the base, the document still in bytes. */
-async function rawRecords(): Promise<DraftRecord[]> {
+async function rawRecords(): Promise<StoredDraftRecord[]> {
   // After the writes already asked for: a list read around them showed the
   // record from before the save that was just made.
   await writes;
@@ -342,23 +668,23 @@ async function rawRecords(): Promise<DraftRecord[]> {
   if (!tx) {
     return [];
   }
-  return new Promise<DraftRecord[]>((resolve, reject) => {
+  return new Promise<StoredDraftRecord[]>((resolve, reject) => {
     const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => resolve(req.result as DraftRecord[]);
+    req.onsuccess = () => resolve(req.result as StoredDraftRecord[]);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function rawRecord(id: string): Promise<DraftRecord | undefined> {
+async function rawRecord(id: string): Promise<StoredDraftRecord | undefined> {
   try {
     await writes;
     const tx = await transaction('readonly');
     if (!tx) {
       return undefined;
     }
-    return await new Promise<DraftRecord | undefined>((resolve, reject) => {
+    return await new Promise<StoredDraftRecord | undefined>((resolve, reject) => {
       const req = tx.objectStore(STORE).get(id);
-      req.onsuccess = () => resolve(req.result as DraftRecord | undefined);
+      req.onsuccess = () => resolve(req.result as StoredDraftRecord | undefined);
       req.onerror = () => reject(req.error);
     });
   } catch (err) {
@@ -375,7 +701,7 @@ async function rawRecord(id: string): Promise<DraftRecord | undefined> {
  * (or is marked broken and left out, as the list always dropped one).
  */
 export async function listDraftCards(): Promise<DraftCard[]> {
-  let records: DraftRecord[];
+  let records: StoredDraftRecord[];
   try {
     records = await rawRecords();
   } catch (err) {
@@ -405,10 +731,12 @@ export async function listDraftCards(): Promise<DraftCard[]> {
       }
       summary = found;
     }
-    if (!record.screenshot && doc === undefined) {
+    const screenshot = restoreScreenshot(record);
+    const audio = cardAudioMeta(record);
+    if (!screenshot && doc === undefined) {
       doc = parseDraft(opened(record).doc, true);
     }
-    const { id, updated, audio, state, screenshot, bytes } = record;
+    const { id, updated, state, bytes } = record;
     cards.push({
       id,
       updated,
@@ -424,10 +752,11 @@ export async function listDraftCards(): Promise<DraftCard[]> {
 }
 
 /**
- * The document of one draft, read and checked as any input is — once, when it
- * is opened. Null for a draft that is gone or does not read.
+ * The document (and soundtrack, if any) of one draft, read and checked as any
+ * input is — once, when it is opened. Null for a draft that is gone or does
+ * not read.
  */
-export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?: DraftState } | null> {
+export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?: DraftState; audio?: DraftAudio } | null> {
   const record = await rawRecord(id);
   if (!record) {
     return null;
@@ -437,7 +766,11 @@ export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?
   // holds before the translation drops them.
   const state = record.state && { ...record.state, frame: v7Tick(raw, record.state.frame) };
   const doc = parseDraft(raw, true);
-  return doc ? { doc, ...(state ? { state } : {}) } : null;
+  if (!doc) {
+    return null;
+  }
+  const audio = await loadRecordAudio(record);
+  return { doc, ...(state ? { state } : {}), ...(audio ? { audio } : {}) };
 }
 
 /**
@@ -463,7 +796,7 @@ function queueWrite<T>(run: () => Promise<T>): Promise<T> {
  * taking it apart cost more than the write itself — 0.7 s a minute on a weak
  * processor for a drawing of 34 000 lines (a sent file, 2026-11-14).
  */
-const known = new Map<string, DraftRecord>();
+const known = new Map<string, StoredDraftRecord>();
 
 /** Where tabs tell each other which draft they wrote or deleted. */
 export const DRAFTS_CHANNEL = 'toonop-drafts';
@@ -495,26 +828,108 @@ function told(id: string): void {
 }
 
 type DraftOperation = 'draft save' | 'draft audio save' | 'draft credits save' | 'draft screenshot save' | 'draft import' | 'draft duplicate' | 'draft card';
-type DraftListener = (operation: DraftOperation, cause: string) => void;
+export type DraftFailureStage = 'open' | 'transaction' | 'get' | 'put' | 'abort' | 'blob';
+export type DraftFailureReason = 'connection_lost' | 'blob_error' | 'backing_store' | 'disk_full' | 'io_error' | 'db_busy' | 'tx_inactive';
+export type DraftFailureDetail = {
+  stage: DraftFailureStage;
+  reason?: DraftFailureReason;
+  retried?: boolean;
+};
+type DraftListener = (operation: DraftOperation, cause: string, detail?: DraftFailureDetail) => void;
 const draftListeners = new Set<DraftListener>();
 const failing = new Set<DraftOperation>();
 const storageErrors = new Set(['QuotaExceededError', 'AbortError', 'SecurityError', 'DataCloneError', 'DataError',
   'ConstraintError', 'InvalidStateError', 'NotFoundError', 'ReadOnlyError', 'TransactionInactiveError',
   'UnknownError', 'VersionError', 'TypeError', 'RangeError', 'StorageUnavailable', 'UpgradeBlocked']);
 
+const reasonPatterns: readonly [RegExp, DraftFailureReason][] = [
+  [/server lost|connection.*closed|database connection is closing/i, 'connection_lost'],
+  [/blob|file data|notreadable/i, 'blob_error'],
+  [/backing store|opening database|open.*database|unable to open/i, 'backing_store'],
+  [/quota|disk.*full|no space|sqlite_full/i, 'disk_full'],
+  [/ioerr|i\/o|disk.*error|corrupt|malformed/i, 'io_error'],
+  [/busy|locked|sqlite_busy/i, 'db_busy'],
+  [/transaction.*inactive|not active/i, 'tx_inactive'],
+];
+
+function classifyReason(error: unknown): DraftFailureReason | undefined {
+  const message = error instanceof Error || error instanceof DOMException ? error.message : '';
+  if (!message) {
+    return undefined;
+  }
+  for (const [pattern, reason] of reasonPatterns) {
+    if (pattern.test(message)) {
+      return reason;
+    }
+  }
+  return undefined;
+}
+
 export function onDraftFailure(listener: DraftListener): () => void {
   draftListeners.add(listener);
   return () => { draftListeners.delete(listener); };
 }
 
-function draftFailed(operation: DraftOperation, error: unknown): void {
+function draftFailed(operation: DraftOperation, error: unknown, stage: DraftFailureStage, retried = false): void {
   if (failing.has(operation) || !draftListeners.size) return;
   failing.add(operation);
-  const name = error instanceof Error || error instanceof DOMException ? error.name : '';
+  const name = errorName(error);
   const cause = storageErrors.has(name) ? name : 'unknown';
+  const reason = classifyReason(error);
+  const detail: DraftFailureDetail = {
+    stage,
+    ...(reason ? { reason } : {}),
+    ...(retried ? { retried: true } : {}),
+  };
   for (const listener of draftListeners) {
-    try { listener(operation, cause); } catch { /* Reporting must not interrupt the write queue. */ }
+    try { listener(operation, cause, detail); } catch { /* Reporting must not interrupt the write queue. */ }
   }
+}
+
+interface PreparedLegacyMigration {
+  source: StoredDraftRecord;
+  screenshotData?: StoredBytes;
+  audioMeta?: StoredAudioMeta;
+  createdMediaKey?: string;
+}
+
+async function prepareLegacyMigration(source: StoredDraftRecord): Promise<PreparedLegacyMigration> {
+  const prepared: PreparedLegacyMigration = { source };
+  if (source.screenshot !== undefined && !source.screenshotData) {
+    try {
+      prepared.screenshotData = await toStoredBytes(source.screenshot);
+    } catch (err) {
+      // Safari loses stored blobs on disk; drop the stale thumbnail so the drawing still saves.
+      console.warn('legacy draft screenshot unreadable, dropping:', err);
+    }
+  }
+  if (source.audio?.blob !== undefined && !source.audioMeta) {
+    try {
+      const payload = await toStoredBytes(source.audio.blob);
+      const key = newDraftId();
+      await putMediaAudio(key, payload);
+      prepared.createdMediaKey = key;
+      prepared.audioMeta = buildAudioMeta(key, source.audio, payload.bytes.byteLength);
+    } catch (err) {
+      console.warn('legacy draft audio unreadable, dropping:', err);
+    }
+  }
+  return prepared;
+}
+
+function applyLegacyMigration(fresh: StoredDraftRecord, migration: PreparedLegacyMigration): { cleaned: StoredDraftRecord; usedMedia: boolean } {
+  const cleaned: StoredDraftRecord = { ...fresh };
+  delete cleaned.screenshot;
+  delete cleaned.audio;
+  if (migration.screenshotData && !cleaned.screenshotData) {
+    cleaned.screenshotData = migration.screenshotData;
+  }
+  let usedMedia = false;
+  if (migration.audioMeta && !cleaned.audioMeta) {
+    cleaned.audioMeta = migration.audioMeta;
+    usedMedia = true;
+  }
+  return { cleaned, usedMedia };
 }
 
 /**
@@ -524,63 +939,191 @@ function draftFailed(operation: DraftOperation, error: unknown): void {
  * `mutate` returning null writes nothing — that is how a side write (the
  * screenshot, the track, its credits) declines to resurrect a record that was
  * deleted while it was in flight. Never throws; `false` means the write into
- * working storage failed (a full quota), which is the only case worth telling
- * anyone about — having no IndexedDB at all is a quiet degradation and reads
- * as `true`.
+ * working storage failed (a full quota, or a reopen failure after an active
+ * write failed), which is the only case worth telling anyone about — having no
+ * IndexedDB at all on initial open is a quiet degradation and reads as `true`.
  */
 async function updateDraft(
   id: string,
   what: DraftOperation,
-  mutate: (previous: DraftRecord | undefined) => DraftRecord | null,
+  mutate: (previous: StoredDraftRecord | undefined) => StoredDraftRecord | null,
   /** What the record turned out to weigh — the write already knows. */
   wrote?: (bytes: number) => void,
 ): Promise<boolean> {
+  let stage: DraftFailureStage = 'transaction';
+  let retried = false;
   try {
     drafts();
-    const tx = await transaction('readwrite', (error) => draftFailed(what, error));
-    if (!tx) {
-      return true;
-    }
     let bytes: number | undefined;
-    let written: DraftRecord | undefined;
-    let read: DraftRecord | undefined;
-    await new Promise<void>((resolve, reject) => {
-      const store = tx.objectStore(STORE);
-      const write = (previous: DraftRecord | undefined): boolean => {
-        const next = mutate(previous);
-        if (!next) {
-          return false; // nothing to write; the transaction completes on its own
+    let written: StoredDraftRecord | undefined;
+    let read: StoredDraftRecord | undefined;
+    const runAttempt = async (reopening: boolean): Promise<boolean> => {
+      bytes = undefined;
+      written = undefined;
+      read = undefined;
+      let needsMigration: StoredDraftRecord | undefined;
+      let migrationUsedMedia = false;
+      const runTx = async (migration?: PreparedLegacyMigration): Promise<boolean> => {
+        stage = reopening ? 'open' : 'transaction';
+        const tx = await transaction(
+          'readwrite',
+          (error, openRetried) => draftFailed(what, error, 'open', openRetried),
+          reopening,
+        );
+        if (!tx) {
+          return false;
         }
-        // A record from before the bytes, or a new document: it goes in as bytes.
-        pack(next);
-        next.bytes = recordBytes(next, previous);
-        bytes = next.bytes;
-        written = next;
-        store.put(next);
-        return true;
-      };
-      tx.oncomplete = () => resolve();
-      tx.onerror = (event) => {
-        // A request's error bubbles before the transaction starts aborting.
-        reject((event?.target as IDBRequest | null)?.error ?? tx.error);
-      };
-      // A full quota aborts the commit: `abort` fires, `error` never does,
-      // and a promise left pending here held up every write queued after it.
-      tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
-      const remembered = known.get(id);
-      if (remembered) {
-        // A transaction asked for nothing has nothing to complete with.
-        if (!write(remembered)) {
-          resolve();
+        stage = 'transaction';
+        const used = shared?.db;
+        try {
+          await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const fail = (error: unknown, at?: DraftFailureStage) => {
+              if (settled) return;
+              settled = true;
+              if (at) stage = at;
+              reject(error);
+            };
+            const store = tx.objectStore(STORE);
+            const write = (previous: StoredDraftRecord | undefined): boolean => {
+              const next = mutate(previous);
+              if (!next) {
+                return false; // nothing to write; the transaction completes on its own
+              }
+              stage = 'put';
+              // A record from before the bytes, or a new document: it goes in as bytes.
+              pack(next);
+              next.bytes = recordBytes(next, previous);
+              bytes = next.bytes;
+              written = next;
+              store.put(next);
+              return true;
+            };
+            tx.oncomplete = () => {
+              if (!settled) {
+                settled = true;
+                resolve();
+              }
+            };
+            tx.onerror = (event) => {
+              // A request's error bubbles before the transaction starts aborting.
+              fail((event?.target as IDBRequest | null)?.error ?? tx.error);
+            };
+            // A full quota aborts the commit: `abort` fires, `error` never does,
+            // and a promise left pending here held up every write queued after it.
+            tx.onabort = () => fail(tx.error ?? new DOMException('transaction aborted', 'AbortError'), 'abort');
+            if (migration !== undefined) {
+              // Re-read in the write transaction so a concurrent delete or edit
+              // by another tab during Blob conversion is never undone.
+              stage = 'get';
+              const freshReq = store.get(id);
+              freshReq.onsuccess = () => {
+                const fresh = freshReq.result as StoredDraftRecord | undefined;
+                read = fresh;
+                if (!fresh) {
+                  try { write(undefined); } catch (error) { fail(error); }
+                  return;
+                }
+                if (sameLegacySnapshot(fresh, migration.source)) {
+                  const applied = applyLegacyMigration(fresh, migration);
+                  migrationUsedMedia = applied.usedMedia;
+                  read = applied.cleaned;
+                  try { write(applied.cleaned); } catch (error) { fail(error); }
+                  return;
+                }
+                if (!hasLegacyBlob(fresh)) {
+                  // Another tab already updated/migrated this record; apply on top of the latest state.
+                  try { write(fresh); } catch (error) { fail(error); }
+                  return;
+                }
+                // Another tab wrote a different legacy record while we migrated: retry once.
+                needsMigration = fresh;
+              };
+              return;
+            }
+            // Read `known` only after `transaction()` has ensured `connection()`
+            // matches the active `indexedDB` factory (which clears `known` on swap).
+            const remembered = known.get(id);
+            if (remembered) {
+              if (hasLegacyBlob(remembered)) {
+                needsMigration = remembered;
+                settled = true;
+                resolve();
+                return;
+              }
+              // A transaction asked for nothing has nothing to complete with.
+              if (!write(remembered)) {
+                settled = true;
+                resolve();
+              }
+              return;
+            }
+            stage = 'get';
+            const request = store.get(id);
+            request.onsuccess = () => {
+              read = request.result as StoredDraftRecord | undefined;
+              // Legacy records kept `screenshot` / `audio.blob` as IndexedDB Blobs;
+              // migrate them outside the transaction so WebKit never receives a Blob in `store.put()`.
+              if (hasLegacyBlob(read)) {
+                needsMigration = read;
+                return;
+              }
+              try { write(read); } catch (error) { fail(error); }
+            };
+          });
+          return true;
+        } catch (err) {
+          if (isRetriableStorageError(err)) {
+            resetConnection(used);
+          }
+          throw err;
         }
-        return;
+      };
+      if (!(await runTx())) {
+        return false;
       }
-      const request = store.get(id);
-      request.onsuccess = () => {
-        read = request.result as DraftRecord | undefined;
-        try { write(read); } catch (error) { reject(error); }
-      };
-    });
+      for (let pass = 0; needsMigration && pass < 2; pass++) {
+        const toMigrate = needsMigration;
+        needsMigration = undefined;
+        migrationUsedMedia = false;
+        const prepared = await prepareLegacyMigration(toMigrate);
+        try {
+          if (!(await runTx(prepared))) {
+            if (prepared.createdMediaKey) {
+              void deleteMediaAudio(prepared.createdMediaKey);
+            }
+            return false;
+          }
+        } catch (err) {
+          if (prepared.createdMediaKey) {
+            void deleteMediaAudio(prepared.createdMediaKey);
+          }
+          throw err;
+        }
+        if (prepared.createdMediaKey && (!migrationUsedMedia || !written)) {
+          void deleteMediaAudio(prepared.createdMediaKey);
+        }
+      }
+      if (needsMigration) {
+        throw new DOMException('concurrent legacy draft update during migration', 'AbortError');
+      }
+      return true;
+    };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const openedStorage = await runAttempt(attempt > 0);
+        if (!openedStorage) {
+          return true;
+        }
+        break;
+      } catch (err) {
+        if (attempt === 0 && isRetriableStorageError(err)) {
+          retried = true;
+          continue;
+        }
+        throw err;
+      }
+    }
     // Told only once the transaction has landed: a `put` that was handed over
     // may still be thrown out with it, and its size is then nobody's.
     if (written) {
@@ -597,7 +1140,7 @@ async function updateDraft(
   } catch (err) {
     // What landed is not known: the next write reads it.
     known.delete(id);
-    draftFailed(what, err);
+    draftFailed(what, err, stage, retried);
     console.warn(`${what} failed:`, err);
     return false;
   }
@@ -629,22 +1172,45 @@ export async function saveDraft(
   audio?: DraftAudio | null,
 ): Promise<DraftWrite> {
   let bytes = 0;
-  const ok = await queueWrite(() =>
-    updateDraft(id, 'draft save', (previous) => {
-      const next: DraftRecord = { ...previous, id, updated: Date.now(), doc };
+  const ok = await queueWrite(async () => {
+    let stagedAudio: StoredAudioMeta | undefined;
+    let stagedKey: string | undefined;
+    let attachedStaged = false;
+    const activeFactory = typeof indexedDB === 'undefined' ? undefined : indexedDB;
+    const cached = shared && shared.factory === activeFactory ? known.get(id) : undefined;
+    if (audio && !cached?.audioMeta && !cached?.audio) {
+      try {
+        const payload = await toStoredBytes(audio.blob);
+        const key = newDraftId();
+        await putMediaAudio(key, payload);
+        stagedKey = key;
+        stagedAudio = buildAudioMeta(key, audio, payload.bytes.byteLength);
+      } catch (err) {
+        console.warn('draft audio unreadable during save, keeping drawing:', err);
+      }
+    }
+    let landed = false;
+    const wroteOk = await updateDraft(id, 'draft save', (previous) => {
+      const next: StoredDraftRecord = { ...previous, id, updated: Date.now(), doc };
       // The studio's own drawing: whatever did not read before is replaced.
       delete next.broken;
       if (state) {
         next.state = state;
       }
-      if (audio && !next.audio) {
-        next.audio = audio;
+      if (stagedAudio && !next.audioMeta && !next.audio) {
+        next.audioMeta = stagedAudio;
+        attachedStaged = true;
       }
       return next;
-    }, (written) => {
-      bytes = written;
-    }),
-  );
+    }, (writtenBytes) => {
+      bytes = writtenBytes;
+      landed = true;
+    });
+    if (stagedKey && (!wroteOk || !landed || !attachedStaged)) {
+      await deleteMediaAudio(stagedKey);
+    }
+    return wroteOk;
+  });
   return { ok, bytes };
 }
 
@@ -654,11 +1220,23 @@ export async function saveDraft(
  * there is not recreated for the sake of a picture of it.
  */
 export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<void> {
-  await queueWrite(() =>
-    updateDraft(id, 'draft screenshot save', (previous) =>
-      previous ? { ...previous, screenshot } : null,
-    ),
-  );
+  await queueWrite(async () => {
+    let screenshotData: StoredBytes;
+    try {
+      screenshotData = await toStoredBytes(screenshot);
+    } catch (err) {
+      console.warn('draft screenshot unreadable:', err);
+      return;
+    }
+    await updateDraft(id, 'draft screenshot save', (previous) => {
+      if (!previous) {
+        return null;
+      }
+      const next: StoredDraftRecord = { ...previous, screenshotData };
+      delete next.screenshot;
+      return next;
+    });
+  });
 }
 
 /**
@@ -672,15 +1250,66 @@ export async function duplicateDraft(id: string): Promise<string | null> {
   if (!source || source.broken) {
     return null;
   }
+  const clean: StoredDraftRecord = { ...source };
+  let copiedMediaKey: string | undefined;
+  if (clean.screenshot !== undefined) {
+    if (!clean.screenshotData) {
+      try {
+        clean.screenshotData = await toStoredBytes(clean.screenshot);
+      } catch (err) {
+        console.warn('legacy draft screenshot unreadable during duplicate, dropping:', err);
+      }
+    }
+    delete clean.screenshot;
+  }
+  if (clean.audioMeta) {
+    const media = await getMediaAudio(clean.audioMeta.key);
+    if (media) {
+      const freshKey = newDraftId();
+      try {
+        await putMediaAudio(freshKey, { bytes: media.data, type: media.type });
+        copiedMediaKey = freshKey;
+        clean.audioMeta = { ...clean.audioMeta, key: freshKey };
+      } catch (err) {
+        draftFailed('draft duplicate', err, 'put');
+        console.warn('draft audio copy failed:', err);
+        return null;
+      }
+    } else {
+      delete clean.audioMeta;
+    }
+  } else if (clean.audio?.blob !== undefined) {
+    try {
+      const payload = await toStoredBytes(clean.audio.blob);
+      const freshKey = newDraftId();
+      await putMediaAudio(freshKey, payload);
+      copiedMediaKey = freshKey;
+      clean.audioMeta = buildAudioMeta(freshKey, clean.audio, payload.bytes.byteLength);
+    } catch (err) {
+      console.warn('legacy draft audio unreadable during duplicate, dropping:', err);
+    }
+    delete clean.audio;
+  }
   const copy = newDraftId();
-  const ok = await queueWrite(() => updateDraft(copy, 'draft duplicate', () => ({ ...source, id: copy, updated: Date.now() })));
-  return ok ? copy : null;
+  let landed = false;
+  const ok = await queueWrite(() =>
+    updateDraft(copy, 'draft duplicate', () => ({ ...clean, id: copy, updated: Date.now() }), () => {
+      landed = true;
+    }),
+  );
+  if (!ok || !landed) {
+    if (copiedMediaKey) {
+      await deleteMediaAudio(copiedMediaKey);
+    }
+    return null;
+  }
+  return copy;
 }
 
 /** Empties the list. Never throws. */
 export async function deleteAllDrafts(): Promise<void> {
   // Only the keys are wanted: no document is read to be deleted.
-  const records = await rawRecords().catch(() => [] as DraftRecord[]);
+  const records = await rawRecords().catch(() => [] as StoredDraftRecord[]);
   for (const draft of records) {
     await deleteDraft(draft.id);
   }
@@ -691,21 +1320,56 @@ export async function deleteAllDrafts(): Promise<void> {
  * throws; `false` is a track that did not fit (see `updateDraft`).
  */
 export async function setDraftAudio(id: string, audio: DraftAudio | null): Promise<boolean> {
-  return queueWrite(() =>
-    updateDraft(id, 'draft audio save', (previous) => {
+  return queueWrite(async () => {
+    let nextMeta: StoredAudioMeta | null = null;
+    let newKey: string | undefined;
+    if (audio) {
+      let payload: StoredBytes;
+      try {
+        payload = await toStoredBytes(audio.blob);
+      } catch (err) {
+        console.warn('draft audio unreadable:', err);
+        draftFailed('draft audio save', err, 'blob');
+        return false;
+      }
+      newKey = newDraftId();
+      try {
+        await putMediaAudio(newKey, payload);
+      } catch (err) {
+        draftFailed('draft audio save', err, 'put');
+        console.warn('draft audio save failed:', err);
+        return false;
+      }
+      nextMeta = buildAudioMeta(newKey, audio, payload.bytes.byteLength);
+    }
+    let replacedKey: string | undefined;
+    let landed = false;
+    const ok = await updateDraft(id, 'draft audio save', (previous) => {
       if (!previous) {
         // Nothing drawn yet, or the record is gone: a track alone is not a draft.
         return null;
       }
-      const next: DraftRecord = { ...previous, id, updated: Date.now() };
-      if (audio) {
-        next.audio = audio;
+      replacedKey = previous.audioMeta?.key;
+      const next: StoredDraftRecord = { ...previous, id, updated: Date.now() };
+      delete next.audio;
+      if (nextMeta) {
+        next.audioMeta = nextMeta;
       } else {
-        delete next.audio;
+        delete next.audioMeta;
       }
       return next;
-    }),
-  );
+    }, () => {
+      landed = true;
+    });
+    if (ok && landed) {
+      if (replacedKey && replacedKey !== newKey) {
+        await deleteMediaAudio(replacedKey);
+      }
+    } else if (newKey) {
+      await deleteMediaAudio(newKey);
+    }
+    return ok;
+  });
 }
 
 /** Removes one session. Never throws. */
@@ -714,20 +1378,31 @@ export async function deleteDraft(id: string): Promise<void> {
 }
 
 async function removeDraft(id: string): Promise<void> {
+  const cachedKey = known.get(id)?.audioMeta?.key;
   known.delete(id);
   try {
     const tx = await transaction('readwrite');
     if (!tx) {
       return;
     }
+    let audioKey = cachedKey;
     await new Promise<void>((resolve, reject) => {
-      tx.objectStore(STORE).delete(id);
+      const store = tx.objectStore(STORE);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       // A full quota aborts the commit: `abort` fires, `error` never does,
       // and a promise left pending here held up every write queued after it.
       tx.onabort = () => reject(tx.error ?? new DOMException('transaction aborted', 'AbortError'));
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const existing = req.result as StoredDraftRecord | undefined;
+        audioKey = existing?.audioMeta?.key ?? cachedKey;
+        store.delete(id);
+      };
     });
+    if (audioKey) {
+      await deleteMediaAudio(audioKey);
+    }
     told(id);
   } catch (err) {
     console.warn('draft delete failed:', err);
@@ -748,10 +1423,15 @@ export async function setDraftCredits(
 ): Promise<void> {
   await queueWrite(() =>
     updateDraft(id, 'draft credits save', (previous) => {
-      if (!previous?.audio) {
+      if (!previous?.audioMeta) {
         return null; // no record, or no track on it — nothing to name
       }
-      return { ...previous, id, updated: Date.now(), audio: { ...previous.audio, name, author, sync } };
+      return {
+        ...previous,
+        id,
+        updated: Date.now(),
+        audioMeta: { ...previous.audioMeta, name, author, sync },
+      };
     }),
   );
 }
@@ -804,11 +1484,6 @@ function base64Bytes(text: string, type: string): { bytes: Uint8Array<ArrayBuffe
   return { bytes, type };
 }
 
-function fromBase64(text: string, type: string): Blob {
-  const decoded = base64Bytes(text, type);
-  return new Blob([decoded.bytes], { type: decoded.type });
-}
-
 /**
  * The chosen drafts as one `.toonops` file — our own name for the reference's
  * «экспорт сейвов» shape (`{version, saves}`), so a `.toonio` exported from
@@ -819,9 +1494,12 @@ export async function exportDrafts(
   ids?: readonly string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<string> {
-  const chosen = await listDrafts(ids);
+  const chosen = (await rawRecords().catch(() => [] as StoredDraftRecord[]))
+    .filter((record) => !ids || ids.includes(record.id))
+    .sort((a, b) => b.updated - a.updated);
   const saves: DraftSave[] = [];
-  for (const draft of chosen) {
+  for (const raw of chosen) {
+    const draft = opened(raw, await loadRecordAudio(raw));
     const save: DraftSave = {
       id: draft.id,
       updated: draft.updated,
@@ -868,21 +1546,37 @@ export async function importDrafts(raw: string): Promise<{ loaded: number; broke
   if (!Array.isArray(entries)) {
     return { loaded: 0, broken: 0 };
   }
-  const taken = new Set((await rawRecords().catch(() => [] as DraftRecord[])).map((d) => d.id));
+  const taken = new Set((await rawRecords().catch(() => [] as StoredDraftRecord[])).map((d) => d.id));
   let loaded = 0;
   let broken = 0;
   for (const entry of entries) {
-    const record = readSave(entry);
-    if (!record) {
+    const parsed = readSave(entry);
+    if (!parsed) {
       broken++;
       continue;
     }
+    const { record, audioPayload } = parsed;
     const fresh = taken.has(record.id) ? newDraftId() : record.id;
     taken.add(fresh);
+    const mediaKey = record.audioMeta?.key;
+    if (audioPayload && mediaKey) {
+      try {
+        await putMediaAudio(mediaKey, audioPayload);
+      } catch (err) {
+        draftFailed('draft import', err, 'put');
+        throw new Error('draft import did not fit');
+      }
+    }
+    let landed = false;
     const ok = await queueWrite(() =>
-      updateDraft(fresh, 'draft import', () => ({ ...record, id: fresh })),
+      updateDraft(fresh, 'draft import', () => ({ ...record, id: fresh }), () => {
+        landed = true;
+      }),
     );
-    if (!ok) {
+    if (!ok || !landed) {
+      if (mediaKey) {
+        await deleteMediaAudio(mediaKey);
+      }
       // Storage full: what did go in stays, and the caller says it stopped.
       throw new Error('draft import did not fit');
     }
@@ -940,8 +1634,8 @@ function readData(data: string): unknown {
   }
 }
 
-/** One entry of either file shape as a record, or null when it is not one. */
-function readSave(entry: unknown): DraftRecord | null {
+/** One entry of either file shape as a record plus optional audio bytes, or null when it is not one. */
+function readSave(entry: unknown): { record: StoredDraftRecord; audioPayload?: StoredBytes } | null {
   if (typeof entry !== 'object' || entry === null) {
     return null;
   }
@@ -964,7 +1658,7 @@ function readSave(entry: unknown): DraftRecord | null {
   // `1e999` reads as Infinity, `1e20` is past the calendar's end: the list
   // sorted by NaN or kept the card first for ever, and it said «Invalid Date».
   const updated = typeof save.updated === 'number' ? new Date(save.updated).getTime() : NaN;
-  const record: DraftRecord = {
+  const record: StoredDraftRecord = {
     id,
     // Nothing was saved in the future: a card from the year 9999 is now.
     updated: Math.min(Date.now(), Number.isFinite(updated) ? updated : Number.isFinite(created) ? created : Date.now()),
@@ -973,22 +1667,25 @@ function readSave(entry: unknown): DraftRecord | null {
   if (isDraftState(save.state)) {
     record.state = save.state;
   }
+  let audioPayload: StoredBytes | undefined;
   try {
     if (typeof save.screenshot === 'string') {
-      record.screenshot = fromBase64(save.screenshot, 'image/webp');
+      record.screenshotData = base64Bytes(save.screenshot, 'image/webp');
     }
     if (typeof save.audio === 'string') {
-      const blob = fromBase64(save.audio, typeof save.audioType === 'string' ? save.audioType : 'audio/mpeg');
-      record.audio = {
-        blob,
+      const decoded = base64Bytes(save.audio, typeof save.audioType === 'string' ? save.audioType : 'audio/mpeg');
+      audioPayload = decoded;
+      const key = newDraftId();
+      record.audioMeta = {
+        key,
         name: typeof save.audioName === 'string' ? save.audioName : '',
         author: typeof save.audioAuthor === 'string' ? save.audioAuthor : '',
         sync: save.audioSync !== false,
-        bytes: blob.size,
+        bytes: decoded.bytes.byteLength,
       };
     }
   } catch {
     return null; // base64 that is not base64
   }
-  return record;
+  return { record, ...(audioPayload ? { audioPayload } : {}) };
 }

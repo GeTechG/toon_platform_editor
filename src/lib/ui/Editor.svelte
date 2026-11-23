@@ -1842,12 +1842,13 @@
     }
     // Claimed before the restore, which is async: the effect must already know
     // this blob is the one on disk by the time the track is adopted.
-    storedBlob = entry.audio?.blob ?? null;
-    storedCredits = entry.audio
-      ? `${entry.audio.name}\u0000${entry.audio.author}\u0000${entry.audio.sync ?? true}`
+    const audio = draft.audio;
+    storedBlob = audio?.blob ?? null;
+    storedCredits = audio
+      ? `${audio.name}\u0000${audio.author}\u0000${audio.sync ?? true}`
       : '';
-    if (entry.audio) {
-      void editor.audio.restore(entry.audio);
+    if (audio) {
+      void editor.audio.restore(audio);
     } else {
       editor.audio.clear();
     }

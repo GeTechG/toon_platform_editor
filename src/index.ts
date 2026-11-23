@@ -24,4 +24,4 @@ export { buildPreview } from './lib/export/preview-webp';
 // The studio's commands by name, for the page's error reports (no data of the drawing).
 export { onEditorCommand } from './lib/ui/command-trail';
 
-export { onDraftFailure } from './lib/draft/store';
+export { onDraftFailure, type DraftFailureDetail } from './lib/draft/store';

@@ -785,3 +785,537 @@ describe('the list reads cards, not documents', () => {
     expect((await listDraftCards()).find((c) => c.id === copy)!.summary?.frames).toBe(1);
   });
 });
+
+function containsBlob(value: unknown): boolean {
+  if (value instanceof Blob) {
+    return true;
+  }
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  return Object.values(value).some(containsBlob);
+}
+
+describe('binary fields stay out of IndexedDB Blobs (WebKit UnknownError workaround)', () => {
+  it('stores screenshot and audio as raw bytes instead of Blob objects, and restores them as Blobs', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', doc(12));
+    await setDraftScreenshot('a', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' }));
+    await setDraftAudio('a', {
+      blob: new Blob([new Uint8Array([4, 5, 6, 7])], { type: 'audio/mpeg' }),
+      name: 'Трек',
+      author: 'Автор',
+      sync: true,
+      bytes: 4,
+    });
+    const raw = stores.get('drafts')!.get('a');
+    expect(containsBlob(raw)).toBe(false);
+
+    const [listed] = await listDrafts();
+    expect(listed.screenshot).toBeInstanceOf(Blob);
+    expect(listed.screenshot!.type).toBe('image/webp');
+    expect(new Uint8Array(await listed.screenshot!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(listed.audio!.blob).toBeInstanceOf(Blob);
+    expect(listed.audio!.blob.type).toBe('audio/mpeg');
+    expect(new Uint8Array(await listed.audio!.blob.arrayBuffer())).toEqual(new Uint8Array([4, 5, 6, 7]));
+
+    const [card] = await listDraftCards();
+    expect(card.screenshot).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await card.screenshot!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(card.audio).toEqual({ name: 'Трек', author: 'Автор', sync: true, bytes: 4 });
+    // Audio bytes live in the separate media store, not inside the `drafts` record,
+    // and legacy `record.audio?.blob.size` stays safe (undefined) for older tabs/rollbacks.
+    expect((raw as Record<string, unknown>).audio).toBeUndefined();
+    expect(stores.get('draft-audio')?.size).toBe(1);
+
+    // Opening a draft loads its audio Blob on demand.
+    const opened = await readDraft('a');
+    expect(opened?.audio?.blob).toBeInstanceOf(Blob);
+    expect(opened?.audio?.blob.type).toBe('audio/mpeg');
+    expect(new Uint8Array(await opened!.audio!.blob.arrayBuffer())).toEqual(new Uint8Array([4, 5, 6, 7]));
+  });
+
+  it('listDraftCards never reads the audio store, and duplicate/delete keep audio keys isolated', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', {
+      blob: new Blob([new Uint8Array([10, 20, 30])], { type: 'audio/mpeg' }),
+      name: 'Трек',
+      author: 'Автор',
+      sync: true,
+      bytes: 3,
+    });
+
+    fakeReads.count = 0;
+    const cards = await listDraftCards();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].audio?.name).toBe('Трек');
+    // `listDraftCards` only uses `getAll` on `drafts` — zero point-reads on `draft-audio`.
+    expect(fakeReads.count).toBe(0);
+
+    const copy = await duplicateDraft('a');
+    expect(copy).not.toBeNull();
+    expect(stores.get('draft-audio')?.size).toBe(2);
+
+    await deleteDraft('a');
+    expect(stores.get('draft-audio')?.size).toBe(1);
+    const openedCopy = await readDraft(copy!);
+    expect(new Uint8Array(await openedCopy!.audio!.blob.arrayBuffer())).toEqual(new Uint8Array([10, 20, 30]));
+  });
+
+  it('legacy Blob migration does not resurrect a record deleted by another tab or overwrite a newer edit', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('gone', doc(1));
+    const drafts = stores.get('drafts')!;
+
+    let releaseDelete!: () => void;
+    const slowBlob = Object.assign(new Blob([new Uint8Array([1, 2])]), {
+      arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => {
+        releaseDelete = () => resolve(new Uint8Array([1, 2]).buffer);
+      }),
+    });
+    drafts.set('gone', { ...(drafts.get('gone') as object), updated: 10, screenshot: slowBlob });
+
+    // Fresh tab: no cached `known` entry.
+    setIndexedDB(fakeIndexedDB(stores));
+    const pendingShot = setDraftScreenshot('gone', new Blob([new Uint8Array([3, 4])], { type: 'image/webp' }));
+    await Bun.sleep(5);
+    // Another tab deletes the draft while migration is reading the legacy Blob.
+    drafts.delete('gone');
+    releaseDelete();
+    await pendingShot;
+    expect(drafts.has('gone')).toBe(false);
+
+    // Now test concurrent edit during migration: another tab updates the document while
+    // `setDraftCredits` is migrating the legacy audio Blob.
+    let releaseEdit!: () => void;
+    const slowAudio = Object.assign(new Blob([new Uint8Array([5, 6])], { type: 'audio/mpeg' }), {
+      arrayBuffer: () => new Promise<ArrayBuffer>((resolve) => {
+        releaseEdit = () => resolve(new Uint8Array([5, 6]).buffer);
+      }),
+    });
+    await saveDraft('edited', doc(1));
+    drafts.set('edited', {
+      ...(drafts.get('edited') as object),
+      updated: 10,
+      audio: { blob: slowAudio, name: 'Старое', author: '', sync: true, bytes: 2 },
+    });
+    setIndexedDB(fakeIndexedDB(stores));
+    const pendingCredits = setDraftCredits('edited', 'Новое', 'Автор', false);
+    await Bun.sleep(5);
+    // Another tab saves a newer drawing (v2, already migrated without legacy blobs).
+    const newerPacked = new TextEncoder().encode(JSON.stringify(packDocument(doc(24))));
+    drafts.set('edited', {
+      id: 'edited',
+      updated: 20,
+      packed: newerPacked,
+      audioMeta: { key: 'k-new', name: 'Старое', author: '', sync: true, bytes: 2 },
+    });
+    const media = stores.get('draft-audio') ?? new Map();
+    stores.set('draft-audio', media);
+    media.set('k-new', { id: 'k-new', data: new Uint8Array([5, 6]), type: 'audio/mpeg' });
+    releaseEdit();
+    await pendingCredits;
+
+    const restored = await readDraft('edited');
+    expect(restored?.doc).toEqual(doc(24));
+    expect(restored?.audio?.name).toBe('Новое');
+  });
+
+  it('migrates legacy Blob screenshot and audio when saving over an older record, and drops unreadable ones', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('legacy', doc(1));
+    const drafts = stores.get('drafts')!;
+    drafts.set('legacy', {
+      ...(drafts.get('legacy') as object),
+      screenshot: new Blob([new Uint8Array([9, 8])], { type: 'image/png' }),
+      audio: { blob: new Blob([new Uint8Array([7, 6])], { type: 'audio/ogg' }), name: 'Старый', author: '' },
+    });
+    // Simulate a fresh tab that has not cached the record yet.
+    setIndexedDB(fakeIndexedDB(stores));
+    expect((await saveDraft('legacy', doc(2))).ok).toBe(true);
+    expect(containsBlob(stores.get('drafts')!.get('legacy'))).toBe(false);
+    const [restored] = await listDrafts(['legacy']);
+    expect(restored.doc).toEqual(doc(2));
+    expect(new Uint8Array(await restored.screenshot!.arrayBuffer())).toEqual(new Uint8Array([9, 8]));
+    expect(new Uint8Array(await restored.audio!.blob.arrayBuffer())).toEqual(new Uint8Array([7, 6]));
+
+    // A lost Safari Blob on disk must not block saving the drawing itself.
+    const lost = Object.assign(new Blob(['x']), {
+      arrayBuffer: () => Promise.reject(new DOMException('File not found', 'NotReadableError')),
+    });
+    drafts.set('broken-blob', {
+      id: 'broken-blob',
+      updated: 1,
+      doc: doc(1),
+      screenshot: lost,
+      audio: { blob: lost, name: 'Пропал', author: '' },
+    });
+    setIndexedDB(fakeIndexedDB(stores));
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    try {
+      expect((await saveDraft('broken-blob', doc(3))).ok).toBe(true);
+    } finally {
+      console.warn = original;
+    }
+    expect(containsBlob(stores.get('drafts')!.get('broken-blob'))).toBe(false);
+    const [saved] = await listDrafts(['broken-blob']);
+    expect(saved.doc).toEqual(doc(3));
+    expect(saved.screenshot).toBeUndefined();
+    expect(saved.audio).toBeUndefined();
+  });
+});
+
+describe('transient WebKit UnknownError reconnects and retries once', () => {
+  it('reopens the database and retries when a transaction fails asynchronously with UnknownError', async () => {
+    const stores: Stores = new Map();
+    const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+    let opens = 0;
+    let closed = 0;
+    let failNextPut = false;
+    setIndexedDB({
+      open() {
+        const req = inner.open();
+        opens++;
+        const db = req.result as {
+          transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+          close(): void;
+        };
+        const origTx = db.transaction.bind(db);
+        const origClose = db.close.bind(db);
+        db.close = () => {
+          closed++;
+          origClose();
+        };
+        db.transaction = () => {
+          const tx = origTx();
+          if (failNextPut) {
+            failNextPut = false;
+            const origStore = tx.objectStore.bind(tx);
+            tx.objectStore = (n: string) => {
+              const s = origStore(n);
+              s.put = () => {
+                const err = new DOMException('Connection to Indexed Database server lost.', 'UnknownError');
+                queueMicrotask(() => {
+                  tx.error = err;
+                  tx.onerror?.({ target: { error: err } });
+                  tx.onabort?.();
+                });
+                return new FakeReq();
+              };
+              return s;
+            };
+          }
+          return tx;
+        };
+        return req;
+      },
+    });
+
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause) => heard.push([operation, cause]));
+    try {
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      expect(opens).toBe(1);
+      failNextPut = true;
+      const retried = await saveDraft('a', doc(2));
+      expect(retried.ok).toBe(true);
+      expect(opens).toBe(2);
+      expect(closed).toBe(1);
+      expect(heard).toEqual([]);
+      expect((await listDrafts())[0].doc).toEqual(doc(2));
+    } finally {
+      stop();
+    }
+  });
+
+  it('retries indexedDB.open once on UnknownError and reports only if both attempts fail', async () => {
+    const stores: Stores = new Map();
+    const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+    let openAttempts = 0;
+    let failOpens = 1;
+    setIndexedDB({
+      open() {
+        openAttempts++;
+        if (openAttempts <= failOpens) {
+          const req = new FakeReq();
+          req.error = new DOMException('Internal error opening backing store for indexedDB.open.', 'UnknownError');
+          queueMicrotask(() => req.onerror?.());
+          return req;
+        }
+        return inner.open();
+      },
+    });
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause) => heard.push([operation, cause]));
+    try {
+      const recovered = await saveDraft('a', doc(1));
+      expect(recovered.ok).toBe(true);
+      expect(recovered.bytes).toBeGreaterThan(0);
+      expect(openAttempts).toBe(2);
+      expect(heard).toEqual([]);
+    } finally {
+      stop();
+    }
+
+    // Persistent open failure still reports once after retrying.
+    openAttempts = 0;
+    failOpens = 10;
+    const persistentHeard: unknown[] = [];
+    const stop2 = onDraftFailure((operation, cause) => persistentHeard.push([operation, cause]));
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    setIndexedDB({
+      open() {
+        openAttempts++;
+        const req = new FakeReq();
+        req.error = new DOMException('Internal error opening backing store for indexedDB.open.', 'UnknownError');
+        queueMicrotask(() => req.onerror?.());
+        return req;
+      },
+    });
+    try {
+      await saveDraft('b', doc(1));
+      expect(openAttempts).toBe(2);
+      expect(persistentHeard).toEqual([['draft save', 'UnknownError']]);
+    } finally {
+      stop2();
+      console.warn = original;
+    }
+  });
+
+  it('returns failure (not ok:true) and null duplicate ID when reopen fails after a failed write', async () => {
+    const stores: Stores = new Map();
+    const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+    let failWritesAndReopens = false;
+    setIndexedDB({
+      open() {
+        if (failWritesAndReopens) {
+          const req = new FakeReq();
+          req.error = new DOMException('Internal error opening backing store.', 'UnknownError');
+          queueMicrotask(() => req.onerror?.());
+          return req;
+        }
+        const req = inner.open();
+        const db = req.result as {
+          transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+          close(): void;
+        };
+        const origTx = db.transaction.bind(db);
+        db.transaction = () => {
+          const tx = origTx();
+          const origStore = tx.objectStore.bind(tx);
+          tx.objectStore = (n: string) => {
+            const s = origStore(n);
+            const origPut = s.put.bind(s);
+            s.put = (...args: unknown[]) => {
+              if (failWritesAndReopens) {
+                const err = new DOMException('Connection to Indexed Database server lost.', 'UnknownError');
+                queueMicrotask(() => {
+                  tx.error = err;
+                  tx.onerror?.({ target: { error: err } });
+                  tx.onabort?.();
+                });
+                return new FakeReq();
+              }
+              return origPut(...args);
+            };
+            return s;
+          };
+          return tx;
+        };
+        return req;
+      },
+    });
+
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+    try {
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      // Now the active connection dies on put AND subsequent opens also fail.
+      failWritesAndReopens = true;
+      expect(await saveDraft('a', doc(2))).toEqual({ ok: false, bytes: 0 });
+      expect(heard).toEqual([{
+        operation: 'draft save',
+        cause: 'UnknownError',
+        detail: { stage: 'open', reason: 'backing_store', retried: true },
+      }]);
+    } finally {
+      stop();
+      console.warn = original;
+    }
+
+    // Same for duplicateDraft: if the write fails and reopen fails, duplicateDraft must return null.
+    let failSecondPutAndOpen = false;
+    let putCount = 0;
+    const stores2: Stores = new Map();
+    const inner2 = fakeIndexedDB(stores2) as { open(): FakeReq };
+    setIndexedDB({
+      open() {
+        if (failSecondPutAndOpen) {
+          const req = new FakeReq();
+          req.error = new DOMException('Internal error opening backing store.', 'UnknownError');
+          queueMicrotask(() => req.onerror?.());
+          return req;
+        }
+        const req = inner2.open();
+        const db = req.result as {
+          transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+          close(): void;
+        };
+        const origTx = db.transaction.bind(db);
+        db.transaction = () => {
+          const tx = origTx();
+          const origStore = tx.objectStore.bind(tx);
+          tx.objectStore = (n: string) => {
+            const s = origStore(n);
+            const origPut = s.put.bind(s);
+            s.put = (...args: unknown[]) => {
+              putCount++;
+              if (putCount >= 2) {
+                failSecondPutAndOpen = true;
+                const err = new DOMException('Connection to Indexed Database server lost.', 'UnknownError');
+                queueMicrotask(() => {
+                  tx.error = err;
+                  tx.onerror?.({ target: { error: err } });
+                  tx.onabort?.();
+                });
+                return new FakeReq();
+              }
+              return origPut(...args);
+            };
+            return s;
+          };
+          return tx;
+        };
+        return req;
+      },
+    });
+    console.warn = warn;
+    try {
+      expect((await saveDraft('orig', doc(1))).ok).toBe(true);
+      expect(await duplicateDraft('orig')).toBeNull();
+    } finally {
+      console.warn = original;
+    }
+  });
+});
+
+describe('draft failure diagnostics report stage, retried flag, and allowlisted reason without raw text', () => {
+  it('reports stage=open, reason=backing_store, retried=true when indexedDB.open keeps failing with UnknownError', async () => {
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    try {
+      // Clear any previous 'draft save' failure episode before testing this one.
+      setIndexedDB(fakeIndexedDB());
+      await saveDraft('reset', doc(1));
+
+      setIndexedDB({
+        open() {
+          const req = new FakeReq();
+          req.error = new DOMException('Internal error opening backing store for indexedDB.open.', 'UnknownError');
+          queueMicrotask(() => req.onerror?.());
+          return req;
+        },
+      });
+      await saveDraft('a', doc(1));
+      expect(heard).toEqual([{
+        operation: 'draft save',
+        cause: 'UnknownError',
+        detail: { stage: 'open', reason: 'backing_store', retried: true },
+      }]);
+    } finally {
+      stop();
+      console.warn = original;
+    }
+  });
+
+  it('reports stage=put and reason=connection_lost when put keeps failing with UnknownError, and omits unknown messages', async () => {
+    const makeFailingDb = (message: string) => ({
+      open() {
+        const req = new FakeReq();
+        req.result = {
+          objectStoreNames: { contains: () => true },
+          transaction: () => {
+            const tx: Record<string, unknown> = {
+              objectStore: () => ({
+                get: () => {
+                  const r = new FakeReq();
+                  queueMicrotask(() => r.onsuccess?.());
+                  return r;
+                },
+                put: () => {
+                  const err = new DOMException(message, 'UnknownError');
+                  queueMicrotask(() => {
+                    tx.error = err;
+                    (tx.onerror as (e: unknown) => void)({ target: { error: err } });
+                    (tx.onabort as () => void)();
+                  });
+                  return new FakeReq();
+                },
+              }),
+              oncomplete: null,
+              onerror: null,
+              onabort: null,
+              error: null,
+            };
+            return tx;
+          },
+          close() {},
+        };
+        queueMicrotask(() => req.onsuccess?.());
+        return req;
+      },
+    });
+
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+    const warn = mock(() => {});
+    const original = console.warn;
+    console.warn = warn;
+    try {
+      // Reset any prior failure episode on 'draft save'.
+      setIndexedDB(fakeIndexedDB());
+      await saveDraft('reset', doc(1));
+
+      setIndexedDB(makeFailingDb('Connection to Indexed Database server lost. Refresh the page to try again'));
+      expect((await saveDraft('a', doc(1))).ok).toBe(false);
+
+      // Clear episode with a successful write before testing an unrecognized private message.
+      setIndexedDB(fakeIndexedDB());
+      await saveDraft('reset', doc(2));
+
+      setIndexedDB(makeFailingDb('secret /Users/alice/private.sqlite failure'));
+      expect((await saveDraft('b', doc(1))).ok).toBe(false);
+
+      expect(heard).toEqual([
+        {
+          operation: 'draft save',
+          cause: 'UnknownError',
+          detail: { stage: 'put', reason: 'connection_lost', retried: true },
+        },
+        {
+          operation: 'draft save',
+          cause: 'UnknownError',
+          detail: { stage: 'put', retried: true },
+        },
+      ]);
+    } finally {
+      stop();
+      console.warn = original;
+    }
+  });
+});
