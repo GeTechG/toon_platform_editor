@@ -405,7 +405,15 @@ function errorName(error: unknown): string {
 
 function isRetriableStorageError(error: unknown): boolean {
   const name = errorName(error);
-  return name === 'UnknownError' || name === 'InvalidStateError';
+  return name === 'UnknownError' || name === 'InvalidStateError' || name === 'AbortError';
+}
+
+function isPageHidden(): boolean {
+  return typeof document !== 'undefined' && document.hidden === true;
+}
+
+function isExpectedHiddenScreenshotAbort(operation: DraftOperation, error: unknown): boolean {
+  return operation === 'draft screenshot save' && errorName(error) === 'AbortError' && isPageHidden();
 }
 
 function resetConnection(pending: Promise<IDBDatabase> | undefined): void {
@@ -432,8 +440,12 @@ async function transaction(
   mode: IDBTransactionMode,
   unavailable?: (error: unknown, retried: boolean) => void,
   throwOnOpenFailure = false,
+  shouldSkip?: () => boolean,
 ): Promise<IDBTransaction | null> {
   for (let attempt = 0; ; attempt++) {
+    if (shouldSkip?.()) {
+      return null;
+    }
     const pending = connection();
     let db: IDBDatabase;
     try {
@@ -441,6 +453,9 @@ async function transaction(
     } catch (err) {
       if (shared?.db === pending) {
         shared = null;
+      }
+      if (shouldSkip?.()) {
+        return null;
       }
       if (attempt === 0 && errorName(err) === 'UnknownError') {
         continue;
@@ -450,6 +465,9 @@ async function transaction(
       }
       unavailable?.(err, attempt > 0);
       console.warn('draft storage unavailable:', err);
+      return null;
+    }
+    if (shouldSkip?.()) {
       return null;
     }
     try {
@@ -963,12 +981,17 @@ async function updateDraft(
       read = undefined;
       let needsMigration: StoredDraftRecord | undefined;
       let migrationUsedMedia = false;
+      const skipHiddenScreenshot = what === 'draft screenshot save' ? isPageHidden : undefined;
       const runTx = async (migration?: PreparedLegacyMigration): Promise<boolean> => {
+        if (skipHiddenScreenshot?.()) {
+          return false;
+        }
         stage = reopening ? 'open' : 'transaction';
         const tx = await transaction(
           'readwrite',
           (error, openRetried) => draftFailed(what, error, 'open', openRetried),
           reopening,
+          skipHiddenScreenshot,
         );
         if (!tx) {
           return false;
@@ -1083,6 +1106,9 @@ async function updateDraft(
         return false;
       }
       for (let pass = 0; needsMigration && pass < 2; pass++) {
+        if (skipHiddenScreenshot?.()) {
+          return false;
+        }
         const toMigrate = needsMigration;
         needsMigration = undefined;
         migrationUsedMedia = false;
@@ -1117,7 +1143,7 @@ async function updateDraft(
         }
         break;
       } catch (err) {
-        if (attempt === 0 && isRetriableStorageError(err)) {
+        if (attempt === 0 && isRetriableStorageError(err) && !isExpectedHiddenScreenshotAbort(what, err)) {
           retried = true;
           continue;
         }
@@ -1140,7 +1166,9 @@ async function updateDraft(
   } catch (err) {
     // What landed is not known: the next write reads it.
     known.delete(id);
-    draftFailed(what, err, stage, retried);
+    if (!isExpectedHiddenScreenshotAbort(what, err)) {
+      draftFailed(what, err, stage, retried);
+    }
     console.warn(`${what} failed:`, err);
     return false;
   }
@@ -1221,11 +1249,17 @@ export async function saveDraft(
  */
 export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<void> {
   await queueWrite(async () => {
+    if (isPageHidden()) {
+      return;
+    }
     let screenshotData: StoredBytes;
     try {
       screenshotData = await toStoredBytes(screenshot);
     } catch (err) {
       console.warn('draft screenshot unreadable:', err);
+      return;
+    }
+    if (isPageHidden()) {
       return;
     }
     await updateDraft(id, 'draft screenshot save', (previous) => {

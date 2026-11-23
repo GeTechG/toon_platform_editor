@@ -1319,3 +1319,296 @@ describe('draft failure diagnostics report stage, retried flag, and allowlisted 
     }
   });
 });
+
+describe('transient AbortError recovery and hidden-tab screenshot aborts', () => {
+  it('retries once with a fresh connection when a screenshot transaction aborts with AbortError and reports nothing if the retry succeeds', async () => {
+    const stores: Stores = new Map();
+    const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+    let opens = 0;
+    let closed = 0;
+    let abortNextPut = false;
+    setIndexedDB({
+      open() {
+        opens++;
+        const req = inner.open();
+        const db = req.result as {
+          transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+          close(): void;
+        };
+        const origClose = db.close.bind(db);
+        db.close = () => {
+          closed++;
+          origClose();
+        };
+        const origTx = db.transaction.bind(db);
+        db.transaction = () => {
+          const tx = origTx();
+          if (abortNextPut) {
+            abortNextPut = false;
+            const origStore = tx.objectStore.bind(tx);
+            tx.objectStore = (n: string) => {
+              const s = origStore(n);
+              s.put = () => {
+                queueMicrotask(() => {
+                  tx.error = null;
+                  tx.onabort?.();
+                });
+                return new FakeReq();
+              };
+              return s;
+            };
+          }
+          return tx;
+        };
+        return req;
+      },
+    });
+
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+    try {
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      expect(opens).toBe(1);
+      abortNextPut = true;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([4, 5, 6])], { type: 'image/webp' }));
+      expect(opens).toBe(2);
+      expect(closed).toBe(1);
+      expect(heard).toEqual([]);
+      const cards = await listDraftCards();
+      expect(cards[0].screenshot).toBeInstanceOf(Blob);
+      expect(new Uint8Array(await cards[0].screenshot!.arrayBuffer())).toEqual(new Uint8Array([4, 5, 6]));
+    } finally {
+      stop();
+    }
+  });
+
+  it('skips screenshot writes while hidden, suppresses mid-hide AbortError without retrying, and still reports visible persistent AbortError', async () => {
+    const originalDoc = globalThis.document;
+    const fakeDoc = { hidden: false };
+    Object.defineProperty(globalThis, 'document', { value: fakeDoc, configurable: true, writable: true });
+
+    const warn = mock(() => {});
+    const originalWarn = console.warn;
+    console.warn = warn;
+
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+
+    try {
+      const stores: Stores = new Map();
+      const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+      let opens = 0;
+      let txCount = 0;
+      let hideAndAbortPut = false;
+      let alwaysAbortPut = false;
+      setIndexedDB({
+        open() {
+          opens++;
+          const req = inner.open();
+          const db = req.result as {
+            transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+            close(): void;
+          };
+          const origTx = db.transaction.bind(db);
+          db.transaction = () => {
+            txCount++;
+            const tx = origTx();
+            if (hideAndAbortPut || alwaysAbortPut) {
+              const origStore = tx.objectStore.bind(tx);
+              tx.objectStore = (n: string) => {
+                const s = origStore(n);
+                s.put = () => {
+                  queueMicrotask(() => {
+                    if (hideAndAbortPut) {
+                      fakeDoc.hidden = true;
+                    }
+                    tx.error = null;
+                    tx.onabort?.();
+                  });
+                  return new FakeReq();
+                };
+                return s;
+              };
+            }
+            return tx;
+          };
+          return req;
+        },
+      });
+
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      expect(opens).toBe(1);
+      const txBeforeHidden = txCount;
+
+      // Case A: page already hidden before screenshot write starts — skips IndexedDB completely.
+      fakeDoc.hidden = true;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([1])], { type: 'image/webp' }));
+      expect(txCount).toBe(txBeforeHidden);
+      expect(heard).toEqual([]);
+
+      // Case B: page hides while screenshot transaction is in flight and Safari aborts it.
+      fakeDoc.hidden = false;
+      hideAndAbortPut = true;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([2])], { type: 'image/webp' }));
+      hideAndAbortPut = false;
+      expect(opens).toBe(1); // did not retry while hidden
+      expect(heard).toEqual([]);
+
+      // Case C: page is visible and AbortError persists across the retry — must still report.
+      fakeDoc.hidden = false;
+      alwaysAbortPut = true;
+      const opensBeforePersistent = opens;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([3])], { type: 'image/webp' }));
+      expect(opens).toBe(opensBeforePersistent + 2); // fresh open after hidden-abort reset + 1 retry
+      expect(heard).toEqual([{
+        operation: 'draft screenshot save',
+        cause: 'AbortError',
+        detail: { stage: 'abort', retried: true },
+      }]);
+    } finally {
+      stop();
+      console.warn = originalWarn;
+      if (originalDoc === undefined) {
+        delete (globalThis as { document?: Document }).document;
+      } else {
+        Object.defineProperty(globalThis, 'document', { value: originalDoc, configurable: true, writable: true });
+      }
+    }
+  });
+
+  it('skips starting a screenshot transaction if the page hides while IndexedDB is opening or reopening for retry', async () => {
+    const originalDoc = globalThis.document;
+    const fakeDoc = { hidden: false };
+    Object.defineProperty(globalThis, 'document', { value: fakeDoc, configurable: true, writable: true });
+
+    const warn = mock(() => {});
+    const originalWarn = console.warn;
+    console.warn = warn;
+
+    const heard: unknown[] = [];
+    const stop = onDraftFailure((operation, cause, detail) => heard.push({ operation, cause, detail }));
+
+    try {
+      const stores: Stores = new Map();
+      const inner = fakeIndexedDB(stores) as { open(): FakeReq };
+      let openCount = 0;
+      let txCount = 0;
+      let hideDuringOpen = false;
+      let abortFirstPutThenHideOnReopen = false;
+
+      setIndexedDB({
+        open() {
+          openCount++;
+          const currentOpen = openCount;
+          const innerReq = inner.open();
+          const db = innerReq.result as {
+            transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+            close(): void;
+          };
+          const origTx = db.transaction.bind(db);
+          db.transaction = () => {
+            txCount++;
+            const tx = origTx();
+            if (abortFirstPutThenHideOnReopen && currentOpen === 2) {
+              const origStore = tx.objectStore.bind(tx);
+              tx.objectStore = (n: string) => {
+                const s = origStore(n);
+                s.put = () => {
+                  queueMicrotask(() => {
+                    tx.error = null;
+                    tx.onabort?.();
+                  });
+                  return new FakeReq();
+                };
+                return s;
+              };
+            }
+            return tx;
+          };
+
+          const req = new FakeReq();
+          req.result = db;
+          queueMicrotask(() => {
+            if (hideDuringOpen || (abortFirstPutThenHideOnReopen && currentOpen === 3)) {
+              fakeDoc.hidden = true;
+            }
+            req.onsuccess?.();
+          });
+          return req;
+        },
+      });
+
+      // Case 1: tab hides while initial open for screenshot save is in flight.
+      fakeDoc.hidden = false;
+      hideDuringOpen = true;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([1])], { type: 'image/webp' }));
+      hideDuringOpen = false;
+      expect(openCount).toBe(1);
+      expect(txCount).toBe(0);
+      expect(heard).toEqual([]);
+
+      // Reset connection via a fresh factory and create a draft while visible.
+      fakeDoc.hidden = false;
+      expect((await saveDraft('a', doc(1))).ok).toBe(true);
+      const txBeforeRetry = txCount;
+
+      // Case 2: visible screenshot put aborts, triggering reopen (open #3); tab hides before open #3 resolves.
+      // Must NOT start a retry transaction after open #3 resolves.
+      openCount = 1; // next open will be #2 (fresh DB) -> abort -> #3 (reopen while hiding)
+      setIndexedDB({
+        open() {
+          openCount++;
+          const currentOpen = openCount;
+          const innerReq = inner.open();
+          const db = innerReq.result as {
+            transaction(): { onerror: ((e: unknown) => void) | null; onabort: (() => void) | null; error: unknown; objectStore(n: string): { put: (...args: unknown[]) => unknown } };
+            close(): void;
+          };
+          const origTx = db.transaction.bind(db);
+          db.transaction = () => {
+            txCount++;
+            const tx = origTx();
+            if (currentOpen === 2) {
+              const origStore = tx.objectStore.bind(tx);
+              tx.objectStore = (n: string) => {
+                const s = origStore(n);
+                s.put = () => {
+                  queueMicrotask(() => {
+                    tx.error = null;
+                    tx.onabort?.();
+                  });
+                  return new FakeReq();
+                };
+                return s;
+              };
+            }
+            return tx;
+          };
+          const req = new FakeReq();
+          req.result = db;
+          queueMicrotask(() => {
+            if (currentOpen === 3) {
+              fakeDoc.hidden = true;
+            }
+            req.onsuccess?.();
+          });
+          return req;
+        },
+      });
+      abortFirstPutThenHideOnReopen = true;
+      await setDraftScreenshot('a', new Blob([new Uint8Array([2])], { type: 'image/webp' }));
+      expect(openCount).toBe(3);
+      // Only 1 transaction on open #2 (the aborted attempt), 0 transactions on open #3!
+      expect(txCount).toBe(txBeforeRetry + 1);
+      expect(heard).toEqual([]);
+    } finally {
+      stop();
+      console.warn = originalWarn;
+      if (originalDoc === undefined) {
+        delete (globalThis as { document?: Document }).document;
+      } else {
+        Object.defineProperty(globalThis, 'document', { value: originalDoc, configurable: true, writable: true });
+      }
+    }
+  });
+});

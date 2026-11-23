@@ -56,6 +56,7 @@
     setDraftCredits,
     setDraftScreenshot,
   } from '../draft/store';
+  import { createScreenshotQueue } from '../draft/screenshot-queue';
   import { drawsInSoftware, softwareHintDue, webglProbe } from './software-render';
   import { renderScreenshot } from '../export/preview-webp';
   import type { AudioTrackData } from '../audio/state.svelte';
@@ -1400,6 +1401,7 @@
     // Lands only on a record that has no track yet — see `saveDraft`.
     const { blob, name, author, sync } = editor.audio;
     const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
+    const id = draftId;
     queued = false;
     dirty = false;
     writtenDoc = doc;
@@ -1420,7 +1422,9 @@
         saveFailed = false;
         // Storage that was away for a moment (an upgrade in another tab) is back.
         storageBlocked = false;
-        writeScreenshot(doc);
+        if (!destroyed) {
+          writeScreenshot(doc, id, leaving);
+        }
         askPersistOnce();
         return true;
       }
@@ -1465,19 +1469,40 @@
   }
 
   /**
+   * Card thumbnails are coalesced per draft ID so saving one draft never drops
+   * another's pending preview, paused while hidden, and resumed once visible.
+   */
+  const screenshots = createScreenshotQueue<ToonDocument>({
+    render: renderScreenshot,
+    save: (id, blob) => setDraftScreenshot(id, blob),
+    isHidden: () => destroyed || document.hidden,
+    scheduleIdle: (run) => {
+      if (typeof globalThis.requestIdleCallback === 'function') {
+        const handle = globalThis.requestIdleCallback(run);
+        return () => globalThis.cancelIdleCallback?.(handle);
+      }
+      const handle = setTimeout(run, 500);
+      return () => clearTimeout(handle);
+    },
+    onError: (err) => console.warn('draft screenshot failed:', err),
+  });
+
+  $effect(() => {
+    const onVisibility = () => {
+      if (!document.hidden) {
+        screenshots.resume();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  });
+
+  /**
    * The card's thumbnail: rendered once per write, when the CPU is free.
    * Drawing it inline would cost a frame of the stroke that triggered it.
    */
-  function writeScreenshot(doc: ToonDocument): void {
-    // The record this write belongs to, captured now: by the time the browser
-    // is idle a file may have been opened and `draftId` moved on.
-    const id = draftId;
-    const idle = globalThis.requestIdleCallback ?? ((run: () => void) => setTimeout(run, 500));
-    idle(() => {
-      void renderScreenshot(doc)
-        .then((blob) => setDraftScreenshot(id, blob))
-        .catch((err) => console.warn('draft screenshot failed:', err));
-    });
+  function writeScreenshot(doc: ToonDocument, id = draftId, defer = false): void {
+    screenshots.enqueue(id, doc, defer);
   }
 
   /**
@@ -1661,6 +1686,7 @@
    * stays live in the hand, so a copy with the move applied is what is written.
    */
   function flushOnHide(): void {
+    screenshots.pause();
     const shown = editor.docWithTransform();
     if (shown !== editor.doc) {
       void saveNow(false, true, shown);
@@ -1682,6 +1708,7 @@
   // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
   onDestroy(() => {
     destroyed = true;
+    screenshots.dispose();
     // A selection moved and not yet applied is on the screen, not in the
     // document: leaving applies it, as a frame change does. Under the lock
     // it stays live, and the draft takes it as a hidden tab's does.
@@ -1776,6 +1803,7 @@
       // a clock's turn behind the canvas without this write.
       await saveNow();
     }
+    await screenshots.flushNow();
     await refreshDrafts();
     // «Настройки» has closed by now and handed the focus back to its key.
     hubFrom = document.activeElement;

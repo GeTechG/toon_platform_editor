@@ -150,6 +150,24 @@ describe('what the record holds and what comes back', () => {
     expect(editorUi).toContain('setDraftScreenshot(');
   });
 
+  it('skips and cancels idle card thumbnails when hiding, leaving, or unmounting, and flushes deferred thumbnails on resume or hub open', () => {
+    expect(editorUi).toContain('createScreenshotQueue');
+    expect(editorUi).toContain('cancelIdleCallback');
+    expect(editorUi).toContain('clearTimeout');
+
+    const saveNow = editorUi.match(/function saveNow\([\s\S]*?\n  \}/)?.[0] ?? '';
+    expect(saveNow).toMatch(/if\s*\(!destroyed\)\s*\{\s*writeScreenshot\(doc, id, leaving\);\s*\}/);
+
+    const flushOnHide = editorUi.match(/function flushOnHide\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
+    expect(flushOnHide).toContain('screenshots.pause();');
+
+    const openDrafts = editorUi.match(/async function openDrafts\(\): Promise<void> \{[\s\S]*?\n  \}/)?.[0] ?? '';
+    expect(openDrafts).toMatch(/await screenshots\.flushNow\(\);\s*await refreshDrafts\(\);/);
+
+    expect(editorUi).toContain('screenshots.resume();');
+    expect(editorUi).toContain('screenshots.dispose();');
+  });
+
   it('puts the hand back when the draft is opened, and copes without a state', () => {
     expect(editorUi).toContain('editor.restoreState(draft.state)');
     expect(editorUi).toContain('if (draft.state)');
