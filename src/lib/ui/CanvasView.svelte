@@ -3350,6 +3350,8 @@
     border-radius: 50%;
     box-shadow: 0 0 0 1px var(--canvas);
     pointer-events: none;
+    will-change: transform;
+    contain: layout style;
     /* The drawing under it is never recoloured, so neither is the ring that
        has to show on it: forced colors would drop the halo. */
     forced-color-adjust: none;
@@ -3502,6 +3504,8 @@
     border: 1px solid var(--ink);
     box-shadow: 0 0 0 1px var(--canvas);
     pointer-events: none;
+    will-change: transform;
+    contain: layout style;
     /* The colour is the drawing's: forced colors painted it the system Canvas. */
     forced-color-adjust: none;
   }

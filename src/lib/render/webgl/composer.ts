@@ -304,6 +304,9 @@ export class WebGL2SheetComposer implements SheetComposer {
   #lastFailure: RenderBackendReason | null = null;
   /** True whenever GPU memory was allocated/grown since the last `gl.getError()` check. */
   #needsErrorCheck = false;
+  /** Tracks whether any retained chunk of `below`/`above` was evicted during the current stack build (F1). */
+  #evictedBelow = false;
+  #evictedAbove = false;
 
   constructor(gl: WebGL2RenderingContext, options: WebGL2ComposerOptions) {
     this.#gl = gl;
@@ -384,6 +387,7 @@ export class WebGL2SheetComposer implements SheetComposer {
       }
       const cached = this.#playbackTextures.get(playbackKey.key);
       if (cached && cached.width === sheetWidth && cached.height === sheetHeight && cached.mipmapped === needsMipmap) {
+        if (this.#needsErrorCheck && !this.#checkHealthy()) return false;
         this.#budget.touch(`play:${playbackKey.key}`);
         this.#presentSheet(cached, present);
         return this.#checkHealthy();
@@ -643,6 +647,13 @@ export class WebGL2SheetComposer implements SheetComposer {
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.#unitQuadVbo);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+      // Pre-allocate the streaming VBO to its budgeted tier capacity (already
+      // reserved in planSceneVram().workingBytes) so mid-session stroke growth
+      // does not trigger repeated bufferData doublings and gl.getError() IPC stalls.
+      this.#streamVboBytes = vboBudgetForTier(this.#budget.budget);
+      this.#streamVboCursor = 0;
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, this.#streamVboBytes, gl.DYNAMIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
       this.#needsErrorCheck = true;
     }
@@ -816,6 +827,9 @@ export class WebGL2SheetComposer implements SheetComposer {
     // 4 entries per stroke: points, tool, pressure, rigid lasso `place` matrix.
     const nextInk = activeVisible.strokes.flatMap((s) => [s.points, scene.tools[s.tool_id], s.pressure, (s as PlacedStroke).place]);
 
+    // Phase 1: Acquire/reuse ALL stack targets (`active`, `below`, `above`) BEFORE
+    // submitting any rasterization draws, so a single pre-draw `gl.getError()`
+    // validates every allocation at once and aborts with zero wasted draws on OOM.
     if (!this.#activeTex) {
       this.#activeTex = this.#retainLayerTarget('layer:active', w, h, (evicted) => {
         if (this.#activeTex === evicted) {
@@ -823,9 +837,50 @@ export class WebGL2SheetComposer implements SheetComposer {
           this.#activeInk = undefined;
         }
       });
-    }
-    if (this.#activeTex) {
+    } else {
       this.#budget.touch('layer:active');
+    }
+
+    // Below / above chunked layers keyed by exact stroke + look identity.
+    const inkOfGroup = (list: { cell: Frame; look: LayerLook }[]): unknown[] => {
+      const sig: unknown[] = [w, h, scene.viewport.scale, scene.viewport.dpr];
+      for (const item of list) {
+        sig.push(item.look.opacity, item.look.blend, item.cell.strokes.length);
+        for (const s of item.cell.strokes) {
+          sig.push(s.points, scene.tools[s.tool_id], s.pressure, (s as PlacedStroke).place);
+        }
+      }
+      return sig;
+    };
+
+    const nextBelowInk = inkOfGroup(below);
+    const belowDirty = !this.#belowComplete || !sameStrokeList(this.#belowInk, nextBelowInk);
+    let belowPlan = belowDirty
+      ? this.#acquireLayerGroupTargets('below', below, w, h, this.#belowChunks)
+      : null;
+
+    const nextAboveInk = inkOfGroup(above);
+    const aboveDirty = !this.#aboveComplete || !sameStrokeList(this.#aboveInk, nextAboveInk);
+    const abovePlan = aboveDirty
+      ? this.#acquireLayerGroupTargets('above', above, w, h, this.#aboveChunks)
+      : null;
+
+    // If allocating `above` evicted a `below` chunk we just prepared, release the
+    // remainder of `below` so `#composeFrame` streams it cleanly without dangling textures.
+    if (belowPlan && belowPlan.targets.length > 0 && this.#evictedBelow) {
+      for (let k = 0; k < belowPlan.targets.length; k++) {
+        this.#budget.release(`chunk:below:${k}`);
+      }
+      belowPlan = { targets: [], complete: false };
+    }
+
+    // Single pre-draw allocation error check for core + active + below + above.
+    if (this.#needsErrorCheck && !this.#checkHealthy()) {
+      return false;
+    }
+
+    // Phase 2: Rasterize into the already-validated stack targets.
+    if (this.#activeTex) {
       if (!sameStrokeList(this.#activeInk, nextInk)) {
         // Incremental append fast path when strokes were only appended at the end.
         const prev = this.#activeInk;
@@ -856,31 +911,15 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#activeInk = undefined;
     }
 
-    // Below / above chunked layers keyed by exact stroke + look identity.
-    const inkOfGroup = (list: { cell: Frame; look: LayerLook }[]): unknown[] => {
-      const sig: unknown[] = [w, h, scene.viewport.scale, scene.viewport.dpr];
-      for (const item of list) {
-        sig.push(item.look.opacity, item.look.blend, item.cell.strokes.length);
-        for (const s of item.cell.strokes) {
-          sig.push(s.points, scene.tools[s.tool_id], s.pressure, (s as PlacedStroke).place);
-        }
-      }
-      return sig;
-    };
-
-    const nextBelowInk = inkOfGroup(below);
-    if (!this.#belowComplete || !sameStrokeList(this.#belowInk, nextBelowInk)) {
-      this.#releaseChunks('below', this.#belowChunks);
-      const res = this.#rasterizeLayerGroup('below', below, scene, w, h);
+    if (belowPlan) {
+      const res = this.#rasterizePreparedGroup(below, belowPlan, scene);
       this.#belowChunks = res.chunks;
       this.#belowComplete = res.complete;
       this.#belowInk = res.complete ? nextBelowInk : undefined;
     }
 
-    const nextAboveInk = inkOfGroup(above);
-    if (!this.#aboveComplete || !sameStrokeList(this.#aboveInk, nextAboveInk)) {
-      this.#releaseChunks('above', this.#aboveChunks);
-      const res = this.#rasterizeLayerGroup('above', above, scene, w, h);
+    if (abovePlan) {
+      const res = this.#rasterizePreparedGroup(above, abovePlan, scene);
       this.#aboveChunks = res.chunks;
       this.#aboveComplete = res.complete;
       this.#aboveInk = res.complete ? nextAboveInk : undefined;
@@ -904,14 +943,17 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
   }
 
-  #rasterizeLayerGroup(
+  #acquireLayerGroupTargets(
     prefix: 'below' | 'above',
     entries: readonly { cell: Frame; look: LayerLook }[],
-    scene: FrameScene,
     w: number,
     h: number,
-  ): { chunks: LayerChunkTex[]; complete: boolean } {
-    if (entries.length === 0) return { chunks: [], complete: true };
+    existing: LayerChunkTex[],
+  ): { targets: TextureTarget[]; complete: boolean } {
+    if (entries.length === 0) {
+      this.#releaseChunks(prefix, existing);
+      return { targets: [], complete: true };
+    }
 
     // Compute total chunk count up front so we NEVER evict an earlier chunk of
     // this same group while building later chunks (F1).
@@ -926,43 +968,77 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
     const neededBytes = neededChunks * sheetTextureBytes(w, h, false);
     if (neededBytes > this.#budget.headroom) {
-      return { chunks: [], complete: false };
+      this.#releaseChunks(prefix, existing);
+      return { targets: [], complete: false };
     }
 
-    const out: LayerChunkTex[] = [];
-    let building = true;
-    let evictedSelf = false;
-    const onEvictChunk = (): void => {
-      if (building) {
-        evictedSelf = true;
+    // Reuse existing retained chunk targets of matching dimensions so frame
+    // switches never destroy/reallocate GPU textures or trigger gl.getError() IPC.
+    const reusable: TextureTarget[] = [];
+    if (existing.length > 0 && existing.every((c) => c.target.width === w && c.target.height === h)) {
+      for (let k = neededChunks; k < existing.length; k++) {
+        this.#budget.release(`chunk:${prefix}:${k}`);
       }
+      const keep = Math.min(existing.length, neededChunks);
+      for (let k = 0; k < keep; k++) {
+        this.#budget.touch(`chunk:${prefix}:${k}`);
+        reusable.push(existing[k].target);
+      }
+    } else {
+      this.#releaseChunks(prefix, existing);
+    }
+
+    if (prefix === 'below') this.#evictedBelow = false;
+    else this.#evictedAbove = false;
+
+    const onEvictChunk = (): void => {
       if (prefix === 'below') {
+        this.#evictedBelow = true;
         this.#belowChunks = [];
         this.#belowComplete = false;
         this.#belowInk = undefined;
       } else {
+        this.#evictedAbove = true;
         this.#aboveChunks = [];
         this.#aboveComplete = false;
         this.#aboveInk = undefined;
       }
     };
-    const abortPartial = (): { chunks: LayerChunkTex[]; complete: boolean } => {
-      building = false;
-      const count = out.length;
-      out.length = 0;
-      for (let k = 0; k < count; k++) {
+    const abortPartial = (allocated: number): { targets: TextureTarget[]; complete: boolean } => {
+      const total = Math.max(reusable.length, allocated);
+      for (let k = 0; k < total; k++) {
         this.#budget.release(`chunk:${prefix}:${k}`);
       }
-      return { chunks: [], complete: false };
+      return { targets: [], complete: false };
     };
 
+    const targets: TextureTarget[] = [];
+    for (let k = 0; k < neededChunks; k++) {
+      const target = k < reusable.length
+        ? reusable[k]
+        : this.#retainLayerTarget(`chunk:${prefix}:${k}`, w, h, onEvictChunk);
+      const evictedSelf = prefix === 'below' ? this.#evictedBelow : this.#evictedAbove;
+      if (!target || evictedSelf) return abortPartial(k + 1);
+      targets.push(target);
+    }
+    return { targets, complete: true };
+  }
+
+  #rasterizePreparedGroup(
+    entries: readonly { cell: Frame; look: LayerLook }[],
+    plan: { targets: TextureTarget[]; complete: boolean },
+    scene: FrameScene,
+  ): { chunks: LayerChunkTex[]; complete: boolean } {
+    if (!plan.complete || plan.targets.length === 0) {
+      return { chunks: [], complete: plan.complete };
+    }
+    const out: LayerChunkTex[] = [];
     // Group plain/translucent layers together; isolate each blended layer in its own chunk.
     let i = 0;
     let idx = 0;
     while (i < entries.length) {
       if (entries[i].look.blend) {
-        const target = this.#retainLayerTarget(`chunk:${prefix}:${idx++}`, w, h, onEvictChunk);
-        if (!target || evictedSelf) return abortPartial();
+        const target = plan.targets[idx++];
         this.#clearTarget(target, 0, 0, 0, 0);
         if (entries[i].cell.strokes.length > 0) {
           this.#renderCellStrokes(entries[i].cell, scene.tools, scene.viewport, target, false);
@@ -976,8 +1052,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         run.push(entries[i]);
         i++;
       }
-      const target = this.#retainLayerTarget(`chunk:${prefix}:${idx++}`, w, h, onEvictChunk);
-      if (!target || evictedSelf) return abortPartial();
+      const target = plan.targets[idx++];
       this.#clearTarget(target, 0, 0, 0, 0);
       let anyInk = false;
       for (let r = 0; r < run.length; r++) {
@@ -995,11 +1070,13 @@ export class WebGL2SheetComposer implements SheetComposer {
       }
       out.push({ target, look: undefined, ink: anyInk });
     }
-    building = false;
     return { chunks: out, complete: true };
   }
 
   #composeFrame(scene: FrameScene, w: number, h: number, hasGhosts: boolean): boolean {
+    if (this.#needsErrorCheck && !this.#checkHealthy()) {
+      return false;
+    }
     const slotA = this.#slotA!;
     const slotB = this.#slotB!;
     const usePaper = !scene.blend && scene.paper !== undefined && showsBlend(scene);

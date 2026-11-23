@@ -1182,4 +1182,270 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
       composer.dispose();
     }
   });
+
+  it('reuses below and above layer chunk textures across frame switches with zero texture reallocation and zero gl.getError calls', () => {
+    let createTexCalls = 0;
+    let deleteTexCalls = 0;
+    let getErrorCalls = 0;
+    const mock = createRecordingWebGL2({
+      createTexture: () => {
+        createTexCalls++;
+        return { id: createTexCalls };
+      },
+      deleteTexture: () => {
+        deleteTexCalls++;
+      },
+      getError: () => {
+        getErrorCalls++;
+        return 0;
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 128 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+    const doc: ToonDocument = {
+      schema_version: 8,
+      width: 1280 * 8,
+      height: 720 * 8,
+      frame_rate: 12,
+      tools,
+      layers: [
+        {
+          hidden: false,
+          frames: [
+            { strokes: [{ points: [80, 80, 400, 80], tool_id: 0 }] },
+            { strokes: [{ points: [80, 120, 400, 120], tool_id: 0 }] },
+            { strokes: [] },
+          ],
+        },
+        {
+          hidden: false,
+          frames: [
+            { strokes: [{ points: [80, 200, 400, 200], tool_id: 0 }] },
+            { strokes: [{ points: [80, 240, 400, 240], tool_id: 0 }] },
+            { strokes: [{ points: [80, 280, 400, 280], tool_id: 0 }] },
+          ],
+        },
+        {
+          hidden: false,
+          frames: [
+            { strokes: [{ points: [80, 360, 400, 360], tool_id: 0 }] },
+            { strokes: [{ points: [80, 400, 400, 400], tool_id: 0 }] },
+            { strokes: [{ points: [80, 440, 400, 440], tool_id: 0 }] },
+          ],
+        },
+      ],
+    };
+    const viewport = { scale: 1 / 8, dpr: 1 };
+
+    // Frame 0 allocates core + active + below + above chunk targets.
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 1, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+
+    // Switching to frame 1 (same chunk topology below & above) must reuse existing targets with 0 alloc/free/getError.
+    createTexCalls = 0;
+    deleteTexCalls = 0;
+    getErrorCalls = 0;
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 1, activeLayer: 1, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(createTexCalls).toBe(0);
+    expect(deleteTexCalls).toBe(0);
+    expect(getErrorCalls).toBe(0);
+
+    // Switching to frame 2 (below layer is empty, above still has 1 chunk) must stay clean and not leak.
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { doc, frame: 2, activeLayer: 1, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    composer.dispose();
+  });
+
+  it('pre-allocates the streaming VBO to the tier budget during init so larger later strokes do not trigger mid-drawing bufferData or gl.getError stalls', () => {
+    let streamBufferDataCalls = 0;
+    let getErrorCalls = 0;
+    const mock = createRecordingWebGL2({
+      bufferData: (_target: number, dataOrSize: number | ArrayBufferView) => {
+        if (typeof dataOrSize === 'number') {
+          streamBufferDataCalls++;
+        }
+      },
+      getError: () => {
+        getErrorCalls++;
+        return 0;
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 128 * 1024 * 1024, // 8 MiB VBO budget
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+    const viewport = { scale: 1 / 8, dpr: 1 };
+
+    // Frame 0: tiny 2-point stroke (far below 64 KiB).
+    const smallDoc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+    expect(composer.composeAndPresent(1280, 720, { doc: smallDoc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(streamBufferDataCalls).toBe(1);
+
+    // Frame 1: multi-hundred-vertex stroke exceeding 64 KiB of vertex data.
+    // Because the VBO was pre-allocated to the tier budget (8 MiB), this must NOT double/reallocate or call gl.getError().
+    const largePts: number[] = [];
+    for (let i = 0; i < 2000; i++) {
+      largePts.push(80 + (i % 80) * 8, 80 + Math.floor(i / 80) * 16);
+    }
+    const largeDoc = simpleDoc(tools, [{ points: largePts, tool_id: 0 }]);
+    streamBufferDataCalls = 0;
+    getErrorCalls = 0;
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { doc: largeDoc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+    expect(streamBufferDataCalls).toBe(0);
+    expect(getErrorCalls).toBe(0);
+    composer.dispose();
+  });
+
+  it('drains gl.getError() right after GPU allocations before submitting frame draw calls, aborting early on OOM with zero wasted draws', () => {
+    // 1. Healthy cold frame: gl.getError() runs BEFORE the first drawArrays call, never after the last drawArrays.
+    {
+      const ops: string[] = [];
+      const mock = createRecordingWebGL2({
+        getError: () => {
+          ops.push('getError');
+          return 0;
+        },
+        drawArrays: () => {
+          ops.push('drawArrays');
+        },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 128 * 1024 * 1024,
+      });
+      const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+      const doc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+      expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+      const firstDraw = ops.indexOf('drawArrays');
+      const lastGetError = ops.lastIndexOf('getError');
+      expect(firstDraw).toBeGreaterThan(0);
+      expect(lastGetError).toBeGreaterThanOrEqual(0);
+      expect(lastGetError).toBeLessThan(firstDraw);
+      expect(ops.filter((o) => o === 'getError').length).toBe(1);
+      composer.dispose();
+    }
+
+    // 2. OOM during onion-skin #underTex allocation: fails before submitting any drawArrays calls on that frame.
+    {
+      let err = 0;
+      let draws = 0;
+      const mock = createRecordingWebGL2({
+        getError: () => {
+          const e = err;
+          err = 0;
+          return e;
+        },
+        drawArrays: () => {
+          draws++;
+        },
+      });
+      const composer = new WebGL2SheetComposer(mock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 128 * 1024 * 1024,
+      });
+      const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+      const doc: ToonDocument = {
+        schema_version: 8,
+        width: 1280 * 8,
+        height: 720 * 8,
+        frame_rate: 12,
+        tools,
+        layers: [{
+          hidden: false,
+          frames: [
+            { strokes: [{ points: [80, 80, 320, 80], tool_id: 0 }] },
+            { strokes: [{ points: [80, 160, 320, 160], tool_id: 0 }] },
+          ],
+        }],
+      };
+      const viewport = { scale: 1 / 8, dpr: 1 };
+      expect(composer.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+      draws = 0;
+      err = 0x0505; // GL_OUT_OF_MEMORY when #underTex allocates
+      composer.invalidate();
+      expect(composer.composeAndPresent(1280, 720, {
+        doc,
+        frame: 1,
+        activeLayer: 0,
+        viewport,
+        tools,
+        ghosts: { frames: [{ index: 0, alpha: 0.3, tint: '#1b5cff' }], layers: [0] },
+        paper: '#ffffff',
+      }, PRESENT)).toBe(false);
+      expect(composer.lastFailure).toBe('oom');
+      expect(draws).toBe(0);
+    }
+
+    // 3. Cold three-layer frame (below + active + above): must drain gl.getError() ONCE before any drawArrays,
+    //    and OOM while allocating the upper (above) layer must abort with zero wasted active/below draws.
+    {
+      const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+      const doc: ToonDocument = {
+        schema_version: 8,
+        width: 1280 * 8,
+        height: 720 * 8,
+        frame_rate: 12,
+        tools,
+        layers: [
+          { hidden: false, frames: [{ strokes: [{ points: [80, 80, 400, 80], tool_id: 0 }] }] },
+          { hidden: false, frames: [{ strokes: [{ points: [80, 200, 400, 200], tool_id: 0 }] }] },
+          { hidden: false, frames: [{ strokes: [{ points: [80, 320, 400, 320], tool_id: 0 }] }] },
+        ],
+      };
+      const viewport = { scale: 1 / 8, dpr: 1 };
+
+      // 3a. Healthy cold 3-layer frame: exactly 1 getError(), strictly before first drawArrays.
+      const ops: string[] = [];
+      const healthyMock = createRecordingWebGL2({
+        getError: () => {
+          ops.push('getError');
+          return 0;
+        },
+        drawArrays: () => {
+          ops.push('drawArrays');
+        },
+      });
+      const healthy = new WebGL2SheetComposer(healthyMock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 128 * 1024 * 1024,
+      });
+      expect(healthy.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 1, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
+      expect(ops.filter((o) => o === 'getError').length).toBe(1);
+      expect(ops.lastIndexOf('getError')).toBeLessThan(ops.indexOf('drawArrays'));
+      healthy.dispose();
+
+      // 3b. OOM on the final (upper/above) layer texture allocation: 0 drawArrays wasted.
+      let texCount = 0;
+      let err = 0;
+      let draws = 0;
+      // Core allocates atlas (1) + slotA/B/C (3) = 4 textures; then active (5), below (6), above (7).
+      const oomMock = createRecordingWebGL2({
+        createTexture: () => {
+          texCount++;
+          if (texCount === 7) err = 0x0505; // GL_OUT_OF_MEMORY on above layer chunk
+          return { id: texCount };
+        },
+        getError: () => {
+          const e = err;
+          err = 0;
+          return e;
+        },
+        drawArrays: () => {
+          draws++;
+        },
+      });
+      const failing = new WebGL2SheetComposer(oomMock.gl, {
+        formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+        budgetBytes: 128 * 1024 * 1024,
+      });
+      expect(failing.composeAndPresent(1280, 720, { doc, frame: 0, activeLayer: 1, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(false);
+      expect(failing.lastFailure).toBe('oom');
+      expect(draws).toBe(0);
+    }
+  });
 });
