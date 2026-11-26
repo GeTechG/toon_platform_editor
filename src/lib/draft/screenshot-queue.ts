@@ -13,6 +13,7 @@ export interface ScreenshotQueueOptions<TDoc> {
 
 export interface ScreenshotQueue<TDoc> {
   enqueue: (id: string, doc: TDoc, defer?: boolean) => void;
+  discard: (id: string) => void;
   pause: () => void;
   resume: () => void;
   flushNow: () => Promise<void>;
@@ -24,6 +25,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
   const pending = new Map<string, TDoc>();
   let cancelIdle: (() => void) | null = null;
   let draining: Promise<void> | null = null;
+  let active: string | undefined;
   let disposed = false;
 
   function cancelScheduled(): void {
@@ -56,6 +58,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
         }
         const [id, doc] = next;
         pending.delete(id);
+        active = id;
         let blob: Blob;
         try {
           blob = await render(doc);
@@ -66,6 +69,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
         if (disposed) {
           return;
         }
+        if (active !== id) continue;
         if (isHidden()) {
           if (!pending.has(id)) {
             pending.set(id, doc);
@@ -83,6 +87,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
         if (disposed) {
           return;
         }
+        if (active !== id) continue;
         if (isHidden()) {
           if (!pending.has(id)) {
             pending.set(id, doc);
@@ -91,6 +96,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
         }
       }
     })().finally(() => {
+      active = undefined;
       draining = null;
       if (!disposed && !isHidden() && pending.size > 0) {
         schedule();
@@ -109,6 +115,11 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
       if (!defer && !isHidden()) {
         schedule();
       }
+    },
+    discard(id: string): void {
+      pending.delete(id);
+      if (active === id) active = undefined;
+      if (pending.size === 0) cancelScheduled();
     },
     pause(): void {
       cancelScheduled();

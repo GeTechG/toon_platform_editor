@@ -136,7 +136,8 @@ describe('what is on the screen is what leaves', () => {
     // The key's work is `sendOut`, which the export sheet's way on shares.
     const at = editorUi.indexOf("{:else if id === 'publish'}");
     expect(editorUi.slice(at, editorUi.indexOf("{:else if id === 'merge'}", at))).toContain('onclick={sendOut}');
-    const send = editorUi.slice(editorUi.indexOf('function sendOut('), editorUi.indexOf('forgetSent,\n    );'));
+    const sendAt = editorUi.indexOf('function sendOut(');
+    const send = editorUi.slice(sendAt, editorUi.indexOf('\n  }\n', sendAt));
     expect(send).toMatch(/editor\.leaveTransform\(\)[^]*onPublish\?\.\(/);
   });
 

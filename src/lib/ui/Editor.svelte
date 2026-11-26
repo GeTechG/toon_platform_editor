@@ -84,8 +84,8 @@
   // coupling).
   // The soundtrack travels beside the document, not inside it: the toon format
   // holds drawings, and the platform stores the file on its own endpoint.
-  // `sent` is the host's word back that the drawing went out: its draft on this
-  // device goes then — the editor cannot know that, the host cannot reach the draft.
+  // `sent` lets the host retire the local draft after saving it to the account.
+  // `saveLocal` writes the current draft on this device and reports whether it landed.
   // `stageNote` is the host's own word over the canvas — the site's first-run
   // hint. The stage is the only box that knows where the canvas is, so the
   // note is placed against it rather than against the whole editor. It is told
@@ -106,7 +106,12 @@
     startNew,
     open,
   }: {
-    onPublish?: (doc: ToonDocument, audio?: AudioTrackData | null, sent?: () => Promise<void>) => void;
+    onPublish?: (
+      doc: ToonDocument,
+      audio?: AudioTrackData | null,
+      sent?: () => Promise<void>,
+      saveLocal?: () => Promise<boolean>,
+    ) => void;
     stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;
     /** The host's mascot, a picture's address: it greets a first visit on the tour's first page. */
     mascot?: string;
@@ -1382,7 +1387,7 @@
    * After a failure the clock stays off, but a save asked for by hand tries
    * again: the user may have freed the room in the drafts list since.
    */
-  function saveNow(byHand = false, leaving = false, shown?: ToonDocument): Promise<boolean> {
+  function saveNow(byHand = false, leaving = false, shown?: ToonDocument, forPublication = false): Promise<boolean> {
     // `shown` is an edit by itself: a move on a draft just opened and not
     // touched since went unwritten into the background.
     if (!editor.touched && !shown) {
@@ -1398,7 +1403,7 @@
     // drawing to size what the write is about to size anyway.
     // `shown` is the drawing with a live transform applied (flushOnHide).
     const doc = shown ?? editor.doc;
-    // Lands only on a record that has no track yet — see `saveDraft`.
+    // Automatic saves fill a missing track. Publication keeps the exact audio.
     const { blob, name, author, sync } = editor.audio;
     const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
     const id = draftId;
@@ -1407,7 +1412,11 @@
     writtenDoc = doc;
     writtenTags = editor.layerColors.join();
     writing++;
-    return saveDraft(draftId, doc, editor.sessionState(), track).finally(() => writing--).then(({ ok, bytes }) => {
+    const write = saveDraft(id, doc, editor.sessionState(), track, { forPublication }).catch((error: unknown) => {
+      console.warn('draft save failed:', error);
+      return { ok: false, bytes: 0 };
+    });
+    return write.finally(() => writing--).then(({ ok, bytes }) => {
       if (ok && bytes === 0) {
         // No storage at all (blocked by the browser): the store degrades
         // quietly, but «сохранено» would be a lie, and a clean `dirty` would
@@ -1422,7 +1431,7 @@
         saveFailed = false;
         // Storage that was away for a moment (an upgrade in another tab) is back.
         storageBlocked = false;
-        if (!destroyed) {
+        if (!destroyed && !forPublication) {
           writeScreenshot(doc, id, leaving);
         }
         askPersistOnce();
@@ -1940,11 +1949,16 @@
     return true;
   }
 
-  /**
-   * The drawing on screen was published (owner, 2026-10-06): its draft on this
-   * device goes. Clean from here, so leaving the studio — which writes whatever
-   * is unsaved — does not put it back; drawing on starts a record of its own.
-   */
+  /** The host handles any failure alongside the result of the publication. */
+  async function savePublishedDraft(): Promise<boolean> {
+    // A previous render must not put the stale thumbnail back after the write.
+    screenshots.discard(draftId);
+    // Force a write even for an untouched drawing reopened from a local draft.
+    const saved = await saveNow(true, true, editor.doc, true);
+    return saved && !storageBlocked;
+  }
+
+  /** The drawing and its track have moved to the account's drafts. */
   async function forgetSent(): Promise<void> {
     await deleteDraft(draftId);
     draftId = newDraftId();
@@ -1975,6 +1989,7 @@
           }
         : null,
       forgetSent,
+      savePublishedDraft,
     );
   }
 

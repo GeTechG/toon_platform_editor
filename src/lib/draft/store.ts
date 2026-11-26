@@ -640,6 +640,9 @@ async function deleteMediaAudio(key: string): Promise<void> {
   }
 }
 
+/** A Blob can be reused only when this exact file is already on the draft. */
+const savedAudioKeys = new WeakMap<Blob, string>();
+
 async function loadRecordAudio(record: StoredDraftRecord): Promise<DraftAudio | undefined> {
   if (record.audioMeta) {
     const media = await getMediaAudio(record.audioMeta.key);
@@ -647,6 +650,7 @@ async function loadRecordAudio(record: StoredDraftRecord): Promise<DraftAudio | 
       return undefined;
     }
     const blob = new Blob([media.data], { type: media.type });
+    savedAudioKeys.set(blob, record.audioMeta.key);
     const restored: DraftAudio = {
       blob,
       name: record.audioMeta.name,
@@ -694,8 +698,12 @@ async function rawRecords(): Promise<StoredDraftRecord[]> {
 }
 
 async function rawRecord(id: string): Promise<StoredDraftRecord | undefined> {
+  await writes;
+  return readStoredRecord(id);
+}
+
+async function readStoredRecord(id: string): Promise<StoredDraftRecord | undefined> {
   try {
-    await writes;
     const tx = await transaction('readonly');
     if (!tx) {
       return undefined;
@@ -967,6 +975,8 @@ async function updateDraft(
   mutate: (previous: StoredDraftRecord | undefined) => StoredDraftRecord | null,
   /** What the record turned out to weigh — the write already knows. */
   wrote?: (bytes: number) => void,
+  /** Replacing media requires its current key, even before the other tab's notice arrives. */
+  readFresh = false,
 ): Promise<boolean> {
   let stage: DraftFailureStage = 'transaction';
   let retried = false;
@@ -1066,7 +1076,7 @@ async function updateDraft(
             }
             // Read `known` only after `transaction()` has ensured `connection()`
             // matches the active `indexedDB` factory (which clears `known` on swap).
-            const remembered = known.get(id);
+            const remembered = readFresh ? undefined : known.get(id);
             if (remembered) {
               if (hasLegacyBlob(remembered)) {
                 needsMigration = remembered;
@@ -1195,9 +1205,10 @@ export async function saveDraft(
   id: string,
   doc: unknown,
   state?: DraftState,
-  /** The track on screen: written only when the record has none yet — a
-   * track attached before the record existed had nowhere to land. */
+  /** By default this fills in a track attached before the record existed. */
   audio?: DraftAudio | null,
+  /** Write the exact soundtrack and invalidate the thumbnail in the same draft update. */
+  { forPublication = false }: { forPublication?: boolean } = {},
 ): Promise<DraftWrite> {
   let bytes = 0;
   const ok = await queueWrite(async () => {
@@ -1206,26 +1217,49 @@ export async function saveDraft(
     let attachedStaged = false;
     const activeFactory = typeof indexedDB === 'undefined' ? undefined : indexedDB;
     const cached = shared && shared.factory === activeFactory ? known.get(id) : undefined;
-    if (audio && !cached?.audioMeta && !cached?.audio) {
+    const savedKey = forPublication && audio ? savedAudioKeys.get(audio.blob) : undefined;
+    const storedMeta = savedKey ? (cached ?? await readStoredRecord(id))?.audioMeta : undefined;
+    const reusedAudio = audio && storedMeta && storedMeta.key === savedKey
+      ? buildAudioMeta(storedMeta.key, audio, storedMeta.bytes)
+      : undefined;
+    if (audio && (forPublication ? !reusedAudio : !cached?.audioMeta && !cached?.audio)) {
+      let stage: DraftFailureStage = 'blob';
       try {
         const payload = await toStoredBytes(audio.blob);
         const key = newDraftId();
+        stage = 'put';
         await putMediaAudio(key, payload);
         stagedKey = key;
         stagedAudio = buildAudioMeta(key, audio, payload.bytes.byteLength);
       } catch (err) {
+        if (forPublication) {
+          draftFailed('draft audio save', err, stage);
+          return false;
+        }
         console.warn('draft audio unreadable during save, keeping drawing:', err);
       }
     }
     let landed = false;
+    let replacedKey: string | undefined;
     const wroteOk = await updateDraft(id, 'draft save', (previous) => {
+      // A different tab may have replaced the track since it was checked.
+      if (reusedAudio && previous?.audioMeta?.key !== reusedAudio.key) return null;
       const next: StoredDraftRecord = { ...previous, id, updated: Date.now(), doc };
       // The studio's own drawing: whatever did not read before is replaced.
       delete next.broken;
       if (state) {
         next.state = state;
       }
-      if (stagedAudio && !next.audioMeta && !next.audio) {
+      if (forPublication) {
+        replacedKey = next.audioMeta?.key;
+        delete next.audio;
+        delete next.screenshot;
+        delete next.screenshotData;
+        const currentAudio = reusedAudio ?? stagedAudio;
+        if (currentAudio) next.audioMeta = currentAudio;
+        else delete next.audioMeta;
+        attachedStaged = stagedAudio !== undefined;
+      } else if (stagedAudio && !next.audioMeta && !next.audio) {
         next.audioMeta = stagedAudio;
         attachedStaged = true;
       }
@@ -1233,11 +1267,21 @@ export async function saveDraft(
     }, (writtenBytes) => {
       bytes = writtenBytes;
       landed = true;
-    });
-    if (stagedKey && (!wroteOk || !landed || !attachedStaged)) {
-      await deleteMediaAudio(stagedKey);
+    }, forPublication);
+    if (stagedKey) {
+      if (audio && wroteOk && landed && attachedStaged) {
+        savedAudioKeys.set(audio.blob, stagedKey);
+      } else {
+        await deleteMediaAudio(stagedKey);
+      }
     }
-    return wroteOk;
+    if (wroteOk && landed && replacedKey && replacedKey !== reusedAudio?.key) {
+      await deleteMediaAudio(replacedKey);
+    }
+    if (forPublication && wroteOk && landed) {
+      failing.delete('draft audio save');
+    }
+    return wroteOk && (!forPublication || landed);
   });
   return { ok, bytes };
 }
@@ -1396,6 +1440,7 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null): Promi
       landed = true;
     });
     if (ok && landed) {
+      if (audio && newKey) savedAudioKeys.set(audio.blob, newKey);
       if (replacedKey && replacedKey !== newKey) {
         await deleteMediaAudio(replacedKey);
       }

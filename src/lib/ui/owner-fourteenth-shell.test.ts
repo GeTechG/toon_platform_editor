@@ -121,7 +121,7 @@ describe('вкладка ушла в фон с живым выделением',
 
   it('saveNow пишет переданный рисунок, а не только editor.doc', () => {
     const save = fn('saveNow');
-    expect(save).toMatch(/function saveNow\(byHand = false, leaving = false, shown\?: ToonDocument\)/);
+    expect(save).toMatch(/function saveNow\(byHand = false, leaving = false, shown\?: ToonDocument\b/);
     expect(save).toMatch(/const doc = shown \?\? editor\.doc;/);
   });
 });

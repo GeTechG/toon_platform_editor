@@ -138,4 +138,21 @@ describe('createScreenshotQueue', () => {
     expect(h.rendered).toEqual([]);
     expect(h.saved).toEqual([]);
   });
+
+  it('discards both queued and running screenshots of the specified draft', async () => {
+    const h = harness();
+    h.queue.enqueue('draft-a', 'a-v1');
+    h.runNextIdle();
+    h.queue.enqueue('draft-a', 'a-v2');
+    h.queue.enqueue('draft-b', 'b-v1');
+
+    h.queue.discard('draft-a');
+    const flushing = h.queue.flushNow();
+    h.rendered[0].resolve(new Blob(['shot:a-v1']));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.rendered.map((r) => r.doc)).toEqual(['a-v1', 'b-v1']);
+    h.rendered[1].resolve(new Blob(['shot:b-v1']));
+    await flushing;
+    expect(h.saved).toEqual([{ id: 'draft-b', text: 'shot:b-v1' }]);
+  });
 });

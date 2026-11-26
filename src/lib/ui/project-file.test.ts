@@ -135,7 +135,7 @@ describe('the autosave record is one per visit', () => {
 
 describe('what the record holds and what comes back', () => {
   it('writes the hand along with the drawing', () => {
-    expect(editorUi).toContain('saveDraft(draftId, doc, editor.sessionState(), track)');
+    expect(editorUi).toContain('saveDraft(id, doc, editor.sessionState(), track,');
     // The document is a value the editor holds whole: it goes to storage as it
     // is, with no snapshot taken and no second pass to size it.
     // Or the copy with a live transform applied (owner-fourteenth-shell).
@@ -156,7 +156,7 @@ describe('what the record holds and what comes back', () => {
     expect(editorUi).toContain('clearTimeout');
 
     const saveNow = editorUi.match(/function saveNow\([\s\S]*?\n  \}/)?.[0] ?? '';
-    expect(saveNow).toMatch(/if\s*\(!destroyed\)\s*\{\s*writeScreenshot\(doc, id, leaving\);\s*\}/);
+    expect(saveNow).toMatch(/if\s*\(!destroyed && !forPublication\)\s*\{\s*writeScreenshot\(doc, id, leaving\);\s*\}/);
 
     const flushOnHide = editorUi.match(/function flushOnHide\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
     expect(flushOnHide).toContain('screenshots.pause();');
@@ -186,7 +186,7 @@ describe('a failed write is not silent', () => {
   // key, Ctrl+S and the sheet all returned early, and the alert sent the user
   // to reload — the one step that loses a drawing nothing has kept.
   it('a save asked for by hand tries again, and one that lands clears the failure', () => {
-    expect(editorUi).toMatch(/function saveNow\(byHand = false(?:, leaving = false(?:, shown\?: ToonDocument)?)?\)[^]*?saveFailed && !byHand/);
+    expect(editorUi).toMatch(/function saveNow\(byHand = false[^)]*\)[^]*?saveFailed && !byHand/);
     expect(editorUi).toMatch(/if \(ok\) \{[^}]*saveFailed = false/);
     // The failed record is still unsaved, so the key stays pressable.
     expect(editorUi).toMatch(/saveFailed = true;\s*dirty = true;/);

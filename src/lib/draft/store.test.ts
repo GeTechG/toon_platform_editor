@@ -282,6 +282,55 @@ describe('the sync flag rides with the track', () => {
   });
 });
 
+describe('local draft for a publication', () => {
+  const forPublication = { forPublication: true };
+
+  it('keeps the previous version if replacement audio fails and saves the current track on retry', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', { blob: new Blob(['old']), name: 'Track', author: '' });
+    const blob = new Blob(['new']);
+    const read = blob.arrayBuffer.bind(blob);
+    blob.arrayBuffer = async () => { throw new DOMException('unreadable', 'NotReadableError'); };
+    const audio = { blob, name: 'Track', author: '' };
+
+    expect((await saveDraft('a', doc(24), undefined, audio, forPublication)).ok).toBe(false);
+    expect((await readDraft('a'))?.doc).toEqual(doc(12));
+    expect(await (await readDraft('a'))?.audio?.blob.text()).toBe('old');
+
+    blob.arrayBuffer = read;
+    expect((await saveDraft('a', doc(24), undefined, audio, forPublication)).ok).toBe(true);
+    expect((await readDraft('a'))?.doc).toEqual(doc(24));
+    expect(await (await readDraft('a'))?.audio?.blob.text()).toBe('new');
+  });
+
+  it('reuses restored audio, updates its credits and lets the card draw the new frame', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', { blob: new Blob(['sound']), name: 'Track', author: '' });
+    await setDraftScreenshot('a', new Blob(['old thumbnail']));
+    const restored = (await readDraft('a'))!.audio!;
+    restored.blob.arrayBuffer = async () => { throw new Error('already stored'); };
+
+    const next = doc(24);
+    expect((await saveDraft('a', next, undefined, { ...restored, name: 'New credits' }, forPublication)).ok).toBe(true);
+    expect((await readDraft('a'))?.audio?.name).toBe('New credits');
+    expect(await (await readDraft('a'))?.audio?.blob.text()).toBe('sound');
+    const [card] = await listDraftCards();
+    expect(card.screenshot).toBeUndefined();
+    expect(card.doc).toEqual(next);
+  });
+
+  it('keeps the current version silent even if the earlier draft had audio', async () => {
+    setIndexedDB(fakeIndexedDB());
+    await saveDraft('a', doc(12));
+    await setDraftAudio('a', { blob: new Blob(['old']), name: 'Track', author: '' });
+
+    expect((await saveDraft('a', doc(24), undefined, null, forPublication)).ok).toBe(true);
+    expect((await readDraft('a'))?.audio).toBeUndefined();
+  });
+});
+
 describe('concurrent draft writes', () => {
   const track = () => ({ blob: new Blob(['ля'], { type: 'audio/mpeg' }), name: 'Песня', author: '' });
 

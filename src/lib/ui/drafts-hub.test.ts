@@ -564,18 +564,18 @@ describe('a host can hand over a drawing to continue', () => {
   });
 });
 
-describe('a drawing that went out leaves no local draft', () => {
-  // Owner, 2026-10-06: once the toon is published its draft on this device goes.
-  it('the host is handed the way to say so, with the document', () => {
-    expect(studio).toMatch(/onPublish\?: \(doc: ToonDocument, audio\?: AudioTrackData \| null, sent\?: \(\) => Promise<void>\) => void;/);
-    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(editor\.doc\),[^]*?: null,\s*forgetSent,\s*\);/);
+describe('the local draft after sending a drawing', () => {
+  it('hands the host a way to finish the local draft with the document', () => {
+    expect(studio).toContain('sent?: () => Promise<void>');
+    expect(studio).toContain('saveLocal?: () => Promise<boolean>');
+    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(editor\.doc\),[^]*?: null,\s*forgetSent,\s*savePublishedDraft,\s*\);/);
   });
-  it('the record goes, and leaving does not write it back', () => {
-    const at = studio.indexOf('async function forgetSent(');
-    expect(at).toBeGreaterThan(-1);
-    const body = studio.slice(at, studio.indexOf('\n  }\n', at));
-    expect(body).toMatch(/await deleteDraft\(draftId\);/);
-    // A record of its own if drawing goes on; clean, so the leave-write has nothing to save.
+  it('writes the current drawing for a publication and clears it after moving to account drafts', () => {
+    const save = studio.match(/async function savePublishedDraft\([^]*?\n  \}/)?.[0] ?? '';
+    expect(save).toContain('screenshots.discard(draftId);');
+    expect(save).toMatch(/const saved = await saveNow\(true, true, editor\.doc, true\);\s*return saved && !storageBlocked;/);
+    const body = studio.match(/async function forgetSent\([^]*?\n  \}/)?.[0] ?? '';
+    expect(body).toContain('await deleteDraft(draftId);');
     expect(body).toMatch(/draftId = newDraftId\(\);[^]*?editor\.touched = false;[^]*?dirty = false;/);
   });
 });
