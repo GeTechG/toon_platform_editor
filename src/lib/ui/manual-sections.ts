@@ -73,6 +73,7 @@ export function manualSections(ctx: ManualContext): ManualSection[] {
       id: 'colour',
       keys: [
         { kind: 'command', id: toolCommand('pipette'), command: toolCommand('pipette'), label: t('key.pipette') },
+        command('pipette-fill', 'pipette_fill'),
         fixed('pick_fill', 'Shift+Enter'),
         command('swap', 'swap'),
         ...(ctx.quickPalette ? [command('merge', 'palette')] : []),

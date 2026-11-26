@@ -16,7 +16,7 @@ describe('the pipette under a finger takes on release', () => {
 
   it('lifted, it takes as the tool takes: the fill when armed, the eraser from emptiness, and back to the brush', () => {
     const lift = canvas.match(/function liftPipette[^]*?\n  }\n/)![0];
-    expect(lift).toMatch(/takeColour\(at, toFill\) !== null && !toFill[^]*?editor\.resetHelpTool\(\);/);
+    expect(lift).toMatch(/if \(takeColour\(at, toFill\) !== null\) \{\s*editor\.resetHelpTool\(\);/);
     expect(canvas).toContain('if (dropper.tool) liftPipette(e);');
   });
 });

@@ -1174,6 +1174,9 @@
       return;
     }
     switch (command) {
+      case 'pipette-fill':
+        if (!editor.gestureHeld) editor.selectTool('pipette', 'fill');
+        break;
       case 'brush-bigger':
         editor.increaseBrushSize();
         break;

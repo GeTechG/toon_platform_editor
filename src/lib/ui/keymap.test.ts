@@ -229,7 +229,7 @@ describe('the studio out of the box: every key the reference and we promised', (
     ['Space', 'play'], ['Shift+Space', 'play-from-active'],
     ['+', 'brush-bigger'], ['-', 'brush-smaller'], ['Ctrl++', 'zoom-in'], ['Ctrl+-', 'zoom-out'],
     ['Ctrl+Shift+ArrowLeft', 'pan-left'], ['Ctrl+Shift+ArrowUp', 'pan-up'], ['[', 'turn-left'], [']', 'turn-right'],
-    ['Ctrl+s', 'save'], ['Alt+s', 'export'], ['Alt+l', 'error-log'], ['p', 'tool:pipette'],
+    ['Ctrl+s', 'save'], ['Alt+s', 'export'], ['Alt+l', 'error-log'], ['p', 'tool:pipette'], ['Shift+p', 'pipette-fill'],
   ];
 
   for (const [chord, id] of cases) {

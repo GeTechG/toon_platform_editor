@@ -302,6 +302,7 @@ export function studioCommands(tools: readonly ToolKeys[]): Command[] {
     })),
     held('brush-bigger', '+'),
     held('brush-smaller', '-'),
+    once('pipette-fill', 'Shift+p'),
     once('swap', 'x'),
     held('undo', 'z', 'Ctrl+z'),
     held('redo', 'y', 'Ctrl+Shift+z', 'Ctrl+y'),

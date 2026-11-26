@@ -1067,6 +1067,7 @@
   "key": {
     "ruler": "Ruler",
     "pipette": "Eyedropper",
+    "pipette_fill": "Eyedropper for fill",
     "pick_fill": "Eyedropper or palette color — to fill",
     "swap": "Swap stroke and fill",
     "palette": "Show palette",

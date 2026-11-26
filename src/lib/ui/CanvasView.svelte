@@ -1860,7 +1860,7 @@
       return;
     }
     const toFill = editor.pipetteTarget === 'fill';
-    if (takeColour(at, toFill) !== null && !toFill) {
+    if (takeColour(at, toFill) !== null) {
       editor.resetHelpTool();
     }
   }
@@ -2575,8 +2575,8 @@
       // Right button takes the fill color (reference: ЛКМ — контур, ПКМ — заливка);
       // the palette's pipette can arm the fill for the left button too.
       const toFill = e.button === 2 || editor.pipetteTarget === 'fill';
-      if (takeColour(e, toFill) !== null && !toFill) {
-        // Back to whatever was drawing — the pen stays a pen (ResetHelpTool).
+      if (takeColour(e, toFill) !== null && e.button !== 2) {
+        // A primary pick finishes the pipette for either swatch.
         editor.resetHelpTool();
       }
       return;
