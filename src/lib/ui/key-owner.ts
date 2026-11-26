@@ -42,7 +42,7 @@ export interface KeyPress {
  * and the focus it gives back to that key is still the click's.
  */
 export function focusOrigin(): {
-  pointer(): void;
+  pointer(alreadyFocused?: unknown): void;
   key(key: string): void;
   focus(target: unknown): void;
   byPointer(target: unknown): boolean;
@@ -50,8 +50,10 @@ export function focusOrigin(): {
   let pressed = false;
   let borne: unknown = null;
   return {
-    pointer: () => {
+    pointer: (alreadyFocused) => {
       pressed = true;
+      // Clicking the control that already has focus sends no new focusin.
+      if (alreadyFocused != null) borne = alreadyFocused;
     },
     key: (key) => {
       pressed &&= key === 'Escape';
@@ -67,9 +69,13 @@ export function focusOrigin(): {
 const TEXT_TYPES = new Set(['text', 'search', 'email', 'password', 'url', 'tel', 'number', '']);
 /** Roles and elements that Space and Enter press. */
 const PRESSED = new Set(['button', 'switch', 'checkbox', 'radio', 'option', 'tab', 'menuitem', 'link']);
-/** Roles and inputs that keep their arrows. */
+/** Roles and inputs with their own keyboard adjustment. */
 const SLIDERS = new Set(['slider', 'separator', 'spinbutton', 'range']);
-const ARROWS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
+const SLIDER_PAGE_KEYS = new Set(['Home', 'End', 'PageUp', 'PageDown']);
+
+export function isDirectionArrow(key: string): boolean {
+  return /^Arrow(Left|Right|Up|Down)$/.test(key);
+}
 
 /**
  * An input method is composing: its Enter picks a character, its Esc drops
@@ -137,7 +143,7 @@ export function keyOwner(e: KeyPress): 'editor' | 'control' {
   if (kind.field) {
     return FIELD_PASSES.has(e.key) ? 'editor' : 'control';
   }
-  if (kind.slider && ARROWS.has(e.key)) {
+  if (kind.slider && (SLIDER_PAGE_KEYS.has(e.key) || (isDirectionArrow(e.key) && (!e.byPointer || chord)))) {
     return 'control';
   }
   // Only a control reached by keyboard is pressed from it: the mouse leaves a

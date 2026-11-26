@@ -37,7 +37,8 @@ describe('twelfth audit: the active row on a phone', () => {
     // with three layers the active one (the bottom row) opened under the fold.
     const rowEffect = timeline.match(/Keep the active row in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
     expect(rowEffect).toMatch(/strip\.scrollHeight <= strip\.clientHeight/);
-    expect(rowEffect).toContain('revealInPanel(');
+    expect(rowEffect).toContain('tick().then(revealActiveLayer)');
+    expect(fn(timeline, 'revealActiveLayer')).toContain('revealInPanel(');
     // Not scrollIntoView: embedded in a page, it scrolled the host page too.
     expect(fn(timeline, 'revealInPanel')).toContain('document.body');
   });

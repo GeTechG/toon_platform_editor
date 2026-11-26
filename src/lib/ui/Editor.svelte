@@ -38,7 +38,7 @@
   import { saveFile } from './save-file';
   import { keyPan, turnStep, zoomDelta, zoomNotch } from './viewport';
   import { extendTarget, fpsFromField, frameKeyTitle, wrapIndex, type FrameMenuAction } from './frame-selection';
-  import { composing, focusOrigin, isKeyPress, keyOwner, latinKey, typesText } from './key-owner';
+  import { composing, focusOrigin, isDirectionArrow, isKeyPress, keyOwner, latinKey, typesText } from './key-owner';
   import { chordOf, holdKey } from './keymap';
   import { reportCommand } from './command-trail';
   import { focusHeir, twinSelector } from './focus-heir';
@@ -904,10 +904,36 @@
   // while typing in a form field or when a browser/OS modifier is held.
   /** Whether the focused key was clicked or reached by Tab (key-owner.ts). */
   const focusFrom = focusOrigin();
+  let timeline = $state.raw<ReturnType<typeof Timeline>>();
 
-  function onKeydown(e: KeyboardEvent): void {
+  function onFocusPointer(e: PointerEvent): void {
+    const active = document.activeElement;
+    focusFrom.pointer(e.target instanceof Node && active?.contains(e.target) ? active : null);
+  }
+
+  function onKeydownCapture(e: KeyboardEvent): void {
     if (!isKeyPress(e)) return;
     focusFrom.key(e.key);
+    const target = e.target;
+    // A click can leave a palette grid or a slider focused. Give the timeline
+    // arrows their shortcut before those controls handle them. Open menus and
+    // controls reached by Tab keep their keyboard interaction.
+    if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !isDirectionArrow(e.key)
+      || !(target instanceof HTMLElement) || !focusFrom.byPointer(target) || !editorEl?.contains(target)
+      || !target.matches('button, input[type="range"], [role="slider"], [role="separator"], [role="spinbutton"]')
+      || target.closest('[data-frame], [role="menu"], [role="listbox"], [popover], dialog')) return;
+    onKeydown(e, target);
+    if (e.defaultPrevented) e.stopPropagation();
+  }
+
+  async function moveFocusToTimeline(from: HTMLElement): Promise<void> {
+    await timeline?.focusActiveCell(from);
+    // The strip may be folded. Release the old control so shortcuts use the selection.
+    if (document.activeElement === from) from.blur();
+  }
+
+  function onKeydown(e: KeyboardEvent, fromPointer?: HTMLElement): void {
+    if (!isKeyPress(e)) return;
     // An update is downloading: the editor is not there to be typed at. Its
     // Ctrl+S is still not the browser's «save page».
     if (editor.updating) {
@@ -1033,7 +1059,7 @@
     }
     if (command) {
       e.preventDefault();
-      runCommand(command, e);
+      runCommand(command, e, fromPointer);
     }
   }
 
@@ -1074,7 +1100,7 @@
   });
 
   /** What a command does in this moment: the hand and a live transform read the same keys their own way. */
-  function runCommand(command: string, e: KeyboardEvent): void {
+  function runCommand(command: string, e: KeyboardEvent, fromPointer?: HTMLElement): void {
     // A tool is told by the effect above, whichever way it was taken.
     if (!command.startsWith('tool:')) reportCommand(command);
     const far = e.shiftKey || command.startsWith('extend-');
@@ -1171,6 +1197,8 @@
     // active cell there — the keyboard equivalent of a Shift+click.
     if (arrow) {
       moveOrExtend(far, arrow[0], arrow[1]);
+      // Keep the next shortcut on the timeline even at the end of the strip.
+      if (fromPointer) void moveFocusToTimeline(fromPointer);
       return;
     }
     switch (command) {
@@ -2480,10 +2508,11 @@
 <svelte:window
   bind:innerHeight={viewportHeight}
   bind:innerWidth={viewportWidth}
+  onkeydowncapture={onKeydownCapture}
   onkeydown={onKeydown}
   onkeyup={onKeyup}
   onblur={() => panHold.cancel()}
-  onpointerdowncapture={focusFrom.pointer}
+  onpointerdowncapture={onFocusPointer}
   onfocusin={(e) => focusFrom.focus(e.target)}
   onpointermove={onDividerMove}
   onpointerup={onDividerUp}
@@ -2682,7 +2711,7 @@
     <BrushSizes {editor} />
   {:else if id === 'timeline'}
     <div class="timeline">
-      <Timeline {editor} />
+      <Timeline {editor} bind:this={timeline} />
     </div>
   {:else if id === 'transport'}
     <!-- One control: ⏮ ⏴ ▶ ⏵ ⏭ travel together, the way a transport reads. -->

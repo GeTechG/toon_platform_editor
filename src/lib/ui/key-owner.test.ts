@@ -75,6 +75,12 @@ describe('a control reached by keyboard is pressed by Space and Enter', () => {
     expect(keyOwner(press('ArrowLeft', el('input', { type: 'range' })))).toBe('control');
   });
 
+  it('after a pointer adjusts opacity or color, the direction arrows move the timeline', () => {
+    for (const slider of [el('input', { type: 'range' }), el('div', { role: 'slider' })]) {
+      expect(keyOwner(press('ArrowLeft', slider, { byPointer: true }))).toBe('editor');
+    }
+  });
+
   it('hotkeys still work from a focused button', () => {
     expect(keyOwner(press('b', el('button')))).toBe('editor');
     expect(keyOwner(press('ArrowRight', el('button')))).toBe('editor');
@@ -209,10 +215,20 @@ describe('2026-10-08 critique: Space after a mouse click is the preview', () => 
     expect(origin.byPointer(help)).toBe(true);
   });
 
+  it('clicking a swatch already focused from the keyboard makes its focus the pointer’s', () => {
+    const origin = focusOrigin();
+    const swatch = {};
+    origin.key('Tab');
+    origin.focus(swatch);
+    expect(origin.byPointer(swatch)).toBe(false);
+    origin.pointer(swatch);
+    expect(origin.byPointer(swatch)).toBe(true);
+  });
+
   it('the shell feeds it and asks it', async () => {
     const editorUi = await Bun.file(new URL('./Editor.svelte', import.meta.url)).text();
     expect(editorUi).toContain('byPointer: focusFrom.byPointer(e.target)');
-    expect(editorUi).toMatch(/onpointerdowncapture=\{focusFrom\.pointer\}/);
+    expect(editorUi).toMatch(/onpointerdowncapture=\{onFocusPointer\}/);
     expect(editorUi).toMatch(/onfocusin=\{\(e\) => focusFrom\.focus\(e\.target\)\}/);
   });
 });
@@ -226,7 +242,7 @@ describe('2026-10-08 critique: Esc stops the preview', () => {
     expect(handler).toMatch(/if \(key === 'Escape' && editor\.playing\) \{\s*e\.preventDefault\(\);\s*playControls\?\.toggle\(\);\s*return;/);
     // Nothing holds Esc, so nothing past this prevents it.
     expect(table.resolve('Escape')).toBeNull();
-    expect(handler).toMatch(/if \(command\) \{\s*e\.preventDefault\(\);\s*runCommand\(command, e\);\s*\}\s*\}\n$/);
+    expect(handler).toMatch(/if \(command\) \{\s*e\.preventDefault\(\);\s*runCommand\(command, e, fromPointer\);\s*\}\s*\}\n$/);
   });
 });
 

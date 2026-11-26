@@ -280,18 +280,29 @@
   // under the sticky frame numbers or below the fold. The rows are the same
   // arithmetic as the frames, turned on their side, below the header.
   $effect(() => {
-    const at = layerTotal - 1 - editor.activeLayer;
+    void layerTotal;
+    void editor.activeLayer;
     void editor.docOpens;
     void row;
     void stripWidth;
     if (editor.playing || !strip) return;
+    if (strip.scrollHeight <= strip.clientHeight) {
+      void tick().then(revealActiveLayer);
+      return;
+    }
+    revealActiveLayer();
+  });
+
+  function revealActiveLayer(): void {
+    if (!strip) return;
     // On a phone the strip grows to its rows and the panel scrolls instead:
     // the active row (the bottom one, by default) opened under its fold.
     // The panel alone — `scrollIntoView` would scroll the host page too.
     if (strip.scrollHeight <= strip.clientHeight) {
-      void tick().then(() => revealInPanel(strip?.querySelector('.cell.active')));
+      revealInPanel(strip.querySelector('.cell.active'));
       return;
     }
+    const at = layerTotal - 1 - editor.activeLayer;
     const head = strip.querySelector<HTMLElement>('.head')?.offsetHeight ?? 0;
     // A row grows with the text past the frame's number (`rowHeightCss`).
     const rowPx = strip.querySelector<HTMLElement>('.cells')?.getBoundingClientRect().height || row;
@@ -299,7 +310,7 @@
     if (to !== null) {
       strip.scrollTop = to;
     }
-  });
+  }
 
   /** Scrolls the nearest scrolling box below the page just enough to show `el`. */
   function revealInPanel(el: Element | null | undefined): void {
@@ -312,6 +323,23 @@
     const view = box.getBoundingClientRect();
     if (at.bottom > view.bottom) box.scrollTop += at.bottom - view.bottom;
     else if (at.top < view.top) box.scrollTop -= view.top - at.top;
+  }
+
+  /** Transfer focus from a clicked control after a timeline shortcut. */
+  export async function focusActiveCell(from: HTMLElement): Promise<void> {
+    await tick();
+    if (!strip || editor.playing || menu || document.activeElement !== from) return;
+    // Vertical navigation can leave the frame offscreen if the strip was
+    // manually scrolled. Bring its cell into the rendered window first.
+    const to = scrollToFrame(editor.activeFrame, cellW, gap, strip.scrollLeft, strip.clientWidth, GRID_GAP, timing);
+    if (to !== null) {
+      strip.scrollLeft = to;
+      stripScroll = strip.scrollLeft;
+      await tick();
+    }
+    if (!strip || document.activeElement !== from) return;
+    revealActiveLayer();
+    strip.querySelector<HTMLElement>('.cell.active')?.focus({ preventScroll: true });
   }
 
   // The strip is one Tab stop — the active cell — and focus rides along with

@@ -515,9 +515,11 @@ describe('tenth audit: the strip keeps what is active in view', () => {
     // Arrows from the canvas walk the layers; with more rows than the panel
     // shows, the active one sat under the header or below the fold.
     const rowEffect = timeline.match(/Keep the active row in view[\s\S]*?\n  \}\);/)?.[0] ?? '';
+    const reveal = timeline.match(/function revealActiveLayer[\s\S]*?\n  }/)?.[0] ?? '';
     expect(rowEffect).toContain('editor.activeLayer');
-    expect(rowEffect).toContain('scrollTop');
-    expect(rowEffect).toMatch(/scrollToFrame\(/);
+    expect(rowEffect).toContain('revealActiveLayer()');
+    expect(reveal).toContain('scrollTop');
+    expect(reveal).toMatch(/scrollToFrame\(/);
   });
 });
 

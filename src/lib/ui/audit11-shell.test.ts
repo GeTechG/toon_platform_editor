@@ -47,7 +47,7 @@ describe('a held key', () => {
     // Before the transform's Enter and Esc and before the command runs.
     const held = handler.indexOf('editor.keymap.repeats(command)');
     expect(held).toBeLessThan(handler.indexOf('if (editor.transform &&'));
-    expect(held).toBeLessThan(handler.lastIndexOf('runCommand(command, e)'));
+    expect(held).toBeLessThan(handler.lastIndexOf('runCommand(command, e, fromPointer)'));
   });
 
   it('with Ctrl or Alt does its thing once: one save, one log file', () => {
