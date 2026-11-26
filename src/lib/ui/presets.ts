@@ -402,7 +402,7 @@ export const DEFAULT_SETTINGS: Readonly<EditorSettings> = {
   showDraftsOnStart: true,
   pickerModel: 'hsv',
   altLayout: false,
-  hardwareRender: true,
+  hardwareRender: false,
   letterKeys: true,
   keymap: {},
   removerTipShown: false,

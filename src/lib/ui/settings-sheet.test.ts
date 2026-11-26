@@ -312,11 +312,18 @@ describe('the settings sheet', () => {
     expect(view).toContain('checked={editor.settings.hardwareRender}');
     expect(view).toContain("editor.setSetting('hardwareRender'");
     expect(view).toContain('editor.renderBackend');
-    expect(DEFAULT_SETTINGS.hardwareRender).toBe(true);
+  });
+
+  it('defaults to Canvas 2D and keeps an explicit WebGL2 preference', () => {
+    expect(DEFAULT_SETTINGS.hardwareRender).toBe(false);
+    const parsedMissing = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: {} }));
+    expect(parsedMissing?.settings.hardwareRender).toBe(false);
+    const parsedTrue = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { hardwareRender: true } }));
+    expect(parsedTrue?.settings.hardwareRender).toBe(true);
     const parsedFalse = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { hardwareRender: false } }));
     expect(parsedFalse?.settings.hardwareRender).toBe(false);
     const parsedBroken = parseUiConfig(JSON.stringify({ preset: 'toonop', settings: { hardwareRender: 'nope' } }));
-    expect(parsedBroken?.settings.hardwareRender).toBe(true);
+    expect(parsedBroken?.settings.hardwareRender).toBe(false);
   });
 });
 
