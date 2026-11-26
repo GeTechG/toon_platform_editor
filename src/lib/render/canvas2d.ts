@@ -8,7 +8,7 @@ import { BACKGROUND_COLOR } from '../format/constants';
 import { opacityOf } from '../format/types';
 import type { BlendMode, Frame, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
-import { emitGeometry, emitGeometryFrom, type PathSink } from './smoothing';
+import { emitGeometry, emitGeometryFrom, isDot, type PathSink } from './smoothing';
 import type { StrokeGeometry } from './smoothing';
 import { interpolatePixelLine } from '../tools/pixel';
 import {
@@ -490,11 +490,6 @@ function buildPaths(
   return { main, filled: false, fillFirst: isFilledLineTool(tool), extraBytes };
 }
 
-function isDot(points: readonly number[]): boolean {
-  return points.length === 2
-    || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
-}
-
 /** A stamp's marks, the places a fast drag skipped filled in, as one path. */
 function emitStamps(points: readonly number[], tool: ToolDescriptor & { kind: 'stamp' }, sink: PathSink): void {
   const stamp = (x: number, y: number): void => {
@@ -616,12 +611,9 @@ function drawResolvedStroke(
     target.fill();
     return;
   }
-  // One point, or two equal ones, is a dot of the pen's radius — one rule for
-  // every brush. (Multator drew it as a filled circle; Tonio reached the same
-  // picture by nudging a degenerate curve under a round cap.)
-  const dot = points.length === 2
-    || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
-  if (dot) {
+  // A tap can carry repeated samples. Fill it explicitly because Canvas
+  // backends disagree about round caps on a curve with no length.
+  if (isDot(points)) {
     target.fillStyle = color;
     target.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
     target.fill();

@@ -92,6 +92,16 @@ function emitSmoothClosedPath(points: readonly number[], sink: PathSink): void {
 /** How a stroke's stored numbers are read into a path. */
 export type StrokeGeometry = 'line' | 'smooth' | 'cubic';
 
+/** An open stroke whose samples all land at the same point. */
+export function isDot(points: readonly number[]): boolean {
+  if (points.length < 2) return false;
+  const [x, y] = points;
+  for (let i = 2; i < points.length; i += 2) {
+    if (points[i] !== x || points[i + 1] !== y) return false;
+  }
+  return true;
+}
+
 /**
  * The only path reader the core has: the stored numbers plus the way to read
  * them. No brush, editor or reference application is named here — a document

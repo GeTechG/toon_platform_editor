@@ -22,7 +22,7 @@ import {
   isStampTool,
 } from '../dispatch';
 import { emitPressuredOutline, flattenPressured, pressureWidth } from '../pressure';
-import { type PathSink, type StrokeGeometry } from '../smoothing';
+import { isDot, type PathSink, type StrokeGeometry } from '../smoothing';
 
 /** Chord flatness tolerance in sheet pixels for curve and arc flattening. */
 export const FLATNESS_SHEET_PX = 0.15;
@@ -59,12 +59,6 @@ export interface StrokeMesh {
 }
 
 const EMPTY_F32 = new Float32Array(0);
-
-/** Whether `points` represents a single dot (1 point or 2 identical points), matching canvas2d.ts. */
-function isDot(points: readonly number[]): boolean {
-  return points.length === 2
-    || (points.length === 4 && points[0] === points[2] && points[1] === points[3]);
-}
 
 /** Whether a stamp shape is the exact unit square `[0,0, 1,0, 1,1, 0,1]`. */
 function isSquareShape(shape: readonly number[]): boolean {

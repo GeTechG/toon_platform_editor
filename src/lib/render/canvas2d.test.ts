@@ -333,6 +333,13 @@ describe('Canvas2DFrameRenderer', () => {
     expect(log).toContain('arc(100,100,80,0,'); // radius = width/2
   });
 
+  it('paints a stationary smooth stroke like a single tap', () => {
+    const point = [100, 200];
+    const pencil: ToolDescriptor = { kind: 'pencil', width: 280, color: '#fad2ce', geometry: 'smooth' };
+    const dot = (points: number[]) => docOf([pencil], [{ strokes: [{ tool_id: 0, points }] }]);
+    expect(renderToLog(dot([...point, ...point, ...point, ...point]))).toEqual(renderToLog(dot(point)));
+  });
+
   it('applies scale and dpr in the transform (document units → device px)', () => {
     const ctx = new RecordingCtx();
     renderer.render(docOf(sampleTools, [{ strokes: [] }]), 0, ctx, { scale: 0.125, dpr: 3 });
