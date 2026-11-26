@@ -7,8 +7,9 @@
  *   atlas gets a disjoint integer-pixel slot `(atlasX, atlasY, w, h)` with
  *   1px padding, so batched strokes never bleed across slots.
  * - Any operation whose clipped bbox exceeds the logical atlas dimension is
- *   NEVER mixed into a multi-slot draw (J1-O10): each tile executes as a
- *   dedicated scissored pass over the atlas.
+ *   NEVER mixed into a multi-slot coverage draw (J1-O10): each tile executes as a
+ *   dedicated scissored coverage draw. Tiles of the same operation can share
+ *   one atlas clear and composite when they fit in disjoint slots.
  * - Native 1x1 Canvas 2D reference masks (for >= 255 winding overflow or
  *   < 0.5 px subpixel features) upload to a separate 1x1 R8 texture and are
  *   composited with `uSampleMode = 2` (zero 4x4 resampling — J1-O9).
@@ -46,7 +47,7 @@ export interface AtlasBatch<T extends AtlasOp = AtlasOp> {
 
 /**
  * Packs operations into sequential atlas batches preserving exact paint order.
- * Oversized operations split into dedicated single-slot `tiled: true` batches.
+ * Oversized operations split into tiled batches confined to a single stroke.
  */
 export function planAtlasBatches<T extends AtlasOp>(
   ops: readonly T[],
@@ -59,6 +60,7 @@ export function planAtlasBatches<T extends AtlasOp>(
   let shelfX = 0;
   let shelfY = 0;
   let shelfH = 0;
+  const closedShelves: { x: number; y: number; height: number }[] = [];
 
   const flush = (): void => {
     if (curSlots.length > 0) {
@@ -67,6 +69,7 @@ export function planAtlasBatches<T extends AtlasOp>(
       shelfX = 0;
       shelfY = 0;
       shelfH = 0;
+      closedShelves.length = 0;
     }
   };
 
@@ -89,16 +92,30 @@ export function planAtlasBatches<T extends AtlasOp>(
     const clippedBySheet = ux0 < 0 || uy0 < 0 || ux1 > sheetW || uy1 > sheetH;
     if (w > atlasLogicalSide || h > atlasLogicalSide || clippedBySheet) {
       flush();
+      // Lay successive tiles along the short axis. Each one keeps its own
+      // scissor and a guard pixel, while all can composite in paint order.
+      const alongY = w >= h;
+      let slots: AtlasSlot<T>[] = [];
+      let offset = 0;
       for (let ty = y0; ty < y1; ty += atlasLogicalSide) {
         const th = Math.min(atlasLogicalSide, y1 - ty);
         for (let tx = x0; tx < x1; tx += atlasLogicalSide) {
           const tw = Math.min(atlasLogicalSide, x1 - tx);
-          batches.push({
-            tiled: true,
-            slots: [{ op, sheetX: tx, sheetY: ty, w: tw, h: th, atlasX: 0, atlasY: 0 }],
+          const length = alongY ? th : tw;
+          if (offset + length > atlasLogicalSide) {
+            batches.push({ tiled: true, slots });
+            slots = [];
+            offset = 0;
+          }
+          slots.push({
+            op, sheetX: tx, sheetY: ty, w: tw, h: th,
+            atlasX: alongY ? 0 : offset,
+            atlasY: alongY ? offset : 0,
           });
+          offset += length + 1;
         }
       }
+      batches.push({ tiled: true, slots });
       continue;
     }
 
@@ -106,7 +123,20 @@ export function planAtlasBatches<T extends AtlasOp>(
     // taps at slot edges never sample a neighbour.
     const pw = w + 1;
     const ph = h + 1;
+    if (shelfX + pw > atlasLogicalSide || shelfY + ph > atlasLogicalSide) {
+      const available = closedShelves.find(row => row.x + pw <= atlasLogicalSide && ph <= row.height);
+      if (available) {
+        curSlots.push({ op, sheetX: x0, sheetY: y0, w, h, atlasX: available.x, atlasY: available.y });
+        available.x += pw;
+        continue;
+      }
+    }
     if (shelfX + pw > atlasLogicalSide) {
+      if (shelfH > 0 && shelfX < atlasLogicalSide) {
+        // Bound the scan on the first (cold) frame, where slots are all new.
+        if (closedShelves.length === 8) closedShelves.shift();
+        closedShelves.push({ x: shelfX, y: shelfY, height: shelfH });
+      }
       shelfX = 0;
       shelfY += shelfH;
       shelfH = 0;

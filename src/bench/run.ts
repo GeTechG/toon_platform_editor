@@ -16,6 +16,7 @@ import { WebGL2SheetComposer } from '../lib/render/webgl/composer';
 import { studioVramBudget } from '../lib/render/webgl/vram-budget';
 import { onionLayers } from '../lib/ui/frame-selection';
 import { frameCount } from '../lib/model/operations';
+import { stillStart } from '../lib/model/stills';
 import { buildCorpus, syntheticRawPoints } from './corpus';
 import { frameTiming, heapGrowthBytes, percentile, type HeapSample } from './metrics';
 
@@ -114,7 +115,10 @@ class BenchCanvas {
     this.actualBackend = 'canvas2d';
   }
 
-  compose(doc: ToonDocument, frame: number, onion: boolean, live: LiveLine | null): void {
+  compose(
+    doc: ToonDocument, frame: number, onion: boolean, live: LiveLine | null,
+    playback?: Parameters<SheetComposer['composeAndPresent']>[4],
+  ): void {
     const { width, height } = this.canvas;
     // dpr folded into the pixel count: k = scale × dpr = width / doc.width.
     const viewport = { scale: width / doc.width, dpr: 1 };
@@ -141,7 +145,7 @@ class BenchCanvas {
       stretch: 1,
       paper: BACKGROUND_COLOR,
       gridStep: 0,
-    });
+    }, playback);
     if (!ok) {
       if (this.#glComposer) {
         throw new WebGL2BenchFallbackError(this.#glComposer.lastFailure ?? 'context-lost');
@@ -311,23 +315,25 @@ async function probePlayback(
   doc: ToonDocument,
   cfg: BenchConfig,
 ): Promise<{ intervals: number[]; heap: HeapSample[] }> {
-  for (let f = 0; f < frameCount(doc); f++) {
-    compositor.invalidate();
-    compositor.compose(doc, f, false, null);
-  }
+  const total = frameCount(doc);
+  let previousKey = -1;
+  const playFrame = (frame: number) => {
+    const key = stillStart(doc, frame);
+    if (key !== previousKey) compositor.invalidate();
+    compositor.compose(doc, frame, false, null, { doc, key, total });
+    previousKey = key;
+  };
+  for (let frame = 0; frame < total; frame++) playFrame(frame);
 
   const deliveries: number[] = [];
   const heap: HeapSample[] = [];
   const start = performance.now();
   const player = new LoopPlayer({
-    frameCount: frameCount(doc),
+    frameCount: total,
     fps: cfg.targetFps,
     startFrame: 0,
     onFrame: (idx) => {
-      // A frame of playback is a new frame: the stack the composer holds is
-      // the frame it drew last, exactly as in the editor.
-      compositor.invalidate();
-      compositor.compose(doc, idx, false, null);
+      playFrame(idx);
       const now = performance.now();
       deliveries.push(now);
       const mem = usedHeap();

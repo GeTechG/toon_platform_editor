@@ -2,7 +2,7 @@
 /**
  * Real-Chromium WebGL2 verification script (F6 / OpenSpec task 4.2):
  * 1. Launches a local Vite dev server for `editor/`.
- * 2. Runs the full 31-case `runWebGL2ParitySuite()` comparing WebGL2SheetComposer
+ * 2. Runs `runWebGL2ParitySuite()` comparing WebGL2SheetComposer
  *    against the Canvas 2D FrameComposer oracle across all 6 tools, 15 W3C blend
  *    modes, flat coats, erasers, onion skin, lasso, pipette, tile isolation,
  *    boundary crossing, subpixel hairlines/feathers, and minified blends.
@@ -54,7 +54,7 @@ try {
 
   pw('open', URL);
 
-  // Suite A: Full 31-case real WebGL2 pixel-parity suite.
+  // Suite A: Real WebGL2 pixel-parity suite, including playback transitions.
   const parityScript = `async page => {
     const report = await page.evaluate(async () => {
       const m = await import('/src/lib/render/webgl/parity.ts');

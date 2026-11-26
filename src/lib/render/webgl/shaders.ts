@@ -7,6 +7,7 @@
  * - Stage presentation pass (rotated/clipped paper + sheet + procedural difference pixel grid)
  */
 
+import { MAX_RETAINED_COVERAGE_SLOTS } from './coverage-geometry';
 import { BLEND_MODES, type BlendMode } from '../../format/types';
 
 /** Integer shader id for each W3C BlendMode (matching BLEND_MODES order). */
@@ -29,7 +30,7 @@ export function parseHexRgb(hex: string): [number, number, number] {
  * Coverage vertex shader.
  * Attributes:
  *   aPos (loc 0): document-space (x, y)
- *   aSlot (loc 1): atlas logical offset `(atlasX - sheetMinX, atlasY - sheetMinY)`
+ *   aSlot (loc 1): atlas logical offset or the index in the retained slot table
  *   aMatIndex (loc 2): `0.0` (view matrix) or `1.0` (view * lasso place matrix)
  *
  * Offscreen FBOs keep top-down coordinates (`sy = 0` at texture row 0), so
@@ -43,11 +44,14 @@ layout(location = 2) in float aMatIndex;
 uniform mat3 uMatrices[2];
 uniform float uSupersample;
 uniform float uAtlasPhys;
+uniform bool uUseRetainedSlots;
+uniform vec3 uRetainedSlots[${MAX_RETAINED_COVERAGE_SLOTS}];
 
 void main() {
-  int idx = aMatIndex > 0.5 ? 1 : 0;
+  vec3 slot = uUseRetainedSlots ? uRetainedSlots[int(aSlot.x)] : vec3(aSlot, aMatIndex);
+  int idx = slot.z > 0.5 ? 1 : 0;
   vec3 sheet = uMatrices[idx] * vec3(aPos, 1.0);
-  vec2 atlasPhys = (sheet.xy + aSlot) * uSupersample;
+  vec2 atlasPhys = (sheet.xy + slot.xy) * uSupersample;
   vec2 ndc = (atlasPhys / uAtlasPhys) * 2.0 - 1.0;
   gl_Position = vec4(ndc, 0.0, 1.0);
 }`;

@@ -1402,6 +1402,10 @@
     });
   }
 
+  const drawFrame = $derived(editor.playing && !editor.showOnionSkin
+    ? stillStart(editor.doc, editor.displayedFrame)
+    : editor.displayedFrame);
+
   $effect(() => {
     // Everything the three buffers are built from. The document is one value
     // and a write replaces it, so reading it here is the whole subscription —
@@ -1409,7 +1413,7 @@
     // with it a read per cell per stroke.
     void sheetWidth;
     void editor.doc;
-    void editor.displayedFrame;
+    void drawFrame;
     void editor.activeLayer;
     void editor.showOnionSkin;
     void editor.onionHistoryLayerIndices.length;

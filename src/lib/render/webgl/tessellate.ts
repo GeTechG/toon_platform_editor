@@ -318,20 +318,38 @@ function buildStencilFans(subpaths: readonly (readonly number[])[]): Float32Arra
   return out;
 }
 
-/** Emits a filled circle fan of radius `r` around `(cx, cy)` within `tolDoc` flatness. */
-function pushCircleFan(cx: number, cy: number, r: number, tolDoc: number, out: number[]): void {
+/** Circle points at the same flatness for every round join and cap of the stroke. */
+function circleFanOffsets(r: number, tolDoc: number): Float64Array {
   const maxAngle = r > tolDoc ? 2 * Math.acos(Math.max(-1, 1 - tolDoc / r)) : Math.PI / 4;
   const steps = Math.min(256, Math.max(8, Math.ceil((Math.PI * 2) / Math.max(1e-3, maxAngle))));
-  let px = cx + r;
-  let py = cy;
+  // Keep offsets at double precision until the center is added, just like
+  // the segment corners. Rounding the offsets first can shift coverage.
+  const offsets = new Float64Array(2 * (steps + 1));
+  offsets[0] = r;
   for (let i = 1; i <= steps; i++) {
-    const a = (i * Math.PI * 2) / steps;
-    const nx = cx + Math.cos(a) * r;
-    const ny = cy + Math.sin(a) * r;
-    out.push(cx, cy, px, py, nx, ny);
+    const angle = (i * Math.PI * 2) / steps;
+    offsets[i * 2] = Math.cos(angle) * r;
+    offsets[i * 2 + 1] = Math.sin(angle) * r;
+  }
+  return offsets;
+}
+
+function writeCircleFan(out: Float32Array, offset: number, cx: number, cy: number, offsets: Float64Array): number {
+  let px = cx + offsets[0];
+  let py = cy;
+  for (let i = 2; i < offsets.length; i += 2) {
+    const nx = cx + offsets[i];
+    const ny = cy + offsets[i + 1];
+    out[offset++] = cx;
+    out[offset++] = cy;
+    out[offset++] = px;
+    out[offset++] = py;
+    out[offset++] = nx;
+    out[offset++] = ny;
     px = nx;
     py = ny;
   }
+  return offset;
 }
 
 /**
@@ -343,37 +361,50 @@ function expandPolylineRibbon(poly: readonly number[], width: number, tolDoc: nu
   const n = poly.length / 2;
   if (n === 0) return EMPTY_F32;
   const r = width / 2;
-  const out: number[] = [];
-  if (n === 1) {
-    pushCircleFan(poly[0], poly[1], r, tolDoc, out);
-    return new Float32Array(out);
+  const fan = circleFanOffsets(r, tolDoc);
+  const fanFloats = (fan.length - 2) * 3;
+  const lengths = new Float64Array(n - 1);
+  let segmentCount = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const len = Math.hypot(poly[(i + 1) * 2] - poly[i * 2], poly[(i + 1) * 2 + 1] - poly[i * 2 + 1]);
+    if (len < 1e-6) continue;
+    lengths[i] = len;
+    segmentCount++;
   }
-  let anySeg = false;
-  for (let i = 0; i < n - 1; i++) {
+  const out = new Float32Array(segmentCount * (12 + fanFloats) + fanFloats);
+  let offset = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const len = lengths[i];
+    if (len === 0) continue;
     const x0 = poly[i * 2];
     const y0 = poly[i * 2 + 1];
     const x1 = poly[(i + 1) * 2];
     const y1 = poly[(i + 1) * 2 + 1];
     const dx = x1 - x0;
     const dy = y1 - y0;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-6) continue;
-    anySeg = true;
     const nx = (-dy / len) * r;
     const ny = (dx / len) * r;
     const ax = x0 + nx, ay = y0 + ny;
     const bx = x0 - nx, by = y0 - ny;
     const cx = x1 + nx, cy = y1 + ny;
     const ddx = x1 - nx, ddy = y1 - ny;
-    out.push(ax, ay, bx, by, cx, cy, bx, by, ddx, ddy, cx, cy);
+    out[offset++] = ax;
+    out[offset++] = ay;
+    out[offset++] = bx;
+    out[offset++] = by;
+    out[offset++] = cx;
+    out[offset++] = cy;
+    out[offset++] = bx;
+    out[offset++] = by;
+    out[offset++] = ddx;
+    out[offset++] = ddy;
+    out[offset++] = cx;
+    out[offset++] = cy;
     // Round join/cap circles at vertices: idempotent R8 write means exact union.
-    pushCircleFan(x0, y0, r, tolDoc, out);
+    offset = writeCircleFan(out, offset, x0, y0, fan);
   }
-  pushCircleFan(poly[(n - 1) * 2], poly[(n - 1) * 2 + 1], r, tolDoc, out);
-  if (!anySeg && out.length === 0) {
-    pushCircleFan(poly[0], poly[1], r, tolDoc, out);
-  }
-  return new Float32Array(out);
+  writeCircleFan(out, offset, poly[(n - 1) * 2], poly[(n - 1) * 2 + 1], fan);
+  return out;
 }
 
 function computeBounds(...arrays: Float32Array[]): [number, number, number, number] {
@@ -639,9 +670,9 @@ export function tessellateStroke(
 
   // 5. Constant-width dot.
   if (isDot(points)) {
-    const out: number[] = [];
-    pushCircleFan(points[0], points[1], tool.width / 2, tolDoc, out);
-    const unionVertices = new Float32Array(out);
+    const fan = circleFanOffsets(tool.width / 2, tolDoc);
+    const unionVertices = new Float32Array((fan.length - 2) * 3);
+    writeCircleFan(unionVertices, 0, points[0], points[1], fan);
     return {
       mode: 'union',
       unionVertices,

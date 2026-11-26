@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { unpremultiplyRgba, WebGL2SheetComposer } from './composer';
 import { planAtlasBatches, type AtlasOp } from './atlas';
+import { planSceneVram } from './vram-budget';
 import { CellCache } from '../cell-cache';
 import { CellWarmer } from '../cell-warm';
 import type { FrameScene } from '../frame-compose';
@@ -107,6 +108,7 @@ function createRecordingWebGL2(overrides: Partial<Record<string, unknown>> = {})
     uniform1i: () => {},
     uniform1f: () => {},
     uniform2f: () => {},
+    uniform3fv: () => {},
     uniform4f: () => {},
     uniformMatrix3fv: () => {},
     createBuffer: () => { created.buffers++; return {}; },
@@ -115,6 +117,8 @@ function createRecordingWebGL2(overrides: Partial<Record<string, unknown>> = {})
     bufferSubData: () => {},
     deleteBuffer: () => { deleted.buffers++; },
     enableVertexAttribArray: () => {},
+    vertexAttrib1f: () => {},
+    vertexAttrib2f: () => {},
     vertexAttribPointer: () => {},
     disableVertexAttribArray: () => {},
     createTexture: () => { created.textures++; return {}; },
@@ -203,6 +207,15 @@ const PRESENT: StagePresentParams = {
   gridStep: 0,
 };
 
+function hasScissoredClear(calls: readonly string[], mask: number): boolean {
+  let enabled = false;
+  return calls.some(call => {
+    if (call === 'enable:scissor') enabled = true;
+    if (call === 'disable:scissor') enabled = false;
+    return enabled && call === `clear:${mask}`;
+  });
+}
+
 describe('unpremultiplyRgba', () => {
   it('converts premultiplied RGBA8 back to straight RGBA8 for colourOfPixel', () => {
     expect(unpremultiplyRgba(0, 0, 0, 0)).toEqual([0, 0, 0, 0]);
@@ -234,6 +247,35 @@ describe('atlas slot packing and tile isolation (J1-O10)', () => {
     }
   });
 
+  it('fills a free slot on a closed atlas shelf without reordering paint', () => {
+    const ops: AtlasOp[] = [
+      { id: 0, minX: 10, minY: 10, maxX: 49, maxY: 26 },
+      { id: 1, minX: 10, minY: 10, maxX: 62, maxY: 42 },
+      { id: 2, minX: 10, minY: 10, maxX: 29, maxY: 18 },
+    ];
+    const batches = planAtlasBatches(ops, 64, 128, 128);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].slots.map(slot => slot.op.id)).toEqual([0, 1, 2]);
+    expect(batches[0].slots.map(slot => [slot.atlasX, slot.atlasY])).toEqual([[0, 0], [0, 19], [42, 0]]);
+  });
+
+  it('packs thin tiles of one stroke into one pass with disjoint scissors', () => {
+    const ops: AtlasOp[] = [
+      { id: 0, minX: 10, minY: 80, maxX: 1210, maxY: 90 },
+      { id: 1, minX: 10, minY: 84, maxX: 30, maxY: 92 },
+    ];
+    const [strip, next] = planAtlasBatches(ops, 256, 1280, 720);
+    expect(strip.tiled).toBe(true);
+    expect(strip.slots.map(slot => [slot.op.id, slot.sheetX, slot.atlasX, slot.atlasY, slot.w, slot.h])).toEqual([
+      [0, 9, 0, 0, 256, 12],
+      [0, 265, 0, 13, 256, 12],
+      [0, 521, 0, 26, 256, 12],
+      [0, 777, 0, 39, 256, 12],
+      [0, 1033, 0, 52, 178, 12],
+    ]);
+    expect(next.slots[0].op.id).toBe(1);
+  });
+
   it('isolates strokes crossing the sheet boundary into scissored tiled passes so unclipped geometry never bleeds into neighbour slots', () => {
     const ops: AtlasOp[] = [
       { id: 0, minX: 20, minY: 20, maxX: 60, maxY: 60 },
@@ -249,6 +291,25 @@ describe('atlas slot packing and tile isolation (J1-O10)', () => {
 });
 
 describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', () => {
+  it('restricts an atlas clear to the covered area for a small batch', () => {
+    const mock = createRecordingWebGL2();
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 32, color: '#112233' }];
+    const doc = simpleDoc(tools, [{ points: [80, 80, 320, 80], tool_id: 0 }]);
+    const scene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools };
+
+    expect(composer.composeAndPresent(1280, 720, scene, PRESENT)).toBe(true);
+    const clear = 'clear:' + (mock.gl.COLOR_BUFFER_BIT | mock.gl.STENCIL_BUFFER_BIT);
+    const clearIndex = mock.calls.indexOf(clear);
+    expect(mock.calls.slice(clearIndex - 2, clearIndex + 2)).toEqual([
+      'enable:scissor', 'scissor:0,0,144,24', clear, 'disable:scissor',
+    ]);
+    composer.dispose();
+  });
+
   it('renders strokes with source-over and destination-out blend boundaries and cleans up all GL objects on dispose()', () => {
     const mock = createRecordingWebGL2();
     const composer = new WebGL2SheetComposer(mock.gl, {
@@ -366,7 +427,7 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     const doc1 = simpleDoc(tools, [s1]);
     composer.invalidate();
     expect(composer.composeAndPresent(1280, 720, { doc: doc1, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
-    expect(mock.calls.some((c) => c.startsWith('scissor:'))).toBe(true);
+    expect(hasScissoredClear(mock.calls, mock.gl.COLOR_BUFFER_BIT)).toBe(true);
 
     // 2. Render [flat, sep, flat], then undo sep -> flat-coat guard must do full rebuild (no scissor).
     const flat1 = { points: [80, 200, 320, 200], tool_id: 1 };
@@ -379,7 +440,7 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     const docFlat2 = simpleDoc(tools, [flat1, flat2]);
     composer.invalidate();
     expect(composer.composeAndPresent(1280, 720, { doc: docFlat2, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
-    expect(mock.calls.some((c) => c.startsWith('scissor:'))).toBe(false);
+    expect(hasScissoredClear(mock.calls, mock.gl.COLOR_BUFFER_BIT)).toBe(false);
 
     composer.dispose();
   });
@@ -488,7 +549,7 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     composer.invalidate();
     expect(composer.composeAndPresent(1280, 720, { doc: docAfter, frame: 0, activeLayer: 0, viewport, tools, paper: '#ffffff' }, PRESENT)).toBe(true);
     // Must not use scissored untransformed undo when deleted stroke had a `place` matrix.
-    expect(mock.calls.some((c) => c.startsWith('scissor:'))).toBe(false);
+    expect(hasScissoredClear(mock.calls, mock.gl.COLOR_BUFFER_BIT)).toBe(false);
     composer.dispose();
   });
 
@@ -611,7 +672,9 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
   });
 
   it('drops and frees in-flight CellWarmer worker output when stop() fires before resolution (F4)', async () => {
-    const cache = new CellCache(16 * 1024 * 1024);
+    const cache = new CellCache(() => {
+      throw new Error('The worker supplies the cell pixels');
+    }, 16 * 1024 * 1024);
     let resolveDraw!: (value: { image: CanvasImageSource; free: () => void } | null) => void;
     let freed = 0;
     const warmer = new CellWarmer(
@@ -830,6 +893,69 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     }
   });
 
+  it('caches whole playback frames when they fit and cropped drawings for longer films', () => {
+    const uploads: { width: number; height: number }[] = [];
+    const recordUpload = (...args: unknown[]): void => {
+      const source = args.at(-1);
+      if (source && typeof source === 'object' && 'getContext' in source) {
+        const { width, height } = source as HTMLCanvasElement;
+        uploads.push({ width, height });
+      }
+    };
+    const mock = createRecordingWebGL2({ texImage2D: recordUpload, texSubImage2D: recordUpload });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 32, color: '#000000' }];
+    const doc = simpleDoc(tools, [{ points: [400, 400, 560, 400], tool_id: 0 }]);
+    doc.layers[0].frames.push(structuredClone(doc.layers[0].frames[0]));
+    const shortDoc = structuredClone(doc);
+    shortDoc.layers[0].frames[1] = { strokes: [{ points: [440, 440, 600, 440], tool_id: 0 }] };
+    shortDoc.layers.push({ ...structuredClone(shortDoc.layers[0]), opacity: 50 });
+    for (let i = 2; i < 120; i++) doc.layers[0].frames.push(null);
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const prevDoc = globalThis.document;
+    const surfaces: { width: number; height: number }[] = [];
+    (globalThis as unknown as { document: unknown }).document = {
+      createElement() {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        surfaces.push(canvas);
+        const ctx = { canvas, clearRect() {}, setTransform() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, drawImage() {} };
+        return canvas;
+      },
+    };
+    try {
+      const scene: FrameScene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 2 }, tools };
+      for (const frame of [0, 1, 0, 1]) {
+        composer.invalidate();
+        expect(composer.composeAndPresent(1280, 720, { ...scene, doc: shortDoc, frame }, PRESENT, { doc: shortDoc, key: frame, total: 2 })).toBe(true);
+      }
+      expect(uploads).toEqual([{ width: 1280, height: 720 }, { width: 1280, height: 720 }]);
+      expect(surfaces.filter(surface => surface.width * surface.height > 0).length).toBeLessThanOrEqual(3);
+      uploads.length = 0;
+      for (const frame of [0, 1, 0]) {
+        composer.invalidate();
+        expect(composer.composeAndPresent(1280, 720, { ...scene, frame }, PRESENT, { doc, key: frame, total: 120 })).toBe(true);
+      }
+      expect(uploads).toEqual([{ width: 60, height: 20 }]);
+      const minified = { ...PRESENT, stretch: 0.5 };
+      const held = { doc, key: 1, total: 120 };
+      expect(composer.composeAndPresent(1280, 720, { ...scene, frame: 1 }, minified, held)).toBe(true);
+      mock.calls.length = 0;
+      for (let frame = 2; frame < 10; frame++) {
+        expect(composer.composeAndPresent(1280, 720, { ...scene, frame }, minified, held)).toBe(true);
+      }
+      expect(mock.calls.filter(call => call.startsWith('draw:'))).toHaveLength(8);
+      composer.clearPlayback();
+      expect(composer.composeAndPresent(1280, 720, scene, PRESENT, { doc, key: 0, total: 120 })).toBe(true);
+      expect(uploads).toHaveLength(3);
+    } finally {
+      composer.dispose();
+      (globalThis as unknown as { document: unknown }).document = prevDoc;
+    }
+    expect(mock.deleted.textures).toBe(mock.created.textures);
+  });
+
   it('generates and uses mipmaps on minified playback cache hits', () => {
     let mipmapCalls = 0;
     const minFilters: number[] = [];
@@ -859,6 +985,83 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     expect(minFilters).toContain(0x2703);
 
     composer.dispose();
+  });
+
+  it('keeps whole-still playback within budget after editing retains coverage buffers', () => {
+    const width = 1280, height = 720, budgetBytes = 64 * 1024 * 1024;
+    const formats = { color: 'R8', stencil: 'STENCIL_INDEX8' } as const;
+    const workingBytes = planSceneVram({
+      budgetBytes, formats, sheetWidth: width, sheetHeight: height, supersample: 4,
+      hasGhosts: false, needsMipmap: false, hasBlend: false, hasLiveCoat: false,
+    }).workingBytes;
+    const canvases: { width: number; height: number }[] = [];
+    const coverage = new Map<unknown, number>();
+    const stills = new Map<unknown, number>();
+    let buffer: unknown, texture: unknown, peakBytes = workingBytes, uploads = 0;
+    const recordPeak = () => {
+      const canvasBytes = canvases.reduce((sum, c) => sum + c.width * c.height * 4, 0);
+      const retainedBytes = [...coverage.values(), ...stills.values()].reduce((sum, n) => sum + n, 0);
+      peakBytes = Math.max(peakBytes, workingBytes + canvasBytes + retainedBytes);
+    };
+    const mock = createRecordingWebGL2({
+      bindBuffer: (_target: number, bound: unknown) => { buffer = bound; },
+      bufferData: (_target: number, data: number | Float32Array) => {
+        if (data instanceof Float32Array && data.length > 96) coverage.set(buffer, data.byteLength);
+      },
+      deleteBuffer: (deleted: unknown) => coverage.delete(deleted),
+      bindTexture: (_target: number, bound: unknown) => { texture = bound; },
+      texImage2D: (...args: unknown[]) => {
+        const source = args.at(-1) as HTMLCanvasElement | null;
+        if (source && typeof source.getContext === 'function') {
+          stills.set(texture, source.width * source.height * 4);
+          uploads++;
+          recordPeak();
+        }
+      },
+      deleteTexture: (deleted: unknown) => stills.delete(deleted),
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, { formats, budgetBytes });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#000000' }];
+    const points = Array.from({ length: 8000 }, (_, i) => [800 + i % 2 * 32, 800]).flat();
+    const editing = simpleDoc(tools, [{ points, tool_id: 0 }]);
+    const view = { scale: 1 / 8, dpr: 1 };
+    for (const x of [0, 8]) {
+      const cellAt = () => ({ strokes: [{ points, tool_id: 0, place: [1, 0, 0, 1, x, 0] }] });
+      composer.invalidate();
+      expect(composer.composeAndPresent(width, height, {
+        doc: editing, frame: 0, activeLayer: 0, viewport: view, tools, cellAt,
+      }, PRESENT)).toBe(true);
+    }
+    expect(coverage.size).toBe(1);
+
+    const oldDocument = globalThis.document;
+    (globalThis as unknown as { document: unknown }).document = {
+      createElement() {
+        const canvas = { width: 0, height: 0, getContext: () => ctx };
+        canvases.push(canvas);
+        const ctx = { canvas, setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, drawImage() {} };
+        return canvas;
+      },
+    };
+    try {
+      const coat: ToolDescriptor = { kind: 'pencil', geometry: 'line', width: 40, color: '#000000', opacity: 50, buildup: false };
+      const strokes = [{ tool_id: 0, points: [80, 80, 320, 80] }, { tool_id: 0, points: [80, 88, 320, 88] }];
+      const doc = simpleDoc([coat], strokes);
+      doc.layers[0].opacity = 50;
+      doc.layers[0].frames = Array.from({ length: 10 }, () => ({ strokes }));
+      for (let frame = 0; frame < 10; frame++) {
+        composer.invalidate();
+        expect(composer.composeAndPresent(width, height, {
+          doc, frame, activeLayer: 0, viewport: view, tools: doc.tools,
+        }, PRESENT, { doc, key: frame, total: 10 })).toBe(true);
+      }
+      expect(uploads).toBe(10);
+      expect(canvases.filter(c => c.width === width && c.height === height)).toHaveLength(3);
+      expect(peakBytes).toBeLessThanOrEqual(budgetBytes);
+    } finally {
+      composer.dispose();
+      (globalThis as unknown as { document: unknown }).document = oldDocument;
+    }
   });
 
   it('preserves per-pass opacity for buildup feather native fallback and group opacity for flat-coat feather fallback', () => {
@@ -991,6 +1194,116 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     // Ring cursor advances across uploads within the preallocated VBO rather than overwriting offset 0 every batch.
     expect(new Set(subDataOffsets).size).toBeGreaterThan(1);
 
+    composer.dispose();
+  });
+
+  it('reuses a batch of stroke vertices on the GPU when only placement changes', () => {
+    let streamed = 0;
+    let retained = 0;
+    const placements: number[][] = [];
+    const mock = createRecordingWebGL2({
+      bufferData: (_target: number, data: number | Float32Array) => {
+        if (data instanceof Float32Array && data.length > 96) retained++;
+      },
+      bufferSubData: (_target: number, _offset: number, _data: Float32Array, _start: number, length: number) => {
+        if (length > 96) streamed++;
+      },
+      uniform3fv: (_loc: unknown, data: Float32Array, start: number, length: number) => {
+        placements.push([...data.subarray(start, start + length)]);
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+    const doc = simpleDoc(tools, [
+      { points: [80, 80, 640, 80], tool_id: 0 },
+      { points: [80, 240, 480, 240], tool_id: 0 },
+    ]);
+    const scene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools };
+    const paint = (x: number) => {
+      const place = [1, 0, 0, 1, x, 0];
+      const base = doc.layers[0].frames[0]!;
+      const cellAt = () => ({ strokes: base.strokes.map(stroke => ({ ...stroke, place })) });
+      composer.invalidate();
+      expect(composer.composeAndPresent(1280, 720, { ...scene, cellAt }, PRESENT)).toBe(true);
+    };
+    paint(0);
+    expect(streamed).toBe(1);
+    paint(32);
+    paint(64);
+    expect(retained).toBe(1);
+    expect(streamed).toBe(1);
+    expect(placements).toHaveLength(2);
+    expect(placements[1][0]).toBe(placements[0][0] - 4);
+
+    composer.dispose();
+    expect(mock.deleted.buffers).toBe(mock.created.buffers);
+  });
+
+  it('uploads coverage once for a stroke that crosses five atlas tiles', () => {
+    const coverageUploads: number[] = [];
+    const mock = createRecordingWebGL2({
+      bufferSubData: (_target: number, _offset: number, data: Float32Array, _start: number, length: number) => {
+        // Coverage uses the original mesh. Composite quads use the larger shared scratch array.
+        if (data.length === length) coverageUploads.push(length);
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 40, color: '#112233' }];
+    const doc = simpleDoc(tools, [{ points: [80, 640, 10160, 640], tool_id: 0 }]);
+    const scene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools };
+
+    expect(composer.composeAndPresent(1280, 720, scene, PRESENT)).toBe(true);
+    expect(mock.calls.filter((call) => call.startsWith('scissor:'))).toHaveLength(6); // Shared clear and five tile clips.
+    expect(mock.calls.filter(call => call === 'draw:30')).toHaveLength(1); // Five composite quads together.
+    expect(coverageUploads).toHaveLength(1);
+    composer.dispose();
+  });
+
+  it('uploads a tiled stroke again when its coverage range is discarded by a stream wrap', () => {
+    let allocations = 0;
+    let uploadedEnd = 0;
+    let coverageOffset = 0;
+    let coverageDraws = 0;
+    const mock = createRecordingWebGL2({
+      bufferData: (_target: number, size: number | ArrayBufferView) => {
+        if (typeof size === 'number') {
+          allocations++;
+          uploadedEnd = 0;
+        }
+      },
+      bufferSubData: (_target: number, offset: number, _data: Float32Array, _start: number, length: number) => {
+        uploadedEnd = offset + length * Float32Array.BYTES_PER_ELEMENT;
+      },
+      vertexAttribPointer: (index: number, _size: number, _type: number, _normalized: boolean, _stride: number, offset: number) => {
+        if (index === 0) coverageOffset = offset;
+      },
+      drawArrays: (_mode: number, _start: number, count: number) => {
+        if (count <= 6) return;
+        coverageDraws++;
+        expect(coverageOffset + count * 2 * Float32Array.BYTES_PER_ELEMENT).toBeLessThanOrEqual(uploadedEnd);
+      },
+    });
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    // The thick tiles need their own batches. Coverage leaves 352 bytes
+    // in the 4 MiB stream, so the second composite wraps it before later tiles.
+    const points = [80, 2048];
+    for (let i = 1; i <= 3494; i++) points.push(10160 - (i % 2) * 8, 2048);
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'line', width: 1100, color: '#112233' }];
+    const doc = simpleDoc(tools, [{ points, tool_id: 0 }]);
+    const scene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools };
+
+    expect(composer.composeAndPresent(1280, 720, scene, PRESENT)).toBe(true);
+    expect(coverageDraws).toBe(5);
+    expect(allocations).toBeGreaterThan(1);
     composer.dispose();
   });
 

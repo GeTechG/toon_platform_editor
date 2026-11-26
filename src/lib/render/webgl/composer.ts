@@ -10,12 +10,14 @@
 import { FIXED_POINT_SCALE } from '../../format/constants';
 import { opacityOf, type BlendMode, type Frame, type ToolDescriptor } from '../../format/types';
 import { resolveCell } from '../../model/cells';
-import { hasLook, renderStrokesLayer, type Canvas2DLike, type LayerLook, type PlacedStroke } from '../canvas2d';
+import { hasLook, renderLayersStacked, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from '../canvas2d';
 import { extendsFlatRun, hasInteriorPaint, isEraserTool, isFilledLineTool, isFlatPaint, resolveTool, sameFlatPaint } from '../dispatch';
 import type { FrameScene, GhostFrame, LiveLine } from '../frame-compose';
 import type { SheetComposer, SamplePixelRequest, StagePresentParams, StraightRgba } from '../sheet-composer';
-import { CoverageAtlas, planAtlasBatches, type AtlasOp } from './atlas';
+import { CoverageAtlas, planAtlasBatches, type AtlasOp, type AtlasSlot } from './atlas';
 import type { AtlasFormats, RenderBackendReason } from './probe';
+import { PlaybackCellTextures } from './playback-cells';
+import { CoverageGeometryCache, MAX_RETAINED_COVERAGE_SLOTS } from './coverage-geometry';
 import {
   BLEND_FS,
   BLIT_FS,
@@ -73,6 +75,24 @@ interface TextureTarget {
   immutableMips: boolean;
 }
 
+type PlaybackCanvas = readonly [CanvasRenderingContext2D, CanvasRenderingContext2D, CanvasRenderingContext2D];
+
+function openPlaybackCanvas(): PlaybackCanvas | null {
+  if (typeof document === 'undefined') return null;
+  const output = document.createElement('canvas').getContext('2d');
+  const layer = document.createElement('canvas').getContext('2d');
+  const mask = document.createElement('canvas').getContext('2d');
+  return output && layer && mask ? [output, layer, mask] : null;
+}
+
+function clearPlaybackCanvas(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  const { canvas } = ctx;
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+}
+
 interface PaintOp extends AtlasOp {
   readonly mode: 'union' | 'nonzero' | 'reference';
   readonly vertices: Float32Array;
@@ -85,13 +105,31 @@ interface PaintOp extends AtlasOp {
   readonly refTool?: ToolDescriptor;
 }
 
+interface TiledCoverageRange {
+  readonly vertices: Float32Array;
+  readonly storage: number;
+  readonly offset: number;
+}
+
 interface LayerChunkTex {
   readonly target: TextureTarget;
   readonly look: LayerLook | undefined;
   readonly ink: boolean;
 }
 
-function createTarget(gl: WebGL2RenderingContext, width: number, height: number, mipmapped: boolean): TextureTarget | null {
+/** Uploads the Canvas 2D rows in sheet order as premultiplied RGBA. */
+function uploadCanvas(gl: WebGL2RenderingContext, canvas: HTMLCanvasElement, allocated: boolean): void {
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  if (allocated) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+}
+
+function createTarget(
+  gl: WebGL2RenderingContext,
+  width: number, height: number, mipmapped: boolean,
+  source?: HTMLCanvasElement,
+): TextureTarget | null {
   const tex = gl.createTexture();
   const fbo = gl.createFramebuffer();
   if (!tex || !fbo) {
@@ -113,6 +151,9 @@ function createTarget(gl: WebGL2RenderingContext, width: number, height: number,
     const levels = Math.floor(Math.log2(Math.max(1, width, height))) + 1;
     gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA8, width, height);
     immutableMips = true;
+    if (source) uploadCanvas(gl, source, true);
+  } else if (source) {
+    uploadCanvas(gl, source, false);
   } else {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
   }
@@ -153,6 +194,8 @@ function writeAffineMat3(
 
 interface CovLocs {
   uMatrices: WebGLUniformLocation | null;
+  uUseRetainedSlots: WebGLUniformLocation | null;
+  uRetainedSlots: WebGLUniformLocation | null;
   uSupersample: WebGLUniformLocation | null;
   uAtlasPhys: WebGLUniformLocation | null;
 }
@@ -259,8 +302,11 @@ export class WebGL2SheetComposer implements SheetComposer {
   #streamVbo: WebGLBuffer | null = null;
   #streamVboBytes = 0;
   #streamVboCursor = 0;
+  #streamVboStorage = 0;
   #streamScratch: Float32Array | null = null;
   readonly #matrices = new Float32Array(18);
+  readonly #coverageGeometry: CoverageGeometryCache;
+  readonly #coverageSlots = new Float32Array(MAX_RETAINED_COVERAGE_SLOTS * 3);
   #quadVbo: WebGLBuffer | null = null;
   #unitQuadVbo: WebGLBuffer | null = null;
 
@@ -296,6 +342,12 @@ export class WebGL2SheetComposer implements SheetComposer {
   // Retained GPU playback cache (allocated strictly from VramBudget headroom).
   #playbackDoc: FrameScene['doc'] | null = null;
   #playbackTextures = new Map<number, TextureTarget>();
+  #playbackCells: PlaybackCellTextures | null = null;
+  #lastRasterPlayback = false;
+  #playbackCellKey: number | null = null;
+  #playbackCanvas: PlaybackCanvas | null = null;
+  #playbackCanvasBytes = 0;
+  #flatPresented: TextureTarget | null = null;
 
   // Scratch Canvas 2D for bounded native 1x1 reference coverage masks (winding-overflow / subpixel).
   #refCanvas: HTMLCanvasElement | null = null;
@@ -313,6 +365,7 @@ export class WebGL2SheetComposer implements SheetComposer {
     this.#formats = options.formats;
     this.#supersample = options.supersample ?? 4;
     this.#budget = new VramBudget(options.budgetBytes);
+    this.#coverageGeometry = new CoverageGeometryCache(gl, this.#budget, () => { this.#needsErrorCheck = true; });
     this.#meshes = new GeometryKeeper(Math.min(32 * 1024 * 1024, Math.floor(options.budgetBytes / 2)));
   }
 
@@ -330,6 +383,15 @@ export class WebGL2SheetComposer implements SheetComposer {
     }
     this.#playbackTextures.clear();
     this.#playbackDoc = null;
+    this.#playbackCells?.clear();
+    this.#lastRasterPlayback = false;
+    this.#flatPresented = null;
+    if (this.#playbackCanvas) {
+      for (const { canvas } of this.#playbackCanvas) canvas.width = canvas.height = 0;
+      this.#playbackCanvas = null;
+      this.#budget.reserveWorking(this.#budget.workingBytes - this.#playbackCanvasBytes);
+      this.#playbackCanvasBytes = 0;
+    }
   }
 
   composeAndPresent(
@@ -369,7 +431,24 @@ export class WebGL2SheetComposer implements SheetComposer {
       hasBlend,
       hasLiveCoat,
     });
-    if (!plan.fits || !this.#budget.reserveWorking(plan.workingBytes)) {
+    const ordinary = !scene.live && !hasGhosts && !hasBlend && (scene.alpha ?? 1) === 1;
+    const canvasBytes = 3 * sheetTextureBytes(sheetWidth, sheetHeight, false);
+    const flatPlaybackFits = playbackKey && ordinary
+      && canvasBytes + playbackKey.total * sheetTextureBytes(sheetWidth, sheetHeight, needsMipmap) <= plan.retainedHeadroomBytes;
+    const previous = this.#lastScene;
+    const rasterChanged = previous && (
+      previous.tools !== scene.tools
+      || previous.viewport.scale !== scene.viewport.scale || previous.viewport.dpr !== scene.viewport.dpr
+      || previous.viewport.panX !== scene.viewport.panX || previous.viewport.panY !== scene.viewport.panY
+    );
+    if (this.#playbackCanvas && (!flatPlaybackFits || this.#playbackDoc !== playbackKey?.doc || rasterChanged
+      || this.#sheetW !== sheetWidth || this.#sheetH !== sheetHeight)) {
+      this.clearPlayback();
+    }
+    // Keep the Canvas backing stores reserved alongside the GL working set.
+    // Otherwise the retained geometry and stills can fill their share of memory.
+    const workingBytes = plan.workingBytes + (flatPlaybackFits ? canvasBytes : 0);
+    if (!plan.fits || !this.#budget.reserveWorking(workingBytes)) {
       this.#lastFailure = 'budget-exceeded';
       return false;
     }
@@ -379,12 +458,38 @@ export class WebGL2SheetComposer implements SheetComposer {
       return false;
     }
 
-    // 3. Playback still cache fast path (must match sheet size AND mipmap requirement).
+    // Whole stills are one blit apiece when a full loop fits. Otherwise retain
+    // independent drawings, which can occupy less space and span multiple ticks.
     if (playbackKey) {
       if (this.#playbackDoc !== playbackKey.doc) {
         this.clearPlayback();
         this.#playbackDoc = playbackKey.doc;
       }
+      if (flatPlaybackFits) {
+        if (!this.#playbackCanvas) {
+          const source = openPlaybackCanvas();
+          if (source) {
+            // Stills assembled by the stroke renderer belong to a different raster path.
+            this.clearPlayback();
+            this.#playbackDoc = playbackKey.doc;
+            this.#playbackCanvas = source;
+            this.#playbackCanvasBytes = canvasBytes;
+          }
+        }
+        if (this.#playbackCanvas) {
+          return this.#presentFlatPlayback(scene, present, playbackKey.key, this.#playbackCanvas);
+        }
+        this.#budget.reserveWorking(plan.workingBytes);
+      } else if (ordinary) {
+        const cells = this.#playbackCells ??= PlaybackCellTextures.open(this.#gl, this.#budget);
+        if (cells) {
+          this.#flatPresented = null;
+          return this.#presentPlaybackCells(scene, present, playbackKey.key, cells);
+        }
+      }
+
+      // Playback still cache fast path for the stroke renderer.
+      this.#lastRasterPlayback = false;
       const cached = this.#playbackTextures.get(playbackKey.key);
       if (cached && cached.width === sheetWidth && cached.height === sheetHeight && cached.mipmapped === needsMipmap) {
         if (this.#needsErrorCheck && !this.#checkHealthy()) return false;
@@ -393,6 +498,8 @@ export class WebGL2SheetComposer implements SheetComposer {
         return this.#checkHealthy();
       }
     }
+
+    this.#lastRasterPlayback = false;
 
     // 4. Rebuild committed stack if stale or resized.
     this.#lastScene = scene;
@@ -411,29 +518,12 @@ export class WebGL2SheetComposer implements SheetComposer {
       return false;
     }
 
-    // 6. Store playback still in GPU VRAM if headroom allows (reserve & evict BEFORE allocating,
-    // budgeting and generating mipmaps when minified so cache hits match first-pass filtering).
+    // 6. Keep the assembled still within the same retained VRAM budget.
     if (playbackKey && this.#slotA) {
-      const bytes = sheetTextureBytes(sheetWidth, sheetHeight, needsMipmap);
-      let copy: TextureTarget | null = null;
-      if (this.#budget.tryRetain(`play:${playbackKey.key}`, bytes, () => {
-        if (copy) deleteTarget(this.#gl, copy);
-        this.#playbackTextures.delete(playbackKey.key);
-      })) {
-        this.#needsErrorCheck = true;
-        copy = createTarget(this.#gl, sheetWidth, sheetHeight, needsMipmap);
-        if (copy) {
-          this.#blitTex(this.#slotA.tex, copy, 1, null, false);
-          if (needsMipmap) {
-            const gl = this.#gl;
-            gl.bindTexture(gl.TEXTURE_2D, copy.tex);
-            gl.generateMipmap(gl.TEXTURE_2D);
-            gl.bindTexture(gl.TEXTURE_2D, null);
-          }
-          this.#playbackTextures.set(playbackKey.key, copy);
-        } else {
-          this.#budget.release(`play:${playbackKey.key}`);
-        }
+      const copy = this.#retainPlaybackStill(playbackKey.key, this.#slotA);
+      if (copy) {
+        this.#blitTex(this.#slotA.tex, copy, 1, null, false);
+        this.#updateSheetMipmaps(copy);
       }
     }
 
@@ -445,8 +535,119 @@ export class WebGL2SheetComposer implements SheetComposer {
     return this.#checkHealthy();
   }
 
+  #retainPlaybackStill(key: number, sheet: TextureTarget, source?: HTMLCanvasElement): TextureTarget | null {
+    let target: TextureTarget | null = null;
+    const bytes = sheetTextureBytes(sheet.width, sheet.height, sheet.mipmapped);
+    if (!this.#budget.tryRetain(`play:${key}`, bytes, () => {
+      deleteTarget(this.#gl, target);
+      this.#playbackTextures.delete(key);
+    })) return null;
+    this.#needsErrorCheck = true;
+    target = createTarget(this.#gl, sheet.width, sheet.height, sheet.mipmapped, source);
+    if (target) this.#playbackTextures.set(key, target);
+    else this.#budget.release(`play:${key}`);
+    return target;
+  }
+
+  #presentFlatPlayback(scene: FrameScene, present: StagePresentParams, key: number, source: PlaybackCanvas): boolean {
+    if (this.#needsErrorCheck && !this.#checkHealthy()) return false;
+    if (!this.#flatPresented) this.#releaseEditingStack();
+    this.#lastRasterPlayback = false;
+    const slot = this.#slotA!;
+    let target = this.#playbackTextures.get(key) ?? null;
+    if (target) {
+      this.#budget.touch(`play:${key}`);
+    } else {
+      const [ctx, layer, mask] = source;
+      const { canvas } = ctx;
+      const visible: Frame[] = [];
+      const looks: LayerLook[] = [];
+      for (const [index, look] of scene.doc.layers.entries()) {
+        if (look.hidden || look.opacity === 0) continue;
+        const cell = this.#cell(scene, index);
+        if (!cell?.strokes.length) continue;
+        visible.push(cell);
+        looks.push(look);
+      }
+      // The retained stills live on the GPU. Reuse three CPU canvases at most.
+      clearPlaybackCanvas(ctx, slot.width, slot.height);
+      const scratch = (surface: CanvasRenderingContext2D) => {
+        clearPlaybackCanvas(surface, slot.width, slot.height);
+        return { image: surface.canvas, ctx: surface as unknown as Canvas2DLike };
+      };
+      renderLayersStacked(visible, scene.tools, ctx as unknown as Canvas2DLike, scene.viewport,
+        () => scratch(layer), STUDIO_PATHS, looks, false, () => scratch(mask));
+
+      const gl = this.#gl;
+      gl.activeTexture(gl.TEXTURE0);
+      target = this.#retainPlaybackStill(key, slot, canvas);
+      if (!target) {
+        target = slot;
+        gl.bindTexture(gl.TEXTURE_2D, target.tex);
+        uploadCanvas(gl, canvas, true);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        this.#needsErrorCheck = true;
+      }
+      this.#updateSheetMipmaps(target);
+      if (!this.#checkHealthy()) return false;
+    }
+
+    this.#presentSheet(target, present);
+    if (!this.#checkHealthy()) return false;
+    this.#flatPresented = target;
+    this.#lastScene = scene;
+    this.#sheetW = target.width;
+    this.#sheetH = target.height;
+    return true;
+  }
+
+  #releaseEditingStack(): void {
+    this.#budget.release('layer:active');
+    this.#releaseChunks('below', this.#belowChunks);
+    this.#releaseChunks('above', this.#aboveChunks);
+    this.#stackValid = false;
+  }
+
+  #presentPlaybackCells(scene: FrameScene, present: StagePresentParams, key: number, cells: PlaybackCellTextures): boolean {
+    if (this.#needsErrorCheck && !this.#checkHealthy()) return false;
+    const dst = this.#slotA!;
+    const previous = this.#lastScene;
+    const view = scene.viewport;
+    if (!this.#lastRasterPlayback || this.#stale || previous?.doc !== scene.doc || this.#playbackCellKey !== key
+      || previous.tools !== scene.tools || previous.viewport.scale !== view.scale || previous.viewport.dpr !== view.dpr
+      || previous.viewport.panX !== view.panX || previous.viewport.panY !== view.panY
+      || this.#sheetW !== dst.width || this.#sheetH !== dst.height) {
+      // The editing stack and playback cells share the same retained VRAM.
+      if (!this.#lastRasterPlayback) this.#releaseEditingStack();
+      const uploads = cells.uploadRevision;
+      this.#clearTarget(dst, 0, 0, 0, 0);
+      for (const [index, layer] of scene.doc.layers.entries()) {
+        const alpha = (layer.opacity ?? 100) / 100;
+        if (layer.hidden || alpha === 0) continue;
+        const cell = this.#cell(scene, index);
+        if (!cell?.strokes.length) continue;
+        const image = cells.take(cell, scene.tools, view, this.#slotB!);
+        if (!image) continue;
+        const { rect } = image;
+        this.#blitSubRect(image.tex, dst, alpha, 0, 0, rect.width / image.width, rect.height / image.height, true, null, rect);
+      }
+      if (uploads !== cells.uploadRevision) this.#needsErrorCheck = true;
+      this.#updateSheetMipmaps(dst);
+    }
+    this.#presentSheet(dst, present);
+    if (!this.#checkHealthy()) return false;
+    this.#lastScene = scene;
+    this.#sheetW = dst.width;
+    this.#sheetH = dst.height;
+    this.#lastRasterPlayback = true;
+    this.#playbackCellKey = key;
+    this.#stale = false;
+    return true;
+  }
+
   samplePixel(req: SamplePixelRequest): StraightRgba | null {
-    if (this.#disposed || this.#budget.oom || this.#gl.isContextLost() || !this.#stackValid || !this.#lastScene || !this.#slotB) {
+    const raster = this.#flatPresented ?? (this.#lastRasterPlayback ? this.#slotA : null);
+    if (this.#disposed || this.#budget.oom || this.#gl.isContextLost() || (!this.#stackValid && !raster) || !this.#lastScene || !this.#slotB) {
       return null;
     }
     const gl = this.#gl;
@@ -485,7 +686,24 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#layChunkOnPick(slotB.tex, applyLook && hasLook(layer) ? layer : undefined, u0, v0, du, dv);
     };
 
-    if (req.source === 'layer') {
+    if (raster) {
+      if (req.source === 'canvas') {
+        this.#blitSubRect(raster.tex, this.#pickTex, 1, u0, v0, du, dv, true);
+      } else {
+        const layer = scene.doc.layers[scene.activeLayer];
+        const cell = this.#cell(scene, scene.activeLayer);
+        const image = !layer?.hidden && cell?.strokes.length
+          ? (this.#playbackCells ??= PlaybackCellTextures.open(gl, this.#budget))?.take(cell, scene.tools, scene.viewport, slotB)
+          : null;
+        if (image) {
+          const { rect, width, height } = image;
+          const x = px - rect.x, y = py - rect.y;
+          if (x >= 0 && y >= 0 && x < rect.width && y < rect.height) {
+            this.#blitSubRect(image.tex, this.#pickTex, 1, x / width, y / height, 1 / width, 1 / height, true);
+          }
+        }
+      }
+    } else if (req.source === 'layer') {
       if (this.#activeTex) {
         this.#blitSubRect(this.#activeTex.tex, this.#pickTex, 1, u0, v0, du, dv, true);
       } else {
@@ -529,7 +747,8 @@ export class WebGL2SheetComposer implements SheetComposer {
     const gl = this.#gl;
 
     this.#budget.clearRetained();
-    this.#playbackTextures.clear();
+    this.clearPlayback();
+    this.#playbackCells = null;
     this.#belowChunks = [];
     this.#belowComplete = false;
     this.#aboveChunks = [];
@@ -607,6 +826,8 @@ export class WebGL2SheetComposer implements SheetComposer {
       }
       this.#covLocs = {
         uMatrices: gl.getUniformLocation(this.#covProg, 'uMatrices'),
+        uUseRetainedSlots: gl.getUniformLocation(this.#covProg, 'uUseRetainedSlots'),
+        uRetainedSlots: gl.getUniformLocation(this.#covProg, 'uRetainedSlots[0]'),
         uSupersample: gl.getUniformLocation(this.#covProg, 'uSupersample'),
         uAtlasPhys: gl.getUniformLocation(this.#covProg, 'uAtlasPhys'),
       };
@@ -682,6 +903,8 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#aboveInk = undefined;
       this.#underInk = undefined;
       this.#stackValid = false;
+      this.#lastRasterPlayback = false;
+      this.#flatPresented = null;
       this.#playbackTextures.clear();
 
       deleteTarget(gl, this.#slotA);
@@ -749,12 +972,12 @@ export class WebGL2SheetComposer implements SheetComposer {
   }
 
   /**
-   * Ring-uploads `floatsCount` elements from `#streamScratch[0..floatsCount)` into
-   * `#streamVbo` via WebGL2 `bufferSubData(target, dstByteOffset, src, 0, length)`.
+   * Ring-uploads `floatsCount` elements from the scratch buffer or a stroke
+   * mesh into the shared stream VBO.
    * Never allocates temporary TypedArrays or `subarray()` views, and caps `#streamVbo`
    * strictly within `vboBudgetForTier`. Returns the byte offset inside `#streamVbo`.
    */
-  #uploadStream(floatsCount: number): number {
+  #uploadStream(floatsCount: number, data = this.#streamScratch!): number {
     const gl = this.#gl;
     const bytes = floatsCount * 4;
     const maxVboBytes = vboBudgetForTier(this.#budget.budget);
@@ -766,6 +989,7 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#needsErrorCheck = true;
       gl.bufferData(gl.ARRAY_BUFFER, this.#streamVboBytes, gl.DYNAMIC_DRAW);
       this.#streamVboCursor = 0;
+      this.#streamVboStorage++;
     } else if (this.#streamVboCursor + bytes > this.#streamVboBytes) {
       if (this.#streamVboBytes < maxVboBytes) {
         this.#streamVboBytes = Math.min(maxVboBytes, Math.max(bytes, this.#streamVboBytes * 2));
@@ -773,9 +997,10 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#needsErrorCheck = true;
       gl.bufferData(gl.ARRAY_BUFFER, this.#streamVboBytes, gl.DYNAMIC_DRAW);
       this.#streamVboCursor = 0;
+      this.#streamVboStorage++;
     }
     const offset = this.#streamVboCursor;
-    gl.bufferSubData(gl.ARRAY_BUFFER, offset, this.#streamScratch!, 0, floatsCount);
+    gl.bufferSubData(gl.ARRAY_BUFFER, offset, data, 0, floatsCount);
     this.#streamVboCursor = offset + bytes;
     return offset;
   }
@@ -1198,15 +1423,7 @@ export class WebGL2SheetComposer implements SheetComposer {
       this.#blitTex(slotB.tex, slotA, frameAlpha, null, true);
     }
 
-    // Update mipmaps for high-quality minification when `stretch < 1`.
-    // When storage is mutable (`texImage2D` fallback), `generateMipmap` can allocate/redefine levels.
-    if (slotA.mipmapped) {
-      const gl = this.#gl;
-      if (!slotA.immutableMips) this.#needsErrorCheck = true;
-      gl.bindTexture(gl.TEXTURE_2D, slotA.tex);
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-    }
+    this.#updateSheetMipmaps(slotA);
 
     if (this.#gl.isContextLost()) {
       this.#lastFailure = 'context-lost';
@@ -1214,6 +1431,18 @@ export class WebGL2SheetComposer implements SheetComposer {
       return false;
     }
     return true;
+  }
+
+  #updateSheetMipmaps(sheet: TextureTarget): void {
+    // Update mipmaps for high-quality minification when `stretch < 1`.
+    // When storage is mutable (`texImage2D` fallback), `generateMipmap` can allocate/redefine levels.
+    if (sheet.mipmapped) {
+      const gl = this.#gl;
+      if (!sheet.immutableMips) this.#needsErrorCheck = true;
+      gl.bindTexture(gl.TEXTURE_2D, sheet.tex);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
   }
 
   #renderGhostsInto(
@@ -1578,8 +1807,9 @@ export class WebGL2SheetComposer implements SheetComposer {
         i++;
       }
       const batches = planAtlasBatches(gpuOps, atlas.logicalSide, dst.width, dst.height);
+      let tiledCoverage: TiledCoverageRange | undefined;
       for (const batch of batches) {
-        this.#runAtlasBatch(batch, dst, matrices, clipRect);
+        tiledCoverage = this.#runAtlasBatch(batch, dst, matrices, clipRect, tiledCoverage);
       }
     }
   }
@@ -1588,36 +1818,25 @@ export class WebGL2SheetComposer implements SheetComposer {
     batch: ReturnType<typeof planAtlasBatches<PaintOp>>[number],
     dst: TextureTarget,
     matrices: Float32Array,
-    clipRect: readonly [number, number, number, number] | null = null,
-  ): void {
+    clipRect: readonly [number, number, number, number] | null,
+    previousCoverage: TiledCoverageRange | undefined,
+  ): TiledCoverageRange | undefined {
     const gl = this.#gl;
     const atlas = this.#atlas!;
     const ss = atlas.supersample;
+    const singleTile = batch.tiled && batch.slots.length === 1 ? batch.slots[0] : undefined;
+    const scissorTile = (slot: AtlasSlot<PaintOp>): void => {
+      gl.scissor(slot.atlasX * ss, slot.atlasY * ss, slot.w * ss, slot.h * ss);
+    };
 
-    // 1. Clear atlas color + stencil explicitly (never rely on invalidated stencil).
-    gl.bindFramebuffer(gl.FRAMEBUFFER, atlas.fbo);
-    gl.viewport(0, 0, atlas.physSide, atlas.physSide);
-    gl.disable(gl.BLEND);
-    gl.disable(gl.CULL_FACE);
-    gl.disable(gl.DEPTH_TEST);
-    if (batch.tiled) {
-      const s = batch.slots[0];
-      gl.enable(gl.SCISSOR_TEST);
-      gl.scissor(0, 0, s.w * ss, s.h * ss);
-    } else {
-      gl.disable(gl.SCISSOR_TEST);
-    }
-    gl.colorMask(true, true, true, true);
-    gl.stencilMask(0xff);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clearStencil(0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
-
-    // 2. Partition batch slots into union writes and nonzero stencil-then-cover writes.
+    let atlasRight = 0;
+    let atlasBottom = 0;
     let unionFloats = 0;
     let nonzeroFloats = 0;
     let nonzeroCount = 0;
     for (const slot of batch.slots) {
+      atlasRight = Math.max(atlasRight, slot.atlasX + slot.w);
+      atlasBottom = Math.max(atlasBottom, slot.atlasY + slot.h);
       const count = slot.op.vertices.length / 2;
       if (slot.op.mode === 'union') unionFloats += count * 5;
       else {
@@ -1626,10 +1845,34 @@ export class WebGL2SheetComposer implements SheetComposer {
       }
     }
 
+    // 1. Clear color and stencil explicitly. Every composite samples only
+    // within its slot, so texels beyond their enclosing rectangle can stay.
+    // Keep the full-surface clear for large batches so the driver can fast-clear.
+    const clearRegion = batch.tiled || atlasRight * atlasBottom < atlas.logicalSide ** 2 / 2;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, atlas.fbo);
+    gl.viewport(0, 0, atlas.physSide, atlas.physSide);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.DEPTH_TEST);
+    if (clearRegion) {
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(0, 0, atlasRight * ss, atlasBottom * ss);
+    } else {
+      gl.disable(gl.SCISSOR_TEST);
+    }
+    gl.colorMask(true, true, true, true);
+    gl.stencilMask(0xff);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearStencil(0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+    if (clearRegion && !batch.tiled) gl.disable(gl.SCISSOR_TEST);
+
+    // 2. Rasterize union coverage and nonzero stencil-then-cover writes.
     const bindCovProgram = (): void => {
       const locs = this.#covLocs!;
       gl.useProgram(this.#covProg!);
       gl.uniformMatrix3fv(locs.uMatrices, false, matrices);
+      gl.uniform1i(locs.uUseRetainedSlots, 0);
       gl.uniform1f(locs.uSupersample, ss);
       gl.uniform1f(locs.uAtlasPhys, atlas.physSide);
     };
@@ -1650,14 +1893,47 @@ export class WebGL2SheetComposer implements SheetComposer {
     // Streams coverage triangles in bounded chunks <= vboBudgetForTier via the
     // reused scratch buffer + WebGL2 bufferSubData (zero per-batch Float32Array
     // or subarray() allocations).
-    const drawCoverageChunked = (mode: 'union' | 'nonzero', totalFloats: number): void => {
+    let tiledCoverage = batch.tiled ? previousCoverage : undefined;
+    const drawCoverageChunked = (
+      mode: 'union' | 'nonzero',
+      totalFloats: number,
+      slots: readonly AtlasSlot<PaintOp>[],
+      tile?: AtlasSlot<PaintOp>,
+    ): void => {
+      if (tile && tile.op.vertices.byteLength <= this.#streamVboBytes) {
+        // The atlas offset changes between tiles, but document-space vertices
+        // and the matrix index are constant across every vertex in one tile.
+        const { vertices, matIndex } = tile.op;
+        if (tiledCoverage?.vertices !== vertices || tiledCoverage.storage !== this.#streamVboStorage) {
+          const offset = this.#uploadStream(vertices.length, vertices);
+          tiledCoverage = { vertices, offset, storage: this.#streamVboStorage };
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.#streamVbo);
+        gl.enableVertexAttribArray(0);
+        gl.disableVertexAttribArray(1);
+        gl.disableVertexAttribArray(2);
+        gl.vertexAttrib2f(1, tile.atlasX - tile.sheetX, tile.atlasY - tile.sheetY);
+        gl.vertexAttrib1f(2, matIndex);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, tiledCoverage.offset);
+        gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 2);
+        gl.disableVertexAttribArray(0);
+        return;
+      }
+      if (!tile && batch.slots.length <= MAX_RETAINED_COVERAGE_SLOTS) {
+        const retainedSlots = slots.filter(({ op }) => op.mode === mode);
+        const geometry = this.#coverageGeometry.take(retainedSlots.map(({ op }) => op.vertices));
+        if (geometry) {
+          this.#drawRetainedCoverage(geometry.buffer, geometry.vertexCount, retainedSlots);
+          return;
+        }
+      }
       const cap = Math.min(totalFloats, maxCovFloats);
       const buf = this.#ensureStreamScratch(cap);
       gl.enableVertexAttribArray(0);
       gl.enableVertexAttribArray(1);
       gl.enableVertexAttribArray(2);
       let o = 0;
-      for (const slot of batch.slots) {
+      for (const slot of slots) {
         if (slot.op.mode !== mode) continue;
         const dx = slot.atlasX - slot.sheetX;
         const dy = slot.atlasY - slot.sheetY;
@@ -1683,10 +1959,25 @@ export class WebGL2SheetComposer implements SheetComposer {
       gl.disableVertexAttribArray(2);
     };
 
+    const drawCoverage = (mode: 'union' | 'nonzero', totalFloats: number): void => {
+      if (!batch.tiled || singleTile) {
+        drawCoverageChunked(mode, totalFloats, batch.slots, singleTile);
+        return;
+      }
+      // Each tile clips the same document-space mesh to its own atlas slot.
+      // The subsequent cover and color composite can consume all slots at once.
+      gl.enable(gl.SCISSOR_TEST);
+      for (const slot of batch.slots) {
+        scissorTile(slot);
+        drawCoverageChunked(mode, (slot.op.vertices.length / 2) * 5, [slot], slot);
+      }
+      gl.disable(gl.SCISSOR_TEST);
+    };
+
     if (unionFloats > 0) {
       gl.disable(gl.STENCIL_TEST);
       bindCovProgram();
-      drawCoverageChunked('union', unionFloats);
+      drawCoverage('union', unionFloats);
     }
 
     if (nonzeroFloats > 0) {
@@ -1697,7 +1988,7 @@ export class WebGL2SheetComposer implements SheetComposer {
       gl.stencilOpSeparate(gl.FRONT, gl.KEEP, gl.KEEP, gl.INCR_WRAP);
       gl.stencilOpSeparate(gl.BACK, gl.KEEP, gl.KEEP, gl.DECR_WRAP);
       bindCovProgram();
-      drawCoverageChunked('nonzero', nonzeroFloats);
+      drawCoverage('nonzero', nonzeroFloats);
 
       // Cover pass into R8 atlas (chunked within VBO cap: 12 floats = 48 bytes per slot).
       const maxCoverSlots = Math.max(1, Math.floor(maxVboBytes / 48));
@@ -1805,6 +2096,30 @@ export class WebGL2SheetComposer implements SheetComposer {
     if (clipRect) gl.disable(gl.SCISSOR_TEST);
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return tiledCoverage;
+  }
+
+  #drawRetainedCoverage(buffer: WebGLBuffer, vertexCount: number, slots: readonly AtlasSlot<PaintOp>[]): void {
+    const gl = this.#gl;
+    const locs = this.#covLocs!;
+    const data = this.#coverageSlots;
+    let offset = 0;
+    for (const slot of slots) {
+      data[offset++] = slot.atlasX - slot.sheetX;
+      data[offset++] = slot.atlasY - slot.sheetY;
+      data[offset++] = slot.op.matIndex;
+    }
+    gl.uniform1i(locs.uUseRetainedSlots, 1);
+    gl.uniform3fv(locs.uRetainedSlots, data, 0, offset);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+    gl.disableVertexAttribArray(2);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 12, 0);
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 12, 8);
+    gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    gl.disableVertexAttribArray(0);
+    gl.disableVertexAttribArray(1);
   }
 
   /**
@@ -1959,10 +2274,11 @@ export class WebGL2SheetComposer implements SheetComposer {
     dv: number,
     blend: boolean,
     tint: [number, number, number] | null = null,
+    rect?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
   ): void {
     const gl = this.#gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
-    gl.viewport(0, 0, dst.width, dst.height);
+    gl.viewport(rect?.x ?? 0, rect?.y ?? 0, rect?.width ?? dst.width, rect?.height ?? dst.height);
     gl.disable(gl.SCISSOR_TEST);
     gl.disable(gl.STENCIL_TEST);
     if (blend) {

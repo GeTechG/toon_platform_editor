@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Деформация вектора · Туноп</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Деформация вектора</h1>
+        <p id="source">Загружаю рисунок…</p>
+      </header>
+
+      <fieldset id="controls" disabled aria-label="Управление деформацией">
+        <button type="button" id="play" class="play">Воспроизвести</button>
+        <label class="phase">Фаза <input id="phase" type="range" min="0" max="360" value="42"></label>
+        <label>Сетка
+          <select id="density">
+            <option value="4">4 × 3</option>
+            <option value="8" selected>8 × 6</option>
+            <option value="16">16 × 12</option>
+            <option value="32">32 × 24</option>
+          </select>
+        </label>
+        <label id="scope-label">Нагрузка
+          <select id="scope">
+            <option value="all">Все штрихи</option>
+            <option value="250">Первые 250</option>
+          </select>
+        </label>
+        <label class="check"><input id="show-grid" type="checkbox" checked> Показать сетку</label>
+      </fieldset>
+      <p id="notice" role="status" hidden></p>
+
+      <div class="views">
+        <section aria-labelledby="canvas-title">
+          <h2 id="canvas-title">Canvas 2D <span>точки на CPU</span></h2>
+          <div class="art">
+            <canvas id="canvas2d" aria-label="Рисунок со сгибом контура в Canvas 2D"></canvas>
+            <canvas class="grid" aria-hidden="true"></canvas>
+          </div>
+        </section>
+        <section aria-labelledby="webgl-title">
+          <h2 id="webgl-title">WebGL2 <span>вершины на GPU</span></h2>
+          <div class="art">
+            <canvas id="webgl2" aria-label="Тот же рисунок со сгибом контура в WebGL2"></canvas>
+            <canvas class="grid" aria-hidden="true"></canvas>
+          </div>
+        </section>
+      </div>
+
+      <section class="measure" aria-labelledby="timing-title">
+        <div class="measure-head">
+          <div>
+            <h2 id="timing-title">Сравнение скорости</h2>
+            <p id="workload"></p>
+          </div>
+          <button type="button" id="measure" class="primary" disabled>Сравнить</button>
+        </div>
+        <p id="run-status" role="status">Замер запускает рендереры по очереди.</p>
+        <table>
+          <thead><tr><th scope="col">Метрика</th><th scope="col">Canvas 2D</th><th scope="col">WebGL2</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Работа JS, p95</th><td id="cpu-2d">—</td><td id="cpu-gl">—</td></tr>
+            <tr><th scope="row">Кадров/с</th><td id="fps-2d">—</td><td id="fps-gl">—</td></tr>
+            <tr><th scope="row">Длинных интервалов</th><td id="late-2d">—</td><td id="late-gl">—</td></tr>
+          </tbody>
+        </table>
+        <p class="explain">p95 показывает, сколько времени занимал вызов рендера в 95% кадров. Кадры/с и длинные интервалы считаются по <code>requestAnimationFrame</code>.</p>
+        <p id="renderer" class="explain"></p>
+      </section>
+
+      <div class="file">
+        <label for="file">Сравнить свой кадр</label>
+        <input id="file" type="file" accept=".toonop,.json">
+        <label id="frame-label" hidden>Кадр <input id="frame" type="number" min="1" value="1"></label>
+      </div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

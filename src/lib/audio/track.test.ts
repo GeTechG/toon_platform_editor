@@ -18,7 +18,6 @@ import {
   waveformBars,
   waveformPeaks,
   publishProblem,
-  PUBLISH_AUDIO_MAX_BYTES,
 } from './track';
 
 /** Mono signal: `n` samples, amplitude from `amp(i)`. */

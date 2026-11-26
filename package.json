@@ -46,7 +46,7 @@
     "preview": "bunx --bun vite preview",
     "test": "bun test src examples",
     "test:watch": "bun test --watch src",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-check --tsconfig ./tsconfig.json --config ./svelte.config.js",
     "schema": "bun run scripts/build-schema-validator.ts",
     "verify:webgl2": "node scripts/verify-webgl2.mjs"
   },

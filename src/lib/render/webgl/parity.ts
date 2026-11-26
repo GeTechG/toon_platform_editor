@@ -657,7 +657,45 @@ export function runWebGL2ParitySuite(): ParityReport {
     freshComposer.dispose();
   }
 
-  // 14. Context loss mid-session returns false cleanly and poisons composer
+  // Playback uses the same stroke shape before, during and after a held drawing.
+  {
+    const w = 1040, h = 800;
+    canvas.width = w;
+    canvas.height = h;
+    const tools: ToolDescriptor[] = [{ kind: 'pencil', geometry: 'cubic', width: 32, color: '#000000' }];
+    for (const total of [2, 120]) {
+      const doc: ToonDocument = {
+        schema_version: 8, width: w * 8, height: h * 8, frame_rate: 12, tools,
+        layers: [{ hidden: false, frames: [
+          { strokes: [{ tool_id: 0, points: [80, 80, 80, 8080, 8080, 8080, 8080, 80], pressure: [100, 100, 100, 100] }] },
+          ...Array<null>(total - 1).fill(null),
+        ] }],
+      };
+      const scene: FrameScene = { doc, frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools, paper: BACKGROUND_COLOR };
+      const playbackKey = { doc, key: 0, total };
+      const ref = renderCanvas2D(w, h, scene);
+      const snapshots = [undefined, playbackKey, playbackKey, undefined].map((key, index) => {
+        if (index === 3) composer.clearPlayback();
+        if (index !== 2) composer.invalidate();
+        const ok = composer.composeAndPresent(w, h, { ...scene, frame: index === 2 ? 1 : 0 }, makePresent(w, h), key);
+        const pixels = readWebGLCanvas(gl, w, h);
+        const cmp = compareInteriorAndEdges(ref, pixels, w, h, 2);
+        return { ok, cmp, pixels };
+      });
+      const [before, playing, held, after] = snapshots;
+      const stable = before.pixels.every((channel, at) => channel === after.pixels[at])
+        && playing.pixels.every((channel, at) => channel === held.pixels[at]);
+      const pass = stable && snapshots.every(({ ok, cmp }) => ok && cmp.missedInk === 0 && cmp.interiorMismatches === 0);
+      results.push({
+        name: `pressure-stroke-while-playing-${total === 2 ? 'whole-still' : 'cropped-cell'}`,
+        pass,
+        detail: `stable=${stable} ${JSON.stringify(snapshots.map(({ ok, cmp }) => ({ ok, ...cmp })))}`,
+      });
+      composer.clearPlayback();
+    }
+  }
+
+  // Context loss mid-session returns false cleanly and poisons composer.
   {
     const loseExt = gl.getExtension('WEBGL_lose_context');
     if (loseExt) {

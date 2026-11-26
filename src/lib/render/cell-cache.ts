@@ -15,11 +15,12 @@
  */
 
 import type { Frame, Stroke, ToolDescriptor } from '../format/types';
+import type { PlacedStroke } from './canvas2d';
 import type { Viewport } from './contract';
 import type { ComposeBuffer } from './frame-compose';
 
-/** What a cell is drawn from, stroke by stroke: points, tool, pressure. */
-export type Ink = readonly (readonly [readonly number[], ToolDescriptor | undefined, readonly number[] | undefined])[];
+/** What a cell is drawn from, stroke by stroke: points, tool, pressure and optional placement. */
+export type Ink = readonly (readonly [readonly number[], ToolDescriptor | undefined, readonly number[] | undefined, (readonly number[])?])[];
 
 /** A cell's pixels: a buffer rasterized here, or a bitmap handed in (a worker's). */
 export interface CellPixels {
@@ -77,32 +78,33 @@ function sameNumbers(a: readonly number[] | undefined, b: readonly number[] | un
   return true;
 }
 
-function sameInk(a: Ink, b: Ink): boolean {
+export function sameInk(a: Ink, b: Ink): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    const [pa, ta, ra] = a[i];
-    const [pb, tb, rb] = b[i];
-    if (!sameNumbers(pa, pb) || !sameNumbers(ra, rb) || toolKey(ta) !== toolKey(tb)) return false;
+    const [pa, ta, ra, ma] = a[i];
+    const [pb, tb, rb, mb] = b[i];
+    if (!sameNumbers(pa, pb) || !sameNumbers(ra, rb) || !sameNumbers(ma, mb) || toolKey(ta) !== toolKey(tb)) return false;
   }
   return true;
 }
 
 /** Where a cell's pixels are kept, and what it is drawn from. */
-function keyOf(
+export function identifyCellInk(
   cell: Frame,
   tools: readonly ToolDescriptor[],
   viewport: Viewport,
   width: number,
   height: number,
 ): { key: string; ink: Ink } {
-  return keyOfInk(cell.strokes.map((s: Stroke) => [s.points, tools[s.tool_id], s.pressure] as const), viewport, width, height);
+  return keyOfInk(cell.strokes.map((s: Stroke) => [s.points, tools[s.tool_id], s.pressure, (s as PlacedStroke).place] as const), viewport, width, height);
 }
 
 function keyOfInk(ink: Ink, viewport: Viewport, width: number, height: number): { key: string; ink: Ink } {
   let h1 = 0x811c9dc5;
   let h2 = 0x9e3779b9;
-  for (const [points, tool, pressure] of ink) {
-    const part = arrayHash(points) ^ Math.imul(stringHash(toolKey(tool)), 31) ^ (pressure ? arrayHash(pressure) : 0x5bd1e995);
+  for (const [points, tool, pressure, place] of ink) {
+    const part = arrayHash(points) ^ Math.imul(stringHash(toolKey(tool)), 31)
+      ^ (pressure ? arrayHash(pressure) : 0x5bd1e995) ^ (place ? Math.imul(arrayHash(place), 17) : 0);
     h1 = Math.imul(h1 ^ part, 0x01000193);
     h2 = Math.imul(h2 + part, 0x85ebca6b) ^ (h2 >>> 13);
   }
@@ -140,7 +142,7 @@ export class CellCache {
     if (bytes > this.#budget) {
       return null;
     }
-    const { key, ink } = keyOf(cell, tools, viewport, width, height);
+    const { key, ink } = identifyCellInk(cell, tools, viewport, width, height);
     const kept = this.#find(key, ink);
     if (kept) {
       return kept;
@@ -168,7 +170,7 @@ export class CellCache {
     free: () => void,
   ): boolean {
     const bytes = width * height * 4;
-    const { key, ink } = keyOf(cell, tools, viewport, width, height);
+    const { key, ink } = identifyCellInk(cell, tools, viewport, width, height);
     if (bytes > this.#budget || this.#find(key, ink)) {
       free();
       return false;
@@ -198,7 +200,7 @@ export class CellCache {
 
   /** Whether the cell's pixels are kept, without rasterizing it or touching the order. */
   has(cell: Frame, tools: readonly ToolDescriptor[], viewport: Viewport, width: number, height: number): boolean {
-    const { key, ink } = keyOf(cell, tools, viewport, width, height);
+    const { key, ink } = identifyCellInk(cell, tools, viewport, width, height);
     const kept = this.#entries.get(key);
     return kept !== undefined && sameInk(kept.ink, ink);
   }
@@ -212,7 +214,7 @@ export class CellCache {
     if (cell.strokes.length === 0) {
       return null;
     }
-    const { key, ink } = keyOf(cell, tools, { scale: 0, dpr: 0 }, 0, 0);
+    const { key, ink } = identifyCellInk(cell, tools, { scale: 0, dpr: 0 }, 0, 0);
     const strokes = key.slice(key.indexOf('|'));
     for (const [kept, entry] of this.#entries) {
       if (kept.endsWith(strokes) && sameInk(entry.ink, ink)) {
