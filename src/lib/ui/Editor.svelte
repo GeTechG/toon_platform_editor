@@ -45,6 +45,7 @@
   import {
     deleteAllDrafts,
     deleteDraft,
+    deleteDraftIfVersion,
     duplicateDraft,
     exportDrafts,
     importDrafts,
@@ -73,7 +74,7 @@
   import { rowHeight, rowOver } from './thumb-size';
   import { boxRow, canvasFloor, foldColumn, oneRowTop, panelByLayers, phoneLayout, phoneTools, pickStep, railLiesFor, rowKeySize, sheetScrollsWhole, toolRoom, yieldToCanvas, type LayoutStep, type TopCut } from './small-screen';
   import { pickerAccept } from './file-accept';
-  import type { DraftCard } from '../draft/store';
+  import type { DraftAudio, DraftCard, DraftState, DraftVersion, DraftWrite } from '../draft/store';
   import type { ToonDocument } from '../format/types';
   import { dateLocale, t } from '../i18n';
   import { budgetLabel } from './format-limit';
@@ -108,9 +109,9 @@
   }: {
     onPublish?: (
       doc: ToonDocument,
-      audio?: AudioTrackData | null,
-      sent?: () => Promise<void>,
-      saveLocal?: () => Promise<boolean>,
+      audio: AudioTrackData | null,
+      sent: () => Promise<void>,
+      saveLocal: () => Promise<boolean>,
     ) => void;
     stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;
     /** The host's mascot, a picture's address: it greets a first visit on the tour's first page. */
@@ -1355,6 +1356,35 @@
    * and the move went with the studio unwritten.
    */
   let writtenDoc: ToonDocument | null = null;
+  type LocalDraft = { id: string; version?: DraftVersion; audioUnavailable?: true; audioWritePending?: true };
+  let localDraft: LocalDraft = { id: untrack(() => draftId) };
+  let localWrites: Promise<unknown> = Promise.resolve();
+
+  function currentLocalDraft(): LocalDraft {
+    if (localDraft.id !== draftId) localDraft = { id: draftId };
+    return localDraft;
+  }
+
+  // Keep this tab's updates and their committed versions in order. The
+  // IndexedDB comparison still arbitrates writes from other tabs.
+  function queueLocalWrite<T>(write: () => Promise<T> | T): Promise<T> {
+    const result = localWrites.then(write);
+    localWrites = result.catch(() => {});
+    return result;
+  }
+
+  async function forkLocalDraft(draft: LocalDraft, doc: ToonDocument, session: DraftState, track: DraftAudio | null): Promise<DraftWrite> {
+    const fork = newDraftId();
+    const saved = await saveDraft(fork, doc, session, track, { forPublication: true, expectedVersion: null });
+    if (saved.ok && saved.version) {
+      if (draft === localDraft && draftId === draft.id) draftId = fork;
+      draft.id = fork;
+      draft.version = saved.version;
+      draft.audioUnavailable = undefined;
+      draft.audioWritePending = undefined;
+    }
+    return saved;
+  }
   /** The layer tags that write took: they ride the record, not the document. */
   let writtenTags = '';
 
@@ -1419,9 +1449,10 @@
    * again: the user may have freed the room in the drafts list since.
    */
   function saveNow(byHand = false, leaving = false, shown?: ToonDocument, forPublication = false): Promise<boolean> {
+    const draft = currentLocalDraft();
     // `shown` is an edit by itself: a move on a draft just opened and not
     // touched since went unwritten into the background.
-    if (!editor.touched && !shown) {
+    if (!editor.touched && !shown && !draft.audioWritePending) {
       return Promise.resolve(true);
     }
     // Leaving is the last chance, failure or not: the list may have been
@@ -1437,17 +1468,33 @@
     // Automatic saves fill a missing track. Publication keeps the exact audio.
     const { blob, name, author, sync } = editor.audio;
     const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
-    const id = draftId;
     queued = false;
     dirty = false;
     writtenDoc = doc;
     writtenTags = editor.layerColors.join();
     writing++;
-    const write = saveDraft(id, doc, editor.sessionState(), track, { forPublication }).catch((error: unknown) => {
+    const session = editor.sessionState();
+    const write = queueLocalWrite(async () => {
+      const id = draft.id;
+      const result = await saveDraft(id, doc, session, track, {
+        forPublication: forPublication && !draft.audioUnavailable,
+        replaceAudio: draft.audioWritePending || (forPublication && !draft.audioUnavailable),
+        expectedVersion: draft.version ?? null,
+      });
+      if (result.conflict) return forkLocalDraft(draft, doc, session, track);
+      if (result.version) {
+        draft.version = result.version;
+        if (draft.audioWritePending) {
+          draft.audioWritePending = undefined;
+          draft.audioUnavailable = undefined;
+        }
+      }
+      return result;
+    }).catch((error: unknown): DraftWrite => {
       console.warn('draft save failed:', error);
       return { ok: false, bytes: 0 };
     });
-    return write.finally(() => writing--).then(({ ok, bytes }) => {
+    return write.finally(() => writing--).then(({ ok, bytes, version }) => {
       if (ok && bytes === 0) {
         // No storage at all (blocked by the browser): the store degrades
         // quietly, but «сохранено» would be a lie, and a clean `dirty` would
@@ -1462,8 +1509,8 @@
         saveFailed = false;
         // Storage that was away for a moment (an upgrade in another tab) is back.
         storageBlocked = false;
-        if (!destroyed && !forPublication) {
-          writeScreenshot(doc, id, leaving);
+        if (!destroyed && !forPublication && version) {
+          writeScreenshot(doc, draft.id, leaving, version);
         }
         askPersistOnce();
         return true;
@@ -1512,9 +1559,9 @@
    * Card thumbnails are coalesced per draft ID so saving one draft never drops
    * another's pending preview, paused while hidden, and resumed once visible.
    */
-  const screenshots = createScreenshotQueue<ToonDocument>({
-    render: renderScreenshot,
-    save: (id, blob) => setDraftScreenshot(id, blob),
+  const screenshots = createScreenshotQueue<{ doc: ToonDocument; version: DraftVersion }>({
+    render: ({ doc }) => renderScreenshot(doc),
+    save: (id, blob, { version }) => setDraftScreenshot(id, blob, version),
     isHidden: () => destroyed || document.hidden,
     scheduleIdle: (run) => {
       if (typeof globalThis.requestIdleCallback === 'function') {
@@ -1541,8 +1588,8 @@
    * The card's thumbnail: rendered once per write, when the CPU is free.
    * Drawing it inline would cost a frame of the stroke that triggered it.
    */
-  function writeScreenshot(doc: ToonDocument, id = draftId, defer = false): void {
-    screenshots.enqueue(id, doc, defer);
+  function writeScreenshot(doc: ToonDocument, id: string, defer: boolean, version: DraftVersion): void {
+    screenshots.enqueue(id, { doc, version }, defer);
   }
 
   /**
@@ -1585,17 +1632,24 @@
     const { name, author, sync } = untrack(() => editor.audio);
     storedBlob = blob;
     storedCredits = `${name}\u0000${author}\u0000${sync}`;
-    void setDraftAudio(
-      // Not heard: a draft opened (its id) while its own track was still
-      // being read re-ran this with the last draft's track in hand, and that
-      // one went into the opened record.
-      untrack(() => draftId),
-      blob ? { blob, name, author, sync, bytes: blob.size } : null,
-    ).then((ok) => {
-      if (!ok && blob) {
-        // The record still has no track, so the save by hand carries it.
-        saveFailedNow();
+    // Read the session outside effect tracking so an opening draft never
+    // receives the previously open draft's soundtrack.
+    const { draft, doc, session } = untrack(() => ({
+      draft: currentLocalDraft(), doc: editor.doc, session: editor.sessionState(),
+    }));
+    const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
+    void queueLocalWrite(async () => {
+      draft.audioWritePending = true;
+      const result = await setDraftAudio(draft.id, track, draft.version ?? null);
+      if (result.conflict) return (await forkLocalDraft(draft, doc, session, track)).ok;
+      if (result.version) {
+        draft.version = result.version;
+        draft.audioUnavailable = undefined;
+        draft.audioWritePending = undefined;
       }
+      return result.ok;
+    }).then((ok) => {
+      if (!ok) saveFailedNow();
     });
   });
 
@@ -1610,7 +1664,20 @@
       return;
     }
     storedCredits = credits;
-    void setDraftCredits(draftId, name, author, sync);
+    const { draft, doc, session, blob } = untrack(() => ({
+      draft: currentLocalDraft(), doc: editor.doc, session: editor.sessionState(), blob: editor.audio.blob,
+    }));
+    const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
+    void queueLocalWrite(async () => {
+      if (draft.audioWritePending) return true;
+      const result = await setDraftCredits(draft.id, name, author, sync, draft.version ?? null);
+      if (result.conflict) return (await forkLocalDraft(draft, doc, session, track)).ok;
+      if (result.version) draft.version = result.version;
+      if (!result.ok) draft.audioWritePending = true;
+      return result.ok;
+    }).then((ok) => {
+      if (!ok) saveFailedNow();
+    });
   });
 
   // Autosave on the reference's clock (AutoSave, every 60 s by default). A
@@ -1926,6 +1993,7 @@
     }
     draftId = entry.id;
     editor.lastSavedAt = null;
+    localDraft = { id: entry.id, version: draft.version, audioUnavailable: draft.audioUnavailable };
     // close(), not the flag: an unmounted open dialog drops focus on <body>.
     hub?.close();
   }
@@ -1990,12 +2058,19 @@
   }
 
   /** The drawing and its track have moved to the account's drafts. */
-  async function forgetSent(): Promise<void> {
-    await deleteDraft(draftId);
-    draftId = newDraftId();
-    editor.lastSavedAt = null;
-    editor.touched = false;
-    dirty = false;
+  async function forgetSent(submitted: Promise<LocalDraft>, stillCurrent: () => boolean): Promise<void> {
+    const { id, version, audioUnavailable } = await submitted;
+    await queueLocalWrite(async () => {
+      if (!stillCurrent() || audioUnavailable || currentLocalDraft().audioUnavailable) return;
+      if (version) await deleteDraftIfVersion(id, version);
+      if (!stillCurrent()) return;
+      // A different version on disk may belong to another tab. Detach this
+      // submitted drawing so its final autosave cannot overwrite that draft.
+      draftId = newDraftId();
+      editor.lastSavedAt = null;
+      editor.touched = false;
+      dirty = false;
+    });
   }
 
   /** «Отправить мульт»: the key's work, and the export sheet's way on. */
@@ -2009,18 +2084,19 @@
       void tell(t('editor.publish_over_budget', { percent: budgetLabel(editor.budgetShare).text }));
       return;
     }
+    const draft = currentLocalDraft();
+    const submitted = queueLocalWrite(() => ({ ...draft }));
+    const doc = editor.doc;
+    const audio = editor.audio.blob
+      ? { blob: editor.audio.blob, name: editor.audio.name, author: editor.audio.author, sync: editor.audio.sync }
+      : null;
+    const stillCurrent = () => currentLocalDraft() === draft && editor.doc === doc && editor.audio.blob === (audio?.blob ?? null)
+      && (!audio || (editor.audio.name === audio.name && editor.audio.author === audio.author && editor.audio.sync === audio.sync));
     onPublish?.(
-      $state.snapshot(editor.doc),
-      editor.audio.blob
-        ? {
-            blob: editor.audio.blob,
-            name: editor.audio.name,
-            author: editor.audio.author,
-            sync: editor.audio.sync,
-          }
-        : null,
-      forgetSent,
-      savePublishedDraft,
+      $state.snapshot(doc),
+      audio,
+      () => forgetSent(submitted, stillCurrent),
+      () => stillCurrent() ? savePublishedDraft() : Promise.resolve(false),
     );
   }
 

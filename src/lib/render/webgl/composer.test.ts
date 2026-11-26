@@ -445,6 +445,30 @@ describe('WebGL2SheetComposer lifecycle, batching, OOM, pipette, and disposal', 
     composer.dispose();
   });
 
+  it('clears the last interpolated cell when undoing a wide off-grid stamp', () => {
+    const mock = createRecordingWebGL2();
+    const composer = new WebGL2SheetComposer(mock.gl, {
+      formats: { color: 'R8', stencil: 'STENCIL_INDEX8' },
+      budgetBytes: 64 * 1024 * 1024,
+    });
+    const tools: ToolDescriptor[] = [
+      { kind: 'pencil', geometry: 'line', width: 40, color: '#112233' },
+      { kind: 'stamp', geometry: 'line', width: 160, color: '#000000', shape: [0, 0, 1, 0, 1, 1, 0, 1] },
+    ];
+    const keep = { points: [80, 80, 320, 80], tool_id: 0 };
+    const stamp = { points: [800, 400, 816, 400], tool_id: 1 };
+    const scene = { frame: 0, activeLayer: 0, viewport: { scale: 1 / 8, dpr: 1 }, tools, paper: '#ffffff' };
+    expect(composer.composeAndPresent(1280, 720, { ...scene, doc: simpleDoc(tools, [keep, stamp]) }, PRESENT)).toBe(true);
+    mock.calls.length = 0;
+    composer.invalidate();
+    expect(composer.composeAndPresent(1280, 720, { ...scene, doc: simpleDoc(tools, [keep]) }, PRESENT)).toBe(true);
+    const clear = mock.calls.find((call, i) => call.startsWith('scissor:') && mock.calls.slice(i, i + 5).includes('clear:16384'));
+    expect(clear).toBeDefined();
+    const [left, , width] = clear!.slice('scissor:'.length).split(',').map(Number);
+    // The second square starts at document x=960 and ends at x=1120 (140 px).
+    expect(left + width).toBeGreaterThanOrEqual(140);
+  });
+
   it('handles ghost cells containing both eraser and flat coat without target aliasing and disposes cleanly', () => {
     const mock = createRecordingWebGL2();
     const composer = new WebGL2SheetComposer(mock.gl, {

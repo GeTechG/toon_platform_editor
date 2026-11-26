@@ -8,6 +8,9 @@
  * line of plugin code anywhere near it.
  */
 
+/** Bounds padding covers interpolation past off-grid endpoints and the stamp polygon. */
+export const STAMP_BOUNDS_WIDTHS = 3;
+
 /**
  * Snaps one coordinate onto the cell grid: the reference's `w * ~~(v / w)`.
  * `| 0` and not `Math.trunc`, so a value inside the first negative cell gives

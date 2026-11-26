@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test';
 import {
   deleteAllDrafts,
   deleteDraft,
+  deleteDraftIfVersion,
   duplicateDraft,
   exportDrafts,
   importDrafts,
@@ -64,6 +65,91 @@ describe('draft store', () => {
     await saveDraft('b', doc(2));
     await deleteDraft('a');
     expect((await listDrafts()).map((d) => d.id)).toEqual(['b']);
+  });
+
+  it('only removes the submitted draft version, even if the next save shares its timestamp', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const now = Date.now;
+    Date.now = () => 42;
+    try {
+      const initial = await saveDraft('a', doc(12));
+      expect(initial.version).toBeDefined();
+      await saveDraft('a', doc(24));
+      expect(await deleteDraftIfVersion('a', initial.version!)).toBe(false);
+      const newer = await readDraft('a');
+      expect(newer?.doc).toEqual(doc(24));
+      expect(await deleteDraftIfVersion('a', newer!.version!)).toBe(true);
+      expect(await readDraft('a')).toBeNull();
+    } finally {
+      Date.now = now;
+    }
+  });
+
+  it('keeps a draft whose soundtrack changed after submission', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const original = await saveDraft('a', doc(12), undefined, { blob: new Blob(['original']), name: 'song', author: 'me' });
+    await setDraftCredits('a', 'new title', 'me', true);
+    expect(await deleteDraftIfVersion('a', original.version!)).toBe(false);
+    expect((await readDraft('a'))?.audio?.name).toBe('new title');
+  });
+
+  it('returns the committed versions of track and credit changes', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const first = await saveDraft('a', doc(12));
+    const attached = await setDraftAudio('a', { blob: new Blob(['track']), name: 'song', author: 'me' }, first.version!);
+    expect(attached.version).toBeDefined();
+    const credited = await setDraftCredits('a', 'edited', 'me', false, attached.version!);
+    expect(credited.version).toBeDefined();
+    expect(await deleteDraftIfVersion('a', credited.version!)).toBe(true);
+  });
+
+  it('reports a temporarily unreadable soundtrack and keeps the recoverable draft', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    await saveDraft('a', doc(12), undefined, { blob: new Blob(['track']), name: 'song', author: 'me' });
+    const media = stores.get('draft-audio')!;
+    const [key, value] = [...media][0];
+    media.delete(key);
+    const incomplete = await readDraft('a');
+    expect(incomplete).toMatchObject({ audioUnavailable: true, doc: doc(12) });
+    expect(incomplete?.audio).toBeUndefined();
+    media.set(key, value);
+    expect(await deleteDraftIfVersion('a', incomplete!.version!)).toBe(false);
+    expect((await readDraft('a'))?.audio?.name).toBe('song');
+  });
+
+  it('reports a newer document before writing an older autosave or track', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const first = await saveDraft('a', doc(12));
+    await saveDraft('a', doc(24));
+    const write = await saveDraft('a', doc(12), undefined, null, { expectedVersion: first.version! });
+    expect(write).toMatchObject({ ok: false, conflict: true });
+    const track = await setDraftAudio('a', { blob: new Blob(['track']), name: 'song', author: 'me' }, first.version!);
+    expect(track).toMatchObject({ ok: false, conflict: true });
+    expect((await readDraft('a'))?.doc).toEqual(doc(24));
+    expect((await readDraft('a'))?.audio).toBeUndefined();
+  });
+
+  it('keeps a same-millisecond edit from an older tab that copied the version metadata', async () => {
+    const stores: Stores = new Map();
+    setIndexedDB(fakeIndexedDB(stores));
+    const original = await saveDraft('a', doc(12));
+    const drafts = stores.get('drafts')!;
+    const saved = drafts.get('a') as Record<string, unknown>;
+    drafts.set('a', { ...saved, packed: new TextEncoder().encode(JSON.stringify(packDocument(doc(24)))) });
+    expect(await deleteDraftIfVersion('a', original.version!)).toBe(false);
+    expect((await readDraft('a'))?.doc).toEqual(doc(24));
+  });
+
+  it('preserves a newer stored draft if publication tries to save the earlier version', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const original = await saveDraft('a', doc(12));
+    await saveDraft('a', doc(24));
+    const result = await saveDraft('a', doc(12), undefined, null, {
+      forPublication: true, expectedVersion: original.version!,
+    });
+    expect(result).toMatchObject({ ok: false, conflict: true });
+    expect((await readDraft('a'))?.doc).toEqual(doc(24));
   });
 
   it('is empty when nothing was saved', async () => {
@@ -131,6 +217,14 @@ describe('draft store', () => {
       console.warn = original;
     }
     expect(warn).toHaveBeenCalledTimes(3);
+  });
+
+  it('allows discarding an unsavable drawing, but requires a write for publication', async () => {
+    const expectedVersion = null;
+    await expect(saveDraft('a', doc(12), undefined, null, { expectedVersion })).resolves.toEqual({ ok: true, bytes: 0 });
+    const track = { blob: new Blob(['sound']), name: 'Track', author: '' };
+    await expect(saveDraft('a', doc(12), undefined, track, { expectedVersion, replaceAudio: true })).resolves.toEqual({ ok: true, bytes: 0 });
+    await expect(saveDraft('a', doc(12), undefined, null, { expectedVersion, forPublication: true })).resolves.toEqual({ ok: false, bytes: 0 });
   });
 });
 
@@ -327,6 +421,42 @@ describe('local draft for a publication', () => {
     await setDraftAudio('a', { blob: new Blob(['old']), name: 'Track', author: '' });
 
     expect((await saveDraft('a', doc(24), undefined, null, forPublication)).ok).toBe(true);
+    expect((await readDraft('a'))?.audio).toBeUndefined();
+  });
+
+  it('retries a failed soundtrack removal with a version-checked drawing save', async () => {
+    const stores: Stores = new Map();
+    const storage = fakeIndexedDB(stores) as { open(): FakeReq };
+    setIndexedDB(storage);
+    await saveDraft('a', doc(12));
+    const { version } = await setDraftAudio('a', { blob: new Blob(['sound']), name: 'Track', author: '' });
+    expect(version).toBeDefined();
+    setIndexedDB({
+      open() {
+        const request = storage.open();
+        const db = request.result as IDBDatabase;
+        const transaction = db.transaction.bind(db);
+        db.transaction = (names, mode) => {
+          const tx = transaction(names, mode);
+          const objectStore = tx.objectStore.bind(tx);
+          tx.objectStore = (name) => {
+            const store = objectStore(name);
+            if (mode === 'readwrite') {
+              store.put = () => { throw new DOMException('full', 'QuotaExceededError'); };
+            }
+            return store;
+          };
+          return tx;
+        };
+        return request;
+      },
+    });
+    expect(await setDraftAudio('a', null, version)).toEqual({ ok: false });
+    expect((await readDraft('a'))?.audio?.name).toBe('Track');
+
+    setIndexedDB(storage);
+    const options = { expectedVersion: version, replaceAudio: true };
+    expect((await saveDraft('a', doc(24), undefined, null, options)).ok).toBe(true);
     expect((await readDraft('a'))?.audio).toBeUndefined();
   });
 });

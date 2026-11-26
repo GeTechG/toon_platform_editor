@@ -14,7 +14,8 @@ describe('трек пишется в запись своего черновик�
   it('смена черновика сама трек не пишет: пока трек открытого читался, в его запись уходил трек прежнего', () => {
     // Эффект слышал draftId; открыт черновик с треком — в руке ещё прежний
     // трек (чтение асинхронное), и он писался в новую запись.
-    expect(editorUi).toMatch(/void setDraftAudio\(\s*(?:\/\/.*\s*)*untrack\(\(\) => draftId\),/);
+    expect(editorUi).toMatch(/untrack\(\(\) => \(\{\s*draft: currentLocalDraft\(\), doc: editor\.doc, session: editor\.sessionState\(\),\s*\}\)\);/);
+    expect(editorUi).toContain('setDraftAudio(draft.id, track, draft.version ?? null)');
     expect(editorUi).not.toMatch(/setDraftAudio\(\s*draftId,/);
   });
 });

@@ -153,6 +153,8 @@ interface MediaAudioRecord {
 
 /** Record as kept in IndexedDB (`drafts`) and in `known`. */
 interface StoredDraftRecord extends Omit<DraftRecord, 'audio' | 'screenshot'> {
+  /** Changes with the drawing, track or session state, rather than its thumbnail. */
+  editId?: string;
   /** Legacy audio (pre-media-store); never written by new saves so older tabs never dereference `audio.blob.size`. */
   audio?: DraftAudio;
   /** Lightweight metadata for audio stored in `toon-editor-media` (`draft-audio`). */
@@ -161,6 +163,38 @@ interface StoredDraftRecord extends Omit<DraftRecord, 'audio' | 'screenshot'> {
   screenshot?: Blob;
   /** Screenshot bytes kept as raw Uint8Array (avoids WebKit Blob `UnknownError`). */
   screenshotData?: StoredBytes;
+}
+
+export interface DraftVersion {
+  editId?: string;
+  updated: number;
+  packed: Uint8Array;
+  state: string | undefined;
+  audio: string | undefined;
+  audioUnavailable?: true;
+}
+
+function versionOf(record: StoredDraftRecord): DraftVersion | undefined {
+  if (!record.packed || record.audio) return undefined;
+  return {
+    editId: record.editId,
+    updated: record.updated,
+    packed: record.packed,
+    state: JSON.stringify(record.state),
+    audio: JSON.stringify(record.audioMeta),
+  };
+}
+
+function hasVersion(record: StoredDraftRecord | undefined, version: DraftVersion | null): boolean {
+  if (!version) return record === undefined;
+  if (!record || record.editId !== version.editId || record.updated !== version.updated || record.audio) return false;
+  // Older tabs may copy an unfamiliar editId and save in the same millisecond.
+  const packed = record.packed;
+  if (!packed || packed.length !== version.packed.length) return false;
+  for (let i = 0; i < packed.length; i++) {
+    if (packed[i] !== version.packed[i]) return false;
+  }
+  return JSON.stringify(record.state) === version.state && JSON.stringify(record.audioMeta) === version.audio;
 }
 
 async function toStoredBytes(blob: Blob): Promise<StoredBytes> {
@@ -750,7 +784,7 @@ export async function listDraftCards(): Promise<DraftCard[]> {
             return null;
           }
           return found ? { ...previous, summary: found } : { ...previous, broken: true };
-        }),
+        }, undefined, true),
       );
       if (!found) {
         continue;
@@ -782,7 +816,13 @@ export async function listDraftCards(): Promise<DraftCard[]> {
  * input is — once, when it is opened. Null for a draft that is gone or does
  * not read.
  */
-export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?: DraftState; audio?: DraftAudio } | null> {
+export async function readDraft(id: string): Promise<{
+  doc: ToonDocument;
+  state?: DraftState;
+  audio?: DraftAudio;
+  audioUnavailable?: true;
+  version?: DraftVersion;
+} | null> {
   const record = await rawRecord(id);
   if (!record) {
     return null;
@@ -796,7 +836,16 @@ export async function readDraft(id: string): Promise<{ doc: ToonDocument; state?
     return null;
   }
   const audio = await loadRecordAudio(record);
-  return { doc, ...(state ? { state } : {}), ...(audio ? { audio } : {}) };
+  const audioUnavailable = Boolean(record.audioMeta && !audio);
+  const version = versionOf(record);
+  if (version && audioUnavailable) version.audioUnavailable = true;
+  return {
+    doc,
+    ...(state ? { state } : {}),
+    ...(audio ? { audio } : {}),
+    ...(audioUnavailable ? { audioUnavailable: true } : {}),
+    ...(version ? { version } : {}),
+  };
 }
 
 /**
@@ -974,9 +1023,10 @@ async function updateDraft(
   what: DraftOperation,
   mutate: (previous: StoredDraftRecord | undefined) => StoredDraftRecord | null,
   /** What the record turned out to weigh — the write already knows. */
-  wrote?: (bytes: number) => void,
+  wrote?: (bytes: number, version?: DraftVersion) => void,
   /** Replacing media requires its current key, even before the other tab's notice arrives. */
   readFresh = false,
+  unavailable?: () => void,
 ): Promise<boolean> {
   let stage: DraftFailureStage = 'transaction';
   let retried = false;
@@ -1022,6 +1072,9 @@ async function updateDraft(
               const next = mutate(previous);
               if (!next) {
                 return false; // nothing to write; the transaction completes on its own
+              }
+              if (what !== 'draft screenshot save' && what !== 'draft card') {
+                next.editId = newDraftId();
               }
               stage = 'put';
               // A record from before the bytes, or a new document: it goes in as bytes.
@@ -1149,6 +1202,7 @@ async function updateDraft(
       try {
         const openedStorage = await runAttempt(attempt > 0);
         if (!openedStorage) {
+          unavailable?.();
           return true;
         }
         break;
@@ -1169,8 +1223,8 @@ async function updateDraft(
     } else if (read) {
       known.set(id, read);
     }
-    if (bytes !== undefined) {
-      wrote?.(bytes);
+    if (bytes !== undefined && written) {
+      wrote?.(bytes, versionOf(written));
     }
     return true;
   } catch (err) {
@@ -1185,8 +1239,13 @@ async function updateDraft(
 }
 
 /** What one draft write did: whether it landed, and what the record weighs. */
-export interface DraftWrite {
+export interface DraftEdit {
   ok: boolean;
+  version?: DraftVersion;
+  conflict?: true;
+}
+
+export interface DraftWrite extends DraftEdit {
   /** Size of the record as written; 0 when nothing was written. */
   bytes: number;
 }
@@ -1207,22 +1266,29 @@ export async function saveDraft(
   state?: DraftState,
   /** By default this fills in a track attached before the record existed. */
   audio?: DraftAudio | null,
-  /** Write the exact soundtrack and invalidate the thumbnail in the same draft update. */
-  { forPublication = false }: { forPublication?: boolean } = {},
+  /** Publication also invalidates the thumbnail and requires a committed record. */
+  { forPublication = false, replaceAudio = forPublication, expectedVersion }: {
+    forPublication?: boolean;
+    replaceAudio?: boolean;
+    expectedVersion?: DraftVersion | null;
+  } = {},
 ): Promise<DraftWrite> {
   let bytes = 0;
+  let version: DraftVersion | undefined;
+  let conflict = false;
   const ok = await queueWrite(async () => {
     let stagedAudio: StoredAudioMeta | undefined;
     let stagedKey: string | undefined;
     let attachedStaged = false;
+    let audioFailed = false;
     const activeFactory = typeof indexedDB === 'undefined' ? undefined : indexedDB;
     const cached = shared && shared.factory === activeFactory ? known.get(id) : undefined;
-    const savedKey = forPublication && audio ? savedAudioKeys.get(audio.blob) : undefined;
+    const savedKey = replaceAudio && audio ? savedAudioKeys.get(audio.blob) : undefined;
     const storedMeta = savedKey ? (cached ?? await readStoredRecord(id))?.audioMeta : undefined;
     const reusedAudio = audio && storedMeta && storedMeta.key === savedKey
       ? buildAudioMeta(storedMeta.key, audio, storedMeta.bytes)
       : undefined;
-    if (audio && (forPublication ? !reusedAudio : !cached?.audioMeta && !cached?.audio)) {
+    if (audio && (replaceAudio ? !reusedAudio : !cached?.audioMeta && !cached?.audio)) {
       let stage: DraftFailureStage = 'blob';
       try {
         const payload = await toStoredBytes(audio.blob);
@@ -1232,16 +1298,23 @@ export async function saveDraft(
         stagedKey = key;
         stagedAudio = buildAudioMeta(key, audio, payload.bytes.byteLength);
       } catch (err) {
-        if (forPublication) {
+        if (replaceAudio) {
           draftFailed('draft audio save', err, stage);
-          return false;
+          audioFailed = true;
+        } else {
+          console.warn('draft audio unreadable during save, keeping drawing:', err);
         }
-        console.warn('draft audio unreadable during save, keeping drawing:', err);
       }
     }
     let landed = false;
+    let unavailable = false;
     let replacedKey: string | undefined;
     const wroteOk = await updateDraft(id, 'draft save', (previous) => {
+      if (expectedVersion !== undefined && !hasVersion(previous, expectedVersion)) {
+        conflict = true;
+        return null;
+      }
+      if (audioFailed) return null;
       // A different tab may have replaced the track since it was checked.
       if (reusedAudio && previous?.audioMeta?.key !== reusedAudio.key) return null;
       const next: StoredDraftRecord = { ...previous, id, updated: Date.now(), doc };
@@ -1251,10 +1324,12 @@ export async function saveDraft(
         next.state = state;
       }
       if (forPublication) {
-        replacedKey = next.audioMeta?.key;
-        delete next.audio;
         delete next.screenshot;
         delete next.screenshotData;
+      }
+      if (replaceAudio) {
+        replacedKey = next.audioMeta?.key;
+        delete next.audio;
         const currentAudio = reusedAudio ?? stagedAudio;
         if (currentAudio) next.audioMeta = currentAudio;
         else delete next.audioMeta;
@@ -1264,10 +1339,11 @@ export async function saveDraft(
         attachedStaged = true;
       }
       return next;
-    }, (writtenBytes) => {
+    }, (writtenBytes, writtenVersion) => {
       bytes = writtenBytes;
+      version = writtenVersion;
       landed = true;
-    }, forPublication);
+    }, replaceAudio || expectedVersion !== undefined, () => { unavailable = true; });
     if (stagedKey) {
       if (audio && wroteOk && landed && attachedStaged) {
         savedAudioKeys.set(audio.blob, stagedKey);
@@ -1278,12 +1354,12 @@ export async function saveDraft(
     if (wroteOk && landed && replacedKey && replacedKey !== reusedAudio?.key) {
       await deleteMediaAudio(replacedKey);
     }
-    if (forPublication && wroteOk && landed) {
+    if (replaceAudio && wroteOk && landed) {
       failing.delete('draft audio save');
     }
-    return wroteOk && (!forPublication || landed);
+    return wroteOk && (landed || (unavailable && !forPublication));
   });
-  return { ok, bytes };
+  return { ok, bytes, ...(version ? { version } : {}), ...(conflict ? { conflict: true as const } : {}) };
 }
 
 /**
@@ -1291,7 +1367,7 @@ export async function saveDraft(
  * idle, which can be after the draft was deleted. A record that is no longer
  * there is not recreated for the sake of a picture of it.
  */
-export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<void> {
+export async function setDraftScreenshot(id: string, screenshot: Blob, expectedVersion?: DraftVersion): Promise<void> {
   await queueWrite(async () => {
     if (isPageHidden()) {
       return;
@@ -1307,13 +1383,13 @@ export async function setDraftScreenshot(id: string, screenshot: Blob): Promise<
       return;
     }
     await updateDraft(id, 'draft screenshot save', (previous) => {
-      if (!previous) {
+      if (!previous || (expectedVersion && !hasVersion(previous, expectedVersion))) {
         return null;
       }
       const next: StoredDraftRecord = { ...previous, screenshotData };
       delete next.screenshot;
       return next;
-    });
+    }, undefined, expectedVersion !== undefined);
   });
 }
 
@@ -1395,9 +1471,9 @@ export async function deleteAllDrafts(): Promise<void> {
 
 /**
  * Attaches, replaces or (with `null`) removes the session's track. Never
- * throws; `false` is a track that did not fit (see `updateDraft`).
+ * throws; unsuccessful writes leave the existing track in place.
  */
-export async function setDraftAudio(id: string, audio: DraftAudio | null): Promise<boolean> {
+export async function setDraftAudio(id: string, audio: DraftAudio | null, expectedVersion?: DraftVersion | null): Promise<DraftEdit> {
   return queueWrite(async () => {
     let nextMeta: StoredAudioMeta | null = null;
     let newKey: string | undefined;
@@ -1408,7 +1484,7 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null): Promi
       } catch (err) {
         console.warn('draft audio unreadable:', err);
         draftFailed('draft audio save', err, 'blob');
-        return false;
+        return { ok: false };
       }
       newKey = newDraftId();
       try {
@@ -1416,13 +1492,19 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null): Promi
       } catch (err) {
         draftFailed('draft audio save', err, 'put');
         console.warn('draft audio save failed:', err);
-        return false;
+        return { ok: false };
       }
       nextMeta = buildAudioMeta(newKey, audio, payload.bytes.byteLength);
     }
     let replacedKey: string | undefined;
     let landed = false;
+    let version: DraftVersion | undefined;
+    let conflict = false;
     const ok = await updateDraft(id, 'draft audio save', (previous) => {
+      if (expectedVersion !== undefined && !hasVersion(previous, expectedVersion)) {
+        conflict = true;
+        return null;
+      }
       if (!previous) {
         // Nothing drawn yet, or the record is gone: a track alone is not a draft.
         return null;
@@ -1436,9 +1518,10 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null): Promi
         delete next.audioMeta;
       }
       return next;
-    }, () => {
+    }, (_bytes, committed) => {
       landed = true;
-    });
+      version = committed;
+    }, expectedVersion !== undefined);
     if (ok && landed) {
       if (audio && newKey) savedAudioKeys.set(audio.blob, newKey);
       if (replacedKey && replacedKey !== newKey) {
@@ -1447,7 +1530,7 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null): Promi
     } else if (newKey) {
       await deleteMediaAudio(newKey);
     }
-    return ok;
+    return { ok: ok && !conflict && (landed || expectedVersion == null), ...(version ? { version } : {}), ...(conflict ? { conflict: true as const } : {}) };
   });
 }
 
@@ -1456,15 +1539,22 @@ export async function deleteDraft(id: string): Promise<void> {
   await queueWrite(() => removeDraft(id));
 }
 
-async function removeDraft(id: string): Promise<void> {
+/** Delete only the submitted version, comparing it in the delete transaction. */
+export function deleteDraftIfVersion(id: string, version: DraftVersion): Promise<boolean> {
+  if (version.audioUnavailable) return Promise.resolve(false);
+  return queueWrite(() => removeDraft(id, version));
+}
+
+async function removeDraft(id: string, expectedVersion?: DraftVersion): Promise<boolean> {
   const cachedKey = known.get(id)?.audioMeta?.key;
   known.delete(id);
   try {
     const tx = await transaction('readwrite');
     if (!tx) {
-      return;
+      return false;
     }
     let audioKey = cachedKey;
+    let removed = false;
     await new Promise<void>((resolve, reject) => {
       const store = tx.objectStore(STORE);
       tx.oncomplete = () => resolve();
@@ -1475,16 +1565,23 @@ async function removeDraft(id: string): Promise<void> {
       const req = store.get(id);
       req.onsuccess = () => {
         const existing = req.result as StoredDraftRecord | undefined;
+        if (expectedVersion && !hasVersion(existing, expectedVersion)) {
+          return;
+        }
         audioKey = existing?.audioMeta?.key ?? cachedKey;
         store.delete(id);
+        removed = true;
       };
     });
+    if (!removed) return false;
     if (audioKey) {
       await deleteMediaAudio(audioKey);
     }
     told(id);
+    return true;
   } catch (err) {
     console.warn('draft delete failed:', err);
+    return false;
   }
 }
 
@@ -1499,9 +1596,16 @@ export async function setDraftCredits(
   name: string,
   author: string,
   sync: boolean,
-): Promise<void> {
-  await queueWrite(() =>
-    updateDraft(id, 'draft credits save', (previous) => {
+  expectedVersion?: DraftVersion | null,
+): Promise<DraftEdit> {
+  return queueWrite(async () => {
+    let version: DraftVersion | undefined;
+    let conflict = false;
+    const ok = await updateDraft(id, 'draft credits save', (previous) => {
+      if (expectedVersion !== undefined && !hasVersion(previous, expectedVersion)) {
+        conflict = true;
+        return null;
+      }
       if (!previous?.audioMeta) {
         return null; // no record, or no track on it — nothing to name
       }
@@ -1511,8 +1615,11 @@ export async function setDraftCredits(
         updated: Date.now(),
         audioMeta: { ...previous.audioMeta, name, author, sync },
       };
-    }),
-  );
+    }, (_bytes, committed) => {
+      version = committed;
+    }, expectedVersion !== undefined);
+    return { ok: ok && !conflict, ...(version ? { version } : {}), ...(conflict ? { conflict: true as const } : {}) };
+  });
 }
 
 /** One record inside a `.toonops` file: blobs as base64, the document as text. */

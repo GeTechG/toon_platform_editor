@@ -70,6 +70,6 @@ describe('сдвиг, записанный из фона', () => {
   });
 
   it('пишется и на только что открытом черновике: он «не тронут», пока сдвиг не применён, и запись молча пропускалась', () => {
-    expect(fn('saveNow')).toMatch(/if \(!editor\.touched && !shown\) \{\s*return Promise\.resolve\(true\);/);
+    expect(fn('saveNow')).toMatch(/if \(!editor\.touched && !shown && !draft\.audioWritePending\) \{\s*return Promise\.resolve\(true\);/);
   });
 });

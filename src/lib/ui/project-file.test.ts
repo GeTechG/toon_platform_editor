@@ -135,7 +135,8 @@ describe('the autosave record is one per visit', () => {
 
 describe('what the record holds and what comes back', () => {
   it('writes the hand along with the drawing', () => {
-    expect(editorUi).toContain('saveDraft(id, doc, editor.sessionState(), track,');
+    expect(editorUi).toContain('const session = editor.sessionState();');
+    expect(editorUi).toContain('saveDraft(id, doc, session, track,');
     // The document is a value the editor holds whole: it goes to storage as it
     // is, with no snapshot taken and no second pass to size it.
     // Or the copy with a live transform applied (owner-fourteenth-shell).
@@ -156,7 +157,7 @@ describe('what the record holds and what comes back', () => {
     expect(editorUi).toContain('clearTimeout');
 
     const saveNow = editorUi.match(/function saveNow\([\s\S]*?\n  \}/)?.[0] ?? '';
-    expect(saveNow).toMatch(/if\s*\(!destroyed && !forPublication\)\s*\{\s*writeScreenshot\(doc, id, leaving\);\s*\}/);
+    expect(saveNow).toMatch(/if\s*\(!destroyed && !forPublication && version\)\s*\{\s*writeScreenshot\(doc, draft\.id, leaving, version\);\s*\}/);
 
     const flushOnHide = editorUi.match(/function flushOnHide\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
     expect(flushOnHide).toContain('screenshots.pause();');

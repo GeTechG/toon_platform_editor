@@ -566,16 +566,17 @@ describe('a host can hand over a drawing to continue', () => {
 
 describe('the local draft after sending a drawing', () => {
   it('hands the host a way to finish the local draft with the document', () => {
-    expect(studio).toContain('sent?: () => Promise<void>');
-    expect(studio).toContain('saveLocal?: () => Promise<boolean>');
-    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(editor\.doc\),[^]*?: null,\s*forgetSent,\s*savePublishedDraft,\s*\);/);
+    expect(studio).toContain('sent: () => Promise<void>');
+    expect(studio).toContain('saveLocal: () => Promise<boolean>');
+    expect(studio).toContain('const submitted = queueLocalWrite(() => ({ ...draft }));');
+    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(doc\),\s*audio,\s*\(\) => forgetSent\(submitted, stillCurrent\),\s*\(\) => stillCurrent\(\) \? savePublishedDraft\(\) : Promise\.resolve\(false\),\s*\);/);
   });
   it('writes the current drawing for a publication and clears it after moving to account drafts', () => {
     const save = studio.match(/async function savePublishedDraft\([^]*?\n  \}/)?.[0] ?? '';
     expect(save).toContain('screenshots.discard(draftId);');
     expect(save).toMatch(/const saved = await saveNow\(true, true, editor\.doc, true\);\s*return saved && !storageBlocked;/);
     const body = studio.match(/async function forgetSent\([^]*?\n  \}/)?.[0] ?? '';
-    expect(body).toContain('await deleteDraft(draftId);');
+    expect(body).toContain('await deleteDraftIfVersion(id, version);');
     expect(body).toMatch(/draftId = newDraftId\(\);[^]*?editor\.touched = false;[^]*?dirty = false;/);
   });
 });

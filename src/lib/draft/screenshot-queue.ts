@@ -5,7 +5,7 @@
  */
 export interface ScreenshotQueueOptions<TDoc> {
   render: (doc: TDoc) => Promise<Blob>;
-  save: (id: string, blob: Blob) => Promise<void>;
+  save: (id: string, blob: Blob, doc: TDoc) => Promise<void>;
   isHidden: () => boolean;
   scheduleIdle: (run: () => void) => () => void;
   onError?: (err: unknown) => void;
@@ -80,7 +80,7 @@ export function createScreenshotQueue<TDoc>(options: ScreenshotQueueOptions<TDoc
           continue;
         }
         try {
-          await save(id, blob);
+          await save(id, blob, doc);
         } catch (err) {
           onError?.(err);
         }

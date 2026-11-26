@@ -23,7 +23,7 @@ describe('deleting the draft that is on the canvas', () => {
   });
 
   it('the save that makes the new record carries the track on screen', () => {
-    expect(fn('saveNow')).toContain('saveDraft(id, doc, editor.sessionState(), track,');
+    expect(fn('saveNow')).toContain('saveDraft(id, doc, session, track,');
   });
 });
 

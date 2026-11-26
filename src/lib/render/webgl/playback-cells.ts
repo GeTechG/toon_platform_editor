@@ -1,4 +1,5 @@
 import type { Frame, ToolDescriptor } from '../../format/types';
+import { STAMP_BOUNDS_WIDTHS } from '../../tools/pixel';
 import type { Viewport } from '../contract';
 import { renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike } from '../canvas2d';
 import { identifyCellInk, sameInk, type Ink } from '../cell-cache';
@@ -63,7 +64,7 @@ function cellRect(ink: Ink, view: Viewport, width: number, height: number): Cell
     // Interpolated stamps can step past an off-grid endpoint, then extend by
     // the full unit-square polygon. Keep both extensions when choosing a crop.
     const strokeWidth = 'width' in tool ? tool.width : 0;
-    pad = strokeWidth * (tool.kind === 'stamp' ? 3 : 1) * scale * expansion + 2;
+    pad = strokeWidth * (tool.kind === 'stamp' ? STAMP_BOUNDS_WIDTHS : 1) * scale * expansion + 2;
     for (let i = 0; i < points.length; i += 2) include(points[i], points[i + 1]);
     if (tool.geometry !== 'line') emitPathForTool(points, tool, sink);
   }

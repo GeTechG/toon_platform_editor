@@ -123,11 +123,10 @@ describe('a dead key', () => {
   });
 });
 
-describe('a track that did not fit', () => {
-  it('is a failed save: said, retried by hand, and the tab warns before closing', () => {
-    // The track write's answer was dropped: storage full, the track never
-    // reached the record, the status said nothing and the tab closed quietly.
-    expect(editorUi).toMatch(/setDraftAudio\([^]*?\)\.then\(\(ok\) => \{\s*if \(!ok && blob\) \{\s*(?:\/\/.*\s*)*saveFailedNow\(\);/);
+describe('a soundtrack change that did not land', () => {
+  it('warns and retries the exact soundtrack, including a removal', () => {
+    expect(editorUi).toMatch(/setDraftAudio\([^]*?\)\.then\(\(ok\) => \{\s*if \(!ok\) saveFailedNow\(\);/);
+    expect(fn('saveNow')).toContain('replaceAudio: draft.audioWritePending');
     expect(editorUi).toMatch(/function saveFailedNow\(\): void \{\s*saveFailed = true;\s*dirty = true;\s*void tell\(t\('editor\.save_failed_alert'\)\);/);
   });
 });

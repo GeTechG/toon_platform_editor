@@ -3072,6 +3072,7 @@
        and context loss never interrupt an active stroke or lasso drag. -->
   <div
     class="stage"
+    data-drawing-surface
     bind:this={captureStageEl}
     role="img"
     aria-label={canvasLabel}

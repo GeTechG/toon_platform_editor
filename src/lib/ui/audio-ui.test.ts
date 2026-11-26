@@ -143,7 +143,7 @@ describe('the synchronisation flag', () => {
   });
 
   it('rides the light write, never the file', () => {
-    expect(editorUi).toContain('setDraftCredits(draftId, name, author, sync)');
+    expect(editorUi).toContain('setDraftCredits(draft.id, name, author, sync, draft.version ?? null)');
   });
 });
 

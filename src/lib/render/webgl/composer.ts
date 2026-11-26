@@ -10,6 +10,7 @@
 import { FIXED_POINT_SCALE } from '../../format/constants';
 import { opacityOf, type BlendMode, type Frame, type ToolDescriptor } from '../../format/types';
 import { resolveCell } from '../../model/cells';
+import { STAMP_BOUNDS_WIDTHS } from '../../tools/pixel';
 import { hasLook, renderLayersStacked, renderStrokesLayer, STUDIO_PATHS, type Canvas2DLike, type LayerLook, type PlacedStroke } from '../canvas2d';
 import { extendsFlatRun, hasInteriorPaint, isEraserTool, isFilledLineTool, isFlatPaint, resolveTool, sameFlatPaint } from '../dispatch';
 import type { FrameScene, GhostFrame, LiveLine } from '../frame-compose';
@@ -1571,8 +1572,9 @@ export class WebGL2SheetComposer implements SheetComposer {
     for (let i = 0; i < now.length; i += 4) {
       if (now[i + 3] !== undefined) return false;
     }
-    const reach = (points: readonly number[], tool: unknown): [number, number, number, number] => {
-      const pad = (tool as { width?: number } | undefined)?.width ?? 0;
+    const reach = (points: readonly number[], tool?: ToolDescriptor): [number, number, number, number] => {
+      const strokeWidth = tool && 'width' in tool ? tool.width : 0;
+      const pad = strokeWidth * (tool?.kind === 'stamp' ? STAMP_BOUNDS_WIDTHS : 1);
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (let p = 0; p < points.length; p += 2) {
         if (points[p] < minX) minX = points[p];
@@ -1595,7 +1597,7 @@ export class WebGL2SheetComposer implements SheetComposer {
         j += 4;
         continue;
       }
-      const [a, b, c, d] = reach(was[i] as readonly number[], was[i + 1]);
+      const [a, b, c, d] = reach(was[i] as readonly number[], was[i + 1] as ToolDescriptor | undefined);
       if (a < x0) x0 = a;
       if (b < y0) y0 = b;
       if (c > x1) x1 = c;
