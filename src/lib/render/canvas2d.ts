@@ -23,7 +23,8 @@ import {
   resolveTool,
 } from './dispatch';
 import { emitPressuredOutline, flattenPressured } from './pressure';
-import { PathKeeper } from './path-keeper';
+import { RoundTurnSink } from './curve-stroke';
+import { PathKeeper, pathCost } from './path-keeper';
 import { cellBudget } from './cell-cache';
 
 /**
@@ -252,7 +253,7 @@ export function renderResolvedPreview(
 ): void {
   if (points.length < 2) return;
   applyDocTransform(target, viewport);
-  drawResolvedStroke(target, points, tool, color, pressure);
+  drawResolvedStroke(target, points, tool, color, viewport.scale * viewport.dpr, pressure);
 }
 
 /**
@@ -284,7 +285,9 @@ export function renderLivePart(
   }
   applyDocTransform(target, viewport);
   target.beginPath();
-  if (!emitGeometryFrom(points, geometry, from, target, until)) {
+  const precision = roundTurnPrecision(target, geometry, viewport.scale * viewport.dpr);
+  const sink = strokeSink(target, width, precision);
+  if (!emitGeometryFrom(points, geometry, from, sink, until)) {
     return false;
   }
   target.lineWidth = width;
@@ -373,8 +376,16 @@ function drawPlacedStroke(
   stroke: PlacedStroke, tool: ToolDescriptor, target: Canvas2DLike, viewport: Viewport,
   tint?: string, paths?: PathKeeper<StrokePaths>,
 ): void {
-  if (stroke.place) placeTransform(target, viewport, stroke.place);
-  drawResolvedStroke(target, stroke.points, tool, tint && !isEraserTool(tool) ? tint : toolColor(tool), stroke.pressure, paths);
+  let scale = viewport.scale * viewport.dpr;
+  if (stroke.place) {
+    placeTransform(target, viewport, stroke.place);
+    if (isGecko) {
+      const [a, b, c, d] = stroke.place;
+      // The Frobenius norm bounds the largest stretch of the placement.
+      scale *= Math.hypot(a, b, c, d);
+    }
+  }
+  drawResolvedStroke(target, stroke.points, tool, tint && !isEraserTool(tool) ? tint : toolColor(tool), scale, stroke.pressure, paths);
   if (stroke.place) applyDocTransform(target, viewport);
 }
 
@@ -382,7 +393,8 @@ function drawPlacedStroke(
  * A stroke of a selection being moved, as the studio's canvas hands it in: its
  * own points, never rewritten, and the session's matrix that carries them
  * (`keepsShape` in tools/lasso.ts). The stroke's kept path is drawn under the
- * view times that matrix — a move costs no new points and no new path.
+ * view times that matrix. The Gecko curve approximation can need a finer
+ * path when a placement increases the raster scale.
  */
 export type PlacedStroke = Frame['strokes'][number] & {
   /** Document → document, in `setTransform` order: a, b, c, d, e, f. */
@@ -398,10 +410,9 @@ function placeTransform(target: Canvas2DLike, viewport: Viewport, [a, b, c, d, e
 }
 
 /**
- * A stroke's paths, built once. The path is in document units and the view is
- * the target's transform, so it holds for every rasterization of the stroke:
- * the smoothing and the pressure outline are worked out once, not every time a
- * cell is drawn (owner, 2026-11-14).
+ * A stroke's paths in document units. An approximated Gecko stroke is kept
+ * at the precision its raster scale needs. Other paths can be reused at any
+ * scale or placement.
  */
 export interface StrokePaths {
   /** The feather's fill under a pressured outline: filled in the tool's fill. */
@@ -411,6 +422,8 @@ export interface StrokePaths {
   readonly filled: boolean;
   /** A feather's line: its own path filled in the tool's fill before the stroke. */
   readonly fillFirst: boolean;
+  /** Estimated bytes added by replacing tight curves and keeping the feather fill separately. */
+  readonly extraBytes?: number;
 }
 
 /**
@@ -420,9 +433,30 @@ export interface StrokePaths {
  */
 export const STUDIO_PATHS = new PathKeeper<StrokePaths>(
   cellBudget(typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory),
+  (paths) => paths.extraBytes ?? 0,
 );
 
-function buildPaths(points: readonly number[], tool: ToolDescriptor, pressure?: readonly number[]): StrokePaths {
+const isGecko = /\bGecko\//.test(globalThis.navigator?.userAgent ?? '');
+
+function roundTurnPrecision(target: Canvas2DLike, geometry: StrokeGeometry, scale: number): number {
+  if (isGecko && geometry !== 'line' && (
+    (typeof CanvasRenderingContext2D !== 'undefined' && target instanceof CanvasRenderingContext2D) ||
+    (typeof OffscreenCanvasRenderingContext2D !== 'undefined' && target instanceof OffscreenCanvasRenderingContext2D)
+  )) {
+    // Bound the chord error to a quarter of a raster pixel. Use integer
+    // precision levels so small changes in the transform can share a path.
+    return Math.max(1, Math.ceil(scale * 4));
+  }
+  return 0;
+}
+
+function strokeSink(sink: PathSink, width: number, precision: number): PathSink {
+  return precision > 0 ? new RoundTurnSink(sink, width, precision) : sink;
+}
+
+function buildPaths(
+  points: readonly number[], tool: ToolDescriptor, pressure: readonly number[] | undefined, precision: number,
+): StrokePaths {
   const main = new Path2D();
   if (isStampTool(tool)) {
     emitStamps(points, tool, main);
@@ -445,8 +479,15 @@ function buildPaths(points: readonly number[], tool: ToolDescriptor, pressure?: 
     main.arc(points[0], points[1], tool.width / 2, 0, Math.PI * 2);
     return { main, filled: true, fillFirst: false };
   }
-  emitPathForTool(points, tool, main);
-  return { main, filled: false, fillFirst: isFilledLineTool(tool) };
+  const sink = strokeSink(main, tool.width, precision);
+  emitPathForTool(points, tool, sink);
+  const extraBytes = sink instanceof RoundTurnSink ? sink.flattenedSegments * 64 : 0;
+  if (isFilledLineTool(tool) && extraBytes > 0) {
+    const under = new Path2D();
+    emitPathForTool(points, tool, under);
+    return { under, main, filled: false, fillFirst: false, extraBytes: extraBytes + pathCost(points) };
+  }
+  return { main, filled: false, fillFirst: isFilledLineTool(tool), extraBytes };
 }
 
 function isDot(points: readonly number[]): boolean {
@@ -479,6 +520,7 @@ function drawResolvedStroke(
   points: readonly number[],
   tool: ToolDescriptor,
   color: string,
+  scale: number,
   pressure?: readonly number[],
   /**
    * Where a committed stroke's path is kept, its points never changing. The
@@ -486,8 +528,12 @@ function drawResolvedStroke(
    */
   keep?: PathKeeper<StrokePaths>,
 ): void {
+  const hasPressure = pressure && pressure.length === points.length / 2;
+  const precision = isGecko && !hasPressure && !isStampTool(tool) && !isContourTool(tool)
+    ? roundTurnPrecision(target, tool.geometry, scale)
+    : 0;
   if (keep && typeof Path2D !== 'undefined') {
-    const paths = keep.take(points, tool, pressure, () => buildPaths(points, tool, pressure));
+    const paths = keep.take(points, tool, pressure, () => buildPaths(points, tool, pressure, precision), precision);
     if (paths.under) {
       target.fillStyle = (tool as { fill: string }).fill;
       target.fill(paths.under);
@@ -557,7 +603,7 @@ function drawResolvedStroke(
   // cannot do — the outline is filled instead. A stamp and a contour have no
   // line width to vary and never reach here; an array that does not match the
   // points is not this stroke's and is not read.
-  if (pressure && pressure.length === points.length / 2) {
+  if (hasPressure) {
     const flat = flattenPressured(points, pressure, tool.geometry);
     if (isFilledLineTool(tool)) {
       target.fillStyle = tool.fill;
@@ -590,8 +636,14 @@ function drawResolvedStroke(
   target.strokeStyle = color;
   target.lineCap = 'round';
   target.lineJoin = 'round';
-  emitPathForTool(points, tool, target);
-  if (filled) {
+  const sink = strokeSink(target, tool.width, precision);
+  if (filled && sink !== target) {
+    emitPathForTool(points, tool, target);
+    target.fill();
+    target.beginPath();
+  }
+  emitPathForTool(points, tool, sink);
+  if (filled && sink === target) {
     target.fill();
   }
   target.stroke();

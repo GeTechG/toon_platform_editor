@@ -8,9 +8,10 @@
 
 import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../../format/constants';
 import { BLEND_MODES, SQUARE_STAMP, type Frame, type ToonDocument, type ToolDescriptor } from '../../format/types';
-import { FrameComposer, type ComposeTarget, type FrameScene } from '../frame-compose';
+import { FrameRasterizer } from '../../export/rasterize';
+import type { FrameScene } from '../frame-compose';
 import type { PlacedStroke } from '../canvas2d';
-import type { StagePresentParams } from '../sheet-composer';
+import { Canvas2DSheetComposer, type StagePresentParams } from '../sheet-composer';
 import { negotiateAtlasFormats, runWebGL2SmokeTest } from './probe';
 import { WebGL2SheetComposer } from './composer';
 
@@ -27,23 +28,12 @@ export interface ParityReport {
 }
 
 function renderCanvas2D(w: number, h: number, scene: FrameScene): Uint8ClampedArray {
-  const sheet = document.createElement('canvas');
-  sheet.width = w;
-  sheet.height = h;
-  const sctx = sheet.getContext('2d', { willReadFrequently: true })!;
-  const composer = new FrameComposer(undefined, { cellBytes: 16 * 1024 * 1024 });
-  composer.compose(sctx as unknown as ComposeTarget, w, h, scene);
-
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  const octx = out.getContext('2d', { willReadFrequently: true })!;
-  octx.fillStyle = scene.paper ?? BACKGROUND_COLOR;
-  octx.fillRect(0, 0, w, h);
-  octx.drawImage(sheet, 0, 0);
-  const data = octx.getImageData(0, 0, w, h).data;
+  const stage = document.createElement('canvas');
+  const composer = new Canvas2DSheetComposer(stage, { cellBytes: 16 * 1024 * 1024 });
+  composer.composeAndPresent(w, h, scene, { ...makePresent(w, h), paper: scene.paper ?? BACKGROUND_COLOR });
+  const data = stage.getContext('2d')!.getImageData(0, 0, w, h).data;
   composer.dispose();
-  sheet.width = sheet.height = out.width = out.height = 0;
+  stage.width = stage.height = 0;
   return data;
 }
 
@@ -246,6 +236,84 @@ export function runWebGL2ParitySuite(): ParityReport {
     ],
   };
   runCase('all-6-tools-and-isolated-eraser', docAll, { activeLayer: 1 });
+
+  // A wide quadratic that doubles back into its endpoint must keep its round cap.
+  const reversalWidth = 1280;
+  const reversalHeight = 720;
+  const reversalPoints = [7200, 3600, 7200, 1600, 7192, 1608];
+  const reversalTool = { kind: 'pencil', geometry: 'smooth', width: 480, color: '#000000' } as const;
+  const reversalLayer = { hidden: false, frames: [{ strokes: [{ points: reversalPoints, tool_id: 0 }] }] };
+  const docReversal: ToonDocument = {
+    ...docAll,
+    width: reversalWidth * FIXED_POINT_SCALE,
+    height: reversalHeight * FIXED_POINT_SCALE,
+    tools: [reversalTool],
+    layers: [reversalLayer],
+  };
+  runCase('wide-quadratic-round-cap-on-reversal', docReversal, {}, reversalWidth, reversalHeight);
+  runCase('wide-quadratic-round-cap-during-drawing', {
+    ...docReversal,
+    layers: [{ hidden: false, frames: [{ strokes: [] }] }],
+  }, {
+    live: {
+      id: 1,
+      points: reversalPoints,
+      geometry: reversalTool.geometry,
+      width: reversalTool.width,
+      color: reversalTool.color,
+      spec: { kind: 'resolved', points: reversalPoints, tool: reversalTool, color: reversalTool.color, alpha: 1 },
+    },
+  }, reversalWidth, reversalHeight);
+
+  // The same failure can be inside a cubic chain, between two long segments.
+  const cubicTool = { ...reversalTool, geometry: 'cubic' } as const;
+  const cubicReversal = [
+    7200, 3600,
+    7200, 2900, 7200, 2000, 7200, 1600,
+    7200, 1568, 7197, 1570, 7192, 1608,
+    7192, 2000, 7192, 2800, 7192, 3600,
+  ];
+  runCase('wide-cubic-round-join-on-reversal', {
+    ...docReversal,
+    tools: [cubicTool],
+    layers: [{ hidden: false, frames: [{ strokes: [{ points: cubicReversal, tool_id: 0 }] }] }],
+  }, {}, reversalWidth, reversalHeight);
+
+  // Well inside the round cap, above the centreline. A translucent layer
+  // must rasterize the same cap in scratch before applying its opacity.
+  for (const opacity of [undefined, 50]) {
+    const raster = new FrameRasterizer({
+      ...docReversal,
+      layers: [{ ...reversalLayer, opacity }],
+    }, { transparent: true });
+    raster.draw(0);
+    const [r, g, b, a] = new Uint8ClampedArray(raster.pixels(), (180 * reversalWidth + 899) * 4, 4);
+    const alpha = Math.round((opacity ?? 100) * 255 / 100);
+    results.push({
+      name: opacity ? 'wide-quadratic-round-cap-in-translucent-export' : 'wide-quadratic-round-cap-in-export',
+      pass: r === 0 && g === 0 && b === 0 && Math.abs(a - alpha) <= 1,
+      detail: `cap=(${r},${g},${b},${a}) expected=(0,0,0,${alpha})`,
+    });
+    raster.canvas.width = raster.canvas.height = 0;
+  }
+
+  // At 10 pixels per document unit, the outside of this turn is well inside
+  // the true stroke but was cut back by a document-space subdivision limit.
+  const enlarged = new FrameRasterizer({
+    ...docReversal,
+    width: 128,
+    height: 128,
+    tools: [{ ...reversalTool, width: 64 }],
+    layers: [{ hidden: false, frames: [{ strokes: [{ points: [16, 16, 80, 16, 80, 80], tool_id: 0 }] }] }],
+  }, { width: 1280, transparent: true });
+  enlarged.draw(0);
+  const edgeAlpha = new Uint8ClampedArray(enlarged.pixels())[(97 * enlarged.size.width + 862) * 4 + 3];
+  results.push({
+    name: 'wide-quadratic-round-join-at-export-scale',
+    pass: enlarged.size.width === 1280 && edgeAlpha === 255,
+    detail: `width=${enlarged.size.width} edgeAlpha=${edgeAlpha}`,
+  });
+  enlarged.canvas.width = enlarged.canvas.height = 0;
 
   // 3. Pressure 2-point counterexample + 180° reversal
   const docPress: ToonDocument = {

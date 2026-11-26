@@ -23,6 +23,7 @@ export function pathCost(points: readonly number[], pressure?: readonly number[]
 interface Kept<P> {
   readonly tool: ToolDescriptor;
   readonly pressure?: readonly number[];
+  readonly precision: number;
   readonly paths: P;
 }
 
@@ -32,19 +33,23 @@ export class PathKeeper<P> {
   readonly #kept = new Map<readonly number[], { entries: Kept<P>[]; bytes: number }>();
   #bytes = 0;
 
-  constructor(budget: number) {
+  constructor(budget: number, private readonly extraCost?: (paths: P) => number) {
     this.#budget = budget;
   }
 
-  /** What is kept now, in bytes by [`pathCost`]. */
+  /** Estimated bytes of the paths kept now, including any extra geometry. */
   get bytes(): number {
     return this.#bytes;
   }
 
   /** The stroke's paths: kept ones, or `build`'s, kept if they fit. */
-  take(points: readonly number[], tool: ToolDescriptor, pressure: readonly number[] | undefined, build: () => P): P {
+  take(
+    points: readonly number[], tool: ToolDescriptor, pressure: readonly number[] | undefined,
+    build: () => P, precision = 0,
+  ): P {
     const kept = this.#kept.get(points);
-    const found = kept?.entries.find((entry) => entry.tool === tool && entry.pressure === pressure);
+    const found = kept?.entries.find((entry) =>
+      entry.tool === tool && entry.pressure === pressure && entry.precision === precision);
     if (kept) {
       // Used now: to the back of the line.
       this.#kept.delete(points);
@@ -54,12 +59,12 @@ export class PathKeeper<P> {
       return found.paths;
     }
     const paths = build();
-    const cost = pathCost(points, pressure);
-    if (cost > this.#budget) {
+    const cost = pathCost(points, pressure) + (this.extraCost?.(paths) ?? 0);
+    if (cost + (kept?.bytes ?? 0) > this.#budget) {
       return paths;
     }
     const slot = kept ?? { entries: [], bytes: 0 };
-    slot.entries.push({ tool, pressure, paths });
+    slot.entries.push({ tool, pressure, precision, paths });
     slot.bytes += cost;
     this.#kept.set(points, slot);
     this.#bytes += cost;

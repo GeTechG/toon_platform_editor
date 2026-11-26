@@ -55,6 +55,19 @@ describe('PathKeeper', () => {
     expect(keeper.bytes).toBe(0);
   });
 
+  it('counts expanded geometry against the cache budget', () => {
+    const points = [0, 0, 100, 0, 0, 1];
+    const base = pathCost(points);
+    const keeper = new PathKeeper<{ extraBytes: number }>(base * 2, ({ extraBytes }) => extraBytes);
+    const oversized = () => ({ extraBytes: base * 2 });
+    expect(keeper.take(points, tool, undefined, oversized)).not.toBe(keeper.take(points, tool, undefined, oversized));
+    expect(keeper.bytes).toBe(0);
+
+    keeper.take(points, tool, undefined, () => ({ extraBytes: base / 2 }));
+    keeper.take(points, { ...tool, width: 9 }, undefined, () => ({ extraBytes: base / 2 }));
+    expect(keeper.bytes).toBe(base * 1.5);
+  });
+
   it('a pressured stroke counts as heavier than a plain one of as many points', () => {
     const points = [0, 0, 5, 5, 9, 9];
     expect(pathCost(points, [10, 20, 30])).toBeGreaterThan(pathCost(points));
@@ -69,5 +82,15 @@ describe('PathKeeper', () => {
     expect(pressured).not.toBe(plain);
     expect(wider).not.toBe(plain);
     expect(keeper.take(points, tool, undefined, () => ({}))).toBe(plain);
+  });
+
+  it('does not reuse a coarser path at a higher raster precision', () => {
+    const keeper = new PathKeeper<object>(1 << 20);
+    const points = [0, 0, 100, 0, 0, 1];
+    const normal = keeper.take(points, tool, undefined, () => ({}), 1);
+    const enlarged = keeper.take(points, tool, undefined, () => ({}), 40);
+    expect(enlarged).not.toBe(normal);
+    expect(keeper.take(points, tool, undefined, () => ({}), 1)).toBe(normal);
+    expect(keeper.take(points, tool, undefined, () => ({}), 40)).toBe(enlarged);
   });
 });
