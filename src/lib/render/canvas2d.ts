@@ -4,9 +4,9 @@
  */
 
 import { resolveCell } from '../model/cells';
-import { BACKGROUND_COLOR } from '../format/constants';
+import { BACKGROUND_COLOR, FIXED_POINT_SCALE } from '../format/constants';
 import { opacityOf } from '../format/types';
-import type { BlendMode, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import type { BlendMode, Frame, RasterCel, ToonDocument, ToolDescriptor } from '../format/types';
 import type { FrameRenderer, Viewport } from './contract';
 import { emitGeometry, emitGeometryFrom, isDot, type PathSink } from './smoothing';
 import type { StrokeGeometry } from './smoothing';
@@ -47,6 +47,7 @@ export interface Canvas2DLike extends PathSink {
   fillRect(x: number, y: number, w: number, h: number): void;
   clearRect(x: number, y: number, w: number, h: number): void;
   drawImage(image: CanvasImageSource, dx: number, dy: number): void;
+  drawImage(image: CanvasImageSource, dx: number, dy: number, width: number, height: number): void;
   beginPath(): void;
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
   /** Without a path, the current one; with one, that path (stroke-path cache). */
@@ -144,6 +145,39 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     blitLayer(frame.image, target);
   }
 
+  /** Large exports decode one crop at a time at the requested resolution. */
+  async renderWithRaster(
+    doc: ToonDocument,
+    frameIndex: number,
+    target: Canvas2DLike,
+    viewport: Viewport,
+    load: (cel: RasterCel) => Promise<ImageBitmap>,
+  ): Promise<void> {
+    clearToBackground(target, viewport.background);
+    const { width, height } = target.canvas;
+    const layers = doc.layers.filter((layer) => !layer.hidden && layer.opacity !== 0);
+    const frame = viewport.background !== null && layers.some((layer) => layer.blend)
+      ? undefined : this.#cleared(0, width, height);
+    const into = frame?.ctx ?? target;
+    const scratch = () => this.#cleared(1, width, height);
+    const mask = () => this.#cleared(2, width, height);
+    for (const layer of layers) {
+      if (frameIndex >= layer.frames.length) continue;
+      const cell = resolveCell(layer, frameIndex);
+      if (cell.raster) {
+        const image = await load(cell.raster);
+        try {
+          drawRasterCel(cell.raster, into, { ...viewport, raster: () => image }, layer);
+        } finally {
+          image.close();
+        }
+      } else {
+        renderLayersStacked([cell], doc.tools, into, viewport, scratch, undefined, [layer], true, mask);
+      }
+    }
+    if (frame) blitLayer(frame.image, target);
+  }
+
   #cleared(slot: number, width: number, height: number): ScratchLayer {
     if (this.#scratchSize.width !== width || this.#scratchSize.height !== height) {
       this.#scratch = [];
@@ -193,6 +227,10 @@ export function renderLayersStacked(
 ): void {
   for (const [index, cell] of cells.entries()) {
     const look = looks?.[index];
+    if (cell.raster) {
+      drawRasterCel(cell.raster, target, viewport, look);
+      continue;
+    }
     if (!hasLook(look) && ((index === 0 && !onPaper) || !hasEraser(cell, tools))) {
       renderStrokesLayer(cell, tools, target, viewport, undefined, paths, mask);
       continue;
@@ -201,6 +239,23 @@ export function renderLayersStacked(
     renderStrokesLayer(cell, tools, own.ctx, viewport, undefined, paths, mask);
     layLayer(own.image, target, look);
   }
+}
+
+function drawRasterCel(
+  cel: NonNullable<Frame['raster']>,
+  target: Canvas2DLike,
+  viewport: Viewport,
+  look?: LayerLook,
+): void {
+  const image = viewport.raster?.(cel);
+  if (!image || look?.opacity === 0) return;
+  applyDocTransform(target, viewport);
+  if (look?.opacity !== undefined) target.globalAlpha = look.opacity / 100;
+  if (look?.blend) target.globalCompositeOperation = look.blend;
+  target.drawImage(image, cel.x * FIXED_POINT_SCALE, cel.y * FIXED_POINT_SCALE,
+    cel.width * FIXED_POINT_SCALE, cel.height * FIXED_POINT_SCALE);
+  if (look?.opacity !== undefined) target.globalAlpha = 1;
+  if (look?.blend) target.globalCompositeOperation = 'source-over';
 }
 
 /** Lays a layer's buffer onto the target with its look, and leaves the target plain again. */
@@ -321,6 +376,10 @@ export function renderStrokesLayer(
   paths?: PathKeeper<StrokePaths>,
   makeMask?: () => ScratchLayer,
 ): void {
+  if (frame.raster) {
+    drawRasterCel(frame.raster, target, viewport);
+    return;
+  }
   let mask: ScratchLayer | undefined;
   applyDocTransform(target, viewport);
   for (let i = 0; i < frame.strokes.length;) {

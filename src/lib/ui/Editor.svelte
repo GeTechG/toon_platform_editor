@@ -33,6 +33,9 @@
   import './controls.css';
   import { decodeLegacyJson, decodeToon, isToonopJson } from '../format/toon-decode';
   import { FormatError, loadDocument } from '../format/validate';
+  import { decodeProject, encodeProject } from '../format/project';
+  import { hasRasterLayers, rasterInventory } from '../format/studio-document';
+  import { readRasterAsset, retainRasterWorkspace, storeRasterAssets, withRasterStorage } from '../draft/raster-store';
   import { frameCount, isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
   import { saveFile } from './save-file';
@@ -53,6 +56,7 @@
     readDraft,
     newDraftId,
     saveDraft,
+    sweepDraftRasters,
     setDraftAudio,
     setDraftCredits,
     setDraftScreenshot,
@@ -1443,13 +1447,25 @@
     void navigator.storage?.persist?.().catch(() => false);
   }
 
+  function draftTrack(): DraftAudio | null {
+    const { blob, name, author, sync } = editor.audio;
+    return blob ? { blob, name, author, sync, bytes: blob.size } : null;
+  }
+
   /**
    * Writes the draft right now — the autosave clock, Ctrl+S and the sheet.
    * After a failure the clock stays off, but a save asked for by hand tries
    * again: the user may have freed the room in the drafts list since.
    */
-  function saveNow(byHand = false, leaving = false, shown?: ToonDocument, forPublication = false): Promise<boolean> {
+  function saveNow(byHand = false, leaving = false, shown?: ToonDocument, forPublication = false, track = draftTrack()): Promise<boolean> {
     const draft = currentLocalDraft();
+    if (!shown && editor.rasterStrokePending) {
+      const opened = editor.docOpens;
+      return editor.settleRasterStrokes().then(() => {
+        if (editor.docOpens !== opened || currentLocalDraft() !== draft) return false;
+        return saveNow(byHand, leaving, undefined, forPublication, leaving ? track : undefined);
+      });
+    }
     // `shown` is an edit by itself: a move on a draft just opened and not
     // touched since went unwritten into the background.
     if (!editor.touched && !shown && !draft.audioWritePending) {
@@ -1460,14 +1476,9 @@
     if (saveFailed && !byHand && !leaving) {
       return Promise.resolve(false);
     }
-    // The document is a value the editor holds whole, so it goes to storage as
-    // it is: no snapshot to take, and no second pass over every stroke of the
-    // drawing to size what the write is about to size anyway.
+    // Storage packs the document once per write and uses the same bytes to size it.
     // `shown` is the drawing with a live transform applied (flushOnHide).
     const doc = shown ?? editor.doc;
-    // Automatic saves fill a missing track. Publication keeps the exact audio.
-    const { blob, name, author, sync } = editor.audio;
-    const track = blob ? { blob, name, author, sync, bytes: blob.size } : null;
     queued = false;
     dirty = false;
     writtenDoc = doc;
@@ -1605,8 +1616,14 @@
     if (!(await ask(t('editor.download_project_confirm')))) {
       return;
     }
-    // Not JSON to the browser: Safari names a JSON download `toonop.toonop.json`.
-    saveFile(new Blob([JSON.stringify(editor.doc)], { type: 'application/octet-stream' }), 'toonop.toonop');
+    try {
+      await editor.settleRasterStrokes();
+      const project = await withRasterStorage(() => encodeProject(editor.doc, readRasterAsset));
+      saveFile(project, 'toonop.toonop');
+    } catch (err) {
+      console.warn('project download failed:', err);
+      void tell(t('editor.project_download_failed'));
+    }
   }
 
   // The track rides the draft but not the document: it is written on its own
@@ -1785,9 +1802,9 @@
    * are written now, «никогда» or not: that setting stops the clock only
    * (owner, twelfth audit).
    */
-  function flushOnLeave(): void {
-    if (dirty || (editor.touched && editor.doc !== writtenDoc)) {
-      void saveNow(false, true);
+  function flushOnLeave(track: DraftAudio | null): Promise<boolean> | undefined {
+    if (editor.rasterStrokePending || dirty || (editor.touched && editor.doc !== writtenDoc)) {
+      return saveNow(false, true, undefined, false, track);
     }
   }
 
@@ -1796,24 +1813,30 @@
    * it, a selection moved and not yet applied included — but the selection
    * stays live in the hand, so a copy with the move applied is what is written.
    */
-  function flushOnHide(): void {
+  function flushOnHide(track = draftTrack()): Promise<boolean> | undefined {
     screenshots.pause();
+    if (editor.rasterStrokePending) {
+      const opened = editor.docOpens;
+      return editor.settleRasterStrokes().then(() => opened === editor.docOpens ? (flushOnHide(track) ?? true) : false);
+    }
     const shown = editor.docWithTransform();
     if (shown !== editor.doc) {
-      void saveNow(false, true, shown);
+      const write = saveNow(false, true, shown, false, track);
       // The record is now ahead of the document. Dropped by Esc after the
       // return, the move stayed in the draft: Save was dark, the clock had
       // nothing to write and the tab closed unasked. Unsaved again — the
       // clock puts the record right once the tab is back.
       editor.touched = true;
       dirty = true;
-      return;
+      return write;
     }
-    flushOnLeave();
+    return flushOnLeave(track);
   }
 
   /** The studio is gone: late answers from storage have nothing to update. */
   let destroyed = false;
+  let rasterWorkspace: ReturnType<typeof retainRasterWorkspace> | undefined;
+  const openingRasterHashes = new Set<string[]>();
   // The site leaves the studio without a reload. The track is a media element
   // nothing unmounts — a preview running at that moment went on sounding over
   // the feed — and its blob and the cards' thumbnails stay pinned by their URLs.
@@ -1824,7 +1847,11 @@
     // document: leaving applies it, as a frame change does. Under the lock
     // it stays live, and the draft takes it as a hidden tab's does.
     editor.leaveTransform();
-    flushOnHide();
+    const flush = flushOnHide();
+    void Promise.all([flush, editor.settleRasterStrokes()]).then(() => localWrites).finally(() => {
+      rasterWorkspace?.release();
+      void sweepDraftRasters();
+    });
     editor.audio.clear();
     for (const url of Object.values(thumbUrls)) {
       URL.revokeObjectURL(url);
@@ -1889,6 +1916,11 @@
   }
 
   onMount(async () => {
+    rasterWorkspace = retainRasterWorkspace(function* () {
+      yield* editor.rasterHashesInUse();
+      for (const hashes of openingRasterHashes) yield* hashes;
+    });
+    void rasterWorkspace.ready.then(() => sweepDraftRasters(), () => {});
     // One place the editor asks from — the state calls it for frames, layers
     // and pastes alike.
     editor.ask = (message: string, yes?: string, final?: boolean) => ask(message, yes, final);
@@ -1902,24 +1934,37 @@
     draftsRead = true;
   });
 
+  /** The draft tools read disk, so finish the drawing's current edits before listing its card. */
+  async function saveBeforeDraftTools(): Promise<void> {
+    const opened = editor.docOpens;
+    while (!destroyed && editor.docOpens === opened) {
+      editor.leaveTransform();
+      // The effect that marks the applied move runs after this.
+      if (editor.touched && (editor.doc !== writtenDoc || editor.layerColors.join() !== writtenTags)) dirty = true;
+      if (!editor.rasterStrokePending && (!editor.touched || !dirty)) {
+        if (!writing) return;
+        await localWrites;
+        continue;
+      }
+      if (!(await saveNow()) || storageBlocked) return;
+    }
+  }
+
   async function openDrafts(): Promise<void> {
-    // The card's copy and download take the drawing as the screen shows it.
-    editor.leaveTransform();
-    // The effect that marks the applied move runs after this.
-    if (editor.touched && editor.doc !== writtenDoc) {
-      dirty = true;
+    while (!destroyed) {
+      await saveBeforeDraftTools();
+      if (destroyed) return;
+      await screenshots.flushNow();
+      await refreshDrafts();
+      if (destroyed) return;
+      if (!saveFailed && !storageBlocked && (editor.rasterStrokePending || (editor.touched &&
+          (editor.doc !== writtenDoc || editor.layerColors.join() !== writtenTags)))) continue;
+      // «Настройки» has closed by now and handed the focus back to its key.
+      hubFrom = document.activeElement;
+      hubFromStudio = true;
+      draftsOpen = true;
+      return;
     }
-    if (dirty) {
-      // The current card is copied and downloaded from what is on disk: up to
-      // a clock's turn behind the canvas without this write.
-      await saveNow();
-    }
-    await screenshots.flushNow();
-    await refreshDrafts();
-    // «Настройки» has closed by now and handed the focus back to its key.
-    hubFrom = document.activeElement;
-    hubFromStudio = true;
-    draftsOpen = true;
   }
 
   /**
@@ -1945,6 +1990,42 @@
     }
   }
 
+  /** Save edits made while storage is busy, then switch in the same turn as the final check. */
+  async function saveThenOpen(
+    openingFrom: number, adopt: () => void,
+    { confirmLoss, discardOnFailure = false, stillOpen = () => true }: {
+      confirmLoss?: () => Promise<boolean>;
+      discardOnFailure?: boolean;
+      stillOpen?: () => boolean;
+    } = {},
+  ): Promise<boolean> {
+    const current = () => !destroyed && editor.docOpens === openingFrom && stillOpen();
+    let lossConfirmed = false;
+    while (current()) {
+      if (!editor.leaveTransform()) return false;
+      if (editor.rasterStrokePending) {
+        await editor.settleRasterStrokes();
+        continue;
+      }
+      if (editor.touched || currentLocalDraft().audioWritePending) {
+        const doc = editor.doc;
+        const tags = editor.layerColors.join();
+        const saved = await saveNow(true);
+        if (!current()) return false;
+        if ((!saved || storageBlocked) && !lossConfirmed && confirmLoss && (saved || discardOnFailure)) {
+          if (!(await confirmLoss()) || !current()) return false;
+          lossConfirmed = true;
+        }
+        if (!saved && !(discardOnFailure && lossConfirmed)) return false;
+        if (!editor.leaveTransform()) return false;
+        if (editor.rasterStrokePending || editor.doc !== doc || editor.layerColors.join() !== tags) continue;
+      }
+      adopt();
+      return true;
+    }
+    return false;
+  }
+
   /** Loads a saved draft; the current drawing is replaced, so a touched one asks. */
   async function openDraft(entry: DraftCard): Promise<void> {
     // The draft on the canvas is newer than its card: the list was read when
@@ -1960,42 +2041,42 @@
     }
     // The list holds cards: the document is read and checked here, once, and
     // before the question — a draft that will not open replaces nothing.
-    const draft = await readDraft(entry.id);
+    const openingFrom = editor.docOpens;
+    const hashes: string[] = [];
+    const draft = await withRasterStorage(async () => {
+      const read = await readDraft(entry.id);
+      if (read && hasRasterLayers(read.doc)) {
+        for (const [hash] of rasterInventory(read.doc)) hashes.push(hash);
+        openingRasterHashes.add(hashes);
+      }
+      return read;
+    });
     if (!draft) {
       void tell(t('editor.draft_open_failed'));
       return;
     }
-    if (editor.touched) {
-      if (!(await ask(t('editor.draft_open_confirm')))) {
+    try {
+      if (destroyed || editor.docOpens !== openingFrom) return;
+      if ((editor.touched || editor.rasterStrokePending) && !(await ask(t('editor.draft_open_confirm')))) {
         return;
       }
-      // By hand, so a clock stopped by a failure tries once more; a drawing
-      // that did not reach the disk is not replaced.
-      if (!(await saveNow(true))) {
-        return;
-      }
+      await saveThenOpen(openingFrom, () => {
+        editor.openDraft(draft.doc);
+        if (draft.state) editor.restoreState(draft.state);
+        // Claim the saved track before its asynchronous restore.
+        const audio = draft.audio;
+        storedBlob = audio?.blob ?? null;
+        storedCredits = audio ? `${audio.name}\u0000${audio.author}\u0000${audio.sync ?? true}` : '';
+        if (audio) void editor.audio.restore(audio);
+        else editor.audio.clear();
+        draftId = entry.id;
+        editor.lastSavedAt = null;
+        localDraft = { id: entry.id, version: draft.version, audioUnavailable: draft.audioUnavailable };
+        hub?.close();
+      });
+    } finally {
+      if (openingRasterHashes.delete(hashes)) void sweepDraftRasters();
     }
-    editor.openDraft(draft.doc);
-    if (draft.state) {
-      editor.restoreState(draft.state);
-    }
-    // Claimed before the restore, which is async: the effect must already know
-    // this blob is the one on disk by the time the track is adopted.
-    const audio = draft.audio;
-    storedBlob = audio?.blob ?? null;
-    storedCredits = audio
-      ? `${audio.name}\u0000${audio.author}\u0000${audio.sync ?? true}`
-      : '';
-    if (audio) {
-      void editor.audio.restore(audio);
-    } else {
-      editor.audio.clear();
-    }
-    draftId = entry.id;
-    editor.lastSavedAt = null;
-    localDraft = { id: entry.id, version: draft.version, audioUnavailable: draft.audioUnavailable };
-    // close(), not the flag: an unmounted open dialog drops focus on <body>.
-    hub?.close();
   }
 
   /** Deletes the drafts picked in the hub; says whether it was done. */
@@ -2026,23 +2107,21 @@
    * nothing is asked — unless it did not reach the disk. Says whether the
    * sheet was started: the hub closes on a yes.
    */
-  async function startSheet(value: string, fps: number): Promise<boolean> {
+  async function startSheet(value: string, fps: number, stillOpen: () => boolean): Promise<boolean> {
     if (!editor.sheetOpen) {
-      if (!editor.leaveTransform()) {
-        return false;
-      }
-      if (editor.touched) {
-        const saved = (await saveNow(true)) && !storageBlocked;
-        if (!saved && !(await ask(t('editor.new_sheet_lost_confirm')))) {
-          return false;
-        }
-      }
-      editor.newSheet();
-      editor.audio.clear();
-      storedBlob = null;
-      storedCredits = '';
-      draftId = newDraftId();
-      editor.lastSavedAt = null;
+      return saveThenOpen(editor.docOpens, () => {
+        editor.newSheet();
+        editor.audio.clear();
+        storedBlob = null;
+        storedCredits = '';
+        draftId = newDraftId();
+        editor.lastSavedAt = null;
+        editor.setSheet(value, fps);
+      }, {
+        stillOpen,
+        discardOnFailure: true,
+        confirmLoss: () => ask(t('editor.new_sheet_lost_confirm')),
+      });
     }
     editor.setSheet(value, fps);
     return true;
@@ -2079,6 +2158,12 @@
     // mult went out with the selection where it was lifted. The lock
     // refuses and says so, as it does for a frame change.
     if (!editor.leaveTransform()) return;
+    if (hasRasterLayers(editor.doc)) {
+      void ask(t('editor.publish_raster'), t('key.download_project')).then((download) => {
+        if (download) exportButton?.start('project');
+      });
+      return;
+    }
     // The server would refuse it after the form was filled in: said here.
     if (editor.budgetShare > 1) {
       void tell(t('editor.publish_over_budget', { percent: budgetLabel(editor.budgetShare).text }));
@@ -2197,24 +2282,28 @@
     if (!editor.leaveTransform()) {
       return;
     }
+    const openingFrom = editor.docOpens;
+    await editor.settleRasterStrokes();
     const name = file.name.toLowerCase();
     let doc: ToonDocument;
     let original = '';
     let text = '';
+    let assets: Map<string, Blob> | undefined;
     try {
-      if (name.endsWith('.toonop') || name.endsWith('.json')) {
-        text = await file.text();
-      }
-      // Safari saves `toonop.toonop` as `toonop.toonop.json`: ours by what is in it.
-      if (name.endsWith('.toonop') || (name.endsWith('.json') && isToonopJson(text))) {
-        doc = loadDocument(JSON.parse(text));
+      if (name.endsWith('.toonop') || name.endsWith('.toonop.json')) {
+        ({ doc, assets } = await decodeProject(file));
       } else if (name.endsWith('.json')) {
-        const result = decodeLegacyJson(text);
-        if (!result.ok) {
-          importError = t('editor.file_failed', { reason: result.error });
-          return;
+        text = await file.text();
+        if (isToonopJson(text)) {
+          doc = loadDocument(JSON.parse(text));
+        } else {
+          const result = decodeLegacyJson(text);
+          if (!result.ok) {
+            importError = t('editor.file_failed', { reason: result.error });
+            return;
+          }
+          doc = result.doc;
         }
-        doc = result.doc;
       } else if (name.endsWith('.toon')) {
         const result = decodeToon(await file.arrayBuffer());
         if (!result.ok) {
@@ -2241,7 +2330,7 @@
       const newer = err instanceof FormatError
         ? err.issues.find((issue) => issue.category === 'unsupported-version')
         : undefined;
-      const version = newer ? (JSON.parse(text) as { schema_version?: unknown }).schema_version : undefined;
+      const version = err instanceof FormatError ? err.unsupportedVersion : undefined;
       importError = t('editor.file_failed', {
         reason: newer ? t('file.version_unsupported', { version: String(version) }) : t('editor.file_not_toonop'),
       });
@@ -2249,21 +2338,33 @@
     }
     // Asked once the file is known to open: «Текущий рисунок будет заменён?»
     // answered yes, and then «файл повреждён», was a question about nothing.
-    if (editor.touched) {
+    if (destroyed || editor.docOpens !== openingFrom) return;
+    const confirmLoss = () => ask(t('editor.file_open_lost_confirm', { name: file.name }));
+    let lossConfirmed = false;
+    if (editor.touched || editor.rasterStrokePending) {
       // A browser that keeps no drafts loses the drawing outright: the question says so.
       const question = storageBlocked ? 'editor.file_open_lost_confirm' : 'editor.file_open_confirm';
       if (!(await ask(t(question, { name: file.name })))) {
         return;
       }
-      if (!(await saveNow(true))) {
-        return;
-      }
-      // That write is what learnt the browser keeps nothing: the question asked was about a drawing replaced, not lost.
-      if (storageBlocked && question !== 'editor.file_open_lost_confirm' && !(await ask(t('editor.file_open_lost_confirm', { name: file.name })))) {
-        return;
-      }
+      lossConfirmed = question === 'editor.file_open_lost_confirm';
     }
-    adoptOpenedDoc(doc, original);
+    if (destroyed || editor.docOpens !== openingFrom) return;
+    const adopt = () => adoptOpenedDoc(doc, original);
+    if (assets?.size) {
+      try {
+        const images = assets;
+        await withRasterStorage(async () => {
+          await storeRasterAssets(images);
+          await saveThenOpen(openingFrom, adopt, { confirmLoss: lossConfirmed ? undefined : confirmLoss });
+        });
+      } catch (err) {
+        console.warn('project images could not be saved:', err);
+        importError = t('editor.file_failed', { reason: t('editor.raster_disk') });
+      }
+      return;
+    }
+    await saveThenOpen(openingFrom, adopt, { confirmLoss: lossConfirmed ? undefined : confirmLoss });
   }
 
   /**
@@ -2488,18 +2589,9 @@
   // The reference's settings window: drawing, palette, autosave, view.
   let settingsSheetOpen = $state(false);
 
-  function openSettingsSheet(): void {
-    // «Скачать черновики» there: the live move goes into the record first.
-    editor.leaveTransform();
-    // The effect that marks the applied move runs after this.
-    if (editor.touched && editor.doc !== writtenDoc) {
-      dirty = true;
-    }
-    if (dirty) {
-      // «Скачать черновики» there reads the records: the current one as drawn.
-      void saveNow();
-    }
-    settingsSheetOpen = true;
+  async function openSettingsSheet(): Promise<void> {
+    await saveBeforeDraftTools();
+    if (!destroyed) settingsSheetOpen = true;
   }
 
   /** Installed plugins and the catalog — its own window, off the settings sheet. */
@@ -2609,7 +2701,8 @@
     // landed yet — the last thing between them and a closed tab. A selection
     // moved and not applied is not in the document at all: it asks too (a
     // lasso only picked up has no step yet, and closes quietly).
-    const unsaved = (editor.touched && (dirty || writing > 0) && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
+    const unsaved = editor.rasterStrokePending ||
+      (editor.touched && (dirty || writing > 0) && !isEmptyDocument(editor.doc)) || editor.canUndoTransform;
     // With the move, as a hidden tab's: `pagehide` applies it and writes, but
     // a write begun there never lands — the page is gone before storage
     // answers — and a reload lost the move it had just asked about.

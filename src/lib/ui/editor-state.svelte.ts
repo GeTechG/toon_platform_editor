@@ -6,8 +6,10 @@
 import { sessionErrors } from './error-log';
 import { AudioTrackState } from '../audio/state.svelte';
 import type { DraftState } from '../draft/store';
-import type { BlendMode, Cell, Frame, Stroke, ToonDocument } from '../format/types';
-import { keyOf, resolveCell } from '../model/cells';
+import { keepRasterAsset, withRasterStorage } from '../draft/raster-store';
+import type { BlendMode, Cell, Frame, Layer, RasterCel, Stroke, ToonDocument } from '../format/types';
+import { cellHasInk, keyOf, resolveCell } from '../model/cells';
+import { paintRasterStroke } from '../render/raster-paint';
 import { cellSize } from './thumb-size';
 import { zoomBy } from './strip-window';
 import {
@@ -38,7 +40,10 @@ import {
   removeLastStroke,
   removeLayer,
   replaceCells,
+  replaceRasterCel,
   replaceStrokes,
+  sameRasterCel,
+  LayerContentError,
   internTool,
   pressureOf,
   mirrorCell,
@@ -293,10 +298,25 @@ interface CellSnapshot {
   frame: number;
   /** What the cell held before. Tool ids stay valid: the tool table only grows. */
   strokes: Stroke[];
+  raster?: RasterCel;
   /** Stroke count the edit left behind. */
   after: number;
   /** The stroke it left on top (structure-undo.ts `EditedCell.last`). */
   last?: Stroke;
+}
+
+interface RasterStrokeJob {
+  row: Layer;
+  frame: number;
+  original: Cell;
+  stroke: ResolvedStroke;
+  invalidated?: true;
+  result?: { frame: number; cell: Cell };
+}
+
+interface RasterRedo {
+  snapshots: CellSnapshot[];
+  restored: Cell[];
 }
 
 /** A frame or layer delete, as undo puts it back: the shape and what the studio pointed at. */
@@ -504,6 +524,11 @@ export class EditorState {
   undone = $state.raw<{ cell: Cell; stroke: Stroke; at?: { layer: number; frame: number } }[]>([]);
   /** A layer move undo took back, with the shape undo left — redo offers it while that stands. */
   redoStructure = $state.raw<{ edit: StructureEdit; back: StructureSnapshot } | null>(null);
+  private rasterRedo = $state.raw<RasterRedo[]>([]);
+  private rasterJobs = $state.raw<RasterStrokeJob[]>([]);
+  private rasterWrites = Promise.resolve();
+  private rasterRevisions = new WeakMap<Frame, Frame>();
+  private timelineRevision = 0;
   /** A move undo or redo made: where the layer is now, for the panel to say (a fresh object each time). */
   layerMoved = $state.raw<{ layer: number } | null>(null);
   /** Timeline cells the user has selected; a plain click leaves one. */
@@ -1437,14 +1462,14 @@ export class EditorState {
    * Ctrl asks for the other side. The name follows the session counter, so
    * two layers never share one however the stack is reordered.
    */
-  addLayerAtActive(ctrlKey = false): void {
+  addLayerAtActive(ctrlKey = false, kind?: Layer['kind']): void {
     if (this.playing || this.doc.layers.length >= MAX_LAYERS || !this.leaveTransform()) {
       return;
     }
     const at = newLayerIndex(this.activeLayer, this.ux.newLayerPosition, ctrlKey);
     // One undo step, as a new frame is (critique, 2026-10-18): Z takes it back.
     const before = this.takeStructure();
-    this.activeLayer = this.#write((doc) => addLayer(doc, at, true));
+    this.activeLayer = this.#write((doc) => addLayer(doc, at, true, kind));
     this.layerColors.splice(at, 0, this.layerCounter % LAYER_TAGS);
     this.layerLocks.splice(at, 0, false);
     this.layerCounter++;
@@ -1458,6 +1483,10 @@ export class EditorState {
   /** What the panel calls a layer: its stored name, or its position. */
   layerLabel(index: number): string {
     return this.doc.layers[index]?.name ?? t('layer.default_name', { n: index + 1 });
+  }
+
+  get activeLayerIsRaster(): boolean {
+    return this.doc.layers[this.activeLayer]?.kind === 'raster';
   }
 
   /** Names a layer (double click in the panel); a blank name goes back to the position. */
@@ -1956,7 +1985,8 @@ export class EditorState {
 
   /** Whether the sheet can still be given another size (`sheet-size.ts`). */
   get sheetOpen(): boolean {
-    return sheetOpen(this.doc, this.edits.length + this.undone.length) && !this.transform;
+    const history = this.edits.length + this.undone.length + this.rasterRedo.length;
+    return sheetOpen(this.doc, history) && !this.transform && !this.rasterStrokePending;
   }
 
   /**
@@ -1992,6 +2022,7 @@ export class EditorState {
     this.playing = false;
     this.playbackFrame = 0;
     this.undone = [];
+    this.rasterRedo = [];
     this.selection = { frames: [0], layers: [0] };
     this.copiedCells = null;
     this.copiedMarks = new Set();
@@ -2159,6 +2190,10 @@ export class EditorState {
    * of «+»; a block's copies push the tails of its layers and become the block.
    */
   duplicateActiveFrame(): void {
+    this.afterRasterPaint(() => this.duplicateSelection());
+  }
+
+  private duplicateSelection(): void {
     if (this.playing || !this.canDuplicateFrames) {
       return;
     }
@@ -2221,8 +2256,11 @@ export class EditorState {
     }
     const { layers, from, count } = deleteReach(this.selection, this.activeFrame, this.activeLayer);
     const lost = layers.reduce((sum, l) => sum + this.doc.layers[l].frames.slice(from, from + count)
-      .filter((cell) => cell !== null && cell.strokes.length > 0).length, 0);
+      .filter(cellHasInk).length, 0);
     const go = () => this.structureStep(() => {
+      const shifted = layers.map((index) => this.doc.layers[index]).filter(({ frames }) =>
+        count > 1 || (frames[from] === null && keyOf(frames, frames.length - 1) > from));
+      this.invalidateRemovedRasterHolds(shifted, from);
       this.#write((doc) => (count > 1 ? deleteCells(doc, layers, from, count) : deleteCell(doc, layers, from)));
       this.collapseSelection();
     });
@@ -2262,6 +2300,7 @@ export class EditorState {
         this.copiedMarks = new Set();
       }
       this.structureStep(() => {
+        this.invalidateRemovedRasterHolds(this.doc.layers, from);
         this.#write((doc) => removeFrame(doc, from, count));
         this.activeFrame = activeFrameAfterRemove(from, frameCount(this.doc), this.ux.afterRemove);
         this.collapseSelection();
@@ -2291,6 +2330,8 @@ export class EditorState {
     const top = this.gestureTop();
     this.gestureStep = null;
     if (!top) return;
+    this.timelineRevision++;
+    this.invalidateRasterHolds(top.snap);
     this.edits = this.edits.slice(0, -1);
     this.#write((doc) => restoreStructure(doc, top.snap));
     this.activeFrame = top.activeFrame;
@@ -2329,6 +2370,9 @@ export class EditorState {
     if (duration < 1 || duration > range.maxDuration || duration === range.duration || !this.leaveTransform()) return;
     this.structureStep(() => {
       const length = this.filmLength;
+      if (duration < range.duration) {
+        this.invalidateRemovedRasterHolds([this.doc.layers[this.activeLayer]], range.start + duration);
+      }
       this.#write((doc) => resizeExposure(doc, this.activeLayer, this.activeFrame, duration));
       if (this.filmLength !== length) this.filmLengthSets++;
       this.activeFrame = Math.min(this.activeFrame, range.start + duration - 1);
@@ -2391,6 +2435,8 @@ export class EditorState {
     if (!top?.framesMoved) {
       return;
     }
+    this.timelineRevision++;
+    this.invalidateRasterHolds(top.snap);
     this.edits = this.edits.slice(0, -1);
     this.#write((doc) => restoreStructure(doc, top.snap));
     this.activeFrame = top.activeFrame;
@@ -2452,6 +2498,7 @@ export class EditorState {
     }
     const folded = merge ? this.gestureTop() : undefined;
     if (folded) {
+      this.invalidateRasterHolds(folded.snap);
       this.edits = this.edits.slice(0, -1);
       this.#write((doc) => restoreStructure(doc, folded.snap));
       this.activeFrame = folded.activeFrame;
@@ -2508,8 +2555,13 @@ export class EditorState {
    * screen shows it: a live move is in the copy and stays live.
    */
   copySelection(): void {
-    this.copiedCells = copyCells(this.docWithTransform(), this.selection);
-    this.copiedMarks = copiedMarks(this.doc, this.selection);
+    const source = this.selection;
+    this.afterRasterPaint(() => this.copyCurrentSelection(source), false);
+  }
+
+  private copyCurrentSelection(source: CellSelection, doc = this.docWithTransform()): void {
+    this.copiedCells = copyCells(doc, source);
+    this.copiedMarks = copiedMarks(this.doc, source);
     this.copiedPart = null;
     this.flashTick++;
   }
@@ -2521,8 +2573,13 @@ export class EditorState {
     if (this.playing || !this.mayEdit(this.selection.layers) || !this.leaveTransform()) {
       return;
     }
-    this.copySelection();
     const target = this.selection;
+    this.afterRasterPaint(() => this.cutCells(target), false);
+  }
+
+  private cutCells(target: CellSelection): void {
+    if (this.playing || !this.mayEdit(target.layers)) return;
+    this.copyCurrentSelection(target, this.doc);
     const snapshots = this.snapshotCells(target);
     // One empty frame per layer: the buffer's frames cycle over the whole range.
     this.#write((doc) => replaceCells(doc, target, target.layers.map(() => [{ strokes: [] }])));
@@ -2535,16 +2592,15 @@ export class EditorState {
 
   /** V: the buffer replaces the cells it lands on — or, holding a part of a frame, floats it over the frame. */
   pasteSelection(): void {
-    if (this.copiedPart) {
-      this.pastePart();
-    } else {
-      this.applyCopiedCells(replaceCells);
-    }
+    this.afterRasterPaint(() => {
+      if (this.copiedPart) this.pastePart();
+      else this.applyCopiedCells(replaceCells);
+    });
   }
 
   /** M: the buffer's strokes land on top of what the cells already hold. */
   mergeSelection(): void {
-    this.applyCopiedCells(mergeCells);
+    this.afterRasterPaint(() => this.applyCopiedCells(mergeCells));
   }
 
   /** One question, asked every time, answered on the same line. */
@@ -2581,7 +2637,9 @@ export class EditorState {
         this.#write((doc) => write(doc, target, buffer));
       } catch (err) {
         // At the document point limit — drop the write and say so on the canvas.
-        if (!this.refuseAtLimit(err)) {
+        if (err instanceof LayerContentError) {
+          this.canvasHint = { text: t('canvas.raster_paste') };
+        } else if (!this.refuseAtLimit(err)) {
           console.warn('timeline paste rejected:', err);
         }
         return;
@@ -2639,6 +2697,7 @@ export class EditorState {
           layer,
           frame,
           strokes: shown.strokes.map((s) => ({ points: s.points.slice(), tool_id: s.tool_id, ...pressureOf(s) })),
+          ...(shown.raster ? { raster: shown.raster } : {}),
           after: 0,
         });
       }
@@ -2656,8 +2715,11 @@ export class EditorState {
     // second time — is not a step: filed, it undid nothing and threw the redo
     // stack away. The cells it rewrote get their own objects back, so the
     // step below still finds them intact.
-    const shown = (snapshot: CellSnapshot) => resolveCell(this.doc.layers[snapshot.layer], snapshot.frame).strokes;
-    if (snapshots.every((snapshot) => sameStrokes(snapshot.strokes, shown(snapshot)))) {
+    const changed = snapshots.filter((snapshot) => {
+      const shown = resolveCell(this.doc.layers[snapshot.layer], snapshot.frame);
+      return !sameStrokes(snapshot.strokes, shown.strokes) || !sameRasterCel(snapshot.raster, shown.raster);
+    });
+    if (!changed.length) {
       this.#write((doc) => {
         for (const snapshot of snapshots) {
           doc.layers[snapshot.layer].frames[snapshot.frame] = snapshot.was;
@@ -2668,7 +2730,6 @@ export class EditorState {
     // Only the cells the edit changed are the step: a paste of what a frame
     // already held left it a cell that, taken back alone, undid nothing. Such
     // a cell gets its own object back, like the edit that changed none.
-    const changed = snapshots.filter((snapshot) => !sameStrokes(snapshot.strokes, shown(snapshot)));
     this.#write((doc) => {
       for (const snapshot of snapshots) {
         if (!changed.includes(snapshot)) {
@@ -2685,6 +2746,7 @@ export class EditorState {
     this.edits = [...this.edits, changed].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
     this.redoStructure = null;
+    this.rasterRedo = [];
     this.touched = true;
   }
 
@@ -2703,11 +2765,34 @@ export class EditorState {
 
   /** Files a frame or layer delete as one undo step, sealed on the shape it left. */
   private pushStructure(edit: StructureEdit): void {
+    this.timelineRevision++;
+    this.invalidateRasterHolds(edit.snap);
     edit.snap.seal(this.doc);
     this.edits = [...this.edits, edit].slice(-EDIT_HISTORY_LIMIT);
     this.undone = [];
     this.redoStructure = null;
+    this.rasterRedo = [];
     this.touched = true;
+  }
+
+  /** A hold can keep its coordinate while the structure changes elsewhere. */
+  private invalidateRasterHolds(snapshot: StructureSnapshot): void {
+    for (const job of this.rasterJobs) {
+      const { cell, frame } = this.rasterStrokeTarget(job);
+      if (cell !== null) continue;
+      const frames = snapshot.frames[snapshot.layers.indexOf(job.row)];
+      const key = frames ? keyOf(frames, frame) : -1;
+      if (!frames || frames[frame] !== null || job.row.frames[frame] !== null ||
+          key !== keyOf(job.row.frames, frame) || frames[key] !== job.row.frames[key]) job.invalidated = true;
+    }
+  }
+
+  /** Removing null slots can shift another hold into an indistinguishable position. */
+  private invalidateRemovedRasterHolds(rows: readonly Layer[], from: number): void {
+    for (const job of this.rasterJobs) {
+      const { cell, frame } = this.rasterStrokeTarget(job);
+      if (cell === null && frame >= from && rows.includes(job.row)) job.invalidated = true;
+    }
   }
 
   /**
@@ -2739,7 +2824,7 @@ export class EditorState {
     if (this.transform) {
       return this.canUndoTransform;
     }
-    return !this.playing
+    return !this.playing && !this.rasterJobs.length
       && ((this.activeCell?.strokes.length ?? 0) > 0
         || this.restorableStructure !== undefined
         || this.restorableEdit !== undefined);
@@ -2758,7 +2843,15 @@ export class EditorState {
     const last = this.undone[this.undone.length - 1];
     const here = last !== undefined && last.cell === this.activeCell
       && (!last.at || (last.at.layer === this.activeLayer && last.at.frame === this.activeFrame));
-    return !this.playing && (this.redoableStructure !== undefined || here);
+    return !this.playing && !this.rasterJobs.length &&
+      (this.redoableStructure !== undefined || this.redoableRaster !== undefined || here);
+  }
+
+  private get redoableRaster(): RasterRedo | undefined {
+    const entry = this.rasterRedo.at(-1);
+    if (!entry || !entry.snapshots.some(({ layer, frame }) => layer === this.activeLayer && frame === this.activeFrame)) return;
+    return entry.snapshots.every(({ layer, frame }, i) =>
+      this.doc.layers[layer]?.frames[frame] === entry.restored[i]) ? entry : undefined;
   }
 
   /** The move redo would put back: while the document is still what undo left. */
@@ -2789,6 +2882,7 @@ export class EditorState {
       this.collapseSelection();
       this.undone = [];
       this.redoStructure = null;
+      this.rasterRedo = [];
       if (structure.redo) {
         const back = takeStructure(this.doc);
         back.seal(this.doc);
@@ -2817,9 +2911,13 @@ export class EditorState {
         // the layer or after another drawing, it comes back as that drawing.
         this.#write((doc) => edit.forEach((snapshot) => {
           const frames = doc.layers[snapshot.layer].frames;
-          const continues = snapshot.was === null && snapshot.frame > 0
-            && sameStrokes(snapshot.strokes, resolveCell(doc.layers[snapshot.layer], snapshot.frame - 1).strokes);
+          const row = doc.layers[snapshot.layer];
+          const previous = snapshot.frame > 0 ? resolveCell(row, snapshot.frame - 1) : undefined;
+          const continues = snapshot.was === null && previous !== undefined &&
+            sameStrokes(snapshot.strokes, previous.strokes) && sameRasterCel(snapshot.raster, previous.raster);
           if (continues) frames[snapshot.frame] = null;
+          else if (row.kind === 'raster' && snapshot.was) frames[snapshot.frame] = snapshot.was;
+          else if (row.kind === 'raster') replaceRasterCel(doc, snapshot.layer, snapshot.frame, snapshot.raster);
           else replaceStrokes(doc, snapshot.layer, snapshot.frame, snapshot.strokes);
         }));
       } catch (err) {
@@ -2835,6 +2933,10 @@ export class EditorState {
       // not always the whole step: the cell stood on alone, when another
       // cell of the step was edited since.
       this.edits = dropCells(this.edits, edit);
+      if (edit.some(({ layer }) => this.doc.layers[layer].kind === 'raster')) {
+        const restored = edit.map(({ layer, frame }) => this.doc.layers[layer].frames[frame]);
+        this.rasterRedo = [...this.rasterRedo, { snapshots: edit, restored }].slice(-EDIT_HISTORY_LIMIT);
+      }
       for (const snapshot of edit) {
         // The restore is a new cell object, and the steps left in the history
         // — block edits, deletes, layer moves — know the cell by the old one.
@@ -2874,7 +2976,8 @@ export class EditorState {
       return;
     }
     // A move is structure: a hidden active layer does not refuse it.
-    const again = !this.playing ? this.redoableStructure : undefined;
+    if (this.playing || this.rasterJobs.length) return;
+    const again = this.redoableStructure;
     if (again) {
       const { edit } = again;
       const after = edit.redo!;
@@ -2889,6 +2992,17 @@ export class EditorState {
       if (edit.moved) {
         this.layerMoved = { layer: edit.moved.to };
       }
+      this.touched = true;
+      return;
+    }
+    const raster = this.redoableRaster;
+    if (raster) {
+      if (!this.mayEdit(raster.snapshots.map(({ layer }) => layer), true)) return;
+      this.#write((doc) => raster.snapshots.forEach(({ layer, frame, cell }) => {
+        doc.layers[layer].frames[frame] = cell;
+      }));
+      this.rasterRedo = this.rasterRedo.slice(0, -1);
+      this.edits = [...this.edits, raster.snapshots].slice(-EDIT_HISTORY_LIMIT);
       this.touched = true;
       return;
     }
@@ -2932,6 +3046,13 @@ export class EditorState {
     if (!this.mayEdit([layerIndex])) {
       return;
     }
+    const row = this.doc.layers[layerIndex];
+    if (row?.kind === 'raster') {
+      if (stroke.tool.kind === 'pencil' || stroke.tool.kind === 'eraser') {
+        this.queueRasterStroke(row, frame, stroke);
+      }
+      return;
+    }
     // A frame or a mult at the format's limit drops the stroke, says so on
     // the canvas and keeps the redo stack; anything else is the caller's.
     try {
@@ -2944,6 +3065,7 @@ export class EditorState {
       return;
     }
     this.undone = [];
+    this.rasterRedo = [];
     // The reference drops the "copied" mark off a cell as soon as it is drawn
     // into (`bundle:8143-8151`); the rest of the block keeps it.
     const drawn = this.doc.layers[layerIndex]?.frames[frame];
@@ -2951,6 +3073,128 @@ export class EditorState {
       this.copiedMarks = new Set([...this.copiedMarks].filter((cell) => cell !== drawn));
     }
     this.touched = true;
+  }
+
+  get pendingRasterStroke(): RasterStrokeJob | undefined {
+    const row = this.doc.layers[this.activeLayer];
+    return this.rasterJobs.find((job) => job.row === row && this.rasterStrokeFrame(job) === this.activeFrame);
+  }
+
+  settleRasterStrokes(): Promise<void> {
+    return this.rasterWrites;
+  }
+
+  get rasterStrokePending(): boolean {
+    return this.rasterJobs.length > 0;
+  }
+
+  /** The visible document, open edit history and clipboard can all restore an image. */
+  rasterHashesInUse(): Set<string> {
+    const hashes = new Set<string>();
+    const keep = (cell: { raster?: RasterCel } | null | undefined) => {
+      if (cell?.raster) hashes.add(cell.raster.hash);
+    };
+    const keepStructure = (structure?: StructureSnapshot) => {
+      structure?.frames.forEach((frames) => frames.forEach(keep));
+    };
+    const keepEdit = (snapshot: CellSnapshot) => {
+      keep(snapshot);
+      keep(snapshot.was);
+      keep(snapshot.cell);
+    };
+    for (const layer of this.doc.layers) if (layer.kind === 'raster') layer.frames.forEach(keep);
+    for (const row of this.copiedCells ?? []) row.forEach(keep);
+    for (const edit of this.edits) {
+      if (Array.isArray(edit)) edit.forEach(keepEdit);
+      else {
+        keepStructure(edit.snap);
+        keepStructure(edit.redo?.snap);
+      }
+    }
+    for (const entry of this.rasterRedo) {
+      entry.snapshots.forEach(keepEdit);
+      entry.restored.forEach(keep);
+    }
+    keepStructure(this.redoStructure?.back);
+    keepStructure(this.redoStructure?.edit.snap);
+    keepStructure(this.redoStructure?.edit.redo?.snap);
+    return hashes;
+  }
+
+  /** Find the cell version that is actually in the row, including one restored by undo. */
+  rasterCellIndex(frames: readonly Cell[], cell: Cell, frame: number): number {
+    if (frames[frame] === cell) return frame;
+    while (cell) {
+      const at = frames.indexOf(cell);
+      if (at >= 0) return at;
+      cell = this.rasterRevisions.get(cell) ?? null;
+    }
+    return -1;
+  }
+
+  private rasterStrokeTarget(job: RasterStrokeJob): { frame: number; cell: Cell } {
+    return job.result ?? { frame: job.frame, cell: job.original };
+  }
+
+  rasterStrokeFrame(job: RasterStrokeJob): number {
+    if (job.invalidated || !this.doc.layers.includes(job.row)) return -1;
+    const { frame, cell } = this.rasterStrokeTarget(job);
+    return this.rasterCellIndex(job.row.frames, cell, frame);
+  }
+
+  /** Clipboard and duplication take the selection after its released strokes land. */
+  private afterRasterPaint(action: () => void, requireSelection = true): void {
+    if (!this.rasterStrokePending) {
+      action();
+      return;
+    }
+    const { selection, activeFrame, activeLayer, docOpens, timelineRevision } = this;
+    this.rasterWrites = this.rasterWrites.then(() => {
+      if (this.docOpens !== docOpens || this.timelineRevision !== timelineRevision) return;
+      if (requireSelection && (this.selection !== selection ||
+          this.activeFrame !== activeFrame || this.activeLayer !== activeLayer)) return;
+      action();
+    }).catch((err) => console.warn('timeline edit failed:', err));
+  }
+
+  private queueRasterStroke(row: Layer, frame: number, stroke: ResolvedStroke): void {
+    const before = this.rasterJobs.filter((job) => job.row === row && this.rasterStrokeFrame(job) === frame).at(-1);
+    const job: RasterStrokeJob = { row, frame, stroke, original: row.frames[frame] };
+    this.rasterJobs = [...this.rasterJobs, job];
+    this.rasterWrites = this.rasterWrites.then(async () => {
+      if (job.invalidated) return;
+      if (before?.result && !before.invalidated) job.result = before.result;
+      let at = this.rasterStrokeFrame(job);
+      if (at < 0) return;
+      let layer = this.doc.layers.indexOf(row);
+      const shown = resolveCell(row, at);
+      job.result = { frame: at, cell: row.frames[at] };
+      const { width, height } = this.doc;
+      const paint = await paintRasterStroke({ width, height }, shown.raster, stroke);
+      if (!paint.changed) return;
+      const base = job.result.cell;
+      await withRasterStorage(async () => {
+        if (job.invalidated) return;
+        const durable = !paint.cel || !paint.blob || await keepRasterAsset(paint.cel.hash, paint.blob);
+        layer = this.doc.layers.indexOf(row);
+        if (base && row.frames[at] !== base) at = row.frames.indexOf(base);
+        if (job.invalidated || layer < 0 || at < 0 || row.frames[at] !== base ||
+            (base === null && resolveCell(row, at) !== shown)) return;
+        const snapshots = this.snapshotCells({ layers: [layer], frames: [at] });
+        this.#write((doc) => replaceRasterCel(doc, layer, at, paint.cel));
+        this.pushEdit(snapshots);
+        job.result = { frame: at, cell: row.frames[at] };
+        if (base && job.result.cell !== base && job.result.cell) {
+          this.rasterRevisions.set(base, job.result.cell);
+        }
+        if (!durable) this.canvasHint = { text: t('canvas.raster_storage') };
+      });
+    }).catch((err) => {
+      console.warn('raster stroke could not be finished:', err);
+      this.canvasHint = { text: t('canvas.raster_unavailable') };
+    }).finally(() => {
+      this.rasterJobs = this.rasterJobs.filter((pending) => pending !== job);
+    });
   }
 
   /** Whether the timeline still marks this cell as copied from. */

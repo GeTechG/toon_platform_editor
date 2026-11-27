@@ -15,6 +15,7 @@ import { frameCount } from '../model/operations';
 import { filmTiming } from '../model/timing';
 import { stills, type Stills } from '../model/stills';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
+import { renderRasterFrame } from '../render/raster-images';
 import {
   FrameRasterizer,
   exportSize,
@@ -356,7 +357,7 @@ async function encodeFrames(
       throwIfAborted(signal);
       const frame = timing.frameAt(index % ticks);
       if (frame !== drawn) {
-        rasterizer.draw(frame);
+        await rasterizer.draw(frame);
         drawn = frame;
       }
       await video.add(index / fps, 1 / fps);
@@ -526,7 +527,8 @@ async function recordVideo(still: Stills, options: VideoExportOptions): Promise<
         throw broke;
       }
       await sleep(started + deadlines[index] - performance.now());
-      renderer.render(doc, timing.frameAt(index % ticks), ctx as unknown as Canvas2DLike, viewport);
+      const frame = timing.frameAt(index % ticks);
+      await renderRasterFrame(renderer, doc, frame, ctx as unknown as Canvas2DLike, viewport);
       if (watermark) {
         stampWatermark(ctx, targetWidth, height, scale);
       }

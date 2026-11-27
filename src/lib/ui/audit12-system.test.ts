@@ -27,9 +27,9 @@ describe('leaving the studio keeps the strokes', () => {
   });
 
   it('the flush writes only a changed drawing — «никогда» included (owner-twelfth-shell)', () => {
-    const flush = editorUi.match(/function flushOnLeave\(\): void \{[^]*?\n  \}/)?.[0] ?? '';
+    const flush = editorUi.match(/function flushOnLeave\([^]*?\n  \}/)?.[0] ?? '';
     expect(flush).toContain('dirty');
-    expect(flush).toMatch(/saveNow\((?:false, true)?\)/);
+    expect(flush).toMatch(/saveNow\(false, true, undefined, false, track\)/);
   });
 });
 

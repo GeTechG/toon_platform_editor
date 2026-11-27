@@ -23,6 +23,8 @@ import type { Viewport } from './contract';
 import type { StrokeGeometry } from './smoothing';
 import type { DeclarativeLiveStroke } from './sheet-composer';
 
+const RASTER_INK = Symbol('raster ink');
+
 /** What the composed frame is painted onto. */
 export interface ComposeTarget extends Canvas2DLike {
   globalAlpha: number;
@@ -407,7 +409,7 @@ export class FrameComposer {
     this.#belowBuffers[0] ??= this.#make();
     this.#active ??= this.#make();
     this.#aboveBuffers[0] ??= this.#make();
-    const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.strokes.length > 0);
+    const inked = (cells: readonly Frame[]): boolean => cells.some((c) => c.raster !== undefined || c.strokes.length > 0);
     const paint = (groups: ReturnType<typeof chunked>, pool: ComposeBuffer[]): { chunks: Chunk[]; painted: boolean } => {
       let painted = false;
       // An empty side still paints its first buffer empty, so nothing stale is left on it.
@@ -475,8 +477,9 @@ export class FrameComposer {
     // A selection being moved keeps its points and changes its matrix, which
     // stands in the pressure's place — the area repaint reads only the first
     // two, and a stand-in cell is never kept.
-    const ink = cells.map((cell) => cell.strokes.flatMap((s) =>
-      [s.points, scene.tools[s.tool_id], (s as PlacedStroke).place ?? s.pressure]));
+    const ink = cells.map((cell) => cell.raster
+      ? [RASTER_INK, cell.raster, viewport.raster?.(cell.raster)]
+      : cell.strokes.flatMap((s) => [s.points, scene.tools[s.tool_id], (s as PlacedStroke).place ?? s.pressure]));
     const held = afresh ? undefined : this.#ink.get(buffer);
     // Laid with other looks, what the buffer holds is no start for these.
     const was = held && held.looks === lookKey ? held : undefined;
@@ -512,15 +515,22 @@ export class FrameComposer {
   ): boolean {
     const kept = was !== undefined && was.length === ink.length
       && was.every((old, c) => old.length <= ink[c].length && old.every((part, i) => part === ink[c][i]));
-    if (kept && was.every((old, c) => old.length === ink[c].length)) {
+    if (kept && was?.every((old, c) => old.length === ink[c].length)) {
       return false;
+    }
+    const raster = ink.some((cell) => cell[0] === RASTER_INK);
+    if (raster || was?.some((cell) => cell[0] === RASTER_INK)) {
+      // Raster images already are cell caches. Vector repaint and worker
+      // caches keep only stroke triples and have no access to the image.
+      was = undefined;
+      keepable = false;
     }
     const had = was?.[0]?.length ?? 0;
     // A few lines more go on top; a cell put whole (a file opened over an
     // empty one) goes through the cache, so it is kept like any other.
     const grown = (ink[0]?.length ?? 0) - had;
     const mask = () => this.#paintMask(width, height);
-    if (kept && !looks?.some(hasLook) && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
+    if (kept && was && !looks?.some(hasLook) && cells.length === 1 && (grown <= 3 * 8 || grown <= had)) {
       const strokes = cells[0].strokes;
       const start = had / 3;
       // A matching tail is already translucent on the buffer. Rebuild its coat together.
@@ -555,7 +565,7 @@ export class FrameComposer {
       scratch.clear();
       return scratch;
     };
-    if (this.#cells) {
+    if (this.#cells && !raster) {
       // Each cell from the kept ones, or rasterized into one and kept: a cell
       // in its own buffer is a layer apart, so an eraser cuts only its own.
       const kept = this.#cells;
@@ -776,13 +786,16 @@ export class FrameComposer {
     for (const index of layers) {
       const layer = scene.doc.layers[index];
       const cell = layer && frame < layer.frames.length ? resolveCell(layer, frame) : undefined;
-      if (cell && !layer.hidden && cell.strokes.length > 0) {
+      if (cell && !layer.hidden && (cell.raster || cell.strokes.length > 0)) {
         cells.push(cell);
         // The first and the last stroke too: undo one line and draw another,
         // and the cell and its count are what they were. A transform writes
         // fresh strokes (operations.ts `mapStrokes`), so it shows here as well.
-        keys.push(`${index}:${nodeId(layer)}:${nodeId(cell)}:${cell.strokes.length}`
-          + `:${nodeId(cell.strokes[0])}:${nodeId(cell.strokes[cell.strokes.length - 1])}`);
+        const image = cell.raster && scene.viewport.raster?.(cell.raster);
+        const ink = cell.raster
+          ? `${nodeId(cell.raster)}:${image ? nodeId(image) : ''}`
+          : `${cell.strokes.length}:${nodeId(cell.strokes[0])}:${nodeId(cell.strokes[cell.strokes.length - 1])}`;
+        keys.push(`${index}:${nodeId(layer)}:${nodeId(cell)}:${ink}`);
       }
     }
     if (cells.length === 0) {

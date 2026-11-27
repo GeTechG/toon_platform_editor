@@ -129,7 +129,7 @@ describe('the copied mark follows the cells, not their numbers', () => {
 
 describe('the editor keeps the mark by cell', () => {
   it('copy records the cells themselves', () => {
-    expect(member(state, 'copySelection')).toContain('copiedMarks(this.doc, this.selection)');
+    expect(member(state, 'copyCurrentSelection')).toContain('copiedMarks(this.doc, source)');
   });
 
   it('a stroke takes that cell out of the mark', () => {

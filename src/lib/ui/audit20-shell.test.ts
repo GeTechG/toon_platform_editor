@@ -27,11 +27,11 @@ describe('уход под замком трансформации', () => {
 
   it('уход из студии по ссылке сайта — тоже', () => {
     const destroy = editorUi.match(/onDestroy\(\(\) => \{[^]*?\n  \}\);/)?.[0] ?? '';
-    expect(destroy).toMatch(/editor\.leaveTransform\(\);\s*flushOnHide\(\);[^]*editor\.audio\.clear\(\)/);
+    expect(destroy).toMatch(/editor\.leaveTransform\(\);\s*const flush = flushOnHide\(\);[^]*editor\.audio\.clear\(\)/);
   });
 
   it('без живого сдвига запись прежняя: flushOnHide уходит в flushOnLeave', () => {
-    expect(fn('flushOnHide')).toMatch(/if \(shown !== editor\.doc\) \{[^]*?return;\s*\}\s*flushOnLeave\(\);/);
+    expect(fn('flushOnHide')).toMatch(/if \(shown !== editor\.doc\) \{[^]*?return write;\s*\}\s*return flushOnLeave\(track\);/);
   });
 });
 
@@ -40,8 +40,8 @@ describe('файл поверх рисунка, который браузер н
     const open = fn('openFile');
     // Запись при заблокированном хранилище отвечает «успех» и ставит storageBlocked.
     expect(fn('saveNow')).toMatch(/ok && bytes === 0[^]*?storageBlocked = true;[^]*?return true;/);
-    expect(open).toMatch(
-      /if \(!\(await saveNow\(true\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(storageBlocked && question !== 'editor\.file_open_lost_confirm' && !\(await ask\(t\('editor\.file_open_lost_confirm', \{ name: file\.name \}\)\)\)\) \{\s*return;/,
-    );
+    expect(open).toMatch(/const confirmLoss = \(\) => ask\(t\('editor\.file_open_lost_confirm', \{ name: file\.name \}\)\)/);
+    expect(open).toMatch(/await saveThenOpen\(openingFrom, adopt, \{ confirmLoss: lossConfirmed \? undefined : confirmLoss \}\)/);
+    expect(fn('saveThenOpen')).toMatch(/const saved = await saveNow\(true\);[^]*?\(!saved \|\| storageBlocked\)[^]*?if \(!\(await confirmLoss\(\)\)/);
   });
 });

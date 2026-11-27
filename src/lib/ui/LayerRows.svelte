@@ -545,6 +545,15 @@
   >
     <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
   </button>
+  <button
+    class="add-layer raster"
+    aria-label={t('layer.add_raster')}
+    aria-disabled={!canAdd || editor.playing || undefined}
+    title={canAdd ? t('layer.add_raster') : t('layer.full', { max: MAX_LAYERS })}
+    onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey, 'raster')}
+  >
+    <Icon name="pixel" size={16} /> <span class="raster-word">{t('layer.raster_short')}</span>
+  </button>
   <!-- The film's length in ticks (Clip Studio, Harmony): typed here, or the
        strip's end mark dragged. Shorter, it asks before drawings go. -->
   <label class="length" title={t('timeline.length_title')}>
@@ -668,9 +677,12 @@
             tabindex={stop(layerIndex, 2)}
             aria-keyshortcuts="F2 Alt+ArrowUp Alt+ArrowDown"
             aria-pressed={layerIndex === editor.activeLayer}
+            aria-label={editor.doc.layers[layerIndex].kind === 'raster'
+              ? t('layer.raster_label', { name: editor.layerLabel(layerIndex) })
+              : undefined}
             title={`${editor.layerLabel(layerIndex)}\n${t('layer.rename_hint')}`}
             onclick={() => editor.selectLayer(layerIndex)}
-          >{editor.layerLabel(layerIndex)}</button>
+          >{#if editor.doc.layers[layerIndex].kind === 'raster'}<Icon name="pixel" size={12} />{/if}{editor.layerLabel(layerIndex)}</button>
         {/if}
         </span>
 
@@ -925,6 +937,7 @@
   /* As tall as the strip's head beside it — its seconds' ruler over the
      frame numbers: the rows under both start level. */
   .head {
+    container: layer-head / inline-size;
     display: flex;
     align-items: center;
     flex: none;
@@ -938,6 +951,7 @@
     align-items: center;
     gap: 0.25rem;
     margin-left: auto;
+    min-width: 0;
     font-size: 0.75rem;
     color: var(--ink-2);
     white-space: nowrap;
@@ -945,6 +959,7 @@
   .length input {
     box-sizing: border-box;
     width: 4.2em;
+    min-width: 0;
     height: 1.625rem;
     padding: 0 0.25rem;
     border: 1px solid var(--edge);
@@ -986,6 +1001,9 @@
   .add-layer[aria-disabled='true'] {
     opacity: 0.4;
     cursor: default;
+  }
+  .add-layer.raster {
+    flex: none;
   }
   /* The settings key: the letter of the mode in the eye's size and press floor.
      Heavier than the studio's shared key vocabulary (Editor.svelte), which
@@ -1119,6 +1137,29 @@
       overflow: hidden;
       clip-path: inset(50%);
       white-space: nowrap;
+    }
+  }
+  @container layer-head (width < 13rem) {
+    .length-word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+  @container layer-head (width < 9rem) {
+    .add-word {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .raster-word {
+      display: none;
     }
   }
   @media (forced-colors: active) {

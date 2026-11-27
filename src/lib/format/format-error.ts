@@ -4,7 +4,7 @@ import type { ValidationIssue } from './validate';
 export class FormatError extends Error {
   readonly issues: ValidationIssue[];
 
-  constructor(issues: ValidationIssue[]) {
+  constructor(issues: ValidationIssue[], readonly unsupportedVersion?: number) {
     super(issues.map((issue) => `${issue.path || '<document>'}: ${issue.message}`).join('; '));
     this.name = 'FormatError';
     this.issues = issues;

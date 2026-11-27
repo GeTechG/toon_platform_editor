@@ -24,7 +24,7 @@
   import { createLostRelease, mainUp } from './lost-release';
   import { snappedDuration, touchDuration, timelineClips, type ClipResize } from './timeline-clips';
   import { packOffset, type ExposurePack } from '../model/exposure';
-  import { keyOf } from '../model/cells';
+  import { cellHasInk, keyOf } from '../model/cells';
   import { formatPercent, t } from '../i18n';
   import { notePopupClosed } from './dismiss-press';
 
@@ -714,6 +714,8 @@
     /** Ctrl: the carry puts copies down, and whether it has put them yet. */
     copy: boolean;
     copied: boolean;
+    waitingForRaster?: boolean;
+    released?: boolean;
     /** Cells of the block's layers, not columns: the other layers stand (timeline-exposure-cells). */
     cells: boolean;
   } | null>(null);
@@ -804,7 +806,7 @@
       closeMenu();
       startCarry({ pointerId: e.pointerId, clientX: startX }, frame, false, cells);
     }
-    if (!carry || e.pointerId !== carry.pointerId) return;
+    if (!carry || carry.released || e.pointerId !== carry.pointerId) return;
     if (lostCarry(e, mainUp)) {
       endCarry(e);
       return;
@@ -835,6 +837,23 @@
    */
   function stepCarry(): void {
     if (!carry || !strip) return;
+    if (carry.waitingForRaster) return;
+    if (carry.copy && editor.rasterStrokePending) {
+      const pending = carry;
+      const opened = editor.docOpens;
+      pending.waitingForRaster = true;
+      void editor.settleRasterStrokes().then(() => {
+        if (carry !== pending) return;
+        pending.waitingForRaster = false;
+        if (editor.docOpens !== opened || !strip?.isConnected) {
+          endCarry();
+          return;
+        }
+        stepCarry();
+        if (pending.released && !pending.waitingForRaster) endCarry();
+      });
+      return;
+    }
     if (carry.cells) {
       stepCellCarry();
       return;
@@ -955,6 +974,11 @@
     if (held && (!e || e.pointerId === held.pointerId)) held = null;
     if (!carry || (e && e.pointerId !== carry.pointerId)) return;
     stopCarryScroll();
+    if (e && carry.waitingForRaster && e.type !== 'pointercancel') {
+      carry.released = true;
+      carried = true;
+      return;
+    }
     if (carry.lifted) {
       dropping = true;
       clearTimeout(dropTimer);
@@ -1412,7 +1436,7 @@
     const own = frames[i];
     const base = own === null
       ? t('timeline.cell_continued', { frame: i + 1, key: keyOf(frames, i) + 1, layer: editor.layerLabel(layer) })
-      : t(own.strokes.length ? 'timeline.cell' : 'timeline.cell_empty', { frame: i + 1, layer: editor.layerLabel(layer) });
+      : t(cellHasInk(own) ? 'timeline.cell' : 'timeline.cell_empty', { frame: i + 1, layer: editor.layerLabel(layer) });
     return `${base}${editor.isCopiedCell(i, layer) ? t('timeline.cell_copied') : ''}`;
   }
 
@@ -1439,7 +1463,7 @@
    */
   function kindOf(layer: number, i: number): 'drawing' | 'blank' | 'continued' {
     const own = editor.doc.layers[layer].frames[i];
-    return own === null ? 'continued' : own.strokes.length > 0 ? 'drawing' : 'blank';
+    return own === null ? 'continued' : cellHasInk(own) ? 'drawing' : 'blank';
   }
 
   function previewResize(layer: number): ClipResize | undefined {
@@ -1525,12 +1549,12 @@
           const w = Math.max(1, (clip.end - clip.start) * b.pitch - 1);
           if (held) ctx.clearRect(x, top, w, tall);
           ctx.fillStyle = tone;
-          ctx.globalAlpha = clip.frame?.strokes.length ? 0.22 : 0.08;
+          ctx.globalAlpha = cellHasInk(clip.frame) ? 0.22 : 0.08;
           ctx.fillRect(x, top, w, tall);
           ctx.globalAlpha = 1;
           ctx.strokeStyle = held ? accent : ink;
           ctx.strokeRect(x + 0.5, top + 0.5, Math.max(0, w - 1), tall - 1);
-          if (clip.frame?.strokes.length) ctx.fillRect(x + 1, top + 1, Math.min(w - 1, b.pitch - 1), tall - 2);
+          if (cellHasInk(clip.frame)) ctx.fillRect(x + 1, top + 1, Math.min(w - 1, b.pitch - 1), tall - 2);
         }
         ctx.fillStyle = accent;
         ctx.globalAlpha = 0.14;
@@ -1804,7 +1828,7 @@
               style:transform={`translateX(calc(${GRID_GAP + clip.start * pitch}px + var(--clip-travel)))`} style:width="{(clip.end - clip.start) * pitch - gap}px"
               style:height="{cell.h + 2}px">
               <span class="clip-thumbnail" style:width="{cellW}px">
-                {#if clip.frame?.strokes.length}
+                {#if cellHasInk(clip.frame)}
                   <LayerThumb doc={editor.doc} {layerIndex} frameIndex={clip.key}
                     maxW={cellW} maxH={cell.h + 2} />
                 {:else}

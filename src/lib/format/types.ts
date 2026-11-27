@@ -131,6 +131,17 @@ export interface Stroke {
 export interface Frame {
   /** Strokes in drawing order. */
   strokes: Stroke[];
+  /** A cropped still on a raster layer, absent for an empty cell. */
+  raster?: RasterCel;
+}
+
+/** Crop coordinates in logical sheet pixels. Identical bytes share a hash at any position. */
+export interface RasterCel {
+  readonly hash: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /**
@@ -157,6 +168,8 @@ export type Cell = Frame | null;
 
 /** A layer: named, hideable, one cell per tick. */
 export interface Layer {
+  /** Local studio extension. An absent kind is a vector layer. */
+  kind?: 'raster';
   /** Hidden layers are skipped by every renderer; always present (one canonical form). */
   hidden: boolean;
   /** Display name, 1–`MAX_LAYER_NAME` characters; absent means "name by position". */

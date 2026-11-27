@@ -15,6 +15,7 @@ import type { ToonDocument } from '../format/types';
 import { frameCount } from '../model/operations';
 import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
 import type { Viewport } from '../render/contract';
+import { renderRasterFrame } from '../render/raster-images';
 import { t } from '../i18n';
 
 export const WATERMARK_TEXT = 'toonop';
@@ -229,8 +230,8 @@ export class FrameRasterizer {
   }
 
   /** Draws one frame, watermark included. */
-  draw(index: number): void {
-    this.#renderer.render(this.#doc, index, this.#ctx as unknown as Canvas2DLike, this.#viewport);
+  async draw(index: number): Promise<void> {
+    await renderRasterFrame(this.#renderer, this.#doc, index, this.#ctx as unknown as Canvas2DLike, this.#viewport);
     if (this.#watermark) {
       stampWatermark(this.#ctx, this.size.width, this.size.height, this.#scale);
     }
@@ -269,7 +270,7 @@ export async function* rasterizeFrames(
   const total = frameCount(doc);
   for (let index = 0; index < total; index++) {
     throwIfAborted(signal);
-    raster.draw(index);
+    await raster.draw(index);
     yield { data: raster.pixels(), ...raster.size };
     onProgress?.(index + 1, total);
     await nextTask();

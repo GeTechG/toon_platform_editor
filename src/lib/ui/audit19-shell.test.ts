@@ -62,7 +62,7 @@ function fn(name: string): string {
 describe('сдвиг, записанный из фона', () => {
   it('оставляет рисунок несохранённым: брошенный по Esc сдвиг жил в черновике, «Сохранить» не горела, вкладка закрывалась без вопроса', () => {
     // Запись сама гасит dirty — флаг ставится после неё, а не до.
-    expect(fn('flushOnHide')).toMatch(/void saveNow\(false, true, shown\);\s*(?:\/\/.*\s*)*editor\.touched = true;\s*dirty = true;\s*return;/);
+    expect(fn('flushOnHide')).toMatch(/const write = saveNow\(false, true, shown, false, track\);\s*(?:\/\/.*\s*)*editor\.touched = true;\s*dirty = true;\s*return write;/);
   });
 
   it('часы ждут, пока вкладка скрыта: иначе через минуту они писали рисунок без сдвига поверх записи со сдвигом', () => {

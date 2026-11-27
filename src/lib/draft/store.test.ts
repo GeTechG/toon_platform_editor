@@ -21,6 +21,7 @@ import { DRAFTS_CHANNEL } from './store';
 
 import { addStroke, createDocument } from '../model/operations';
 import { packDocument } from '../format/pack';
+import { decodeProject } from '../format/project';
 import { FakeReq, fakeIndexedDB, fakeReads, setIndexedDB, type Stores } from '../test-support/fake-idb';
 
 
@@ -32,6 +33,72 @@ afterEach(() => {
 });
 
 describe('draft store', () => {
+  it('restores a mixed draft and its raster images through a backup on a fresh device', async () => {
+    const hash = '4b23c031ae6c12e8d0f76e5d2161749f4a1f92e515c5b7c44eafa4b404fed421';
+    const image = Uint8Array.fromBase64('UklGRh4AAABXRUJQVlA4TBEAAAAvAQAAAA+w//Mf8x8VMqL/AQA=');
+    const project = createDocument();
+    project.layers.push({
+      kind: 'raster',
+      hidden: false,
+      frames: [{ strokes: [], raster: { hash, x: 20, y: 10, width: 2, height: 1 } }],
+    });
+
+    setIndexedDB(fakeIndexedDB());
+    expect((await saveDraft('art', project, undefined, undefined, {
+      rasterAssets: new Map([[hash, new Blob([image], { type: 'image/webp' })]]),
+    })).ok).toBe(true);
+    const backup = await exportDrafts(['art']);
+
+    setIndexedDB(fakeIndexedDB());
+    expect(await importDrafts(backup)).toEqual({ loaded: 1, broken: 0 });
+    expect((await readDraft('art'))?.doc).toEqual(project);
+    const reexported = JSON.parse(await exportDrafts(['art'])).saves[0].project as string;
+    const portable = await decodeProject(new Blob([Uint8Array.fromBase64(reexported)]));
+    expect(new Uint8Array(await portable.assets.get(hash)!.arrayBuffer())).toEqual(image);
+  });
+
+  it('keeps the last saved draft if an edit needs a missing raster image', async () => {
+    setIndexedDB(fakeIndexedDB());
+    const previous = doc(12);
+    expect((await saveDraft('art', previous)).ok).toBe(true);
+    const edited = doc(12);
+    edited.layers.push({
+      hidden: false,
+      kind: 'raster',
+      frames: [{ strokes: [], raster: { hash: '1'.repeat(64), x: 0, y: 0, width: 1, height: 1 } }],
+    });
+
+    expect((await saveDraft('art', edited)).ok).toBe(false);
+    expect((await readDraft('art'))?.doc).toEqual(previous);
+  });
+
+  it.each([false, true])('captures the document before waiting for audio (starts mixed: %s)', async (mixed) => {
+    setIndexedDB(fakeIndexedDB());
+    const draft = createDocument();
+    if (mixed) draft.layers.push({ hidden: false, kind: 'raster', frames: [{ strokes: [] }] });
+    const original = structuredClone(draft);
+    let started!: () => void;
+    let finish!: () => void;
+    const startedReading = new Promise<void>((resolve) => { started = resolve; });
+    const finishReading = new Promise<void>((resolve) => { finish = resolve; });
+    const blob = new Blob(['track']);
+    const read = blob.arrayBuffer.bind(blob);
+    blob.arrayBuffer = async () => {
+      started();
+      await finishReading;
+      return read();
+    };
+
+    const save = saveDraft('art', draft, undefined, { blob, name: 'song', author: 'me' });
+    await startedReading;
+    const added = { strokes: [], raster: { hash: '1'.repeat(64), x: 0, y: 0, width: 1, height: 1 } };
+    if (mixed) draft.layers[1].frames[0] = added;
+    else draft.layers.push({ hidden: false, kind: 'raster', frames: [added] });
+    finish();
+    expect((await save).ok).toBe(true);
+    expect((await readDraft('art'))?.doc).toEqual(original);
+  });
+
   it('lists a saved draft with its document', async () => {
     setIndexedDB(fakeIndexedDB());
     await saveDraft('a', doc(12));

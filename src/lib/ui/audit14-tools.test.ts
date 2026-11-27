@@ -164,6 +164,7 @@ describe('cutting the timeline selection leaves a hidden layer alone', () => {
   it('Ctrl+X asks mayEdit for every selected layer', () => {
     // Paste into a hidden layer is refused, and the cut emptied it.
     expect(method('cutSelection')).toContain('this.mayEdit(this.selection.layers)');
+    expect(method('cutCells')).toContain('this.mayEdit(target.layers)');
   });
 });
 

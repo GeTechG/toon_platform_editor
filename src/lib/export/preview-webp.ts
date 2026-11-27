@@ -26,6 +26,7 @@ import {
   webpStill,
 } from './webp';
 import { stills } from '../model/stills';
+import { renderRasterFrame } from '../render/raster-images';
 
 /**
  * Build an animated WebP preview of `doc`: at most `previewFrameBudget` frames,
@@ -39,7 +40,7 @@ export function buildPreview(source: ToonDocument): Promise<Uint8Array<ArrayBuff
     const { canvas, ctx, renderer, viewport, width, height, raw } = previewTarget(doc, rung);
     const frames: WebpStill[] = [];
     for (let i = 0; i < count; i++) {
-      renderer.render(doc, i, ctx, viewport);
+      await renderRasterFrame(renderer, doc, i, ctx, viewport);
       frames.push({ data: await encodeStill(canvas, raw, rung.quality), width, height });
     }
     return assembleAnimatedWebp(frames, { fps: doc.frame_rate, holds });
@@ -76,10 +77,10 @@ function previewTarget(doc: ToonDocument, rung: PreviewRung) {
  * re-rendering the document. Same renderer as the gallery preview, at its best
  * rung: one frame weighs little whatever it is made of.
  */
-export function renderScreenshot(doc: ToonDocument): Promise<Blob> {
+export async function renderScreenshot(doc: ToonDocument): Promise<Blob> {
   const best = PREVIEW_RUNGS[0];
   const { canvas, ctx, renderer, viewport } = previewTarget(doc, best);
-  renderer.render(doc, 0, ctx, viewport);
+  await renderRasterFrame(renderer, doc, 0, ctx, viewport);
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('webp encoding unsupported'))),

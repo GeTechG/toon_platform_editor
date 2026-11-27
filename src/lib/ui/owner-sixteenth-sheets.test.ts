@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { createDocument } from '../model/operations';
+import { encodeProject } from '../format/project';
 
 // Owner answers after the sixteenth audit, sheets: the project and the drafts
 // leave as `application/octet-stream`, so Safari keeps their names instead of
@@ -11,13 +13,14 @@ describe('проект и черновики сохраняются под св�
   it('«Скачать проект» и «Скачать черновик» в студии — не JSON для браузера', async () => {
     const editor = await source('./Editor.svelte');
     expect(editor).not.toMatch(/type: 'application\/json' \}\), '(toonop\.toonop|draft\.toonops)'/);
-    expect(editor).toMatch(/type: 'application\/octet-stream' \}\), 'toonop\.toonop'/);
+    expect(editor).toContain("saveFile(project, 'toonop.toonop')");
+    expect((await encodeProject(createDocument())).type).toBe('application/octet-stream');
     expect(editor).toMatch(/type: 'application\/octet-stream' \}\), ids\.length === 1 \? 'draft\.toonops' : 'drafts\.toonops'/);
   });
 
   it('проект из листа экспорта — тоже', async () => {
     const sheet = await source('./ExportSheet.svelte');
-    expect(sheet).toMatch(/JSON\.stringify\(editor\.doc\)\], \{ type: 'application\/octet-stream' \}\)/);
+    expect(sheet).toContain("deliver(project, 'toonop.toonop')");
   });
 
   it('черновики из настроек — тоже, а палитры в .json остаются JSON', async () => {

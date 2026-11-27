@@ -65,8 +65,9 @@ describe('a copy during a live move takes what the screen shows', () => {
     // Ctrl+C with a moved selection copied the cells as they were before the
     // move: pasted elsewhere, the drawing came back where it had been. Cut
     // and paste apply the move first; a copy leaves it live.
-    const copy = method('copySelection');
-    expect(copy).toContain('copyCells(this.docWithTransform(), this.selection)');
+    const copy = method('copyCurrentSelection');
+    expect(copy).toContain('doc = this.docWithTransform()');
+    expect(copy).toContain('copyCells(doc, source)');
   });
 });
 

@@ -23,8 +23,8 @@ import {
   STROKE_COORD_MIN,
 } from '../format/constants';
 import { opacityOf } from '../format/types';
-import type { BlendMode, Cell, Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
-import { keyOf, resolveCell } from './cells';
+import type { BlendMode, Cell, Layer, RasterCel, Stroke, Frame, ToonDocument, ToolDescriptor } from '../format/types';
+import { cellHasInk, keyOf, resolveCell } from './cells';
 
 /**
  * A write the format has no room for: the frame's stroke limit. Still a
@@ -66,7 +66,10 @@ export interface ResolvedStroke {
 
 export interface ResolvedFrame {
   strokes: ResolvedStroke[];
+  raster?: RasterCel;
 }
+
+export class LayerContentError extends Error {}
 
 /** Returns the stable index of an immutable, structurally equal v2 tool descriptor. */
 export function internTool(doc: ToonDocument, descriptor: ToolDescriptor): number {
@@ -140,7 +143,7 @@ export function createDocument(options: CreateDocumentOptions = {}): ToonDocumen
  * sheet nobody has touched from work worth holding the tab open for.
  */
 export function isEmptyDocument(doc: ToonDocument): boolean {
-  return doc.layers.every((layer) => layer.frames.every((frame) => !frame || frame.strokes.length === 0));
+  return doc.layers.every((layer) => !layer.frames.some(cellHasInk));
 }
 
 export function frameCount(doc: ToonDocument): number {
@@ -239,7 +242,7 @@ export function removeFrame(doc: ToonDocument, index: number, count = 1): void {
   for (const layer of doc.layers) {
     if (all) {
       layer.frames.splice(1);
-      layer.frames[0]!.strokes.length = 0;
+      layer.frames[0] = emptyFrame();
     } else {
       takeCells(layer.frames, index, count);
     }
@@ -286,7 +289,7 @@ export function copyFrames(doc: ToonDocument, from: number, count: number, to: n
  * Inserts an empty layer at `at`, which may be anywhere from under the bottom
  * layer (0) to one past the top (`layers.length`); returns that index.
  */
-export function addLayer(doc: ToonDocument, at: number, whole = false): number {
+export function addLayer(doc: ToonDocument, at: number, whole = false, kind?: Layer['kind']): number {
   if (!Number.isInteger(at) || at < 0 || at > doc.layers.length) {
     throw new RangeError(`layer index ${at} is out of range 0..${doc.layers.length}`);
   }
@@ -299,7 +302,7 @@ export function addLayer(doc: ToonDocument, at: number, whole = false): number {
   const frames: Cell[] = whole
     ? [emptyFrame(), ...Array<Cell>(frameCount(doc) - 1).fill(null)]
     : Array.from({ length: frameCount(doc) }, emptyFrame);
-  doc.layers.splice(at, 0, { hidden: false, frames });
+  doc.layers.splice(at, 0, { hidden: false, frames, ...(kind ? { kind } : {}) });
   return at;
 }
 
@@ -375,6 +378,10 @@ export function replaceStrokes(
 ): void {
   assertLayerIndex(doc, layerIndex);
   assertFrameIndex(doc, frameIndex);
+  if (doc.layers[layerIndex].kind === 'raster') {
+    if (strokes.length) throw new LayerContentError('Expected a vector layer');
+    return;
+  }
   if (strokes.length > MAX_STROKES_PER_FRAME) {
     throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
@@ -389,6 +396,14 @@ export function replaceStrokes(
       points: stroke.points.slice(), tool_id: stroke.tool_id, ...pressureOf(stroke),
     })),
   };
+}
+
+export function replaceRasterCel(doc: ToonDocument, layerIndex: number, frameIndex: number, raster?: RasterCel): void {
+  assertLayerIndex(doc, layerIndex);
+  assertFrameIndex(doc, frameIndex);
+  const layer = doc.layers[layerIndex];
+  if (layer.kind !== 'raster') throw new LayerContentError('Expected a raster layer');
+  layer.frames[frameIndex] = { strokes: [], ...(raster ? { raster } : {}) };
 }
 
 /**
@@ -448,6 +463,7 @@ export function cloneFrame(frameOrDoc: BuiltFrame | ToonDocument, maybeFrame?: F
   if (maybeFrame) {
     const doc = frameOrDoc as ToonDocument;
     return {
+      ...(maybeFrame.raster ? { raster: { ...maybeFrame.raster } } : {}),
       strokes: maybeFrame.strokes.map((stroke) => {
         const tool = doc.tools[stroke.tool_id];
         if (!tool) throw new RangeError(`tool_id ${stroke.tool_id} does not reference an existing tool`);
@@ -467,6 +483,7 @@ export function addStroke(
   stroke: ResolvedStroke | BuiltStroke,
 ): void {
   assertStrokePoints(stroke.points);
+  if (doc.layers[layerIndex]?.kind === 'raster') throw new LayerContentError('Expected a vector layer');
   if (cell(doc, layerIndex, frameIndex).strokes.length >= MAX_STROKES_PER_FRAME) {
     throw new FormatLimitError('strokes', `frame already has the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
   }
@@ -534,6 +551,7 @@ function assertTool(tool: ToolDescriptor): void {
 
 function resolvedFrameToV2(doc: ToonDocument, frame: ResolvedFrame): Frame {
   return {
+    ...(frame.raster ? { raster: { ...frame.raster } } : {}),
     strokes: frame.strokes.map((stroke) => {
       assertStrokePoints(stroke.points);
       assertTool(stroke.tool);
@@ -633,7 +651,7 @@ export function pasteNeedsConfirm(
   target: CellRange,
 ): { nonEmpty: boolean; frames: number; layers: number } {
   const nonEmpty = target.layers.some((layer) =>
-    target.frames.some((frame) => cell(doc, layer, frame).strokes.length > 0));
+    target.frames.some((frame) => cellHasInk(cell(doc, layer, frame))));
   return { nonEmpty, frames: target.frames.length, layers: target.layers.length };
 }
 
@@ -662,10 +680,24 @@ export function replaceCells(doc: ToonDocument, target: CellRange, buffer: CellB
  * ever shows up in practice.
  */
 export function mergeCells(doc: ToonDocument, target: CellRange, buffer: CellBuffer): CellBuffer {
-  return writeCells(doc, target, buffer, (existing, incoming) =>
-    tailHolds(existing.strokes, incoming.strokes)
+  return writeCells(doc, target, buffer, (existing, incoming) => {
+    if (existing.raster && incoming.raster && !sameRasterCel(existing.raster, incoming.raster)) {
+      throw new LayerContentError('Merging two raster drawings is unavailable');
+    }
+    const raster = incoming.raster ?? existing.raster;
+    if (raster) {
+      if (existing.strokes.length || incoming.strokes.length) throw new LayerContentError('Expected matching layer types');
+      return { raster, strokes: [] };
+    }
+    return tailHolds(existing.strokes, incoming.strokes)
       ? { strokes: [...existing.strokes] }
-      : { strokes: [...existing.strokes, ...incoming.strokes] });
+      : { strokes: [...existing.strokes, ...incoming.strokes] };
+  });
+}
+
+export function sameRasterCel(a: RasterCel | undefined, b: RasterCel | undefined): boolean {
+  return a === b || Boolean(a && b && a.hash === b.hash && a.x === b.x && a.y === b.y &&
+    a.width === b.width && a.height === b.height);
 }
 
 /** Whether `strokes` ends with exactly `tail` — same tools, same points. */
@@ -701,7 +733,7 @@ function writeCells(
   combine: (existing: ResolvedFrame, incoming: ResolvedFrame) => ResolvedFrame,
 ): CellBuffer {
   const before = copyCells(doc, target);
-  const written: { layer: number; frame: number; strokes: Stroke[] }[] = [];
+  const written: { layer: number; frame: number; next: Frame }[] = [];
   // Both lists are bottom-up, and the block is anchored by its *top* layer, so
   // the layers pair from the end: a target with fewer rows than the buffer
   // keeps the buffer's top rows and drops what would fall off the bottom.
@@ -714,14 +746,18 @@ function writeCells(
     for (let f = 0; f < target.frames.length && source.length > 0; f++) {
       const frame = target.frames[f];
       const next = resolvedFrameToV2(doc, combine(before[t][f], source[f % source.length]));
+      if ((doc.layers[layer].kind === 'raster' && next.strokes.length) ||
+          (doc.layers[layer].kind !== 'raster' && next.raster)) {
+        throw new LayerContentError('Expected matching layer types');
+      }
       if (next.strokes.length > MAX_STROKES_PER_FRAME) {
         throw new FormatLimitError('strokes', `frame has more than the maximum of ${MAX_STROKES_PER_FRAME} strokes`);
       }
-      written.push({ layer, frame, strokes: next.strokes });
+      written.push({ layer, frame, next });
     }
   }
-  for (const { layer, frame, strokes } of written) {
-    doc.layers[layer].frames[frame] = { strokes };
+  for (const { layer, frame, next } of written) {
+    doc.layers[layer].frames[frame] = next;
   }
   return before;
 }

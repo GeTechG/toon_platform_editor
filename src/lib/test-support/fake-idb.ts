@@ -41,6 +41,15 @@ class FakeObjectStore {
     });
     return req;
   }
+  getKey(key: string): FakeReq {
+    const req = new FakeReq();
+    req.result = this.data.has(key) ? key : undefined;
+    queueMicrotask(() => {
+      req.onsuccess?.();
+      queueMicrotask(() => this.tx.oncomplete?.());
+    });
+    return req;
+  }
   getAll(): FakeReq {
     const req = new FakeReq();
     req.result = [...this.data.values()];

@@ -9,7 +9,7 @@ import { FrameRasterizer, type RasterizeOptions } from './rasterize';
 
 export async function exportPng(doc: ToonDocument, options: RasterizeOptions = {}): Promise<Blob> {
   const raster = new FrameRasterizer(doc, options);
-  raster.draw(0);
+  await raster.draw(0);
   return new Promise((resolve, reject) => {
     raster.canvas.toBlob((blob) => {
       if (blob) {

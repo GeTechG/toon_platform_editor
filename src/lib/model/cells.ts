@@ -6,6 +6,10 @@
 
 import type { Cell, Frame, Layer } from '../format/types';
 
+export function cellHasInk(cell: Cell | undefined): boolean {
+  return Boolean(cell && (cell.raster || cell.strokes.length));
+}
+
 /** The empty drawing a layer that somehow opens with a continuation shows. */
 const NOTHING: Frame = Object.freeze({ strokes: Object.freeze([]) as unknown as Frame['strokes'] }) as Frame;
 

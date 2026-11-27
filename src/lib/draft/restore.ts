@@ -5,7 +5,7 @@
  * Kept pure and rune-free for tests.
  */
 
-import { loadDocument } from '../format/validate';
+import { loadStudioDocument } from '../format/studio-document';
 import type { ToonDocument } from '../format/types';
 
 /** The document held by a draft record, or null if it is not one. */
@@ -20,7 +20,7 @@ export function parseDraft(
   // `loadDocument` validates on its own: checking first went over a heavy
   // document twice.
   try {
-    return loadDocument(raw, { owned });
+    return loadStudioDocument(raw, { owned });
   } catch {
     return null;
   }

@@ -76,8 +76,8 @@ class RecordingCtx implements Canvas2DLike {
   clearRect(...args: number[]): void {
     this.log.push(`clearRect(${args.join(',')})`);
   }
-  drawImage(image: unknown, dx: number, dy: number): void {
-    this.log.push(`drawImage(${(image as { id?: string }).id ?? 'image'},${dx},${dy})`);
+  drawImage(image: unknown, ...destination: number[]): void {
+    this.log.push(`drawImage(${(image as { id?: string }).id ?? 'image'},${destination.join(',')})`);
   }
   beginPath(): void {
     this.log.push('beginPath()');
@@ -251,6 +251,33 @@ function docOf(tools: ToolDescriptor[], ...layers: Frame[][]): ToonDocument {
     layers: layers.map((frames) => ({ hidden: false, frames })),
   };
 }
+
+it('lays a cropped raster cell over the lower drawings with the layer look', () => {
+  const target = new RecordingCtx();
+  const paper = new RecordingCtx();
+  const mixed = new Canvas2DFrameRenderer(() => ({
+    ctx: paper,
+    image: { id: 'sheet' } as unknown as CanvasImageSource,
+  }));
+  const doc = docOf([], [{ strokes: [] }], [{
+    strokes: [],
+    raster: { hash: 'crop', x: 13, y: 7, width: 2, height: 3 },
+  }]);
+  Object.assign(doc.layers[1], { kind: 'raster', opacity: 50, blend: 'multiply' });
+  const image = { id: 'crop' } as unknown as CanvasImageSource;
+  mixed.render(doc, 0, target, { scale: 1 / 8, dpr: 1, background: '#ffffff', raster: () => image });
+
+  const drawing = target.log.indexOf('drawImage(crop,104,56,16,24)');
+  expect(drawing).toBeGreaterThan(target.log.indexOf('fillRect(0,0,1200,600)'));
+  expect(target.log.slice(drawing - 3, drawing + 3)).toEqual([
+    'setTransform(0.125,0,0,0.125,0,0)',
+    'globalAlpha=0.5',
+    'globalCompositeOperation=multiply',
+    'drawImage(crop,104,56,16,24)',
+    'globalAlpha=1',
+    'globalCompositeOperation=source-over',
+  ]);
+});
 
 function sampleDoc(): ToonDocument {
   return docOf(sampleTools, [

@@ -13,7 +13,7 @@
 
 import { MAX_FRAMES } from '../format/constants';
 import type { Cell, Frame, ToonDocument } from '../format/types';
-import { keyOf } from './cells';
+import { cellHasInk, keyOf } from './cells';
 
 /** Film length — every layer has as many cells. */
 function length(doc: ToonDocument): number {
@@ -197,7 +197,7 @@ export function resizeExposure(doc: ToonDocument, layer: number, i: number, dura
 
 /** How many drawings with lines stand at cell `from` or later — what a film cut to `from` cells loses. */
 export function drawingsPast(doc: ToonDocument, from: number): number {
-  return doc.layers.reduce((sum, layer) => sum + layer.frames.slice(from).filter((cell) => !!cell?.strokes.length).length, 0);
+  return doc.layers.reduce((sum, layer) => sum + layer.frames.slice(from).filter(cellHasInk).length, 0);
 }
 
 /** The film made `cells` long: continuations added to every layer's end, or the ends cut off. */

@@ -62,9 +62,9 @@ describe('Ctrl+X cuts the timeline selection', () => {
   });
 
   it('copies, then empties the cells in one filed edit', () => {
-    const cut = member(state, 'cutSelection');
-    expect(cut).toMatch(/this\.copySelection\(\);[^]*this\.snapshotCells\(target\)[^]*replaceCells\([^]*this\.pushEdit\(snapshots\)/);
-    expect(cut).toContain('this.leaveTransform()');
+    const cut = member(state, 'cutCells');
+    expect(cut).toMatch(/this\.copyCurrentSelection\(target, this\.doc\);[^]*this\.snapshotCells\(target\)[^]*replaceCells\([^]*this\.pushEdit\(snapshots\)/);
+    expect(member(state, 'cutSelection')).toContain('this.leaveTransform()');
   });
 
   it('an empty one-frame buffer per layer empties every selected cell', () => {
@@ -96,7 +96,7 @@ describe('Ctrl+X cuts the timeline selection', () => {
 describe('leaving writes the draft whatever the autosave setting', () => {
   it('the flush no longer looks at the interval', () => {
     const flush = fn('flushOnLeave');
-    expect(flush).toMatch(/saveNow\((?:false, true)?\)/);
+    expect(flush).toMatch(/saveNow\(false, true, undefined, false, track\)/);
     expect(flush).not.toContain('autosaveMs');
   });
 

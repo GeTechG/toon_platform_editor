@@ -104,7 +104,7 @@ describe('размер меняется, пока лист пуст', () => {
     expect(editorUi).not.toContain('.sheet-size');
     expect(editorUi).not.toMatch(/<select[^>]*>\s*\{#each [^}]*sheetChoices/);
     const hub = await Bun.file(UI + 'DraftsHub.svelte').text();
-    expect(hub).toContain('onSheet(value, newFps)');
+    expect(hub).toContain('onSheet(value, newFps,');
   });
 });
 

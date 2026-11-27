@@ -5,7 +5,7 @@
  * phase-2 player and GIF export.
  */
 
-import type { ToonDocument } from '../format/types';
+import type { RasterCel, ToonDocument } from '../format/types';
 
 export interface Viewport {
   /** CSS pixels per document unit. */
@@ -23,6 +23,8 @@ export interface Viewport {
    * `null` clears to transparent — the PNG export's transparent mode.
    */
   background?: string | null;
+  /** Images prepared for the cells visible in this render. */
+  raster?: (cel: RasterCel) => CanvasImageSource | undefined;
 }
 
 /**

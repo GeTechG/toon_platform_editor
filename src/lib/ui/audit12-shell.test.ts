@@ -140,7 +140,7 @@ function fn(name: string): string {
 describe('opening a draft over a drawing', () => {
   it('asks, as opening a file does, and the draft is written before it goes', () => {
     // Alt+Enter no longer mutes the question (owner-twelfth-shell).
-    expect(fn('openDraft')).toMatch(/if \(editor\.touched\) \{\s*if \(!\(await ask\(t\('editor\.draft_open_confirm'\)\)\)\) \{\s*return;\s*\}\s*(?:\/\/.*\s*)*if \(!\(await saveNow\(true\)\)\)/);
+    expect(fn('openDraft')).toMatch(/if \(\(editor\.touched \|\| editor\.rasterStrokePending\) && !\(await ask\(t\('editor\.draft_open_confirm'\)\)\)\) \{\s*return;\s*\}\s*await saveThenOpen\(/);
   });
 });
 

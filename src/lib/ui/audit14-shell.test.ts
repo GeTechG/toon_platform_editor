@@ -167,14 +167,15 @@ describe('открытие файла или черновика поверх ж�
       const body = fn(name);
       const leave = body.indexOf('if (!editor.leaveTransform()) {');
       expect(leave).toBeGreaterThan(-1);
-      expect(leave).toBeLessThan(body.indexOf('saveNow(true)'));
+      expect(leave).toBeLessThan(body.indexOf('await saveThenOpen('));
     }
   });
 
   it('копия и «Скачать» из черновиков и настроек берут рисунок с применённым сдвигом', () => {
+    // Эффект, что ставит dirty, придёт позже: применённый сдвиг отмечается здесь.
+    expect(fn('saveBeforeDraftTools')).toMatch(/editor\.leaveTransform\(\);[^]*?editor\.doc !== writtenDoc[^]*?dirty = true;[^]*?await saveNow\(\)/);
     for (const name of ['openDrafts', 'openSettingsSheet']) {
-      // Эффект, что ставит dirty, придёт позже: применённый сдвиг отмечается здесь.
-      expect(fn(name)).toMatch(/editor\.leaveTransform\(\);[^]*editor\.doc !== writtenDoc\) \{\s*dirty = true;[^]*saveNow\(\)/);
+      expect(fn(name)).toContain('await saveBeforeDraftTools()');
     }
   });
 });
@@ -231,6 +232,6 @@ describe('проект файлом (Alt+S в пресете Тунио)', () =>
     const body = fn('saveProjectFile');
     const leave = body.indexOf('if (!editor.leaveTransform()) {');
     expect(leave).toBeGreaterThan(-1);
-    expect(leave).toBeLessThan(body.indexOf('JSON.stringify(editor.doc)'));
+    expect(leave).toBeLessThan(body.indexOf('encodeProject(editor.doc, readRasterAsset)'));
   });
 });

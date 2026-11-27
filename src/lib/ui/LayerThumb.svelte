@@ -10,6 +10,7 @@
   import { whenOnScreen } from './on-screen';
   import { thumbPaints } from './paint-queue';
   import { renderDensity } from './viewport';
+  import { rasterImages } from '../render/raster-images';
 
   let {
     doc,
@@ -60,6 +61,7 @@
    */
   let painted: number | undefined;
   let paintedBox = '';
+  let paintedRaster: Frame['raster'];
   /** The strokes on the thumbnail now: a line put at the end of them is only added. */
   let onThumb: Frame['strokes'] | null = null;
 
@@ -94,6 +96,20 @@
     onThumb = cell.strokes.slice();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    const dpr = renderDensity(window.devicePixelRatio || 1);
+    const viewport = { scale: box.w / doc.width, dpr };
+    if (cell.raster) {
+      const images = rasterImages([cell.raster], viewport);
+      const draw = () => {
+        const current = doc.layers[layerIndex];
+        if (canvasEl && current && resolveCell(current, frameIndex) === cell && paintedBox === `${box.w}x${box.h}`) {
+          renderStrokesLayer(cell, doc.tools, ctx, images.viewport);
+        }
+      };
+      if (images.ready) draw();
+      else void images.load().then(draw, () => { painted = undefined; });
+      return;
+    }
     // The canvas has the cell rasterized already: shrunk, it is the thumbnail.
     const kept = studioCells.current?.anyOf(cell, doc.tools);
     if (kept) {
@@ -101,8 +117,7 @@
       ctx.drawImage(kept.image, 0, 0, canvasEl.width, canvasEl.height);
       return;
     }
-    const dpr = renderDensity(window.devicePixelRatio || 1);
-    renderStrokesLayer(cell, doc.tools, ctx, { scale: box.w / doc.width, dpr }, undefined, STUDIO_PATHS);
+    renderStrokesLayer(cell, doc.tools, ctx, viewport, undefined, STUDIO_PATHS);
   }
 
   $effect(() => {
@@ -114,7 +129,7 @@
     }
     const shape = `${box.w}x${box.h}`;
     const stamp = cellStamp(cell);
-    if (stamp === painted && shape === paintedBox) {
+    if (stamp === painted && shape === paintedBox && cell.raster === paintedRaster) {
       return;
     }
     const dpr = renderDensity(window.devicePixelRatio || 1);
@@ -126,10 +141,11 @@
       canvasEl.width = width;
       canvasEl.height = height;
     }
-    const whole = resized || shape !== paintedBox || thumbPaints.waiting(me);
+    const whole = resized || shape !== paintedBox || thumbPaints.waiting(me) || cell.raster !== paintedRaster;
     const step = whole ? { whole: true as const } : thumbStep(onThumb, cell.strokes, doc.tools);
     painted = stamp;
     paintedBox = shape;
+    paintedRaster = cell.raster;
     if (!step.whole) {
       const ctx = context();
       if (!ctx) {

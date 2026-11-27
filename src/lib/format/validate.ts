@@ -81,7 +81,9 @@ export function loadDocument(data: unknown, { owned = false }: { owned?: boolean
   }
   const result = validateDocument(data);
   if (!result.ok) {
-    throw new FormatError(result.issues);
+    const version = result.issues.some((issue) => issue.category === 'unsupported-version')
+      ? (data as { schema_version: number }).schema_version : undefined;
+    throw new FormatError(result.issues, version);
   }
   const doc = (owned ? data : structuredClone(data)) as ToonDocument;
   // A name cut through an emoji by an older build (in its drafts, in its

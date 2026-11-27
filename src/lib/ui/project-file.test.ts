@@ -35,9 +35,8 @@ describe('Alt+S saves the project as a file', () => {
     expect(editorUi).toContain('function saveProjectFile()');
     expect(editorUi).toContain("t('editor.download_project_confirm')");
     expect(t('editor.download_project_confirm')).toBe('Скачать проект в формате .toonop?');
-    expect(editorUi).toContain("type: 'application/octet-stream'");
     expect(editorUi).toContain("'toonop.toonop'");
-    expect(editorUi).toContain('JSON.stringify(editor.doc)');
+    expect(editorUi).toContain('encodeProject(editor.doc, readRasterAsset)');
   });
 
   it('asks first', () => {
@@ -159,7 +158,7 @@ describe('what the record holds and what comes back', () => {
     const saveNow = editorUi.match(/function saveNow\([\s\S]*?\n  \}/)?.[0] ?? '';
     expect(saveNow).toMatch(/if\s*\(!destroyed && !forPublication && version\)\s*\{\s*writeScreenshot\(doc, draft\.id, leaving, version\);\s*\}/);
 
-    const flushOnHide = editorUi.match(/function flushOnHide\(\): void \{[\s\S]*?\n  \}/)?.[0] ?? '';
+    const flushOnHide = editorUi.match(/function flushOnHide\([\s\S]*?\n  \}/)?.[0] ?? '';
     expect(flushOnHide).toContain('screenshots.pause();');
 
     const openDrafts = editorUi.match(/async function openDrafts\(\): Promise<void> \{[\s\S]*?\n  \}/)?.[0] ?? '';

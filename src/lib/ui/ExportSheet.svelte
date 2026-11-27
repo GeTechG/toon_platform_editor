@@ -23,6 +23,9 @@
   import { makeScene } from '../plugins/scene';
   import { formatPercent, t } from '../i18n';
   import { formatFileSize } from './file-size';
+  import { encodeProject } from '../format/project';
+  import { hasRasterLayers } from '../format/studio-document';
+  import { readRasterAsset, withRasterStorage } from '../draft/raster-store';
 
   // `onPublish` is the studio's send key, where the host publishes: the file
   // made is half of the loop, the link a friend opens is the other.
@@ -99,7 +102,7 @@
   /** The formats plugins bring; a plugin that broke takes its button with it. */
   const pluginFormats = $derived.by(() => {
     void editor.pluginsVersion;
-    return plugins.exporters();
+    return hasRasterLayers(editor.doc) ? [] : plugins.exporters();
   });
   const pluginFormat = $derived(pluginFormats.find((entry) => format === `plugin:${entry.id}`));
 
@@ -232,13 +235,10 @@
       result = { url: blob.type.startsWith('image/') ? URL.createObjectURL(blob) : null, bytes: blob.size };
     };
     try {
+      await editor.settleRasterStrokes();
       if (format === 'project') {
-        // The project, not a picture of it: the document exactly as the draft
-        // and the API hold it, the same file Alt+S writes in the Toonio preset.
-        deliver(
-          new Blob([JSON.stringify(editor.doc)], { type: 'application/octet-stream' }),
-          'toonop.toonop',
-        );
+        const project = await withRasterStorage(() => encodeProject(editor.doc, readRasterAsset));
+        deliver(project, 'toonop.toonop');
       } else if (pluginFormat) {
         const file = await pluginFormat.run(makeScene(editor.doc, editor.activeFrame), signal);
         deliver(file.blob, file.name);
@@ -317,8 +317,9 @@
   }
 
   /** Reference Alt+S: open the export without reaching for the button. */
-  export function start(): void {
+  export function start(initial?: 'project'): void {
     openSheet();
+    if (initial) format = initial;
   }
 </script>
 

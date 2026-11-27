@@ -92,8 +92,9 @@ describe('a frame added is taken back by Z (owner, 2026-10-13)', () => {
     // The state is runes and does not stand up under bun: held to the source,
     // as the audits hold it; the live run presses «+» and Z.
     const state = await read('editor-state.svelte.ts');
-    for (const add of ['addFrameAfterActive', 'duplicateActiveFrame', 'addFrameBeforeActive']) {
-      const body = state.slice(state.indexOf(`  ${add}(`), state.indexOf('\n  }\n', state.indexOf(`  ${add}(`)));
+    for (const add of ['addFrameAfterActive', 'duplicateSelection', 'addFrameBeforeActive']) {
+      const start = state.search(new RegExp(`^  (?:private )?${add}\\(`, 'm'));
+      const body = state.slice(start, state.indexOf('\n  }\n', start));
       expect(body).toContain('this.structureStep(');
     }
     const step = state.slice(state.indexOf('  private structureStep('), state.indexOf('\n  }\n', state.indexOf('  private structureStep(')));

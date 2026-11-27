@@ -60,7 +60,7 @@
     onRemove: (ids: string[]) => Promise<boolean>;
     onRemoveAll: () => Promise<boolean>;
     /** Says whether the sheet was started; the hub closes on a yes. */
-    onSheet: (value: string, fps: number) => Promise<boolean>;
+    onSheet: (value: string, fps: number, stillOpen: () => boolean) => Promise<boolean>;
     onClose: () => void;
   } = $props();
 
@@ -98,6 +98,7 @@
   // The hub left over a clean sheet: it shows the sheets a drawing can start
   // on — a proportion, a size and the side it lies on.
   let creating = $state(false);
+  let sheetRequest = 0;
   // The view waits for the drafts to be read — the paper only, not a view it
   // may have to take back. With none there is nothing to show but the sheets
   // (owner, 2026-10-05); with some, the drafts, whichever key on the site
@@ -251,6 +252,7 @@
    * with its view, so the focus is handed to the first card of the other.
    */
   async function showCreate(on: boolean): Promise<void> {
+    sheetRequest++;
     const now = sheetChoices().find((sheet) => sheet.value === sheetValue(editor.doc));
     if (on) {
       newFps = editor.doc.frame_rate;
@@ -291,8 +293,10 @@
 
   /** «Рисовать»: the editor starts the sheet; the hub closes when it did. */
   async function pickSheet(value: string): Promise<void> {
-    if (await onSheet(value, newFps)) {
-      dialogEl?.close();
+    const hub = dialogEl;
+    const request = ++sheetRequest;
+    if (hub && await onSheet(value, newFps, () => hub.open && hub.isConnected && request === sheetRequest)) {
+      hub.close();
     }
   }
 </script>

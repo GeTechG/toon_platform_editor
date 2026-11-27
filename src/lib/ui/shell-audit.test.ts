@@ -38,8 +38,9 @@ describe('replacing the drawing waits for its own save', () => {
     // saveNow() without byHand returned at once after a failed write, and the
     // drawing was replaced with nothing on disk.
     for (const name of ['openDraft', 'openFile']) {
-      expect(fn(name)).toMatch(/if \(!\(await saveNow\(true\)\)\) \{\s*return;/);
+      expect(fn(name)).toContain('await saveThenOpen(');
     }
+    expect(fn('saveThenOpen')).toMatch(/const saved = await saveNow\(true\);[^]*?if \(!saved && !\(discardOnFailure && lossConfirmed\)\) return false;[^]*?adopt\(\)/);
   });
 });
 

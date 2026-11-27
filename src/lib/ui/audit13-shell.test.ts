@@ -158,7 +158,7 @@ describe('leaving after a failed save', () => {
   it('tries once more — the clock stopped, the leave did not (owner: the draft is written on leaving)', () => {
     // saveNow() gave up at once after a failure, so freeing room in the list
     // and then following a site link lost the drawing without a word.
-    expect(fn('flushOnLeave')).toMatch(/saveNow\(false, true\)/);
+    expect(fn('flushOnLeave')).toMatch(/saveNow\(false, true, undefined, false, track\)/);
     expect(fn('saveNow')).toMatch(/saveFailed && !byHand && !leaving/);
   });
 
@@ -169,8 +169,9 @@ describe('leaving after a failed save', () => {
 
 describe('the drafts the lists show', () => {
   it('the drafts sheet and the settings write the drawing first: a copy or a download of the current card was a minute old', () => {
-    expect(fn('openDrafts')).toMatch(/if \(dirty\) \{?\s*(?:\/\/.*\s*)*await saveNow\(\)[^]*refreshDrafts\(\)/);
-    expect(fn('openSettingsSheet')).toMatch(/if \(dirty\) \{?\s*(?:\/\/.*\s*)*void saveNow\(\)/);
+    expect(fn('saveBeforeDraftTools')).toMatch(/editor\.rasterStrokePending[^]*?await saveNow\(\)/);
+    expect(fn('openDrafts')).toMatch(/await saveBeforeDraftTools\(\);[^]*?await refreshDrafts\(\)/);
+    expect(fn('openSettingsSheet')).toMatch(/await saveBeforeDraftTools\(\);[^]*?settingsSheetOpen = true/);
   });
 });
 

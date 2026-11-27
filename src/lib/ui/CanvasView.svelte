@@ -4,13 +4,16 @@
   import { pastDragThreshold } from './draggable';
   import { dismissedOnly } from './dismiss-press';
   import { PENCIL } from '../plugins';
+  import { toonopRules } from '../tools/brush';
   import type { EditorState, Tool } from './editor-state.svelte';
   import { BACKGROUND_COLOR, CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE, ONION_BLEND_ALPHA } from '../format/constants';
   import type { Cell, Frame, Layer } from '../format/types';
+  import { hasRasterLayers } from '../format/studio-document';
   import { resolveCell } from '../model/cells';
   import { stillStart } from '../model/stills';
   import { frameCount, placeStrokePoints, scaleToolWidth } from '../model/operations';
   import type { Viewport } from '../render/contract';
+  import { rasterImages, visibleRasterCells } from '../render/raster-images';
   import {
     renderRawPolyline,
     renderResolvedPreview,
@@ -308,6 +311,7 @@
   // A finger still on the glass when the studio goes away must not wake a
   // pipette, a hint or a zoom end on a canvas that is gone.
   onDestroy(() => {
+    cancelRasterLoad?.abort();
     cancelHold();
     clearTimeout(hintTimer);
     clearTimeout(wheelZoomTimer);
@@ -437,6 +441,7 @@
    * business — the canvas only asks for the rules.
    */
   function activeRules(): StrokeRules {
+    if (editor.activeLayerIsRaster) return toonopRules(editor.pluginBrush);
     return editor.brushRules;
   }
 
@@ -448,9 +453,12 @@
   function activeDescriptor(): LineToolDescriptor {
     // The opacity is the brush's, not the tool's: whichever tool builds the
     // descriptor, a brush that paints lays it down as faint as it is set.
-    return withOpacity((toolSpec(editor.brushTool)?.stroke ?? PENCIL).descriptor({
+    const width = brushWidthDoc(editor.brushSizeLogical);
+    if (editor.activeLayerIsRaster && editor.tool === 'eraser') return { kind: 'eraser', geometry: 'smooth', width };
+    const primitive = editor.activeLayerIsRaster ? PENCIL : toolSpec(editor.brushTool)?.stroke ?? PENCIL;
+    return withOpacity(primitive.descriptor({
       ...editor.pluginBrush,
-      width: brushWidthDoc(editor.brushSizeLogical),
+      width,
     }), editor.brushOpacity, editor.brush.buildup);
   }
 
@@ -513,20 +521,21 @@
    * meanwhile: by its object — or, a continuation, by its place, since every
    * continuation is the same null.
    */
-  type CellMark = { cell: Cell | undefined; frame: number };
+  type CellMark = { cell: Cell | undefined; frame: number; rasterJob?: EditorState['pendingRasterStroke'] };
   function markActive(): CellMark {
-    return { cell: editor.activeCell, frame: editor.activeFrame };
+    return { cell: editor.activeCell, frame: editor.activeFrame, rasterJob: editor.pendingRasterStroke };
   }
   /** Whether the cell the gesture began on is the active one still. */
   function stillActive(mark: CellMark): boolean {
+    if (editor.activeLayerIsRaster) return frameOfMark(editor.activeLayer, mark) === editor.activeFrame;
     return mark.cell === editor.activeCell && (mark.cell !== null || mark.frame === editor.activeFrame);
   }
   /** Where that cell stands now in layer `layer`, or −1. */
   function frameOfMark(layer: number, mark: CellMark): number {
     const frames = editor.doc.layers[layer]?.frames;
     if (!frames || mark.cell === undefined) return -1;
-    if (mark.cell === null) return frames[mark.frame] === null ? mark.frame : -1;
-    return frames.indexOf(mark.cell);
+    if (mark.rasterJob) return editor.rasterStrokeFrame(mark.rasterJob);
+    return editor.rasterCellIndex(frames, mark.cell, mark.frame);
   }
 
   /** How many sheets a playback holds ready on this device (`playback-window.ts`). */
@@ -846,6 +855,10 @@
     ctx.setTransform(k * Math.cos(a), k * Math.sin(a), -k * Math.sin(a), k * Math.cos(a), x, y);
   }
 
+  let pendingRasterKey = '';
+  let cancelRasterLoad: AbortController | undefined;
+  let prefetchedRasterKey = '';
+
   function draw(): void {
     if (!canvasEl || destroyed) {
       return;
@@ -903,14 +916,48 @@
     const ghosts = editor.showOnionSkin
       ? { frames: editor.onionSkinLayers, layers: editor.onionHistoryLayerIndices }
       : undefined;
-    const live = liveLine(viewport);
+    const mixed = hasRasterLayers(editor.doc);
+    const sampleScale = editor.playing ? Math.min(raster.level, perPixel) : raster.level;
+    const images = rasterImages(mixed
+      ? [
+        ...visibleRasterCells(editor.doc, frame),
+        ...(ghosts?.frames.flatMap((ghost) => visibleRasterCells(editor.doc, ghost.index, ghosts.layers)) ?? []),
+      ]
+      : [], viewport, sampleScale);
+    if (pendingRasterKey !== images.key) {
+      cancelRasterLoad?.abort();
+      pendingRasterKey = '';
+      if (!images.ready) {
+        const controller = new AbortController();
+        cancelRasterLoad = controller;
+        pendingRasterKey = images.key;
+        void images.load({ priority: 2, signal: controller.signal }).then(() => {
+          if (controller.signal.aborted || destroyed) return;
+          pendingRasterKey = '';
+          redrawLoadedRaster();
+        }, (err) => {
+          if (controller.signal.aborted || destroyed) return;
+          pendingRasterKey = '';
+          console.warn('raster frame unavailable:', err);
+          editor.canvasHint = { text: t('canvas.raster_unavailable') };
+        });
+      }
+    }
+    if (!images.ready) return;
+    if (mixed && editor.playing && prefetchedRasterKey !== images.key) {
+      prefetchedRasterKey = images.key;
+      const nextFrame = (frame + 1) % frameCount(editor.doc);
+      const next = rasterImages(visibleRasterCells(editor.doc, nextFrame), viewport, sampleScale);
+      if (!next.ready) void next.load().catch(() => {});
+    }
+    const live = liveLine(images.viewport);
     const still = editor.playing && !ghosts && !live;
     const playKey = still ? stillStart(editor.doc, frame) : frame;
     const scene: FrameScene = {
       doc: editor.doc,
       frame,
       activeLayer: editor.activeLayer,
-      viewport,
+      viewport: images.viewport,
       tools: previewTools,
       cellAt: stackCell,
       ghosts,
@@ -931,11 +978,11 @@
       paper: BACKGROUND_COLOR,
       gridStep: toolSpec(editor.brushTool)?.stroke?.grid && !editor.playing ? cursorDiameter * dpr : 0,
     };
-    const playArg = still ? { doc: editor.doc, key: playKey, total: frameCount(editor.doc) } : undefined;
+    const playArg = still && !mixed ? { doc: editor.doc, key: playKey, total: frameCount(editor.doc) } : undefined;
 
     // Hardware WebGL2 path: validate and promote the real candidate context,
     // keeping Canvas 2D visible until the actual current scene renders cleanly.
-    if (editor.settings.hardwareRender && glCanvasEl && !glSessionRetired && !glContextLost) {
+    if (!mixed && editor.settings.hardwareRender && glCanvasEl && !glSessionRetired && !glContextLost) {
       const budgetForContext = (ctx: WebGL2RenderingContext): number => {
         glMaxTextureSize = Number(ctx.getParameter(ctx.MAX_TEXTURE_SIZE)) || 0;
         return studioVramBudget({
@@ -1028,6 +1075,10 @@
       navShot = null;
       lastDrawn = null;
     }
+    if (mixed && editor.settings.hardwareRender && editor.renderBackend.reason !== 'raster-layers') {
+      played.release();
+      editor.renderBackend = { active: 'canvas2d', reason: 'raster-layers', isSoftwareBrowser: glSoftwareBrowser };
+    }
 
     const drawn: DrawnView = { ...editor.view, dpr };
     const uncovered = navShot !== null && !shotCovers(navShot.view, drawn, stage);
@@ -1063,7 +1114,7 @@
       lastDrawn = drawn;
       lastRaster = raster;
       clearTimeout(warmTimer);
-      if (live) {
+      if (live || mixed) {
         warmer.stop();
       } else {
         const warmScene = {
@@ -1245,6 +1296,19 @@
       };
     }
     const session = pointer.session;
+    if (!session) {
+      const pending = editor.pendingRasterStroke;
+      if (pending && !editor.playing) {
+        const { stroke } = pending;
+        return {
+          id: nodeId(pending),
+          erase: stroke.tool.kind === 'eraser',
+          paint: (target) => renderStrokesLayer({
+            strokes: [{ points: stroke.points, pressure: stroke.pressure, tool_id: 0 }],
+          }, [stroke.tool], target, viewport),
+        };
+      }
+    }
     if (!session || strokeLayer !== editor.doc.layers[editor.activeLayer] || !strokeCell || !stillActive(strokeCell)) {
       return null;
     }
@@ -1421,10 +1485,16 @@
     void editor.ux;
     void editor.view;
     void editor.transform;
+    void editor.pendingRasterStroke;
     composer.invalidate();
     glComposer?.invalidate();
     scheduleDraw();
   });
+
+  function redrawLoadedRaster(): void {
+    composer.invalidate();
+    scheduleDraw();
+  }
 
   // Live toggle between hardware WebGL2 and software Canvas 2D without losing the canvas state.
   let prevHardwarePref: boolean | undefined;
@@ -1688,7 +1758,7 @@
    * borders, over what it recolours. It pours the outline's colour, and the
    * fill's from the right button, as a line is drawn.
    */
-  function pour(e: PointerEvent): void {
+  function pour([ux, uy]: [number, number], fillSwatch: boolean): void {
     const row = editor.doc.layers[editor.activeLayer];
     const cell = row && resolveCell(row, editor.activeFrame);
     if (!cell || !lastRaster) {
@@ -1707,12 +1777,26 @@
     };
     const viewport = { scale: level / FIXED_POINT_SCALE, dpr: 1 };
     const { tools } = editor.doc;
-    clear();
     const shown = editor.settings.fillSource === 'canvas' ? editor.doc.layers.filter((layer) => !layer.hidden) : [];
     const cells = shown.length > 0 ? shown.map((layer) => resolveCell(layer, editor.activeFrame)) : [cell];
+    const images = rasterImages(shown.flatMap((layer, index) => {
+      const raster = cells[index]?.raster;
+      return raster && layer.opacity !== 0 ? [raster] : [];
+    }), viewport);
+    if (!images.ready) {
+      const { doc, activeFrame, activeLayer } = editor;
+      void images.load({ priority: 2 }).then(() => {
+        if (!destroyed && editor.doc === doc && editor.activeFrame === activeFrame &&
+            editor.activeLayer === activeLayer && editor.tool === 'bucket') pour([ux, uy], fillSwatch);
+      }, () => {
+        editor.canvasHint = { text: t('canvas.raster_unavailable') };
+      });
+      return;
+    }
+    clear();
     // A layer that erases is drawn apart, so its eraser cuts its own lines
     // alone; one with a look is laid with it — the colour seen is the one filled.
-    renderLayersStacked(cells, tools, ctx, viewport, () => {
+    renderLayersStacked(cells, tools, ctx, images.viewport, () => {
       const own = buffer(null, w, h);
       return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
     }, STUDIO_PATHS, shown.length > 0 ? shown : undefined);
@@ -1727,7 +1811,7 @@
       if (pctx) {
         pctx.fillStyle = BACKGROUND_COLOR;
         pctx.fillRect(0, 0, w, h);
-        renderLayersStacked(cells, tools, pctx, viewport, () => {
+        renderLayersStacked(cells, tools, pctx, images.viewport, () => {
           const own = buffer(null, w, h);
           return { ctx: own.getContext('2d') as unknown as ViewCtx, image: own };
         }, STUDIO_PATHS, shown, true);
@@ -1735,7 +1819,6 @@
         onPaperEl.width = onPaperEl.height = 0;
       }
     }
-    const [ux, uy] = toDocUnits(e);
     const x = Math.min(w - 1, Math.max(0, Math.floor((ux / FIXED_POINT_SCALE) * level)));
     const y = Math.min(h - 1, Math.max(0, Math.floor((uy / FIXED_POINT_SCALE) * level)));
     const distance = colourDistance(seen, w, h, x, y, PAPER);
@@ -1748,7 +1831,7 @@
     const replaced = oldFillsIn(area, w, h, cell.strokes, tools, 1 / toDoc);
     const kept = cell.strokes.filter((_, i) => !replaced.includes(i));
     const pure = pureOf(area, distance);
-    const colour = e.button === 2 ? editor.fillColor : editor.brushColor;
+    const colour = fillSwatch ? editor.fillColor : editor.brushColor;
     const same = recolouredFill(pure, replaced, cell.strokes, tools, 1 / toDoc, w, h);
     if (same !== null) {
       editor.applyFill(cell.strokes[same].points, colour, same, replaced);
@@ -2435,6 +2518,10 @@
     if (editor.playing || !e.isPrimary || pointer.session) {
       return;
     }
+    if (editor.activeLayerIsRaster && !['pencil', 'eraser', 'pipette', 'drag'].includes(editor.tool)) {
+      editor.canvasHint = { text: t('canvas.raster_tools') };
+      return;
+    }
     rulerLock = null;
     // The ruler is taken by any tool but the hand, which moves the sheet: its
     // body moves it, an end turns it, and the strip by an edge lays a line
@@ -2548,7 +2635,7 @@
     if (editor.tool === 'bucket') {
       // The table beside the sheet is nobody's area.
       if (!offSheet(e) && editor.mayEdit()) {
-        pour(e);
+        pour(toDocUnits(e), e.button === 2);
       }
       return;
     }

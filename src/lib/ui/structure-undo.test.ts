@@ -82,6 +82,19 @@ describe('отмена удаления', () => {
     expect(xs(d)).toEqual([0, 1, 2]);
   });
 
+  it('возвращает растровый рисунок первого кадра после удаления всех столбцов', () => {
+    const drawing = doc(3);
+    addLayer(drawing, 1, true, 'raster');
+    const raster = { hash: '1'.repeat(64), x: 0, y: 0, width: 1, height: 1 };
+    drawing.layers[1].frames[0] = { strokes: [], raster };
+    const snapshot = takeStructure(drawing);
+    removeFrame(drawing, 0, 3);
+    snapshot.seal(drawing);
+    expect(drawing.layers[1].frames[0]?.raster).toBeUndefined();
+    restoreStructure(drawing, snapshot);
+    expect(drawing.layers[1].frames[0]?.raster).toEqual(raster);
+  });
+
   it('возвращает удалённый слой с его рисунком', () => {
     const d = doc(2, 3);
     d.layers[1].name = 'Фон';

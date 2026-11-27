@@ -9,8 +9,11 @@ import { parseDraft } from './restore';
 import { v7Tick } from '../format/v7';
 import { decodeToon } from '../format/toon-decode';
 import { packDocument, unpackDocument } from '../format/pack';
+import { checkRasterImage, decodeProject, encodeProject } from '../format/project';
+import { hasRasterLayers, rasterInventory } from '../format/studio-document';
 import type { ToonDocument } from '../format/types';
 import { MAX_BRUSH_SIZE_LOGICAL, MIN_BRUSH_SIZE_LOGICAL } from '../format/constants';
+import { assertRasterAssets, collectRasterAssets, flushRasterAssets, readRasterAsset, storeRasterAssets, withRasterStorage } from './raster-store';
 
 const DB_NAME = 'toon-editor';
 const STORE = 'drafts';
@@ -153,6 +156,8 @@ interface MediaAudioRecord {
 
 /** Record as kept in IndexedDB (`drafts`) and in `known`. */
 interface StoredDraftRecord extends Omit<DraftRecord, 'audio' | 'screenshot'> {
+  /** The durable hashes in this exact packed document. */
+  rasterHashes?: string[];
   /** Changes with the drawing, track or session state, rather than its thumbnail. */
   editId?: string;
   /** Legacy audio (pre-media-store); never written by new saves so older tabs never dereference `audio.blob.size`. */
@@ -300,6 +305,11 @@ function summarize(doc: unknown): DraftSummary | null {
   return { width, height, frames: v7Tick(doc, columns), layers: layers.length };
 }
 
+function mixedDraft(doc: unknown): doc is ToonDocument {
+  const layers = (doc as Partial<ToonDocument> | null)?.layers;
+  return Array.isArray(layers) && layers.some((layer) => layer?.kind === 'raster');
+}
+
 /**
  * Puts the record's document into bytes, if it came as a document — a save,
  * a copy, an import. A write that kept the document it read (the screenshot,
@@ -315,8 +325,69 @@ function pack(record: StoredDraftRecord): void {
       record.summary = summary;
     }
     record.packed = encodeDoc(record.doc);
+    if (mixedDraft(record.doc)) {
+      record.rasterHashes = rasterInventory(record.doc).map(([hash]) => hash);
+    } else {
+      delete record.rasterHashes;
+    }
     delete (record as Partial<StoredDraftRecord>).doc;
   }
+}
+
+let rasterSweep = Promise.resolve();
+let rasterSweepRetry: ReturnType<typeof setTimeout> | undefined;
+let rasterSweepDelay = 500;
+
+export function sweepDraftRasters(): Promise<void> {
+  rasterSweep = rasterSweep.then(async () => {
+    if (await collectRasterAssets(savedRasterHashes)) {
+      clearTimeout(rasterSweepRetry);
+      rasterSweepRetry = undefined;
+      rasterSweepDelay = 500;
+    } else {
+      rasterSweepRetry ??= setTimeout(() => {
+        rasterSweepRetry = undefined;
+        rasterSweepDelay = Math.min(rasterSweepDelay * 2, 15_000);
+        void sweepDraftRasters();
+      }, rasterSweepDelay);
+    }
+  }).catch((err) => {
+    console.warn('draft raster cleanup skipped:', err);
+  });
+  return rasterSweep;
+}
+
+async function savedRasterHashes(): Promise<Set<string>> {
+  // Never wait for queued writes here. A new raster write may be waiting on
+  // the collector's exclusive lock while this reads the committed records.
+  const tx = await transaction('readonly', undefined, true);
+  if (!tx) throw new Error('Draft storage is unavailable during raster cleanup');
+  const keep = new Set<string>();
+  const decoder = new TextDecoder();
+  return new Promise((resolve, reject) => {
+    const request = tx.objectStore(STORE).openCursor();
+    request.onerror = () => reject(request.error);
+    tx.onabort = () => reject(tx.error);
+    tx.oncomplete = () => resolve(keep);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const record = cursor.value as StoredDraftRecord;
+        if (record.rasterHashes) {
+          for (const hash of record.rasterHashes) keep.add(hash);
+        } else {
+          // Compatibility with early local raster records before this index.
+          const text = record.packed && decoder.decode(record.packed);
+          const data = text?.includes('"kind":"raster"') ? unpackDocument(JSON.parse(text)) : record.doc;
+          if (mixedDraft(data)) for (const [hash] of rasterInventory(data)) keep.add(hash);
+        }
+        cursor.continue();
+      } catch (err) {
+        reject(err);
+      }
+    };
+  });
 }
 
 /**
@@ -835,6 +906,14 @@ export async function readDraft(id: string): Promise<{
   if (!doc) {
     return null;
   }
+  if (hasRasterLayers(doc)) {
+    try {
+      await assertRasterAssets(rasterInventory(doc).map(([hash]) => hash));
+    } catch (err) {
+      console.warn('draft raster images unavailable:', err);
+      return null;
+    }
+  }
   const audio = await loadRecordAudio(record);
   const audioUnavailable = Boolean(record.audioMeta && !audio);
   const version = versionOf(record);
@@ -856,6 +935,7 @@ export async function readDraft(id: string): Promise<{
  * document.
  */
 let writes: Promise<unknown> = Promise.resolve();
+let lastRasterSweep = 0;
 
 function queueWrite<T>(run: () => Promise<T>): Promise<T> {
   const next = writes.then(run, run);
@@ -1267,16 +1347,47 @@ export async function saveDraft(
   /** By default this fills in a track attached before the record existed. */
   audio?: DraftAudio | null,
   /** Publication also invalidates the thumbnail and requires a committed record. */
-  { forPublication = false, replaceAudio = forPublication, expectedVersion }: {
+  { forPublication = false, replaceAudio = forPublication, expectedVersion, rasterAssets }: {
     forPublication?: boolean;
     replaceAudio?: boolean;
     expectedVersion?: DraftVersion | null;
+    rasterAssets?: ReadonlyMap<string, Blob>;
   } = {},
 ): Promise<DraftWrite> {
+  let packed: Uint8Array;
+  let summary: DraftSummary | null;
+  let inventory: ReturnType<typeof rasterInventory> | undefined;
+  try {
+    packed = encodeDoc(doc);
+    summary = summarize(doc);
+    if (mixedDraft(doc)) inventory = rasterInventory(doc);
+  } catch (err) {
+    draftFailed('draft save', err, 'blob');
+    return { ok: false, bytes: 0 };
+  }
   let bytes = 0;
   let version: DraftVersion | undefined;
   let conflict = false;
-  const ok = await queueWrite(async () => {
+  const write = async () => {
+    if (inventory) {
+      try {
+        if (rasterAssets?.size) {
+          const required = new Map(inventory);
+          for (const [hash, blob] of rasterAssets) {
+            const cel = required.get(hash);
+            if (!cel) throw new Error('Unexpected asset for draft');
+            await checkRasterImage(blob, cel);
+          }
+          await storeRasterAssets(rasterAssets);
+        }
+        const hashes = inventory.map(([hash]) => hash);
+        await flushRasterAssets(hashes);
+        await assertRasterAssets(hashes);
+      } catch (err) {
+        draftFailed('draft save', err, 'blob');
+        return false;
+      }
+    }
     let stagedAudio: StoredAudioMeta | undefined;
     let stagedKey: string | undefined;
     let attachedStaged = false;
@@ -1317,7 +1428,11 @@ export async function saveDraft(
       if (audioFailed) return null;
       // A different tab may have replaced the track since it was checked.
       if (reusedAudio && previous?.audioMeta?.key !== reusedAudio.key) return null;
-      const next: StoredDraftRecord = { ...previous, id, updated: Date.now(), doc };
+      const next: StoredDraftRecord = { ...previous, id, updated: Date.now(), doc: undefined, packed };
+      delete (next as Partial<StoredDraftRecord>).doc;
+      if (summary) next.summary = summary;
+      if (inventory) next.rasterHashes = inventory.map(([hash]) => hash);
+      else delete next.rasterHashes;
       // The studio's own drawing: whatever did not read before is replaced.
       delete next.broken;
       if (state) {
@@ -1357,8 +1472,13 @@ export async function saveDraft(
     if (replaceAudio && wroteOk && landed) {
       failing.delete('draft audio save');
     }
-    return wroteOk && (landed || (unavailable && !forPublication));
-  });
+    return wroteOk && (landed || (unavailable && !forPublication && !inventory));
+  };
+  const ok = await queueWrite(() => inventory ? withRasterStorage(write) : write());
+  if (ok && inventory && Date.now() - lastRasterSweep >= 60_000) {
+    lastRasterSweep = Date.now();
+    void sweepDraftRasters();
+  }
   return { ok, bytes, ...(version ? { version } : {}), ...(conflict ? { conflict: true as const } : {}) };
 }
 
@@ -1399,6 +1519,10 @@ export async function setDraftScreenshot(id: string, screenshot: Blob, expectedV
  * record that was never written.
  */
 export async function duplicateDraft(id: string): Promise<string | null> {
+  return withRasterStorage(() => copyDraft(id));
+}
+
+async function copyDraft(id: string): Promise<string | null> {
   // The bytes go across as they lie: a copy is no reason to read the drawing.
   const source = await rawRecord(id);
   if (!source || source.broken) {
@@ -1465,8 +1589,9 @@ export async function deleteAllDrafts(): Promise<void> {
   // Only the keys are wanted: no document is read to be deleted.
   const records = await rawRecords().catch(() => [] as StoredDraftRecord[]);
   for (const draft of records) {
-    await deleteDraft(draft.id);
+    await queueWrite(() => removeDraft(draft.id));
   }
+  await sweepDraftRasters();
 }
 
 /**
@@ -1537,6 +1662,7 @@ export async function setDraftAudio(id: string, audio: DraftAudio | null, expect
 /** Removes one session. Never throws. */
 export async function deleteDraft(id: string): Promise<void> {
   await queueWrite(() => removeDraft(id));
+  await sweepDraftRasters();
 }
 
 /** Delete only the submitted version, comparing it in the delete transaction. */
@@ -1628,6 +1754,8 @@ export interface DraftSave {
   updated: number;
   /** The document, JSON-encoded — the reference's `data` field. */
   data: string;
+  /** Base64 archive for a project with raster images. */
+  project?: string;
   state?: DraftState;
   screenshot?: string;
   audio?: string;
@@ -1676,7 +1804,14 @@ function base64Bytes(text: string, type: string): { bytes: Uint8Array<ArrayBuffe
  * toonio.ru still opens here. Blobs travel base64-encoded, so a track moves to
  * another device with the drawing it belongs to. No ids — every draft.
  */
-export async function exportDrafts(
+export function exportDrafts(
+  ids?: readonly string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<string> {
+  return withRasterStorage(() => buildDraftBackup(ids, onProgress));
+}
+
+async function buildDraftBackup(
   ids?: readonly string[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<string> {
@@ -1686,10 +1821,14 @@ export async function exportDrafts(
   const saves: DraftSave[] = [];
   for (const raw of chosen) {
     const draft = opened(raw, await loadRecordAudio(raw));
+    const project = mixedDraft(draft.doc)
+      ? await toBase64(await encodeProject(draft.doc, readRasterAsset))
+      : undefined;
     const save: DraftSave = {
       id: draft.id,
       updated: draft.updated,
-      data: JSON.stringify(draft.doc),
+      data: project ? '' : JSON.stringify(draft.doc),
+      ...(project ? { project } : {}),
       ...(draft.state ? { state: draft.state } : {}),
     };
     // A stored blob that no longer reads (Safari loses them) cost the whole
@@ -1722,6 +1861,10 @@ export async function exportDrafts(
  * refuses a write (a full quota): what went in before it stays.
  */
 export async function importDrafts(raw: string): Promise<{ loaded: number; broken: number }> {
+  return withRasterStorage(() => loadDraftBackup(raw));
+}
+
+async function loadDraftBackup(raw: string): Promise<{ loaded: number; broken: number }> {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -1736,15 +1879,23 @@ export async function importDrafts(raw: string): Promise<{ loaded: number; broke
   let loaded = 0;
   let broken = 0;
   for (const entry of entries) {
-    const parsed = readSave(entry);
+    const parsed = await readSave(entry);
     if (!parsed) {
       broken++;
       continue;
     }
-    const { record, audioPayload } = parsed;
+    const { record, audioPayload, rasterAssets } = parsed;
     const fresh = taken.has(record.id) ? newDraftId() : record.id;
     taken.add(fresh);
     const mediaKey = record.audioMeta?.key;
+    if (rasterAssets) {
+      try {
+        await storeRasterAssets(rasterAssets);
+      } catch (err) {
+        draftFailed('draft import', err, 'put');
+        throw new Error('draft import did not fit');
+      }
+    }
     if (audioPayload && mediaKey) {
       try {
         await putMediaAudio(mediaKey, audioPayload);
@@ -1821,7 +1972,11 @@ function readData(data: string): unknown {
 }
 
 /** One entry of either file shape as a record plus optional audio bytes, or null when it is not one. */
-function readSave(entry: unknown): { record: StoredDraftRecord; audioPayload?: StoredBytes } | null {
+async function readSave(entry: unknown): Promise<{
+  record: StoredDraftRecord;
+  audioPayload?: StoredBytes;
+  rasterAssets?: Map<string, Blob>;
+} | null> {
   if (typeof entry !== 'object' || entry === null) {
     return null;
   }
@@ -1832,12 +1987,21 @@ function readSave(entry: unknown): { record: StoredDraftRecord; audioPayload?: S
     return null;
   }
   let doc = save.doc;
-  if (typeof save.data === 'string') {
+  let rasterAssets: Map<string, Blob> | undefined;
+  if (typeof save.project === 'string') {
+    try {
+      const opened = await decodeProject(new Blob([base64Bytes(save.project, '').bytes]));
+      doc = opened.doc;
+      rasterAssets = opened.assets;
+    } catch {
+      return null;
+    }
+  } else if (typeof save.data === 'string') {
     doc = readData(save.data);
   }
   // A drawing that will not open is dropped from the list when it is read;
   // counted as loaded, «загружено: 2» showed one card.
-  if (!parseDraft(doc)) {
+  if (!parseDraft(doc) || (mixedDraft(doc) && !rasterAssets)) {
     return null;
   }
   const created = typeof save.created === 'string' ? Date.parse(save.created) : NaN;
@@ -1873,5 +2037,5 @@ function readSave(entry: unknown): { record: StoredDraftRecord; audioPayload?: S
   } catch {
     return null; // base64 that is not base64
   }
-  return { record, ...(audioPayload ? { audioPayload } : {}) };
+  return { record, ...(audioPayload ? { audioPayload } : {}), ...(rasterAssets ? { rasterAssets } : {}) };
 }

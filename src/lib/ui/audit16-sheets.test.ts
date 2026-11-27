@@ -121,7 +121,7 @@ describe('файл проекта, который Safari сохранил как
 
   it('студия открывает такой .json как проект, а черновики .toonops.json — как черновики', async () => {
     const editor = await source('./Editor.svelte');
-    expect(editor).toMatch(/name\.endsWith\('\.json'\) && isToonopJson\(text\)/);
+    expect(editor).toMatch(/name\.endsWith\('\.json'\)[^]*?isToonopJson\(text\)/);
     expect(editor).toContain('/\\.(toonops|toonio)(\\.json)?$/i');
   });
 });

@@ -26,6 +26,7 @@ export type RenderBackendReason =
   | 'disabled'
   | 'software-browser'
   | 'webgl2-unavailable'
+  | 'raster-layers'
   | 'budget-exceeded'
   | 'oom'
   | 'context-lost';

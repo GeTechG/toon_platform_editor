@@ -115,8 +115,8 @@ describe('вкладка ушла в фон с живым выделением',
     const body = fn('flushOnHide');
     expect(body).not.toMatch(/leaveTransform/);
     expect(body).toMatch(/const shown = editor\.docWithTransform\(\);/);
-    expect(body).toMatch(/if \(shown !== editor\.doc\) \{\s*void saveNow\(false, true, shown\);/);
-    expect(body).toMatch(/flushOnLeave\(\)/);
+    expect(body).toMatch(/if \(shown !== editor\.doc\) \{\s*const write = saveNow\(false, true, shown, false, track\);/);
+    expect(body).toMatch(/flushOnLeave\(track\)/);
   });
 
   it('saveNow пишет переданный рисунок, а не только editor.doc', () => {

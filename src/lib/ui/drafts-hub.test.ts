@@ -90,10 +90,9 @@ describe('the choice of a sheet comes after the drafts', () => {
     // The editor starts the sheet and says whether it did; the hub closes on a yes.
     const body = fn('startSheet');
     expect(body).toMatch(/if \(!editor\.sheetOpen\) \{/);
-    expect(body).toMatch(/await saveNow\(true\)/);
-    expect(body).toContain("await ask(t('editor.new_sheet_lost_confirm'))");
-    expect(body).toMatch(/editor\.newSheet\(\)[^]*draftId = newDraftId\(\)[^]*editor\.setSheet\(value, fps\);\s*return true;/);
-    expect(fn('pickSheet')).toMatch(/if \(await onSheet\(value, newFps\)\) \{\s*dialogEl\?\.close\(\);/);
+    expect(body).toMatch(/return saveThenOpen\(editor\.docOpens, \(\) => \{[^]*?editor\.newSheet\(\)[^]*?draftId = newDraftId\(\)[^]*?editor\.setSheet\(value, fps\);/);
+    expect(body).toMatch(/discardOnFailure: true,\s*confirmLoss: \(\) => ask\(t\('editor\.new_sheet_lost_confirm'\)\)/);
+    expect(fn('pickSheet')).toMatch(/if \(hub && await onSheet\(value, newFps, \(\) => hub\.open && hub\.isConnected && request === sheetRequest\)\) \{\s*hub\.close\(\);/);
     expect(studio).toContain('onSheet={startSheet}');
   });
 
