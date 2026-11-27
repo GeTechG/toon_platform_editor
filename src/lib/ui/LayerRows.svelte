@@ -54,6 +54,7 @@
     counted = now;
   });
   const canAdd = $derived(editor.doc.layers.length < MAX_LAYERS);
+  const addDisabled = $derived(!canAdd || editor.playing);
   const budget = $derived(budgetLabel(editor.budgetShare));
   const canRemove = $derived(editor.doc.layers.length > 1);
 
@@ -537,23 +538,41 @@
 />
 
 <div class="head">
-  <button
-    class="add-layer"
-    aria-disabled={!canAdd || editor.playing || undefined}
-    onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
-    title={canAdd ? editor.keyHint(t('layer.add_title'), 'add-layer') : t('layer.full', { max: MAX_LAYERS })}
-  >
-    <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
-  </button>
-  <button
-    class="add-layer raster"
-    aria-label={t('layer.add_raster')}
-    aria-disabled={!canAdd || editor.playing || undefined}
-    title={canAdd ? t('layer.add_raster') : t('layer.full', { max: MAX_LAYERS })}
-    onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey, 'raster')}
-  >
-    <Icon name="pixel" size={16} /> <span class="raster-word">{t('layer.raster_short')}</span>
-  </button>
+  <div class="add-layer-group">
+    <button
+      class="add-layer"
+      aria-disabled={addDisabled || undefined}
+      onclick={(e) => editor.addLayerAtActive(e.ctrlKey || e.metaKey)}
+      title={canAdd ? editor.keyHint(t('layer.add_title'), 'add-layer') : t('layer.full', { max: MAX_LAYERS })}
+    >
+      <Icon name="plus" size={16} /> <span class="add-word">{t('layer.add')}</span>
+    </button>
+    <PopKey
+      label={t('layer.add_kind')}
+      title={canAdd ? t('layer.add_kind') : t('layer.full', { max: MAX_LAYERS })}
+      attrs={{ 'aria-disabled': addDisabled || undefined }}
+      shutOn={addDisabled}
+      menu
+    >
+      {#snippet face()}<Icon name="chevron-down" size={16} />{/snippet}
+      {#snippet children(close)}
+        {#each [{ kind: undefined, label: t('layer.vector') }, { kind: 'raster' as const, label: t('layer.raster') }] as option (option.label)}
+          <button
+            class="layer-kind"
+            role="menuitem"
+            tabindex="-1"
+            onclick={(e) => {
+              close();
+              editor.addLayerAtActive(e.ctrlKey || e.metaKey, option.kind);
+            }}
+          >
+            <Icon name={option.kind ? 'pixel' : 'plus'} size={16} />
+            {option.label}
+          </button>
+        {/each}
+      {/snippet}
+    </PopKey>
+  </div>
   <!-- The film's length in ticks (Clip Studio, Harmony): typed here, or the
        strip's end mark dragged. Shorter, it asks before drawings go. -->
   <label class="length" title={t('timeline.length_title')}>
@@ -981,11 +1000,20 @@
     font-weight: 700;
     color: var(--accent-ink);
   }
-  .add-layer {
+  .add-layer-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
+  }
+  .add-layer,
+  .add-layer-group :global(.pop-key > .key) {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.25rem;
-    height: 1.625rem;
+    height: 2rem;
+    min-height: 0;
     padding: 0 0.4rem;
     border: 0;
     border-radius: var(--r-sm, 7px);
@@ -995,15 +1023,54 @@
     font-size: 0.8rem;
     cursor: pointer;
   }
+  .add-layer {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+  .add-layer-group :global(.pop-key > .key.icon[aria-expanded]) {
+    width: 2rem;
+    min-width: 0;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    background: transparent;
+    color: var(--text-2);
+  }
   /* aria-disabled rather than disabled while the preview runs (as the
      strip's cells): a key that loses `disabled` under the focus drops it.
      So at the twentieth layer too: Enter added it and the key went out. */
-  .add-layer[aria-disabled='true'] {
+  .add-layer[aria-disabled='true'],
+  .add-layer-group :global(.pop-key > .key[aria-disabled='true']) {
     opacity: 0.4;
     cursor: default;
   }
-  .add-layer.raster {
-    flex: none;
+  .add-layer-group :global(.pop-plate) {
+    padding: 4px;
+  }
+  .layer-kind {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: var(--key-h, 2.75rem);
+    padding: 0 0.65rem;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .layer-kind:focus-visible,
+  .add-layer-group :global(.pop-key > .key.icon[aria-expanded='true']) {
+    background: var(--well);
+  }
+  @media (hover: hover) {
+    .layer-kind:hover,
+    .add-layer:hover:not([aria-disabled='true']),
+    .add-layer-group :global(.pop-key > .key.icon:hover:not([aria-disabled='true'])) {
+      background: var(--well);
+    }
   }
   /* The settings key: the letter of the mode in the eye's size and press floor.
      Heavier than the studio's shared key vocabulary (Editor.svelte), which
@@ -1157,9 +1224,6 @@
       overflow: hidden;
       clip-path: inset(50%);
       white-space: nowrap;
-    }
-    .raster-word {
-      display: none;
     }
   }
   @media (forced-colors: active) {

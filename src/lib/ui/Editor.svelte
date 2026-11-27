@@ -926,6 +926,7 @@
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || !isDirectionArrow(e.key)
       || !(target instanceof HTMLElement) || !focusFrom.byPointer(target) || !editorEl?.contains(target)
       || !target.matches('button, input[type="range"], [role="slider"], [role="separator"], [role="spinbutton"]')
+      || (target.matches('button[aria-haspopup="menu"]') && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))
       || target.closest('[data-frame], [role="menu"], [role="listbox"], [popover], dialog')) return;
     onKeydown(e, target);
     if (e.defaultPrevented) e.stopPropagation();

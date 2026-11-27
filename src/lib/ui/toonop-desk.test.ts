@@ -32,7 +32,7 @@ describe('toonop on a desk', () => {
     expect(toolOpensBrush(base, 'pencil')).toBe(true);
     const popKey = await Bun.file(new URL('./PopKey.svelte', import.meta.url)).text();
     // The right button opens the window whatever the gate says: it has taken the tool in hand by then.
-    expect(popKey).toMatch(/oncontextmenu=\{\(e\) => \{\s+e\.preventDefault\(\);\s+gate\?\.\(\);\s+open = true;/);
+    expect(popKey).toMatch(/oncontextmenu=\{\(e\) => \{\s+e\.preventDefault\(\);\s+if \(attrs\['aria-disabled'\] === true\) return;\s+gate\?\.\(\);\s+if \(menu\) void openMenu\(\);\s+else open = true;/);
     const ru = JSON.parse(await Bun.file(new URL('../i18n/ru.json', import.meta.url)).text());
     expect(ru.tool.again_brush).toBe('{{title}}. Ещё одно нажатие или правая кнопка открывает настройки кисти');
   });

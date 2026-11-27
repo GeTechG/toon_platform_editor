@@ -6,7 +6,8 @@
    * general.
    */
   import { plateAt, type PlatePlace } from './pop-place';
-  import type { Snippet } from 'svelte';
+  import { tick, type Snippet } from 'svelte';
+  import { stepOption } from './dropdown';
   import { notePopupClosed } from './dismiss-press';
 
   let {
@@ -18,6 +19,7 @@
     gate,
     shutOn,
     attrs = {},
+    menu = false,
   }: {
     /** Drawn as pressed though its box is shut: a tool in hand. */
     active?: boolean;
@@ -31,7 +33,9 @@
     title?: string;
     /** What the key shows: an icon, the colour in hand. */
     face: Snippet;
-    children: Snippet;
+    children: Snippet<[close: () => void]>;
+    /** A menu moves focus into its first item and takes the navigation keys. */
+    menu?: boolean;
   } = $props();
 
   let open = $state(false);
@@ -40,6 +44,21 @@
   let at = $state<PlatePlace | undefined>();
   /** Bumped by a window resize: the key moves with the layout, the plate follows. */
   let resized = $state(0);
+
+  function menuItems(): HTMLElement[] {
+    return [...(plate?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? [])];
+  }
+
+  function close(): void {
+    open = false;
+    key?.focus();
+  }
+
+  async function openMenu(last = false): Promise<void> {
+    open = true;
+    await tick();
+    if (open) menuItems().at(last ? -1 : 0)?.focus();
+  }
 
   /**
    * Under its key, right edges flush, inside the window; over it where the
@@ -99,6 +118,25 @@
   });
 
   function onKey(e: KeyboardEvent): void {
+    if (menu && !e.defaultPrevented) {
+      if (!open && e.target === key && (e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+          attrs['aria-disabled'] !== true) {
+        e.preventDefault();
+        e.stopPropagation();
+        void openMenu(e.key === 'ArrowUp');
+        return;
+      }
+      if (open && plate?.contains(e.target as Node)) {
+        const items = menuItems();
+        const next = stepOption(e.key, items.indexOf(document.activeElement as HTMLElement), items.length);
+        if (next !== null) {
+          e.preventDefault();
+          e.stopPropagation();
+          items[next].focus();
+          return;
+        }
+      }
+    }
     if (e.key !== 'Escape' || e.defaultPrevented || !open) return;
     // A list open inside (the brush types, the harmonies) takes this Esc: the
     // browser closes it after the key, which still bubbles here unprevented.
@@ -108,28 +146,35 @@
       // No `popover` in this browser: such a list handles its own Esc.
     }
     e.stopPropagation();
-    open = false;
-    key?.focus();
+    close();
   }
 </script>
 
 <svelte:window onresize={() => resized++} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="pop-key" onkeydown={onKey}>
+<div class="pop-key" onkeydown={onKey} onfocusout={(e) => {
+  const to = e.relatedTarget as Node | null;
+  if (menu && open && to && !key?.contains(to) && !plate?.contains(to)) open = false;
+}}>
   <button
     class="key icon"
     {...attrs}
     class:active={open || active}
     aria-expanded={open}
+    aria-haspopup={menu ? 'menu' : undefined}
     bind:this={key}
     onclick={() => {
-      if (!gate || gate()) open = !open;
+      if (attrs['aria-disabled'] === true || (gate && !gate())) return;
+      if (menu && !open) void openMenu();
+      else open = !open;
     }}
     oncontextmenu={(e) => {
       e.preventDefault();
+      if (attrs['aria-disabled'] === true) return;
       gate?.();
-      open = true;
+      if (menu) void openMenu();
+      else open = true;
     }}
     {title}
     aria-label={label}
@@ -142,7 +187,7 @@
     <div
       class="pop-plate"
       class:up={at?.bottom !== undefined}
-      role="group"
+      role={menu ? 'menu' : 'group'}
       aria-label={label}
       bind:this={plate}
       style:left={at && `${at.x}px`}
@@ -151,7 +196,7 @@
       style:max-height={at && `${at.max}px`}
       style:visibility={at ? undefined : 'hidden'}
     >
-      {@render children()}
+      {@render children(close)}
     </div>
   {/if}
 </div>

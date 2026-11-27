@@ -72,7 +72,8 @@ describe('шестнадцатый аудит: клавиша, выключен�
   it('«+ Слой» на двадцатом слое — aria-disabled', () => {
     const tag = tagAround(rows, 'class="add-layer"');
     expect(tag).not.toMatch(/\sdisabled=\{!canAdd\}/);
-    expect(tag).toMatch(/aria-disabled=\{!canAdd \|\| editor\.playing/);
+    expect(tag).toContain('aria-disabled={addDisabled || undefined}');
+    expect(rows).toContain('const addDisabled = $derived(!canAdd || editor.playing)');
   });
 
   it('«Проиграть», которому нечего играть, — aria-disabled', () => {
