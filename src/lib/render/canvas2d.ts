@@ -110,6 +110,15 @@ export class Canvas2DFrameRenderer implements FrameRenderer<Canvas2DLike> {
     this.#createScratch = createScratch;
   }
 
+  dispose(): void {
+    for (const buffer of this.#scratch) {
+      if (!buffer) continue;
+      buffer.ctx.canvas.width = 0;
+      buffer.ctx.canvas.height = 0;
+    }
+    this.#scratch = [];
+  }
+
   render(doc: ToonDocument, frameIndex: number, target: Canvas2DLike, viewport: Viewport): void {
     clearToBackground(target, viewport.background);
     const cells: Frame[] = [];

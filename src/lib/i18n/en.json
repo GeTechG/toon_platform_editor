@@ -419,7 +419,8 @@
     "title_play": "Play frames (Space)",
     "title_stop": "Stop playback (Space)",
     "frame_alt": "Toon, frame {{current}} of {{total}}",
-    "loading": "Loading, {{percent}}"
+    "loading": "Loading, {{percent}}",
+    "raster_retry": "Frame failed to load. Retry"
   },
   "sheet": {
     "standing": "Portrait",

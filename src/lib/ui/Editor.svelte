@@ -33,8 +33,8 @@
   import './controls.css';
   import { decodeLegacyJson, decodeToon, isToonopJson } from '../format/toon-decode';
   import { FormatError, loadDocument } from '../format/validate';
-  import { decodeProject, encodeProject } from '../format/project';
-  import { hasRasterLayers, rasterInventory } from '../format/studio-document';
+  import { checkRasterImage, decodeProject, encodeProject } from '../format/project';
+  import { hasRasterLayers, loadStudioDocument, rasterInventory } from '../format/studio-document';
   import { readRasterAsset, retainRasterWorkspace, storeRasterAssets, withRasterStorage } from '../draft/raster-store';
   import { frameCount, isEmptyDocument } from '../model/operations';
   import { draftSizeClass, formatFileSize } from './file-size';
@@ -102,6 +102,9 @@
   // first (owner, 2026-10-24), on the sheets when there are none.
   // `open` is the host handing over a drawing to continue (a draft kept on
   // the account): the studio starts on it, as on a file just opened.
+  type RestoreRaster = (write: (hash: string, blob: Blob) => Promise<void>, signal?: AbortSignal) => Promise<void>;
+  type HostDocument = { doc: ToonDocument; audio?: AudioTrackData | null; restoreRaster?: RestoreRaster };
+
   let {
     onPublish,
     stageNote,
@@ -109,13 +112,17 @@
     seasonPalette,
     named,
     startNew,
+    publishRaster = false,
     open,
+    resolveRaster,
+    onRasterOpened,
   }: {
     onPublish?: (
       doc: ToonDocument,
       audio: AudioTrackData | null,
       sent: () => Promise<void>,
       saveLocal: () => Promise<boolean>,
+      savedDraft: () => Promise<{ id: string; version: DraftVersion } | undefined>,
     ) => void;
     stageNote?: Snippet<[drawn: boolean, frames: number, playing: boolean, brushOnKey: boolean]>;
     /** The host's mascot, a picture's address: it greets a first visit on the tour's first page. */
@@ -125,7 +132,10 @@
     /** A first visit: a phone's row of keys wears its names until the host takes this back. */
     named?: boolean;
     startNew?: boolean;
-    open?: { doc: ToonDocument; audio?: AudioTrackData | null };
+    publishRaster?: boolean;
+    open?: HostDocument;
+    resolveRaster?: (restore: (doc: ToonDocument, source: RestoreRaster) => Promise<void>, signal: AbortSignal) => Promise<HostDocument>;
+    onRasterOpened?: (open: boolean) => void;
   } = $props();
 
   const editor = new EditorState();
@@ -2154,12 +2164,17 @@
   }
 
   /** «Отправить мульт»: the key's work, and the export sheet's way on. */
-  function sendOut(): void {
+  async function sendOut(): Promise<void> {
     // A live transform is on the screen and not yet in the document: the
     // mult went out with the selection where it was lifted. The lock
     // refuses and says so, as it does for a frame change.
     if (!editor.leaveTransform()) return;
-    if (hasRasterLayers(editor.doc)) {
+    if (editor.rasterStrokePending) {
+      const opened = editor.docOpens;
+      await editor.settleRasterStrokes();
+      if (destroyed || editor.docOpens !== opened || !editor.leaveTransform()) return;
+    }
+    if (!publishRaster && hasRasterLayers(editor.doc)) {
       void ask(t('editor.publish_raster'), t('key.download_project')).then((download) => {
         if (download) exportButton?.start('project');
       });
@@ -2171,7 +2186,7 @@
       return;
     }
     const draft = currentLocalDraft();
-    const submitted = queueLocalWrite(() => ({ ...draft }));
+    let submitted = queueLocalWrite(() => ({ ...draft }));
     const doc = editor.doc;
     const audio = editor.audio.blob
       ? { blob: editor.audio.blob, name: editor.audio.name, author: editor.audio.author, sync: editor.audio.sync }
@@ -2182,7 +2197,15 @@
       $state.snapshot(doc),
       audio,
       () => forgetSent(submitted, stillCurrent),
-      () => stillCurrent() ? savePublishedDraft() : Promise.resolve(false),
+      async () => {
+        if (!stillCurrent() || !(await savePublishedDraft())) return false;
+        if (stillCurrent()) submitted = queueLocalWrite(() => ({ ...draft }));
+        return true;
+      },
+      async () => {
+        const saved = await submitted;
+        if (saved.version && !saved.audioUnavailable) return { id: saved.id, version: saved.version };
+      },
     );
   }
 
@@ -2255,15 +2278,60 @@
   // like a file and under a draft record of its own. Its track is not on this
   // device yet, so the autosave is left to write it.
   const handed = untrack(() => open);
+  let hostedRasterOpen: number | undefined;
+  $effect(() => {
+    const opened = editor.docOpens;
+    if (hostedRasterOpen !== undefined && hostedRasterOpen !== opened) {
+      hostedRasterOpen = undefined;
+      onRasterOpened?.(false);
+    }
+  });
   if (handed) {
     try {
-      adoptOpenedDoc(loadDocument(handed.doc), '');
-      // Only once it is in: a drawing that did not open leaves the usual start.
-      draftsOpen = false;
-      if (handed.audio) {
-        void editor.audio.restore(handed.audio);
-      }
+      const doc = loadStudioDocument(handed.doc);
+      const adopt = (project: HostDocument) => {
+        adoptOpenedDoc(project.doc, '');
+        draftsOpen = false;
+        if (project.audio) void editor.audio.restore(project.audio);
+      };
+      if (hasRasterLayers(doc)) {
+        const source = handed.restoreRaster;
+        if (!source) throw new Error('Published raster assets are unavailable');
+        const controller = new AbortController();
+        const openingFrom = editor.docOpens;
+        draftsOpen = false;
+        onDestroy(() => controller.abort());
+        onMount(() => {
+          const restore = async (candidate: ToonDocument, read: RestoreRaster) => {
+            const expected = new Map(rasterInventory(candidate));
+            await read(async (hash, blob) => {
+              const cel = expected.get(hash);
+              if (!cel) throw new Error('Unexpected published raster asset');
+              await checkRasterImage(blob, cel);
+              controller.signal.throwIfAborted();
+              await storeRasterAssets(new Map([[hash, blob]]));
+              expected.delete(hash);
+            }, controller.signal);
+            if (expected.size) throw new Error('Published raster assets are incomplete');
+          };
+          void withRasterStorage(async () => {
+            const project = resolveRaster
+              ? await resolveRaster(restore, controller.signal)
+              : await restore(doc, source).then(() => ({ ...handed, doc }));
+            const opened = await saveThenOpen(openingFrom, () => {
+              adopt({ ...project, doc: loadStudioDocument(project.doc) });
+              hostedRasterOpen = editor.docOpens;
+            });
+            if (!destroyed) onRasterOpened?.(opened);
+          }).catch(() => {
+            if (destroyed) return;
+            if (onRasterOpened) onRasterOpened(false);
+            else void tell(t('editor.file_failed', { reason: t('editor.file_unreadable') }));
+          }).finally(() => void sweepDraftRasters());
+        });
+      } else adopt({ ...handed, doc });
     } catch (err) {
+      if (hasRasterLayers(handed.doc)) untrack(() => onRasterOpened?.(false));
       console.warn('handed drawing failed:', err);
       importError = t('editor.file_failed', { reason: t('editor.file_not_toonop') });
     }

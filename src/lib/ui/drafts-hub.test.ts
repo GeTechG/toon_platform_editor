@@ -550,14 +550,15 @@ describe('the hub says what it is and where it is', () => {
 describe('a host can hand over a drawing to continue', () => {
   // Owner, 2026-10-06: a draft kept on the account opens in the studio.
   it('the editor takes `open` and starts on that drawing, past the hub', () => {
-    expect(studio).toMatch(/open\?: \{ doc: ToonDocument; audio\?: AudioTrackData \| null \};/);
+    expect(studio).toMatch(/type HostDocument = \{ doc: ToonDocument; audio\?: AudioTrackData \| null;/);
+    expect(studio).toContain('open?: HostDocument;');
     const at = studio.indexOf('const handed = untrack(() => open);');
     expect(at).toBeGreaterThan(studio.indexOf('let importError = $state'));
     const body = studio.slice(at, studio.indexOf('\n  }\n', at));
     // As a file: validated, under a draft record of its own.
-    expect(body).toMatch(/adoptOpenedDoc\(loadDocument\(handed\.doc\), ''\);[^]*?draftsOpen = false;/);
+    expect(body).toMatch(/const doc = loadStudioDocument\(handed\.doc\);[^]*?adoptOpenedDoc\(project\.doc, ''\);[^]*?draftsOpen = false;/);
     // The track comes with it, and is not yet on this device's disk.
-    expect(body).toMatch(/if \(handed\.audio\) \{\s*void editor\.audio\.restore\(handed\.audio\);/);
+    expect(body).toMatch(/if \(project\.audio\) void editor\.audio\.restore\(project\.audio\);/);
     // A drawing this build cannot read is said, not thrown through the mount.
     expect(body).toMatch(/catch[^]*?importError = /);
   });
@@ -567,8 +568,10 @@ describe('the local draft after sending a drawing', () => {
   it('hands the host a way to finish the local draft with the document', () => {
     expect(studio).toContain('sent: () => Promise<void>');
     expect(studio).toContain('saveLocal: () => Promise<boolean>');
-    expect(studio).toContain('const submitted = queueLocalWrite(() => ({ ...draft }));');
-    expect(studio).toMatch(/onPublish\?\.\(\s*\$state\.snapshot\(doc\),\s*audio,\s*\(\) => forgetSent\(submitted, stillCurrent\),\s*\(\) => stillCurrent\(\) \? savePublishedDraft\(\) : Promise\.resolve\(false\),\s*\);/);
+    expect(studio).toContain('let submitted = queueLocalWrite(() => ({ ...draft }));');
+    expect(studio).toContain('() => forgetSent(submitted, stillCurrent),');
+    expect(studio).toContain('if (!stillCurrent() || !(await savePublishedDraft())) return false;');
+    expect(studio).toContain('if (stillCurrent()) submitted = queueLocalWrite(() => ({ ...draft }));');
   });
   it('writes the current drawing for a publication and clears it after moving to account drafts', () => {
     const save = studio.match(/async function savePublishedDraft\([^]*?\n  \}/)?.[0] ?? '';

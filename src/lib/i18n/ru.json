@@ -427,7 +427,8 @@
     "title_play": "Проиграть кадры (Space)",
     "title_stop": "Остановить просмотр (Space)",
     "frame_alt": "Мульт, кадр {{current}} из {{total}}",
-    "loading": "Загрузка, {{percent}}"
+    "loading": "Загрузка, {{percent}}",
+    "raster_retry": "Кадр не загрузился. Повторить"
   },
   "sheet": {
     "standing": "Вертикальный",

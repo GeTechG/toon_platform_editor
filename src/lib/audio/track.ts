@@ -7,6 +7,7 @@
 // catalogue that import registers is the whole studio's vocabulary. Whoever
 // checks a file is a studio surface, which has already registered it.
 import { translator } from '../i18n-core';
+import type { FilmTiming } from '../model/timing';
 
 const t = translator('editor');
 
@@ -215,6 +216,13 @@ export function trackTimeFor(index: number, fps: number, duration: number): numb
 /** The tick holding second `time` (`FilmTiming.frameAt` names its frame). */
 export function frameForTime(time: number, fps: number): number {
   return Math.floor(time * fps);
+}
+
+/** A slightly lagging audio sample is not evidence that a loop wrapped. */
+export function mixedTrackStep(timing: FilmTiming, fps: number, current: number, seconds: number) {
+  const lapped = trackShouldRestart(seconds, timing.total, fps);
+  const tick = lapped ? 0 : Math.max(timing.start(current), seconds * fps);
+  return { tick, frame: timing.frameAt(Math.floor(tick)), lapped };
 }
 
 /**

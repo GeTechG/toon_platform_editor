@@ -69,8 +69,8 @@ async function rasterBlob(hash: string): Promise<Blob> {
   return blob;
 }
 
-async function decode({ cel, width, height }: Omit<RasterRequest, 'key'>): Promise<ImageBitmap> {
-  const blob = await rasterBlob(cel.hash);
+async function decode({ cel, width, height }: Omit<RasterRequest, 'key'>, read = rasterBlob): Promise<ImageBitmap> {
+  const blob = await read(cel.hash);
   if (width === cel.width && height === cel.height) return createImageBitmap(blob);
   try {
     const resized = await createImageBitmap(blob, { resizeWidth: width, resizeHeight: height, resizeQuality: 'high' });
@@ -216,6 +216,7 @@ export async function renderRasterFrame(
   frame: number,
   target: Canvas2DLike,
   viewport: Viewport,
+  read?: (hash: string) => Promise<Blob>,
 ): Promise<void> {
   const cells = visibleRasterCells(doc, frame);
   const unique = new Map(cells.map((cel) => [cel.hash, cel]));
@@ -225,8 +226,8 @@ export async function renderRasterFrame(
     const { width, height } = imageSize(cel, scale);
     bytes += width * height * 4;
   }
-  if (bytes > DECODED_BUDGET) {
-    await renderer.renderWithRaster(doc, frame, target, viewport, (cel) => decode({ cel, ...imageSize(cel, scale) }));
+  if (read || bytes > DECODED_BUDGET) {
+    await renderer.renderWithRaster(doc, frame, target, viewport, (cel) => decode({ cel, ...imageSize(cel, scale) }, read));
     return;
   }
   const images = rasterImages(cells, viewport);

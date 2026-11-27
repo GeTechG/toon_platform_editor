@@ -10,3 +10,4 @@ export { playLength } from './lib/player/replay';
 export type { ToonDocument } from './lib/format/types';
 export { unpackDocument } from './lib/format/pack';
 export { fromV7 } from './lib/format/v7';
+export { loadStudioDocument, rasterInventory } from './lib/format/studio-document';

@@ -35,4 +35,17 @@ describe('двойники кадров', () => {
     const doc = film([{ frames: [{ strokes: [line(1), line(2)] }, { strokes: [line(2), line(1)] }] }]);
     expect(frameTwins(doc)).toEqual([0, 1]);
   });
+
+  it('serializes a shared held vector cell once while raster positions change', () => {
+    let serializations = 0;
+    const strokes = Object.assign([line(1)], { toJSON() { serializations++; return [line(1)]; } });
+    const background = { strokes };
+    const raster = (x: number) => ({ strokes: [], raster: { hash: 'same', x, y: 0, width: 1, height: 1 } });
+    const doc = film([
+      { frames: [background, background, background, { strokes: [line(1)] }] },
+      { frames: [raster(0), raster(1), raster(2), raster(1)] },
+    ]);
+    expect(frameTwins(doc)).toEqual([0, 1, 2, 1]);
+    expect(serializations).toBe(1);
+  });
 });

@@ -42,7 +42,7 @@ describe('a mult heavier than the publish limit', () => {
 
   it('sending a mult over the limit is refused in the studio, before the site is asked', () => {
     const studio = readFileSync(new URL('./Editor.svelte', import.meta.url), 'utf8');
-    const send = studio.match(/function sendOut\(\): void \{[^]*?\n {2}\}/)?.[0] ?? '';
+    const send = studio.match(/async function sendOut\(\): Promise<void> \{[^]*?\n {2}\}/)?.[0] ?? '';
     expect(send.indexOf("t('editor.publish_over_budget'")).toBeGreaterThan(0);
     expect(send.indexOf("t('editor.publish_over_budget'")).toBeLessThan(send.indexOf('onPublish?.('));
   });

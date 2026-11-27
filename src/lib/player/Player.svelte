@@ -3,7 +3,7 @@
   // at the document's frame rate. Reuses the same frame renderer as the editor
   // (single rendering contract) and the drift-free LoopPlayer. No tools, no
   // onion skin, no draft — a pure viewer for the public share page.
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { CANVAS_LOGICAL_WIDTH, FIXED_POINT_SCALE } from '../format/constants';
   import type { ToonDocument } from '../format/types';
   import { Canvas2DFrameRenderer, type Canvas2DLike } from '../render/canvas2d';
@@ -16,7 +16,9 @@
   import { playLength, replayAt, replayEnded, replayStart } from './replay';
   import { filmTiming } from '../model/timing';
   import { stills } from '../model/stills';
-  import { frameForTime, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
+  import { frameForTime, mixedTrackStep, playRefusal, trackKeepsTime, trackShouldRestart, trackTimeFor, unlockElement } from '../audio/track';
+  import { hasRasterLayers } from '../format/studio-document';
+  import { renderRasterFrame } from '../render/raster-images';
   // Only the player's own words: `../i18n` registers the studio's whole
   // catalogue, and the share page downloaded all of it for three strings. A
   // named import of the JSON leaves the rest out of the bundle.
@@ -49,6 +51,7 @@
     audioSync = true,
     volume = 1,
     current = $bindable(0),
+    readRaster,
   }: {
     /** Any published version — the share page serves documents as they were saved. */
     doc: ToonDocument;
@@ -69,12 +72,15 @@
      * while paused — which is the only way to check a frame against the track.
      */
     current?: number;
+    readRaster?: (tick: number, hash: string, signal?: AbortSignal) => Promise<Blob>;
   } = $props();
 
   // The film as stills: ticks on which every layer shows the same drawings are
   // one frame that lasts them, as a pause was before continuations (v8).
   const still = $derived(stills(doc));
   const view = $derived(still.film);
+  const mixed = $derived(hasRasterLayers(view));
+  const mixedTwins = $derived(mixed ? frameTwins(view) : []);
   // A one-frame drawing is replayed stroke by stroke: then the "frames" below
   // are its strokes and the rate is the replay's own.
   const length = $derived(playLength(view));
@@ -119,6 +125,8 @@
   let live = $state(false);
   /** How much of the wait is over, 0…1. */
   let warmed = $state(0);
+  let rasterFailed = $state(false);
+  let rasterRetry = $state(0);
   /** Tells the warming the show moved on; set by it. */
   let wake = (): void => {};
   const percent = new Intl.NumberFormat(dateLocale(), { style: 'percent' });
@@ -129,14 +137,21 @@
    * the page stretches it, so the film is the same pixels for everyone who
    * watches it, and the ones it was drawn in.
    */
-  const raster = $derived(sheetRaster(view));
+  const raster = $derived.by(() => {
+    const native = sheetRaster(view);
+    if (!mixed) return native;
+    const density = renderDensity(typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
+    const scale = Math.min(1, cssWidth * density / native.width);
+    return { level: native.level * scale, width: Math.max(1, Math.round(native.width * scale)),
+      height: Math.max(1, Math.round(native.height * scale)) };
+  });
   /**
    * How many frames of the sheet this device holds ready. A film tied to its
    * track is held whole, as before the window: the track is its clock, and a
    * track cannot wait for a frame as the frame clock does — two clocks gated
    * by turns took a late track for a lap gone by.
    */
-  const windowSize = $derived(audioSrc && audioSync
+  const windowSize = $derived(!mixed && audioSrc && audioSync
     ? Infinity
     : playbackWindow(
       typeof navigator === 'undefined' ? undefined : (navigator as { deviceMemory?: number }).deviceMemory,
@@ -153,6 +168,10 @@
   );
   const bitmapWidth = $derived(raster.width);
   const bitmapHeight = $derived(raster.height);
+
+  function cached(index: number): ImageData | undefined {
+    return cache.get(mixedTwins[index] ?? index);
+  }
 
   /** One frame of the show — a frame of the film or a step of the replay. */
   function paint(index: number, ctx: Canvas2DLike): void {
@@ -192,12 +211,12 @@
     // a paused viewer steps to it; playing, the clock waits for it over the
     // last frame instead.
     cache.fit(view, pxWidth, pxHeight);
-    const held = cache.get(current);
+    const held = cached(current);
     if (held) {
       (ctx as unknown as CanvasRenderingContext2D).putImageData(held, 0, 0);
       return;
     }
-    if (live || !playing) paint(current, ctx);
+    if (!mixed && (live || !playing)) paint(current, ctx);
   }
 
   // The film is rasterized ahead of its clock, so the show is not every stroke
@@ -210,6 +229,10 @@
     void view;
     void bitmapWidth;
     void bitmapHeight;
+    if (mixed) {
+      live = false;
+      return;
+    }
     // A drawing replayed stroke by stroke has a step per stroke: rasterized
     // ahead, five hundred strokes were five hundred whole sheets held and each
     // of them every stroke before it drawn again. It is drawn live, a step a
@@ -355,6 +378,107 @@
     };
   });
 
+  let previousMixed: ToonDocument | undefined;
+  let rasterWork: { film: ToonDocument; width: number; height: number; level: number; source: typeof readRaster } | undefined;
+  const rasterJobs = new Map<number, { controller: AbortController; done: Promise<void> }>();
+  function stopRasterJobs(keep: readonly number[] = []): void {
+    for (const [key, job] of rasterJobs) {
+      if (keep.includes(key)) continue;
+      rasterJobs.delete(key);
+      job.controller.abort();
+    }
+  }
+  onDestroy(stopRasterJobs);
+
+  $effect(() => {
+    if (!mixed || !canvasEl) {
+      stopRasterJobs();
+      rasterWork = undefined;
+      return;
+    }
+    const film = view;
+    const target = current;
+    if (target >= total) return;
+    const source = readRaster;
+    const starts = still.starts;
+    const keep = mixedTwins;
+    const { width, height, level } = raster;
+    const wantsNext = playing;
+    void rasterRetry;
+    if (previousMixed !== film) {
+      previousMixed = film;
+      shown = false;
+    }
+    rasterFailed = false;
+    if (rasterWork?.film !== film || rasterWork.width !== width || rasterWork.height !== height ||
+        rasterWork.level !== level || rasterWork.source !== source) {
+      stopRasterJobs();
+      rasterWork = { film, width, height, level, source };
+    }
+    cache.fit(film, width, height);
+    cache.trim(windowFrames(total, target, Math.min(3, windowSize)).map((index) => keep[index] ?? index));
+    const next = wantsNext && total > 1 ? (target + 1) % total : undefined;
+    const targetKey = keep[target] ?? target;
+    const needed = [targetKey];
+    if (next !== undefined) needed.push(keep[next] ?? next);
+    stopRasterJobs(needed);
+    let superseded = false;
+
+    const render = (index: number): Promise<void> => {
+      const key = keep[index] ?? index;
+      if (cache.get(key)) return Promise.resolve();
+      const running = rasterJobs.get(key);
+      if (running) return running.done;
+      const controller = new AbortController();
+      const { signal } = controller;
+      const done = (async () => {
+        const scratch = document.createElement('canvas');
+        scratch.width = width;
+        scratch.height = height;
+        const composer = new Canvas2DFrameRenderer();
+        try {
+          const ctx = scratch.getContext('2d', { willReadFrequently: true });
+          if (!ctx) throw new Error('Could not create playback canvas');
+          const read = source && (async (hash: string) => {
+            signal.throwIfAborted();
+            return source(starts[index], hash, signal);
+          });
+          await renderRasterFrame(composer, film, index, ctx as unknown as Canvas2DLike,
+            { scale: level / FIXED_POINT_SCALE, dpr: 1 }, read);
+          signal.throwIfAborted();
+          cache.put(key, ctx.getImageData(0, 0, width, height));
+        } finally {
+          composer.dispose();
+          scratch.width = 0;
+          scratch.height = 0;
+        }
+      })().finally(() => {
+        if (rasterJobs.get(key)?.controller === controller) rasterJobs.delete(key);
+      });
+      rasterJobs.set(key, { controller, done });
+      return done;
+    };
+    ready = !!cache.get(targetKey);
+    warmed = ready ? 1 : 0;
+    void (async () => {
+      try {
+        await render(target);
+        if (superseded) return;
+        shown = true;
+        ready = true;
+        warmed = 1;
+        draw();
+        if (next !== undefined) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          if (!superseded) await render(next).catch(() => {});
+        }
+      } catch {
+        if (!superseded) rasterFailed = true;
+      }
+    })();
+    return () => { superseded = true; };
+  });
+
   // The show moves on: the frames behind it leave a film longer than the
   // window, the crew is told what is wanted now, and a frame not ready in
   // time stops the clock until enough are again — the film is not shown
@@ -363,7 +487,7 @@
     const frame = current;
     // A pause is time the page may draw in, too.
     void playing;
-    if (length.replay || live || frame >= total) return;
+    if (mixed || length.replay || live || frame >= total) return;
     untrack(() => {
       if (total > windowSize) cache.trim(windowFrames(total, frame, windowSize));
       wake();
@@ -431,7 +555,7 @@
       // Stopped already: nothing moves the show until it starts again.
       if (!ready) return;
       const from = current;
-      const stop = live ? null : firstUnready((frame) => cache.get(frame) !== undefined, total, from, index, laps);
+      const stop = live ? null : firstUnready((frame) => cached(frame) !== undefined, total, from, index, laps);
       if (stop === null) {
         current = index;
         return;
@@ -441,12 +565,14 @@
       // Stopped where it was: nothing changed for the warming to hear.
       wake();
     };
+    let silentLap = false;
     const player = new LoopPlayer({
       frameCount: total,
       fps,
       startFrame: Math.min(untrack(() => current), total - 1),
       holds,
-      onFrame: (index, _lapped, laps) => {
+      onFrame: (index, lapped, laps) => {
+        silentLap = lapped;
         if (once && replayEnded(current, index, total)) {
           current = total - 1;
           playing = false;
@@ -486,6 +612,30 @@
       }
     }
     let raf = requestAnimationFrame(function tick(now: number) {
+      if (mixed && audioSync && sound) {
+        const clockRuns = trackKeepsTime(sound);
+        const reachedFilmEnd = sound.ended && !sound.error && trackShouldRestart(sound.currentTime, timing.total, fps);
+        if (clockRuns || reachedFilmEnd) {
+          const step = mixedTrackStep(timing, fps, current, sound.currentTime);
+          advance(step.frame, step.lapped ? 1 : 0);
+          if (!ready) return;
+          player.follow(step.tick, now);
+          if (step.lapped) {
+            sound.currentTime = 0;
+            if (!clockRuns) void sound.play().catch(() => {});
+          }
+        } else {
+          silentLap = false;
+          player.tick(now);
+          if (!ready) return;
+          if (silentLap) {
+            sound.currentTime = 0;
+            void sound.play().catch(() => {});
+          }
+        }
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       player.tick(now);
       // The clock stopped on a frame not ready: the track must not move it on.
       if (!ready) return;
@@ -496,7 +646,8 @@
           if (trackShouldRestart(sound.currentTime, timing.total, fps)) {
             sound.currentTime = 0;
           }
-          current = timing.frameAt(frameForTime(sound.currentTime, fps) % timing.total);
+          const sounded = timing.frameAt(frameForTime(sound.currentTime, fps) % timing.total);
+          current = sounded;
         } else if (current < lastFrame) {
           // A track shorter than the animation starts again with it.
           sound.currentTime = 0;
@@ -560,10 +711,14 @@
     role="img"
     aria-label={t('play.frame_alt', { current: current + 1, total })}
   ></canvas>
-  {#if !ready}
+  {#if rasterFailed && mixed}
+    <button class="loading loading-retry" type="button" onclick={(event) => { event.stopPropagation(); rasterRetry++; }}>
+      {t('play.raster_retry')}
+    </button>
+  {:else if !ready}
     <div class="loading" role="status">{t('play.loading', { percent: percent.format(warmed) })}</div>
   {/if}
-  {#if controls}
+  {#if controls && !(rasterFailed && mixed)}
     <button
       class="play-key"
       type="button"
@@ -661,6 +816,7 @@
     font-variant-numeric: tabular-nums;
     pointer-events: none;
   }
+  .loading-retry { pointer-events: auto; cursor: pointer; border: 0; }
   canvas {
     display: block;
     background: var(--canvas);

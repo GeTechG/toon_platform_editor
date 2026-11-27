@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 // The studio's catalogue, which every surface that checks a file has loaded.
 import '../i18n';
+import { filmTiming } from '../model/timing';
+import { firstUnready } from '../render/playback-window';
 import {
   AUDIO_MAX_BYTES,
   AUDIO_MAX_CREDIT,
@@ -10,6 +12,7 @@ import {
   ENVELOPE_RATE,
   frameForTime,
   loopSeconds,
+  mixedTrackStep,
   readId3,
   timeForFrame,
   trackTimeFor,
@@ -305,4 +308,16 @@ describe('publishProblem', () => {
     expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024)).toBeNull();
     expect(publishProblem(head([0x49, 0x44, 0x33]), 2 * 1024 * 1024 + 1)).toBe('size');
   });
+});
+
+test('a lagging soundtrack cannot request a forward wrap past an unloaded raster frame', () => {
+  const timing = filmTiming(undefined, 5);
+  const ready = (frame: number) => frame < 2;
+  const lagging = mixedTrackStep(timing, 10, 1, 0.095);
+  expect(lagging).toEqual({ tick: 1, frame: 1, lapped: false });
+  expect(firstUnready(ready, 5, 1, lagging.frame, Number(lagging.lapped))).toBeNull();
+
+  const wrap = mixedTrackStep(timing, 10, 4, 0.5);
+  expect(wrap).toEqual({ tick: 0, frame: 0, lapped: true });
+  expect(firstUnready((frame) => frame !== 0, 5, 4, wrap.frame, Number(wrap.lapped))).toBe(0);
 });

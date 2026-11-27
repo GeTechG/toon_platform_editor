@@ -5,6 +5,9 @@ const STORE = 'raster-cels';
 const STORAGE_LOCK = 'toonop:raster-storage';
 const WORKSPACE_LOCK = 'toonop:raster-workspace:';
 const USED = 'toon-editor:raster-files';
+const PIN_DB = 'toon-editor-raster-upload-pins';
+const PIN_STORE = 'pins';
+const PIN_TTL = 48 * 60 * 60 * 1000;
 
 type StoredRaster = { id: string; bytes: ArrayBuffer };
 let shared: { factory: IDBFactory; db: Promise<IDBDatabase> } | undefined;
@@ -54,6 +57,10 @@ export async function collectRasterAssets(saved: () => Promise<Set<string>>): Pr
     // Another tab's undo/clipboard state is available only in that tab.
     if (held?.some(({ name }) => name?.startsWith(WORKSPACE_LOCK) && !workspaces.has(name))) return false;
     const keep = await saved();
+    for (const pin of await rasterPins()) {
+      if (pin.until > Date.now()) for (const hash of pin.hashes) keep.add(hash);
+      else await unpinRasterUpload(pin.key);
+    }
     for (const used of workspaces.values()) {
       for (const hash of used()) keep.add(hash);
     }
@@ -77,6 +84,42 @@ export async function collectRasterAssets(saved: () => Promise<Set<string>>): Pr
     }
     return true;
   });
+}
+
+type RasterPin = { key: string; hashes: readonly string[]; until: number };
+
+async function pinTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(PIN_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(PIN_STORE, { keyPath: 'key' });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const tx = db.transaction(PIN_STORE, mode);
+      const result = run(tx.objectStore(PIN_STORE));
+      tx.oncomplete = () => resolve(result.result);
+      tx.onabort = () => reject(tx.error ?? new Error('Could not save raster upload references'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function rasterPins(): Promise<RasterPin[]> {
+  return pinTransaction('readonly', (store) => store.getAll());
+}
+
+export async function pinRasterUpload(key: string, hashes: readonly string[]): Promise<void> {
+  await withRasterStorage(async () => {
+    await assertRasterAssets(hashes);
+    await pinTransaction('readwrite', (store) => store.put({ key, hashes, until: Date.now() + PIN_TTL } satisfies RasterPin));
+  });
+}
+
+export async function unpinRasterUpload(key: string): Promise<void> {
+  await pinTransaction('readwrite', (store) => store.delete(key));
 }
 
 function connection(): Promise<IDBDatabase> {
@@ -143,7 +186,7 @@ export async function assertRasterAssets(hashes: readonly string[]): Promise<voi
   const store = db.transaction(STORE).objectStore(STORE);
   await Promise.all(hashes.map((hash) => new Promise<void>((resolve, reject) => {
     const request = store.getKey(hash);
-    request.onsuccess = () => request.result === hash ? resolve() : reject(new Error('Raster image is unavailable'));
+    request.onsuccess = () => request.result === hash ? resolve() : reject(new DOMException('Raster image is unavailable', 'NotFoundError'));
     request.onerror = () => reject(request.error);
   })));
 }

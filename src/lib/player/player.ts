@@ -104,6 +104,13 @@ export class LoopPlayer {
     this.#onFrame(this.#current, laps > 0, laps);
   }
 
+  /** Continue from an external clock when it gives way to silent playback. */
+  follow(tick: number, nowMs: number): void {
+    this.#tick = Math.floor(tick);
+    this.#current = this.#timing.frameAt(this.#tick);
+    this.#last = nowMs - (tick - this.#tick) * this.#intervalMs;
+  }
+
   /**
    * The clock starts over at the next tick: after a hidden tab, where no tick
    * came, the frames go on from the one they stood on instead of leaping the
